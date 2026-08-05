@@ -7,9 +7,14 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  Gamepad2,
+  Layers,
   LoaderCircle,
+  MapPin,
   Pencil,
   Plus,
+  RotateCcw,
+  Shield,
   Trash2,
   X
 } from "lucide-react";
@@ -18,14 +23,6 @@ import { TONE_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import {
@@ -36,6 +33,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -53,6 +51,7 @@ import {
   BO5_SEQUENCE,
   buildBo1Sequence,
   buildToken,
+  getFormatSlots,
   getVetoLevelLabel,
   getVetoPresetLabel,
   tokenAction,
@@ -86,8 +85,8 @@ const emptyFormState: VetoConfigFormState = {
   round: null,
   mapIds: [],
   sequence: [],
-  preset: "custom",
-  turnTimerSeconds: null
+  preset: "bo3",
+  turnTimerSeconds: 30
 };
 
 function getConfigFormState(config: MapVetoConfig): VetoConfigFormState {
@@ -122,17 +121,17 @@ function MapPoolCard({
       disabled={disabled}
       onClick={onToggle}
       className={cn(
-        "relative flex h-20 flex-col justify-end overflow-hidden rounded-lg border text-left transition",
+        "relative flex h-24 flex-col justify-between overflow-hidden rounded-xl border p-2 text-left transition-all",
         selected
-          ? "border-primary ring-2 ring-primary/40"
-          : "border-border/70 hover:border-primary/50",
+          ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm"
+          : "border-border/70 bg-card hover:border-primary/50 hover:bg-accent/40",
         disabled && "cursor-not-allowed opacity-60"
       )}
     >
       {map.image_path ? (
         <div
           aria-hidden
-          className="absolute inset-0 bg-cover bg-center"
+          className="absolute inset-0 bg-cover bg-center opacity-30 transition-opacity group-hover:opacity-40"
           style={{ backgroundImage: `url("${map.image_path}")` }}
         />
       ) : (
@@ -140,14 +139,25 @@ function MapPoolCard({
       )}
       <div
         aria-hidden
-        className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent"
+        className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"
       />
-      {selected ? (
-        <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold tabular-nums text-primary-foreground">
-          {selectionIndex + 1}
-        </span>
-      ) : null}
-      <span className="relative truncate px-2 pb-1.5 text-xs font-medium text-foreground">
+
+      <div className="relative z-10 flex items-center justify-between gap-1">
+        {map.gamemode?.name ? (
+          <Badge variant="outline" className="bg-background/80 text-[10px] backdrop-blur-xs">
+            {map.gamemode.name}
+          </Badge>
+        ) : (
+          <span />
+        )}
+        {selected ? (
+          <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold tabular-nums text-primary-foreground shadow-xs">
+            {selectionIndex + 1}
+          </span>
+        ) : null}
+      </div>
+
+      <span className="relative z-10 truncate text-xs font-semibold text-foreground">
         {map.name}
       </span>
     </button>
@@ -162,8 +172,14 @@ export function TournamentMapVetoTab({
   const queryClient = useQueryClient();
   const configsQueryKey = ["admin", "tournament", tournamentId, "veto-configs"] as const;
 
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingConfig, setEditingConfig] = useState<MapVetoConfig | null>(null);
+  // Selected Scope State: levelType, stageId, round
+  const [selectedLevelType, setSelectedLevelType] = useState<VetoLevelType>("tournament");
+  const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
+  const [selectedRound, setSelectedRound] = useState<number | null>(null);
+
+  // Gamemode Filter for Map Pool View
+  const [activeGamemodeFilter, setActiveGamemodeFilter] = useState<string>("all");
+
   const [formState, setFormState] = useState<VetoConfigFormState>(emptyFormState);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [configPendingDelete, setConfigPendingDelete] = useState<MapVetoConfig | null>(null);
@@ -181,6 +197,15 @@ export function TournamentMapVetoTab({
   const maps = useMemo(() => mapsQuery.data?.results ?? [], [mapsQuery.data]);
   const mapsById = useMemo(() => new Map(maps.map((map) => [map.id, map])), [maps]);
   const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
+
+  const gamemodesList = useMemo(() => {
+    const set = new Set<string>();
+    for (const map of maps) {
+      if (map.gamemode?.name) set.add(map.gamemode.name);
+    }
+    return Array.from(set).sort();
+  }, [maps]);
+
   const sortedStages = useMemo(
     () => [...stages].sort((left, right) => left.order - right.order),
     [stages]
@@ -201,14 +226,49 @@ export function TournamentMapVetoTab({
     });
   }, [configsQuery.data, stagesById]);
 
+  // Find exact config matching the current selected level
+  const activeLevelConfig = useMemo(() => {
+    return configs.find((config) => {
+      if (selectedLevelType === "tournament") {
+        return config.stage_id == null && config.round == null;
+      }
+      if (selectedLevelType === "stage") {
+        return config.stage_id === selectedStageId && config.round == null;
+      }
+      if (selectedLevelType === "stage_round") {
+        return config.stage_id === selectedStageId && config.round === selectedRound;
+      }
+      return false;
+    });
+  }, [configs, selectedLevelType, selectedStageId, selectedRound]);
+
+  // Sync active config to formState when level selection changes
+  useMemo(() => {
+    if (activeLevelConfig) {
+      setFormState(getConfigFormState(activeLevelConfig));
+    } else {
+      // Default initial form state for empty level
+      setFormState({
+        levelType: selectedLevelType,
+        stageId: selectedStageId,
+        round: selectedRound,
+        mapIds: maps.map((m) => m.id),
+        sequence: [...BO3_SEQUENCE],
+        preset: "bo3",
+        turnTimerSeconds: 30
+      });
+    }
+    setFormError(undefined);
+  }, [activeLevelConfig, selectedLevelType, selectedStageId, selectedRound, maps]);
+
   const upsertMutation = useMutation({
     meta: { suppressErrorToast: true },
     mutationFn: (data: MapVetoConfigUpsertInput) =>
       adminService.upsertVetoConfig(tournamentId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: configsQueryKey });
-      resetEditor();
-      notify.success("Veto config saved");
+      notify.success("Конфигурация вето успешно сохранена");
+      setFormError(undefined);
     },
     onError: (error: Error) => {
       setFormError(error.message);
@@ -220,32 +280,14 @@ export function TournamentMapVetoTab({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: configsQueryKey });
       setConfigPendingDelete(null);
-      notify.success("Veto config deleted");
+      notify.success("Конфигурация вето удалена (используется дефолт)");
     }
   });
 
-  const resetEditor = () => {
-    setEditorOpen(false);
-    setEditingConfig(null);
-    setFormState(emptyFormState);
-    setFormError(undefined);
-    upsertMutation.reset();
-  };
-
-  const openCreateEditor = () => {
-    setEditingConfig(null);
-    setFormState(emptyFormState);
-    setFormError(undefined);
-    upsertMutation.reset();
-    setEditorOpen(true);
-  };
-
-  const openEditEditor = (config: MapVetoConfig) => {
-    setEditingConfig(config);
-    setFormState(getConfigFormState(config));
-    setFormError(undefined);
-    upsertMutation.reset();
-    setEditorOpen(true);
+  const selectLevel = (levelType: VetoLevelType, stageId: number | null, round: number | null) => {
+    setSelectedLevelType(levelType);
+    setSelectedStageId(stageId);
+    setSelectedRound(round);
   };
 
   const patchForm = (patch: Partial<VetoConfigFormState>) => {
@@ -258,7 +300,6 @@ export function TournamentMapVetoTab({
       const mapIds = selected
         ? previous.mapIds.filter((id) => id !== mapId)
         : [...previous.mapIds, mapId];
-      // Bo1 depends on the pool size — keep the generated sequence in sync.
       const sequence =
         previous.preset === "bo1" && mapIds.length > 0
           ? buildBo1Sequence(mapIds.length)
@@ -305,29 +346,14 @@ export function TournamentMapVetoTab({
   };
 
   const validationErrors = validateVetoConfigForm(formState.sequence, formState.mapIds);
-  const stageMissing = formState.levelType !== "tournament" && formState.stageId == null;
-  const roundMissing = formState.levelType === "stage_round" && formState.round == null;
-  const levelErrors: string[] = [];
-  if (stageMissing) levelErrors.push("Select a stage for this config level.");
-  if (roundMissing) levelErrors.push("Enter a round number (rounds always belong to a stage).");
-  const allErrors = [...levelErrors, ...validationErrors];
-  const canSave = allErrors.length === 0 && !upsertMutation.isPending;
-
-  const effectiveStageId = formState.levelType === "tournament" ? null : formState.stageId;
-  const effectiveRound = formState.levelType === "stage_round" ? formState.round : null;
-  const replacesExisting = configs.find(
-    (config) =>
-      config.id !== editingConfig?.id &&
-      (config.stage_id ?? null) === effectiveStageId &&
-      (config.round ?? null) === effectiveRound
-  );
+  const canSave = validationErrors.length === 0 && !upsertMutation.isPending && canManage;
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!canSave) return;
     upsertMutation.mutate({
-      stage_id: effectiveStageId,
-      round: effectiveRound,
+      stage_id: selectedStageId,
+      round: selectedRound,
       map_ids: formState.mapIds,
       sequence: formState.sequence,
       turn_timer_seconds: formState.turnTimerSeconds,
@@ -335,366 +361,453 @@ export function TournamentMapVetoTab({
     });
   };
 
+  // Filtered maps display
+  const filteredMaps = useMemo(() => {
+    if (activeGamemodeFilter === "all") return maps;
+    return maps.filter((map) => map.gamemode?.name === activeGamemodeFilter);
+  }, [maps, activeGamemodeFilter]);
+
+  const currentLevelTitle = useMemo(() => {
+    if (selectedLevelType === "tournament") return "Общий дефолт турнира";
+    const stage = stagesById.get(selectedStageId ?? -1);
+    const stageName = stage?.name ?? `Стадия #${selectedStageId}`;
+    if (selectedLevelType === "stage") return `Дефолт стадии: ${stageName}`;
+    return `Стадия: ${stageName} · Раунд ${selectedRound}`;
+  }, [selectedLevelType, selectedStageId, selectedRound, stagesById]);
+
   const presetButtons: {
     preset: Exclude<VetoPreset, "custom">;
     label: string;
-    srLabel: string;
+    description: string;
     minPool: number;
   }[] = [
-    { preset: "bo1", label: "Bo1", srLabel: "Best of 1 preset", minPool: 2 },
-    { preset: "bo3", label: "Bo3", srLabel: "Best of 3 preset", minPool: BO3_SEQUENCE.length },
-    { preset: "bo5", label: "Bo5", srLabel: "Best of 5 preset", minPool: BO5_SEQUENCE.length }
+    { preset: "bo1", label: "Bo1", description: "Best of 1 (1 карта)", minPool: 2 },
+    { preset: "bo3", label: "Bo3", description: "Best of 3 (3 карты)", minPool: BO3_SEQUENCE.length },
+    { preset: "bo5", label: "Bo5", description: "Best of 5 (5 карт)", minPool: BO5_SEQUENCE.length }
   ];
 
+  const formatSlots = useMemo(() => getFormatSlots(formState.preset), [formState.preset]);
+
   return (
-    <>
+    <div className="space-y-6">
+      {/* ── Top Header ────────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div className="space-y-1.5">
             <CardTitle asChild>
-              <h2>Map veto</h2>
+              <h1 className="text-xl font-bold tracking-tight">Конструктор пула карт и мап-вето</h1>
             </CardTitle>
             <CardDescription>
-              Map pools and pick/ban sequences for veto rooms. The most specific level wins:
-              stage + round overrides stage, stage overrides the tournament default.
+              Настройка доступных карт, игровых режимов и последовательности вето для стадий и раундов турнирной сетки.
             </CardDescription>
           </div>
-          {canManage ? (
-            <Button onClick={openCreateEditor}>
-              <Plus className="h-4 w-4" aria-hidden />
-              Add config
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="flex items-center gap-1">
+              <Layers className="h-3.5 w-3.5" aria-hidden />
+              Стадий: {stages.length}
+            </Badge>
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Shield className="h-3.5 w-3.5 text-primary" aria-hidden />
+              Сконфигурировано: {configs.length}
+            </Badge>
+            <Badge variant="outline" className="flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5" aria-hidden />
+              Карт в базе: {maps.length}
+            </Badge>
+          </div>
         </CardHeader>
-        <CardContent>
-          {configsQuery.isLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-16 w-full rounded-lg" />
-              <Skeleton className="h-16 w-full rounded-lg" />
+      </Card>
+
+      {/* ── Stage & Round Grid Navigation ────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle asChild>
+            <h2 className="text-base font-semibold">Структура стадий и раундов сетки</h2>
+          </CardTitle>
+          <CardDescription>
+            Выберите стадию или конкретный раунд сетки для настройки персонального пула карт.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Level selection tabs */}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={selectedLevelType === "tournament" ? "default" : "outline"}
+              size="sm"
+              onClick={() => selectLevel("tournament", null, null)}
+              className="flex items-center gap-2"
+            >
+              <Shield className="h-4 w-4" aria-hidden />
+              Дефолт турнира
+              {configs.some((c) => c.stage_id == null) ? (
+                <span className="size-2 rounded-full bg-success" />
+              ) : null}
+            </Button>
+
+            {sortedStages.map((stage) => {
+              const isStageSelected =
+                (selectedLevelType === "stage" || selectedLevelType === "stage_round") &&
+                selectedStageId === stage.id;
+              const hasStageConfig = configs.some(
+                (c) => c.stage_id === stage.id && c.round == null
+              );
+
+              return (
+                <Button
+                  key={stage.id}
+                  variant={isStageSelected ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => selectLevel("stage", stage.id, null)}
+                  className="flex items-center gap-2"
+                >
+                  <Layers className="h-4 w-4" aria-hidden />
+                  {stage.name}
+                  {hasStageConfig ? (
+                    <span className="size-2 rounded-full bg-success" />
+                  ) : null}
+                </Button>
+              );
+            })}
+          </div>
+
+          {/* Rounds grid for the active stage */}
+          {selectedStageId != null ? (
+            <div className="rounded-xl border border-border/70 bg-accent/20 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Раунды стадии: {stagesById.get(selectedStageId)?.name}
+                </span>
+                <Button
+                  variant={selectedRound == null && selectedLevelType === "stage" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => selectLevel("stage", selectedStageId, null)}
+                  className="text-xs"
+                >
+                  Дефолт для всей стадии
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+                {Array.from({ length: stagesById.get(selectedStageId)?.max_rounds ?? 5 }).map(
+                  (_, index) => {
+                    const roundNum = index + 1;
+                    const isRoundSelected =
+                      selectedLevelType === "stage_round" &&
+                      selectedStageId === selectedStageId &&
+                      selectedRound === roundNum;
+
+                    const roundConfig = configs.find(
+                      (c) => c.stage_id === selectedStageId && c.round === roundNum
+                    );
+
+                    return (
+                      <button
+                        key={roundNum}
+                        type="button"
+                        onClick={() => selectLevel("stage_round", selectedStageId, roundNum)}
+                        className={cn(
+                          "flex flex-col items-start justify-between rounded-lg border p-2.5 text-left transition-all",
+                          isRoundSelected
+                            ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                            : roundConfig
+                              ? "border-success/50 bg-success/5 hover:border-success"
+                              : "border-border/60 bg-card hover:border-primary/50"
+                        )}
+                      >
+                        <div className="flex w-full items-center justify-between">
+                          <span className="text-xs font-bold">Раунд {roundNum}</span>
+                          {roundConfig ? (
+                            <Badge variant="outline" className="text-[10px] border-success text-success">
+                              {getVetoPresetLabel(roundConfig.preset)}
+                            </Badge>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">Наследование</span>
+                          )}
+                        </div>
+                        <span className="mt-2 text-[11px] text-muted-foreground">
+                          {roundConfig
+                            ? `${roundConfig.map_ids.length} карт в пуле`
+                            : "Использует дефолт"}
+                        </span>
+                      </button>
+                    );
+                  }
+                )}
+              </div>
             </div>
-          ) : configs.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
-              No veto configs yet. Add a tournament default so veto rooms can open for
-              every match, then override specific stages or rounds when needed.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {configs.map((config) => {
-                const levelLabel = getVetoLevelLabel(config, stagesById);
-                return (
-                  <li
-                    key={config.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 px-4 py-3"
-                  >
-                    <div className="min-w-0 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{levelLabel}</span>
-                        <Badge variant="outline">{getVetoPresetLabel(config.preset)}</Badge>
-                        {config.turn_timer_seconds != null ? (
-                          <Badge variant="secondary" className="tabular-nums">
-                            {config.turn_timer_seconds}s timer
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                        <span>
-                          <span className="tabular-nums">{config.map_ids.length}</span>{" "}
-                          {config.map_ids.length === 1 ? "map" : "maps"}:
-                        </span>
-                        <span className="truncate">
-                          {config.map_ids
-                            .map((mapId) => mapsById.get(mapId)?.name ?? `#${mapId}`)
-                            .join(", ")}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {config.sequence.map((token, index) => (
-                          <Badge
-                            key={`${config.id}-${index}`}
-                            variant={tokenAction(token) === "ban" ? "destructive" : "secondary"}
-                            className="text-xs"
-                          >
-                            {tokenLabel(token)}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                    {canManage ? (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Edit veto config for ${levelLabel}`}
-                          onClick={() => openEditEditor(config)}
-                        >
-                          <Pencil className="h-4 w-4" aria-hidden />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Delete veto config for ${levelLabel}`}
-                          onClick={() => setConfigPendingDelete(config)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
-                        </Button>
-                      </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
-      <Dialog
-        open={editorOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            resetEditor();
-          } else {
-            setEditorOpen(true);
-          }
-        }}
-      >
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-3xl flex-col gap-0 overflow-hidden sm:max-h-[90dvh]">
-          <DialogHeader className="shrink-0 border-b border-border/60 pb-4">
-            <DialogTitle>{editingConfig ? "Edit veto config" : "New veto config"}</DialogTitle>
-            <DialogDescription>
-              Choose the maps captains can pick or ban and the order of veto steps.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto py-4 pr-4">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="veto-level">Level</Label>
-                  <Select
-                    value={formState.levelType}
-                    onValueChange={(value) => {
-                      const levelType = value as VetoLevelType;
-                      patchForm({
-                        levelType,
-                        stageId: levelType === "tournament" ? null : formState.stageId,
-                        round: levelType === "stage_round" ? formState.round : null
-                      });
-                    }}
-                    disabled={Boolean(editingConfig)}
-                  >
-                    <SelectTrigger id="veto-level">
-                      <SelectValue placeholder="Select level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="tournament">Tournament default</SelectItem>
-                      <SelectItem value="stage">Stage</SelectItem>
-                      <SelectItem value="stage_round">Stage + round</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {formState.levelType !== "tournament" ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="veto-stage">Stage</Label>
-                    <Select
-                      value={formState.stageId != null ? String(formState.stageId) : ""}
-                      onValueChange={(value) => patchForm({ stageId: Number(value) })}
-                      disabled={Boolean(editingConfig)}
-                    >
-                      <SelectTrigger id="veto-stage">
-                        <SelectValue placeholder="Select stage" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sortedStages.map((stage) => (
-                          <SelectItem key={stage.id} value={String(stage.id)}>
-                            {stage.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-                {formState.levelType === "stage_round" ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="veto-round">Round</Label>
-                    <NumberInput
-                      id="veto-round"
-                      value={formState.round}
-                      onValueChange={(value) => patchForm({ round: value })}
-                      min={1}
-                      integer
-                      placeholder="Round number"
-                      disabled={Boolean(editingConfig)}
-                    />
-                  </div>
-                ) : null}
+      {/* ── Active Level Workspace & Form ───────────────────────────────────── */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card className="border-primary/30">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg font-semibold">{currentLevelTitle}</CardTitle>
+                <Badge variant={activeLevelConfig ? "default" : "secondary"}>
+                  {activeLevelConfig ? "Индивидуальный конфиг" : "Новая конфигурация"}
+                </Badge>
               </div>
-              {replacesExisting ? (
-                <p
-                  className={cn(
-                    "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
-                    TONE_CLASS.warning
-                  )}
-                >
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                  A config already exists for this level — saving will replace it.
+              <CardDescription>
+                Укажите формат матча, привязку игровых режимов к слотам карт и сформируйте пул.
+              </CardDescription>
+            </div>
+
+            {canManage && activeLevelConfig ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfigPendingDelete(activeLevelConfig)}
+                className="flex items-center gap-1.5"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+                Удалить конфиг уровня
+              </Button>
+            ) : null}
+          </CardHeader>
+
+          <CardContent className="space-y-6 pt-6">
+            {/* Format & Match Parameters */}
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">Формат серии (Preset)</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {presetButtons.map(({ preset, label, description, minPool }) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      variant={formState.preset === preset ? "default" : "outline"}
+                      disabled={formState.mapIds.length < minPool}
+                      onClick={() => applyPreset(preset)}
+                      className={cn(
+                        "flex flex-col items-center justify-center h-auto py-2.5 text-center transition-all",
+                        formState.preset === preset
+                          ? "border-primary ring-2 ring-primary/40 font-bold"
+                          : "border-border/70"
+                      )}
+                    >
+                      <span className="text-sm font-semibold">{label}</span>
+                      <span className="text-[10px] text-muted-foreground">{description}</span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="turn-timer" className="text-sm font-semibold">
+                  Таймер на ход (секунд)
+                </Label>
+                <NumberInput
+                  id="turn-timer"
+                  value={formState.turnTimerSeconds}
+                  onValueChange={(val) => patchForm({ turnTimerSeconds: val })}
+                  min={1}
+                  integer
+                  placeholder="30"
+                  className="max-w-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Индикатор для капитанской комнаты вето (таймер обратного отсчета).
                 </p>
-              ) : null}
-
-              <div className="space-y-2">
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-sm font-medium">Map pool</h3>
-                  <span className="text-xs text-muted-foreground">
-                    <span className="tabular-nums">{formState.mapIds.length}</span> selected · click
-                    order sets the pool order
-                  </span>
-                </div>
-                {mapsQuery.isLoading ? (
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {Array.from({ length: 8 }).map((_, index) => (
-                      <Skeleton key={index} className="h-20 rounded-lg" />
-                    ))}
-                  </div>
-                ) : maps.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No maps available. Create maps in the admin maps section first.
+              </div>
+            </div>
+            {/* Map Slots & Recommended Gamemodes Structure */}
+            <div className="space-y-3 rounded-xl border border-border/70 bg-card p-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Gamepad2 className="h-4 w-4 text-primary" aria-hidden />
+                    Слоты карт и привязка к игровым режимам (Gamemode Slots)
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Стандартный Overwatch порядок сыгранных карт в матче серии {formState.preset.toUpperCase()}.
                   </p>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {maps.map((map) => (
-                      <MapPoolCard
-                        key={map.id}
-                        map={map}
-                        selectionIndex={formState.mapIds.indexOf(map.id)}
-                        disabled={upsertMutation.isPending}
-                        onToggle={() => toggleMap(map.id)}
-                      />
-                    ))}
-                  </div>
-                )}
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-medium">Veto sequence</h3>
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      role="radiogroup"
-                      aria-label="Veto sequence preset"
-                      className="flex items-center gap-1.5"
-                    >
-                      {presetButtons.map(({ preset, label, srLabel, minPool }) => (
-                        <Button
-                          key={preset}
-                          type="button"
-                          role="radio"
-                          aria-checked={formState.preset === preset}
-                          aria-label={srLabel}
-                          size="sm"
-                          variant={formState.preset === preset ? "default" : "outline"}
-                          disabled={formState.mapIds.length < minPool}
-                          title={
-                            formState.mapIds.length < minPool
-                              ? `Needs at least ${minPool} maps in the pool`
-                              : undefined
-                          }
-                          onClick={() => applyPreset(preset)}
-                        >
-                          {label}
-                        </Button>
-                      ))}
+              <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-5">
+                {formatSlots.map((slot) => (
+                  <div
+                    key={slot.slotNumber}
+                    className="flex flex-col gap-1 rounded-lg border border-border/70 bg-accent/30 p-2.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">{slot.label}</span>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {slot.suggestedGamemode}
+                      </Badge>
                     </div>
-                    <Badge variant={formState.preset === "custom" ? "default" : "outline"}>
-                      Custom
-                    </Badge>
+                    <span className="text-[11px] text-muted-foreground">
+                      Режим: <strong className="text-foreground">{slot.suggestedGamemode}</strong>
+                    </span>
                   </div>
-                </div>
-                {formState.sequence.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-                    No steps yet. Apply a preset or add steps manually.
+                ))}
+              </div>
+            </div>
+
+            {/* Map Pool Filter & Selection */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold">Пул карт турнира</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Отметьте карты, доступные капитанам для бана и пика (выбрано: {formState.mapIds.length}).
                   </p>
-                ) : (
-                  <ol className="space-y-1.5">
-                    {formState.sequence.map((token, index) => {
-                      const action = tokenAction(token);
-                      const side = tokenSide(token);
-                      return (
-                        <li
-                          key={index}
-                          className="flex items-center gap-2 rounded-lg border border-border/70 px-2 py-1.5"
+                </div>
+
+                {/* Gamemode Quick Filters */}
+                <div className="flex flex-wrap gap-1">
+                  <Button
+                    type="button"
+                    variant={activeGamemodeFilter === "all" ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setActiveGamemodeFilter("all")}
+                  >
+                    Все ({maps.length})
+                  </Button>
+                  {gamemodesList.map((gm) => {
+                    const count = maps.filter((m) => m.gamemode?.name === gm).length;
+                    return (
+                      <Button
+                        key={gm}
+                        type="button"
+                        variant={activeGamemodeFilter === gm ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setActiveGamemodeFilter(gm)}
+                      >
+                        {gm} ({count})
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+              {mapsQuery.isLoading ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                  {Array.from({ length: 12 }).map((_, index) => (
+                    <Skeleton key={index} className="h-24 rounded-xl" />
+                  ))}
+                </div>
+              ) : filteredMaps.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Карты выбранного игрового режима не найдены.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+                  {filteredMaps.map((map) => (
+                    <MapPoolCard
+                      key={map.id}
+                      map={map}
+                      selectionIndex={formState.mapIds.indexOf(map.id)}
+                      disabled={!canManage || upsertMutation.isPending}
+                      onToggle={() => toggleMap(map.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Veto Sequence Timeline */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold">Последовательность мап-вето</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Порядок банов и пиков команд перед началом матча.
+                  </p>
+                </div>
+                <Badge variant={formState.preset === "custom" ? "default" : "outline"}>
+                  {getVetoPresetLabel(formState.preset)}
+                </Badge>
+              </div>
+
+              {formState.sequence.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Последовательность шагов пуста.
+                </p>
+              ) : (
+                <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {formState.sequence.map((token, index) => {
+                    const action = tokenAction(token);
+                    const side = tokenSide(token);
+                    return (
+                      <li
+                        key={index}
+                        className="flex items-center gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-2xs"
+                      >
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold tabular-nums">
+                          {index + 1}
+                        </span>
+                        <Select
+                          value={action}
+                          onValueChange={(val: string) =>
+                            updateStep(index, val as VetoStepAction, side ?? "first")
+                          }
+                          disabled={!canManage}
                         >
-                          <span className="w-6 text-center text-xs font-medium tabular-nums text-muted-foreground">
-                            {index + 1}
-                          </span>
+                          <SelectTrigger className="h-8 w-24 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ban">БАН</SelectItem>
+                            <SelectItem value="pick">ПИК</SelectItem>
+                            <SelectItem value="decider">Десайдер</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {action !== "decider" ? (
                           <Select
-                            value={action}
-                            onValueChange={(value) =>
-                              updateStep(index, value as VetoStepAction, side ?? "first")
+                            value={side ?? "first"}
+                            onValueChange={(val: string) =>
+                              updateStep(index, action, val as VetoStepSide)
                             }
+                            disabled={!canManage}
                           >
-                            <SelectTrigger
-                              className="h-8 w-28"
-                              aria-label={`Step ${index + 1} action`}
-                            >
+                            <SelectTrigger className="h-8 flex-1 text-xs">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="ban">Ban</SelectItem>
-                              <SelectItem value="pick">Pick</SelectItem>
-                              <SelectItem value="decider">Decider</SelectItem>
+                              <SelectItem value="first">1-я команда</SelectItem>
+                              <SelectItem value="second">2-я команда</SelectItem>
                             </SelectContent>
                           </Select>
-                          {action !== "decider" ? (
-                            <Select
-                              value={side ?? "first"}
-                              onValueChange={(value) =>
-                                updateStep(index, action, value as VetoStepSide)
-                              }
-                            >
-                              <SelectTrigger
-                                className="h-8 w-32"
-                                aria-label={`Step ${index + 1} team`}
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="first">First team</SelectItem>
-                                <SelectItem value="second">Second team</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span className="w-32 text-xs text-muted-foreground">
-                              auto-resolves
-                            </span>
-                          )}
-                          <div className="ml-auto flex items-center gap-0.5">
+                        ) : (
+                          <span className="flex-1 text-xs text-muted-foreground">
+                            Авто-решающая
+                          </span>
+                        )}
+
+                        {canManage ? (
+                          <div className="flex items-center gap-0.5">
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="size-7"
-                              aria-label={`Move step ${index + 1} up`}
+                              className="size-6"
                               disabled={index === 0}
                               onClick={() => moveStep(index, -1)}
                             >
-                              <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+                              <ArrowUp className="h-3 w-3" aria-hidden />
                             </Button>
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="size-7"
-                              aria-label={`Move step ${index + 1} down`}
+                              className="size-6"
                               disabled={index === formState.sequence.length - 1}
                               onClick={() => moveStep(index, 1)}
                             >
-                              <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+                              <ArrowDown className="h-3 w-3" aria-hidden />
                             </Button>
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="size-7"
-                              aria-label={`Remove step ${index + 1}`}
+                              className="size-6 text-destructive"
                               onClick={() =>
                                 patchSequence((steps) => {
                                   steps.splice(index, 1);
@@ -702,97 +815,84 @@ export function TournamentMapVetoTab({
                                 })
                               }
                             >
-                              <X className="h-3.5 w-3.5" aria-hidden />
+                              <X className="h-3 w-3" aria-hidden />
                             </Button>
                           </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                )}
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+
+              {canManage ? (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => patchSequence((steps) => [...steps, "ban_first"])}
+                  className="flex items-center gap-1.5"
                 >
                   <Plus className="h-4 w-4" aria-hidden />
-                  Add step
+                  Добавить шаг
                 </Button>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="veto-timer">Turn timer (seconds)</Label>
-                <NumberInput
-                  id="veto-timer"
-                  value={formState.turnTimerSeconds}
-                  onValueChange={(value) => patchForm({ turnTimerSeconds: value })}
-                  min={1}
-                  integer
-                  placeholder="No timer"
-                  className="max-w-48"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Indicator only — the server never acts automatically when time runs out.
-                </p>
-              </div>
-
-              {allErrors.length > 0 ? (
-                <div
-                  aria-live="polite"
-                  className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                >
-                  {allErrors.map((error) => (
-                    <p key={error} className="flex items-start gap-2">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                      {error}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Check className="h-3.5 w-3.5 text-success" aria-hidden />
-                  Sequence is valid for the selected pool.
-                </p>
-              )}
-
-              {formError ? (
-                <div
-                  role="alert"
-                  className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                  <span>
-                    <span className="font-medium">Could not save the veto config.</span> {formError}
-                  </span>
-                </div>
               ) : null}
             </div>
 
-            <DialogFooter className="mt-4 shrink-0 border-t border-border/60 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={resetEditor}
-                disabled={upsertMutation.isPending}
+            {/* Validation & Save Footer */}
+            {validationErrors.length > 0 ? (
+              <div
+                aria-live="polite"
+                className="space-y-1 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
               >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!canSave}>
-                {upsertMutation.isPending ? (
-                  <>
-                    <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
-                    Saving…
-                  </>
-                ) : (
-                  "Save config"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+                {validationErrors.map((err) => (
+                  <p key={err} className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                    {err}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Check className="h-4 w-4 text-success" aria-hidden />
+                Последовательность вето и пул карт прошли валидацию.
+              </p>
+            )}
 
+            {formError ? (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>Ошибка сохранения: {formError}</span>
+              </div>
+            ) : null}
+
+            {canManage ? (
+              <div className="flex items-center justify-end gap-3 border-t border-border/60 pt-4">
+                <Button
+                  type="submit"
+                  disabled={!canSave}
+                  size="lg"
+                  className="flex items-center gap-2"
+                >
+                  {upsertMutation.isPending ? (
+                    <>
+                      <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
+                      Сохранение...
+                    </>
+                  ) : (
+                    "Сохранить конфигурацию вето"
+                  )}
+                </Button>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      </form>
+
+      {/* Delete Confirmation Dialog */}
       <DeleteConfirmDialog
         open={Boolean(configPendingDelete)}
         onOpenChange={(open) => {
@@ -803,14 +903,14 @@ export function TournamentMapVetoTab({
             deleteMutation.mutate(configPendingDelete.id);
           }
         }}
-        title="Delete veto config"
+        title="Удалить конфигурацию вето"
         description={
           configPendingDelete
-            ? `The "${getVetoLevelLabel(configPendingDelete, stagesById)}" veto config will be removed. Matches fall back to the next config level; running veto sessions keep their snapshot.`
+            ? `Конфигурация для "${getVetoLevelLabel(configPendingDelete, stagesById)}" будет удалена. Раунды будут наследовать вето-конфиг со следующего уровня.`
             : ""
         }
         isDeleting={deleteMutation.isPending}
       />
-    </>
+    </div>
   );
 }

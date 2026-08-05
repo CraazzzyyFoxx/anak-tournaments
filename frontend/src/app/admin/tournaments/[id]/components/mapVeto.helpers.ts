@@ -105,3 +105,36 @@ export function getVetoPresetLabel(preset: VetoPreset | null): string {
       return "Custom";
   }
 }
+
+export interface FormatSlotConfig {
+  slotNumber: number;
+  label: string;
+  suggestedGamemode: string;
+}
+
+export function getFormatSlots(preset: VetoPreset): FormatSlotConfig[] {
+  switch (preset) {
+    case "bo1":
+      return [{ slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" }];
+    case "bo3":
+      return [
+        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
+        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" },
+        { slotNumber: 3, label: "Map 3", suggestedGamemode: "Flashpoint" }
+      ];
+    case "bo5":
+      return [
+        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
+        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" },
+        { slotNumber: 3, label: "Map 3", suggestedGamemode: "Flashpoint" },
+        { slotNumber: 4, label: "Map 4", suggestedGamemode: "Push" },
+        { slotNumber: 5, label: "Map 5", suggestedGamemode: "Control" }
+      ];
+    default:
+      return [
+        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
+        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" },
+        { slotNumber: 3, label: "Map 3", suggestedGamemode: "Escort" }
+      ];
+  }
+}

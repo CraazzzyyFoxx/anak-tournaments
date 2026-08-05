@@ -10,6 +10,7 @@ const resourcesWithCrud = [
   "workspace_member",
   "api_key",
   "user",
+  "role",
   "tournament",
   "stage",
   "team",
@@ -45,7 +46,10 @@ type SpecialPermission =
   | "registration.check_in"
   | "account.avatar"
   | "account.social"
-  | "registration.self_register";
+  | "registration.self_register"
+  | "team.import"
+  | "match.sync"
+  | "standing.recalculate";
 
 export type AppPermission = CrudPermission | SpecialPermission;
 
@@ -82,7 +86,7 @@ function workspaceHasPermission(
   permission: AppPermission,
 ): boolean {
   return (
-    isWorkspaceAdminRole(workspace?.role) ||
+    isWorkspaceAdminRole(workspace?.memberRole) ||
     workspace?.permissions.includes("admin.*") ||
     workspace?.permissions.includes(permission) ||
     false
