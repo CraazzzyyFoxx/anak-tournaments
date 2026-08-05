@@ -61,7 +61,7 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
                         "slug": "ws-7",
                         "role": "member",
                         "rbac_roles": ["editor"],
-                        "rbac_permissions": [{"resource": "team", "action": "import"}],
+                        "rbac_permissions": [{"resource": "team", "action": "create"}],
                     }
                 ],
             },
@@ -69,8 +69,8 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
 
         self.assertTrue(user.is_workspace_member(7))
         self.assertEqual(user.get_workspace_role(7), "member")
-        self.assertTrue(user.has_workspace_permission(7, "team", "import"))
-        self.assertFalse(user.has_workspace_permission(8, "team", "import"))
+        self.assertTrue(user.has_workspace_permission(7, "team", "create"))
+        self.assertFalse(user.has_workspace_permission(8, "team", "create"))
 
     async def test_tournament_permission_allows_workspace_scoped_access(self) -> None:
         user = _make_user()

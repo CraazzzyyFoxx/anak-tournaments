@@ -157,13 +157,13 @@ def test_require_permission_rejects_user_without_matching_permission() -> None:
         has_permission=lambda _resource, _action: False,
     )
 
-    dependency = auth_service.require_permission("role", "assign")
+    dependency = auth_service.require_permission("role", "update")
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(dependency(current_user=current_user))
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "Permission denied: role.assign required"
+    assert exc_info.value.detail == "Permission denied: role.update required"
 
 
 def test_auth_user_has_permission_allows_admin_role_without_explicit_permissions() -> None:

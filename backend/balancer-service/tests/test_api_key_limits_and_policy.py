@@ -103,7 +103,7 @@ def _api_key_user(**overrides):
         **values,
         has_workspace_permission=lambda workspace_id, resource, action: workspace_id == 11
         and resource == "team"
-        and action == "import",
+        and action == "create",
     )
 
 

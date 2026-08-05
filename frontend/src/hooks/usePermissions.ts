@@ -35,47 +35,17 @@ type CrudPermission = `${CrudResource}.${CrudAction}`;
 
 type SpecialPermission =
   | "admin.*"
-  | "role.read"
-  | "role.create"
-  | "role.update"
-  | "role.delete"
-  | "role.assign"
   | "permission.read"
   | "auth_user.read"
   | "auth_user.update"
   | "oauth_connection.read"
   | "oauth_connection.delete"
-  | "auth_session.read"
-  | "auth_session.revoke"
-  | "team.import"
-  | "team.export"
-  | "player.import"
-  | "player.export"
-  | "match.sync"
-  | "standing.recalculate"
   | "registration.approve"
   | "registration.reject"
   | "registration.check_in"
-  | "registration_status.check_in"
-  | "balancer.calculate"
-  | "balancer.generate"
-  | "balancer.publish"
-  | "balancer.export"
-  | "analytics.export"
-  | "analytics.recalculate"
-  | "achievement.calculate"
-  | "achievement.import"
-  | "achievement.export"
-  | "division_grid.import"
-  | "division_grid.export"
-  | "division_grid.publish"
-  | "division_grid.sync"
-  | "log.upload"
-  | "log.stream"
-  | "log.reprocess"
-  | "discord_channel.sync"
-  | "challonge.sync"
-  | "asset.upload";
+  | "account.avatar"
+  | "account.social"
+  | "registration.self_register";
 
 export type AppPermission = CrudPermission | SpecialPermission;
 
@@ -104,14 +74,19 @@ export function isAdminPanelRole(role: string): boolean {
 }
 
 export function isWorkspaceAdminRole(role: string | undefined): boolean {
-  return role === "owner";
+  return role === "owner" || role === "admin";
 }
 
 function workspaceHasPermission(
   workspace: PermissionProfile["workspaces"][number] | undefined,
   permission: AppPermission,
 ): boolean {
-  return workspace?.permissions.includes("admin.*") || workspace?.permissions.includes(permission) || false;
+  return (
+    isWorkspaceAdminRole(workspace?.role) ||
+    workspace?.permissions.includes("admin.*") ||
+    workspace?.permissions.includes(permission) ||
+    false
+  );
 }
 
 function permissionGrantsAdminPanelAccess(permission: string): boolean {

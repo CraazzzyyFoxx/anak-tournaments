@@ -139,7 +139,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             balance_id = c.require_id(data)
             ws_id = await _get_balance_workspace_id(session, balance_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             balance, removed_teams, imported_teams = await admin_balancer.export_balance(session, balance_id)
             await emit_balancer_data_event(balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
             return admin_schemas.BalanceExportResponse(

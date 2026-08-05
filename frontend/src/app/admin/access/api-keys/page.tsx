@@ -209,7 +209,7 @@ export default function AccessAdminApiKeysPage() {
     (workspace) =>
       isSuperuser ||
       isWorkspaceAdmin(workspace.id) ||
-      hasWorkspacePermission(workspace.id, "team.import")
+      hasWorkspacePermission(workspace.id, "team.create")
   );
   const selectedWorkspaceIsManageable =
     selectedWorkspaceId !== null &&

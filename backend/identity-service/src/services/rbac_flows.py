@@ -54,8 +54,7 @@ def _ensure_actor_can_grant_permissions(
     """Privilege-ceiling guard (review M / RBAC): an actor may only
     create/update/assign a role whose permission set is a SUBSET of the
     permissions the actor themselves effectively holds.
-
-    Without this, ``role.create`` + ``role.assign`` (or a workspace ``role.*``)
+    Without this, ``role.create`` + ``role.update`` (or a workspace ``role.*``)
     would let a limited operator mint or hand out a role more powerful than
     their own — a straightforward privilege escalation. Superusers (and, via
     ``has_*_permission``, global-admin-equivalent holders / workspace wildcard
@@ -599,10 +598,10 @@ async def assign_role_to_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
 
     if role.workspace_id is not None:
-        if not _has_workspace_permission(current_user, role.workspace_id, "role", "assign"):
+        if not _has_workspace_permission(current_user, role.workspace_id, "role", "update"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied: role.assign required",
+                detail="Permission denied: role.update required",
             )
         member_result = await session.execute(
             select(WorkspaceMember)
@@ -618,10 +617,10 @@ async def assign_role_to_user(
                 detail="Target user must be a member of the workspace",
             )
     else:
-        if not _has_global_permission(current_user, "role", "assign"):
+        if not _has_global_permission(current_user, "role", "update"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied: role.assign required",
+                detail="Permission denied: role.update required",
             )
 
     # Privilege ceiling: never hand out a role carrying permissions the actor
@@ -656,16 +655,16 @@ async def remove_role_from_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
 
     if role.workspace_id is not None:
-        if not _has_workspace_permission(current_user, role.workspace_id, "role", "assign"):
+        if not _has_workspace_permission(current_user, role.workspace_id, "role", "update"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied: role.assign required",
+                detail="Permission denied: role.update required",
             )
     else:
-        if not _has_global_permission(current_user, "role", "assign"):
+        if not _has_global_permission(current_user, "role", "update"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied: role.assign required",
+                detail="Permission denied: role.update required",
             )
 
     if role not in user.roles:

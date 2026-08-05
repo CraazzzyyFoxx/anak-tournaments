@@ -142,7 +142,7 @@ async def _has_workspace_import_access(
     user: models.AuthUser,
     workspace_id: int,
 ) -> bool:
-    if user.is_superuser or user.has_permission("team", "import"):
+    if user.is_superuser or user.has_permission("team", "create"):
         return True
 
     member = await _get_workspace_member(session, user_id=user.id, workspace_id=workspace_id)
@@ -156,7 +156,7 @@ async def _has_workspace_import_access(
 
     workspace_rbac = await AuthService.get_workspace_roles_and_permissions_db(session, user.id, [workspace_id])
     _, permissions = workspace_rbac.get(workspace_id, ([], []))
-    return _has_permission_payload(permissions, "team", "import")
+    return _has_permission_payload(permissions, "team", "create")
 
 
 async def ensure_can_manage_api_keys(
@@ -169,7 +169,7 @@ async def ensure_can_manage_api_keys(
     if not await _has_workspace_import_access(session, user=user, workspace_id=workspace_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Permission denied for workspace {workspace_id}: team.import required",
+            detail=f"Permission denied for workspace {workspace_id}: team.create required",
         )
 
 
@@ -348,7 +348,7 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> schemas.Token
                 slug=api_key.workspace.slug,
                 role="api_key",
                 rbac_roles=[],
-                rbac_permissions=[{"resource": "team", "action": "import"}],
+                rbac_permissions=[{"resource": "team", "action": "create"}],
             )
         ],
         credential_type="api_key",

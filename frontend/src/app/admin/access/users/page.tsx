@@ -67,7 +67,7 @@ export default function AccessAdminUsersPage() {
   const queryClient = useQueryClient();
   const { hasPermission, isSuperuser, canAccessPermission } = usePermissions();
   const currentUserId = useAuthProfileStore((s) => s.user?.id);
-  const canAssignRoles = hasPermission("role.assign") && hasPermission("role.read");
+  const canAssignRoles = hasPermission("role.update") && hasPermission("role.read");
   const canManageLinkedPlayers = hasPermission("auth_user.update");
   // Cross-link to /admin/users (D9: the two Users pages stay separate and
   // cross-navigate); gated by the same permission that page requires.

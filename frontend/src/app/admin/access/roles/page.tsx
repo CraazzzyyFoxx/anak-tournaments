@@ -184,7 +184,7 @@ export default function AccessAdminRolesPage() {
     (ws) =>
       isSuperuser ||
       canAccessAnyPermission(
-        ["role.read", "role.create", "role.update", "role.delete", "role.assign"],
+        ["role.read", "role.create", "role.update", "role.delete"],
         ws.id
       )
   );

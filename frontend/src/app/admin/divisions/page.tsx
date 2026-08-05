@@ -837,16 +837,16 @@ export default function DivisionsAdminPage() {
     (isSuperuser || canAccessPermission("division_grid.update", currentWorkspaceId));
   const canImport =
     currentWorkspaceId !== null &&
-    (isSuperuser || canAccessPermission("division_grid.import", currentWorkspaceId));
+    (isSuperuser || canAccessPermission("division_grid.create", currentWorkspaceId));
   const canExport =
     currentWorkspaceId !== null &&
-    (isSuperuser || canAccessPermission("division_grid.export", currentWorkspaceId));
+    (isSuperuser || canAccessPermission("division_grid.read", currentWorkspaceId));
   const canDelete =
     currentWorkspaceId !== null &&
     (isSuperuser || canAccessPermission("division_grid.delete", currentWorkspaceId));
   const canPublish =
     currentWorkspaceId !== null &&
-    (isSuperuser || canAccessPermission("division_grid.publish", currentWorkspaceId));
+    (isSuperuser || canAccessPermission("division_grid.update", currentWorkspaceId));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],

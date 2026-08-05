@@ -54,6 +54,29 @@ def test_hidden_visible_to_superuser():
 def test_hidden_visible_to_workspace_admin():
     assert can_view_tournament(_user(5, ws_admin=[1]), _tournament(True, workspace_id=1), set()) is True
 
+def test_hidden_visible_to_workspace_role_admin_and_owner():
+    u_admin = AuthUser()
+    u_admin.id = 10
+    u_admin.set_rbac_cache(
+        role_names=[],
+        permissions=[],
+        workspaces=[{"workspace_id": 1, "role": "admin"}],
+        workspace_rbac={1: {"roles": ["admin"], "permissions": []}},
+    )
+    assert can_view_tournament(u_admin, _tournament(True, workspace_id=1), set()) is True
+    assert admin_visible_workspace_ids(u_admin) == [1]
+
+    u_owner = AuthUser()
+    u_owner.id = 11
+    u_owner.set_rbac_cache(
+        role_names=[],
+        permissions=[],
+        workspaces=[{"workspace_id": 1, "role": "owner"}],
+        workspace_rbac={1: {"roles": ["owner"], "permissions": []}},
+    )
+    assert can_view_tournament(u_owner, _tournament(True, workspace_id=1), set()) is True
+    assert admin_visible_workspace_ids(u_owner) == [1]
+
 
 def test_hidden_not_visible_to_admin_of_other_workspace():
     assert can_view_tournament(_user(5, ws_admin=[2]), _tournament(True, workspace_id=1), set()) is False
