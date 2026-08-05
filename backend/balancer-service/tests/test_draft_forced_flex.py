@@ -89,7 +89,7 @@ class TestForcedFlexMapping:
                 _Role("dps", priority=0, is_primary=True, rank_value=3900),
                 _Role("support", priority=1, is_primary=True, rank_value=2400),
             ],
-            forced_flex=True,
+            all_roles=True,
         )
 
         assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3900)
@@ -101,32 +101,32 @@ class TestForcedFlexMapping:
                 _Role("support", priority=0, is_primary=True, rank_value=2400),
                 _Role("dps", priority=1, is_primary=True, rank_value=3900),
             ],
-            forced_flex=True,
+            all_roles=True,
         )
 
         assert mapped["rank_value"] == 3900
 
     def test_a_single_ranked_role_covers_the_other_two(self) -> None:
         """The target case: ranked on DPS only, still placeable as tank."""
-        mapped = _mapped([_Role("dps", is_primary=True, rank_value=3900)], forced_flex=True)
+        mapped = _mapped([_Role("dps", is_primary=True, rank_value=3900)], all_roles=True)
 
         assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3900)
         assert mapped["rank_value"] == 3900
 
     def test_inactive_roles_still_contribute_and_are_playable(self) -> None:
         """Sheet rows without a parsed rank arrive with is_active=False."""
-        mapped = _mapped([_Role("tank", is_primary=True, is_active=False, rank_value=3100)], forced_flex=True)
+        mapped = _mapped([_Role("tank", is_primary=True, is_active=False, rank_value=3100)], all_roles=True)
 
         assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3100)
 
     def test_no_ranks_at_all_yields_no_role_ranks(self) -> None:
-        mapped = _mapped([_Role("dps", is_primary=True)], forced_flex=True)
+        mapped = _mapped([_Role("dps", is_primary=True)], all_roles=True)
 
         assert mapped["role_ranks"] == {}
         assert mapped["rank_value"] is None
 
     def test_all_three_roles_are_covered_even_from_one_entry(self) -> None:
-        mapped = _mapped([_Role("dps", is_primary=True, rank_value=3000)], forced_flex=True)
+        mapped = _mapped([_Role("dps", is_primary=True, rank_value=3000)], all_roles=True)
 
         assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(DraftRole)
 
@@ -136,13 +136,13 @@ class TestForcedFlexMapping:
                 _Role("support", priority=0, is_primary=True, rank_value=3000, subrole="main_heal"),
                 _Role("dps", priority=1, is_primary=True, rank_value=3000, subrole="hitscan"),
             ],
-            forced_flex=True,
+            all_roles=True,
         )
 
         assert mapped["sub_role"] == "main_heal"
 
     def test_is_flex_still_comes_from_the_registration(self) -> None:
-        mapped = _mapped([_Role("dps", is_primary=True, rank_value=3000)], forced_flex=True)
+        mapped = _mapped([_Role("dps", is_primary=True, rank_value=3000)], all_roles=True)
 
         assert mapped["is_flex"] is True
 
@@ -191,18 +191,132 @@ class TestForcedFlexEnabledMirror:
         return _Form()
 
     def test_forced(self) -> None:
-        assert lifecycle._forced_flex_enabled(self._form({"flex_role": {"mode": "forced"}})) is True
+        assert lifecycle._all_roles_required(self._form({"flex_role": {"mode": "forced"}})) is True
 
     def test_optional(self) -> None:
-        assert lifecycle._forced_flex_enabled(self._form({"flex_role": {"mode": "optional"}})) is False
+        assert lifecycle._all_roles_required(self._form({"flex_role": {"mode": "optional"}})) is False
 
     def test_absent(self) -> None:
-        assert lifecycle._forced_flex_enabled(self._form({})) is False
+        assert lifecycle._all_roles_required(self._form({})) is False
 
     def test_disabled_field_wins(self) -> None:
         form = self._form({"flex_role": {"enabled": False, "mode": "forced"}})
 
-        assert lifecycle._forced_flex_enabled(form) is False
+        assert lifecycle._all_roles_required(form) is False
 
     def test_missing_form_fails_closed(self) -> None:
-        assert lifecycle._forced_flex_enabled(None) is False
+        assert lifecycle._all_roles_required(None) is False
+
+    def test_all_roles_mode_also_requires_every_role(self) -> None:
+        assert lifecycle._all_roles_required(self._form({"flex_role": {"mode": "all_roles"}})) is True
+
+
+class TestAllRolesModeKeepsThePriority:
+    """``all_roles`` differs from ``forced`` in exactly one respect.
+
+    Both make every role playable at the maximum rank, because balancer
+    eligibility demands a rating per role. Only ``forced`` also forces every role
+    primary. Under ``all_roles`` the registrant's single priority role survives,
+    which is what keeps a real balance-versus-comfort trade-off alive: a forced
+    tournament has zero discomfort everywhere and the solver's second objective
+    collapses to sub-role collisions.
+    """
+
+    def test_the_priority_role_becomes_primary(self) -> None:
+        mapped = lifecycle._map_registration(
+            _Registration(
+                [
+                    _Role("tank", priority=0, is_primary=True, rank_value=3300),
+                    _Role("dps", priority=1, rank_value=2800),
+                    _Role("support", priority=2, rank_value=3000),
+                ],
+                flex=False,
+            ),
+            all_roles=True,
+        )
+
+        assert mapped["primary_role"] == DraftRole.TANK
+        assert set(mapped["secondary_roles"]) == {DraftRole.DPS, DraftRole.SUPPORT}
+
+    def test_is_flex_stays_false_for_a_priority_registrant(self) -> None:
+        """``is_flex`` is the registration's own fact, not the mode's."""
+        mapped = lifecycle._map_registration(
+            _Registration([_Role("tank", is_primary=True, rank_value=3300)], flex=False),
+            all_roles=True,
+        )
+
+        assert mapped["is_flex"] is False
+
+    def test_max_rank_still_covers_every_role(self) -> None:
+        mapped = lifecycle._map_registration(
+            _Registration(
+                [
+                    _Role("tank", priority=0, is_primary=True, rank_value=2800),
+                    _Role("dps", priority=1, rank_value=3900),
+                ],
+                flex=False,
+            ),
+            all_roles=True,
+        )
+
+        assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3900)
+        assert mapped["rank_value"] == 3900
+
+
+class TestDiscomfortDivergesFromTheBalancer:
+    """Witness for a pre-existing mirror that ``all_roles`` makes visible.
+
+    The draft and the balancer both encode "how much does this role hurt", in
+    separate code. For a registrant with one priority role and two playable
+    others, measured:
+
+    | role     | balancer | draft |
+    |----------|----------|-------|
+    | priority |        0 |     0 |
+    | other    |      100 |  1000 |
+    | other    |      200 |  1000 |
+
+    The draft penalises a non-priority role 5-10x harder because
+    ``preference_order`` carries only the primary role (``rpc/draft.py``), while
+    the balancer builds a full ordering from ``priority`` (``player_loader``). It
+    also hands the two non-priority roles DIFFERENT penalties, from row order the
+    registrant never expressed.
+
+    ``forced`` hid this: every role is primary there, so discomfort is nil on
+    both sides. This test does not assert the desired behaviour -- it pins the
+    current divergence so closing it becomes a deliberate, visible change. See
+    docs/superpowers/specs/2026-08-04-code-mirrors-registry.md, class D.
+    """
+
+    def test_draft_penalises_non_priority_roles_uniformly_and_harder(self) -> None:
+        from src.services.draft import suggestions as sug
+
+        player = sug.FitPlayer(
+            player_id=1,
+            rank_value=3300,
+            playable_roles=frozenset(DraftRole),
+            preference_order=(DraftRole.TANK,),
+            is_flex=False,
+            rank_by_role=dict.fromkeys(DraftRole, 3300),
+        )
+
+        assert sug.role_discomfort(player, DraftRole.TANK) == 0
+        assert sug.role_discomfort(player, DraftRole.DPS) == 1000
+        assert sug.role_discomfort(player, DraftRole.SUPPORT) == 1000
+
+    def test_balancer_penalises_them_by_position_instead(self) -> None:
+        from src.services.balancer.algorithm.entities import Player
+
+        mask = {"Tank": 1, "Damage": 2, "Support": 2}
+        player = Player(
+            "x",
+            {"Tank": 3300, "Damage": 3300, "Support": 3300},
+            ["Tank", "Damage", "Support"],
+            "u",
+            mask,
+            is_flex=False,
+        )
+
+        assert player.get_discomfort("Tank") == 0
+        assert player.get_discomfort("Damage") == 100
+        assert player.get_discomfort("Support") == 200

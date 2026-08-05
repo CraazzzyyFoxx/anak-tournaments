@@ -28,7 +28,7 @@ from src.services.registration._common import (
     _register_registration_changed,
     active_roles_all_ranked,
     ensure_tournament_exists,
-    forced_flex_enabled,
+    flex_role_mode,
     get_registration_form,
     included_balancer_status,
     replace_registration_roles,
@@ -223,7 +223,7 @@ async def create_manual_registration(
         roles,
         hero_catalog=hero_catalog,
         max_heroes=max_heroes,
-        forced_flex=forced_flex_enabled(form),
+        mode=flex_role_mode(form),
     )
     session.add(registration)
     await session.flush()
@@ -329,7 +329,7 @@ async def update_registration_profile(
             roles,
             hero_catalog=hero_catalog,
             max_heroes=max_heroes,
-            forced_flex=forced_flex_enabled(form),
+            mode=flex_role_mode(form),
         )
         sync_included_balancer_status(registration)
         override_changed = True

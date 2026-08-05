@@ -76,7 +76,7 @@ class _Registration:
 
 def _map(case: dict[str, Any]) -> dict:
     roles = [_Role(spec, index) for index, spec in enumerate(case["roles"])]
-    return lifecycle._map_registration(_Registration(roles), forced_flex=True)
+    return lifecycle._map_registration(_Registration(roles), all_roles=True)
 
 
 def test_fixtures_are_loaded() -> None:

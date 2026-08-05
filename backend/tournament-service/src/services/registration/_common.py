@@ -10,7 +10,7 @@ is re-exported by the ``admin`` facade.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,42 +118,84 @@ async def get_form_custom_field_defs(
     return form_custom_field_defs(form)
 
 
-def forced_flex_enabled(form: Any | None) -> bool:
-    """True when the tournament forces every registration to be full flex.
+FlexRoleMode = Literal["optional", "all_roles", "forced"]
 
-    ``flex_role.mode == "forced"`` with the field itself enabled. Absent key,
-    ``None`` and ``"optional"`` all mean the registrant chooses, so every
-    existing form keeps its behaviour. ``enabled: false`` bans flex outright
-    (see ``validation.py``) and therefore wins over the mode.
 
-    Reads fail closed: an unreadable form is treated as optional. Guessing
-    "forced" would silently inflate every player's effective rank.
+def flex_role_mode(form: Any | None) -> FlexRoleMode:
+    """The tournament's ``flex_role.mode``, normalized.
+
+    - ``optional``  — the registrant picks which roles they play at all; flex is
+      an opt-in preset.
+    - ``all_roles`` — every role is mandatory; the registrant names exactly one
+      priority role, or declares flex (no preference).
+    - ``forced``    — every role is mandatory AND flex; there is no choice.
+
+    Absent key, ``None`` and an unknown string all read as ``optional``, so every
+    existing form keeps its behaviour. ``enabled: false`` bans flex outright (see
+    ``validation.py``) and therefore wins over the mode.
+
+    Reads fail closed. Guessing anything but ``optional`` would silently inflate
+    every player's effective rank, since the other two modes rate a player by
+    their highest rank across all roles.
     """
     if form is None:
-        return False
+        return "optional"
     config = (getattr(form, "built_in_fields_json", None) or {}).get("flex_role")
     if not isinstance(config, dict):
-        return False
+        return "optional"
     if config.get("enabled", True) is False:
-        return False
-    return config.get("mode") == "forced"
+        return "optional"
+    mode = config.get("mode")
+    return mode if mode in ("all_roles", "forced") else "optional"
 
 
-def apply_forced_flex(
+def all_roles_required(form: Any | None) -> bool:
+    """Whether role stops being a constraint: every role playable by everyone.
+
+    True for ``all_roles`` and ``forced``. This is the fact that drives the
+    max-rank policy on the read side: if the tournament requires readiness to
+    play anything, the balancer must hold a rating for every role, because
+    eligibility there is the presence of a rating (``role in ratings``), not the
+    flex flag.
+    """
+    return flex_role_mode(form) in ("all_roles", "forced")
+
+
+def forced_flex_enabled(form: Any | None) -> bool:
+    """Whether the flex choice is made FOR the registrant (``forced`` only).
+
+    Distinct from ``all_roles_required``: under ``all_roles`` the registrant
+    still names a priority role, so their non-priority roles carry discomfort and
+    the solver keeps a real balance-versus-comfort trade-off. Under ``forced``
+    every role is primary, discomfort is nil, and that trade-off collapses.
+    """
+    return flex_role_mode(form) == "forced"
+
+
+def apply_all_roles(
     entries: list[models.BalancerRegistrationRole],
+    *,
+    force_primary: bool,
 ) -> list[models.BalancerRegistrationRole]:
-    """Promote every role to primary and backfill the missing ones.
+    """Backfill the role set to all three, optionally forcing every role primary.
 
-    A forced-flex tournament must yield ``is_flex_computed`` (>1 role, all
-    primary) whichever path produced the entries — public form, admin panel,
-    API key or Google Sheets sync. Normalizing here rather than rejecting a
-    non-flex payload is what makes that hold for a stale client and for the
-    sheet sync, neither of which knows about the mode.
+    Both non-optional modes need the SET normalized, whichever path produced the
+    entries — public form, admin panel, API key or Google Sheets sync.
+    Normalizing here rather than rejecting an incomplete payload is what makes
+    that hold for a stale client and for the sheet sync, neither of which knows
+    about the mode.
 
-    Only the role SET and ``is_primary`` are touched. ``is_active`` and
-    ``rank_value`` stay exactly as the calling path set them: the max-rank
-    policy is derived at read time, because the public form submits no ranks at
-    all and ``rank_autofill`` would overwrite anything flattened into the rows.
+    ``force_primary`` separates the two modes: ``forced`` marks every role
+    primary (yielding ``is_flex_computed``), ``all_roles`` leaves the registrant's
+    own choice alone and backfills the missing roles as non-primary. It cannot
+    invent that choice, so a payload naming no priority stays invalid — see
+    ``validation.py``.
+
+    Only the role SET and (under ``force_primary``) ``is_primary`` are touched.
+    ``is_active`` and ``rank_value`` stay exactly as the calling path set them:
+    the max-rank policy is derived at read time, because the public form submits
+    no ranks at all and ``rank_autofill`` would overwrite anything flattened
+    into the rows.
     """
     present = {entry.role for entry in entries}
     result = list(entries)
@@ -163,7 +205,8 @@ def apply_forced_flex(
         if role_code not in present
     )
     for priority, entry in enumerate(result):
-        entry.is_primary = True
+        if force_primary:
+            entry.is_primary = True
         entry.priority = priority
     return result
 
@@ -174,7 +217,7 @@ def replace_registration_roles(
     *,
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
-    forced_flex: bool = False,
+    mode: FlexRoleMode = "optional",
 ) -> None:
     existing_by_role = {existing.role: existing for existing in registration.roles}
     next_roles: list[models.BalancerRegistrationRole] = []
@@ -210,8 +253,8 @@ def replace_registration_roles(
 
         next_roles.append(registration_role)
 
-    if forced_flex:
-        next_roles = apply_forced_flex(next_roles)
+    if mode in ("all_roles", "forced"):
+        next_roles = apply_all_roles(next_roles, force_primary=mode == "forced")
 
     registration.roles[:] = next_roles
 

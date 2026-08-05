@@ -38,7 +38,7 @@ from src.schemas.registration_build import (
     _resolve_top_heroes_config,
     _resolve_tournament_workspace,
 )
-from src.services.registration._common import apply_forced_flex, forced_flex_enabled
+from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
 from src.services.registration.subscription_reads import (
     build_subscription_reads,
     load_auth_user_ids_by_registration,
@@ -116,7 +116,7 @@ def build_registration_roles(
     *,
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
-    forced_flex: bool = False,
+    mode: FlexRoleMode = "optional",
 ) -> list[models.BalancerRegistrationRole]:
     """Build normalized role entries, mirroring the admin write path.
 
@@ -150,8 +150,8 @@ def build_registration_roles(
                 max_heroes=resolved_max,
             )
         entries.append(entry)
-    if forced_flex:
-        entries = apply_forced_flex(entries)
+    if mode in ("all_roles", "forced"):
+        entries = apply_all_roles(entries, force_primary=mode == "forced")
     return entries
 
 
@@ -700,7 +700,7 @@ async def submit_public_registration(
         body.roles,
         hero_catalog=hero_catalog,
         max_heroes=max_heroes,
-        forced_flex=forced_flex_enabled(form),
+        mode=flex_role_mode(form),
     )
 
     try:

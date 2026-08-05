@@ -41,12 +41,22 @@ class BuiltInFieldConfig(BaseModel):
     # submitted handle must match one of the registrant's OAuth-verified social
     # accounts for the field's provider. Implies the field is effectively required.
     require_verified: bool = False
-    # ``flex_role`` field only. "forced" is a tournament where role does not
-    # matter: every submitted role is stored as primary (so ``is_flex_computed``
-    # holds for every registration regardless of entry point) and the registrant
-    # is not asked for priorities at all. None/absent == "optional", so every
-    # existing form keeps its current behaviour.
-    mode: Literal["optional", "forced"] | None = None
+    # ``flex_role`` field only. None/absent == "optional", so every existing form
+    # keeps its current behaviour.
+    #
+    # - "optional"  — the registrant picks which roles they play at all; flex is
+    #   an opt-in preset.
+    # - "all_roles" — every role is mandatory; the registrant names exactly one
+    #   priority role, or declares flex. Their non-priority roles keep carrying
+    #   discomfort, so the solver keeps a real balance-versus-comfort trade-off.
+    # - "forced"    — every role is mandatory AND every role primary. There is no
+    #   choice, and discomfort is nil everywhere, which collapses that trade-off
+    #   to sub-role collisions alone.
+    #
+    # Both non-optional modes rate a player by their highest rank across all
+    # roles: balancer eligibility is the presence of a rating for a role, so
+    # requiring readiness to play anything requires a rating for everything.
+    mode: Literal["optional", "all_roles", "forced"] | None = None
 
 
 class SubroleOption(BaseModel):
