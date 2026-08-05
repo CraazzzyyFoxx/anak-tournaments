@@ -353,6 +353,9 @@ export interface AdminRegistrationForm {
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
   require_subscription?: boolean;
+  /** Server-resolved from the workspace requirement and read-only: the rule now
+   *  lives on the workspace, so the upsert below deliberately has no counterpart.
+   *  Still returned because the check-in dialog renders the composed rule. */
   subscription_requirement_json?: SubscriptionRequirement;
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: AdminCustomFieldDef[];
@@ -366,7 +369,6 @@ export interface AdminRegistrationFormUpsert {
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
   require_subscription?: boolean;
-  subscription_requirement_json?: SubscriptionRequirement;
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: AdminCustomFieldDef[];
 }

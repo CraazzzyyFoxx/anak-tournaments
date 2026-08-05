@@ -39,7 +39,9 @@ import type {
   StatusScope,
   SubscriptionProviderConfigListResponse,
   SubscriptionProviderConfigRead,
-  SubscriptionProviderConfigUpsert
+  SubscriptionProviderConfigUpsert,
+  WorkspaceSubscriptionRequirementRead,
+  WorkspaceSubscriptionRequirementUpsert
 } from "@/types/registration.types";
 
 // Endpoints whose response model is `X | None` return HTTP 200 with a `null`
@@ -351,6 +353,31 @@ export default class balancerAdminService {
   ): Promise<SubscriptionProviderConfigRead> {
     const response = await apiFetch(
       `/api/v1/admin/ws/${workspaceId}/subscription-providers`,
+      { method: "PUT", body: data }
+    );
+    return response.json();
+  }
+
+  /** The workspace-wide subscription rule. Workspace-scoped like the provider
+   *  config above, and for the same reason: admission is a property of the
+   *  workspace, so a new tournament inherits it instead of re-asking. */
+  static async getSubscriptionRequirement(
+    workspaceId: number
+  ): Promise<WorkspaceSubscriptionRequirementRead> {
+    const response = await apiFetch(
+      `/api/v1/admin/ws/${workspaceId}/subscription-requirement`
+    );
+    return response.json();
+  }
+
+  /** Replaces the rule wholesale — an empty `requirements` list clears it, which
+   *  disarms every tournament in the workspace whose toggle is on. */
+  static async upsertSubscriptionRequirement(
+    workspaceId: number,
+    data: WorkspaceSubscriptionRequirementUpsert
+  ): Promise<WorkspaceSubscriptionRequirementRead> {
+    const response = await apiFetch(
+      `/api/v1/admin/ws/${workspaceId}/subscription-requirement`,
       { method: "PUT", body: data }
     );
     return response.json();

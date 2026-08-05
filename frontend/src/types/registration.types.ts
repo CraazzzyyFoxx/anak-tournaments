@@ -150,6 +150,19 @@ export interface SubscriptionProviderConfigUpsert {
   verification_method?: VerificationMethod;
 }
 
+/** The subscription rule a whole workspace enforces, shared by every tournament
+ *  in it. Read and written on the workspace, exactly like the provider config
+ *  above: an organizer configures admission once, not per tournament. */
+export interface WorkspaceSubscriptionRequirementRead {
+  requirement: SubscriptionRequirement;
+}
+
+/** Same shape as the read because the rule is replaced wholesale. A partial
+ *  merge of an admission rule would be a silent policy change. */
+export interface WorkspaceSubscriptionRequirementUpsert {
+  requirement: SubscriptionRequirement;
+}
+
 export interface RegistrationForm {
   id: number;
   tournament_id: number;
@@ -159,6 +172,9 @@ export interface RegistrationForm {
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
   require_subscription?: boolean;
+  /** Server-resolved from the workspace requirement and read-only — the rule no
+   *  longer lives on the form. The check-in dialog renders it, so it stays on
+   *  the read model. */
   subscription_requirement_json?: SubscriptionRequirement;
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: CustomFieldDefinition[];
