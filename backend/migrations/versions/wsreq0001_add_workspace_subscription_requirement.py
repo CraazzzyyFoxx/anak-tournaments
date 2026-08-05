@@ -24,9 +24,15 @@ a configured rule: workspaces holding nothing but empty-but-present blobs would 
 get a pointless ``default`` row, making "no rule" and "empty rule" indistinguishable
 in the one table whose whole purpose is to answer that question, and the guard below
 would report ambiguity for workspaces whose forms differ only in whitespace or key
-order. The predicate is wrapped in ``jsonb_typeof`` -- the pattern this repo already
-standardises on, see ``dbarch03._as_jsonb_array`` and ``dbarch05`` -- so a JSON
-scalar or a wrong container collapses to "not configured" instead of raising.
+order. The predicate coerces through ``CASE`` -- the pattern this repo already
+standardises on, see ``dbarch03._as_jsonb_array`` and ``dbarch05`` -- rather than
+type-checking in a leading conjunct, because PostgreSQL leaves WHERE-clause evaluation
+order undefined: both a JSON scalar and a WRONG CONTAINER collapse to "not configured"
+inside the one expression, instead of a mistimed ``jsonb_array_length`` aborting the
+migration. The wrong-container case is reachable, not theoretical:
+``{"requirements": {}}``, ``{"requirements": null}`` and ``{"requirements": 0}`` all
+pass the old ``RegistrationFormUpsert._validate_requirement`` and were storable
+through the shipped API into this very column.
 
 When a workspace holds MORE than one distinct rule there is no correct answer, so the
 migration aborts with the offending workspace ids rather than picking one: silently
@@ -58,15 +64,17 @@ depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "subscriptions"
 
+_REQUIREMENTS = "(f.subscription_requirement_json::jsonb) -> 'requirements'"
 # "Configured" means a non-empty ``requirements`` array -- see the docstring for why
-# the textual `!= '{}'` test is wrong. The ``jsonb_typeof`` check comes first so a
-# JSON scalar or a wrong container cannot make ``jsonb_array_length`` raise; ``->`` on
-# a non-object jsonb yields SQL NULL, which ``jsonb_typeof`` reports as NULL and the
-# comparison rejects. Used by BOTH the guard and the backfill so the two agree on what
-# "configured" means.
+# the textual `!= '{}'` test is wrong. Coerced through ``CASE`` rather than guarded by
+# a second conjunct: PostgreSQL leaves WHERE-clause evaluation order undefined, so
+# ``{"requirements": {}}`` -- storable through the old upsert -- could reach
+# ``jsonb_array_length`` and abort the migration. Same shape as
+# ``dbarch03._as_jsonb_array``. Used by BOTH the guard and the backfill so the two
+# agree on what "configured" means.
 _CONFIGURED = (
-    "jsonb_typeof((f.subscription_requirement_json::jsonb) -> 'requirements') = 'array' "
-    "and jsonb_array_length((f.subscription_requirement_json::jsonb) -> 'requirements') > 0"
+    f"jsonb_array_length(CASE WHEN jsonb_typeof({_REQUIREMENTS}) = 'array' "
+    f"THEN ({_REQUIREMENTS}) ELSE '[]'::jsonb END) > 0"
 )
 
 
@@ -109,6 +117,10 @@ def upgrade() -> None:
     # `conn.execute` returns None and the check would vanish from the render
     # entirely. `count(distinct ...::jsonb)` compares parsed values, so differing
     # whitespace or key order cannot manufacture false ambiguity.
+    # No `;` after `END $$`: alembic appends its own `command_terminator` under
+    # `--sql`, and the two together render `END $$;;` -- an empty statement that psql
+    # tolerates but a runner splitting the script on `;` rejects, which is precisely
+    # the audience this guard was moved into the script for.
     op.execute(
         f"""
         DO $$
@@ -132,7 +144,7 @@ def upgrade() -> None:
                     'migrating -- silently choosing an admission rule is exactly the failure '
                     'this guard exists to prevent.', ambiguous;
             END IF;
-        END $$;
+        END $$
         """
     )
 
