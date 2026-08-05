@@ -57,3 +57,39 @@ def test_all_three_services_share_one_normalizer() -> None:
     # The point of putting it in `shared`: three admin services cannot drift.
     for service in (hero_service, map_service, gamemode_service):
         assert service.normalize_aliases is shared_aliases.normalize_aliases
+
+
+def test_the_canonical_name_is_never_stored_as_its_own_alias() -> None:
+    # Production picked up `Assault -> ["Осада", "Assault"]` from an admin edit:
+    # the lookup already matches on `name`, so the entity's own name in `aliases`
+    # is dead weight, and catalias0001 skips exactly those pairs when seeding.
+    assert shared_aliases.normalize_aliases(["Осада", "Assault"], canonical="Assault") == ["Осада"]
+    assert shared_aliases.normalize_aliases([" Assault "], canonical="Assault") == []
+    # Without a canonical name nothing is dropped — the seed path relies on that.
+    assert shared_aliases.normalize_aliases(["Осада", "Assault"]) == ["Осада", "Assault"]
+
+
+def test_the_gamemode_serializer_carries_every_column() -> None:
+    """Regression: `to_pydantic` used to enumerate fields, so `aliases` silently
+    fell back to the schema default and the API served `[]` over real data.
+
+    The admin editor reads through this payload, so an empty list there means the
+    next save wipes the aliases the log parser resolves gamemode names through.
+    """
+    import asyncio
+    from types import SimpleNamespace
+
+    from src.services.gamemode import flows as gamemode_flows
+
+    row = SimpleNamespace(
+        to_dict=lambda: {
+            "id": 1,
+            "slug": "assault",
+            "name": "Assault",
+            "image_path": "assault.svg",
+            "description": "2CP",
+            "aliases": ["Осада"],
+        }
+    )
+    read = asyncio.run(gamemode_flows.to_pydantic(None, row, []))
+    assert read.aliases == ["Осада"]

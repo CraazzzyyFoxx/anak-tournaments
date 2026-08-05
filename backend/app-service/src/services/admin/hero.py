@@ -54,7 +54,7 @@ async def create_hero(session: AsyncSession, data: admin_schemas.HeroCreate) -> 
         image_path=data.image_path or "",
         type=data.role,
         color=data.color,
-        aliases=normalize_aliases(data.aliases or []),
+        aliases=normalize_aliases(data.aliases or [], canonical=data.name),
     )
     hero = await _repo.create(session, hero)
     await session.commit()
@@ -81,7 +81,9 @@ async def update_hero(session: AsyncSession, hero_id: int, data: admin_schemas.H
     if role is not None:
         update_data["type"] = role
     if "aliases" in update_data:
-        update_data["aliases"] = normalize_aliases(update_data["aliases"] or [])
+        update_data["aliases"] = normalize_aliases(
+            update_data["aliases"] or [], canonical=update_data.get("name") or hero.name
+        )
 
     hero = await _repo.update_fields(session, hero, update_data)
     await session.commit()

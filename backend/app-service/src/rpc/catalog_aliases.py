@@ -88,8 +88,9 @@ async def _attach_alias(session: Any, data: alias_schemas.CatalogAliasAttach) ->
         raise HTTPException(status_code=404, detail=f"{data.entity_type.value.capitalize()} not found")
 
     # JSONB does not track in-place mutation: `obj.aliases.append(...)` never
-    # reaches the UPDATE. Reassign.
-    obj.aliases = normalize_aliases([*obj.aliases, data.alias])
+    # reaches the UPDATE. Reassign. `canonical` drops an attach of the entity's
+    # own name, which the lookup already matches on.
+    obj.aliases = normalize_aliases([*obj.aliases, data.alias], canonical=obj.name)
 
     miss = models.CatalogAliasMiss
     await session.execute(

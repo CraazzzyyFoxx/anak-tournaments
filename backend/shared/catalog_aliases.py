@@ -19,11 +19,18 @@ from collections.abc import Iterable
 __all__ = ("normalize_aliases",)
 
 
-def normalize_aliases(values: Iterable[str]) -> list[str]:
-    """Strip each value, drop blanks, dedupe preserving first-seen input order."""
+def normalize_aliases(values: Iterable[str], *, canonical: str | None = None) -> list[str]:
+    """Strip each value, drop blanks, dedupe preserving first-seen input order.
+
+    ``canonical`` is the entity's own ``name``, and it is dropped when supplied:
+    the lookup already matches on `name`, so storing it as an alias only
+    duplicates the predicate. catalias0001 skips such pairs when seeding, and the
+    write paths have to agree — production picked up `Assault -> ["Осада",
+    "Assault"]` from an admin edit before this guard existed.
+    """
     seen: dict[str, None] = {}
     for value in values:
         cleaned = value.strip()
-        if cleaned:
+        if cleaned and cleaned != canonical:
             seen.setdefault(cleaned, None)
     return list(seen)

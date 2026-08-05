@@ -60,7 +60,7 @@ async def create_map(session: AsyncSession, data: admin_schemas.MapCreate) -> mo
         name=data.name,
         gamemode_id=data.gamemode_id,
         in_competitive=data.in_competitive,
-        aliases=normalize_aliases(data.aliases or []),
+        aliases=normalize_aliases(data.aliases or [], canonical=data.name),
     )
 
     await _map_repo.create(session, map_obj)
@@ -97,7 +97,9 @@ async def update_map(session: AsyncSession, map_id: int, data: admin_schemas.Map
 
     update_data = data.model_dump(exclude_unset=True)
     if "aliases" in update_data:
-        update_data["aliases"] = normalize_aliases(update_data["aliases"] or [])
+        update_data["aliases"] = normalize_aliases(
+            update_data["aliases"] or [], canonical=update_data.get("name") or map_obj.name
+        )
     await _map_repo.update_fields(session, map_obj, update_data)
     await session.commit()
     await session.refresh(map_obj, ["gamemode"])
