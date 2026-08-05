@@ -3,11 +3,13 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { canConfirmPick } from "@/lib/draft-logic";
 import type { DraftGating } from "@/lib/draft-logic";
 import {
   filterDraftPlayers,
   playerRoles,
+  type DraftMobileView,
   type DraftViewParams
 } from "@/lib/draft-workspace-model";
 import { describeApiError } from "@/lib/api-error";
@@ -134,7 +136,7 @@ export function CaptainDraftWorkspace({
     );
   };
 
-  const pool = (
+  const renderPool = (poolHeadingId: string) => (
     <PlayerPool
       players={filteredPlayers}
       totalPlayers={availablePlayers.length}
@@ -151,6 +153,7 @@ export function CaptainDraftWorkspace({
       onFiltersChange={onViewParamsChange}
       onResetFilters={() => onViewParamsChange({ role: "all", sort: "rank", query: "" })}
       divisionGrid={divisionGrid}
+      headingId={poolHeadingId}
     />
   );
   const team = (
@@ -165,76 +168,79 @@ export function CaptainDraftWorkspace({
       onlineCaptainIds={onlineCaptainIds}
     />
   );
-  const order = (
-    <DraftOrder
-      picks={board.picks}
-      teams={board.teams}
-      players={board.players}
-      compact
-      divisionGrid={divisionGrid}
-    />
-  );
 
   return (
-    <div className={cn("space-y-5", pickBarVisible && "sm:pb-32")}>
+    <div className={cn("space-y-5", pickBarVisible && "pb-36 sm:pb-32")}>
       {optionsLoading && gating.isMyPick && (
         <p className="border-l-2 border-[color:var(--aqt-teal)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]" role="status">
           {t("checkingSafeOptions")}
         </p>
       )}
 
-      <div className="flex gap-1 rounded-xl bg-[color:var(--aqt-card-2)] p-1 xl:hidden" role="tablist" aria-label={t("mobileViews")}>
-        {MOBILE_VIEWS.map((view) => (
-          <button
-            key={view}
-            type="button"
-            role="tab"
-            aria-selected={viewParams.view === view}
-            onClick={() => onViewParamsChange({ view })}
-            className={cn(
-              "min-h-11 flex-1 rounded-lg px-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-              viewParams.view === view && "bg-[color:var(--aqt-card)] text-[color:var(--aqt-teal)]"
-            )}
-          >
-            {t(`mobileView.${view}`)}
-          </button>
-        ))}
-      </div>
-
-      <div className="xl:hidden">
-        <div role="tabpanel">
-          {viewParams.view === "pool" ? (
-            <div className="space-y-6">
-              <PlayerInspector
-                player={selectedPlayer}
-                role={selectedRole}
-                options={options}
-                safetyRequired={safetyRequired}
-                headingId="player-inspector-mobile-heading"
-                onRoleChange={setSelectedRole}
-                onClose={() => {
-                  setSelectedPlayerId(null);
-                  setSelectedRole(null);
-                }}
-                divisionGrid={divisionGrid}
-              />
-              <CaptainShortlist
-                players={shortlistPlayers}
-                onSelect={(player) => selectPlayer(player)}
-                onRemove={toggleShortlist}
-                divisionGrid={divisionGrid}
-              />
-              {pool}
-            </div>
-          ) : viewParams.view === "team" ? team : order}
-        </div>
-      </div>
+      {/* Radix Tabs, not hand-rolled roles: it wires aria-controls, roving
+          tabindex and arrow-key traversal that the previous button row lacked. */}
+      <Tabs
+        value={viewParams.view}
+        onValueChange={(view) => onViewParamsChange({ view: view as DraftMobileView })}
+        className="xl:hidden"
+      >
+        <TabsList
+          className="flex h-auto w-full gap-1 rounded-xl bg-[color:var(--aqt-card-2)] p-1"
+          aria-label={t("mobileViews")}
+        >
+          {MOBILE_VIEWS.map((view) => (
+            <TabsTrigger
+              key={view}
+              value={view}
+              className="min-h-11 flex-1 rounded-lg px-2 text-sm font-medium data-[state=active]:bg-[color:var(--aqt-card)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
+            >
+              {t(`mobileView.${view}`)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="pool" className="mt-5 space-y-6">
+          <PlayerInspector
+            player={selectedPlayer}
+            role={selectedRole}
+            options={options}
+            safetyRequired={safetyRequired}
+            headingId="player-inspector-mobile-heading"
+            onRoleChange={setSelectedRole}
+            onClose={() => {
+              setSelectedPlayerId(null);
+              setSelectedRole(null);
+            }}
+            divisionGrid={divisionGrid}
+          />
+          <CaptainShortlist
+            players={shortlistPlayers}
+            onSelect={(player) => selectPlayer(player)}
+            onRemove={toggleShortlist}
+            divisionGrid={divisionGrid}
+          />
+          {renderPool("player-pool-mobile-heading")}
+        </TabsContent>
+        <TabsContent value="team" className="mt-5">
+          {team}
+        </TabsContent>
+        <TabsContent value="order" className="mt-5">
+          <DraftOrder
+            picks={board.picks}
+            teams={board.teams}
+            players={board.players}
+            compact
+            divisionGrid={divisionGrid}
+            headingId="draft-order-mobile-heading"
+          />
+        </TabsContent>
+      </Tabs>
 
       <div className="hidden gap-4 xl:grid xl:grid-cols-[248px_minmax(0,1fr)_378px]">
         <aside className="sticky top-4 self-start space-y-4">
-          <DraftOrder picks={board.picks} teams={board.teams} players={board.players} divisionGrid={divisionGrid} />
+          <DraftOrder picks={board.picks} teams={board.teams} players={board.players} divisionGrid={divisionGrid} headingId="draft-order-desktop-heading" />
         </aside>
-        <main className="flex min-w-0 flex-col gap-4">
+        {/* Not <main>: the route already exposes the page-level main landmark. */}
+        <div className="flex min-w-0 flex-col gap-4">
           <PlayerInspector
             player={selectedPlayer}
             role={selectedRole}
@@ -254,8 +260,8 @@ export function CaptainDraftWorkspace({
             onRemove={toggleShortlist}
             divisionGrid={divisionGrid}
           />
-          {pool}
-        </main>
+          {renderPool("player-pool-desktop-heading")}
+        </div>
         <aside className="sticky top-4 max-h-[calc(100svh-2rem)] self-start overflow-y-auto">
           <TeamRosters
             teams={board.teams}

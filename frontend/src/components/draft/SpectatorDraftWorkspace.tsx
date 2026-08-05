@@ -33,7 +33,8 @@ export function SpectatorDraftWorkspace({
         {board.session.status === "completed" ? t("spectatorCompleted") : t("spectatorReadOnly")}
       </p>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="min-w-0">
+        {/* Not <main>: the route already exposes the page-level main landmark. */}
+        <div className="min-w-0">
           <TeamRosters
             teams={board.teams}
             players={board.players}
@@ -43,7 +44,7 @@ export function SpectatorDraftWorkspace({
             divisionGrid={divisionGrid}
             onlineCaptainIds={onlineCaptainIds}
           />
-        </main>
+        </div>
         <aside className="space-y-6 border-t border-[color:var(--aqt-border)] pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <DraftOrder
             picks={board.picks}

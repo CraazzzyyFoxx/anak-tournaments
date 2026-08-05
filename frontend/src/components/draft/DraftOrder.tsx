@@ -19,17 +19,26 @@ interface DraftOrderProps {
   players: DraftPlayer[];
   compact?: boolean;
   divisionGrid: DivisionGrid;
+  /** Unique per mounted instance: the mobile and desktop trees both render an order rail. */
+  headingId?: string;
 }
 
-export function DraftOrder({ picks, teams, players, compact = false, divisionGrid }: DraftOrderProps) {
+export function DraftOrder({
+  picks,
+  teams,
+  players,
+  compact = false,
+  divisionGrid,
+  headingId = "draft-order-heading"
+}: DraftOrderProps) {
   const t = useTranslations("draftRedesign");
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const playerById = new Map(players.map((player) => [player.id, player]));
   const groups = groupPicksByRound(picks);
   return (
-    <section aria-labelledby="draft-order-heading">
+    <section aria-labelledby={headingId}>
       <div className="flex items-end justify-between gap-3 border-b border-[color:var(--aqt-border)] pb-3">
-        <h2 id="draft-order-heading" className="text-sm font-medium text-[color:var(--aqt-fg-muted)]">{t("draftOrder")}</h2>
+        <h2 id={headingId} className="text-sm font-medium text-[color:var(--aqt-fg-muted)]">{t("draftOrder")}</h2>
         <span className="font-mono text-xs text-[color:var(--aqt-fg-muted)]">{picks.length}</span>
       </div>
       <div className={cn("mt-2 space-y-4", compact && "max-h-[520px] overflow-y-auto pr-1")}>
@@ -80,11 +89,14 @@ export function DraftOrder({ picks, teams, players, compact = false, divisionGri
                       <span />
                     )}
                     {done ? (
-                      <Check className="h-4 w-4 text-[color:var(--aqt-support)]" />
+                      <Check className="h-4 w-4 text-[color:var(--aqt-support)]" role="img" aria-label={t("pickDone")} />
                     ) : pick.status === "on_clock" ? (
-                      <Clock3 className="h-4 w-4" />
+                      <Clock3 className="h-4 w-4" role="img" aria-label={t("onTheClock")} />
                     ) : (
-                      <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-fg-faint)]" aria-label={t("pending")} />
+                      <span className="inline-flex items-center">
+                        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-fg-faint)]" />
+                        <span className="sr-only">{t("pending")}</span>
+                      </span>
                     )}
                   </li>
                 );
