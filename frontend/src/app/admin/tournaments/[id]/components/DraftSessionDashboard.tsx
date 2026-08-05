@@ -10,6 +10,8 @@ import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import draftService from "@/services/draft.service";
 
+import { useHubTournamentQuery } from "../hubQueries";
+
 import { AdminControlRoom } from "./draft/AdminControlRoom";
 import { DraftSetupWizard } from "./draft/DraftSetupWizard";
 
@@ -27,6 +29,7 @@ export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionD
     queryFn: () => draftService.getTournamentBoard(tournamentId),
     enabled: Number.isFinite(tournamentId) && tournamentId > 0
   });
+  const tournamentQuery = useHubTournamentQuery(tournamentId);
   const board = boardQuery.data ?? null;
   const session = board?.session ?? null;
 
@@ -40,17 +43,27 @@ export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionD
     onError: (error) => notify.apiError(error)
   });
 
-  if (boardQuery.isLoading) {
+  // A draft cannot be configured without the tournament's roster shape: the
+  // wizard reads rounds and roster size off it instead of deriving them.
+  const rosterShape = tournamentQuery.data?.roster_shape ?? null;
+  if (boardQuery.isLoading || tournamentQuery.isLoading) {
     return <div className="h-64 animate-pulse rounded-2xl bg-muted/50" />;
   }
-  if (boardQuery.isError) {
+  if (boardQuery.isError || tournamentQuery.isError || rosterShape == null) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-destructive/40 px-4 py-3 text-sm text-muted-foreground">
         <span className="min-w-0">
           <span className="font-medium text-foreground">{t("loadFailed")}</span>{" "}
           {t("loadFailedHint")}
         </span>
-        <Button variant="outline" size="sm" onClick={() => boardQuery.refetch()}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void boardQuery.refetch();
+            void tournamentQuery.refetch();
+          }}
+        >
           {t("retry")}
         </Button>
       </div>
@@ -102,6 +115,7 @@ export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionD
       <DraftSetupWizard
         tournamentId={tournamentId}
         board={terminalSession ? null : board}
+        rosterShape={rosterShape}
       />
     </div>
   );

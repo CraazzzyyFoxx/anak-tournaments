@@ -2995,6 +2995,8 @@
     "sessionNumber": "Session #{id}",
     "configLocked": "The session has already been created, so roster shape and format are locked. Complete or cancel it to use a different configuration.",
     "teamSize": "Final roster size",
+    "rosterShapeHint": "The roster shape and the rounds it implies come from the tournament settings.",
+    "openTournamentSettings": "Open tournament settings",
     "teamCount": "Number of teams",
     "teamCountHint": "The same number of captains must be selected later.",
     "rounds": "Rounds",
@@ -3055,7 +3057,8 @@
     "roles": {
       "tank": "Tank",
       "dps": "Damage",
-      "support": "Support"
+      "support": "Support",
+      "flex": "Flex"
     },
     "blocker": "Blocker",
     "blocked": "Blocked",
@@ -3204,7 +3207,8 @@
       "roles": {
         "tank": "Tank",
         "dps": "Damage",
-        "support": "Support"
+        "support": "Support",
+        "flex": "Flex"
       },
       "deficit": "missing {missing} · eligible {eligible}",
       "captainPresence": "Captain presence",
@@ -3263,7 +3267,8 @@
       "roles": {
         "tank": "Tank",
         "dps": "Damage",
-        "support": "Support"
+        "support": "Support",
+        "flex": "Flex"
       },
       "player": "Remaining player",
       "selectPlayer": "Choose a player",
@@ -3363,7 +3368,8 @@
     "roles": {
       "tank": "Tank",
       "dps": "Damage",
-      "support": "Support"
+      "support": "Support",
+      "flex": "Flex"
     },
     "flex": "Flex",
     "availablePool": "Player pool",
@@ -3398,7 +3404,7 @@
     "primaryRole": "Primary role",
     "rank": "Rank",
     "optionReason": {
-      "role_filled": "This roster slot is already filled.",
+      "slot_filled": "This roster slot is already filled.",
       "role_shortage": "Choosing this option would leave another required role impossible to fill."
     },
     "shortlist": "Shortlist",

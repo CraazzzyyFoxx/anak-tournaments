@@ -1,6 +1,6 @@
 "use client";
 
-import { Crown } from "lucide-react";
+import { Crown, Shuffle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
@@ -9,24 +9,28 @@ import { TournamentTeamCardFrame } from "@/components/TournamentTeamCard";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/division-grid";
 import { getRoleIconName, ROLE_ACCENT } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-import type { DraftPick, DraftPlayer, DraftRole, DraftTeam } from "@/types/draft.types";
+import type { DraftPick, DraftPlayer, DraftTeam } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
 import { teamCrest } from "@/lib/draft-crest";
 import {
   buildRosterByTeam,
-  roleTargetsForTeamSize,
   rosterRankForPlayer,
   rosterRoleForPlayer
 } from "@/lib/draft-workspace-model";
-
-const ROSTER_ROLES: DraftRole[] = ["tank", "dps", "support"];
+import {
+  isRoleSlotCode,
+  orderSlotCodes,
+  ROSTER_SLOT_CODES,
+  type RosterRoleSlotCode,
+  type RosterShape
+} from "@/lib/roster-shape";
 
 interface TeamRostersProps {
   teams: DraftTeam[];
   players: DraftPlayer[];
   picks: DraftPick[];
-  teamSize: number;
+  shape: RosterShape;
   myTeamId?: number | null;
   focusTeamOnly?: boolean;
   onClockTeamId?: number | null;
@@ -37,10 +41,18 @@ interface TeamRostersProps {
   onlineCaptainIds?: Set<number>;
 }
 
+/**
+ * One slot of the shape next to what the roster currently holds. A flex slot
+ * carries no fill count: only the server's slot matching knows which player
+ * occupies one, and guessing it here would be the mirror this feature removes.
+ */
+type SlotCounter =
+  | { code: RosterRoleSlotCode; target: number; filled: number }
+  | { code: "flex"; target: number };
+
 interface TeamRosterView {
   roster: DraftPlayer[];
-  roleFillCounts: Record<DraftRole, number>;
-  roleTargets: Record<DraftRole, number>;
+  counters: SlotCounter[];
   avgRank: number | null;
   avgDivision: number | null;
   openSlots: number;
@@ -50,35 +62,76 @@ function computeTeamRosterView(
   team: DraftTeam,
   rosters: Map<number, DraftPlayer[]>,
   picks: DraftPick[],
-  teamSize: number,
+  shape: RosterShape,
   divisionGrid: DivisionGrid
 ): TeamRosterView {
   const roster = [...(rosters.get(team.id) ?? [])].sort(
     (a, b) =>
-      ROSTER_ROLES.indexOf(rosterRoleForPlayer(a, picks)) -
-      ROSTER_ROLES.indexOf(rosterRoleForPlayer(b, picks))
+      ROSTER_SLOT_CODES.indexOf(rosterRoleForPlayer(a, picks)) -
+      ROSTER_SLOT_CODES.indexOf(rosterRoleForPlayer(b, picks))
   );
   const rosterRoles = roster.map((player) => rosterRoleForPlayer(player, picks));
-  // Mirrors the server-enforced targets (feasibility.role_targets_for_team_size).
-  const roleTargets = roleTargetsForTeamSize(teamSize);
-  const roleFillCounts = Object.fromEntries(
-    ROSTER_ROLES.map((role) => [role, rosterRoles.filter((r) => r === role).length])
-  ) as Record<DraftRole, number>;
+  const counters: SlotCounter[] = orderSlotCodes(shape.slots).map((code) =>
+    isRoleSlotCode(code)
+      ? {
+          code,
+          target: shape.slots[code] ?? 0,
+          filled: rosterRoles.filter((role) => role === code).length
+        }
+      : { code, target: shape.slots[code] ?? 0 }
+  );
   const rankValues = roster
     .map((player) => player.rank_value)
     .filter((value): value is number => value != null);
   const avgRank =
     rankValues.length > 0 ? rankValues.reduce((sum, value) => sum + value, 0) / rankValues.length : null;
   const avgDivision = avgRank == null ? null : resolveDivisionFromRank(divisionGrid, avgRank);
-  const openSlots = Math.max(0, teamSize - roster.length);
-  return { roster, roleFillCounts, roleTargets, avgRank, avgDivision, openSlots };
+  const openSlots = Math.max(0, shape.team_size - roster.length);
+  return { roster, counters, avgRank, avgDivision, openSlots };
+}
+
+/**
+ * The shape's slot counters. Callers render this only when at least one slot
+ * asks for a role: under an all-flex shape a row of `0/0` per role would state
+ * a requirement that does not exist, which is the confusion this feature removes.
+ */
+function SlotCounters({ counters, accented }: { counters: SlotCounter[]; accented: boolean }) {
+  const t = useTranslations("draftRedesign");
+  return (
+    <>
+      {counters.map((counter) => {
+        if (counter.code === "flex") {
+          return (
+            <span key="flex" className="inline-flex items-center gap-1" title={t("roles.flex")}>
+              <Shuffle className="h-3.5 w-3.5" aria-hidden />
+              <span className="sr-only">{t("roles.flex")}</span>×{counter.target}
+            </span>
+          );
+        }
+        const { code, target, filled } = counter;
+        const accent = accented ? ROLE_ACCENT[code] : undefined;
+        return (
+          <span
+            key={code}
+            className="inline-flex items-center gap-1"
+            style={accent ? { color: accent } : undefined}
+            title={t(`roles.${code}`)}
+          >
+            <PlayerRoleIcon role={getRoleIconName(code)} size={14} color={accent} />
+            <span className="sr-only">{t(`roles.${code}`)}</span>
+            {filled}/{target}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 export function TeamRosters({
   teams,
   players,
   picks,
-  teamSize,
+  shape,
   myTeamId = null,
   focusTeamOnly = false,
   onClockTeamId = null,
@@ -100,7 +153,7 @@ export function TeamRosters({
         </div>
         <div className="mt-4 flex flex-col gap-3 overflow-y-auto">
           {columnTeams.map((team) => {
-            const view = computeTeamRosterView(team, rosters, picks, teamSize, divisionGrid);
+            const view = computeTeamRosterView(team, rosters, picks, shape, divisionGrid);
             const onClock = team.id === onClockTeamId;
             const isMine = team.id === myTeamId;
             const crest = teamCrest(team);
@@ -165,14 +218,11 @@ export function TeamRosters({
                     </span>
                   </span>
                 </div>
-                <div className="flex gap-4 border-b border-[color:var(--aqt-border)] px-3 py-2 font-mono text-xs text-[color:var(--aqt-fg-muted)]">
-                  {ROSTER_ROLES.map((role) => (
-                    <span key={role} className="inline-flex items-center gap-1" style={{ color: ROLE_ACCENT[role] }}>
-                      <PlayerRoleIcon role={getRoleIconName(role)} size={14} color={ROLE_ACCENT[role]} />
-                      {view.roleFillCounts[role]}/{view.roleTargets[role]}
-                    </span>
-                  ))}
-                </div>
+                {shape.has_role_slots && (
+                  <div className="flex gap-4 border-b border-[color:var(--aqt-border)] px-3 py-2 font-mono text-xs text-[color:var(--aqt-fg-muted)]">
+                    <SlotCounters counters={view.counters} accented />
+                  </div>
+                )}
                 <div className="divide-y divide-[color:var(--aqt-border)]">
                   {view.roster.map((player) => {
                     const role = rosterRoleForPlayer(player, picks);
@@ -252,8 +302,8 @@ export function TeamRosters({
         )}
       >
         {visibleTeams.map((team) => {
-          const view = computeTeamRosterView(team, rosters, picks, teamSize, divisionGrid);
-          const { roster, roleTargets, avgRank, avgDivision, openSlots } = view;
+          const view = computeTeamRosterView(team, rosters, picks, shape, divisionGrid);
+          const { roster, avgRank, avgDivision, openSlots } = view;
           const onClock = team.id === onClockTeamId;
 
           return (
@@ -284,24 +334,20 @@ export function TeamRosters({
                   {t("onTheClock")}
                 </p>
               )}
-              <div className="flex flex-wrap gap-3 px-4 pt-2 text-xs text-[color:var(--aqt-fg-muted)]">
-                {ROSTER_ROLES.map((role) => {
-                  const filled = view.roleFillCounts[role];
-                  return (
-                    <span key={role} className="inline-flex items-center gap-1">
-                      <PlayerRoleIcon role={getRoleIconName(role)} size={14} />
-                      {filled}/{roleTargets[role]}
-                    </span>
-                  );
-                })}
-              </div>
+              {shape.has_role_slots && (
+                <div className="flex flex-wrap gap-3 px-4 pt-2 text-xs text-[color:var(--aqt-fg-muted)]">
+                  <SlotCounters counters={view.counters} accented={false} />
+                </div>
+              )}
               {roster.length > 0 || openSlots > 0 ? (
                 <div className="roster-scroll">
                   <table className="roster">
                     <thead>
                       <tr>
+                        {/* Without role slots the player's role is registration
+                            metadata, not a slot the roster has to fill. */}
                         <th className="c" style={{ width: 48 }}>
-                          {t("role")}
+                          {shape.has_role_slots ? t("role") : t("primaryRole")}
                         </th>
                         <th>{t("sortName")}</th>
                         <th className="c" style={{ width: 68 }}>

@@ -16,6 +16,8 @@ import type { DraftCaptainSetup, DraftSetupConfig } from "./setup-types";
 
 interface DraftReviewStepProps {
   config: DraftSetupConfig;
+  /** `roster_shape.draft_rounds` from the server; never derived from a size. */
+  rounds: number;
   captains: DraftCaptainSetup;
   orderedCaptainIds: number[];
   pool: AdminRegistration[];
@@ -28,6 +30,7 @@ interface DraftReviewStepProps {
 
 export function DraftReviewStep({
   config,
+  rounds,
   captains,
   orderedCaptainIds,
   pool,
@@ -105,7 +108,7 @@ export function DraftReviewStep({
       <StatTileGrid className="sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3">
         <StatTile label={t("teamCount")} value={config.teamCount} />
         <StatTile label={t("poolPlayers")} value={readiness.actualPlayers} />
-        <StatTile label={t("totalPicks")} value={config.teamCount * (config.teamSize - 1)} />
+        <StatTile label={t("totalPicks")} value={config.teamCount * rounds} />
       </StatTileGrid>
 
       {isReseed && preview && (
@@ -128,7 +131,7 @@ export function DraftReviewStep({
       <DraftSetupPreview
         orderedCaptainIds={orderedCaptainIds}
         pool={pool}
-        rounds={config.teamSize - 1}
+        rounds={rounds}
         format={config.format}
         roundRules={config.roundRules}
       />

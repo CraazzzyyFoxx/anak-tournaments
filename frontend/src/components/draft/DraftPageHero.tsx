@@ -170,7 +170,7 @@ export function DraftPageHero({
               </span>
               <MetaPill label={t("format")} value={session.format} />
               <MetaPill label={t("teams")} value={board.teams.length} />
-              <MetaPill label={t("rosterSize")} value={session.team_size} />
+              <MetaPill label={t("rosterSize")} value={session.roster_shape.team_size} />
             </div>
           </div>
 

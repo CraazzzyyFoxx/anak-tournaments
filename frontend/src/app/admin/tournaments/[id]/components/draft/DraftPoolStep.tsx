@@ -126,10 +126,10 @@ export function DraftPoolStep({ readiness, feasibility, loading, failed }: Draft
                     {t(BLOCKER_MESSAGE_KEYS[blocker as keyof typeof BLOCKER_MESSAGE_KEYS])}
                   </li>
                 ))}
-                {feasibility?.role_deficits.map((deficit) => (
-                  <li key={deficit.role}>
+                {feasibility?.slot_deficits.map((deficit) => (
+                  <li key={deficit.slot_code}>
                     {t("roleDeficit", {
-                      role: t(`roles.${deficit.role}`),
+                      role: t(`roles.${deficit.slot_code}`),
                       count: deficit.unmatched_slots
                     })}
                   </li>

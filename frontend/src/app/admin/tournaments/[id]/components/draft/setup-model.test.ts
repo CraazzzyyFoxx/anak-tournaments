@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { RosterShape } from "@/lib/roster-shape";
+
 import {
   buildDraftSchedule,
   canCancelDraftSetup,
@@ -8,13 +10,22 @@ import {
   moveCaptain,
   orderCaptainIds,
   previousSetupStep,
-  roundsForTeamSize,
   SETUP_STEPS,
   validateSetupStep
 } from "./setup-model";
 
+/** A `roster_shape` payload as the server sends it, for a 3-slot roster. */
+const SHAPE: RosterShape = {
+  slots: { tank: 1, dps: 2 },
+  team_size: 3,
+  flex_slots: 0,
+  has_role_slots: true,
+  draft_rounds: 2,
+  source: null
+};
+
 describe("draft setup model", () => {
-  it("defines the six-step flow and links rounds to roster size", () => {
+  it("defines the six-step flow", () => {
     expect(SETUP_STEPS).toEqual([
       "config",
       "pool",
@@ -23,8 +34,6 @@ describe("draft setup model", () => {
       "review",
       "ready"
     ]);
-    expect(roundsForTeamSize(5)).toBe(4);
-    expect(roundsForTeamSize(3)).toBe(2);
   });
 
   it("allows the setup flow to move back to configuration", () => {
@@ -52,7 +61,7 @@ describe("draft setup model", () => {
         { id: 4, roles: ["support"], rank: 2700, hasAccount: true, excluded: true }
       ],
       2,
-      3
+      SHAPE
     );
 
     expect(readiness.requiredPlayers).toBe(6);
@@ -90,7 +99,6 @@ describe("draft setup model", () => {
   it("blocks advancing until each step has its required data", () => {
     expect(
       validateSetupStep("config", {
-        teamSize: 5,
         pickTimeSeconds: 5,
         captainIds: [],
         poolReady: false,
@@ -99,7 +107,6 @@ describe("draft setup model", () => {
     ).toContain("pick_time_out_of_range");
     expect(
       validateSetupStep("captains", {
-        teamSize: 5,
         pickTimeSeconds: 45,
         captainIds: [],
         poolReady: true,
@@ -108,7 +115,6 @@ describe("draft setup model", () => {
     ).toEqual(["captains_required"]);
     expect(
       validateSetupStep("review", {
-        teamSize: 5,
         pickTimeSeconds: 45,
         captainIds: [1, 2],
         poolReady: true,

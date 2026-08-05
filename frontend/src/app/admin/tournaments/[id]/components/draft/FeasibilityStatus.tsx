@@ -57,12 +57,12 @@ export function FeasibilityStatus({ feasibility, loading = false }: FeasibilityS
           total: feasibility.total_open_slots
         })}
       />
-      {feasibility.role_deficits.length > 0 && (
+      {feasibility.slot_deficits.length > 0 && (
         <div className="space-y-2 border-t border-[color:var(--aqt-border)] pt-3">
-          {feasibility.role_deficits.map((deficit) => (
-            <div key={deficit.role} className="flex items-center gap-2 text-sm">
+          {feasibility.slot_deficits.map((deficit) => (
+            <div key={deficit.slot_code} className="flex items-center gap-2 text-sm">
               <AlertTriangle className="h-4 w-4 text-[color:var(--aqt-warm)]" aria-hidden />
-              <span className="flex-1">{t(`roles.${deficit.role}`)}</span>
+              <span className="flex-1">{t(`roles.${deficit.slot_code}`)}</span>
               <span className="font-mono text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
                 {t("deficit", {
                   missing: deficit.unmatched_slots,

@@ -6,8 +6,8 @@ import type {
   DraftRole
 } from "@/types/draft.types";
 
+/** The roster shape is NOT here: it belongs to the tournament, not the wizard. */
 export interface DraftSetupConfig {
-  teamSize: number;
   teamCount: number;
   pickTimeSeconds: number;
   format: DraftFormat;

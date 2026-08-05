@@ -59,7 +59,7 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
             </p>
             <div className="mt-6 flex flex-wrap gap-7">
               <HeroStamp label={t("format")} value={session.format} />
-              <HeroStamp label={t("teamSize")} value={session.team_size} />
+              <HeroStamp label={t("teamSize")} value={session.roster_shape.team_size} />
               <HeroStamp label={t("connection")} value={t(`connectionState.${connectionState}`)} />
             </div>
           </div>

@@ -12,8 +12,7 @@ import {
   rosterRankForPlayer,
   optionForSelection,
   playerRoles,
-  parseDraftViewParams,
-  roleTargetsForTeamSize
+  parseDraftViewParams
 } from "./draft-workspace-model";
 
 const players = [
@@ -116,21 +115,5 @@ describe("roster role/rank", () => {
     const player = mkPlayer({ id: 6, primary_role: "tank", rank_value: 2800, role_ranks: {} });
     expect(rosterRoleForPlayer(player, [])).toBe("tank");
     expect(rosterRankForPlayer(player, "tank")).toBe(2800);
-  });
-});
-
-describe("roleTargetsForTeamSize", () => {
-  // Mirrors balancer-service feasibility.role_targets_for_team_size.
-  it.each([
-    [5, { tank: 1, dps: 2, support: 2 }],
-    [6, { tank: 1, dps: 2, support: 3 }],
-    [7, { tank: 1, dps: 2, support: 4 }],
-    [4, { tank: 1, dps: 2, support: 1 }],
-    [3, { tank: 1, dps: 2, support: 0 }],
-    [2, { tank: 1, dps: 1, support: 0 }],
-    [1, { tank: 1, dps: 0, support: 0 }],
-    [0, { tank: 0, dps: 0, support: 0 }]
-  ])("team size %d", (teamSize, expected) => {
-    expect(roleTargetsForTeamSize(teamSize)).toEqual(expected);
   });
 });

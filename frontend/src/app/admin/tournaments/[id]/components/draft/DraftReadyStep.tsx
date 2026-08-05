@@ -71,7 +71,7 @@ export function DraftReadyStep({
       </div>
 
       <StatTileGrid className="sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3">
-        <StatTile label={t("teamSize")} value={session.team_size} />
+        <StatTile label={t("teamSize")} value={session.roster_shape.team_size} />
         <StatTile label={t("rounds")} value={session.rounds} />
         <StatTile label={t("pickTime")} value={`${session.pick_time_seconds}s`} />
       </StatTileGrid>

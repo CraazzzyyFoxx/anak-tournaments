@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useId } from "react";
-import { ChevronDown, Clock3, ShieldCheck, Users } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Clock3, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,37 +20,39 @@ import { Switch } from "@/components/ui/switch";
 import { TONE_CLASS } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickStrategy, DraftFormat } from "@/types/draft.types";
+import { isRoleSlotCode, orderSlotCodes, type RosterShape } from "@/lib/roster-shape";
 
-import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT, roundsForTeamSize } from "./setup-model";
+import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT } from "./setup-model";
 import type { DraftSetupConfig } from "./setup-types";
 
 interface DraftConfigStepProps {
   value: DraftSetupConfig;
   onChange: (next: DraftSetupConfig) => void;
+  /** Resolved on the server from the tournament; never editable here (T14 owns it). */
+  rosterShape: RosterShape;
+  tournamentId: number;
   locked?: boolean;
 }
 
 const PICK_TIME_PRESETS = [30, 45, 60, 90];
 const FORMATS: DraftFormat[] = ["snake", "linear", "custom"];
 
-export function DraftConfigStep({ value, onChange, locked = false }: DraftConfigStepProps) {
+export function DraftConfigStep({
+  value,
+  onChange,
+  rosterShape,
+  tournamentId,
+  locked = false
+}: DraftConfigStepProps) {
   const t = useTranslations("draftAdmin");
-  const rounds = roundsForTeamSize(value.teamSize);
+  // Straight off the server shape: deriving rounds from a size here is exactly
+  // the mirror this feature removes.
+  const rounds = rosterShape.draft_rounds;
   const pickTimeLabelId = useId();
   const formatLabelId = useId();
   const roundRulesLabelId = useId();
 
   const patch = (next: Partial<DraftSetupConfig>) => onChange({ ...value, ...next });
-  const setTeamSize = (teamSize: number) => {
-    const nextRounds = roundsForTeamSize(teamSize);
-    patch({
-      teamSize,
-      roundRules: Array.from(
-        { length: nextRounds },
-        (_, index) => value.roundRules[index] ?? "linear"
-      )
-    });
-  };
 
   return (
     <div className="space-y-6">
@@ -61,26 +64,29 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="draft-team-size">{t("teamSize")}</Label>
-          <div className="relative">
-            <Users
-              className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"
-              aria-hidden
-            />
-            <NumberInput
-              id="draft-team-size"
-              className="pl-9"
-              integer
-              min={2}
-              max={9}
-              disabled={locked}
-              value={value.teamSize}
-              onValueChange={(next) => setTeamSize(next ?? 2)}
-            />
-          </div>
+          <Label>{t("teamSize")}</Label>
+          <p className="text-sm tabular-nums">
+            {rosterShape.team_size}
+            <span className="ml-2 text-muted-foreground">
+              {orderSlotCodes(rosterShape.slots)
+                .map(
+                  (code) =>
+                    `${rosterShape.slots[code]} ${isRoleSlotCode(code) ? t(`roles.${code}`) : t("roles.flex")}`
+                )
+                .join(" · ")}
+            </span>
+          </p>
           <p className="text-xs tabular-nums text-muted-foreground">
             {t("roundsDerived", { rounds })}
           </p>
+          <p className="text-xs text-muted-foreground">{t("rosterShapeHint")}</p>
+          <Link
+            href={`/admin/tournaments/${tournamentId}/settings`}
+            className="inline-flex items-center text-xs font-medium text-primary hover:underline"
+          >
+            {t("openTournamentSettings")}
+            <ArrowUpRight className="ml-1 h-3.5 w-3.5" aria-hidden />
+          </Link>
         </div>
         <div className="space-y-2">
           <Label htmlFor="draft-team-count">{t("teamCount")}</Label>

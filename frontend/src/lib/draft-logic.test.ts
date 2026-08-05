@@ -84,7 +84,14 @@ function makeBoard(): DraftBoard {
       format: "snake",
       rounds: 2,
       pick_time_seconds: 45,
-      team_size: 3,
+      roster_shape: {
+        slots: { tank: 1, dps: 2 },
+        team_size: 3,
+        flex_slots: 0,
+        has_role_slots: true,
+        draft_rounds: 2,
+        source: null
+      },
       current_pick_id: 1,
       pool_source: "manual",
       source_balance_id: null,

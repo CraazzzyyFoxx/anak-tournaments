@@ -191,7 +191,7 @@ export function PlayerInspector({
 
       {safetyRequired && selectedOption && !selectedOption.is_safe && (
         <div className="mt-4 border-l-2 border-[color:var(--aqt-live)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]">
-          {t(`optionReason.${selectedOption.reason_code === "role_filled" ? "role_filled" : "role_shortage"}`)}
+          {t(`optionReason.${selectedOption.reason_code === "slot_filled" ? "slot_filled" : "role_shortage"}`)}
         </div>
       )}
       {otherBlockedOptions.length > 0 && (
@@ -201,7 +201,7 @@ export function PlayerInspector({
               <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-live)]" aria-hidden />
               <span>
                 <strong className="text-[color:var(--aqt-fg)]">{t(`roles.${option.role}`)}:</strong>{" "}
-                {t(`optionReason.${option.reason_code === "role_filled" ? "role_filled" : "role_shortage"}`)}
+                {t(`optionReason.${option.reason_code === "slot_filled" ? "slot_filled" : "role_shortage"}`)}
               </span>
             </li>
           ))}

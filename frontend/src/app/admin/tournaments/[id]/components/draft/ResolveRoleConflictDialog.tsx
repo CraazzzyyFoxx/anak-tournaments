@@ -157,11 +157,11 @@ export function ResolveRoleConflictDialog({
                 const team = board.teams.find((candidate) => candidate.id === slot.team_id);
                 return (
                   <Badge
-                    key={`${slot.team_id}-${slot.role}-${slot.ordinal}`}
+                    key={`${slot.team_id}-${slot.slot_code}-${slot.ordinal}`}
                     variant="outline"
                     className="tabular-nums"
                   >
-                    {team?.name ?? `#${slot.team_id}`} · {t(`roles.${slot.role}`)} #{slot.ordinal}
+                    {team?.name ?? `#${slot.team_id}`} · {t(`roles.${slot.slot_code}`)} #{slot.ordinal}
                   </Badge>
                 );
               })}

@@ -2,6 +2,7 @@ import { User } from "@/types/user.types";
 import { Team } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
 import { DivisionGridVersion } from "@/types/workspace.types";
+import type { RosterShape, RosterSlotMap } from "@/lib/roster-shape";
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,10 @@ export interface Tournament {
   teams_count: number | null;
   division_grid_version_id: number | null;
   division_grid_version: DivisionGridVersion | null;
+  /** Tournament-level override of the roster shape; `null` = inherit. */
+  roster_slots_json: RosterSlotMap | null;
+  /** Resolved shape. `null` when the read did not opt into the entity. */
+  roster_shape: RosterShape | null;
 }
 
 // ─── Map Pool ───────────────────────────────────────────────────────────────

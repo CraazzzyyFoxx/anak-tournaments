@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { HeroFrame } from "@/components/site/PageHero";
 import { notify } from "@/lib/notify";
+import type { RosterShape } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -55,7 +56,6 @@ import {
   MIN_DRAFT_TEAM_COUNT,
   orderCaptainIds,
   previousSetupStep,
-  roundsForTeamSize,
   SETUP_STEPS,
   type DraftSetupStep,
   validateSetupStep
@@ -66,16 +66,16 @@ import { isInDraftPool, summarizeRegistration } from "./setup-types";
 interface DraftSetupWizardProps {
   tournamentId: number;
   board: DraftBoard | null;
+  /** Resolved tournament roster shape; a live session's own shape wins over it. */
+  rosterShape: RosterShape;
 }
 
 const STEP_ICONS = [Settings2, ListChecks, UsersRound, Sparkles, ClipboardCheck, ShieldCheck];
 
-function configFromSession(session: DraftSession | null): DraftSetupConfig {
-  const teamSize = session?.team_size ?? 5;
+function configFromSession(session: DraftSession | null, shape: RosterShape): DraftSetupConfig {
   const roundRules = session?.settings_json?.round_rules;
   const teamCount = session?.settings_json?.team_count;
   return {
-    teamSize,
     teamCount: typeof teamCount === "number" ? teamCount : 2,
     pickTimeSeconds: session?.pick_time_seconds ?? 45,
     format: session?.format ?? "snake",
@@ -83,7 +83,7 @@ function configFromSession(session: DraftSession | null): DraftSetupConfig {
     allowAdminOverride: session?.allow_admin_override ?? true,
     roundRules: Array.isArray(roundRules)
       ? roundRules.map(String)
-      : Array.from({ length: roundsForTeamSize(teamSize) }, () => "linear")
+      : Array.from({ length: shape.draft_rounds }, () => "linear")
   };
 }
 
@@ -96,7 +96,7 @@ function createEmptyCaptainSetup(): DraftCaptainSetup {
   };
 }
 
-export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps) {
+export function DraftSetupWizard({ tournamentId, board, rosterShape }: DraftSetupWizardProps) {
   const t = useTranslations("draftAdmin");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
@@ -111,7 +111,9 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
   const [step, setStep] = useState<DraftSetupStep>(
     initialSession?.status === "ready" ? "ready" : initialSession ? "pool" : "config"
   );
-  const [config, setConfig] = useState<DraftSetupConfig>(() => configFromSession(initialSession));
+  const [config, setConfig] = useState<DraftSetupConfig>(() =>
+    configFromSession(initialSession, initialSession?.roster_shape ?? rosterShape)
+  );
   const [captains, setCaptains] = useState<DraftCaptainSetup>(createEmptyCaptainSetup);
   const [preview, setPreview] = useState<DraftSeedResponse | null>(null);
   const [committedFeasibility, setCommittedFeasibility] = useState<
@@ -122,7 +124,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
 
   const resetSetupState = () => {
     setLocalSession(null);
-    setConfig(configFromSession(null));
+    setConfig(configFromSession(null, rosterShape));
     setCaptains(createEmptyCaptainSetup());
     setPreview(null);
     setCommittedFeasibility(null);
@@ -173,9 +175,11 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
       }),
     [allRegistrations]
   );
+  // A created session froze its own shape; before that the tournament's applies.
+  const shape = session?.roster_shape ?? rosterShape;
   const readiness = useMemo(
-    () => derivePoolReadiness(candidates, config.teamCount, config.teamSize),
-    [candidates, config.teamCount, config.teamSize]
+    () => derivePoolReadiness(candidates, config.teamCount, shape),
+    [candidates, config.teamCount, shape]
   );
   const ranks = useMemo(
     () =>
@@ -206,9 +210,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
       draftService.createSession(tournamentId, {
         pool_source: "balancer_balance",
         format: config.format,
-        rounds: roundsForTeamSize(config.teamSize),
         pick_time_seconds: config.pickTimeSeconds,
-        team_size: config.teamSize,
         autopick_strategy: config.autopickStrategy,
         allow_admin_override: config.allowAdminOverride,
         settings: {
@@ -314,7 +316,6 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
   const canCancelSetup = canCancelDraftSetup(step, session?.status ?? null);
 
   const validationState = {
-    teamSize: config.teamSize,
     pickTimeSeconds: config.pickTimeSeconds,
     captainIds: captains.ids,
     poolReady: readiness.blockers.length === 0,
@@ -464,7 +465,13 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
         </div>
         <div className="p-4 sm:p-7">
           {step === "config" && (
-            <DraftConfigStep value={config} onChange={setConfig} locked={!!session} />
+            <DraftConfigStep
+              value={config}
+              onChange={setConfig}
+              rosterShape={shape}
+              tournamentId={tournamentId}
+              locked={!!session}
+            />
           )}
           {step === "pool" && (
             <DraftPoolStep
@@ -487,7 +494,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
               value={captains}
               onChange={setCaptainsAndReset}
               pool={pool}
-              rounds={roundsForTeamSize(config.teamSize)}
+              rounds={shape.draft_rounds}
               format={config.format}
               roundRules={config.roundRules}
             />
@@ -495,6 +502,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
           {step === "review" && (
             <DraftReviewStep
               config={config}
+              rounds={shape.draft_rounds}
               captains={captains}
               orderedCaptainIds={orderedCaptainIds}
               pool={pool}
