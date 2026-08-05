@@ -16,6 +16,12 @@ Two rules carry the weight here:
 - **The verification method is authoritative over the cache, not just the call.**
   Narrowing it invalidates stored entitlements whose source it no longer accepts —
   see ``shared.subscriptions.verification`` for why that is load-bearing.
+
+The workspace requirement lives here too, beside the provider config and under the
+same permissions: both answer "what does this workspace demand of a registrant?", and
+keeping them together means one file in tournament-service knows the subscription
+tables. Unlike a provider config it is replaced wholesale -- a partial merge of an
+admission rule would be a silent policy change.
 """
 
 from __future__ import annotations
@@ -36,14 +42,19 @@ from src.schemas.registration import (
     SubscriptionProviderConfigListResponse,
     SubscriptionProviderConfigRead,
     SubscriptionProviderConfigUpsert,
+    WorkspaceSubscriptionRequirementRead,
+    WorkspaceSubscriptionRequirementUpsert,
 )
 
 __all__ = (
     "CONFIGURABLE_PROVIDERS",
     "build_config_json",
+    "get_workspace_requirement",
     "list_provider_configs",
+    "load_workspace_requirement_blob",
     "serialize_provider_config",
     "upsert_provider_config",
+    "upsert_workspace_requirement",
 )
 
 CONFIGURABLE_PROVIDERS = (SocialProvider.BOOSTY, SocialProvider.TWITCH)
@@ -206,3 +217,61 @@ async def upsert_provider_config(
         )
     ).scalar_one()
     return serialize_provider_config(row)
+
+
+DEFAULT_REQUIREMENT_NAME = "default"
+
+
+async def load_workspace_requirement_blob(session: AsyncSession, workspace_id: int) -> dict[str, Any]:
+    """The workspace's default rule as a raw blob, or ``{}`` when it has none.
+
+    One scalar read, used both by the admin endpoint and by the registration-form read
+    projection -- which still carries the rule so the public check-in dialog does not
+    have to learn about a second table.
+    """
+    req = models.WorkspaceSubscriptionRequirement
+    blob = await session.scalar(
+        sa.select(req.requirement_json).where(req.workspace_id == workspace_id, req.is_default.is_(True))
+    )
+    return dict(blob) if blob else {}
+
+
+async def get_workspace_requirement(session: AsyncSession, workspace_id: int) -> WorkspaceSubscriptionRequirementRead:
+    return WorkspaceSubscriptionRequirementRead(
+        requirement=await load_workspace_requirement_blob(session, workspace_id)
+    )
+
+
+async def upsert_workspace_requirement(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    body: WorkspaceSubscriptionRequirementUpsert,
+) -> WorkspaceSubscriptionRequirementRead:
+    """Replace the workspace's default rule. Commits internally.
+
+    Conflicts on ``(workspace_id, name)`` rather than on the partial "one default per
+    workspace" index: the named constraint is the stable target, and ``name`` is
+    ``'default'`` until presets arrive (at which point this function gains the name and
+    nothing else about the shape changes).
+    """
+    stmt = pg_insert(models.WorkspaceSubscriptionRequirement).values(
+        workspace_id=workspace_id,
+        name=DEFAULT_REQUIREMENT_NAME,
+        requirement_json=body.requirement,
+        is_default=True,
+    )
+    await session.execute(
+        stmt.on_conflict_do_update(
+            constraint="uq_subscription_requirement_workspace_name",
+            set_={
+                "requirement_json": stmt.excluded.requirement_json,
+                "is_default": stmt.excluded.is_default,
+                "updated_at": sa.func.now(),
+            },
+        )
+    )
+    await session.commit()
+    # Read back rather than echoing the request: the INSERT ... ON CONFLICT wrote behind
+    # the ORM's back, and the caller should see what the gates will now read.
+    return await get_workspace_requirement(session, workspace_id)

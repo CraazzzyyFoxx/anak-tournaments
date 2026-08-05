@@ -653,6 +653,15 @@ DOCS: dict[str, dict] = {
         "summary": "Configure subscription provider",
         "description": "Creates or updates one provider's config (Discord guild id and role→tier mapping, Twitch broadcaster, challenge codes) and its verification_method: 'live' accepts only the provider's own signal, 'code' only a redeemed challenge code, 'any' either. Narrowing the method revokes stored entitlements whose source it no longer accepts. Plaintext codes are hashed server-side and never stored; omitting a field keeps the stored value; requires team-update permission.",
     },
+    # ── workspace subscription requirement ────────────────────────────────
+    "rpc.tournament.sub_requirement_get": {
+        "summary": "Get workspace subscription requirement",
+        "description": "Returns the workspace's subscription admission rule as `{mode, requirements: [{provider, min_tier_rank}]}`, shared by every tournament in the workspace whose registration form has require_subscription on; an empty object means nothing is enforced; requires team-read permission.",
+    },
+    "rpc.tournament.sub_requirement_upsert": {
+        "summary": "Set workspace subscription requirement",
+        "description": "Replaces the workspace's admission rule wholesale (no partial merge -- that would be a silent policy change). `mode` is 'all' or 'any'; each row names a provider and its min_tier_rank. An unknown mode or a row without a provider is rejected with 422 rather than degrading at check-in. An empty `requirements` list clears the rule, which disarms every tournament in the workspace whose toggle is on; requires team-update permission.",
+    },
     # ── public registration (captain / self-service) ──────────────────────
     "rpc.tournament.captain_my_role": {
         "summary": "Get my captain side",

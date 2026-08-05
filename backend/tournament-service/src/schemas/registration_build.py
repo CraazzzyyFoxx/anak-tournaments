@@ -95,7 +95,14 @@ def _form_to_read(
     form: models.BalancerRegistrationForm,
     *,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    subscription_requirement: dict[str, Any] | None = None,
 ) -> RegistrationFormRead:
+    """``subscription_requirement`` is the WORKSPACE's rule, passed in by the caller.
+
+    An argument rather than a lookup because this stays sync and must not issue a
+    second round trip per call; the async RPC handler already has the session and
+    fetches it once alongside the sub-role catalog.
+    """
     return RegistrationFormRead(
         id=form.id,
         tournament_id=form.tournament_id,
@@ -106,7 +113,7 @@ def _form_to_read(
         open_profile_scope=form.open_profile_scope,
         show_ranks=form.show_ranks,
         require_subscription=form.require_subscription,
-        subscription_requirement_json=form.subscription_requirement_json or {},
+        subscription_requirement_json=subscription_requirement or {},
         built_in_fields=form.built_in_fields_json or {},
         custom_fields=form.custom_fields_json or [],
         subrole_catalog=subrole_catalog or {},

@@ -133,7 +133,7 @@ def evaluate_requirement(
 
 
 def parse_requirement(blob: dict[str, Any] | None) -> SubscriptionRequirement:
-    """Read ``subscription_requirement_json`` into a validated requirement.
+    """Read a ``{mode, requirements}`` rule blob into a validated requirement.
 
     Malformed rows are skipped rather than raising: a bad config row must not 500
     the check-in endpoint. An unknown ``mode``, however, IS an error — silently

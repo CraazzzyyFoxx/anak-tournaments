@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import sqlalchemy as sa
 from sqlalchemy.orm.attributes import NO_VALUE
 
@@ -105,7 +107,15 @@ def serialize_registration(
 
 def serialize_registration_form(
     form: models.BalancerRegistrationForm,
+    *,
+    subscription_requirement: dict[str, Any] | None = None,
 ) -> RegistrationFormRead:
+    """``subscription_requirement`` is the WORKSPACE's rule, passed in by the caller.
+
+    An argument rather than a lookup because this stays sync and must not issue a
+    second round trip per call; the async RPC handler already has the session and
+    fetches it once via ``subscription_config.load_workspace_requirement_blob``.
+    """
     return RegistrationFormRead(
         id=form.id,
         tournament_id=form.tournament_id,
@@ -116,7 +126,7 @@ def serialize_registration_form(
         open_profile_scope=form.open_profile_scope,
         show_ranks=form.show_ranks,
         require_subscription=form.require_subscription,
-        subscription_requirement_json=form.subscription_requirement_json or {},
+        subscription_requirement_json=subscription_requirement or {},
         built_in_fields=form.built_in_fields_json or {},
         custom_fields=form.custom_fields_json or [],
     )

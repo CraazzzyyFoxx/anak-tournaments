@@ -239,12 +239,16 @@ OPERATIONS: dict[str, Op] = {
         request=admin_balancer.BalancerRegistrationStatusUpdate, response=admin_balancer.BalancerRegistrationStatusRead
     ),
     # ── workspace subscription provider config ─────────────────────────────
-    "rpc.tournament.sub_config_list": Op(
-        response=reg_schemas.SubscriptionProviderConfigListResponse
-    ),
+    "rpc.tournament.sub_config_list": Op(response=reg_schemas.SubscriptionProviderConfigListResponse),
     "rpc.tournament.sub_config_upsert": Op(
         request=reg_schemas.SubscriptionProviderConfigUpsert,
         response=reg_schemas.SubscriptionProviderConfigRead,
+    ),
+    # ── workspace subscription requirement ─────────────────────────────────
+    "rpc.tournament.sub_requirement_get": Op(response=reg_schemas.WorkspaceSubscriptionRequirementRead),
+    "rpc.tournament.sub_requirement_upsert": Op(
+        request=reg_schemas.WorkspaceSubscriptionRequirementUpsert,
+        response=reg_schemas.WorkspaceSubscriptionRequirementRead,
     ),
     # ── public registration (captain/self-service) ─────────────────────────
     "rpc.tournament.reg_pub_create": Op(request=reg_schemas.RegistrationCreate, response=reg_schemas.RegistrationRead),

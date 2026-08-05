@@ -56,6 +56,7 @@ from src.schemas.admin import balancer as admin_schemas
 from src.schemas.registration import (
     RegistrationFormUpsert,
     SubscriptionProviderConfigUpsert,
+    WorkspaceSubscriptionRequirementUpsert,
 )
 from src.services.registration import admin as registration_service
 from src.services.registration import service as reg_svc
@@ -117,7 +118,9 @@ def register(broker: Any, logger: Any) -> None:
             form = await registration_service.get_registration_form(session, tournament_id)
             if form is None:
                 return None
-            return _dump(serialize_registration_form(form))
+            # The rule is the workspace's now; one scalar read feeds the sync serializer.
+            requirement = await subscription_config.load_workspace_requirement_blob(session, ws_id)
+            return _dump(serialize_registration_form(form, subscription_requirement=requirement))
 
         return await _run(logger, op)
 
@@ -134,7 +137,8 @@ def register(broker: Any, logger: Any) -> None:
             # get_tournament_workspace_id above already 404s on a missing
             # tournament; upsert_registration_form commits internally.
             form = await reg_svc.upsert_registration_form(session, tournament_id, body, workspace_id=ws_id)
-            return _dump(serialize_registration_form(form))
+            requirement = await subscription_config.load_workspace_requirement_blob(session, ws_id)
+            return _dump(serialize_registration_form(form, subscription_requirement=requirement))
 
         return await _run(logger, op)
 
@@ -791,6 +795,40 @@ def register(broker: Any, logger: Any) -> None:
             body = SubscriptionProviderConfigUpsert.model_validate(_payload(data))
             return _dump(
                 await subscription_config.upsert_provider_config(session, workspace_id=workspace_id, body=body)
+            )
+
+        return await _run(logger, op)
+
+    # GET /balancer/workspaces/{workspace_id}/subscription-requirement
+    #   dep: require_workspace_permission("team", "read")
+    @broker.subscriber("rpc.tournament.sub_requirement_get")
+    async def _sub_requirement_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            ensure_workspace_permission(user, workspace_id, "team", "read")
+            return _dump(await subscription_config.get_workspace_requirement(session, workspace_id))
+
+        return await _run(logger, op)
+
+    # PUT /balancer/workspaces/{workspace_id}/subscription-requirement
+    #   dep: require_workspace_permission("team", "update")
+    @broker.subscriber("rpc.tournament.sub_requirement_upsert")
+    async def _sub_requirement_upsert(data: dict, msg: RabbitMessage) -> dict:
+        """Replace the workspace's subscription rule.
+
+        Wholesale, not merged: one edit here changes admission for every tournament in
+        the workspace whose toggle is on, and an empty ``requirements`` list disarms
+        them all. A malformed rule is rejected here (422) rather than at check-in.
+        """
+
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            ensure_workspace_permission(user, workspace_id, "team", "update")
+            body = WorkspaceSubscriptionRequirementUpsert.model_validate(_payload(data))
+            return _dump(
+                await subscription_config.upsert_workspace_requirement(session, workspace_id=workspace_id, body=body)
             )
 
         return await _run(logger, op)

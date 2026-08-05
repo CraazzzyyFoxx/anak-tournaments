@@ -64,6 +64,11 @@ class RegistrationFormRead(BaseModel):
     open_profile_scope: str = "main"
     show_ranks: bool = False
     require_subscription: bool = False
+    # Server-resolved from the workspace's requirement and READ-ONLY: the rule is no
+    # longer a property of the form (see WorkspaceSubscriptionRequirementUpsert). It
+    # stays on the read model because the public check-in dialog and the wizard's
+    # review step render it, and there is no value in teaching every public consumer
+    # about a new table.
     subscription_requirement_json: dict[str, Any] = Field(default_factory=dict)
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
@@ -80,26 +85,8 @@ class RegistrationFormUpsert(BaseModel):
     open_profile_scope: str = "main"
     show_ranks: bool = False
     require_subscription: bool = False
-    subscription_requirement_json: dict[str, Any] = Field(default_factory=dict)
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
-
-    @field_validator("subscription_requirement_json")
-    @classmethod
-    def _validate_requirement(cls, value: dict[str, Any]) -> dict[str, Any]:
-        """Reject a malformed requirement on SAVE, not at check-in.
-
-        ``parse_requirement`` raises on an unknown ``mode`` (silently picking one
-        would change the admission rule) and drops rows with no provider — which
-        would leave the organizer believing they configured a gate that does
-        nothing, so an all-dropped payload is rejected too.
-        """
-        if not value:
-            return {}
-        requirement = parse_requirement(value)
-        if (value.get("requirements") or []) and not requirement.requirements:
-            raise ValueError("subscription requirement rows must each name a provider")
-        return value
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +352,47 @@ class SubscriptionProviderConfigListResponse(BaseModel):
     # One field for the whole response, not one per provider: the guild belongs to
     # the workspace. The admin card renders it read-only and warns when it is unset.
     discord_guild_id: str | None = None
+
+
+class WorkspaceSubscriptionRequirementRead(BaseModel):
+    """The rule a whole workspace enforces, shared by every tournament in it.
+
+    ``requirement`` is the raw ``{mode, requirements: [{provider, min_tier_rank}]}``
+    blob rather than a nested model on purpose: ``parse_requirement`` is the single
+    authority on that shape (it clamps thresholds and keeps the strictest duplicate),
+    and a second Pydantic definition of it would be a second source of truth for the
+    admission rule.
+    """
+
+    requirement: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkspaceSubscriptionRequirementUpsert(BaseModel):
+    """Replaces the rule wholesale -- a partial merge of an admission rule would be
+    a silent policy change, and an empty ``requirements`` list is the way to clear it.
+    """
+
+    requirement: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("requirement")
+    @classmethod
+    def _validate_requirement(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Reject a malformed requirement on SAVE, not at check-in.
+
+        Moved here verbatim from ``RegistrationFormUpsert`` when the rule moved to the
+        workspace: ``parse_requirement`` raises on an unknown ``mode`` (silently picking
+        one would change the admission rule) and drops rows with no provider -- which
+        would leave the organizer believing they configured a gate that does nothing, so
+        an all-dropped payload is rejected too. Better a 422 on save than a surprise at
+        check-in, and the read path deliberately stays fail-open for anything that got
+        past here.
+        """
+        if not value:
+            return {}
+        requirement = parse_requirement(value)
+        if (value.get("requirements") or []) and not requirement.requirements:
+            raise ValueError("subscription requirement rows must each name a provider")
+        return value
 
 
 class RegistrationListRead(RegistrationRead):

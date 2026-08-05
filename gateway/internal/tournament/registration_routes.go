@@ -73,4 +73,10 @@ var RegistrationAdminRoutes = []edge.RouteSpec{
 	// mapping, broadcaster). A Discord-backed role picker is a later refinement.
 	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-providers", Queue: "rpc.tournament.sub_config_list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: regReadTimeout},
 	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-providers", Queue: "rpc.tournament.sub_config_upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+
+	// Workspace subscription requirement — the admission rule every tournament in
+	// the workspace inherits. Replaced wholesale (PUT, no PATCH): a partial merge of
+	// an admission rule would be a silent policy change.
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-requirement", Queue: "rpc.tournament.sub_requirement_get", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: regReadTimeout},
+	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-requirement", Queue: "rpc.tournament.sub_requirement_upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }

@@ -74,6 +74,7 @@ from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_veto as map_veto_service
 from src.services.encounter import report_form as report_form_service
 from src.services.registration import service as reg_service
+from src.services.registration import subscription_config
 from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.subscription_gate import (
     assert_subscription_allows_check_in,
@@ -255,7 +256,10 @@ def register(broker: Any, logger: Any) -> None:
             if form is None:
                 return None
             subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id)
-            return _dump(_form_to_read(form, subrole_catalog=subrole_catalog))
+            # The rule is the workspace's now; fetched once here so the sync serializer
+            # below stays free of round trips.
+            requirement = await subscription_config.load_workspace_requirement_blob(session, form.workspace_id)
+            return _dump(_form_to_read(form, subrole_catalog=subrole_catalog, subscription_requirement=requirement))
 
         return await _run(logger, op)
 

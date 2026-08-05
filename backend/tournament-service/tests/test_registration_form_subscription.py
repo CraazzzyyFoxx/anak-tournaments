@@ -1,8 +1,13 @@
-"""Subscription requirement on the registration form.
+"""Subscription requirement: the workspace upsert schema and the form read projection.
 
-Pure schema/serializer coverage: the round-trip from an API payload to the model
-columns and back. The columns mirror ``require_open_profile``, so every layer that
-flag touches must carry these too — a missing layer silently drops the rule.
+Pure schema/serializer coverage: the round-trip from an API payload to the stored
+blob and back out through the form read model.
+
+The split is the point. ``require_subscription`` is the tournament's toggle and stays
+on ``RegistrationFormUpsert``; the rule itself is the workspace's and is written
+through ``WorkspaceSubscriptionRequirementUpsert``, which owns the save-time
+validation the form schema used to carry. ``RegistrationFormRead`` still exposes the
+rule -- server-resolved and read-only -- because the public check-in dialog renders it.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from shared.subscriptions import Outcome, parse_requirement  # noqa: E402
 from src.schemas.registration import (  # noqa: E402
     RegistrationFormRead,
     RegistrationFormUpsert,
+    WorkspaceSubscriptionRequirementUpsert,
 )
 from src.services.registration.serializers import serialize_registration_form  # noqa: E402
 
@@ -63,64 +69,59 @@ class _FormRow:
         self.built_in_fields_json = {}
         self.custom_fields_json = []
         self.require_subscription = False
-        self.subscription_requirement_json = {}
         for key, value in overrides.items():
             setattr(self, key, value)
 
 
-class TestUpsertSchema:
-    def test_defaults_are_off(self):
+class TestFormUpsertSchema:
+    def test_the_toggle_defaults_off(self):
         """A tournament that never configures this must not start enforcing."""
-        body = RegistrationFormUpsert()
-        assert body.require_subscription is False
-        assert body.subscription_requirement_json == {}
+        assert RegistrationFormUpsert().require_subscription is False
+
+    def test_the_rule_is_not_writable_through_the_form(self):
+        """The rule moved to the workspace; the form must not carry a second copy."""
+        assert not hasattr(RegistrationFormUpsert(), "subscription_requirement_json")
+
+
+class TestWorkspaceRequirementUpsertSchema:
+    def test_defaults_to_nothing_enforced(self):
+        assert WorkspaceSubscriptionRequirementUpsert().requirement == {}
 
     def test_accepts_a_requirement_blob(self):
-        body = RegistrationFormUpsert(
-            require_subscription=True,
-            subscription_requirement_json=ANY_BOOSTY_OR_TWITCH,
-        )
-        assert body.require_subscription is True
-        assert body.subscription_requirement_json["mode"] == "any"
+        body = WorkspaceSubscriptionRequirementUpsert(requirement=ANY_BOOSTY_OR_TWITCH)
+        assert body.requirement["mode"] == "any"
 
     def test_rejects_an_unknown_mode_at_the_api_boundary(self):
         """Better a 422 on save than a surprise at check-in time."""
-        with pytest.raises(ValueError, match="mode"):
-            RegistrationFormUpsert(
-                require_subscription=True,
-                subscription_requirement_json={"mode": "most", "requirements": []},
-            )
+        with pytest.raises(ValueError):
+            WorkspaceSubscriptionRequirementUpsert(requirement={"mode": "most", "requirements": []})
 
     def test_rejects_a_requirement_without_a_provider(self):
         with pytest.raises(ValueError):
-            RegistrationFormUpsert(
-                require_subscription=True,
-                subscription_requirement_json={"requirements": [{"min_tier_rank": 2}]},
-            )
+            WorkspaceSubscriptionRequirementUpsert(requirement={"requirements": [{"min_tier_rank": 2}]})
 
-    def test_allows_the_toggle_on_with_an_empty_requirement(self):
-        """Turning the master switch on before picking providers is a legitimate
-        intermediate state in the admin UI; the gate treats it as no-op."""
-        body = RegistrationFormUpsert(require_subscription=True, subscription_requirement_json={})
-        assert parse_requirement(body.subscription_requirement_json).requirements == ()
+    def test_allows_an_empty_requirement(self):
+        """Clearing the rule is legitimate -- and it disarms every tournament using it."""
+        body = WorkspaceSubscriptionRequirementUpsert(requirement={})
+        assert parse_requirement(body.requirement).requirements == ()
 
     def test_clamps_min_tier_rank_below_one(self):
-        body = RegistrationFormUpsert(
-            subscription_requirement_json={"requirements": [{"provider": "boosty", "min_tier_rank": 0}]}
+        body = WorkspaceSubscriptionRequirementUpsert(
+            requirement={"requirements": [{"provider": "boosty", "min_tier_rank": 0}]}
         )
-        requirement = parse_requirement(body.subscription_requirement_json)
+        requirement = parse_requirement(body.requirement)
         assert requirement.requirements[0].min_tier_rank == 1
 
     def test_deduplicates_a_provider_keeping_the_strictest_threshold(self):
-        body = RegistrationFormUpsert(
-            subscription_requirement_json={
+        body = WorkspaceSubscriptionRequirementUpsert(
+            requirement={
                 "requirements": [
                     {"provider": "boosty", "min_tier_rank": 1},
                     {"provider": "boosty", "min_tier_rank": 3},
                 ]
             }
         )
-        requirement = parse_requirement(body.subscription_requirement_json)
+        requirement = parse_requirement(body.requirement)
         assert [r.min_tier_rank for r in requirement.requirements] == [3]
 
 
@@ -132,35 +133,32 @@ class TestReadSchema:
 
 
 class TestSerializer:
-    def test_carries_the_toggle_and_the_blob(self):
+    def test_carries_the_toggle_and_the_workspace_rule(self):
         read = serialize_registration_form(
-            _FormRow(
-                require_subscription=True,
-                subscription_requirement_json=ANY_BOOSTY_OR_TWITCH,
-            )
+            _FormRow(require_subscription=True),
+            subscription_requirement=ANY_BOOSTY_OR_TWITCH,
         )
         assert read.require_subscription is True
         assert read.subscription_requirement_json == ANY_BOOSTY_OR_TWITCH
 
-    def test_null_blob_serializes_as_an_empty_object(self):
-        """The column is JSON and could be NULL on a legacy row."""
-        read = serialize_registration_form(_FormRow(subscription_requirement_json=None))
+    def test_a_workspace_without_a_rule_serializes_as_an_empty_object(self):
+        """The resolved projection must never be null -- the dialog reads it directly."""
+        read = serialize_registration_form(_FormRow(require_subscription=True), subscription_requirement=None)
         assert read.subscription_requirement_json == {}
 
     def test_untouched_form_serializes_as_disabled(self):
         read = serialize_registration_form(_FormRow())
         assert read.require_subscription is False
+        assert read.subscription_requirement_json == {}
 
 
 class TestRoundTrip:
     def test_upsert_blob_survives_into_a_usable_requirement(self):
         """The whole point: what the organizer saved is what the gate evaluates."""
-        body = RegistrationFormUpsert(require_subscription=True, subscription_requirement_json=ANY_BOOSTY_OR_TWITCH)
+        body = WorkspaceSubscriptionRequirementUpsert(requirement=ANY_BOOSTY_OR_TWITCH)
         read = serialize_registration_form(
-            _FormRow(
-                require_subscription=body.require_subscription,
-                subscription_requirement_json=body.subscription_requirement_json,
-            )
+            _FormRow(require_subscription=True),
+            subscription_requirement=body.requirement,
         )
         requirement = parse_requirement(read.subscription_requirement_json)
         assert requirement.mode == "any"
