@@ -81,6 +81,15 @@ Commit `feat(subscriptions): add the workspace requirement model`.
 
 `down_revision` from `alembic heads` (expect `wsguild0002`).
 
+> **Superseded by the shipped revision — do not copy SQL out of this task.** Review
+> replaced its predicates. The shipped `wsreq0001` uses `DISTINCT ON (t.workspace_id)`
+> (a `json` column in a `DISTINCT` list has no equality operator and fails at plan
+> time, on every database), a single `CASE`-guarded `jsonb_array_length` shared by the
+> guard and the backfill (a bare two-conjunct test relies on undefined WHERE evaluation
+> order and can raise on `{"requirements": {}}`, which the old API accepted), and a
+> `DO $$ … RAISE EXCEPTION $$` guard that also renders under `--sql`. The steps below
+> record the original intent; the file on disk is authoritative.
+
 `upgrade()`:
 1. `op.create_table("requirement", ..., schema="subscriptions")` mirroring the model, including the unique constraint.
 2. `op.create_index("uq_subscription_requirement_one_default", "requirement", ["workspace_id"], unique=True, postgresql_where=sa.text("is_default"), schema="subscriptions")`
@@ -253,7 +262,7 @@ i18n both dictionaries.
 
 ### Task 9: Contract migration
 
-`wsreq0002`: `op.drop_column("registration_form", "subscription_requirement_json", schema="balancer")`. `downgrade` re-adds it (`sa.JSON(), nullable=False, server_default="{}"`) and backfills every form from its workspace's default rule, so the pre-`wsreq0001` code can run again.
+`wsreq0002`: `op.drop_column("registration_form", "subscription_requirement_json", schema="balancer")`. `downgrade` re-adds the column at its `{}` server default and **stops there — it does NOT refill it.** Per-form rules are not recoverable by that revision: the elected rule lives on in `subscriptions.requirement`, so copy it back by hand BEFORE running `wsreq0001.downgrade`, which drops that table. Refilling every form from the workspace rule was the original design and was removed in review: it would arm tournaments that had held a documented no-op, turning a rollback into a silent tightening of admission.
 
 ### Task 10: Full suites
 Four backend suites, `cd gateway && rtk go test ./...`, `npx tsc --noEmit`, `npx vitest run`.
@@ -293,10 +302,16 @@ docker run -d --name owt-mig --network postgres_pg_network \
 
 **Pre-flight before step 1:** confirm no workspace holds two distinct rules — the migration aborts if one does, which is the intended behaviour, but you want to know before the window rather than during it.
 
+This query MUST use the same definition of "configured" as the shipped guard, or it will cancel windows that did not need cancelling. A textual test (`::text not in ('{}','null')`) counts `{"mode":"all","requirements":[]}` — what the old wizard wrote into every form it touched — as a rule, and also splits one rule written with different key order into two variants.
+
 ```sql
-select t.workspace_id, count(distinct f.subscription_requirement_json::text)
+select t.workspace_id, count(distinct f.subscription_requirement_json::jsonb) as variants
   from balancer.registration_form f
   join tournament.tournament t on t.id = f.tournament_id
- where coalesce(f.subscription_requirement_json::text,'{}') not in ('{}','null')
- group by 1 having count(distinct f.subscription_requirement_json::text) > 1;
+ where jsonb_array_length(
+         case when jsonb_typeof((f.subscription_requirement_json::jsonb) -> 'requirements') = 'array'
+              then (f.subscription_requirement_json::jsonb) -> 'requirements'
+              else '[]'::jsonb end
+       ) > 0
+ group by 1 having count(distinct f.subscription_requirement_json::jsonb) > 1;
 ```
