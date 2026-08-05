@@ -35,6 +35,7 @@ export default defineConfig({
       "src/app/admin/matches/**/*.test.ts",
       "src/app/admin/matches/**/*.test.tsx",
       "src/app/admin/sub-roles/**/*.test.tsx",
+      "src/app/admin/subscriptions/**/*.test.tsx",
       "src/app/balancer/components/balance-import.test.ts",
       "src/app/balancer/components/balancer-page-selectors.test.ts",
       "src/app/balancer/components/BalancingPoolSidebar.behavior.test.tsx",

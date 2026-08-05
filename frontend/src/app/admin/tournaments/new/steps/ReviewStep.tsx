@@ -6,6 +6,7 @@ import {
 } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
+import type { SubscriptionRequirement } from "@/types/registration.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import type {
@@ -23,6 +24,10 @@ interface ReviewStepProps {
   registration: WizardRegistrationState;
   registrationVisible: boolean;
   divisionGridVersions: DivisionGridVersion[];
+  /** The workspace-wide rule, fetched by the page alongside the division grids.
+   *  The wizard no longer carries one: a tournament only chooses whether to
+   *  enforce what the workspace already decided. */
+  subscriptionRequirement: SubscriptionRequirement | undefined;
 }
 
 const PHASE_LABELS: Record<SchedulablePhase, string> = {
@@ -48,9 +53,10 @@ export function ReviewStep({
   schedule,
   registration,
   registrationVisible,
-  divisionGridVersions
+  divisionGridVersions,
+  subscriptionRequirement
 }: ReviewStepProps) {
-  const requirementRule = useRequirementDescription(registration.subscription_requirement_json);
+  const requirementRule = useRequirementDescription(subscriptionRequirement);
   const gridLabel =
     form.division_grid_version_id == null
       ? "Workspace default"
@@ -134,13 +140,13 @@ export function ReviewStep({
               label="Require open profile"
               value={registration.require_open_profile ? "Yes" : "No"}
             />
-            {/* The composed rule, not a bare Yes/No: an organizer reviewing the
-                draft needs to see which providers and thresholds they picked. */}
+            {/* The composed workspace rule, not a bare Yes/No: an organizer
+                reviewing the draft needs to see what the toggle will enforce. */}
             <Row
               label="Require subscription"
               value={
                 registration.require_subscription
-                  ? requirementRule || "No providers selected"
+                  ? requirementRule || "On — but the workspace has no rule configured"
                   : "No"
               }
             />

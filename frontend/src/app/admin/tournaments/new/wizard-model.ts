@@ -8,7 +8,6 @@ import {
 } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import type { TournamentFormFieldsValue } from "@/components/admin/tournaments/TournamentFormFields";
 import type { TournamentCreateInput, TournamentUpdateInput } from "@/types/admin.types";
-import type { SubscriptionRequirement } from "@/types/registration.types";
 import type { Tournament } from "@/types/tournament.types";
 
 export const WIZARD_STEPS = ["basics", "schedule", "rules", "registration", "review"] as const;
@@ -46,7 +45,6 @@ export interface WizardRegistrationState {
   auto_approve: boolean;
   require_open_profile: boolean;
   require_subscription: boolean;
-  subscription_requirement_json: SubscriptionRequirement;
 }
 
 /** Registration step is only offered to organizers who can manage teams (D17). */

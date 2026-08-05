@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
-import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -20,8 +19,8 @@ interface RegistrationStepProps {
   draftId: number | null;
 }
 
-/** Only the boolean toggles belong in this list; the subscription requirement is
- *  a structured value edited by its own component below. */
+/** Every registration setting the wizard offers is a boolean now: the subscription
+ *  rule itself belongs to the workspace, not to one tournament. */
 type BooleanRegistrationKey = {
   [K in keyof WizardRegistrationState]: WizardRegistrationState[K] extends boolean ? K : never;
 }[keyof WizardRegistrationState];
@@ -78,14 +77,11 @@ export function RegistrationStep({ value, onChange, draftId }: RegistrationStepP
       </div>
 
       {value.require_subscription && (
-        <div className="space-y-3 bg-muted/20 border border-border/50 rounded-lg p-3.5">
-          <div className="text-sm font-medium">Subscription requirement</div>
-          <SubscriptionRequirementEditor
-            value={value.subscription_requirement_json}
-            availableProviders={["boosty", "twitch"]}
-            onChange={(next) => onChange({ ...value, subscription_requirement_json: next })}
-          />
-        </div>
+        <p className="text-xs text-muted-foreground bg-muted/20 border border-border/50 rounded-lg p-3.5">
+          Which providers and tiers count is configured once per workspace, in Admin →
+          Subscription collection → Providers. Every tournament in the workspace enforces the
+          same rule; this toggle only decides whether it is enforced here.
+        </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">

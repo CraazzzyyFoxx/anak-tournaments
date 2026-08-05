@@ -37,6 +37,7 @@ import { notify } from "@/lib/notify";
 import { DEFAULT_WORKSPACE_TIMEZONE } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import balancerAdminService from "@/services/balancer-admin.service";
 import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -146,8 +147,7 @@ export default function NewTournamentPage() {
     is_open: true,
     auto_approve: false,
     require_open_profile: false,
-    require_subscription: false,
-    subscription_requirement_json: { mode: "all", requirements: [] }
+    require_subscription: false
   });
 
   // Lazy Unpublished draft (D4): created by the first action needing an id.
@@ -174,6 +174,15 @@ export default function NewTournamentPage() {
     .flatMap((grid) => grid.versions)
     .slice()
     .sort((left, right) => right.version - left.version);
+
+  // The subscription rule is a workspace property now, so the review step reads it
+  // from the workspace rather than from the wizard state. Fetched here, next to the
+  // division grids, because that is where this wizard loads its server data.
+  const subscriptionRequirementQuery = useQuery({
+    queryKey: ["subscription-requirement", currentWorkspaceId],
+    queryFn: () => balancerAdminService.getSubscriptionRequirement(currentWorkspaceId as number),
+    enabled: Boolean(currentWorkspaceId)
+  });
 
   // Resume (D4): the latest Unpublished stage-less tournament of this
   // workspace is an abandoned wizard draft — offer to continue it.
@@ -440,6 +449,7 @@ export default function NewTournamentPage() {
               registration={registration}
               registrationVisible={canTeamImport}
               divisionGridVersions={divisionGridVersions}
+              subscriptionRequirement={subscriptionRequirementQuery.data?.requirement}
             />
           )}
         </div>

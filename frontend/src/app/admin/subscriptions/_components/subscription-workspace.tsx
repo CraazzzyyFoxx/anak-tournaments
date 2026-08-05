@@ -34,7 +34,9 @@ export function WorkspaceSubscriptionPanel({ workspaceId }: { workspaceId: numbe
   );
 }
 
-function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number }) {
+/** Exported so its own behaviour can be exercised without the provider card's
+ *  queries and second Save button in the way. */
+export function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number }) {
   const queryClient = useQueryClient();
   const requirementKey = ["subscription-requirement", workspaceId] as const;
 
