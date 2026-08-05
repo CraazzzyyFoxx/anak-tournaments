@@ -132,15 +132,20 @@ export function TeamRosters({
                     {crest.initial}
                   </span>
                   <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight">{team.name}</span>
-                  <span
-                    className="h-[7px] w-[7px] shrink-0 rounded-full"
-                    style={
-                      captainOnline
-                        ? { background: "var(--aqt-support)", boxShadow: "0 0 5px var(--aqt-support)" }
-                        : { background: "var(--aqt-fg-faint)" }
-                    }
-                    title={captainOnline ? t("captainOnline") : t("captainOffline")}
-                  />
+                  <span className="inline-flex shrink-0 items-center">
+                    <span
+                      aria-hidden
+                      className="h-[7px] w-[7px] rounded-full"
+                      style={
+                        captainOnline
+                          ? { background: "var(--aqt-support)", boxShadow: "0 0 5px var(--aqt-support)" }
+                          : { background: "var(--aqt-fg-faint)" }
+                      }
+                    />
+                    <span className="sr-only">
+                      {captainOnline ? t("captainOnline") : t("captainOffline")}
+                    </span>
+                  </span>
                   <span className="ml-auto flex shrink-0 items-center gap-2">
                     {view.avgDivision != null && (
                       <span
@@ -186,7 +191,7 @@ export function TeamRosters({
                             <PlayerRoleIcon role={getRoleIconName(role)} size={16} />
                           )}
                         </span>
-                        <span className="min-w-0 truncate font-medium">{player.battle_tag ?? `#${player.id}`}</span>
+                        <span className="min-w-0 truncate font-medium" title={player.battle_tag ?? undefined}>{player.battle_tag ?? `#${player.id}`}</span>
                         {division != null ? (
                           <span title={[divisionLabel, rank != null ? `${rank} SR` : null].filter(Boolean).join(" · ")}>
                             <DivisionIcon
@@ -206,15 +211,17 @@ export function TeamRosters({
                   {Array.from({ length: view.openSlots }, (_, index) => (
                     <div
                       key={`open-${index}`}
-                      className="grid grid-cols-[24px_1fr_auto] items-center gap-2 px-3 py-2 text-sm opacity-40"
+                      className="grid grid-cols-[24px_1fr_auto] items-center gap-2 px-3 py-2 text-sm"
                     >
-                      <span className="inline-flex h-6 w-6 items-center justify-center text-[color:var(--aqt-fg-faint)]">
+                      {/* --aqt-fg-dim, not faint behind an opacity: an open slot still
+                          has to be readable, it is roster information. */}
+                      <span className="inline-flex h-6 w-6 items-center justify-center text-[color:var(--aqt-fg-dim)]">
                         ·
                       </span>
-                      <span className="min-w-0 truncate italic text-[color:var(--aqt-fg-faint)]">
+                      <span className="min-w-0 truncate italic text-[color:var(--aqt-fg-dim)]">
                         {t("openSlot")} {view.roster.length + index + 1}
                       </span>
-                      <span className="text-[color:var(--aqt-fg-faint)]">—</span>
+                      <span className="text-[color:var(--aqt-fg-dim)]">—</span>
                     </div>
                   ))}
                 </div>
@@ -324,7 +331,10 @@ export function TeamRosters({
                               </span>
                             </td>
                             <td>
-                              <span className="block max-w-[16rem] truncate font-medium">
+                              <span
+                                className="block max-w-[16rem] truncate font-medium"
+                                title={player.battle_tag ?? undefined}
+                              >
                                 {player.battle_tag ?? `#${player.id}`}
                               </span>
                             </td>
@@ -352,17 +362,17 @@ export function TeamRosters({
                         );
                       })}
                       {Array.from({ length: openSlots }, (_, index) => (
-                        <tr key={`open-${index}`} className="opacity-50">
+                        <tr key={`open-${index}`}>
                           <td className="c">
-                            <span className="inline-flex h-8 w-8 items-center justify-center">—</span>
+                            <span className="inline-flex h-8 w-8 items-center justify-center text-[color:var(--aqt-fg-dim)]">—</span>
                           </td>
                           <td>
-                            <span className="block max-w-[16rem] truncate text-[color:var(--aqt-fg-faint)]">
+                            <span className="block max-w-[16rem] truncate text-[color:var(--aqt-fg-dim)]">
                               {t("openSlot")} {roster.length + index + 1}
                             </span>
                           </td>
                           <td className="c">
-                            <span className="text-[color:var(--aqt-fg-faint)]">—</span>
+                            <span className="text-[color:var(--aqt-fg-dim)]">—</span>
                           </td>
                         </tr>
                       ))}

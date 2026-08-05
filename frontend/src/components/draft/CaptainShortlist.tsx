@@ -30,8 +30,8 @@ export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: 
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="grid h-4 w-4 place-items-center rounded-full text-[color:var(--aqt-fg-faint)] outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-                aria-label={t("howItWorks")}
+                className="relative grid h-4 w-4 place-items-center rounded-full text-[color:var(--aqt-fg-faint)] outline-none transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:text-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+                aria-label={t("shortlistHelp")}
               >
                 <HelpCircle className="h-3.5 w-3.5" aria-hidden />
               </button>
@@ -52,7 +52,7 @@ export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: 
               )}
               <span className="min-w-0 truncate">{player.battle_tag ?? `#${player.id}`}</span>
             </button>
-            <button type="button" className="grid h-5 w-5 shrink-0 place-items-center rounded text-[color:var(--aqt-fg-muted)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]" onClick={() => onRemove(player.id)} aria-label={t("removeShortlist")}>×</button>
+            <button type="button" className="relative grid h-5 w-5 shrink-0 place-items-center rounded text-[color:var(--aqt-fg-muted)] outline-none after:absolute after:-inset-x-0.5 after:-inset-y-1.5 after:content-[''] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]" onClick={() => onRemove(player.id)} aria-label={t("removeShortlist")}>×</button>
           </div>
         );
       })}

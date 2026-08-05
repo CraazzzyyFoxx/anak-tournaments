@@ -67,7 +67,7 @@ export function DraftPageHero({
           <Link
             href={`/tournaments/${tournament.id}`}
             aria-label={t("room.back")}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-card-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-card-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -81,11 +81,10 @@ export function DraftPageHero({
             <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
           </div>
 
-          <div
-            className="ml-auto flex flex-wrap items-center gap-3"
-            role="status"
-            aria-live="polite"
-          >
+          {/* No live region on the cluster: the viewer counter ticks on its own
+              and would re-announce every captain tile with it. Only the
+              connection state below is worth announcing. */}
+          <div className="ml-auto flex flex-wrap items-center gap-3">
             <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
               {t("captain")}
             </span>
@@ -122,6 +121,8 @@ export function DraftPageHero({
             <span aria-hidden className="h-4 w-px bg-[color:var(--aqt-border-2)]" />
 
             <span
+              role="status"
+              aria-live="polite"
               className={cn(
                 "inline-flex items-center gap-1.5 text-[11px]",
                 connected ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-warm)]"
@@ -179,6 +180,7 @@ export function DraftPageHero({
             <HStat
               label={t("onClock")}
               value={onClockTeam?.name ?? "—"}
+              title={onClockTeam?.name}
               valueClassName="inline-block max-w-[9rem] truncate align-bottom text-[19px] text-[color:var(--aqt-teal)]"
             />
           </div>
@@ -209,6 +211,7 @@ function CaptainTile({
   const label = `${team.name}${isYou ? ` (${youLabel})` : ""} — ${online ? onlineLabel : offlineLabel}`;
   return (
     <span
+      role="img"
       title={label}
       aria-label={label}
       className={cn(
@@ -246,10 +249,13 @@ function MetaPill({ label, value }: { label: ReactNode; value: ReactNode }) {
 function HStat({
   label,
   value,
+  title,
   valueClassName
 }: {
   label: ReactNode;
   value: ReactNode;
+  /** Recovers the full text when `valueClassName` truncates it. */
+  title?: string;
   valueClassName?: string;
 }) {
   return (
@@ -258,6 +264,7 @@ function HStat({
         {label}
       </span>
       <span
+        title={title}
         className={cn(
           "text-[22px] font-semibold leading-none tabular-nums text-[color:var(--aqt-fg)]",
           valueClassName

@@ -138,7 +138,9 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
             </div>
           </section>
 
-          <section role="status" className="grid gap-5 sm:grid-cols-3">
+          {/* No role="status": the viewer count ticks on its own and would
+              re-announce the team and player metrics with it. */}
+          <section className="grid gap-5 sm:grid-cols-3">
             <AdminMetric icon={Users} label={t("teams")} value={board.teams.length} />
             <AdminMetric
               icon={UserRound}

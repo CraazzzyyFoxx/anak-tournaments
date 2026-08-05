@@ -59,8 +59,8 @@ export function PlayerInspector({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="grid h-4 w-4 place-items-center rounded-full text-[color:var(--aqt-fg-faint)] outline-none transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-                  aria-label={t("howItWorks")}
+                  className="relative grid h-4 w-4 place-items-center rounded-full text-[color:var(--aqt-fg-faint)] outline-none transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:text-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+                  aria-label={t("inspectorHelp")}
                 >
                   <HelpCircle className="h-3.5 w-3.5" aria-hidden />
                 </button>
@@ -79,6 +79,11 @@ export function PlayerInspector({
         .map((entry) => optionForSelection(options, player.id, entry))
         .filter((option): option is DraftPickOption => option != null && !option.is_safe)
     : [];
+  // Every blocked role not already explained above the list, so a single blocked
+  // role still gets an inline reason instead of only a title attribute.
+  const otherBlockedOptions = blockedOptions.filter(
+    (option) => option.role !== selectedOption?.role
+  );
   const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;
   const headerDivision = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.rank_value);
   const notes =
@@ -98,7 +103,7 @@ export function PlayerInspector({
             ) : (
               <span className="truncate">{`#${player.id}`}</span>
             )}
-            {player.is_captain && <Crown className="h-4 w-4 shrink-0 text-[color:var(--aqt-teal)]" aria-label={t("captain")} />}
+            {player.is_captain && <Crown className="h-4 w-4 shrink-0 text-[color:var(--aqt-teal)]" role="img" aria-label={t("captain")} />}
           </h2>
           <p className="font-mono text-xs text-[color:var(--aqt-fg-faint)]">{`#${player.id}`}</p>
         </div>
@@ -108,7 +113,7 @@ export function PlayerInspector({
               <DivisionIcon division={headerDivision} tournamentGrid={divisionGrid} width={32} height={32} className="h-8 w-8 object-contain" />
             </span>
           )}
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onClose} aria-label={t("closeInspector")}><X className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" className="h-11 w-11" onClick={onClose} aria-label={t("closeInspector")}><X className="h-4 w-4" /></Button>
         </div>
       </div>
 
@@ -131,15 +136,19 @@ export function PlayerInspector({
               <button
                 key={entry}
                 type="button"
-                disabled={blocked}
+                // aria-disabled, not disabled: an unavailable role must stay
+                // focusable so its reason is reachable without a mouse.
+                aria-disabled={blocked || undefined}
                 aria-pressed={active}
                 title={[t(`roles.${entry}`), isPrimary ? t("primaryRole") : null, roleRank != null ? `${roleRank} SR` : null].filter(Boolean).join(" · ")}
-                onClick={() => onRoleChange(entry)}
+                onClick={() => {
+                  if (!blocked) onRoleChange(entry);
+                }}
                 className={cn(
-                  "flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+                  "flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
                   isPrimary ? "border-[color:var(--aqt-teal)]/60" : "border-[color:var(--aqt-border-2)]",
-                  active ? "bg-[color:var(--aqt-teal)]/15" : "hover:border-[color:var(--aqt-teal)]/50",
-                  blocked && "cursor-not-allowed opacity-45"
+                  active ? "bg-[color:var(--aqt-teal)]/15" : !blocked && "hover:border-[color:var(--aqt-teal)]/50",
+                  blocked && "cursor-not-allowed text-[color:var(--aqt-fg-dim)]"
                 )}
               >
                 <PlayerRoleIcon role={getRoleIconName(entry)} size={18} color={ROLE_ACCENT[entry]} decorative />
@@ -160,7 +169,7 @@ export function PlayerInspector({
                     </AvatarStack>
                   )}
                   {blocked ? (
-                    <Ban className="h-4 w-4 text-[color:var(--aqt-live)]" aria-label={t("unsafeOption")} />
+                    <Ban className="h-4 w-4 text-[color:var(--aqt-live)]" role="img" aria-label={t("unsafeOption")} />
                   ) : roleDivision != null ? (
                     <DivisionIcon division={roleDivision} tournamentGrid={divisionGrid} width={24} height={24} className="h-6 w-6 object-contain" />
                   ) : (
@@ -185,19 +194,17 @@ export function PlayerInspector({
           {t(`optionReason.${selectedOption.reason_code === "role_filled" ? "role_filled" : "role_shortage"}`)}
         </div>
       )}
-      {blockedOptions.length > 1 && (
+      {otherBlockedOptions.length > 0 && (
         <ul className="mt-4 space-y-2 text-xs text-[color:var(--aqt-fg-muted)]">
-          {blockedOptions
-            .filter((option) => option.role !== selectedOption?.role)
-            .map((option) => (
-              <li key={option.role} className="flex gap-2">
-                <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-live)]" />
-                <span>
-                  <strong className="text-[color:var(--aqt-fg)]">{t(`roles.${option.role}`)}:</strong>{" "}
-                  {t(`optionReason.${option.reason_code === "role_filled" ? "role_filled" : "role_shortage"}`)}
-                </span>
-              </li>
-            ))}
+          {otherBlockedOptions.map((option) => (
+            <li key={option.role} className="flex gap-2">
+              <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-live)]" aria-hidden />
+              <span>
+                <strong className="text-[color:var(--aqt-fg)]">{t(`roles.${option.role}`)}:</strong>{" "}
+                {t(`optionReason.${option.reason_code === "role_filled" ? "role_filled" : "role_shortage"}`)}
+              </span>
+            </li>
+          ))}
         </ul>
       )}
     </section>
