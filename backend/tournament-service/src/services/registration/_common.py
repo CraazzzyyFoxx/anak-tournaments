@@ -20,7 +20,7 @@ from shared.balancer_registration_statuses import get_builtin_status_values
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_sub_role
 from shared.hero_catalog import HeroCatalog
 from src import models
 from src.schemas.registration import CustomFieldDefinition
@@ -116,6 +116,56 @@ async def get_form_custom_field_defs(
 ) -> list[CustomFieldDefinition]:
     form = await get_registration_form(session, tournament_id)
     return form_custom_field_defs(form)
+
+
+def forced_flex_enabled(form: Any | None) -> bool:
+    """True when the tournament forces every registration to be full flex.
+
+    ``flex_role.mode == "forced"`` with the field itself enabled. Absent key,
+    ``None`` and ``"optional"`` all mean the registrant chooses, so every
+    existing form keeps its behaviour. ``enabled: false`` bans flex outright
+    (see ``validation.py``) and therefore wins over the mode.
+
+    Reads fail closed: an unreadable form is treated as optional. Guessing
+    "forced" would silently inflate every player's effective rank.
+    """
+    if form is None:
+        return False
+    config = (getattr(form, "built_in_fields_json", None) or {}).get("flex_role")
+    if not isinstance(config, dict):
+        return False
+    if config.get("enabled", True) is False:
+        return False
+    return config.get("mode") == "forced"
+
+
+def apply_forced_flex(
+    entries: list[models.BalancerRegistrationRole],
+) -> list[models.BalancerRegistrationRole]:
+    """Promote every role to primary and backfill the missing ones.
+
+    A forced-flex tournament must yield ``is_flex_computed`` (>1 role, all
+    primary) whichever path produced the entries — public form, admin panel,
+    API key or Google Sheets sync. Normalizing here rather than rejecting a
+    non-flex payload is what makes that hold for a stale client and for the
+    sheet sync, neither of which knows about the mode.
+
+    Only the role SET and ``is_primary`` are touched. ``is_active`` and
+    ``rank_value`` stay exactly as the calling path set them: the max-rank
+    policy is derived at read time, because the public form submits no ranks at
+    all and ``rank_autofill`` would overwrite anything flattened into the rows.
+    """
+    present = {entry.role for entry in entries}
+    result = list(entries)
+    result.extend(
+        models.BalancerRegistrationRole(role=role_code)
+        for role_code in REGISTRATION_ROLE_CODES
+        if role_code not in present
+    )
+    for priority, entry in enumerate(result):
+        entry.is_primary = True
+        entry.priority = priority
+    return result
 
 
 def replace_registration_roles(

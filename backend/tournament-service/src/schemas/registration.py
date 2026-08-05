@@ -41,6 +41,12 @@ class BuiltInFieldConfig(BaseModel):
     # submitted handle must match one of the registrant's OAuth-verified social
     # accounts for the field's provider. Implies the field is effectively required.
     require_verified: bool = False
+    # ``flex_role`` field only. "forced" is a tournament where role does not
+    # matter: every submitted role is stored as primary (so ``is_flex_computed``
+    # holds for every registration regardless of entry point) and the registrant
+    # is not asked for priorities at all. None/absent == "optional", so every
+    # existing form keeps its current behaviour.
+    mode: Literal["optional", "forced"] | None = None
 
 
 class SubroleOption(BaseModel):
