@@ -32,6 +32,7 @@ __all__ = (
     "RosterShape",
     "RosterShapeError",
     "parse_roster_slots",
+    "resolve_roster_shape",
 )
 
 FLEX_SLOT_CODE: Final[str] = "flex"
@@ -187,3 +188,21 @@ def parse_roster_slots(raw: Any) -> RosterShape:
 # Parsed at import time, so the canonical default is proven valid on module load
 # and callers falling back to it never have to re-parse.
 DEFAULT_ROSTER_SHAPE: Final[RosterShape] = parse_roster_slots(DEFAULT_ROSTER_SLOTS)
+
+
+def resolve_roster_shape(tournament_slots: Any, workspace_slots: Any) -> RosterShape:
+    """Tournament override -> workspace default -> built-in Overwatch 5v5.
+
+    ``None`` and an empty mapping both mean "no value at this level, keep
+    looking", so a cleared override inherits. Any other value is validated:
+    corrupt stored config raises instead of silently degrading to the default.
+    """
+    for candidate in (tournament_slots, workspace_slots):
+        if candidate is None:
+            continue
+        if isinstance(candidate, RosterShape):
+            return candidate
+        if isinstance(candidate, Mapping) and not candidate:
+            continue
+        return parse_roster_slots(candidate)
+    return DEFAULT_ROSTER_SHAPE

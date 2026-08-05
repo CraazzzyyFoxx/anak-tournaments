@@ -16,6 +16,7 @@ from shared.domain.roster_shape import (
     RosterShape,
     RosterShapeError,
     parse_roster_slots,
+    resolve_roster_shape,
 )
 
 
@@ -202,3 +203,73 @@ def test_shape_survives_the_serialization_paths_it_travels_through() -> None:
     assert pickle.loads(pickle.dumps(shape)) == shape
     assert dataclasses.asdict(shape) == {"entries": (("tank", 1), ("flex", 5))}
     assert hash(shape) == hash(parse_roster_slots({"tank": 1, "flex": 5}))
+
+
+def test_tournament_override_wins() -> None:
+    shape = resolve_roster_shape({"flex": 6}, {"tank": 1, "dps": 2, "support": 2})
+
+    assert shape.slots == {"flex": 6}
+
+
+def test_falls_back_to_workspace_default() -> None:
+    shape = resolve_roster_shape(None, {"tank": 1, "flex": 5})
+
+    assert shape.slots == {"tank": 1, "flex": 5}
+
+
+def test_falls_back_to_builtin_default_when_nothing_is_set() -> None:
+    shape = resolve_roster_shape(None, None)
+
+    assert shape.slots == {"tank": 1, "dps": 2, "support": 2}
+
+
+def test_builtin_fallback_returns_the_prebuilt_default_shape() -> None:
+    # Identity, not equality: the default is parsed once at import time, so the
+    # fallback must hand back that object instead of re-parsing on every call.
+    assert resolve_roster_shape(None, None) is DEFAULT_ROSTER_SHAPE
+
+
+def test_empty_map_at_a_level_means_no_value_not_an_error() -> None:
+    # A cleared override must inherit, not blow up the tournament read.
+    assert resolve_roster_shape({}, {"flex": 6}).slots == {"flex": 6}
+    assert resolve_roster_shape({}, {}) is DEFAULT_ROSTER_SHAPE
+
+
+def test_invalid_value_at_a_level_still_raises() -> None:
+    # Corrupt stored config must surface, not silently degrade to the default.
+    with pytest.raises(RosterShapeError) as exc_info:
+        resolve_roster_shape({"healer": 6}, None)
+
+    assert exc_info.value.code == "roster_slots_unknown_code"
+
+
+def test_invalid_workspace_default_raises_even_when_tournament_is_unset() -> None:
+    with pytest.raises(RosterShapeError) as exc_info:
+        resolve_roster_shape(None, {"flex": MAX_TEAM_SIZE + 1})
+
+    assert exc_info.value.code == "roster_slots_out_of_range"
+
+
+def test_accepts_an_already_parsed_shape_at_either_level() -> None:
+    # Callers holding a RosterShape should not have to unwrap it back into a map.
+    shape = parse_roster_slots({"flex": 6})
+
+    assert resolve_roster_shape(shape, None) is shape
+    assert resolve_roster_shape(None, shape) is shape
+
+
+def test_a_falsy_non_mapping_is_rejected_rather_than_skipped() -> None:
+    # Only None and an empty mapping mean "no value"; 0, "" and [] are corruption.
+    for corrupt in (0, "", [], ()):
+        with pytest.raises(RosterShapeError) as exc_info:
+            resolve_roster_shape(corrupt, None)
+        assert exc_info.value.code == "roster_slots_not_a_map"
+
+
+def test_the_package_reexports_the_roster_shape_api() -> None:
+    # Consumers import from shared.domain, not the module path.
+    from shared.domain import DEFAULT_ROSTER_SHAPE as reexported_default
+    from shared.domain import resolve_roster_shape as reexported_resolve
+
+    assert reexported_resolve is resolve_roster_shape
+    assert reexported_default is DEFAULT_ROSTER_SHAPE
