@@ -12,6 +12,7 @@ from shared.subscriptions import SubscriptionSource, SubscriptionState
 from shared.subscriptions.providers.twitch_helix import (
     HelixForbidden,
     HelixMissingScope,
+    HelixNotConfigured,
     HelixNotFound,
     HelixUnavailable,
     TwitchHelixResolver,
@@ -121,6 +122,14 @@ class TestUnknownFailsOpen(IsolatedAsyncioTestCase):
         verdict = await _resolve(_Harness(error=HelixMissingScope("401")))
         assert verdict.state == SubscriptionState.UNKNOWN
         assert verdict.evidence["reason"] == "missing_scope"
+
+    async def test_our_own_missing_client_id_is_not_the_patron_s_problem(self):
+        """A service deployed without TWITCH_CLIENT_ID used to answer
+        ``missing_scope``, which renders as "reconnect Twitch" — putting an
+        operator's missing credential on the patron's to-do list."""
+        verdict = await _resolve(_Harness(error=HelixNotConfigured("no client id")))
+        assert verdict.state == SubscriptionState.UNKNOWN
+        assert verdict.evidence["reason"] == "twitch_client_not_configured"
 
     async def test_broadcaster_not_affiliate_is_unknown(self):
         """Helix 400 when the channel has no subscriptions programme — an

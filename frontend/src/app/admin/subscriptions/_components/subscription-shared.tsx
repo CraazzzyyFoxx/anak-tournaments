@@ -46,6 +46,8 @@ export const REASON_LABELS: Record<string, string> = {
   broadcaster_not_eligible: "broadcaster not eligible",
   guild_not_configured: "guild not configured",
   guild_not_accessible: "bot cannot read the guild",
+  bot_not_configured: "our Discord bot token is not configured",
+  twitch_client_not_configured: "our Twitch client id is not configured",
   no_role_tiers_configured: "no role tiers configured",
   role_mapping_drift: "role mapping drifted",
   provider_not_configured: "provider not configured",

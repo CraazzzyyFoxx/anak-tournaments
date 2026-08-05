@@ -22,6 +22,9 @@ Discord access notes (verified against the API docs, see the design doc):
 
 - ``GET /guilds/{guild}/members/{user}`` needs NO privileged intent. Do not use
   the *list* endpoint, which does.
+- A missing bot token of OUR own is ``DiscordNotConfigured``, never a 403: it
+  resolves ``bot_not_configured`` so a service deployed without ``DISCORD_TOKEN``
+  does not report a perfectly good guild as unreachable.
 - Rate limits bucket per ``guild_id``, so the guild's role list is fetched at
   most once per resolver instance (one batch) and only when it is actually
   needed.
@@ -45,6 +48,7 @@ from shared.subscriptions.types import (
 __all__ = (
     "DEFAULT_TTL_SECONDS",
     "DiscordForbidden",
+    "DiscordNotConfigured",
     "DiscordRoleResolver",
     "DiscordUnavailable",
     "MemberNotFound",
@@ -66,6 +70,17 @@ class MemberNotFound(DiscordError):
 
 class DiscordForbidden(DiscordError):
     """403 -- the bot cannot see the guild. Organizer misconfiguration."""
+
+
+class DiscordNotConfigured(DiscordError):
+    """Our own bot token is missing, so no request was ever made.
+
+    Deliberately distinct from ``DiscordForbidden``: a 403 means the guild really
+    is unreachable, while this means we never asked. Collapsing the two made
+    every check run by a service without ``DISCORD_TOKEN`` read as
+    ``guild_not_accessible`` -- pointing the operator at a guild id that was
+    fine, instead of at the credential that was missing.
+    """
 
 
 class DiscordUnavailable(DiscordError):
@@ -118,6 +133,8 @@ class DiscordRoleResolver:
             held_role_ids = await self._fetch_member_roles(guild_id, str(discord_user_id))
         except MemberNotFound:
             return self._inactive("not_a_member")
+        except DiscordNotConfigured:
+            return self._unknown("bot_not_configured")
         except DiscordForbidden:
             return self._unknown("guild_not_accessible")
         except DiscordUnavailable:

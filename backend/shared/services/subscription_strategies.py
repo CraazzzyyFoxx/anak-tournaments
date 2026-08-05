@@ -23,6 +23,7 @@ from shared.core.social import SocialProvider
 from shared.subscriptions import SubscriptionVerdict
 from shared.subscriptions.providers.discord_role import (
     DiscordForbidden,
+    DiscordNotConfigured,
     DiscordRoleResolver,
     DiscordUnavailable,
     GuildRolesFetcher,
@@ -32,6 +33,7 @@ from shared.subscriptions.providers.discord_role import (
 from shared.subscriptions.providers.twitch_helix import (
     HelixForbidden,
     HelixMissingScope,
+    HelixNotConfigured,
     HelixNotFound,
     HelixUnavailable,
     TwitchHelixResolver,
@@ -123,7 +125,7 @@ class BoostyDiscordStrategy:
     def _member_roles_fetcher(self, client: httpx.AsyncClient) -> MemberRolesFetcher:
         async def fetch(guild_id: str, user_id: str) -> list[str]:
             if not self._bot_token:
-                raise DiscordForbidden("bot token is not configured")
+                raise DiscordNotConfigured("discord bot token is not configured")
             try:
                 response = await client.get(f"{self._api_base}/guilds/{guild_id}/members/{user_id}")
             except httpx.HTTPError as exc:
@@ -145,7 +147,7 @@ class BoostyDiscordStrategy:
     def _guild_roles_fetcher(self, client: httpx.AsyncClient) -> GuildRolesFetcher:
         async def fetch(guild_id: str) -> set[str]:
             if not self._bot_token:
-                raise DiscordForbidden("bot token is not configured")
+                raise DiscordNotConfigured("discord bot token is not configured")
             try:
                 response = await client.get(f"{self._api_base}/guilds/{guild_id}/roles")
             except httpx.HTTPError as exc:
@@ -222,7 +224,9 @@ class TwitchSubscriptionStrategy:
     ) -> Callable[..., Awaitable[dict[str, Any]]]:
         async def check(*, broadcaster_id: str, user_id: str) -> dict[str, Any]:
             token = connection[1] if connection else None
-            if not token or not self._client_id:
+            if not self._client_id:
+                raise HelixNotConfigured("twitch client id is not configured")
+            if not token:
                 raise HelixMissingScope("no usable twitch token")
             try:
                 response = await client.get(

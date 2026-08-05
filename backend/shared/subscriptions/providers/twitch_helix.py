@@ -11,6 +11,9 @@ question. Constraints that shape the code:
 - The scope was added to ``TwitchOAuthProvider`` alongside this module, so every
   connection created before that resolves as ``unknown`` with
   ``evidence.reason == "missing_scope"`` and the UI offers a reconnect.
+- Our own ``TWITCH_CLIENT_ID`` is a separate failure from the patron's token: it
+  raises ``HelixNotConfigured`` and resolves ``twitch_client_not_configured``,
+  because telling a patron to reconnect cannot fix a credential WE never set.
 
 Helix access is injected as a callable, so the whole decision table is testable
 without a network or a live OAuth session. Token refresh (401 -> refresh -> retry
@@ -35,6 +38,7 @@ __all__ = (
     "DEFAULT_TTL_SECONDS",
     "HelixForbidden",
     "HelixMissingScope",
+    "HelixNotConfigured",
     "HelixNotFound",
     "HelixUnavailable",
     "TwitchHelixResolver",
@@ -53,6 +57,14 @@ class HelixNotFound(HelixError):
 
 class HelixMissingScope(HelixError):
     """401 that survived a token refresh: the token lacks the new scope."""
+
+
+class HelixNotConfigured(HelixError):
+    """Our own Helix client id is missing, so no request was ever made.
+
+    Never ``HelixMissingScope``: that reason renders as "reconnect Twitch" and
+    puts an operator's missing credential on the patron's to-do list.
+    """
 
 
 class HelixForbidden(HelixError):
@@ -102,6 +114,8 @@ class TwitchHelixResolver:
             payload = await self._check_subscription(broadcaster_id=broadcaster_id, user_id=str(twitch_user_id))
         except HelixNotFound:
             return self._verdict(SubscriptionState.INACTIVE, reason="not_subscribed")
+        except HelixNotConfigured:
+            return self._verdict(SubscriptionState.UNKNOWN, reason="twitch_client_not_configured")
         except HelixMissingScope:
             return self._verdict(SubscriptionState.UNKNOWN, reason="missing_scope")
         except HelixForbidden:

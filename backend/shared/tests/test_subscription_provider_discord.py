@@ -12,6 +12,7 @@ from unittest import IsolatedAsyncioTestCase
 from shared.subscriptions import SubscriptionSource, SubscriptionState
 from shared.subscriptions.providers.discord_role import (
     DiscordForbidden,
+    DiscordNotConfigured,
     DiscordRoleResolver,
     DiscordUnavailable,
     MemberNotFound,
@@ -137,6 +138,15 @@ class TestUnknownFailsOpen(IsolatedAsyncioTestCase):
         verdict = await _resolve(_Harness(member_error=DiscordForbidden("403")))
         assert verdict.state == SubscriptionState.UNKNOWN
         assert verdict.evidence["reason"] == "guild_not_accessible"
+
+    async def test_our_own_missing_bot_token_is_not_reported_as_a_guild_fault(self):
+        """A service deployed without DISCORD_TOKEN used to answer
+        ``guild_not_accessible``, which reads as "bot cannot read the guild" and sent
+        the operator to inspect a guild id that was perfectly correct. The reason must
+        name the credential, not the guild."""
+        verdict = await _resolve(_Harness(member_error=DiscordNotConfigured("no bot token")))
+        assert verdict.state == SubscriptionState.UNKNOWN
+        assert verdict.evidence["reason"] == "bot_not_configured"
 
     async def test_discord_outage_is_unknown(self):
         verdict = await _resolve(_Harness(member_error=DiscordUnavailable("503")))
