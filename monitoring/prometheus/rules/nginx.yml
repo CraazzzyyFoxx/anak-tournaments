@@ -1,0 +1,80 @@
+# nginx edge — DoS / rate-limit alerting.
+#
+# Two metric sources:
+#   * nginx-exporter (stub_status): connection state. No per-status counters.
+#   * promtail (metrics stage over the edge_json access log): rate-limit outcome.
+#
+# Thresholds below are first estimates — the whole point of rollout phase 1
+# (limit_req_dry_run on) is to replace them with numbers derived from real
+# traffic. See docs/superpowers/specs/2026-08-06-nginx-dos-hardening-design.md.
+
+groups:
+  - name: nginx-recording
+    interval: 30s
+    rules:
+      - record: nginx:requests:rate5m
+        expr: rate(nginx_http_requests_total[5m])
+
+      # Rejections and would-be rejections in one series, so the dashboards and
+      # alerts below do not need editing when dry_run is turned off.
+      - record: nginx:limit_rejected:rate5m
+        expr: |
+          sum(rate(nginx_limit_req_rejected_total[5m]))
+          + sum(rate(nginx_limit_req_rejected_dry_run_total[5m]))
+          + sum(rate(nginx_limit_conn_rejected_total[5m]))
+          + sum(rate(nginx_limit_conn_rejected_dry_run_total[5m]))
+
+  - name: nginx-alerts
+    interval: 30s
+    rules:
+      - alert: NginxDown
+        expr: nginx_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "nginx stub_status is unreachable"
+          description: >-
+            nginx-exporter cannot scrape nginx:8081/stub_status for 2 minutes.
+            nginx is the sole external edge — if it is down, so is the site.
+
+      # The primary DoS signal. In phase 1 this fires on REJECTED_DRY_RUN, which
+      # is exactly what should be investigated before enforcing: either an attack
+      # or a zone sized too tightly.
+      - alert: NginxRateLimitSpike
+        expr: nginx:limit_rejected:rate5m > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "nginx is rejecting requests at {{ $value | printf \"%.1f\" }}/s"
+          description: >-
+            Sustained limit_req/limit_conn rejections for 5 minutes. Check the
+            nginx job in Loki, grouped by uri and remote_addr, to tell a flood
+            from a mis-sized zone.
+
+      # `reading` counts connections whose request headers are still arriving.
+      # Steady-state this sits near zero; a sustained pile-up with flat request
+      # throughput is the classic slowloris shape.
+      - alert: NginxSlowlorisSuspect
+        expr: nginx_connections_reading > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "nginx has {{ $value }} connections stuck reading headers"
+          description: >-
+            client_header_timeout is 10s, so a sustained backlog here means
+            connections are being opened faster than they time out.
+
+      - alert: NginxConnectionsHigh
+        expr: nginx_connections_active > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "nginx active connections elevated ({{ $value }})"
+          description: >-
+            Capacity is worker_processes (auto, one per core) x
+            worker_connections (4096). Re-baseline this threshold against normal
+            peak once phase 1 has a week of data.

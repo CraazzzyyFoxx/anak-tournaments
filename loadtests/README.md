@@ -69,8 +69,14 @@ uv run locust --worker --processes 4
 - Watch p95/p99 per endpoint group (URLs are grouped, e.g. `/api/v1/tournaments/[id]`).
 - First-hit latency on statistics endpoints is the cold-cache cost; repeats
   measure the Redis cache path. Restart Redis between runs to re-measure cold.
-- `429` responses count as failures — if you see them outside `/api/auth/`,
-  you are hitting the gateway's per-IP token bucket; distribute workers
-  across hosts for higher aggregate load.
+- `429` responses count as failures. Two limiters can produce them:
+  - **nginx** (`req_edge` 40 r/s / burst 80, plus tighter zones on auth, WS and
+    the upload paths — see
+    [the DoS design](../docs/superpowers/specs/2026-08-06-nginx-dos-hardening-design.md)).
+    A run from the host against `http://localhost` reaches nginx over the docker
+    bridge, i.e. from a private address, which the whitelist exempts — so local
+    runs never see these and, by the same token, never exercise the limiter.
+    Runs from a remote host will: distribute generators across source IPs.
+  - **the gateway's** per-IP token bucket, for everything nginx let through.
 - Grafana dashboards (`make monitoring-up`) show the server-side view
   (RabbitMQ queue depth, worker latency, DB pool saturation) during a run.

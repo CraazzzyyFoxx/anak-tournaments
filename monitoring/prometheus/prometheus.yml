@@ -16,6 +16,7 @@ rule_files:
   - /etc/prometheus/rules/rabbitmq.yml
   - /etc/prometheus/rules/redis.yml
   - /etc/prometheus/rules/infrastructure.yml
+  - /etc/prometheus/rules/nginx.yml
 
 scrape_configs:
   # --------------------------------------------------------------------------
@@ -119,6 +120,27 @@ scrape_configs:
       - source_labels: [__address__]
         target_label: instance
         replacement: gateway
+
+  # --------------------------------------------------------------------------
+  # Edge (nginx) — connection/request counters from stub_status via
+  # nginx-prometheus-exporter, plus the rate-limit outcome counters promtail
+  # derives from the nginx access log (stub_status has no per-status counters).
+  # --------------------------------------------------------------------------
+  - job_name: nginx
+    static_configs:
+      - targets: ["nginx-exporter:9113"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: nginx
+
+  - job_name: promtail
+    static_configs:
+      - targets: ["promtail:9080"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: promtail
 
   # --------------------------------------------------------------------------
   # Infrastructure: host (node-exporter), containers (cAdvisor), PostgreSQL

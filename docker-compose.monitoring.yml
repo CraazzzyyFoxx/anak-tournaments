@@ -109,6 +109,27 @@ services:
           cpus: '0.05'
           memory: 32M
 
+  # nginx edge — connection/request counters from the internal stub_status
+  # endpoint (nginx :8081, not published to the host). stub_status carries no
+  # per-status counters, so 429 rates come from the `nginx` job in Loki; this
+  # exporter covers saturation and slowloris signals
+  # (nginx_connections_{active,reading,writing,waiting}).
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.4.1
+    restart: unless-stopped
+    command:
+      - "--nginx.scrape-uri=http://nginx:8081/stub_status"
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 32M
+        reservations:
+          cpus: '0.05'
+          memory: 16M
+
   # Host-level metrics (CPU / memory / disk / network). Reads the host via
   # bind-mounts; no ports published — scraped over the compose network.
   node-exporter:

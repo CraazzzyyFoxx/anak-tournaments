@@ -622,10 +622,25 @@ services:
     # by Traefik in front of nginx, so no certs/443 here. nginx publishes the
     # host port Traefik already targets (APP_PORT, was Kong's), so no Traefik
     # config change is needed for the cutover.
+    # APP_BIND defaults to loopback: a bare "${APP_PORT}:80" binds 0.0.0.0, which
+    # exposes nginx to the internet directly, bypassing Traefik and every limit
+    # configured there. Docker's published ports are NOT covered by ufw's filter
+    # chains, so this must not rely on the host firewall alone. Production runs
+    # Traefik as a host process pointed at http://127.0.0.1:${APP_PORT}, so the
+    # default is exactly right; override APP_BIND (e.g. to a bridge IP) only when
+    # the proxy in front lives elsewhere. Client-IP spoofing is not possible on a
+    # direct path — a public peer is not in set_real_ip_from — but the Traefik
+    # rate limits are bypassable.
     ports:
-      - "${APP_PORT}:80"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Structured JSON access log + error log, tailed by Promtail into Loki
+      # (promtail mounts ./logs as /var/log/app). Mounting over /var/log/nginx
+      # replaces the image's stdout symlinks with real files, so `docker logs
+      # nginx` goes quiet — Grafana is the consumer. Rotation is host-side and
+      # must use copytruncate or follow up with `nginx -s reopen`.
+      - ./logs/nginx:/var/log/nginx
     depends_on:
       gateway:
         condition: service_started

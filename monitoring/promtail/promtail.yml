@@ -21,9 +21,10 @@ scrape_configs:
         labels:
           job: app_services
           __path__: /var/log/app/**/*.log
-          # The Go gateway emits flat slog JSON (not Loguru's nested shape); it is
-          # parsed by the dedicated `gateway` job below, so exclude it here.
-          __path_exclude__: /var/log/app/gateway/*.log
+          # The Go gateway emits flat slog JSON (not Loguru's nested shape) and
+          # nginx emits its own edge_json shape; both are parsed by the dedicated
+          # jobs below, so exclude them here.
+          __path_exclude__: /var/log/app/{gateway,nginx}/*.log
 
     pipeline_stages:
       # Parse the JSON log lines emitted by Loguru with serialize=True
@@ -96,3 +97,90 @@ scrape_configs:
       - drop:
           source: message
           expression: "GET /health"
+
+  # --------------------------------------------------------------------------
+  # nginx edge — the `edge_json` log_format from nginx/nginx.conf. `limit_req` /
+  # `limit_conn` carry the rate-limit outcome (PASSED / REJECTED /
+  # REJECTED_DRY_RUN) and are the primary signal for calibrating and then
+  # enforcing the DoS limits — see
+  # docs/superpowers/specs/2026-08-06-nginx-dos-hardening-design.md.
+  #
+  # error.log is plain text, not JSON: the json stage leaves its fields empty and
+  # the line is still shipped, which is what we want for the modules' own
+  # "limiting requests" / "limiting connections" warnings.
+  # --------------------------------------------------------------------------
+  - job_name: nginx
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          __path__: /var/log/app/nginx/*.log
+
+    pipeline_stages:
+      - json:
+          expressions:
+            status: status
+            uri: uri
+            method: method
+            remote_addr: remote_addr
+            limit_req: limit_req
+            limit_conn: limit_conn
+            timestamp: time
+
+      # status/limit_* are low-cardinality and are what the alerts group by.
+      # remote_addr and uri stay as log content, NOT labels — either would blow
+      # up Loki's index, and the attacker controls both.
+      - labels:
+          status:
+          limit_req:
+          limit_conn:
+
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+
+      # Container healthcheck polls /health every 30s; same noise drop as the
+      # other jobs.
+      - drop:
+          source: uri
+          expression: "^/health$"
+
+      # Turn the rate-limit outcome into Prometheus counters on promtail:9080.
+      # Grafana alerting is not provisioned as code in this repo (only
+      # dashboards + datasources), so a Loki-only alert would live outside git.
+      # Exposing counters here keeps the alert a plain Prometheus rule
+      # (monitoring/prometheus/rules/nginx.yml).
+      #
+      # During rollout phase 1 (limit_req_dry_run on) only the _dry_run counter
+      # moves — that is the calibration signal. After enforcement the other one
+      # takes over; both are kept so flipping dry_run needs no dashboard edits.
+      - metrics:
+          nginx_limit_req_rejected_total:
+            type: Counter
+            description: "Requests rejected by an nginx limit_req zone"
+            source: limit_req
+            config:
+              action: inc
+              value: REJECTED
+          nginx_limit_req_rejected_dry_run_total:
+            type: Counter
+            description: "Requests an nginx limit_req zone would have rejected (dry run)"
+            source: limit_req
+            config:
+              action: inc
+              value: REJECTED_DRY_RUN
+          nginx_limit_conn_rejected_total:
+            type: Counter
+            description: "Requests rejected by an nginx limit_conn zone"
+            source: limit_conn
+            config:
+              action: inc
+              value: REJECTED
+          nginx_limit_conn_rejected_dry_run_total:
+            type: Counter
+            description: "Requests an nginx limit_conn zone would have rejected (dry run)"
+            source: limit_conn
+            config:
+              action: inc
+              value: REJECTED_DRY_RUN
