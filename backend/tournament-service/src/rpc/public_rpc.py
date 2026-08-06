@@ -29,6 +29,7 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from faststream.rabbit import Channel
@@ -44,6 +45,7 @@ from shared.services.subscription_realtime import publish_subscriptions_updated
 from shared.services.subscription_wiring import build_resolver, build_store
 from shared.services.tournament_visibility import assert_tournament_viewable
 from src import models, schemas
+from src.core import db
 from src.core.config import settings
 from src.core.redis import get_realtime_redis
 from src.rpc._helpers import (
@@ -126,6 +128,45 @@ def _optional_identity(data: dict[str, Any]) -> models.AuthUser | None:
     if not data.get("identity"):
         return None
     return rehydrate_user(data.get("identity"))
+
+
+# Coalesces concurrent rebuilds of the public registration list for the same
+# tournament. A registration mutation notifies every connected viewer at once
+# (the "realtime invalidation herd" -- see the channel comment on
+# ``_reg_pub_list`` below), so without this a burst of N viewers refetching
+# after one mutation triggers N identical, expensive read-model builds that
+# queue behind the channel's ``prefetch_count`` -- the actual driver of this
+# endpoint's p95 tail latency. Followers join the leader's task instead of
+# starting their own: still exactly one live DB read per burst, just shared by
+# everyone asking for the same tournament_id at the same instant. Keyed by
+# tournament_id only -- the viewer-dependent visibility check always runs on
+# the caller's own session before this is ever reached (see
+# ``assert_tournament_viewable``'s cache note), so a hidden tournament's gate
+# is never skipped for a follower.
+_reg_pub_list_inflight: dict[int, asyncio.Task[Any]] = {}
+
+
+async def _build_registration_list(tournament_id: int) -> Any:
+    async with db.async_session_maker() as session:
+        return await reg_service.build_public_registration_list(session, tournament_id=tournament_id)
+
+
+async def _coalesced_registration_list(tournament_id: int) -> Any:
+    task = _reg_pub_list_inflight.get(tournament_id)
+    if task is None:
+        task = asyncio.create_task(_build_registration_list(tournament_id))
+        _reg_pub_list_inflight[tournament_id] = task
+
+        def _cleanup(done: asyncio.Task[Any]) -> None:
+            if _reg_pub_list_inflight.get(tournament_id) is done:
+                del _reg_pub_list_inflight[tournament_id]
+
+        task.add_done_callback(_cleanup)
+    # Shielded: a follower's own cancellation (its caller disconnected/timed
+    # out) must not cancel the shared build out from under every other
+    # follower -- and unlike a plain ``await task``, ``Task.cancel()`` DOES
+    # propagate into whatever future a task is currently awaiting.
+    return await asyncio.shield(task)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -526,12 +567,13 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.reg_pub_list", channel=Channel(prefetch_count=8))
     async def _reg_pub_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            # Public route — no identity required. Read-model assembly lives in
-            # the service layer (always-live data; see its docstring for the
-            # cache.disabling() warning).
+            # Public route — no identity required. The visibility check is
+            # viewer-dependent and always runs on this call's own session; the
+            # (expensive, viewer-agnostic) read-model build below is coalesced
+            # across concurrent callers -- see ``_coalesced_registration_list``.
             tournament_id = _path_int(data, "tournament_id")
             await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
-            return _dump(await reg_service.build_public_registration_list(session, tournament_id=tournament_id))
+            return _dump(await _coalesced_registration_list(tournament_id))
 
         return await _run(logger, op)
 
