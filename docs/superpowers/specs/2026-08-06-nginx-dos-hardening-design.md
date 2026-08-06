@@ -414,67 +414,104 @@ nginx-exporter:
 
 ---
 
-## 8. Вне репозитория (ops)
+## 8. Вне репозитория (ops) — **применено на dd-new 2026-08-06**
 
-### 8.1 Traefik
+### 8.1 Traefik — ✅ применено (с отклонениями от исходного плана)
 
-HTTP/2 и TLS терминируются здесь, значит **вся защита от h2-атак — тоже здесь**. Ревью 2026-07-03 зафиксировало рабочий PoC HPACK-bomb.
+Traefik на dd-new — процесс systemd (`/etc/traefik/traefik.yml`, dynamic-провайдер
+с `watch: true`), обслуживающий **несколько проектов** одного хоста (dudeduck,
+remnawave, grafana, pm-specs), а не только OWT. Это изменило два решения:
+
+**Защита от HTTP/2 не нужна — h2 уже выключен.** В `dynamic/main.yml`:
 
 ```yaml
-entryPoints:
-  websecure:
-    address: ":443"
-    http2:
-      maxConcurrentStreams: 100      # дефолт 250
-    transport:
-      respondingTimeouts:
-        readTimeout:  30s
-        writeTimeout: 60s
-        idleTimeout:  60s
-    http:
-      middlewares: [edge-inflight@file, edge-ratelimit@file]
+tls:
+  options:
+    default:
+      alpnProtocols: ["http/1.1"]
+```
 
+Клиент не может договориться на HTTP/2, поэтому HPACK-bomb и Rapid Reset из ревью
+2026-07-03 неприменимы. `http2.maxConcurrentStreams` из первоначального плана —
+мёртвая настройка здесь; не добавлялась.
+
+**`respondingTimeouts` НЕ добавлены — сознательно.** Исходный план предлагал
+`readTimeout: 30s` / `writeTimeout: 60s`; на этой топологии это сломало бы прод:
+
+- `readTimeout` в Traefik ограничивает чтение **всего запроса вместе с телом** —
+  60 МБ match-log upload по слабому каналу не уложится;
+- `writeTimeout` рвёт долгоживущие WebSocket-соединения (`/ws` живёт до часа);
+- entryPoint один на все проекты хоста, отдельного для OWT нет.
+
+Slowloris закрыт слоем ниже (nginx: 10s/15s/30s), где таймауты можно задать
+по-локационно. Это осознанный компромисс: медленный клиент может занять
+соединение Traefik, но не воркер nginx и не gateway.
+
+**Что добавлено** — `/etc/traefik/dynamic/owt-ratelimit.yml`, подключённый только
+к роутерам `owt` и `custom-domains-catchall` (не к entryPoint — иначе задело бы
+чужие проекты):
+
+```yaml
 http:
   middlewares:
-    edge-inflight:
-      inFlightReq:
-        amount: 200
-        sourceCriterion: { ipStrategy: { depth: 0 } }   # depth 0 = реальный TCP-пир, CDN нет
-    edge-ratelimit:
-      rateLimit:
-        average: 100
-        period: 1s
-        burst: 200
-        sourceCriterion: { ipStrategy: { depth: 0 } }
+    owt-ratelimit:
+      rateLimit: { average: 200, period: 1s, burst: 400 }
+    owt-inflight:
+      inFlightReq: { amount: 400 }
 ```
 
-Держать Traefik на Go ≥1.21 — там встроена митигация Rapid Reset (CVE-2023-44487).
+Числа **заведомо выше** nginx-овских (40 r/s / burst 80 / 100 in-flight): nginx —
+основной настраиваемый лимитер и пока в dry-run; будь Traefik строже, он молча
+стал бы связывающим и начал отдавать реальные 429, обессмыслив фазу наблюдения.
+`sourceCriterion` оставлен по умолчанию — `forwardedHeaders.trustedIPs` доверяет
+только приватным хопам, так что клиентский `X-Forwarded-For` в ключ не попадает.
 
-### 8.2 ⚠️ Обход Traefik: проверить публикацию порта
+> **Известный пробел.** `/etc/traefik/dynamic/custom-domains.yml` генерируется
+> автоматически из `workspace.custom_domain`, и его роутеры middleware не
+> получают. Верифицированные кастом-домены прикрыты только слоем nginx (он ловит
+> любой Host — `server_name _`). Чтобы закрыть — добавить `middlewares` в шаблон
+> генератора.
 
-`docker-compose.production.yml:622` — `ports: - "${APP_PORT}:80"` **без адреса привязки биндится на `0.0.0.0`**. Если хост-фаервол не закрывает `APP_PORT`, nginx доступен из интернета напрямую, минуя Traefik и все его лимиты.
+### 8.2 Обход Traefik — ✅ закрыто
 
-```yaml
-ports:
-  - "127.0.0.1:${APP_PORT}:80"    # если Traefik — процесс на хосте
+Проблема была реальной: **опубликованные Docker'ом порты не проходят через
+filter-цепочки ufw**, поэтому `ports: "${APP_PORT}:80"` (bind `0.0.0.0:8888`)
+нельзя было считать закрытым тем, что ufw не разрешает 8888.
+
+На dd-new это дополнительно перехватывала цепочка `DOCKER-USER → DD-INGRESS`:
+
 ```
-(если Traefik в docker — привязать к IP нужного bridge-интерфейса либо закрыть порт в ufw/nftables).
-
-Спуфинг клиентского IP при прямом доступе при этом **невозможен**: публичный пир не входит в `set_real_ip_from`, поэтому `realip` не применяется и `$remote_addr` остаётся адресом атакующего. Но rate-limit Traefik он всё равно обходит.
-
-### 8.3 Ядро хоста
-
+-A DD-INGRESS -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+-A DD-INGRESS -i enp1s0 -m conntrack --ctstate NEW -j DROP
 ```
-net.ipv4.tcp_syncookies       = 1
-net.ipv4.tcp_max_syn_backlog  = 8192
-net.core.somaxconn            = 8192
-net.ipv4.tcp_fin_timeout      = 15
-net.netfilter.nf_conntrack_max = 262144
-```
+
+Тем не менее защита опиралась на одну цепочку iptables. Теперь порт биндится в
+loopback (`APP_BIND`, дефолт `127.0.0.1`), что совпадает с тем, куда Traefik и так
+ходит (`owt-svc → http://127.0.0.1:8888`). Проверено: `ss -lntp` показывает
+`127.0.0.1:8888`, сайт через Traefik отвечает 200.
+
+### 8.3 Ядро хоста — ✅ уже настроено, менять нечего
+
+Все рекомендованные значения уже стоят персистентно в `/etc/sysctl.d/99-tuning.conf`:
+`tcp_syncookies=1`, `tcp_max_syn_backlog=8192`, `somaxconn=8192`, `tcp_fin_timeout=15`,
+`nf_conntrack_max=262144`, `netdev_max_backlog=16384` (плюс BBR/fq). Использование
+conntrack на момент проверки — 439 из 262144.
 
 ### 8.4 Провайдер
 
-Уточнить наличие L3/L4-scrubbing у хостера. Без него объёмная атака кладёт канал вне зависимости от любых настроек nginx — это принимаемый риск (D-6).
+Уточнить наличие L3/L4-scrubbing у Vultr. Без него объёмная атака кладёт канал вне зависимости от любых настроек nginx — это принимаемый риск (D-6).
+
+### 8.5 Ротация логов nginx — ✅ применено
+
+Замена stdout-симлинков образа на реальные файлы забрала у nginx ротацию, которую
+раньше делал docker json-file. Остальные сервисы стека ротируются сами (Loguru и
+собственная ротация gateway — отсюда `*.log.gz` рядом с их логами), поэтому
+logrotate добавлен **только** для nginx: `/etc/logrotate.d/owt-nginx`, daily,
+14 копий, `copytruncate` (nginx в контейнере держит fd, сигналить с хоста нечем).
+
+Имена ротированных файлов (`access.log.1`, `access.log.2.gz`) не подпадают под
+promtail-глоб `/var/log/app/nginx/*.log`, так что повторной загрузки старых строк
+в Loki не будет. Проверено `logrotate -d`.
 
 ---
 
@@ -567,11 +604,27 @@ limit_req_zone $bot_key zone=req_bot:2m rate=10r/s;
 | 12 | Утечка токена: `GET /ws?token=Bearer.SUPERSECRET123` | ✅ строки нет в логе, записан `uri=/ws` |
 | 13 | Slowloris: незавершённые заголовки в сыром сокете | ✅ соединение закрыто через 10.1 с (было бы 60 с) |
 
-### Осталось проверить на реальном стенде
+### Выполнено в проде (dd-new, 2026-08-06)
 
-1. **Память:** `docker stats nginx` после старта — RSS с преаллоцированными зонами должен уместиться в 256 МБ с запасом.
-2. **WS не сломан:** соединение с `/ws` живёт >180 с в простое; `$limit_conn_status` = `PASSED`.
-3. **Upload не сломан:** файл ~50 МБ проходит на `/api/v1/admin/logs/upload` в пределах `client_body_timeout 30s`.
-4. **Логи доезжают:** записи `{job="nginx"}` видны в Grafana Logs; метки `status`, `limit_req` заполнены.
-5. **Метрики:** `nginx_up == 1`, счётчики `nginx_limit_req_rejected_dry_run_total` растут на promtail:9080.
-6. **§8.2:** закрыт ли `APP_PORT` на хосте — единственная задача, которую стоит сделать до раскатки.
+| Проверка | Результат |
+|----------|-----------|
+| `nginx -t` на файле хоста | ✅ syntax ok |
+| Пересоздание `owt-nginx-1` | ✅ `Up (healthy)`, порт `127.0.0.1:8888->80` |
+| Сайт через Traefik | ✅ `https://owt.craazzzyyfoxx.me` → 200 |
+| Остальные роутеры хоста не задеты | ✅ grafana 302, pm-specs 200, кастом-домен 200, dudeduck 404 (норма). `panel.vpn` 502 — **было до правки**, на `127.0.0.1:3100` никто не слушает |
+| Память nginx | ✅ 20.4 MiB из 256 MiB (зоны mmap'ятся лениво) |
+| Логи в файле | ✅ JSON, реальные клиентские IP, `limit_req`/`limit_conn` заполнены |
+| WS живой | ✅ 40 ответов `101` в первых 2720 строках лога |
+| Loki | ✅ `job` values: `app_services`, `gateway`, `nginx` |
+| Prometheus targets | ✅ `nginx` и `promtail` — `health: up`, `nginx_up == 1` |
+| Правила | ✅ группы `nginx-recording` / `nginx-alerts`, алерты `NginxDown`, `NginxRateLimitSpike`, `NginxSlowlorisSuspect`, `NginxConnectionsHigh` |
+| Ложных алертов нет | ✅ firing только преднастроенные `RedisHighMemory` / `RedisMemoryCritical` (не связаны) |
+| Traefik rate limit активен | ✅ 2400 запросов в 40 потоков (~1900 rps) с одного IP → 1757 × 429. nginx в dry-run 429 отдавать не может, значит это Traefik |
+| Сквозной учёт nginx в проде | ✅ тот же прогон дал 514 × `REJECTED_DRY_RUN` по `/api/v1/health` с одного IP |
+| Реальный трафик | ✅ 1576 `PASSED`, 630 exempt (внутренние), **0 отказов на живых пользователях** |
+
+### Осталось проверить
+
+1. **Upload не сломан:** файл ~50 МБ на `/api/v1/admin/logs/upload` в пределах `client_body_timeout 30s` — нужен реальный админский лог, синтетикой не проверялось.
+2. ~~**Ротация** `logs/nginx/*.log`~~ — ✅ сделано, см. §8.5.
+3. **Фаза 2:** через 7-14 дней снять статистику `REJECTED_DRY_RUN` (исключив собственные нагрузочные прогоны по `remote_addr`), поправить зоны, затем `dry_run off`.
