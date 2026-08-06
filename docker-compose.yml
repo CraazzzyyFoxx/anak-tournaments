@@ -28,10 +28,11 @@ services:
 
   redis:
     image: redis/redis-stack:latest
-    # See docker-compose.production.yml for why this is required (maxmemory
-    # defaults to 0/unlimited and breaks the RedisMemoryCritical alert ratio).
-    command: >-
-      redis-server --maxmemory 96mb --maxmemory-policy allkeys-lru
+    # See docker-compose.production.yml for why REDIS_ARGS (not `command:`)
+    # is required: overriding `command:` skips /entrypoint.sh, which is what
+    # sets --protected-mode no and loads the redis-stack modules.
+    environment:
+      REDIS_ARGS: "--maxmemory 96mb --maxmemory-policy allkeys-lru"
     ports:
       - "6379:6379"
     volumes:

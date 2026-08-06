@@ -12,8 +12,14 @@ services:
     # cache, OAuth/SSO tickets, session blacklist, feature cache) is
     # TTL-bound and callers already treat cache misses as a graceful
     # DB-fallback path, not a correctness failure.
-    command: >-
-      redis-server --maxmemory 400mb --maxmemory-policy allkeys-lru
+    #
+    # Set via REDIS_ARGS (not `command:`) — the image's /entrypoint.sh CMD
+    # hardcodes --protected-mode no and --loadmodule for every redis-stack
+    # module (RediSearch/RedisJSON/etc.) and appends ${REDIS_ARGS} last;
+    # overriding `command:` skips the entrypoint entirely and silently
+    # drops both protected-mode-off and all module loading.
+    environment:
+      REDIS_ARGS: "--maxmemory 400mb --maxmemory-policy allkeys-lru"
     deploy:
       resources:
         limits:
