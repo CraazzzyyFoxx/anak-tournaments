@@ -296,7 +296,7 @@ function EncounterEditDialogBody({
         {validationError && <p className="text-sm text-destructive font-semibold">{validationError}</p>}
       </div>
 
-      <DialogFooter className="mt-6 flex flex-row items-center justify-end gap-2">
+      <DialogFooter className="mt-6 flex flex-row flex-wrap items-center justify-end gap-2">
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
