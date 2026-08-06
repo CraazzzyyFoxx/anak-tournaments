@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from loguru import logger
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -74,6 +76,15 @@ def setup_tracing(
             provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)))
             trace.set_tracer_provider(provider)
 
+        # opentelemetry-instrumentation-httpx defaults to the OLD stable HTTP
+        # semconv (`http.url`, `http.method`). Sentry's OTLP ingest builds a
+        # span's description and low-cardinality name from the NEW semconv
+        # (`url.full`, `http.request.method`) instead, so without this every
+        # http.client span reaches Sentry with description "(no value)" and
+        # every un-parented call collapses into one generic "GET" transaction.
+        # "dup" emits both attribute sets, so Tempo/the Grafana Tracing
+        # dashboard (built on the old names) sees no change.
+        os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
         if not getattr(HTTPXClientInstrumentor, "_is_instrumented_by_opentelemetry", False):
             HTTPXClientInstrumentor().instrument()
 
