@@ -173,6 +173,7 @@ async def start_worker() -> None:
         sampler_arg=config.settings.otel_traces_sampler_arg,
         environment=config.settings.environment,
         release=config.settings.sentry_release,
+        engine=db.async_engine,
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
     await s3_client.start()

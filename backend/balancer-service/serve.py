@@ -94,6 +94,7 @@ async def setup_worker_observability() -> None:
         sampler_arg=config.otel_traces_sampler_arg,
         environment=config.environment,
         release=config.sentry_release,
+        engine=db.async_engine,
     )
     start_worker_metrics_server(config.worker_metrics_port)
     logger.info("Balancer worker started")

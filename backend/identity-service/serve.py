@@ -125,6 +125,7 @@ async def setup_worker() -> None:
         sampler_arg=settings.otel_traces_sampler_arg,
         environment=settings.environment,
         release=settings.sentry_release,
+        engine=db.async_engine,
     )
     if settings.worker_metrics_port:
         start_worker_metrics_server(settings.worker_metrics_port)

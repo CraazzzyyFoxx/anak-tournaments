@@ -28,7 +28,7 @@ from shared.observability import (
 )
 from shared.schemas.events import DiscordCommandEvent, MatchLogProcessedEvent, UploadMatchLogEvent
 from src.core.config import settings
-from src.core.db import async_session_maker
+from src.core.db import async_engine, async_session_maker
 from src.feedback import (
     AttachmentFeedbackResult,
     AttachmentFeedbackState,
@@ -606,6 +606,7 @@ async def main():
             sampler_arg=settings.otel_traces_sampler_arg,
             environment=settings.environment,
             release=settings.sentry_release,
+            engine=async_engine,
         )
         start_worker_metrics_server(settings.worker_metrics_port)
         await start_rabbitmq_listener()

@@ -34,6 +34,7 @@ def setup_tracing(
     sampler_arg: float = 0.1,
     environment: str | None = None,
     release: str | None = None,
+    engine: object | None = None,
 ) -> None:
     """Configure OpenTelemetry with an OTLP exporter.
 
@@ -43,6 +44,12 @@ def setup_tracing(
     release from ``service.version``. Without them every span lands in Sentry
     unassigned, so production and local traces share one bucket. The gateway
     sets the same two attributes (gateway/internal/tracing/tracing.go).
+
+    ``engine`` is an optional SQLAlchemy ``Engine``/``AsyncEngine`` to wrap for
+    query spans (see :func:`instrument_sqlalchemy`); passing it here, rather
+    than calling that function separately, keeps it behind the same
+    ``enabled``/``otlp_endpoint`` guard as every other instrumentor below
+    instead of registering listeners that end up nowhere when tracing is off.
     """
     if not enabled:
         logger.info("OpenTelemetry tracing disabled")
@@ -70,6 +77,9 @@ def setup_tracing(
         if not getattr(HTTPXClientInstrumentor, "_is_instrumented_by_opentelemetry", False):
             HTTPXClientInstrumentor().instrument()
 
+        if engine is not None:
+            instrument_sqlalchemy(engine)
+
         logger.success(
             f"Tracing enabled for {service_name} (endpoint={otlp_endpoint}, sampler={sampler_name}:{sampler_arg})"
         )
@@ -78,9 +88,20 @@ def setup_tracing(
 
 
 def instrument_sqlalchemy(engine) -> None:
-    """Instrument a SQLAlchemy engine for automatic query tracing."""
+    """Instrument a SQLAlchemy engine for automatic query tracing.
+
+    Accepts a sync ``Engine`` or an ``AsyncEngine``. Every service here uses
+    ``create_async_engine`` (asyncpg), and SQLAlchemy's ``AsyncEngine`` refuses
+    event-listener registration outright (``listen()`` on it raises
+    ``NotImplementedError`` — see ``AsyncEngine._no_async_engine_events``), so
+    the instrumentor's ``before_cursor_execute``/etc. listeners must attach to
+    the underlying sync engine, which is what ``EngineTracer`` actually needs.
+    Passing the bare ``AsyncEngine`` would silently no-op (swallowed by the
+    ``except`` below) instead of producing query spans.
+    """
+    sync_engine = getattr(engine, "sync_engine", engine)
     try:
-        SQLAlchemyInstrumentor().instrument(engine=engine)
+        SQLAlchemyInstrumentor().instrument(engine=sync_engine)
         logger.debug("SQLAlchemy instrumented for tracing")
     except Exception as exc:
         logger.error(f"Failed to instrument SQLAlchemy: {exc}")
