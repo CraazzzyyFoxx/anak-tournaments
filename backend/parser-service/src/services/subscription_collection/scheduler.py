@@ -22,6 +22,7 @@ from loguru import logger
 
 from shared import models
 from shared.core.enums import SubscriptionCollectionSource
+from shared.observability import observe_scheduled_job
 from shared.services import settings_provider
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
@@ -69,39 +70,40 @@ async def run_subscription_collection_tick(
         logger.debug("Another replica holds the subscription collection leader lock; skipping tick")
         return 0
 
-    try:
-        async with session_factory() as session:
-            cfg = await settings_provider.get_subscription_collection_config(session)
-            if not cfg.enabled:
-                logger.debug("Subscription collection disabled in settings; skipping tick")
-                return 0
-
-            last_run = await last_scheduled_run_at(session)
-            if last_run is not None:
-                # Rows carry tz-aware timestamps, but a naive value from an older
-                # driver/dialect combination must not raise here and kill the job.
-                if last_run.tzinfo is None:
-                    last_run = last_run.replace(tzinfo=UTC)
-                due_at = last_run + timedelta(seconds=cfg.interval_seconds)
-                if datetime.now(UTC) < due_at:
-                    logger.debug("Subscription collection not due until {}; skipping tick", due_at)
+    async with observe_scheduled_job("subscription_collection"):
+        try:
+            async with session_factory() as session:
+                cfg = await settings_provider.get_subscription_collection_config(session)
+                if not cfg.enabled:
+                    logger.debug("Subscription collection disabled in settings; skipping tick")
                     return 0
 
-            count = await service.collect_subscriptions_for_active_tournaments(
-                session,
-                discord_bot_token=settings.discord_token,
-                twitch_client_id=settings.twitch_client_id,
-                proxy=settings.proxy_url,
-                batch_size=cfg.batch_size,
-                redis=redis_client,
-            )
-            logger.info("Subscription collection tick processed {} users", count)
-            return count
-    except Exception:
-        logger.exception("Subscription collection tick failed")
-        return 0
-    finally:
-        await release_distributed_lock(redis_client, token)
+                last_run = await last_scheduled_run_at(session)
+                if last_run is not None:
+                    # Rows carry tz-aware timestamps, but a naive value from an older
+                    # driver/dialect combination must not raise here and kill the job.
+                    if last_run.tzinfo is None:
+                        last_run = last_run.replace(tzinfo=UTC)
+                    due_at = last_run + timedelta(seconds=cfg.interval_seconds)
+                    if datetime.now(UTC) < due_at:
+                        logger.debug("Subscription collection not due until {}; skipping tick", due_at)
+                        return 0
+
+                count = await service.collect_subscriptions_for_active_tournaments(
+                    session,
+                    discord_bot_token=settings.discord_token,
+                    twitch_client_id=settings.twitch_client_id,
+                    proxy=settings.proxy_url,
+                    batch_size=cfg.batch_size,
+                    redis=redis_client,
+                )
+                logger.info("Subscription collection tick processed {} users", count)
+                return count
+        except Exception:
+            logger.exception("Subscription collection tick failed")
+            return 0
+        finally:
+            await release_distributed_lock(redis_client, token)
 
 
 def start_scheduler(*, redis: Any | None = None) -> None:

@@ -37,7 +37,7 @@ from loguru import logger
 
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
 from shared.models.ingestion.log_processing import LogProcessingRecord, LogProcessingStatus
-from shared.observability import metrics, publish_message
+from shared.observability import metrics, observe_scheduled_job, publish_message
 from shared.schemas.events import ProcessMatchLogEvent
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
@@ -189,54 +189,55 @@ async def reclaim_stalled_logs(
         return ReaperResult()  # another replica reaps this tick
 
     moment = now or datetime.now(UTC)
-    try:
-        async with session_factory() as session:
-            requeue, exhausted = await _claim_stalled(
-                session,
-                now=moment,
-                pending_after_seconds=cfg.log_reaper_pending_after_seconds,
-                processing_after_seconds=cfg.log_reaper_processing_after_seconds,
-                max_attempts=cfg.log_reaper_max_attempts,
-                limit=cfg.log_reaper_batch_size,
-            )
-
-        if not requeue and not exhausted:
-            return ReaperResult()
-
-        # Publish only after the reset committed: a message for a row we failed to
-        # persist would be processed against stale state.
-        published = 0
-        target = require_broker(broker)
-        for item in requeue:
-            event = ProcessMatchLogEvent(tournament_id=item.tournament_id, filename=item.filename)
-            try:
-                await publish_message(target, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
-            except Exception:
-                # The row stays pending and is picked up again once its window
-                # reopens, so a broker blip costs a delay, not the work.
-                logger.exception(
-                    f"Failed to requeue stalled match log record={item.record_id} filename={item.filename}"
+    async with observe_scheduled_job("match_log_stall_reaper"):
+        try:
+            async with session_factory() as session:
+                requeue, exhausted = await _claim_stalled(
+                    session,
+                    now=moment,
+                    pending_after_seconds=cfg.log_reaper_pending_after_seconds,
+                    processing_after_seconds=cfg.log_reaper_processing_after_seconds,
+                    max_attempts=cfg.log_reaper_max_attempts,
+                    limit=cfg.log_reaper_batch_size,
                 )
-                continue
-            published += 1
 
-        for workspace_id in {item.workspace_id for item in requeue if item.workspace_id}:
-            await logs_realtime.publish_logs_updated(redis, workspace_id, reason="requeued")
+            if not requeue and not exhausted:
+                return ReaperResult()
 
-        metrics.count("parser.match_log.reclaimed", published, attributes={"outcome": "requeued"})
-        metrics.count("parser.match_log.reclaimed", len(exhausted), attributes={"outcome": "exhausted"})
-        logger.info(
-            "Match-log reaper: stalled={} requeued={} exhausted={}",
-            len(requeue) + len(exhausted),
-            published,
-            len(exhausted),
-        )
-        return ReaperResult(requeued=published, exhausted=len(exhausted))
-    except Exception:
-        logger.exception("Match-log stall recovery tick failed")
-        return ReaperResult()
-    finally:
-        await release_distributed_lock(redis, token)
+            # Publish only after the reset committed: a message for a row we failed to
+            # persist would be processed against stale state.
+            published = 0
+            target = require_broker(broker)
+            for item in requeue:
+                event = ProcessMatchLogEvent(tournament_id=item.tournament_id, filename=item.filename)
+                try:
+                    await publish_message(target, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
+                except Exception:
+                    # The row stays pending and is picked up again once its window
+                    # reopens, so a broker blip costs a delay, not the work.
+                    logger.exception(
+                        f"Failed to requeue stalled match log record={item.record_id} filename={item.filename}"
+                    )
+                    continue
+                published += 1
+
+            for workspace_id in {item.workspace_id for item in requeue if item.workspace_id}:
+                await logs_realtime.publish_logs_updated(redis, workspace_id, reason="requeued")
+
+            metrics.count("parser.match_log.reclaimed", published, attributes={"outcome": "requeued"})
+            metrics.count("parser.match_log.reclaimed", len(exhausted), attributes={"outcome": "exhausted"})
+            logger.info(
+                "Match-log reaper: stalled={} requeued={} exhausted={}",
+                len(requeue) + len(exhausted),
+                published,
+                len(exhausted),
+            )
+            return ReaperResult(requeued=published, exhausted=len(exhausted))
+        except Exception:
+            logger.exception("Match-log stall recovery tick failed")
+            return ReaperResult()
+        finally:
+            await release_distributed_lock(redis, token)
 
 
 def start_scheduler(*, redis: Any, broker: Any | None = None) -> None:

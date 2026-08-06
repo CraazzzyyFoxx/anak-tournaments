@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.clients.s3 import S3Client
 from shared.messaging.config import TOURNAMENT_COMPUTE_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
+from shared.observability import observe_scheduled_job
 from src import models, schemas
 from src.core import config, db
 from src.services.division_grid import marketplace
@@ -174,7 +175,7 @@ def _new_s3_client() -> S3Client:
 async def recover_stale_import_jobs() -> int:
     """Requeue imports abandoned by a worker after its lease window."""
     cutoff = datetime.now(UTC) - _STALE_RUNNING_AFTER
-    async with db.async_session_maker() as session:
+    async with observe_scheduled_job("division_grid_import_recovery"), db.async_session_maker() as session:
         jobs = await session.scalars(
             sa.select(models.DivisionGridImportJob).where(
                 models.DivisionGridImportJob.status == "running",

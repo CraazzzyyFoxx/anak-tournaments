@@ -17,6 +17,7 @@ from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
     observe_message_processing,
+    observe_scheduled_job,
     setup_logging,
     setup_sentry,
     setup_tracing,
@@ -84,28 +85,31 @@ broker.include_router(recalculation_events.task_router)
 
 
 async def drain_outbox() -> None:
-    async with db.async_session_maker() as session:
+    async with observe_scheduled_job("event_outbox_drain"), db.async_session_maker() as session:
         published = await publish_pending_outbox_events(session, broker, limit=100, commit=True)
         if published:
             logger.info("Published %d outbox events", published)
 
 
 async def sync_registration_google_sheet_feeds() -> None:
-    results = await registration_service.sync_due_google_sheet_feeds(db.async_session_maker)
-    if results:
-        logger.info("Registration Google Sheets sync completed", results=results)
+    async with observe_scheduled_job("registration_google_sheet_sync"):
+        results = await registration_service.sync_due_google_sheet_feeds(db.async_session_maker)
+        if results:
+            logger.info("Registration Google Sheets sync completed", results=results)
 
 
 async def sync_challonge_active_tournaments() -> None:
-    results = await challonge_sync.sync_active_challonge_tournaments(db.async_session_maker)
-    if results:
-        logger.info("Challonge auto-sync completed", results=results)
+    async with observe_scheduled_job("challonge_active_sync"):
+        results = await challonge_sync.sync_active_challonge_tournaments(db.async_session_maker)
+        if results:
+            logger.info("Challonge auto-sync completed", results=results)
 
 
 async def auto_transition_tournaments() -> None:
-    results = await auto_transitions.run_due_transitions(db.async_session_maker)
-    if results:
-        logger.info("Tournament auto-transitions applied", results=results)
+    async with observe_scheduled_job("auto_transition_tournaments"):
+        results = await auto_transitions.run_due_transitions(db.async_session_maker)
+        if results:
+            logger.info("Tournament auto-transitions applied", results=results)
 
 
 @app.on_startup

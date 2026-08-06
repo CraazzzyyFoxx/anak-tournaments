@@ -21,6 +21,7 @@ from shared.models.ingestion.log_processing import LogProcessingRecord, LogProce
 from shared.observability import (
     make_rabbit_broker,
     observe_message_processing,
+    observe_scheduled_job,
     publish_message,
     setup_logging,
     setup_tracing,
@@ -169,10 +170,7 @@ async def load_active_channels():
         new_channels = {}
         for discord_channel, tournament in result:
             new_channels[discord_channel.channel_id] = tournament.id
-            logger.info(
-                f"📌 Monitoring channel {discord_channel.channel_id} "
-                f"for tournament {tournament.name}"
-            )
+            logger.info(f"📌 Monitoring channel {discord_channel.channel_id} for tournament {tournament.name}")
 
         active_channels = new_channels
         logger.success(f"✅ Loaded {len(active_channels)} active channels")
@@ -523,7 +521,8 @@ async def channel_monitor_task():
 
     while not client.is_closed():
         try:
-            await load_active_channels()
+            async with observe_scheduled_job("discord_channel_monitor"):
+                await load_active_channels()
         except Exception as e:
             logger.error(f"❌ Error reloading channels: {e}")
 
