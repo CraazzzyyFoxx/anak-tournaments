@@ -3,6 +3,17 @@ name: owt
 services:
   redis:
     image: 'redis/redis-stack:latest'
+    # maxmemory must be set explicitly: redis-server ignores the container's
+    # cgroup limit below, so INFO memory reports maxmemory=0 (unlimited) and
+    # `redis_memory_used_bytes / redis_memory_max_bytes` in the Prometheus
+    # alert divides by zero (+Inf%) regardless of actual usage. 400mb leaves
+    # headroom under the 512M limit for redis-stack module overhead
+    # (RediSearch/RedisJSON). allkeys-lru is safe: every key here (RBAC
+    # cache, OAuth/SSO tickets, session blacklist, feature cache) is
+    # TTL-bound and callers already treat cache misses as a graceful
+    # DB-fallback path, not a correctness failure.
+    command: >-
+      redis-server --maxmemory 400mb --maxmemory-policy allkeys-lru
     deploy:
       resources:
         limits:

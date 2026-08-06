@@ -28,6 +28,10 @@ services:
 
   redis:
     image: redis/redis-stack:latest
+    # See docker-compose.production.yml for why this is required (maxmemory
+    # defaults to 0/unlimited and breaks the RedisMemoryCritical alert ratio).
+    command: >-
+      redis-server --maxmemory 96mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     volumes:

@@ -19,7 +19,7 @@ groups:
       # -----------------------------------------------------------------------
       - alert: RedisHighMemory
         expr: |
-          redis_memory_used_bytes / redis_memory_max_bytes > 0.80
+          (redis_memory_used_bytes / redis_memory_max_bytes > 0.80) and redis_memory_max_bytes > 0
         for: 5m
         labels:
           severity: warning
@@ -29,7 +29,7 @@ groups:
 
       - alert: RedisMemoryCritical
         expr: |
-          redis_memory_used_bytes / redis_memory_max_bytes > 0.95
+          (redis_memory_used_bytes / redis_memory_max_bytes > 0.95) and redis_memory_max_bytes > 0
         for: 2m
         labels:
           severity: critical
