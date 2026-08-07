@@ -201,12 +201,33 @@ const ROLE_COLORS: Record<string, string> = {
   support: "text-[color:var(--aqt-support)]",
 };
 
-function TopHeroesCell({ roles }: { roles: RegistrationRole[] }) {
+export function useHeroesMap(): Map<string, Hero> {
   const { data: heroesData } = useQuery({
     queryKey: ["heroes-all"],
     queryFn: () => heroService.getAll({ perPage: -1 }),
     staleTime: 5 * 60_000,
   });
+
+  return useMemo(() => {
+    const map = new Map<string, Hero>();
+    if (heroesData?.results) {
+      for (const h of heroesData.results) {
+        map.set(h.slug, h);
+      }
+    }
+    return map;
+  }, [heroesData]);
+}
+
+function TopHeroesCell({
+  roles,
+  heroesMap: heroesMapProp,
+}: {
+  roles: RegistrationRole[];
+  heroesMap?: Map<string, Hero>;
+}) {
+  const fallbackHeroesMap = useHeroesMap();
+  const heroesMap = heroesMapProp ?? fallbackHeroesMap;
 
   const sortedRoles = useMemo(() => {
     if (!roles) return [];
@@ -216,16 +237,6 @@ function TopHeroesCell({ roles }: { roles: RegistrationRole[] }) {
       return a.priority - b.priority;
     });
   }, [roles]);
-
-  const heroesMap = useMemo(() => {
-    const map = new Map<string, Hero>();
-    if (heroesData?.results) {
-      for (const h of heroesData.results) {
-        map.set(h.slug, h);
-      }
-    }
-    return map;
-  }, [heroesData]);
 
   const topHeroesList = useMemo(() => {
     const uniqueHeroSlugs = new Set<string>();
@@ -505,7 +516,7 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     defaultVisible: true,
     responsive: "sm",
     align: "center",
-    render: (reg) => <TopHeroesCell roles={reg.roles} />,
+    render: (reg) => <TopHeroesCell roles={reg.roles} heroesMap={undefined} />,
     searchValue: (reg) =>
       reg.roles?.flatMap((r) => r.top_heroes).join(" ") ?? null,
   },
@@ -548,6 +559,7 @@ export function buildParticipantColumns(
   t: Translator,
   locale: string = "ru",
   grid?: DivisionGrid | null,
+  heroesMap?: Map<string, Hero>,
 ): ColumnDefinition[] {
   const columns: ColumnDefinition[] = [];
 
@@ -623,7 +635,9 @@ export function buildParticipantColumns(
       align: def.align,
       render: def.id === "roles"
         ? (reg) => <RolesCell roles={reg.roles} grid={grid} showRanks={form?.show_ranks} />
-        : (reg) => def.render(reg),
+        : def.id === "top_heroes"
+          ? (reg) => <TopHeroesCell roles={reg.roles} heroesMap={heroesMap} />
+          : (reg) => def.render(reg),
       searchValue: def.searchValue,
     });
   }

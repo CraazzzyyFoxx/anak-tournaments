@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import RankHistory from "@/components/RankHistory";
 import { cn } from "@/lib/utils";
@@ -129,7 +130,7 @@ interface VirtualParticipantsListProps {
   onToggleExpanded: (registrationId: number) => void;
 }
 
-export default function VirtualParticipantsList({
+const VirtualParticipantsList = memo(function VirtualParticipantsList({
   registrations,
   allColumns,
   visibleColumns,
@@ -184,7 +185,8 @@ export default function VirtualParticipantsList({
   } as CSSProperties;
 
   return (
-    <div className={styles.participantsTableViewport}>
+    <TooltipProvider delayDuration={150}>
+      <div className={styles.participantsTableViewport}>
       <div
         className={styles.participantsTable}
         role="table"
@@ -346,6 +348,9 @@ export default function VirtualParticipantsList({
           })}
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
-}
+});
+
+export default VirtualParticipantsList;

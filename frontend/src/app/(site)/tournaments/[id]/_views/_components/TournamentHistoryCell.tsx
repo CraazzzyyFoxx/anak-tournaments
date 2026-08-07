@@ -4,12 +4,7 @@ import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getDivisionLabel } from "@/lib/division-grid";
 import type { TournamentHistoryEntry } from "@/types/registration.types";
 
@@ -60,8 +55,7 @@ export default function TournamentHistoryCell({
   const total = count ?? history.length;
 
   return (
-    <TooltipProvider>
-      <Tooltip>
+    <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
@@ -122,6 +116,5 @@ export default function TournamentHistoryCell({
           </ul>
         </TooltipContent>
       </Tooltip>
-    </TooltipProvider>
   );
 }

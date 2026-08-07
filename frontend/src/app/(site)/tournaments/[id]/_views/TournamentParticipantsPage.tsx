@@ -49,7 +49,10 @@ import type { Tournament } from "@/types/tournament.types";
 import type { Registration, RegistrationStatus } from "@/types/registration.types";
 
 import ColumnPicker from "./_components/ColumnPicker";
-import { buildParticipantColumns } from "./_components/participantsColumns";
+import {
+  buildParticipantColumns,
+  useHeroesMap
+} from "./_components/participantsColumns";
 import {
   PARTICIPANT_SEARCH_MAX_LENGTH,
   isMandatoryParticipantColumnId,
@@ -772,11 +775,12 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
     isCheckInWindowActive(tournament);
 
   const divisionGrid = useDivisionGrid();
+  const heroesMap = useHeroesMap();
 
   // Dynamic columns
   const allColumns = useMemo(
-    () => buildParticipantColumns(form, t, locale, divisionGrid),
-    [form, t, locale, divisionGrid]
+    () => buildParticipantColumns(form, t, locale, divisionGrid, heroesMap),
+    [form, t, locale, divisionGrid, heroesMap]
   );
 
   // Status counts + chips present in the data.
@@ -864,15 +868,20 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
     },
     [defaultColumnIds, tournament.id]
   );
+  const [activeSearchParams, setActiveSearchParams] = useState(searchParamsString);
+  useEffect(() => {
+    setActiveSearchParams(searchParamsString);
+  }, [searchParamsString]);
+
   const participantUrl = useMemo(
     () =>
       readParticipantUrlState(
-        new URLSearchParams(searchParamsString),
+        new URLSearchParams(activeSearchParams),
         allowedStatuses,
         allColumns,
         storedColumnIds
       ),
-    [allColumns, allowedStatuses, searchParamsString, storedColumnIds]
+    [activeSearchParams, allColumns, allowedStatuses, storedColumnIds]
   );
   const latestParamsRef = useRef(searchParamsString);
   const searchQuery = participantUrl.state.search;
@@ -911,10 +920,16 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
       const query = result.params.toString();
       const href = query ? `${pathname}?${query}` : pathname;
       latestParamsRef.current = query;
-      if (result.history === "replace") router.replace(href, { scroll: false });
-      else router.push(href, { scroll: false });
+      setActiveSearchParams(query);
+      if (typeof window !== "undefined") {
+        if (result.history === "replace") {
+          window.history.replaceState(null, "", href);
+        } else {
+          window.history.pushState(null, "", href);
+        }
+      }
     },
-    [pathname, router]
+    [pathname]
   );
   const commitSearch = useCallback(
     (value: string) => navigateParticipantUrl({ type: "search", value }),
@@ -934,14 +949,16 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
     const query = participantUrl.params.toString();
     const href = query ? `${pathname}?${query}` : pathname;
     latestParamsRef.current = query;
-    router.replace(href, { scroll: false });
+    setActiveSearchParams(query);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", href);
+    }
   }, [
     formQuery.isFetched,
     listQuery.isFetched,
     participantUrl.needsNormalization,
     participantUrl.params,
-    pathname,
-    router
+    pathname
   ]);
 
   const toggleColumn = useCallback(
