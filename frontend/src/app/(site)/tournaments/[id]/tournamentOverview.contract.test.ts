@@ -117,10 +117,10 @@ describe("tournament overview server contract", () => {
     expect(source).not.toContain("getStages");
   });
 
-  it("wraps the server boundary in Suspense with the shared exact shell fallback", () => {
+  it("wraps only the overview hydration boundary in Suspense, decoupled from the client shell", () => {
     const sourceFile = parsedSource("layout.tsx");
-    const source = sourceFor("layout.tsx");
     const suspense = jsxElements(sourceFile, "Suspense");
+    const overviewBoundaryEl = jsxElements(sourceFile, "TournamentOverviewBoundary");
     const layoutFunction = nodesMatching(sourceFile, ts.isFunctionDeclaration).find(
       (declaration) => declaration.name?.text === "TournamentLayout"
     );
@@ -134,11 +134,13 @@ describe("tournament overview server contract", () => {
       suspense[0].getStart(sourceFile)
     );
     expect(layoutFunction?.getText(sourceFile)).not.toContain("getTournamentOverviewState");
-    expect(jsxElements(sourceFile, "TournamentOverviewBoundary")).toHaveLength(1);
+    expect(overviewBoundaryEl).toHaveLength(1);
     expect(suspense).toHaveLength(1);
-    expect(
-      hasJsxAttribute(sourceFile, suspense[0], "fallback", "<TournamentShellSkeleton />")
-    ).toBe(true);
+    expect(hasJsxAttribute(sourceFile, suspense[0], "fallback", "null")).toBe(true);
+    // Self-closing: takes no children, so a re-suspended overview fetch (this
+    // segment is force-dynamic) can never unmount TournamentClientLayout —
+    // it's a sibling, not a descendant, of this Suspense boundary.
+    expect(ts.isJsxSelfClosingElement(overviewBoundaryEl[0])).toBe(true);
   });
 
   it("shares one canonical raw-id parser across layout, metadata, and index route", () => {
@@ -160,7 +162,7 @@ describe("tournament overview server contract", () => {
     expect(calledIdentifiers(data)).not.toContain("notFound");
   });
 
-  it("owns streamed overview errors and hydrates with a request-local query client", () => {
+  it("hydrates with a request-local query client and lets the client shell own errors", () => {
     const sourceFile = parsedSource("TournamentOverviewBoundary.tsx");
     const source = sourceFor("TournamentOverviewBoundary.tsx");
     const queryClients = nodesMatching(sourceFile, ts.isNewExpression).filter(
@@ -169,14 +171,21 @@ describe("tournament overview server contract", () => {
     const seedCall = nodesMatching(sourceFile, ts.isCallExpression).find(
       (call) => call.expression.getText(sourceFile) === "queryClient.setQueryData"
     );
+    const boundaryFunction = nodesMatching(sourceFile, ts.isFunctionDeclaration).find(
+      (declaration) => declaration.name?.text === "TournamentOverviewBoundary"
+    );
 
     expect(importedNames(sourceFile, "./_queries/tournamentOverview")).toContain(
       "tournamentOverviewQueryOptions"
     );
     expect(calledIdentifiers(sourceFile)).toContain("getTournamentOverviewState");
     expect(calledIdentifiers(sourceFile)).toContain("notFound");
-    expect(jsxElements(sourceFile, "TournamentShellError")).toHaveLength(1);
     expect(source).toContain("streamed soft-404");
+    // No children prop: it never wraps TournamentClientLayout, and the error
+    // branch defers to the client shell's own query state instead of
+    // rendering a shell-replacing error element itself.
+    expect(boundaryFunction?.parameters[0]?.getText(sourceFile)).not.toContain("children");
+    expect(source).not.toContain("TournamentShellError");
     expect(queryClients).toHaveLength(1);
     expect(isInsideFunction(queryClients[0])).toBe(true);
     expect(calledMethods(sourceFile)).toContain("setQueryData");
@@ -187,6 +196,15 @@ describe("tournament overview server contract", () => {
     expect(calledIdentifiers(sourceFile)).toContain("dehydrate");
     expect(jsxElements(sourceFile, "HydrationBoundary")).toHaveLength(1);
     expect(source).not.toContain("prefetchQuery");
+  });
+
+  it("shows the shared error card from the client shell when the overview query errors", () => {
+    const sourceFile = parsedSource("_components/TournamentClientLayout.tsx");
+    const source = sourceFor("_components/TournamentClientLayout.tsx");
+
+    expect(importedNames(sourceFile, "../TournamentShellError")).toContain("TournamentShellError");
+    expect(jsxElements(sourceFile, "TournamentShellError")).toHaveLength(1);
+    expect(source).toContain("tournamentQuery.isError");
   });
 
   it("keeps the client shell on the hydrated overview without legacy requests", () => {

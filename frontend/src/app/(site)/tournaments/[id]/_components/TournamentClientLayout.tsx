@@ -16,6 +16,7 @@ import type { StageSummary } from "@/types/tournament.types";
 import { useTranslations, useLocale } from "next-intl";
 import TournamentSectionNav from "./TournamentSectionNav";
 import { TournamentShellSkeleton } from "./TournamentSkeletons";
+import TournamentShellError from "../TournamentShellError";
 import { PageHero, HeroCoord, HeroStat } from "@/components/site/PageHero";
 import { PageStateCard } from "@/components/ui/page-state-card";
 
@@ -65,6 +66,10 @@ export default function TournamentClientLayout({
 
   if (tournamentQuery.isPending) {
     return <TournamentShellSkeleton />;
+  }
+
+  if (tournamentQuery.isError) {
+    return <TournamentShellError />;
   }
 
   if (!tournament) {

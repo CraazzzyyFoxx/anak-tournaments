@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import TournamentClientLayout from "./_components/TournamentClientLayout";
-import { TournamentShellSkeleton } from "./_components/TournamentSkeletons";
 import { getTournamentOverviewState, parseCanonicalTournamentId } from "./_data";
 import TournamentOverviewBoundary from "./TournamentOverviewBoundary";
 import { resolveSiteMetadata } from "@/lib/site-metadata";
@@ -66,10 +65,11 @@ export default async function TournamentLayout({
   }
 
   return (
-    <Suspense fallback={<TournamentShellSkeleton />}>
-      <TournamentOverviewBoundary tournamentId={tournamentId}>
-        <TournamentClientLayout tournamentId={tournamentId}>{children}</TournamentClientLayout>
-      </TournamentOverviewBoundary>
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <TournamentOverviewBoundary tournamentId={tournamentId} />
+      </Suspense>
+      <TournamentClientLayout tournamentId={tournamentId}>{children}</TournamentClientLayout>
+    </>
   );
 }

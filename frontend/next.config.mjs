@@ -14,6 +14,16 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Dynamic segments default to a 0s client Router Cache stale time (Next 15+),
+  // so every client-side navigation under a `force-dynamic` layout (e.g.
+  // /tournaments/[id]/*) refetches that layout's RSC payload from scratch.
+  // 30s lets flipping between tabs reuse the just-fetched shell instead of a
+  // full round trip on every click.
+  experimental: {
+    staleTimes: {
+      dynamic: 30,
+    },
+  },
   // Only use standalone output in production builds
   ...(process.env.NODE_ENV === 'production' && { output: "standalone" }),
   // Enable polling only inside Docker (native fs watcher doesn't work with bind mounts)
