@@ -315,8 +315,8 @@ func TestInvalidateDropsOnlyThatTournament(t *testing.T) {
 	doGet(h, "/api/v1/encounters?tournament_id=72&page=2", "")
 	doGet(h, "/api/v1/encounters?tournament_id=73", "")
 
-	if n := c.Invalidate(72); n != 2 {
-		t.Fatalf("Invalidate(72) = %d, want 2", n)
+	if n := c.Invalidate(72, nil); n != 2 {
+		t.Fatalf("Invalidate(72, nil) = %d, want 2", n)
 	}
 
 	// 73 still cached, 72 refetches.
@@ -361,6 +361,143 @@ func TestBroadcastTopicRouting(t *testing.T) {
 			t.Fatalf("topic %q must invalidate", topic)
 		}
 		doGet(h, "/api/v1/tournaments/72", "") // re-seed HIT baseline
+	}
+}
+
+// realtimeFrame builds the literal worker event-frame JSON published to
+// Redis for a tournament.updated event (see
+// shared/schemas/realtime.py EventFrame/WorkspaceEventEnvelope): reason sits
+// at .event.data.reason, not top-level.
+func realtimeFrame(reason string) []byte {
+	return []byte(fmt.Sprintf(
+		`{"op":"event","topic":"tournament:72:bracket","event":{"event_id":1,`+
+			`"event_type":"tournament.updated","schema_version":1,`+
+			`"occurred_at":"2026-01-01T00:00:00Z","actor_user_id":null,`+
+			`"data":{"tournament_id":72,"reason":%q}}}`,
+		reason,
+	))
+}
+
+// Broadcast must scope bracket_changed to only the routes it can stale
+// (encounters), matching the backend's own tournament_cache_patterns split —
+// leaving the tournament-detail entry alone avoids an unnecessary refetch on
+// every bracket move.
+func TestBroadcastBracketChangedScopesToEncounters(t *testing.T) {
+	var tournamentCalls, encounterCalls atomic.Int64
+	c := testCache(t)
+	tournamentHandler := c.Wrap(upstream(&tournamentCalls), Rule{Extract: FromPathValue("id")})
+	encountersHandler := c.Wrap(upstream(&encounterCalls), Rule{Extract: FromQuery("tournament_id")})
+
+	doGet(tournamentHandler, "/api/v1/tournaments/72", "")
+	doGet(encountersHandler, "/api/v1/encounters?tournament_id=72", "")
+
+	c.Broadcast("tournament:72:bracket", realtimeFrame("bracket_changed"))
+
+	if rec := doGet(tournamentHandler, "/api/v1/tournaments/72", ""); rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("bracket_changed must not evict the tournament-detail entry")
+	}
+	if rec := doGet(encountersHandler, "/api/v1/encounters?tournament_id=72", ""); rec.Header().Get("X-Cache") == "HIT" {
+		t.Fatal("bracket_changed must evict the encounters entry")
+	}
+}
+
+// registration_changed must scope to the registration/list entry AND the
+// tournament-detail entry (it embeds live participants_count/
+// registrations_count) — but leave encounters/standings/teams alone, since a
+// plain registration edit doesn't touch them.
+func TestBroadcastRegistrationChangedScopesToRegistrationAndDetail(t *testing.T) {
+	var tournamentCalls, listCalls, encounterCalls atomic.Int64
+	c := testCache(t)
+	tournamentHandler := c.Wrap(upstream(&tournamentCalls), Rule{Extract: FromPathValue("id")})
+	listHandler := c.Wrap(upstream(&listCalls), Rule{Extract: FromPathValue("tournament_id")})
+	encountersHandler := c.Wrap(upstream(&encounterCalls), Rule{Extract: FromQuery("tournament_id")})
+
+	doGet(tournamentHandler, "/api/v1/tournaments/72", "")
+	doGet(encountersHandler, "/api/v1/encounters?tournament_id=72", "")
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/tournaments/72/registration/list", nil)
+	listReq.SetPathValue("tournament_id", "72")
+	listHandler.ServeHTTP(httptest.NewRecorder(), listReq)
+
+	c.Broadcast("tournament:72:bracket", realtimeFrame("registration_changed"))
+
+	if rec := doGet(tournamentHandler, "/api/v1/tournaments/72", ""); rec.Header().Get("X-Cache") == "HIT" {
+		t.Fatal("registration_changed must evict the tournament-detail entry (embeds live counts)")
+	}
+	if rec := doGet(encountersHandler, "/api/v1/encounters?tournament_id=72", ""); rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("registration_changed must not evict the encounters entry")
+	}
+	listReq2 := httptest.NewRequest(http.MethodGet, "/api/v1/tournaments/72/registration/list", nil)
+	listReq2.SetPathValue("tournament_id", "72")
+	rec2 := httptest.NewRecorder()
+	listHandler.ServeHTTP(rec2, listReq2)
+	if rec2.Header().Get("X-Cache") == "HIT" {
+		t.Fatal("registration_changed must evict the registration/list entry")
+	}
+}
+
+// The id-qualified tournament-detail pattern ("/api/v1/tournaments/{id}?")
+// must not also match a sibling sub-route sharing the same path prefix, like
+// /stages — the "?" boundary is what keeps the substring match precise.
+func TestBroadcastRegistrationChangedDoesNotOverreachOntoSubroutes(t *testing.T) {
+	var detailCalls, stagesCalls atomic.Int64
+	c := testCache(t)
+	detailHandler := c.Wrap(upstream(&detailCalls), Rule{Extract: FromPathValue("id")})
+	stagesHandler := c.Wrap(upstream(&stagesCalls), Rule{Extract: FromPathValue("id")})
+
+	doGet(detailHandler, "/api/v1/tournaments/72", "")
+	stagesReq := httptest.NewRequest(http.MethodGet, "/api/v1/tournaments/72/stages", nil)
+	stagesReq.SetPathValue("id", "72")
+	stagesHandler.ServeHTTP(httptest.NewRecorder(), stagesReq)
+
+	c.Broadcast("tournament:72:bracket", realtimeFrame("registration_changed"))
+
+	stagesReq2 := httptest.NewRequest(http.MethodGet, "/api/v1/tournaments/72/stages", nil)
+	stagesReq2.SetPathValue("id", "72")
+	rec := httptest.NewRecorder()
+	stagesHandler.ServeHTTP(rec, stagesReq2)
+	if rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("registration_changed for tournament 72 must not evict its /stages entry")
+	}
+}
+
+// Reasons this gateway doesn't recognize — a future backend reason, a
+// malformed frame, or the draft topic's board-patch payload (no reason field
+// at all) — must fall back to invalidating everything for the tournament,
+// same as the pre-existing nil-payload behavior.
+func TestBroadcastUnscopedReasonsInvalidateEverything(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload []byte
+	}{
+		{"unrecognized reason", realtimeFrame("some_future_reason")},
+		{"malformed json", []byte("not json")},
+		{"draft board-patch shape, no reason field", []byte(
+			`{"op":"event","topic":"tournament:72:draft","event":{"event_id":1,` +
+				`"event_type":"draft.board.patched","schema_version":1,` +
+				`"occurred_at":"2026-01-01T00:00:00Z","actor_user_id":null,` +
+				`"data":{"resource":"draft.board","tournament_id":72}}}`,
+		)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var tournamentCalls, encounterCalls atomic.Int64
+			c := testCache(t)
+			tournamentHandler := c.Wrap(upstream(&tournamentCalls), Rule{Extract: FromPathValue("id")})
+			encountersHandler := c.Wrap(upstream(&encounterCalls), Rule{Extract: FromQuery("tournament_id")})
+
+			doGet(tournamentHandler, "/api/v1/tournaments/72", "")
+			doGet(encountersHandler, "/api/v1/encounters?tournament_id=72", "")
+
+			c.Broadcast("tournament:72:bracket", tc.payload)
+
+			if rec := doGet(tournamentHandler, "/api/v1/tournaments/72", ""); rec.Header().Get("X-Cache") == "HIT" {
+				t.Fatalf("%s must evict the tournament-detail entry too", tc.name)
+			}
+			if rec := doGet(encountersHandler, "/api/v1/encounters?tournament_id=72", ""); rec.Header().Get("X-Cache") == "HIT" {
+				t.Fatalf("%s must evict the encounters entry", tc.name)
+			}
+		})
 	}
 }
 
@@ -498,7 +635,7 @@ func TestNilCacheIsInert(t *testing.T) {
 		t.Fatal("nil cache must pass through untouched")
 	}
 	c.Broadcast("tournament:72:bracket", nil) // must not panic
-	if c.Invalidate(72) != 0 {
+	if c.Invalidate(72, nil) != 0 {
 		t.Fatal("nil Invalidate must return 0")
 	}
 	if New(0, slog.Default()) != nil {

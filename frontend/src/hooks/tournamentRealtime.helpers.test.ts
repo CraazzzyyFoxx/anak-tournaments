@@ -99,6 +99,26 @@ describe("tournament realtime helpers", () => {
     ]);
   });
 
+  it("maps registration changes to only the participant prefixes, not bracket/standings/teams", () => {
+    expect(getTournamentRealtimeUpdatePlan(42, 7, "registration_changed")).toEqual({
+      workspaceScope: "registration",
+      queryKeys: [
+        tournamentQueryKeys.registration(7, 42),
+        tournamentQueryKeys.registrationsList(7, 42),
+        tournamentQueryKeys.registrationForm(7, 42),
+      ],
+      shouldRefreshRoute: false,
+    });
+  });
+
+  it("omits registration_changed's query keys entirely until the workspace is known", () => {
+    expect(getTournamentRealtimeUpdatePlan(42, null, "registration_changed")).toEqual({
+      workspaceScope: "registration",
+      queryKeys: [],
+      shouldRefreshRoute: false,
+    });
+  });
+
   it("invalidates workspace-aware variants through their public prefixes without broad bracket invalidation", () => {
     const queryClient = createQueryClient();
     const encounterVariant = tournamentQueryKeys.encountersPage(42, 7, 3, "final");
@@ -259,6 +279,21 @@ describe("tournament realtime helpers", () => {
           ["standings-table", 42],
         ],
         untouched: [],
+      },
+      {
+        // registration_changed's invalidation lives entirely in plan.queryKeys
+        // (getParticipantQueryPrefixes) — the admin bracket/standings/teams
+        // cascade must stay untouched for a plain registration edit.
+        reason: "registration_changed" as const,
+        invalidated: [],
+        untouched: [
+          ["admin", "tournament", 42],
+          ["admin", "stages", 42],
+          ["admin", "tournament", 42, "teams"],
+          ["admin", "tournament", 42, "standings"],
+          ["admin", "tournament", 42, "encounters"],
+          ["standings-table", 42],
+        ],
       },
     ];
 

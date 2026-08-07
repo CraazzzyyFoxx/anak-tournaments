@@ -60,7 +60,7 @@ class TournamentRealtimeEventsTests(IsolatedAsyncioTestCase):
         updates = realtime_commit.pop_registered_tournament_realtime_updates(session)
         self.assertEqual(updates, [(42, "bracket_changed")])
 
-    async def test_registration_outbox_event_registers_structure_realtime_update(self) -> None:
+    async def test_registration_outbox_event_registers_registration_realtime_update(self) -> None:
         # BalancerRegistration has no denormalized workspace_id column anymore —
         # enqueue_registration_approved derives it via a tournament lookup. The
         # event's user_id is likewise resolved from the workspace_member anchor
@@ -76,7 +76,7 @@ class TournamentRealtimeEventsTests(IsolatedAsyncioTestCase):
         await tournament_events.enqueue_registration_approved(session, registration)
 
         updates = realtime_commit.pop_registered_tournament_realtime_updates(session)
-        self.assertEqual(updates, [(42, "structure_changed")])
+        self.assertEqual(updates, [(42, "registration_changed")])
 
     async def test_post_commit_realtime_updates_collapse_structure_over_results(self) -> None:
         session = SimpleNamespace(info={})
@@ -95,6 +95,30 @@ class TournamentRealtimeEventsTests(IsolatedAsyncioTestCase):
 
         updates = realtime_commit.pop_registered_tournament_realtime_updates(session)
         self.assertEqual(updates, [(42, "results_changed")])
+
+    async def test_registration_changed_emits_alongside_a_disjoint_bracket_family_reason(self) -> None:
+        # registration_changed's plan (registration/registrationsList/
+        # registrationForm) is disjoint from results_changed's plan
+        # (detail/heroPlaytime/standings/encounters) — neither is a superset of
+        # the other, so both must be published or one invalidation is dropped.
+        session = SimpleNamespace(info={})
+
+        realtime_commit.register_tournament_realtime_update(session, 42, "results_changed")
+        realtime_commit.register_tournament_realtime_update(session, 42, "registration_changed")
+
+        updates = realtime_commit.pop_registered_tournament_realtime_updates(session)
+        self.assertEqual(set(updates), {(42, "results_changed"), (42, "registration_changed")})
+
+    async def test_structure_changed_absorbs_registration_changed(self) -> None:
+        # structure_changed's plan already includes the registration keys, so a
+        # redundant second event would add nothing.
+        session = SimpleNamespace(info={})
+
+        realtime_commit.register_tournament_realtime_update(session, 42, "registration_changed")
+        realtime_commit.register_tournament_realtime_update(session, 42, "structure_changed")
+
+        updates = realtime_commit.pop_registered_tournament_realtime_updates(session)
+        self.assertEqual(updates, [(42, "structure_changed")])
 
     async def test_realtime_update_invalidates_cache_before_publishing(self) -> None:
         calls: list[str] = []

@@ -101,7 +101,7 @@ async def enqueue_registration_approved(
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
         routing_key="tournament.registration.approved",
     )
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
 
 
 async def enqueue_registration_rejected(
@@ -122,7 +122,7 @@ async def enqueue_registration_rejected(
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
         routing_key="tournament.registration.rejected",
     )
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
 
 
 async def enqueue_tournament_state_changed(

@@ -49,6 +49,8 @@ package respcache
 import (
 	"container/list"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -312,34 +314,93 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 	})
 }
 
-// Invalidate drops every cached response for the tournament, returning how
-// many entries were removed.
-func (c *Cache) Invalidate(tournamentID int64) int {
+// Invalidate drops cached responses for the tournament whose key contains any
+// of patterns, or every response for the tournament when patterns is nil.
+// Returns how many entries were removed.
+func (c *Cache) Invalidate(tournamentID int64, patterns []string) int {
 	if c == nil {
 		return 0
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	keys := c.byID[tournamentID]
-	// removeLocked deletes from this same set as we range (legal in Go), so
-	// the count must be taken before the loop empties it.
-	n := len(keys)
+	// removeLocked deletes from this same set as we range (legal in Go).
+	n := 0
 	for k := range keys {
+		if patterns != nil && !matchesAnyPattern(k, patterns) {
+			continue
+		}
 		if el, ok := c.keys[k]; ok {
 			c.removeLocked(el)
+			n++
 		}
 	}
 	return n
+}
+
+func matchesAnyPattern(key string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if strings.Contains(key, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// reasonPatterns returns the cached-entry URL substrings a reason can have
+// staled, or nil (invalidate everything) for a reason outside this table —
+// including results_changed/structure_changed (which can touch nearly
+// everything), and anything unparseable or missing entirely (e.g. the draft
+// topic's board-patch payloads carry no reason field at all).
+//
+// over-invalidation is a cache miss; under-invalidation is a stale page, so
+// unknown reasons default to invalidating everything for the tournament.
+func reasonPatterns(reason string, tournamentID int64) []string {
+	switch reason {
+	case "bracket_changed":
+		return []string{"/api/v1/encounters"}
+	case "registration_changed":
+		// The tournament-detail response embeds live participants_count/
+		// registrations_count (tournament/flows.py::get_read), which DO
+		// change on every registration write — teams/standings/encounters do
+		// not, so only these two entries need dropping. The id-qualified "?"
+		// suffix keeps this from also matching /stages or /standings, whose
+		// cache keys share the "/api/v1/tournaments/{id}" path prefix.
+		return []string{
+			"/registration/list",
+			fmt.Sprintf("/api/v1/tournaments/%d?", tournamentID),
+		}
+	default:
+		return nil
+	}
+}
+
+// eventFrameReason best-effort extracts the tournament realtime reason from a
+// worker event frame: {"op":"event","topic":...,"event":{"data":{"reason":...}}}
+// (see shared/schemas/realtime.py EventFrame/WorkspaceEventEnvelope). Returns
+// "" on any parse failure or a missing reason field — callers treat "" as
+// "scope unknown, invalidate everything".
+func eventFrameReason(payload []byte) string {
+	var frame struct {
+		Event struct {
+			Data struct {
+				Reason string `json:"reason"`
+			} `json:"data"`
+		} `json:"event"`
+	}
+	if err := json.Unmarshal(payload, &frame); err != nil {
+		return ""
+	}
+	return frame.Event.Data.Reason
 }
 
 // Broadcast implements the events.Broadcaster shape so the cache can ride the
 // existing realtime subscription (events.Fanout(hub, cache)). Any message on a
 // tournament's bracket or draft topic — the worker publishes
 // "tournament.updated" there from its tournament_changed consumer, and live
-// score/draft events ride the same topics — invalidates that tournament.
-// Over-invalidation is a cache miss; under-invalidation is a stale page, so
-// unknown payloads err on the side of dropping.
-func (c *Cache) Broadcast(topic string, _ []byte) {
+// score/draft events ride the same topics — invalidates that tournament,
+// scoped down by reasonPatterns when the payload names a recognized reason.
+func (c *Cache) Broadcast(topic string, payload []byte) {
 	if c == nil {
 		return
 	}
@@ -355,7 +416,8 @@ func (c *Cache) Broadcast(topic string, _ []byte) {
 	if !ok {
 		return
 	}
-	if n := c.Invalidate(id); n > 0 {
+	patterns := reasonPatterns(eventFrameReason(payload), id)
+	if n := c.Invalidate(id, patterns); n > 0 {
 		c.log.Debug("response cache invalidated", "tournament_id", id, "entries", n, "topic", topic)
 	}
 }

@@ -658,7 +658,7 @@ async def sync_google_sheet_feed(
         else:
             feed.last_error = None
         if created or updated or withdrawn:
-            register_tournament_realtime_update(session, tournament_id, "structure_changed")
+            register_tournament_realtime_update(session, tournament_id, "registration_changed")
         await session.commit()
         await session.refresh(feed)
         return SheetSyncResult(

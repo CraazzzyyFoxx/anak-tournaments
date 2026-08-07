@@ -548,7 +548,7 @@ async def create_registration(
     if auto_approve:
         await enqueue_registration_approved(session, registration)
     else:
-        register_tournament_realtime_update(session, tournament_id, "structure_changed")
+        register_tournament_realtime_update(session, tournament_id, "registration_changed")
     await session.commit()
     await session.refresh(registration)
     return registration
@@ -594,7 +594,7 @@ async def update_registration(
             # PATCH body — replacing wholesale would wipe the omitted answers.
             value = {**(registration.custom_fields_json or {}), **value}
         setattr(registration, column, value)
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
     await session.commit()
     await session.refresh(registration)
     return registration
@@ -644,7 +644,7 @@ async def withdraw_registration(
     if registration.checked_in:
         raise HTTPException(status_code=409, detail="Cannot withdraw after check-in")
     registration.status = "withdrawn"
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
     await session.commit()
 
 
@@ -663,7 +663,7 @@ async def check_in_registration(
     registration.checked_in = True
     registration.checked_in_at = datetime.now(UTC)
     registration.checked_in_by = checked_in_by
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
     await session.commit()
     await session.refresh(registration)
     return registration

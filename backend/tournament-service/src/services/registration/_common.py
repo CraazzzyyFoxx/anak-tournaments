@@ -35,7 +35,7 @@ def _register_registration_changed(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
 
 
 BATTLE_TAG_RE = re.compile(r"[\w][\w ]{0,30}#[0-9]{3,}", re.UNICODE)

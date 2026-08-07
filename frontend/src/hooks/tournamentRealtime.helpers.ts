@@ -3,12 +3,16 @@ import type { QueryClient } from "@tanstack/react-query";
 import { getTournamentWorkspaceQueryKeys } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 
-export type TournamentChangedReason =
-  | "bracket_changed"
-  | "results_changed"
-  | "structure_changed";
+// bracket_changed/results_changed/structure_changed form a strict severity
+// chain — each plan is a superset of the weaker one's (see
+// strongerTournamentReason). registration_changed's plan is disjoint from all
+// three (registration/registrationsList/registrationForm only), so it is kept
+// out of that total order and carried as its own independent signal.
+export type BracketFamilyReason = "bracket_changed" | "results_changed" | "structure_changed";
 
-const TOURNAMENT_REASON_RANK: Record<TournamentChangedReason, number> = {
+export type TournamentChangedReason = BracketFamilyReason | "registration_changed";
+
+const TOURNAMENT_REASON_RANK: Record<BracketFamilyReason, number> = {
   bracket_changed: 0,
   results_changed: 1,
   structure_changed: 2,
@@ -21,9 +25,9 @@ const TOURNAMENT_REASON_RANK: Record<TournamentChangedReason, number> = {
  * coalesced into one refetch.
  */
 export function strongerTournamentReason(
-  current: TournamentChangedReason | null,
-  next: TournamentChangedReason,
-): TournamentChangedReason {
+  current: BracketFamilyReason | null,
+  next: BracketFamilyReason,
+): BracketFamilyReason {
   if (current === null) {
     return next;
   }
@@ -39,7 +43,7 @@ type TournamentUpdatedMessage = {
 };
 
 export type TournamentRealtimeUpdatePlan = {
-  workspaceScope: "bracket" | "results" | "full";
+  workspaceScope: "bracket" | "results" | "full" | "registration";
   queryKeys: readonly (readonly unknown[])[];
   shouldRefreshRoute: boolean;
 };
@@ -112,7 +116,8 @@ export function parseTournamentRealtimeMessage(
   if (
     message.data.reason !== "results_changed" &&
     message.data.reason !== "bracket_changed" &&
-    message.data.reason !== "structure_changed"
+    message.data.reason !== "structure_changed" &&
+    message.data.reason !== "registration_changed"
   ) {
     return null;
   }
@@ -156,6 +161,14 @@ export function getTournamentRealtimeUpdatePlan(
     return {
       workspaceScope: "bracket",
       queryKeys: [tournamentQueryKeys.encounters(tournamentId)],
+      shouldRefreshRoute: false,
+    };
+  }
+
+  if (reason === "registration_changed") {
+    return {
+      workspaceScope: "registration",
+      queryKeys: getParticipantQueryPrefixes(tournamentId, workspaceId),
       shouldRefreshRoute: false,
     };
   }
@@ -212,6 +225,13 @@ function invalidateAdminTournamentQueries(
 
   if (scope === "bracket") {
     void queryClient.invalidateQueries({ queryKey: keys.encounters });
+    return;
+  }
+
+  if (scope === "registration") {
+    // Registration/participants keys are already invalidated via
+    // getParticipantQueryPrefixes above — a registration edit touches nothing
+    // in the bracket/standings/teams admin cascade below.
     return;
   }
 

@@ -10,6 +10,7 @@ TournamentCacheInvalidationReason = Literal[
     "bracket_changed",
     "results_changed",
     "structure_changed",
+    "registration_changed",
 ]
 
 
@@ -35,10 +36,20 @@ def tournament_cache_patterns(
     )
     if reason == "bracket_changed":
         return _with_prefixes(*bracket_suffixes)
+    if reason == "registration_changed":
+        # No tournament-service-side cache backs the registration/participants
+        # list itself today (only the gateway's own response cache, invalidated
+        # separately off the same WS topic). But `tournaments/{id}:get_read`
+        # IS cached (tournament/flows.py::get_read) and embeds live
+        # participants_count/registrations_count, which DO change on every
+        # registration write — teams/standings/encounters do not, so they stay
+        # cached.
+        return _with_prefixes(f"*tournaments/{tournament_id}*")
 
     return _with_prefixes(
         f"*tournaments/{tournament_id}*",
         f"*teams*:{tournament_id}*",
+        f"*standings*:{tournament_id}*",
         *bracket_suffixes,
     )
 

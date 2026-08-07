@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   applyTournamentRealtimeCatchUp,
   applyTournamentRealtimeUpdate,
+  type BracketFamilyReason,
   type Coalescer,
   createLeadingCoalescer,
   createTrailingCoalescer,
@@ -71,8 +72,12 @@ export function useTournamentRealtime({
     stateRef.current = { tournamentId, workspaceId, onUpdate, onStructureChanged, queryClient };
   });
 
-  // Strongest reason accumulated within the current debounce window.
-  const pendingReasonRef = useRef<TournamentChangedReason | null>(null);
+  // Strongest bracket-family reason accumulated within the current debounce
+  // window, plus a separate flag for registration_changed — its plan is
+  // disjoint from the bracket family's, so it can't be folded into the same
+  // total-order scalar (see BracketFamilyReason).
+  const pendingReasonRef = useRef<BracketFamilyReason | null>(null);
+  const pendingRegistrationChangeRef = useRef(false);
 
   // The debounced flush is created in an effect (not render) so the coalescer's
   // ref-reading callback is never constructed during render, and the per-client
@@ -84,7 +89,9 @@ export function useTournamentRealtime({
       REALTIME_REFETCH_MIN_DELAY_MS + Math.floor(Math.random() * REALTIME_REFETCH_JITTER_MS);
     const coalescer = createTrailingCoalescer(() => {
       const reason = pendingReasonRef.current;
+      const hasRegistrationChange = pendingRegistrationChangeRef.current;
       pendingReasonRef.current = null;
+      pendingRegistrationChangeRef.current = false;
       const {
         tournamentId: id,
         workspaceId: ws,
@@ -92,13 +99,21 @@ export function useTournamentRealtime({
         onStructureChanged: onStructure,
         queryClient: client,
       } = stateRef.current;
-      if (!reason || !id) {
+      if (!id || (!reason && !hasRegistrationChange)) {
         return;
       }
-      applyTournamentRealtimeUpdate(client, id, ws, reason);
-      notify?.(reason);
-      if (reason === "structure_changed") {
-        onStructure?.();
+      if (reason) {
+        applyTournamentRealtimeUpdate(client, id, ws, reason);
+        notify?.(reason);
+        if (reason === "structure_changed") {
+          onStructure?.();
+        }
+      }
+      // structure_changed's plan already covers the registration keys — skip
+      // the redundant second refetch when both landed in the same window.
+      if (hasRegistrationChange && reason !== "structure_changed") {
+        applyTournamentRealtimeUpdate(client, id, ws, "registration_changed");
+        notify?.("registration_changed");
       }
     }, delay);
     updatesRef.current = coalescer;
@@ -106,6 +121,7 @@ export function useTournamentRealtime({
       coalescer.cancel();
       updatesRef.current = null;
       pendingReasonRef.current = null;
+      pendingRegistrationChangeRef.current = false;
     };
   }, [topic]);
 
@@ -120,6 +136,11 @@ export function useTournamentRealtime({
         return;
       }
       const reason = event.data.reason;
+      if (reason === "registration_changed") {
+        pendingRegistrationChangeRef.current = true;
+        updatesRef.current?.schedule();
+        return;
+      }
       if (
         reason !== "bracket_changed" &&
         reason !== "results_changed" &&
