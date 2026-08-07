@@ -22,7 +22,11 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.pagination import Paginated
+from shared.messaging.config import (
+    DISCORD_GUILD_CHANNELS_QUEUE,
+    DISCORD_GUILD_INFO_QUEUE,
+    DISCORD_GUILD_ROLES_QUEUE,
+)
 from shared.rbac import (
     WORKSPACE_SYSTEM_ROLE_NAMES,
     assign_workspace_system_role,
@@ -389,3 +393,69 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.clear_custom_domain", op, session_factory=_SF)
+    # --- Discord entities (roles, channels, server status) -------------------------
+    @broker.subscriber("rpc.app.workspaces.discord_roles")
+    async def _discord_roles(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            if not workspace.discord_guild_id:
+                return {"guild_id": None, "roles": []}
+
+            try:
+                res = await broker.request(
+                    {"guild_id": workspace.discord_guild_id},
+                    DISCORD_GUILD_ROLES_QUEUE,
+                    timeout=5.0,
+                )
+                return res if isinstance(res, dict) else {"guild_id": workspace.discord_guild_id, "roles": []}
+            except Exception as exc:
+                return {"guild_id": workspace.discord_guild_id, "roles": [], "error": str(exc)}
+
+        return await c.envelope(logger, "workspaces.discord_roles", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.discord_channels")
+    async def _discord_channels(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            if not workspace.discord_guild_id:
+                return {"guild_id": None, "channels": []}
+
+            try:
+                res = await broker.request(
+                    {"guild_id": workspace.discord_guild_id},
+                    DISCORD_GUILD_CHANNELS_QUEUE,
+                    timeout=5.0,
+                )
+                return res if isinstance(res, dict) else {"guild_id": workspace.discord_guild_id, "channels": []}
+            except Exception as exc:
+                return {"guild_id": workspace.discord_guild_id, "channels": [], "error": str(exc)}
+
+        return await c.envelope(logger, "workspaces.discord_channels", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.discord_guild")
+    async def _discord_guild(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id = _path_int(data, "workspace_id")
+            workspace = await workspace_service.get_by_id(session, workspace_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            if not workspace.discord_guild_id:
+                return {"guild_id": None, "connected": False, "name": None, "icon_url": None, "member_count": 0}
+
+            try:
+                res = await broker.request(
+                    {"guild_id": workspace.discord_guild_id},
+                    DISCORD_GUILD_INFO_QUEUE,
+                    timeout=5.0,
+                )
+                return res if isinstance(res, dict) else {"guild_id": workspace.discord_guild_id, "connected": False}
+            except Exception as exc:
+                return {"guild_id": workspace.discord_guild_id, "connected": False, "error": str(exc)}
+
+        return await c.envelope(logger, "workspaces.discord_guild", op, session_factory=_SF)

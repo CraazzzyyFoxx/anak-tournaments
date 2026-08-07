@@ -214,6 +214,19 @@ DOCS: dict[str, dict] = {
         "summary": "Clear workspace custom domain",
         "description": "Removes the custom domain, its verification token, and verified_at; requires workspace.update, 404 if workspace missing.",
     },
+    # ── workspace discord entities ──────────────────────────────────────────────────
+    "rpc.app.workspaces.discord_roles": {
+        "summary": "List workspace Discord roles",
+        "description": "Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
+    },
+    "rpc.app.workspaces.discord_channels": {
+        "summary": "List workspace Discord channels",
+        "description": "Returns text channels of the workspace's linked Discord server with names and categories.",
+    },
+    "rpc.app.workspaces.discord_guild": {
+        "summary": "Workspace Discord server status",
+        "description": "Returns connection status, server name, icon URL, and member count of the workspace's linked Discord server.",
+    },
     # ── workspace icon (binary) ────────────────────────────────────────────────────
     "rpc.app.workspaces.icon_upload": {
         "summary": "Upload workspace icon",

@@ -15,7 +15,11 @@ import {
   Workspace,
   WorkspaceMember
 } from "@/types/workspace.types";
-
+import type {
+  DiscordChannelsResponse,
+  DiscordGuildInfo,
+  DiscordRolesResponse
+} from "@/types/discord.types";
 export default class workspaceService {
   static async getAll(): Promise<Workspace[]> {
     return apiFetch("/api/v1/workspaces").then((r) => r.json());
@@ -438,5 +442,16 @@ export default class workspaceService {
       method: "POST",
       body: { document, mode }
     }).then((r) => r.json());
+  }
+  static async getDiscordRoles(workspaceId: number): Promise<DiscordRolesResponse> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord/roles`).then((r) => r.json());
+  }
+
+  static async getDiscordChannels(workspaceId: number): Promise<DiscordChannelsResponse> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord/channels`).then((r) => r.json());
+  }
+
+  static async getDiscordGuildInfo(workspaceId: number): Promise<DiscordGuildInfo> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord/guild`).then((r) => r.json());
   }
 }

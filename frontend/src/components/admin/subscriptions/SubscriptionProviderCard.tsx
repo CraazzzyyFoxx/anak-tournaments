@@ -11,6 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DiscordRoleSelect } from "@/components/discord/DiscordRoleSelect";
+import { DiscordServerStatus } from "@/components/discord/DiscordServerStatus";
 import { notify } from "@/lib/notify";
 import { PROVIDER_LABELS } from "@/lib/subscription-requirement";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -92,6 +94,7 @@ export default function SubscriptionProvidersCard({ workspaceId }: SubscriptionP
         <CardDescription className="max-w-prose text-xs">{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 p-4 pt-0">
+        {workspaceId ? <DiscordServerStatus workspaceId={workspaceId} className="mb-2" /> : null}
         {isLoading && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
             <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
@@ -275,19 +278,24 @@ function ProviderEditor({
 
                 {roleTiers.map((tier, index) => (
                   <div key={index} className="flex items-center gap-2">
-                    <Input
+                    <DiscordRoleSelect
+                      workspaceId={workspaceId}
                       value={tier.role_id}
-                      onChange={(event) =>
+                      onChange={(newRoleId) =>
                         setRoleTiers((rows) =>
                           rows.map((row, i) =>
-                            i === index ? { ...row, role_id: event.target.value } : row
+                            i === index ? { ...row, role_id: newRoleId } : row
                           )
                         )
                       }
-                      placeholder={t("roles.roleIdPlaceholder")}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      className="h-8 font-mono flex-1"
+                      onRoleNameSelected={(roleName) =>
+                        setRoleTiers((rows) =>
+                          rows.map((row, i) =>
+                            i === index && !row.tier_label ? { ...row, tier_label: roleName } : row
+                          )
+                        )
+                      }
+                      className="h-8 flex-1"
                     />
                     <Input
                       type="number"

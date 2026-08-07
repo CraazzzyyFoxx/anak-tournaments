@@ -47,6 +47,54 @@ DISCORD_MEMBER_ROLES_DLQ = RabbitQueue(
     "discord_member_roles.dlq",
     durable=True,
 )
+# ============================================================================
+# Discord Guild Entities Queues (RPC)
+# ============================================================================
+
+DISCORD_GUILD_ROLES_QUEUE = RabbitQueue(
+    "discord_guild_roles",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_guild_roles.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_GUILD_ROLES_DLQ = RabbitQueue(
+    "discord_guild_roles.dlq",
+    durable=True,
+)
+
+DISCORD_GUILD_CHANNELS_QUEUE = RabbitQueue(
+    "discord_guild_channels",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_guild_channels.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_GUILD_CHANNELS_DLQ = RabbitQueue(
+    "discord_guild_channels.dlq",
+    durable=True,
+)
+
+DISCORD_GUILD_INFO_QUEUE = RabbitQueue(
+    "discord_guild_info",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_guild_info.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_GUILD_INFO_DLQ = RabbitQueue(
+    "discord_guild_info.dlq",
+    durable=True,
+)
 
 # ============================================================================
 # Process Match Log Queue

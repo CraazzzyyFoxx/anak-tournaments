@@ -17,6 +17,9 @@ from shared.core.enums import SubscriptionCollectionSource
 from shared.core.social import SocialProvider
 from shared.messaging.config import (
     DISCORD_COMMANDS_QUEUE,
+    DISCORD_GUILD_CHANNELS_QUEUE,
+    DISCORD_GUILD_INFO_QUEUE,
+    DISCORD_GUILD_ROLES_QUEUE,
     DISCORD_MEMBER_ROLES_QUEUE,
     MATCH_LOG_RESULT_EXCHANGE,
     UPLOAD_MATCH_LOG_QUEUE,
@@ -544,6 +547,143 @@ def register_rabbit_handlers(broker: RabbitBroker) -> None:
                 observation.set_status("error")
                 logger.error(f"❌ Error getting member roles for guild {guild_id}: {e}")
                 return {"error": str(e), "guild_role_ids": [], "members": {}}
+    @broker.subscriber(DISCORD_GUILD_ROLES_QUEUE)
+    async def handle_get_guild_roles(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_GUILD_ROLES_QUEUE,
+            handler="handle_get_guild_roles",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "guild_id": guild_id, "roles": []}
+
+            try:
+                guild_id_int = int(guild_id)
+                guild = client.get_guild(guild_id_int)
+                if guild is None:
+                    try:
+                        guild = await client.fetch_guild(guild_id_int)
+                    except (discord.NotFound, discord.HTTPException):
+                        guild = None
+
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {"error": "guild_not_found", "guild_id": guild_id, "roles": []}
+
+                roles_out = []
+                for role in sorted(guild.roles, key=lambda r: r.position, reverse=True):
+                    # Exclude @everyone role in list or keep it? Keep @everyone or include all
+                    color_hex = f"#{role.color.value:06x}" if role.color.value > 0 else None
+                    roles_out.append({
+                        "id": str(role.id),
+                        "name": role.name,
+                        "color": color_hex,
+                        "position": role.position,
+                        "managed": role.managed,
+                    })
+
+                observation.set_status("success")
+                return {"guild_id": guild_id, "roles": roles_out}
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting guild roles for {guild_id}: {e}")
+                return {"error": str(e), "guild_id": guild_id, "roles": []}
+
+    @broker.subscriber(DISCORD_GUILD_CHANNELS_QUEUE)
+    async def handle_get_guild_channels(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_GUILD_CHANNELS_QUEUE,
+            handler="handle_get_guild_channels",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "guild_id": guild_id, "channels": []}
+
+            try:
+                guild_id_int = int(guild_id)
+                guild = client.get_guild(guild_id_int)
+                if guild is None:
+                    try:
+                        guild = await client.fetch_guild(guild_id_int)
+                    except (discord.NotFound, discord.HTTPException):
+                        guild = None
+
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {"error": "guild_not_found", "guild_id": guild_id, "channels": []}
+
+                channels_out = []
+                for ch in guild.text_channels:
+                    channels_out.append({
+                        "id": str(ch.id),
+                        "name": ch.name,
+                        "category_name": ch.category.name if ch.category else None,
+                        "position": ch.position,
+                    })
+
+                observation.set_status("success")
+                return {"guild_id": guild_id, "channels": channels_out}
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting guild channels for {guild_id}: {e}")
+                return {"error": str(e), "guild_id": guild_id, "channels": []}
+
+    @broker.subscriber(DISCORD_GUILD_INFO_QUEUE)
+    async def handle_get_guild_info(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_GUILD_INFO_QUEUE,
+            handler="handle_get_guild_info",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "connected": False}
+
+            try:
+                guild_id_int = int(guild_id)
+                guild = client.get_guild(guild_id_int)
+                if guild is None:
+                    try:
+                        guild = await client.fetch_guild(guild_id_int)
+                    except (discord.NotFound, discord.HTTPException):
+                        guild = None
+
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {
+                        "guild_id": guild_id,
+                        "connected": False,
+                        "name": None,
+                        "icon_url": None,
+                        "member_count": 0,
+                    }
+
+                icon_url = str(guild.icon.url) if guild.icon else None
+                member_count = getattr(guild, "member_count", 0) or len(guild.members)
+
+                observation.set_status("success")
+                return {
+                    "guild_id": guild_id,
+                    "connected": True,
+                    "name": guild.name,
+                    "icon_url": icon_url,
+                    "member_count": member_count,
+                }
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting guild info for {guild_id}: {e}")
+                return {"error": str(e), "guild_id": guild_id, "connected": False}
 
 
 async def handle_member_subscription_change(guild_id: str, discord_user_id: str, reason: str) -> None:
