@@ -75,8 +75,11 @@ def register(broker: Any, logger: Any) -> None:
     async def _get_standings(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             viewer = rehydrate_user_optional(data.get("identity"))
+            # Gate BEFORE the cached get_by_tournament (cache is keyed without the viewer).
             tournament = await assert_tournament_viewable(session, viewer, _require_id(data))
-            return await standings_flows.get_by_tournament(session, tournament, _q(data, "entities") or [])
+            return await standings_flows.get_by_tournament(
+                session, tournament.id, _q(data, "entities") or [], tournament=tournament
+            )
 
         return await _read(logger, op, exclude_none=True)
 

@@ -17,6 +17,7 @@ class Settings(BaseServiceSettings):
 
     tournaments_cache_ttl: int = 60 * 5
     teams_cache_ttl: int = 60 * 5
+    standings_cache_ttl: int = 60 * 5
     encounters_cache_ttl: int = 60 * 5
     # Match detail pages can change mid-series (live score edits), so they rely
     # on a short TTL instead of targeted invalidation (the key has no
