@@ -11,11 +11,17 @@ from faststream.rabbit.annotations import RabbitMessage
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from redis.asyncio import Redis
+from shared import models
+from shared.core.enums import SubscriptionCollectionSource
+from shared.core.social import SocialProvider
 from shared.messaging.config import (
     DISCORD_COMMANDS_QUEUE,
+    DISCORD_MEMBER_ROLES_QUEUE,
     MATCH_LOG_RESULT_EXCHANGE,
     UPLOAD_MATCH_LOG_QUEUE,
 )
+from shared.services.subscription_wiring import build_resolver
 from shared.models import Tournament, TournamentDiscordChannel
 from shared.models.ingestion.log_processing import LogProcessingRecord, LogProcessingStatus
 from shared.observability import (
@@ -50,7 +56,7 @@ intents.messages = True
 intents.message_content = True
 intents.reactions = True
 intents.guilds = True
-
+intents.members = True
 PROXY_CONF = settings.proxy_url
 
 client = discord.Client(intents=intents, proxy=PROXY_CONF)
@@ -474,6 +480,118 @@ def register_rabbit_handlers(broker: RabbitBroker) -> None:
                 logger.error(f"❌ Error handling discord command: {e}")
                 await msg.nack()  # Requeue for retry
                 raise
+    @broker.subscriber(DISCORD_MEMBER_ROLES_QUEUE)
+    async def handle_get_member_roles(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_MEMBER_ROLES_QUEUE,
+            handler="handle_get_member_roles",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            user_ids = [str(u) for u in (body.get("user_ids") or []) if u]
+
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "guild_role_ids": [], "members": {}}
+
+            try:
+                guild_id_int = int(guild_id)
+                guild = client.get_guild(guild_id_int)
+                if guild is None:
+                    try:
+                        guild = await client.fetch_guild(guild_id_int)
+                    except (discord.NotFound, discord.HTTPException):
+                        guild = None
+
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {"error": "guild_not_found", "guild_role_ids": [], "members": {}}
+
+                guild_role_ids = [str(role.id) for role in guild.roles]
+                members_out: dict[str, dict[str, Any]] = {}
+
+                for uid_str in user_ids:
+                    try:
+                        uid_int = int(uid_str)
+                        member = guild.get_member(uid_int)
+                        if member is None:
+                            try:
+                                member = await guild.fetch_member(uid_int)
+                            except (discord.NotFound, discord.HTTPException):
+                                member = None
+
+                        if member is not None:
+                            members_out[uid_str] = {
+                                "found": True,
+                                "roles": [str(role.id) for role in member.roles],
+                            }
+                        else:
+                            members_out[uid_str] = {
+                                "found": False,
+                                "roles": [],
+                            }
+                    except ValueError:
+                        members_out[uid_str] = {"found": False, "roles": []}
+
+                observation.set_status("success")
+                return {
+                    "guild_role_ids": guild_role_ids,
+                    "members": members_out,
+                }
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting member roles for guild {guild_id}: {e}")
+                return {"error": str(e), "guild_role_ids": [], "members": {}}
+
+
+async def handle_member_subscription_change(guild_id: str, discord_user_id: str, reason: str) -> None:
+    """Re-evaluates Boosty subscription for a Discord user whose member state/roles changed."""
+    try:
+        async with async_session_maker() as session:
+            ws_stmt = select(models.Workspace.id).where(models.Workspace.discord_guild_id == guild_id)
+            workspace_ids = list((await session.scalars(ws_stmt)).all())
+            if not workspace_ids:
+                return
+
+            conn_stmt = select(models.OAuthConnection.auth_user_id).where(
+                models.OAuthConnection.provider == SocialProvider.DISCORD,
+                models.OAuthConnection.provider_user_id == discord_user_id,
+            )
+            auth_user_ids = list((await session.scalars(conn_stmt)).all())
+            if not auth_user_ids:
+                return
+
+            redis_client = None
+            try:
+                redis_client = Redis.from_url(str(settings.redis_url), decode_responses=True)
+            except Exception:
+                redis_client = None
+
+            try:
+                resolver = build_resolver(
+                    session,
+                    discord_bot_token=settings.discord_token,
+                    broker=rabbit_broker,
+                    redis=redis_client,
+                )
+                for ws_id in workspace_ids:
+                    await resolver.resolve(
+                        workspace_id=ws_id,
+                        auth_user_ids=auth_user_ids,
+                        providers=[SocialProvider.BOOSTY],
+                        force_refresh=True,
+                        source=SubscriptionCollectionSource.scheduled,
+                    )
+                await session.commit()
+                logger.info(f"⚡ Instant subscription update for user(s) {auth_user_ids} in workspace(s) {workspace_ids} (reason={reason})")
+            finally:
+                if redis_client is not None:
+                    await redis_client.aclose()
+
+    except Exception as e:
+        logger.error(f"❌ Error handling member subscription change for user {discord_user_id} in guild {guild_id}: {e}")
 
     # Per-instance, server-named exclusive queue bound to the fanout exchange so
     # every replica receives every result; the one holding the matching pending
@@ -593,6 +711,29 @@ async def on_guild_remove(guild: discord.Guild):
     logger.warning(f"👋 Removed from guild: {guild.name} (ID: {guild.id})")
 
 
+
+@client.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """Handle role changes on guild members for instant subscription updates"""
+    before_roles = {r.id for r in before.roles}
+    after_roles = {r.id for r in after.roles}
+    if before_roles != after_roles:
+        logger.info(f"🔄 Member roles updated in guild {after.guild.id} for user {after.id}")
+        await handle_member_subscription_change(str(after.guild.id), str(after.id), "role_update")
+
+
+@client.event
+async def on_member_join(member: discord.Member):
+    """Handle member joining guild"""
+    logger.info(f"➕ Member joined guild {member.guild.id}: user {member.id}")
+    await handle_member_subscription_change(str(member.guild.id), str(member.id), "member_join")
+
+
+@client.event
+async def on_member_remove(member: discord.Member):
+    """Handle member leaving guild"""
+    logger.warning(f"➖ Member left guild {member.guild.id}: user {member.id}")
+    await handle_member_subscription_change(str(member.guild.id), str(member.id), "member_remove")
 async def main():
     """Main entry point"""
     try:

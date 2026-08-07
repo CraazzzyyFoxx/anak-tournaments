@@ -57,6 +57,7 @@ def build_strategies(
     *,
     discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
+    broker: Any | None = None,
     proxy: str | None = None,
 ) -> dict[str, ProviderStrategy]:
     """Map ``provider`` -> live resolution strategy.
@@ -71,9 +72,37 @@ def build_strategies(
     resolver reporting ``no_strategy_for_provider`` and hiding the real cause.
     """
     return {
-        SocialProvider.BOOSTY: BoostyDiscordStrategy(session, bot_token=discord_bot_token, proxy=proxy),
+        SocialProvider.BOOSTY: BoostyDiscordStrategy(session, bot_token=discord_bot_token, broker=broker, proxy=proxy),
         SocialProvider.TWITCH: TwitchSubscriptionStrategy(session, client_id=twitch_client_id, proxy=proxy),
     }
+
+
+def build_resolver(
+    session: AsyncSession,
+    *,
+    discord_bot_token: str | None = None,
+    twitch_client_id: str | None = None,
+    broker: Any | None = None,
+    proxy: str | None = None,
+    redis: Any | None = None,
+) -> SubscriptionResolver:
+    return SubscriptionResolver(
+        store=build_store(session),
+        strategies=build_strategies(
+            session,
+            discord_bot_token=discord_bot_token,
+            twitch_client_id=twitch_client_id,
+            broker=broker,
+            proxy=proxy,
+        ),
+        # Every real resolver records history: the collector needs it for the admin
+        # tab, and the registration/check-in gates are exactly the checks an
+        # organizer later asks "why was this player refused?" about.
+        log_sink=build_log_sink(session),
+        # ...and tells the workspace when a verdict actually moved, so an open page
+        # shows it without polling. Absent Redis, silently no signal.
+        event_sink=build_event_sink(redis),
+    )
 
 
 def build_resolver(

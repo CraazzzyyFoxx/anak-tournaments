@@ -30,6 +30,25 @@ DISCORD_COMMANDS_DLQ = RabbitQueue(
 )
 
 # ============================================================================
+# Discord Member Roles Queue (RPC)
+# ============================================================================
+
+DISCORD_MEMBER_ROLES_QUEUE = RabbitQueue(
+    "discord_member_roles",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_member_roles.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_MEMBER_ROLES_DLQ = RabbitQueue(
+    "discord_member_roles.dlq",
+    durable=True,
+)
+
+# ============================================================================
 # Process Match Log Queue
 # ============================================================================
 
