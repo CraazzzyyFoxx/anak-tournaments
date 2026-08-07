@@ -191,10 +191,20 @@ async def process_fetch_rank(
 
             lookup, version = await mapping.get_rank_mapping(session)
 
-            try:
-                result = await client.fetch_summary(event.battle_tag)
-            except OverFastRateLimited as exc:
-                await redis_client.set(COOLDOWN_KEY, "1", ex=int(exc.retry_after or 60))
+        # The OverFast call runs with no DB transaction open. Holding the session
+        # above open across this await previously left its Postgres connection
+        # idle-in-transaction for the call's full duration; a slow/timed-out
+        # upstream response (504s observed from overfast.craazzzyyfoxx.me) could
+        # outlast the server's idle_in_transaction_session_timeout=30s, which
+        # kills the connection server-side. The session's close()/rollback then
+        # hit an already-closed connection (Sentry OWT-TOURNAMENTS-M:
+        # InterfaceError: cannot call Transaction.rollback(): the underlying
+        # connection is closed).
+        try:
+            result = await client.fetch_summary(event.battle_tag)
+        except OverFastRateLimited as exc:
+            await redis_client.set(COOLDOWN_KEY, "1", ex=int(exc.retry_after or 60))
+            async with session_factory() as session:
                 await service.record_failure(
                     session,
                     social_account_id=event.social_account_id,
@@ -213,8 +223,9 @@ async def process_fetch_rank(
                     error="429 rate limited",
                 )
                 await session.commit()
-                return
+            return
 
+        async with session_factory() as session:
             written = await service.record_result(
                 session,
                 social_account_id=event.social_account_id,
