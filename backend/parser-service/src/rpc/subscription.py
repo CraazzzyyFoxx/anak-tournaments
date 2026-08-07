@@ -82,6 +82,7 @@ def register(broker: Any, logger: Any) -> None:
                 providers=body.providers,
                 discord_bot_token=settings.discord_token,
                 twitch_client_id=settings.twitch_client_id,
+                broker=broker,
                 proxy=settings.proxy_url,
                 redis=realtime_redis,
             )

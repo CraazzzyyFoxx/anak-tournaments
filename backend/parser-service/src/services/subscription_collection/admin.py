@@ -268,6 +268,7 @@ async def trigger_collection(
     providers: Sequence[str] | None = None,
     discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
+    broker: Any | None = None,
     proxy: str | None = None,
     redis: Any | None = None,
 ) -> int:
@@ -280,12 +281,20 @@ async def trigger_collection(
 
     Returns the number of (user, provider) checks performed.
     """
+    active_broker = None
+    try:
+        from src.core.broker import require_broker
+        active_broker = require_broker(broker)
+    except Exception:
+        active_broker = broker
+
     if user_id is None:
         cfg = await settings_provider.get_subscription_collection_config(session)
         return await service.collect_subscriptions_for_active_tournaments(
             session,
             discord_bot_token=discord_bot_token,
             twitch_client_id=twitch_client_id,
+            broker=active_broker,
             proxy=proxy,
             batch_size=cfg.batch_size,
             source=SubscriptionCollectionSource.manual,
@@ -305,10 +314,10 @@ async def trigger_collection(
         session,
         discord_bot_token=discord_bot_token,
         twitch_client_id=twitch_client_id,
+        broker=active_broker,
         proxy=proxy,
         redis=redis,
     )
-
     checked = 0
     for workspace_id, scope_providers in scopes:
         targets = [p for p in scope_providers if wanted is None or p in wanted]

@@ -132,14 +132,13 @@ async def collect_subscriptions_for_active_tournaments(
     *,
     discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
+    broker: Any | None = None,
     proxy: str | None = None,
     batch_size: int = 50,
     source: str = SubscriptionCollectionSource.scheduled,
     redis: Any | None = None,
 ) -> int:
-    """Check and update subscriptions for participants in active tournaments requiring subscriptions.
-
-    Commits per batch. Without a commit nothing survives the session — neither the
+    """Commits per batch. Without a commit nothing survives the session -- neither the
     entitlement upserts nor the history rows — and a single long transaction over
     every participant of every open tournament would hold locks for the whole
     sweep. Committing per batch also means a provider outage halfway through keeps
@@ -151,10 +150,18 @@ async def collect_subscriptions_for_active_tournaments(
     if not targets:
         return 0
 
+    active_broker = None
+    try:
+        from src.core.broker import require_broker
+        active_broker = require_broker(broker)
+    except Exception:
+        active_broker = broker
+
     resolver = build_resolver(
         session,
         discord_bot_token=discord_bot_token,
         twitch_client_id=twitch_client_id,
+        broker=active_broker,
         proxy=proxy,
         redis=redis,
     )

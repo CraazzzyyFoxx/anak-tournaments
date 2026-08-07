@@ -89,10 +89,18 @@ async def run_subscription_collection_tick(
                         logger.debug("Subscription collection not due until {}; skipping tick", due_at)
                         return 0
 
+                active_broker = None
+                try:
+                    from src.core.broker import require_broker
+                    active_broker = require_broker()
+                except Exception:
+                    active_broker = None
+
                 count = await service.collect_subscriptions_for_active_tournaments(
                     session,
                     discord_bot_token=settings.discord_token,
                     twitch_client_id=settings.twitch_client_id,
+                    broker=active_broker,
                     proxy=settings.proxy_url,
                     batch_size=cfg.batch_size,
                     redis=redis_client,

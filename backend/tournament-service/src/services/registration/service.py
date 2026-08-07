@@ -23,6 +23,7 @@ from shared.repository import get_or_create_workspace_member
 from shared.services import social_identity
 from shared.services.profile_visibility import resolve_profiles_open
 from shared.services.subscription_wiring import build_resolver
+from src.core.broker import require_broker
 from src import models
 from src.core.config import settings
 from src.core.redis import get_realtime_redis
@@ -836,10 +837,13 @@ async def build_public_registration_list(
             session,
             discord_bot_token=settings.discord_token,
             twitch_client_id=settings.twitch_client_id,
-            proxy=settings.proxy_url,
+            broker=(
+                (lambda: require_broker())()
+                if "require_broker" in globals()
+                else None
+            ),
             redis=get_realtime_redis(),
         ),
-    )
 
     history_map, history_count_map, division_grids = await _build_tournament_history(
         session,
