@@ -130,9 +130,34 @@ async def upsert_social_account(
     visibility row is seeded on creation (shown on the profile by default) unless
     ``ensure_global_visibility`` is False. Only non-None optional fields overwrite
     existing values, so callers can update verification without clobbering data.
+
+    When ``provider_user_id`` is given, the existing account is looked up by
+    ``(provider, provider_user_id)`` first -- that pair is what
+    ``uq_social_account_provider_subject`` actually enforces, and it is stable
+    even when the display handle changes (Discord/Twitch usernames aren't).
+    A handle-only lookup misses that rename and re-inserts, colliding on the
+    constraint (Sentry OWT-TOURNAMENTS-20D: UniqueViolationError). Raises
+    ``SocialHandleConflict`` if that ``provider_user_id`` is already linked to
+    a *different* user -- silently retargeting someone else's account would be
+    worse than the crash this replaces.
     """
     normalized = normalize_social_handle(provider, username)
-    account = await find_by_handle(session, provider=provider, username=username, user_id=user_id)
+    account = None
+    if provider_user_id is not None:
+        account = (
+            await session.execute(
+                sa.select(models.SocialAccount).where(
+                    models.SocialAccount.provider == provider,
+                    models.SocialAccount.provider_user_id == provider_user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if account is not None and account.user_id != user_id:
+            raise SocialHandleConflict(
+                f"{provider} account is already linked to a different user"
+            )
+    if account is None:
+        account = await find_by_handle(session, provider=provider, username=username, user_id=user_id)
 
     if account is None:
         is_first = not await _has_any_for_provider(session, user_id, provider)
@@ -150,6 +175,7 @@ async def upsert_social_account(
         await session.flush()
     else:
         account.username = username  # refresh display casing
+        account.username_normalized = normalized
         if url is not None:
             account.url = url
         if provider_user_id is not None:

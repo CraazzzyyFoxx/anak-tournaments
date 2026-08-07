@@ -868,14 +868,26 @@ class OAuthService:
             if player is None:
                 return
 
-        await social_identity.upsert_social_account(
-            session,
-            user_id=player.id,
-            provider=provider,
-            username=cls._oauth_handle(oauth_info),
-            provider_user_id=oauth_info.provider_user_id,
-            is_verified=True,
-        )
+        try:
+            await social_identity.upsert_social_account(
+                session,
+                user_id=player.id,
+                provider=provider,
+                username=cls._oauth_handle(oauth_info),
+                provider_user_id=oauth_info.provider_user_id,
+                is_verified=True,
+            )
+        except social_identity.SocialHandleConflict:
+            # This provider_user_id is already verified on a different player
+            # (e.g. a shared/reassigned OAuth account). Marking verification is
+            # best-effort here -- the login itself must not fail over it.
+            logger.warning(
+                "OAuth verify skipped: {} account already linked to another player",
+                provider,
+                player_id=player.id,
+            )
+            await session.rollback()
+            return
         await session.commit()
 
     @classmethod
