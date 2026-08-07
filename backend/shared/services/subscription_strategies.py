@@ -9,8 +9,7 @@ Credentials are constructor arguments, never read from a global settings object:
 configuration.
 """
 
-from __future__ import annotations
-
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Final
 
@@ -117,10 +116,18 @@ class BoostyDiscordStrategy:
                 fetch_member_roles=self._member_roles_fetcher(client),
                 fetch_guild_role_ids=self._guild_roles_fetcher(client),
             )
-            out: dict[int, SubscriptionVerdict] = {}
-            for auth_user_id in auth_user_ids:
-                out[auth_user_id] = await resolver.resolve(config=config, discord_user_id=discord_ids.get(auth_user_id))
-            return out
+            semaphore = asyncio.Semaphore(15)
+
+            async def _resolve_one(auth_user_id: int) -> tuple[int, SubscriptionVerdict]:
+                async with semaphore:
+                    verdict = await resolver.resolve(
+                        config=config,
+                        discord_user_id=discord_ids.get(auth_user_id),
+                    )
+                    return auth_user_id, verdict
+
+            results = await asyncio.gather(*[_resolve_one(uid) for uid in auth_user_ids])
+            return dict(results)
 
     def _member_roles_fetcher(self, client: httpx.AsyncClient) -> MemberRolesFetcher:
         async def fetch(guild_id: str, user_id: str) -> list[str]:
@@ -189,15 +196,20 @@ class TwitchSubscriptionStrategy:
         connections = await self._load_connections(auth_user_ids)
 
         async with httpx.AsyncClient(proxy=self._proxy, timeout=_TIMEOUT) as client:
-            out: dict[int, SubscriptionVerdict] = {}
-            for auth_user_id in auth_user_ids:
-                connection = connections.get(auth_user_id)
-                resolver = TwitchHelixResolver(check_subscription=self._checker(client, connection))
-                out[auth_user_id] = await resolver.resolve(
-                    config=config,
-                    twitch_user_id=connection[0] if connection else None,
-                )
-            return out
+            semaphore = asyncio.Semaphore(15)
+
+            async def _resolve_one(auth_user_id: int) -> tuple[int, SubscriptionVerdict]:
+                async with semaphore:
+                    connection = connections.get(auth_user_id)
+                    resolver = TwitchHelixResolver(check_subscription=self._checker(client, connection))
+                    verdict = await resolver.resolve(
+                        config=config,
+                        twitch_user_id=connection[0] if connection else None,
+                    )
+                    return auth_user_id, verdict
+
+            results = await asyncio.gather(*[_resolve_one(uid) for uid in auth_user_ids])
+            return dict(results)
 
     async def _load_connections(self, auth_user_ids: Sequence[int]) -> dict[int, tuple[str, str | None]]:
         if not auth_user_ids:
