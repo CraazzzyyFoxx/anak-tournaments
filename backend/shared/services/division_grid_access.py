@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -256,6 +257,78 @@ async def load_division_grid_snapshots(
         await division_grid_cache.set_grid_version_snapshots(fresh)
 
     return snapshot_by_version
+
+
+def _division_grid_version_read_payload(version: DivisionGridVersion) -> dict[str, Any]:
+    """JSON-shaped payload matching every service's own ``DivisionGridVersionRead``.
+
+    Each service defines an identical copy of that pydantic schema; this
+    module cannot import any of them (services depend on ``shared``, never the
+    reverse), so it hands back a plain, ``Read.model_validate``-ready dict
+    instead.
+    """
+    return {
+        "id": int(version.id),
+        "grid_id": int(version.grid_id),
+        "version": int(version.version),
+        "label": version.label,
+        "status": version.status,
+        "created_from_version_id": (
+            int(version.created_from_version_id) if version.created_from_version_id is not None else None
+        ),
+        "published_at": version.published_at.isoformat() if version.published_at is not None else None,
+        "tiers": [
+            {
+                "id": tier.id,
+                "version_id": int(version.id),
+                "slug": tier.slug,
+                "number": int(tier.number),
+                "name": tier.name,
+                "sort_order": int(tier.sort_order),
+                "rank_min": int(tier.rank_min),
+                "rank_max": int(tier.rank_max) if tier.rank_max is not None else None,
+                "icon_url": tier.icon_url,
+            }
+            for tier in version.tiers
+        ],
+    }
+
+
+async def load_division_grid_version_read_payloads(
+    session: AsyncSession,
+    version_ids: Iterable[int],
+) -> dict[int, dict[str, Any]]:
+    """Batch, cached full read-model payloads for grid versions.
+
+    Built for read models that render grid-version metadata for many ids at
+    once (e.g. every distinct version referenced in a player's tournament
+    history): one Redis MGET for the cache, at most one DB query
+    (``WHERE id IN (...)``) for the versions that missed -- replacing what
+    was previously an unconditional query on every call regardless of cache
+    state. Each caller builds its own ``DivisionGridVersionRead`` via
+    ``Read.model_validate(payload)`` -- no per-field mapping, and no risk of
+    drifting from the schema as it evolves, since the payload shape mirrors
+    it 1:1.
+    """
+    ids = {int(version_id) for version_id in version_ids}
+    if not ids:
+        return {}
+
+    payloads = await division_grid_cache.get_grid_version_read_payloads(list(ids))
+    missing = ids - payloads.keys()
+    if missing:
+        versions = (
+            await session.scalars(
+                sa.select(DivisionGridVersion)
+                .options(selectinload(DivisionGridVersion.tiers))
+                .where(DivisionGridVersion.id.in_(missing))
+            )
+        ).all()
+        fresh = {int(version.id): _division_grid_version_read_payload(version) for version in versions}
+        payloads.update(fresh)
+        await division_grid_cache.set_grid_version_read_payloads(fresh)
+
+    return payloads
 
 
 async def _load_division_grid_version_from_db(

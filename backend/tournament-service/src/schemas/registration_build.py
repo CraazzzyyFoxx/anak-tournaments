@@ -12,7 +12,6 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.division_grid import DivisionGrid, load_runtime_grid
@@ -20,6 +19,7 @@ from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
 from shared.services.division_grid_access import (
     get_effective_division_grid_version_ids,
     load_division_grid_snapshots,
+    load_division_grid_version_read_payloads,
 )
 from src import models
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -285,16 +285,14 @@ async def _build_tournament_history(
         for vid in distinct_version_ids
     }
 
-    # Full version metadata for the response map — ONE batched query, validated once.
+    # Full version metadata for the response map — cached (see
+    # load_division_grid_version_read_payloads's docstring): a query only runs
+    # for the versions this cache hasn't seen yet, not on every rebuild.
     version_read_by_id: dict[int, DivisionGridVersionRead] = {}
     if distinct_version_ids:
-        version_rows = await session.scalars(
-            sa.select(models.DivisionGridVersion)
-            .options(selectinload(models.DivisionGridVersion.tiers))
-            .where(models.DivisionGridVersion.id.in_(distinct_version_ids))
-        )
-        for version in version_rows:
-            version_read_by_id[int(version.id)] = DivisionGridVersionRead.model_validate(version, from_attributes=True)
+        version_payloads = await load_division_grid_version_read_payloads(session, distinct_version_ids)
+        for vid, payload in version_payloads.items():
+            version_read_by_id[vid] = DivisionGridVersionRead.model_validate(payload)
 
     # --- Step 4: build per-registration history (deduped by tournament, capped) ---
     history_map: dict[int, list[TournamentHistoryEntry]] = {}

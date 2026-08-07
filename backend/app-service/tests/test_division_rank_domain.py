@@ -269,3 +269,135 @@ class LoadDivisionGridSnapshotsBatchTests(IsolatedAsyncioTestCase):
         self.assertEqual({}, result)
         get_cached.assert_not_awaited()
         session.scalars.assert_not_awaited()
+
+
+division_grid_schemas = importlib.import_module("src.schemas.division_grid")
+
+
+def _fake_version_row(
+    version_id: int,
+    grid_id: int = 1,
+    version: int = 1,
+    label: str = "Season 1",
+    status: str = "published",
+    created_from_version_id: int | None = None,
+    published_at=None,
+) -> Mock:
+    tier = Mock(
+        id=10,
+        slug="gold",
+        number=1,
+        sort_order=1,
+        rank_min=1000,
+        rank_max=1999,
+        icon_url="/gold.png",
+    )
+    tier.name = "Gold"  # "name" collides with Mock's own ctor kwarg -- set after.
+    return Mock(
+        id=version_id,
+        grid_id=grid_id,
+        version=version,
+        label=label,
+        status=status,
+        created_from_version_id=created_from_version_id,
+        published_at=published_at,
+        tiers=[tier],
+    )
+
+
+class LoadDivisionGridVersionReadPayloadsBatchTests(IsolatedAsyncioTestCase):
+    """``load_division_grid_version_read_payloads`` -- the read-model counterpart
+    of ``load_division_grid_snapshots``, cached under its own key so extending
+    this richer shape can never break the (widely shared) resolution snapshot.
+    """
+
+    async def test_all_cache_hits_never_touch_the_database(self) -> None:
+        session = Mock(scalars=AsyncMock())
+        cached_payloads = {77: {"id": 77, "grid_id": 1, "version": 1, "label": "S1", "status": "published",
+                                 "created_from_version_id": None, "published_at": None, "tiers": []}}
+
+        with patch.object(
+            division_grid_cache, "get_grid_version_read_payloads", AsyncMock(return_value=cached_payloads)
+        ):
+            result = await division_grid_access.load_division_grid_version_read_payloads(
+                session=session, version_ids=[77]
+            )
+
+        self.assertEqual(cached_payloads, result)
+        session.scalars.assert_not_awaited()
+
+    async def test_cache_miss_costs_one_query_and_the_payload_matches_the_pydantic_schema(self) -> None:
+        fake_version = _fake_version_row(99, grid_id=3, version=2, label="Season 2", status="draft")
+        session = Mock(scalars=AsyncMock(return_value=_scalars_result([fake_version])))
+        set_calls: list[dict[int, dict]] = []
+
+        with (
+            patch.object(division_grid_cache, "get_grid_version_read_payloads", AsyncMock(return_value={})),
+            patch.object(
+                division_grid_cache,
+                "set_grid_version_read_payloads",
+                AsyncMock(side_effect=lambda payloads: set_calls.append(dict(payloads))),
+            ),
+        ):
+            result = await division_grid_access.load_division_grid_version_read_payloads(
+                session=session, version_ids=[99]
+            )
+
+        session.scalars.assert_awaited_once()
+        self.assertEqual([99], list(result))
+        self.assertEqual(result, set_calls[0])
+
+        # The payload alone (no ``from_attributes``) must satisfy the real
+        # DivisionGridVersionRead schema -- this is what pins the shape.
+        read = division_grid_schemas.DivisionGridVersionRead.model_validate(result[99])
+        self.assertEqual(99, read.id)
+        self.assertEqual(3, read.grid_id)
+        self.assertEqual(2, read.version)
+        self.assertEqual("Season 2", read.label)
+        self.assertEqual("draft", read.status)
+        self.assertEqual(1, len(read.tiers))
+        self.assertEqual("gold", read.tiers[0].slug)
+        self.assertEqual(99, read.tiers[0].version_id)
+
+    async def test_deleted_version_is_absent_from_result(self) -> None:
+        session = Mock(scalars=AsyncMock(return_value=_scalars_result([])))
+
+        with (
+            patch.object(division_grid_cache, "get_grid_version_read_payloads", AsyncMock(return_value={})),
+            patch.object(division_grid_cache, "set_grid_version_read_payloads", AsyncMock()) as set_payloads,
+        ):
+            result = await division_grid_access.load_division_grid_version_read_payloads(
+                session=session, version_ids=[404]
+            )
+
+        self.assertEqual({}, result)
+        set_payloads.assert_awaited_once_with({})
+
+    async def test_empty_input_returns_empty_without_any_round_trip(self) -> None:
+        session = Mock(scalars=AsyncMock())
+
+        with patch.object(division_grid_cache, "get_grid_version_read_payloads", AsyncMock()) as get_cached:
+            result = await division_grid_access.load_division_grid_version_read_payloads(
+                session=session, version_ids=[]
+            )
+
+        self.assertEqual({}, result)
+        get_cached.assert_not_awaited()
+        session.scalars.assert_not_awaited()
+
+
+class InvalidateGridVersionTests(IsolatedAsyncioTestCase):
+    async def test_clears_both_the_resolution_snapshot_and_the_full_read_payload(self) -> None:
+        deleted_keys: list[str] = []
+
+        with (
+            patch.object(division_grid_cache.cache, "is_setup", Mock(return_value=True)),
+            patch.object(
+                division_grid_cache.cache, "delete", AsyncMock(side_effect=lambda key: deleted_keys.append(key))
+            ),
+            patch.object(division_grid_cache.cache, "delete_match", AsyncMock()),
+        ):
+            await division_grid_cache.invalidate_grid_version(55)
+
+        self.assertIn(division_grid_cache._version_key(55), deleted_keys)
+        self.assertIn(division_grid_cache._version_read_key(55), deleted_keys)
