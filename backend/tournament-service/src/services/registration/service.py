@@ -842,8 +842,10 @@ async def build_public_registration_list(
                 if "require_broker" in globals()
                 else None
             ),
+            proxy=settings.proxy_url,
             redis=get_realtime_redis(),
         ),
+    )
 
     history_map, history_count_map, division_grids = await _build_tournament_history(
         session,
