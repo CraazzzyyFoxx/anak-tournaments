@@ -76,6 +76,7 @@ class _FakeStore:
         self.config_calls: list[tuple[int, tuple[str, ...]]] = []
         self.load_calls: list[tuple[int, tuple[int, ...], tuple[str, ...]]] = []
         self.upserts: list[tuple[int, int, str, SubscriptionVerdict]] = []
+        self.upsert_many_calls: list[tuple[int, str, int]] = []  # (workspace_id, provider, count)
 
     async def load_configs(self, workspace_id, providers):
         self.config_calls.append((workspace_id, tuple(providers)))
@@ -89,6 +90,11 @@ class _FakeStore:
 
     async def upsert(self, workspace_id, auth_user_id, provider, verdict):
         self.upserts.append((workspace_id, auth_user_id, provider, verdict))
+
+    async def upsert_many(self, workspace_id, provider, verdicts):
+        self.upsert_many_calls.append((workspace_id, provider, len(verdicts)))
+        for auth_user_id, verdict in verdicts.items():
+            self.upserts.append((workspace_id, auth_user_id, provider, verdict))
 
 
 class _FakeStrategy:
@@ -336,6 +342,17 @@ class TestBatching(IsolatedAsyncioTestCase):
             workspace_id=WS, auth_user_ids=[1, 2, 3], providers=["boosty"]
         )
         assert strategy.calls[0][1] == (1, 3)
+
+    async def test_every_stale_user_persists_in_one_write(self):
+        """The write side must batch exactly like the read side does: N stale
+        users behind one provider is one round trip, not N."""
+        store = _FakeStore(configs={"boosty": _enabled("boosty")})
+        strategy = _FakeStrategy(default=_verdict(SubscriptionState.ACTIVE, 1))
+        await _resolver(store, {"boosty": strategy}).resolve(
+            workspace_id=WS, auth_user_ids=[1, 2, 3], providers=["boosty"]
+        )
+        assert store.upsert_many_calls == [(WS, "boosty", 3)]
+        assert {u[1] for u in store.upserts} == {1, 2, 3}
 
 
 class TestTotalCoverage(IsolatedAsyncioTestCase):

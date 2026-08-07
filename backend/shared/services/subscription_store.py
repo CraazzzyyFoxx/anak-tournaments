@@ -23,7 +23,7 @@ lives in.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import sqlalchemy as sa
@@ -36,6 +36,39 @@ from shared.services.subscription_entitlements import ProviderConfigRow, StoredE
 from shared.subscriptions import SubscriptionVerdict
 
 __all__ = ("SqlCheckLogSink", "SqlEntitlementStore")
+
+
+def _entitlement_row(
+    workspace_id: int,
+    auth_user_id: int,
+    provider: str,
+    verdict: SubscriptionVerdict,
+) -> dict[str, Any]:
+    return {
+        "workspace_id": workspace_id,
+        "auth_user_id": auth_user_id,
+        "provider": provider,
+        "state": verdict.state,
+        "tier_rank": verdict.tier_rank,
+        "tier_label": verdict.tier_label,
+        "source": verdict.source,
+        "checked_at": verdict.checked_at,
+        "expires_at": verdict.expires_at,
+        "evidence_json": verdict.evidence or {},
+    }
+
+
+def _entitlement_conflict_update(stmt: Any) -> dict[str, Any]:
+    return {
+        "state": stmt.excluded.state,
+        "tier_rank": stmt.excluded.tier_rank,
+        "tier_label": stmt.excluded.tier_label,
+        "source": stmt.excluded.source,
+        "checked_at": stmt.excluded.checked_at,
+        "expires_at": stmt.excluded.expires_at,
+        "evidence_json": stmt.excluded.evidence_json,
+        "updated_at": sa.func.now(),
+    }
 
 
 class SqlEntitlementStore:
@@ -130,32 +163,40 @@ class SqlEntitlementStore:
         provider: str,
         verdict: SubscriptionVerdict,
     ) -> None:
-        values: dict[str, Any] = {
-            "workspace_id": workspace_id,
-            "auth_user_id": auth_user_id,
-            "provider": provider,
-            "state": verdict.state,
-            "tier_rank": verdict.tier_rank,
-            "tier_label": verdict.tier_label,
-            "source": verdict.source,
-            "checked_at": verdict.checked_at,
-            "expires_at": verdict.expires_at,
-            "evidence_json": verdict.evidence or {},
-        }
-        stmt = pg_insert(models.SubscriptionEntitlement).values(**values)
+        stmt = pg_insert(models.SubscriptionEntitlement).values(
+            **_entitlement_row(workspace_id, auth_user_id, provider, verdict)
+        )
         await self._session.execute(
             stmt.on_conflict_do_update(
                 constraint="uq_subscription_entitlement_scope",
-                set_={
-                    "state": stmt.excluded.state,
-                    "tier_rank": stmt.excluded.tier_rank,
-                    "tier_label": stmt.excluded.tier_label,
-                    "source": stmt.excluded.source,
-                    "checked_at": stmt.excluded.checked_at,
-                    "expires_at": stmt.excluded.expires_at,
-                    "evidence_json": stmt.excluded.evidence_json,
-                    "updated_at": sa.func.now(),
-                },
+                set_=_entitlement_conflict_update(stmt),
+            )
+        )
+
+    async def upsert_many(
+        self,
+        workspace_id: int,
+        provider: str,
+        verdicts: Mapping[int, SubscriptionVerdict],
+    ) -> None:
+        """One INSERT ... ON CONFLICT covering every ``auth_user_id`` in ``verdicts``.
+
+        Postgres resolves the conflict independently per row in a multi-row
+        VALUES list, so this is a straight drop-in for what used to be a
+        Python-side loop calling ``upsert`` once per user -- same statement
+        shape, one round trip instead of ``len(verdicts)``.
+        """
+        if not verdicts:
+            return
+        rows = [
+            _entitlement_row(workspace_id, auth_user_id, provider, verdict)
+            for auth_user_id, verdict in verdicts.items()
+        ]
+        stmt = pg_insert(models.SubscriptionEntitlement).values(rows)
+        await self._session.execute(
+            stmt.on_conflict_do_update(
+                constraint="uq_subscription_entitlement_scope",
+                set_=_entitlement_conflict_update(stmt),
             )
         )
 

@@ -55,6 +55,10 @@ class _Store:
     async def upsert(self, workspace_id, auth_user_id, provider, verdict):
         self.upserts.append((workspace_id, auth_user_id, provider, verdict))
 
+    async def upsert_many(self, workspace_id, provider, verdicts):
+        for auth_user_id, verdict in verdicts.items():
+            self.upserts.append((workspace_id, auth_user_id, provider, verdict))
+
 
 class _Sink:
     def __init__(self, *, error: Exception | None = None) -> None:

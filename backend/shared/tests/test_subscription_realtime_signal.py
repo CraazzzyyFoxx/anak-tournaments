@@ -59,6 +59,7 @@ class _Store:
         self._configs = configs or {}
         self._stored = stored or {}
         self.upserts: list[tuple] = []
+        self.upsert_many_calls = 0
 
     async def load_configs(self, workspace_id, providers):
         return {p: self._configs[p] for p in providers if p in self._configs}
@@ -70,6 +71,11 @@ class _Store:
 
     async def upsert(self, workspace_id, auth_user_id, provider, verdict):
         self.upserts.append((workspace_id, auth_user_id, provider, verdict))
+
+    async def upsert_many(self, workspace_id, provider, verdicts):
+        self.upsert_many_calls += 1
+        for auth_user_id, verdict in verdicts.items():
+            self.upserts.append((workspace_id, auth_user_id, provider, verdict))
 
 
 class _EventSink:
@@ -140,8 +146,8 @@ class TestChangeIsSignalled(IsolatedAsyncioTestCase):
 
         assert len(events.calls) == 1
 
-    async def test_a_whole_sweep_costs_one_signal(self):
-        """Forty flipped verdicts, one refetch per subscriber."""
+    async def test_a_whole_sweep_costs_one_signal_and_one_write(self):
+        """Forty flipped verdicts, one refetch per subscriber -- and, now, one write."""
         store = _Store(
             configs={"boosty": _enabled()},
             stored={(uid, "boosty"): _stored(SubscriptionState.ACTIVE, tier=2) for uid in range(1, 41)},
@@ -154,6 +160,7 @@ class TestChangeIsSignalled(IsolatedAsyncioTestCase):
         )
 
         assert len(store.upserts) == 40
+        assert store.upsert_many_calls == 1, "40 stale users must cost one round trip, not 40"
         assert len(events.calls) == 1
 
 

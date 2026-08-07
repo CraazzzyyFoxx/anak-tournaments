@@ -69,11 +69,16 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         self._session = async_sessionmaker(self._engine, expire_on_commit=False)()
         self.store = SqlEntitlementStore(self._session)
 
-        # Real FKs need a real workspace and auth user.
+        # Real FKs need a real workspace and two auth users (upsert_many needs
+        # more than one row to prove it, not just parse).
         self.ws = (await self._session.execute(sa.text("select id from workspace order by id limit 1"))).scalar()
-        self.au = (await self._session.execute(sa.text('select id from auth."user" order by id limit 1'))).scalar()
-        if self.ws is None or self.au is None:
+        user_rows = (
+            await self._session.execute(sa.text('select id from auth."user" order by id limit 2'))
+        ).scalars().all()
+        if self.ws is None or not user_rows:
             self.skipTest("target database has no workspace / auth user to anchor FKs")
+        self.au = user_rows[0]
+        self.au2 = user_rows[1] if len(user_rows) > 1 else None
 
         # Snapshot: this suite mutates a real workspace row and must put it back.
         self._guild_before = (
@@ -81,9 +86,10 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         ).scalar()
 
     async def asyncTearDown(self) -> None:
+        au_ids = [self.au] + ([self.au2] if self.au2 is not None else [])
         await self._session.execute(
-            sa.text("delete from subscriptions.entitlement where workspace_id=:w and auth_user_id=:u"),
-            {"w": self.ws, "u": self.au},
+            sa.text("delete from subscriptions.entitlement where workspace_id=:w and auth_user_id = any(:u)"),
+            {"w": self.ws, "u": au_ids},
         )
         await self._session.execute(
             sa.text("delete from subscriptions.provider_config where workspace_id=:w and provider='boosty'"),
@@ -205,6 +211,53 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         assert row.state == "inactive"
         assert row.tier_rank is None, "an update must clear a previously set tier"
         assert row.evidence["reason"] == "no_mapped_role"
+
+    async def test_upsert_many_writes_every_user_in_one_round_trip(self):
+        """The write side of the resolve() batching fix: one multi-row INSERT
+        must resolve conflicts independently per (workspace, user, provider)."""
+        if self.au2 is None:
+            self.skipTest("target database has only one auth user; need two to prove batching")
+
+        await self.store.upsert_many(
+            self.ws,
+            "boosty",
+            {
+                self.au: _verdict("active", 2, "discord_role", {}),
+                self.au2: _verdict("inactive", None, "discord_role", {"reason": "no_mapped_role"}),
+            },
+        )
+        await self._session.commit()
+
+        rows = await self.store.load_entitlements(self.ws, [self.au, self.au2], ["boosty"])
+        assert rows[(self.au, "boosty")].state == "active"
+        assert rows[(self.au, "boosty")].tier_rank == 2
+        assert rows[(self.au2, "boosty")].state == "inactive"
+        assert rows[(self.au2, "boosty")].evidence["reason"] == "no_mapped_role"
+
+    async def test_upsert_many_second_call_updates_existing_rows_in_place(self):
+        await self.store.upsert_many(self.ws, "boosty", {self.au: _verdict("active", 2, "discord_role", {})})
+        await self.store.upsert_many(self.ws, "boosty", {self.au: _verdict("inactive", None, "discord_role", {})})
+        await self._session.commit()
+
+        count = (
+            await self._session.execute(
+                sa.text(
+                    "select count(*) from subscriptions.entitlement "
+                    "where workspace_id=:w and auth_user_id=:u and provider='boosty'"
+                ),
+                {"w": self.ws, "u": self.au},
+            )
+        ).scalar()
+        assert count == 1
+
+        row = (await self.store.load_entitlements(self.ws, [self.au], ["boosty"]))[(self.au, "boosty")]
+        assert row.state == "inactive"
+        assert row.tier_rank is None
+
+    async def test_upsert_many_with_no_verdicts_touches_nothing(self):
+        await self.store.upsert_many(self.ws, "boosty", {})
+        await self._session.commit()
+        assert await self.store.load_entitlements(self.ws, [self.au], ["boosty"]) == {}
 
     async def test_stored_row_converts_to_a_verdict(self):
         await self.store.upsert(self.ws, self.au, "boosty", _verdict("active", 3, "challenge_code", {}))

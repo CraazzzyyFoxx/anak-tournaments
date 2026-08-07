@@ -122,6 +122,23 @@ class EntitlementStore(Protocol):
         verdict: SubscriptionVerdict,
     ) -> None: ...
 
+    async def upsert_many(
+        self,
+        workspace_id: int,
+        provider: str,
+        verdicts: Mapping[int, SubscriptionVerdict],
+    ) -> None:
+        """One round trip for every ``auth_user_id -> verdict`` in ``verdicts``.
+
+        The one place ``resolve`` needs to write more than a single row: a cold
+        cache (TTL expiring for a whole workspace at once, or the first read
+        after a tournament turns a subscription requirement on) can leave
+        dozens of users stale for the same provider in one pass. ``upsert``
+        (singular) stays for genuinely single-row writes -- challenge-code
+        redemption is exactly one user, one provider, one verdict.
+        """
+        ...
+
 
 class ProviderStrategy(Protocol):
     """Live resolution for one provider across a batch of users.
@@ -274,6 +291,7 @@ class SubscriptionResolver:
                     )
                 continue
 
+            to_persist: dict[int, SubscriptionVerdict] = {}
             for uid in stale:
                 verdict = fresh.get(uid)
                 if verdict is None:
@@ -291,7 +309,7 @@ class SubscriptionResolver:
                     continue
                 out[uid][provider] = verdict
                 changed = changed or self._differs(stored.get((uid, provider)), verdict)
-                await self._store.upsert(workspace_id, uid, provider, verdict)
+                to_persist[uid] = verdict
                 await self._log(
                     workspace_id=workspace_id,
                     auth_user_id=uid,
@@ -300,6 +318,15 @@ class SubscriptionResolver:
                     source=source,
                     verdict=verdict,
                 )
+
+            # One write for the whole stale batch instead of one per user: a
+            # cold cache (everyone's TTL expiring together, or the very first
+            # list read after a tournament turns subscriptions on) used to cost
+            # N sequential round trips here -- see EntitlementStore's docstring
+            # ("one call per concern, never one per provider" -- this closes
+            # the one place that promise didn't hold).
+            if to_persist:
+                await self._store.upsert_many(workspace_id, provider, to_persist)
 
         if changed:
             await self._emit_updated(workspace_id=workspace_id, reason=source)
