@@ -1,22 +1,36 @@
 """Async S3 client with lifecycle management for MinIO/S3-compatible storage."""
 
+import base64
+import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from aiobotocore.session import AioSession, get_session
-from botocore.config import Config
 from botocore.exceptions import ClientError
 from loguru import logger
 
-# botocore >=1.36 defaults request_checksum_calculation to "when_supported",
-# which replaces the legacy Content-MD5 header with an x-amz-checksum-crc32
-# trailer on every checksum-capable operation, including DeleteObjects.
-# MinIO/S3-compatible endpoints that still expect the old MD5 header (not the
-# new trailer) reject those requests with "MissingContentMD5". "when_required"
-# restores MD5 for operations whose API model marks a checksum as mandatory
-# (DeleteObjects among them) and skips checksums everywhere else.
-_CLIENT_CONFIG = Config(request_checksum_calculation="when_required")
+
+def _add_content_md5(request: Any, **_kwargs: Any) -> None:
+    """Attach the legacy ``Content-MD5`` header ``DeleteObjects`` needs.
+
+    botocore >=1.36 marks ``DeleteObjects`` as ``requestChecksumRequired`` but
+    always satisfies that with the *new* flexible-checksum scheme (an
+    ``x-amz-checksum-crc32`` header/trailer) — ``Config(request_checksum_
+    calculation=...)`` has no effect here, it only toggles checksums for
+    operations where one is optional. MinIO/S3-compatible endpoints that
+    still hard-require the old ``Content-MD5`` header (not the new one)
+    reject the request with "MissingContentMD5" regardless. Computing and
+    setting it ourselves on ``before-sign`` — so it lands in the SigV4
+    signature — restores the legacy behavior for this one operation.
+    """
+    body = request.body
+    if body is None:
+        return
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    digest = hashlib.md5(body, usedforsecurity=False).digest()
+    request.headers["Content-MD5"] = base64.b64encode(digest).decode("ascii")
 
 
 class S3Client:
@@ -68,7 +82,8 @@ class S3Client:
     async def _client(self) -> AsyncIterator:
         if self._session is None:
             raise RuntimeError("S3Client not started. Call await client.start() first.")
-        async with self._session.create_client("s3", config=_CLIENT_CONFIG, **self._config) as client:
+        async with self._session.create_client("s3", **self._config) as client:
+            client.meta.events.register_first("before-sign.s3.DeleteObjects", _add_content_md5)
             yield client
 
     # ── Core operations ──────────────────────────────────────────────────
