@@ -154,6 +154,110 @@ async def load_division_grid_snapshot(
     return snapshot
 
 
+async def get_effective_division_grid_version_ids(
+    session: AsyncSession,
+    workspace_id: int | None,
+    tournament_ids: Iterable[int],
+) -> dict[int, int | None]:
+    """Batch equivalent of calling ``get_effective_division_grid_version_id`` once per id.
+
+    Built for read models that need many tournaments' effective grid version at
+    once (e.g. a player's cross-tournament history): a naive per-id loop pays
+    one Redis round trip and up to two DB round trips PER tournament -- fine
+    for a handful of ids, but dozens of sequential awaits for a player with a
+    long history, all serialized behind the one ``AsyncSession`` they share (a
+    single asyncpg connection cannot run concurrent queries, so this cannot be
+    fixed with ``asyncio.gather`` over the per-id calls instead). This
+    resolves the whole set in a constant number of round trips: one Redis MGET
+    for the effective-version cache, at most one DB query for the tournaments
+    that missed, and one more round trip for the shared workspace default
+    (resolved once, not per tournament). Every resolved value is written back
+    to cache exactly like the single-item path, so a later single lookup (or
+    the next batch) still gets full cache benefit.
+
+    Every id in ``tournament_ids`` is assumed to belong to ``workspace_id`` --
+    true for every current caller, a read model already scoped to one
+    workspace -- which is what lets the workspace default collapse to one
+    lookup no matter how many tournaments fall through to it.
+    """
+    ids = list(dict.fromkeys(tournament_ids))
+    if not ids:
+        return {}
+
+    resolved = await division_grid_cache.get_tournament_effective_version_ids(ids)
+    missing = [tournament_id for tournament_id in ids if tournament_id not in resolved]
+    if not missing:
+        return resolved
+
+    rows = (
+        await session.execute(
+            sa.select(Tournament.id, Tournament.division_grid_version_id).where(Tournament.id.in_(missing))
+        )
+    ).all()
+    own_version_by_tournament = {
+        int(tournament_id): (int(version_id) if version_id is not None else None)
+        for tournament_id, version_id in rows
+    }
+
+    default_version_id: int | None = None
+    default_resolved = False
+    to_cache: dict[int, int | None] = {}
+    for tournament_id in missing:
+        if tournament_id not in own_version_by_tournament:
+            # Row vanished between the caller's own query and this one (e.g. the
+            # tournament was deleted); mirror get_tournament_division_grid_version_id
+            # returning None for a missing tournament, with no workspace fallback.
+            version_id = None
+        else:
+            own_version_id = own_version_by_tournament[tournament_id]
+            if own_version_id is not None:
+                version_id = own_version_id
+            else:
+                if not default_resolved:
+                    default_version_id = await get_workspace_division_grid_version_id(session, workspace_id)
+                    default_resolved = True
+                version_id = default_version_id
+        resolved[tournament_id] = version_id
+        to_cache[tournament_id] = version_id
+
+    await division_grid_cache.set_tournament_effective_version_ids(to_cache)
+    return resolved
+
+
+async def load_division_grid_snapshots(
+    session: AsyncSession,
+    version_ids: Iterable[int],
+) -> dict[int, DivisionGridVersionSnapshot]:
+    """Batch equivalent of calling ``load_division_grid_snapshot`` once per id.
+
+    Same shape as ``get_effective_division_grid_version_ids``: one Redis MGET
+    for the already-cached snapshots, at most one DB query (with
+    ``selectinload(tiers)``) for the ones that missed, one cache write-back.
+    A version id absent from the result was not found in the database either
+    (deleted grid version) -- callers fall back the same way the single-item
+    path does (``load_runtime_grid(None)``).
+    """
+    ids = {int(version_id) for version_id in version_ids}
+    if not ids:
+        return {}
+
+    snapshot_by_version = await division_grid_cache.get_grid_version_snapshots(list(ids))
+    missing = ids - snapshot_by_version.keys()
+    if missing:
+        versions = (
+            await session.scalars(
+                sa.select(DivisionGridVersion)
+                .options(selectinload(DivisionGridVersion.tiers))
+                .where(DivisionGridVersion.id.in_(missing))
+            )
+        ).all()
+        fresh = {int(version.id): DivisionGridVersionSnapshot.from_model(version) for version in versions}
+        snapshot_by_version.update(fresh)
+        await division_grid_cache.set_grid_version_snapshots(fresh)
+
+    return snapshot_by_version
+
+
 async def _load_division_grid_version_from_db(
     session: AsyncSession,
     version_id: int,

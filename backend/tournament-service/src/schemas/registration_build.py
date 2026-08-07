@@ -18,8 +18,8 @@ from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
 from shared.services.division_grid_access import (
-    get_effective_division_grid_version_id,
-    load_division_grid_snapshot,
+    get_effective_division_grid_version_ids,
+    load_division_grid_snapshots,
 )
 from src import models
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -266,23 +266,24 @@ async def _build_tournament_history(
     )
     rows = result.all()
 
-    # --- Step 3: resolve division-grid versions (Redis-cached, batched) ---
-    # ``get_effective_division_grid_version_id`` is Redis-backed, so the many past
-    # tournaments collapse to a handful of distinct version ids cheaply.
+    # --- Step 3: resolve division-grid versions for every distinct historical
+    # tournament in one batch -- a constant number of Redis/DB round trips no
+    # matter how many distinct tournaments this player's history spans (was a
+    # sequential per-tournament await; see get_effective_division_grid_version_ids's
+    # docstring for why that can't just be asyncio.gather'd instead).
     tournament_ids_with_rank = {tournament_id for tournament_id, _uid, _role, rank, _name in rows if rank is not None}
-    tournament_to_version: dict[int, int | None] = {}
-    for tid in tournament_ids_with_rank:
-        tournament_to_version[tid] = await get_effective_division_grid_version_id(
-            session, workspace_id, tournament_id=tid
-        )
+    tournament_to_version = await get_effective_division_grid_version_ids(
+        session, workspace_id, tournament_ids_with_rank
+    )
 
     distinct_version_ids = {vid for vid in tournament_to_version.values() if vid is not None}
 
-    # Runtime grids (for division-number resolution) come from the cached snapshot.
-    runtime_grid_by_version: dict[int, DivisionGrid] = {}
-    for vid in distinct_version_ids:
-        snapshot = await load_division_grid_snapshot(session, vid)
-        runtime_grid_by_version[vid] = snapshot.to_runtime_grid() if snapshot is not None else load_runtime_grid(None)
+    # Runtime grids (for division-number resolution) come from the cached snapshots.
+    snapshot_by_version = await load_division_grid_snapshots(session, distinct_version_ids)
+    runtime_grid_by_version: dict[int, DivisionGrid] = {
+        vid: (snapshot_by_version[vid].to_runtime_grid() if vid in snapshot_by_version else load_runtime_grid(None))
+        for vid in distinct_version_ids
+    }
 
     # Full version metadata for the response map — ONE batched query, validated once.
     version_read_by_id: dict[int, DivisionGridVersionRead] = {}

@@ -11,7 +11,8 @@ import importlib
 import os
 import sys
 from pathlib import Path
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, Mock, patch
 
 import pandas as pd
 
@@ -126,3 +127,43 @@ class CanonicalDivForTests(TestCase):
         valid = range(DEFAULT_GRID.min_division, DEFAULT_GRID.max_division + 1)
         for version_id, rank in [(200, 2000), (200, 150), (200, 1150), (300, 1500), (None, 2500)]:
             self.assertIn(canonical.canonical_div_for(grids, version_id, rank), valid)
+
+
+class LoadSourceGridsTests(IsolatedAsyncioTestCase):
+    """``load_source_grids`` feeds ML pipelines that pass every distinct grid
+    version across a tournament's (or the platform's full) history -- often
+    dozens of ids. It must resolve them in ONE snapshot lookup, not one per id.
+    """
+
+    async def test_batches_every_distinct_version_id_into_one_lookup(self) -> None:
+        grid_a = _grid20(200)
+        grid_b = _grid_ow(300)
+        snapshot_a = Mock(to_runtime_grid=Mock(return_value=grid_a))
+        snapshot_b = Mock(to_runtime_grid=Mock(return_value=grid_b))
+        session = object()
+
+        with patch.object(
+            canonical,
+            "load_division_grid_snapshots",
+            AsyncMock(return_value={200: snapshot_a, 300: snapshot_b}),
+        ) as load_snapshots:
+            # 200 repeated -- the dedup must not turn into two lookups for it.
+            grids = await canonical.load_source_grids(session=session, version_ids=[200, 200, 300])
+
+        load_snapshots.assert_awaited_once_with(session, {200, 300})
+        self.assertEqual({200: grid_a, 300: grid_b}, grids)
+
+    async def test_missing_versions_are_omitted_not_defaulted(self) -> None:
+        """Falling back to DEFAULT_GRID is ``canonical_div_for``'s job, not this one's."""
+        with patch.object(canonical, "load_division_grid_snapshots", AsyncMock(return_value={})):
+            grids = await canonical.load_source_grids(session=object(), version_ids=[404])
+
+        self.assertEqual({}, grids)
+
+    async def test_float_version_ids_from_a_dataframe_column_are_coerced(self) -> None:
+        with patch.object(
+            canonical, "load_division_grid_snapshots", AsyncMock(return_value={})
+        ) as load_snapshots:
+            await canonical.load_source_grids(session=object(), version_ids=[200.0, 300.0])
+
+        self.assertEqual({200, 300}, load_snapshots.await_args.args[1])
