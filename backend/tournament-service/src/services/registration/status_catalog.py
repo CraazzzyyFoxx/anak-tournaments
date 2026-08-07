@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.balancer_registration_statuses import (
     StatusScope,
     get_builtin_status_values,
+    invalidate_status_metas_cache,
     normalize_status_slug,
 )
 from shared.core import http_status as status
@@ -197,6 +198,7 @@ async def create_custom_status(
     )
     session.add(status_row)
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
     await session.refresh(status_row)
     return status_row
 
@@ -229,6 +231,7 @@ async def update_custom_status(
         status_row.description = description.strip() or None
 
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
     await session.refresh(status_row)
     return status_row
 
@@ -263,6 +266,7 @@ async def delete_custom_status(
 
     await session.delete(status_row)
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
 
 
 async def upsert_builtin_override(
@@ -321,6 +325,7 @@ async def upsert_builtin_override(
         status_row.description = description.strip() or None
 
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
     await session.refresh(status_row)
     return status_row
 
@@ -345,3 +350,4 @@ async def reset_builtin_override(
         return
     await session.delete(status_row)
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)

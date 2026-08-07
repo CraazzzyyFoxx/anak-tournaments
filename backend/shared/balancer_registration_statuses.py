@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Literal, TypedDict
 
 import sqlalchemy as sa
+from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+
+logger = logging.getLogger(__name__)
+
+# TTL for the cached status-metas map (see get_status_metas_map). ``shared`` is
+# imported by every service and must not read any single service's settings
+# (see subscription_wiring's docstring for the same rule), so this is a plain
+# constant rather than a config knob -- invalidation is precise anyway (every
+# write in status_catalog.py drops the exact workspace key), so the TTL is
+# only a safety net for a missed invalidation path, not the primary staleness
+# control.
+STATUS_METAS_CACHE_TTL_SECONDS = 5 * 60
 
 StatusScope = Literal["registration", "balancer"]
 StatusKind = Literal["builtin", "custom"]
@@ -309,11 +322,48 @@ async def get_status_meta(
     return build_unknown_status_meta(scope, value)
 
 
+def _status_metas_cache_key(workspace_id: int) -> str:
+    return f"backend:registration_status_metas:{workspace_id}"
+
+
 async def get_status_metas_map(
     session: AsyncSession,
     *,
     workspace_id: int,
 ) -> dict[StatusScope, dict[str, StatusMeta]]:
+    """Registration/balancer status metadata for a workspace, merged with builtins.
+
+    Called on every registration mutation and every participants-list rebuild
+    (14+ call sites across tournament-service) to attach ``status_meta`` /
+    ``balancer_status_meta`` to a serialized registration -- but the underlying
+    rows are organizer config that changes on the order of "a few times a
+    workspace's whole lifetime", not per registration. Cached per workspace;
+    every write in ``status_catalog.py`` calls ``invalidate_status_metas_cache``
+    right after its commit, so this is a safety-net TTL, not the primary
+    staleness control.
+
+    Deliberately NOT a ``@cache(...)``-decorated function: cashews composes a
+    decorator's ``key`` and ``prefix`` as ``f"{prefix}:{key}"`` -- with
+    ``prefix="backend:"`` (as every other ``@cache`` call site in this codebase
+    uses) that yields a key with a DOUBLE colon (``backend::registration_status_metas:5``),
+    which no hand-built ``cache.delete``/``delete_match`` pattern in this
+    codebase actually accounts for (confirmed by reproducing it against
+    ``user_cache.py``'s patterns -- they silently never match). Plain
+    ``cache.get``/``cache.set``/``cache.delete`` sidesteps that footgun
+    entirely: the key this function reads is exactly the key
+    ``invalidate_status_metas_cache`` deletes, with no hidden composition step
+    in between.
+    """
+    cache_key = _status_metas_cache_key(workspace_id)
+    if cache.is_setup():
+        try:
+            cached = await cache.get(cache_key)
+        except Exception as exc:
+            logger.debug("Status metas cache get failed for workspace %s: %s", workspace_id, exc)
+            cached = None
+        if cached is not None:
+            return cached
+
     merged: dict[StatusScope, dict[str, StatusMeta]] = {
         "registration": {},
         "balancer": {},
@@ -328,7 +378,27 @@ async def get_status_metas_map(
     for scope, items in BUILTIN_STATUS_META.items():
         for slug, item in items.items():
             merged[scope].setdefault(slug, item)
+
+    if cache.is_setup():
+        try:
+            await cache.set(cache_key, merged, expire=STATUS_METAS_CACHE_TTL_SECONDS)
+        except Exception as exc:
+            logger.debug("Status metas cache set failed for workspace %s: %s", workspace_id, exc)
+
     return merged
+
+
+async def invalidate_status_metas_cache(workspace_id: int) -> None:
+    """Drop the cached status-metas map after a status catalog write.
+
+    Exact key, not a pattern -- the whole map is one entry per workspace.
+    """
+    if not cache.is_setup():
+        return
+    try:
+        await cache.delete(_status_metas_cache_key(workspace_id))
+    except Exception as exc:
+        logger.debug("Status metas cache invalidation failed for workspace %s: %s", workspace_id, exc)
 
 
 def normalize_status_slug(name: str) -> str:
