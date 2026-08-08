@@ -189,7 +189,7 @@ def test_auth_user_has_permission_allows_cached_admin_role_without_explicit_perm
     )
     current_user.set_rbac_cache(role_names=["admin"], permissions=[])
 
-    assert current_user.has_permission("team", "import") is True
+    assert current_user.has_permission("team", "create") is True
 
 
 def test_auth_user_admin_panel_access_rejects_read_only_permissions() -> None:

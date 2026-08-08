@@ -3017,6 +3017,18 @@
       },
       "summary": "Create workspace"
     },
+    "rpc.app.workspaces.discord_channels": {
+      "description": "Returns text channels of the workspace's linked Discord server with names and categories.",
+      "summary": "List workspace Discord channels"
+    },
+    "rpc.app.workspaces.discord_guild": {
+      "description": "Returns connection status, server name, icon URL, and member count of the workspace's linked Discord server.",
+      "summary": "Workspace Discord server status"
+    },
+    "rpc.app.workspaces.discord_roles": {
+      "description": "Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
+      "summary": "List workspace Discord roles"
+    },
     "rpc.app.workspaces.get": {
       "description": "Returns a single workspace by id (public), 404 if not found.",
       "response": {
@@ -3170,7 +3182,7 @@
       "summary": "Get saved balance"
     },
     "rpc.balancer.admin.balance_save": {
-      "description": "Persists a computed team balance for the tournament (requires workspace team-import) and emits a balance-saved realtime event.",
+      "description": "Persists a computed team balance for the tournament (requires workspace team-create) and emits a balance-saved realtime event.",
       "request": {
         "array": false,
         "ref": "balancer.BalanceSaveRequest"
@@ -3190,7 +3202,7 @@
       "summary": "Get tournament balancer config"
     },
     "rpc.balancer.admin.tournament_config_upsert": {
-      "description": "Creates or updates the per-tournament balancer config (requires workspace team-import) and emits a balancer config-changed realtime event.",
+      "description": "Creates or updates the per-tournament balancer config (requires workspace team-create) and emits a balancer config-changed realtime event.",
       "request": {
         "array": false,
         "ref": "balancer.BalancerTournamentConfigUpsert"
@@ -3214,7 +3226,7 @@
       "summary": "Get workspace balancer config"
     },
     "rpc.balancer.admin.workspace_config_upsert": {
-      "description": "Creates or updates the workspace-level rank-delta threshold and hide-from-pool settings, requiring workspace admin permission.",
+      "description": "Creates or updates the workspace-level rank-delta threshold and hide-from-pool settings, requiring workspace update permission.",
       "request": {
         "array": false,
         "ref": "balancer.WorkspaceBalancerConfigUpsert"
@@ -3234,7 +3246,7 @@
       "summary": "Get balancer config"
     },
     "rpc.balancer.draft.cancel": {
-      "description": "Cancels the draft (requires team-import) and publishes a draft-cancelled realtime event.",
+      "description": "Cancels the draft (requires team-create) and publishes a draft-cancelled realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -3242,7 +3254,7 @@
       "summary": "Cancel draft session"
     },
     "rpc.balancer.draft.export": {
-      "description": "Finalizes the drafted rosters into tournament teams (requires team-import) and publishes a draft-completed realtime event.",
+      "description": "Finalizes the drafted rosters into tournament teams (requires team-create) and publishes a draft-completed realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -3250,7 +3262,7 @@
       "summary": "Export draft to teams"
     },
     "rpc.balancer.draft.feasibility": {
-      "description": "Reports whether every remaining team-role slot can be filled. Requires workspace team-import permission.",
+      "description": "Reports whether every remaining team-role slot can be filled. Requires workspace team-create permission.",
       "response": {
         "array": false,
         "ref": "balancer.DraftFeasibilityResponse"
@@ -3258,7 +3270,7 @@
       "summary": "Get draft feasibility"
     },
     "rpc.balancer.draft.pause": {
-      "description": "Pauses an in-progress draft (requires team-import) and publishes a draft-paused realtime event.",
+      "description": "Pauses an in-progress draft (requires team-create) and publishes a draft-paused realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -3266,7 +3278,7 @@
       "summary": "Pause draft session"
     },
     "rpc.balancer.draft.pick_autopick": {
-      "description": "Auto-selects the best-fit available player for a pick using the session's autopick strategy (requires team-import) and broadcasts the result.",
+      "description": "Auto-selects the best-fit available player for a pick using the session's autopick strategy (requires team-create) and broadcasts the result.",
       "request": {
         "array": false,
         "ref": "balancer.DraftPickAutopickRequest"
@@ -3286,7 +3298,7 @@
       "summary": "Get safe draft pick options"
     },
     "rpc.balancer.draft.pick_override": {
-      "description": "Admin-overrides a pick to an arbitrary player (requires team-import), bypassing captain/clock constraints, and broadcasts a pick-made event.",
+      "description": "Admin-overrides a pick to an arbitrary player (requires team-create), bypassing captain/clock constraints, and broadcasts a pick-made event.",
       "request": {
         "array": false,
         "ref": "balancer.DraftPickOverrideRequest"
@@ -3310,7 +3322,7 @@
       "summary": "Select draft pick"
     },
     "rpc.balancer.draft.player_role_edit": {
-      "description": "Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason. Requires workspace team-import permission.",
+      "description": "Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason. Requires workspace team-create permission.",
       "request": {
         "array": false,
         "ref": "balancer.DraftRoleEditRequest"
@@ -3322,7 +3334,7 @@
       "summary": "Preview or add a draft player role"
     },
     "rpc.balancer.draft.resume": {
-      "description": "Resumes a paused draft (requires team-import) and publishes a draft-resumed realtime event.",
+      "description": "Resumes a paused draft (requires team-create) and publishes a draft-resumed realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -3330,7 +3342,7 @@
       "summary": "Resume draft session"
     },
     "rpc.balancer.draft.rollback": {
-      "description": "Rolls back the most recent draft action (requires team-import) and publishes a rollback realtime event.",
+      "description": "Rolls back the most recent draft action (requires team-create) and publishes a rollback realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -3338,7 +3350,7 @@
       "summary": "Rollback draft pick"
     },
     "rpc.balancer.draft.seed": {
-      "description": "Seeds a draft session with captains and players from the balancer pool or a manual list (requires team-import); 422 if neither is provided.",
+      "description": "Seeds a draft session with captains and players from the balancer pool or a manual list (requires team-create); 422 if neither is provided.",
       "request": {
         "array": false,
         "ref": "balancer.DraftSeedRequest"
@@ -3358,7 +3370,7 @@
       "summary": "Get draft session board"
     },
     "rpc.balancer.draft.session_create": {
-      "description": "Creates a new draft session for a tournament (requires workspace team-import) and publishes a session-updated realtime event.",
+      "description": "Creates a new draft session for a tournament (requires workspace team-create) and publishes a session-updated realtime event.",
       "request": {
         "array": false,
         "ref": "balancer.DraftSessionCreateRequest"
@@ -3378,7 +3390,7 @@
       "summary": "Get draft session"
     },
     "rpc.balancer.draft.session_patch": {
-      "description": "Updates mutable draft settings (pick time, autopick strategy, override flag, rounds, settings) before the draft starts, requiring team-import.",
+      "description": "Updates mutable draft settings (pick time, autopick strategy, override flag, rounds, settings) before the draft starts, requiring team-create.",
       "request": {
         "array": false,
         "ref": "balancer.DraftSessionPatchRequest"
@@ -3390,7 +3402,7 @@
       "summary": "Patch draft session"
     },
     "rpc.balancer.draft.start": {
-      "description": "Starts the draft and opens the first pick (requires team-import), publishing a pick-started realtime event with the clock deadline.",
+      "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -4563,11 +4575,11 @@
       "summary": "Get achievement rule"
     },
     "rpc.parser.ach.import": {
-      "description": "Imports portable achievement rules into a workspace (with source-workspace access check) and returns the import result; requires workspace achievement.import.",
+      "description": "Imports portable achievement rules into a workspace (with source-workspace access check) and returns the import result; requires workspace achievement.create.",
       "summary": "Import achievement rules"
     },
     "rpc.parser.ach.lib_import": {
-      "description": "Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs; requires workspace achievement.import.",
+      "description": "Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs; requires workspace achievement.create.",
       "summary": "Import library rules"
     },
     "rpc.parser.ach.lib_list": {
@@ -4782,7 +4794,7 @@
       "summary": "Match-log queue depths"
     },
     "rpc.parser.logs.retry": {
-      "description": "Resets a failed/processed log record to pending and re-enqueues it for processing; requires log.reprocess on the record's workspace.",
+      "description": "Resets a failed/processed log record to pending and re-enqueues it for processing; requires log.update on the record's workspace.",
       "response": {
         "array": false,
         "ref": "parser.LogRecordRead"
@@ -4821,7 +4833,7 @@
       "summary": "Log processing stats"
     },
     "rpc.parser.logs.upload": {
-      "description": "Multipart (base64) upload of one or more log files for a tournament, storing each to S3 and enqueueing processing, with per-file errors collected; requires log.upload.",
+      "description": "Multipart (base64) upload of one or more log files for a tournament, storing each to S3 and enqueueing processing, with per-file errors collected; requires log.create.",
       "response": {
         "array": false,
         "ref": "parser.LogUploadResponse"
@@ -5961,7 +5973,7 @@
       "summary": "Veto map"
     },
     "rpc.tournament.challonge_export": {
-      "description": "Exports a tournament's bracket to Challonge; requires challonge-sync permission on the tournament.",
+      "description": "Exports a tournament's bracket to Challonge; requires challonge-update permission on the tournament.",
       "summary": "Export to Challonge"
     },
     "rpc.tournament.challonge_fetch_matches": {
@@ -5989,11 +6001,11 @@
       "summary": "Fetch Challonge tournament"
     },
     "rpc.tournament.challonge_import": {
-      "description": "Imports a tournament's bracket from Challonge, optionally as a dry run; requires challonge-sync permission on the tournament.",
+      "description": "Imports a tournament's bracket from Challonge, optionally as a dry run; requires challonge-update permission on the tournament.",
       "summary": "Import from Challonge"
     },
     "rpc.tournament.challonge_push_result": {
-      "description": "Pushes a confirmed encounter result to Challonge and returns a status acknowledgment; requires challonge-sync permission on the encounter.",
+      "description": "Pushes a confirmed encounter result to Challonge and returns a status acknowledgment; requires challonge-update permission on the encounter.",
       "summary": "Push result to Challonge"
     },
     "rpc.tournament.challonge_sync_log": {
@@ -6440,7 +6452,7 @@
       "summary": "List marketplace grids"
     },
     "rpc.tournament.grid_marketplace_import": {
-      "description": "Creates or reuses an idempotent background import job (202 Accepted); requires division_grid-import permission.",
+      "description": "Creates or reuses an idempotent background import job (202 Accepted); requires division_grid-create permission.",
       "request": {
         "array": false,
         "ref": "tournament.DivisionGridMarketplaceImportRequest"
@@ -6552,7 +6564,7 @@
       "summary": "Get grid version"
     },
     "rpc.tournament.grid_version_publish": {
-      "description": "Publishes a division grid version; requires division_grid-publish permission on the grid's workspace.",
+      "description": "Publishes a division grid version; requires division_grid-update permission on the grid's workspace.",
       "response": {
         "array": false,
         "ref": "tournament.DivisionGridVersionRead"
@@ -6600,7 +6612,7 @@
       "summary": "List workspace grids"
     },
     "rpc.tournament.job_get": {
-      "description": "Returns one tournament computation job by id; requires the caller's standing-recalculate or stage-update permission on the job's tournament.",
+      "description": "Returns one tournament computation job by id; requires the caller's standing-update or stage-update permission on the job's tournament.",
       "response": {
         "array": false,
         "ref": "tournament.TournamentComputationJobRead"
@@ -7281,7 +7293,7 @@
       "summary": "Get league player stacks"
     },
     "rpc.tournament.reg_approve": {
-      "description": "Approves a registration (recording the reviewer) and broadcasts a realtime change; requires team-import permission on its workspace.",
+      "description": "Approves a registration (recording the reviewer) and broadcasts a realtime change; requires team-create permission on its workspace.",
       "response": {
         "array": false,
         "ref": "tournament.BalancerRegistrationRead"
@@ -7289,7 +7301,7 @@
       "summary": "Approve registration"
     },
     "rpc.tournament.reg_bulk_add_balancer": {
-      "description": "Adds multiple registrations to the balancer with a given status, returning updated/skipped counts and broadcasting a realtime change; requires team-import permission on the tournament.",
+      "description": "Adds multiple registrations to the balancer with a given status, returning updated/skipped counts and broadcasting a realtime change; requires team-create permission on the tournament.",
       "response": {
         "array": false,
         "ref": "tournament.BulkBalancerStatusResponse"
@@ -7297,7 +7309,7 @@
       "summary": "Bulk add to balancer"
     },
     "rpc.tournament.reg_bulk_approve": {
-      "description": "Approves multiple registrations by id, returning approved and skipped ids and broadcasting a realtime change; requires team-import permission on the tournament.",
+      "description": "Approves multiple registrations by id, returning approved and skipped ids and broadcasting a realtime change; requires team-create permission on the tournament.",
       "response": {
         "array": false,
         "ref": "tournament.BulkApproveResponse"
@@ -7329,7 +7341,7 @@
       "summary": "Toggle registration check-in"
     },
     "rpc.tournament.reg_create_manual": {
-      "description": "Admin-creates a registration for a tournament (201 Created) and broadcasts a realtime change; requires team-import permission on its workspace.",
+      "description": "Admin-creates a registration for a tournament (201 Created) and broadcasts a realtime change; requires team-create permission on its workspace.",
       "request": {
         "array": false,
         "ref": "tournament.BalancerRegistrationCreateRequest"
@@ -7341,7 +7353,7 @@
       "summary": "Create manual registration"
     },
     "rpc.tournament.reg_delete": {
-      "description": "Soft-deletes a registration (204 no body) and broadcasts a realtime change; requires team-import permission on its workspace.",
+      "description": "Soft-deletes a registration (204 no body) and broadcasts a realtime change; requires team-create permission on its workspace.",
       "summary": "Delete registration"
     },
     "rpc.tournament.reg_exclusion": {
@@ -7357,7 +7369,7 @@
       "summary": "Set registration exclusion"
     },
     "rpc.tournament.reg_export_users": {
-      "description": "Exports a tournament's approved registrations into user records and returns the result summary; requires team-import permission on its workspace.",
+      "description": "Exports a tournament's approved registrations into user records and returns the result summary; requires team-create permission on its workspace.",
       "response": {
         "array": false,
         "ref": "tournament.RegistrationUserExportResponse"
@@ -7373,7 +7385,7 @@
       "summary": "Get registration form (admin)"
     },
     "rpc.tournament.reg_form_upsert": {
-      "description": "Creates or replaces a tournament's registration form config (built-in and custom fields); requires team-import permission on its workspace.",
+      "description": "Creates or replaces a tournament's registration form config (built-in and custom fields); requires team-create permission on its workspace.",
       "request": {
         "array": false,
         "ref": "tournament.RegistrationFormUpsert"
@@ -7469,7 +7481,7 @@
       "summary": "Preview rank autofill"
     },
     "rpc.tournament.reg_reject": {
-      "description": "Rejects a registration (recording the reviewer) and broadcasts a realtime change; requires team-import permission on its workspace.",
+      "description": "Rejects a registration (recording the reviewer) and broadcasts a realtime change; requires team-create permission on its workspace.",
       "response": {
         "array": false,
         "ref": "tournament.BalancerRegistrationRead"
@@ -7686,7 +7698,7 @@
       "summary": "Suggest sheet mapping"
     },
     "rpc.tournament.sheet_sync": {
-      "description": "Syncs registrations from the configured Google Sheet and returns created/updated/withdrawn/skipped counts plus errors; requires team-import permission on the tournament.",
+      "description": "Syncs registrations from the configured Google Sheet and returns created/updated/withdrawn/skipped counts plus errors; requires team-create permission on the tournament.",
       "response": {
         "array": false,
         "ref": "tournament.BalancerGoogleSheetFeedSyncResponse"
@@ -7694,7 +7706,7 @@
       "summary": "Sync Google Sheet feed"
     },
     "rpc.tournament.sheet_upsert": {
-      "description": "Creates or updates a tournament's registration Google Sheets feed config; requires team-import permission on the tournament.",
+      "description": "Creates or updates a tournament's registration Google Sheets feed config; requires team-create permission on the tournament.",
       "request": {
         "array": false,
         "ref": "tournament.BalancerGoogleSheetFeedUpsert"
@@ -7774,7 +7786,7 @@
       "summary": "Wire stage from groups"
     },
     "rpc.tournament.standing_recalculate": {
-      "description": "Schedules a durable standings-recalculation job (202 Accepted) for the tournament; requires standing-recalculate permission.",
+      "description": "Schedules a durable standings-recalculation job (202 Accepted) for the tournament; requires standing-update permission.",
       "response": {
         "array": false,
         "ref": "tournament.TournamentComputationJobRead"
@@ -15908,10 +15920,6 @@
           "title": "Rbac Roles",
           "type": "array"
         },
-        "role": {
-          "title": "Role",
-          "type": "string"
-        },
         "username": {
           "anyOf": [
             {
@@ -15932,8 +15940,7 @@
       "required": [
         "id",
         "workspace_id",
-        "auth_user_id",
-        "role"
+        "auth_user_id"
       ],
       "title": "WorkspaceMemberRead",
       "type": "object"
@@ -20033,10 +20040,6 @@
           "title": "Rbac Roles",
           "type": "array"
         },
-        "role": {
-          "title": "Role",
-          "type": "string"
-        },
         "slug": {
           "title": "Slug",
           "type": "string"
@@ -20048,8 +20051,7 @@
       },
       "required": [
         "workspace_id",
-        "slug",
-        "role"
+        "slug"
       ],
       "title": "AuthUserWorkspace",
       "type": "object"
@@ -21775,10 +21777,6 @@
           "title": "Rbac Roles",
           "type": "array"
         },
-        "role": {
-          "title": "Role",
-          "type": "string"
-        },
         "slug": {
           "title": "Slug",
           "type": "string"
@@ -21790,8 +21788,7 @@
       },
       "required": [
         "workspace_id",
-        "slug",
-        "role"
+        "slug"
       ],
       "title": "WorkspaceMembership",
       "type": "object"

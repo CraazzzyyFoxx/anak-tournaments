@@ -268,8 +268,6 @@ export interface WorkspaceMember {
   id: number;
   workspace_id: number;
   auth_user_id: number;
-  /** Highest system role held (owner > admin > member > player). */
-  role: WorkspaceSystemRole;
   username?: string | null;
   email?: string | null;
   first_name?: string | null;
@@ -282,12 +280,4 @@ export interface WorkspaceMember {
     is_system: boolean;
     workspace_id?: number | null;
   }>;
-}
-
-export interface WorkspaceMembership {
-  workspace_id: number;
-  slug: string;
-  role: string;
-  rbac_roles: string[];
-  rbac_permissions: string[];
 }

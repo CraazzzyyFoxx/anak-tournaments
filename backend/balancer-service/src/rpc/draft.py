@@ -303,7 +303,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             session_id = c.require_id(data)
             ws_id = await _get_draft_session_workspace_id(session, session_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             draft = await _load_session(session, session_id)
             report = await feasibility.analyze_session(session, draft)
             return DraftFeasibilityResponse.model_validate(report)
@@ -353,7 +353,7 @@ def register(broker: Any, logger: Any) -> None:
             player_id = c.require_id(data)
             session_id = c.path_int(data, "session_id")
             ws_id = await _get_draft_session_workspace_id(session, session_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftRoleEditRequest.model_validate(c.payload(data))
             draft = await _load_session(session, session_id)
             result = await role_edit_svc.edit_player_role(
@@ -463,7 +463,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             tournament_id = c.require_id(data)
             workspace_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, workspace_id, "team", "import")
+            c.require_workspace_permission(data, user, workspace_id, "team", "create")
             payload = DraftSessionCreateRequest.model_validate(c.payload(data))
             # The roster shape is the tournament's, not the request's: a draft
             # cannot be created at a size the tournament does not run.
@@ -501,7 +501,7 @@ def register(broker: Any, logger: Any) -> None:
             session_id = c.require_id(data)
             tournament_id = c.path_int(data, "tournament_id")
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftSeedRequest.model_validate(c.payload(data))
             draft = await session.scalar(sa.select(DraftSession).where(DraftSession.id == session_id).with_for_update())
             if draft is None:
@@ -592,7 +592,7 @@ def register(broker: Any, logger: Any) -> None:
             session_id = c.require_id(data)
             tournament_id = c.path_int(data, "tournament_id")
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftSessionPatchRequest.model_validate(c.payload(data))
             draft = await _load_session(session, session_id)
             if payload.pick_time_seconds is not None:
@@ -624,7 +624,7 @@ def register(broker: Any, logger: Any) -> None:
                 session_id = c.require_id(data)
                 tournament_id = c.path_int(data, "tournament_id")
                 ws_id = await _get_tournament_workspace_id(session, tournament_id)
-                c.require_workspace_permission(data, user, ws_id, "team", "import")
+                c.require_workspace_permission(data, user, ws_id, "team", "create")
                 return await _lifecycle_action(session, _redis(logger), session_id, action, event_type, user)
 
             return await c.envelope(logger, subject, op, session_factory=_SF)
@@ -642,7 +642,7 @@ def register(broker: Any, logger: Any) -> None:
             session_id = c.require_id(data)
             tournament_id = c.path_int(data, "tournament_id")
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             draft = await _load_session(session, session_id)
             updated, _removed, _imported = await export_svc.export(session, draft)
             await draft_rt.publish_draft_event(
@@ -697,7 +697,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             pick_id = c.require_id(data)
             ws_id = await _get_pick_workspace_id(session, pick_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftPickAutopickRequest.model_validate(c.payload(data))
             draft, pick = await _load_pick(session, pick_id)
             result = await selection.autopick(session, draft, pick, expected_version=payload.expected_version)
@@ -715,7 +715,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             pick_id = c.require_id(data)
             ws_id = await _get_pick_workspace_id(session, pick_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftPickOverrideRequest.model_validate(c.payload(data))
             draft, pick = await _load_pick(session, pick_id)
             before = {

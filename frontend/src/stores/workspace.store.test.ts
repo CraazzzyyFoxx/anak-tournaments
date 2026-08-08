@@ -32,7 +32,6 @@ function createProfile(workspaceIds: number[]): AuthProfile {
     workspaces: workspaceIds.map((workspaceId) => ({
       workspace_id: workspaceId,
       slug: `workspace-${workspaceId}`,
-      memberRole: workspaceId === workspaceIds[0] ? "admin" : "member",
       roles: [],
       permissions: [],
     })),

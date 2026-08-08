@@ -23,8 +23,8 @@ from shared.repository import get_or_create_workspace_member
 from shared.services import social_identity
 from shared.services.profile_visibility import resolve_profiles_open
 from shared.services.subscription_wiring import build_resolver
-from src.core.broker import require_broker
 from src import models
+from src.core.broker import optional_broker
 from src.core.config import settings
 from src.core.redis import get_realtime_redis
 from src.schemas.registration import (
@@ -787,9 +787,12 @@ async def build_public_registration_list(
     """Anonymous participants-list read model.
 
     The registration list must always reflect live data. Every read below is a
-    plain ``session.execute`` (or a helper that itself only runs raw ORM reads:
-    get_status_metas_map / get_registration_form / resolve_profiles_open) — none
-    of them go through the cashews cache, so no cache bypass is needed here.
+    plain ``session.execute`` or a helper that only runs raw ORM reads, with one
+    exception: ``get_status_metas_map`` is cashews-backed per workspace. That is
+    safe because it caches the status *catalog*, not registrations, and all five
+    catalog writes invalidate it after commit (see
+    ``shared.balancer_registration_statuses``) — but it does mean this function
+    is no longer cache-free, so re-check that helper before assuming freshness.
     NB: do NOT reintroduce ``cache.disabling(...)`` — it flips a *process-global*
     flag on the shared cashews backend and races with every concurrent request
     on this worker (see lesson_cashews_disabling_shared_cache).
@@ -837,11 +840,7 @@ async def build_public_registration_list(
             session,
             discord_bot_token=settings.discord_token,
             twitch_client_id=settings.twitch_client_id,
-            broker=(
-                (lambda: require_broker())()
-                if "require_broker" in globals()
-                else None
-            ),
+            broker=optional_broker(),
             proxy=settings.proxy_url,
             redis=get_realtime_redis(),
         ),

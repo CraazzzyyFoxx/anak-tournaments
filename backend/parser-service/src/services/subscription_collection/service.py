@@ -22,6 +22,7 @@ from shared import models
 from shared.core.enums import SubscriptionCollectionSource
 from shared.services.subscription_wiring import build_resolver
 from shared.subscriptions import parse_requirement
+from src.core.broker import optional_broker
 
 __all__ = (
     "TournamentTarget",
@@ -138,7 +139,9 @@ async def collect_subscriptions_for_active_tournaments(
     source: str = SubscriptionCollectionSource.scheduled,
     redis: Any | None = None,
 ) -> int:
-    """Commits per batch. Without a commit nothing survives the session -- neither the
+    """Sweep every tournament that gates on a subscription, refreshing verdicts.
+
+    Commits per batch. Without a commit nothing survives the session -- neither the
     entitlement upserts nor the history rows — and a single long transaction over
     every participant of every open tournament would hold locks for the whole
     sweep. Committing per batch also means a provider outage halfway through keeps
@@ -150,12 +153,9 @@ async def collect_subscriptions_for_active_tournaments(
     if not targets:
         return 0
 
-    active_broker = None
-    try:
-        from src.core.broker import require_broker
-        active_broker = require_broker(broker)
-    except Exception:
-        active_broker = broker
+    # Optional: with a broker the Discord roles for a whole batch come back in one
+    # RPC; without one the strategy falls back to per-user Discord REST.
+    active_broker = optional_broker(broker)
 
     resolver = build_resolver(
         session,

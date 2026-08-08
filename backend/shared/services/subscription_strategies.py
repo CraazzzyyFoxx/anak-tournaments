@@ -11,16 +11,18 @@ configuration.
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 from typing import Any, Final
 
 import httpx
-from loguru import logger
 import sqlalchemy as sa
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.messaging.config import DISCORD_MEMBER_ROLES_QUEUE
 from shared import models
 from shared.core.social import SocialProvider
+from shared.messaging.config import DISCORD_MEMBER_ROLES_QUEUE
+from shared.messaging.rpc import request_dict
 from shared.subscriptions import SubscriptionVerdict
 from shared.subscriptions.providers.discord_role import (
     DiscordForbidden,
@@ -52,6 +54,44 @@ DISCORD_API_BASE: Final = "https://discord.com/api/v10"
 TWITCH_HELIX_BASE: Final = "https://api.twitch.tv/helix"
 
 _TIMEOUT: Final = httpx.Timeout(10.0, connect=5.0)
+
+
+async def _gather_verdicts(
+    coros: list[Awaitable[tuple[int, SubscriptionVerdict]]],
+    *,
+    auth_user_ids: Sequence[int],
+    source: str,
+) -> dict[int, SubscriptionVerdict]:
+    """Run per-user resolutions concurrently, degrading a crash to ``unknown``.
+
+    ``return_exceptions`` is not optional here. Each resolver converts only its
+    OWN typed errors, so an untyped escape -- a malformed 200 body making
+    ``response.json()`` raise, say -- would otherwise propagate straight out of
+    ``gather`` while its siblings are still scheduled. The enclosing
+    ``async with httpx.AsyncClient(...)`` then closes the client under them and
+    the whole batch is lost, when this module's entire failure philosophy is
+    that one broken user resolves ``unknown`` and everyone else still gets a
+    verdict.
+    """
+    settled = await asyncio.gather(*coros, return_exceptions=True)
+
+    out: dict[int, SubscriptionVerdict] = {}
+    for auth_user_id, result in zip(auth_user_ids, settled, strict=True):
+        if isinstance(result, BaseException):
+            logger.warning(f"subscription resolution crashed for user {auth_user_id}: {result!r}")
+            out[auth_user_id] = SubscriptionVerdict(
+                state="unknown",
+                tier_rank=None,
+                tier_label=None,
+                source=source,
+                checked_at=datetime.now(UTC),
+                expires_at=None,
+                evidence={"reason": "provider_unavailable", "error": repr(result)},
+            )
+        else:
+            resolved_id, verdict = result
+            out[resolved_id] = verdict
+    return out
 
 
 async def load_provider_user_ids(
@@ -113,18 +153,21 @@ class BoostyDiscordStrategy:
 
         guild_id = str(config.get("guild_id") or "").strip() if config else ""
 
-        # First attempt: RPC call to discord-service for in-memory cached discord.py roles
+        # First attempt: RPC to discord-service, which answers from discord.py's
+        # in-memory guild cache -- one round trip for the whole batch instead of
+        # two REST calls per user against Discord's per-guild rate limit bucket.
         if self._broker is not None and guild_id:
             try:
-                rpc_res = await self._broker.request(
+                rpc_res = await request_dict(
+                    self._broker,
                     {
                         "guild_id": guild_id,
-                        "user_ids": [uid for uid in discord_ids.values() if uid],
+                        "user_ids": sorted({uid for uid in discord_ids.values() if uid}),
                     },
                     DISCORD_MEMBER_ROLES_QUEUE,
                     timeout=5.0,
                 )
-                if isinstance(rpc_res, dict) and "members" in rpc_res and not rpc_res.get("error"):
+                if rpc_res is not None and "members" in rpc_res and not rpc_res.get("error"):
                     return await self._resolve_from_rpc(
                         config=config,
                         auth_user_ids=auth_user_ids,
@@ -154,8 +197,11 @@ class BoostyDiscordStrategy:
                     )
                     return auth_user_id, verdict
 
-            results = await asyncio.gather(*[_resolve_one(uid) for uid in auth_user_ids])
-            return dict(results)
+            return await _gather_verdicts(
+                [_resolve_one(uid) for uid in auth_user_ids],
+                auth_user_ids=auth_user_ids,
+                source=DiscordRoleResolver.source,
+            )
 
     async def _resolve_from_rpc(
         self,
@@ -165,35 +211,35 @@ class BoostyDiscordStrategy:
         discord_ids: dict[int, str],
         rpc_res: dict[str, Any],
     ) -> dict[int, SubscriptionVerdict]:
+        """Replay the normal decision table over an already-fetched role snapshot.
+
+        The same ``DiscordRoleResolver`` runs, so the RPC path and the HTTP
+        fallback cannot drift apart: only the two fetchers change, and here they
+        read the batch reply instead of the network. No user is resolved
+        concurrently because neither fetcher awaits anything.
+        """
         guild_role_ids = {str(r) for r in (rpc_res.get("guild_role_ids") or [])}
         members = rpc_res.get("members") or {}
 
-        async def fetch_guild_roles(gid: str) -> set[str]:
+        async def fetch_guild_roles(_guild_id: str) -> set[str]:
             return guild_role_ids
 
-        out: dict[int, SubscriptionVerdict] = {}
-        for auth_user_id in auth_user_ids:
-            discord_id = discord_ids.get(auth_user_id)
-            if not discord_id:
-                async def fetch_member_roles(gid: str, uid: str) -> list[str]:
-                    raise MemberNotFound("member not found")
-            else:
-                m_info = members.get(discord_id)
-                if not m_info or not m_info.get("found"):
-                    async def fetch_member_roles(gid: str, uid: str) -> list[str]:
-                        raise MemberNotFound("member not found")
-                else:
-                    user_roles = [str(r) for r in (m_info.get("roles") or [])]
-                    async def fetch_member_roles(gid: str, uid: str, _r=user_roles) -> list[str]:
-                        return _r
+        async def fetch_member_roles(_guild_id: str, user_id: str) -> list[str]:
+            info = members.get(user_id)
+            # Absent or explicitly not-found both mean "not in the guild", which
+            # the resolver turns into inactive/not_a_member -- never `unknown`.
+            if not isinstance(info, dict) or not info.get("found"):
+                raise MemberNotFound("member not found")
+            return [str(role_id) for role_id in (info.get("roles") or [])]
 
-            resolver = DiscordRoleResolver(
-                fetch_member_roles=fetch_member_roles,
-                fetch_guild_role_ids=fetch_guild_roles,
-            )
-            out[auth_user_id] = await resolver.resolve(config=config, discord_user_id=discord_id)
-
-        return out
+        resolver = DiscordRoleResolver(
+            fetch_member_roles=fetch_member_roles,
+            fetch_guild_role_ids=fetch_guild_roles,
+        )
+        return {
+            auth_user_id: await resolver.resolve(config=config, discord_user_id=discord_ids.get(auth_user_id))
+            for auth_user_id in auth_user_ids
+        }
 
     def _member_roles_fetcher(self, client: httpx.AsyncClient) -> MemberRolesFetcher:
         async def fetch(guild_id: str, user_id: str) -> list[str]:
@@ -274,8 +320,11 @@ class TwitchSubscriptionStrategy:
                     )
                     return auth_user_id, verdict
 
-            results = await asyncio.gather(*[_resolve_one(uid) for uid in auth_user_ids])
-            return dict(results)
+            return await _gather_verdicts(
+                [_resolve_one(uid) for uid in auth_user_ids],
+                auth_user_ids=auth_user_ids,
+                source=TwitchHelixResolver.source,
+            )
 
     async def _load_connections(self, auth_user_ids: Sequence[int]) -> dict[int, tuple[str, str | None]]:
         if not auth_user_ids:

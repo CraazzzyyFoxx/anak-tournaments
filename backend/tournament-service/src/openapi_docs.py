@@ -89,7 +89,7 @@ DOCS: dict[str, dict] = {
     # ── computation job reads ──────────────────────────────────────────────
     "rpc.tournament.job_get": {
         "summary": "Get computation job",
-        "description": "Returns one tournament computation job by id; requires the caller's standing-recalculate or stage-update permission on the job's tournament.",
+        "description": "Returns one tournament computation job by id; requires the caller's standing-update or stage-update permission on the job's tournament.",
     },
     "rpc.tournament.job_list": {
         "summary": "List computation jobs",
@@ -323,7 +323,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.standing_recalculate": {
         "summary": "Recalculate standings",
-        "description": "Schedules a durable standings-recalculation job (202 Accepted) for the tournament; requires standing-recalculate permission.",
+        "description": "Schedules a durable standings-recalculation job (202 Accepted) for the tournament; requires standing-update permission.",
     },
     # ── bespoke: map veto ──────────────────────────────────────────────────
     "rpc.tournament.admin_veto_config_list": {
@@ -414,7 +414,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.grid_marketplace_import": {
         "summary": "Queue marketplace grid import",
-        "description": "Creates or reuses an idempotent background import job (202 Accepted); requires division_grid-import permission.",
+        "description": "Creates or reuses an idempotent background import job (202 Accepted); requires division_grid-create permission.",
     },
     "rpc.tournament.grid_import_job_get": {
         "summary": "Get division grid import job",
@@ -450,7 +450,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.grid_version_publish": {
         "summary": "Publish grid version",
-        "description": "Publishes a division grid version; requires division_grid-publish permission on the grid's workspace.",
+        "description": "Publishes a division grid version; requires division_grid-update permission on the grid's workspace.",
     },
     "rpc.tournament.grid_version_readiness": {
         "summary": "Check grid activation readiness",
@@ -491,15 +491,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.challonge_import": {
         "summary": "Import from Challonge",
-        "description": "Imports a tournament's bracket from Challonge, optionally as a dry run; requires challonge-sync permission on the tournament.",
+        "description": "Imports a tournament's bracket from Challonge, optionally as a dry run; requires challonge-update permission on the tournament.",
     },
     "rpc.tournament.challonge_export": {
         "summary": "Export to Challonge",
-        "description": "Exports a tournament's bracket to Challonge; requires challonge-sync permission on the tournament.",
+        "description": "Exports a tournament's bracket to Challonge; requires challonge-update permission on the tournament.",
     },
     "rpc.tournament.challonge_push_result": {
         "summary": "Push result to Challonge",
-        "description": "Pushes a confirmed encounter result to Challonge and returns a status acknowledgment; requires challonge-sync permission on the encounter.",
+        "description": "Pushes a confirmed encounter result to Challonge and returns a status acknowledgment; requires challonge-update permission on the encounter.",
     },
     "rpc.tournament.challonge_sync_log": {
         "summary": "Get Challonge sync log",
@@ -512,11 +512,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.sheet_upsert": {
         "summary": "Upsert Google Sheet feed",
-        "description": "Creates or updates a tournament's registration Google Sheets feed config; requires team-import permission on the tournament.",
+        "description": "Creates or updates a tournament's registration Google Sheets feed config; requires team-create permission on the tournament.",
     },
     "rpc.tournament.sheet_sync": {
         "summary": "Sync Google Sheet feed",
-        "description": "Syncs registrations from the configured Google Sheet and returns created/updated/withdrawn/skipped counts plus errors; requires team-import permission on the tournament.",
+        "description": "Syncs registrations from the configured Google Sheet and returns created/updated/withdrawn/skipped counts plus errors; requires team-create permission on the tournament.",
     },
     "rpc.tournament.sheet_mapping_catalog": {
         "summary": "Get sheet mapping catalog",
@@ -541,7 +541,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_form_upsert": {
         "summary": "Upsert registration form",
-        "description": "Creates or replaces a tournament's registration form config (built-in and custom fields); requires team-import permission on its workspace.",
+        "description": "Creates or replaces a tournament's registration form config (built-in and custom fields); requires team-create permission on its workspace.",
     },
     "rpc.tournament.reg_list": {
         "summary": "List registrations (admin)",
@@ -549,7 +549,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_create_manual": {
         "summary": "Create manual registration",
-        "description": "Admin-creates a registration for a tournament (201 Created) and broadcasts a realtime change; requires team-import permission on its workspace.",
+        "description": "Admin-creates a registration for a tournament (201 Created) and broadcasts a realtime change; requires team-create permission on its workspace.",
     },
     "rpc.tournament.reg_update": {
         "summary": "Update registration",
@@ -557,11 +557,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_approve": {
         "summary": "Approve registration",
-        "description": "Approves a registration (recording the reviewer) and broadcasts a realtime change; requires team-import permission on its workspace.",
+        "description": "Approves a registration (recording the reviewer) and broadcasts a realtime change; requires team-create permission on its workspace.",
     },
     "rpc.tournament.reg_reject": {
         "summary": "Reject registration",
-        "description": "Rejects a registration (recording the reviewer) and broadcasts a realtime change; requires team-import permission on its workspace.",
+        "description": "Rejects a registration (recording the reviewer) and broadcasts a realtime change; requires team-create permission on its workspace.",
     },
     "rpc.tournament.reg_exclusion": {
         "summary": "Set registration exclusion",
@@ -577,11 +577,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_delete": {
         "summary": "Delete registration",
-        "description": "Soft-deletes a registration (204 no body) and broadcasts a realtime change; requires team-import permission on its workspace.",
+        "description": "Soft-deletes a registration (204 no body) and broadcasts a realtime change; requires team-create permission on its workspace.",
     },
     "rpc.tournament.reg_bulk_approve": {
         "summary": "Bulk approve registrations",
-        "description": "Approves multiple registrations by id, returning approved and skipped ids and broadcasting a realtime change; requires team-import permission on the tournament.",
+        "description": "Approves multiple registrations by id, returning approved and skipped ids and broadcasting a realtime change; requires team-create permission on the tournament.",
     },
     "rpc.tournament.reg_set_balancer_status": {
         "summary": "Set balancer status",
@@ -589,7 +589,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_bulk_add_balancer": {
         "summary": "Bulk add to balancer",
-        "description": "Adds multiple registrations to the balancer with a given status, returning updated/skipped counts and broadcasting a realtime change; requires team-import permission on the tournament.",
+        "description": "Adds multiple registrations to the balancer with a given status, returning updated/skipped counts and broadcasting a realtime change; requires team-create permission on the tournament.",
     },
     "rpc.tournament.reg_bulk_exclusion": {
         "summary": "Bulk set registration exclusion",
@@ -609,7 +609,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_export_users": {
         "summary": "Export registrations to users",
-        "description": "Exports a tournament's approved registrations into user records and returns the result summary; requires team-import permission on its workspace.",
+        "description": "Exports a tournament's approved registrations into user records and returns the result summary; requires team-create permission on its workspace.",
     },
     "rpc.tournament.reg_check_in": {
         "summary": "Toggle registration check-in",

@@ -46,10 +46,7 @@ type SpecialPermission =
   | "registration.check_in"
   | "account.avatar"
   | "account.social"
-  | "registration.self_register"
-  | "team.import"
-  | "match.sync"
-  | "standing.recalculate";
+  | "registration.self_register";
 
 export type AppPermission = CrudPermission | SpecialPermission;
 
@@ -68,7 +65,6 @@ export type PermissionProfile = {
   denies?: string[];
   workspaces: Array<{
     workspace_id: number;
-    memberRole: string;
     permissions: string[];
   }>;
 };
@@ -77,16 +73,12 @@ export function isAdminPanelRole(role: string): boolean {
   return role === "admin" || role === "tournament_organizer" || role === "moderator";
 }
 
-export function isWorkspaceAdminRole(role: string | undefined): boolean {
-  return role === "owner" || role === "admin";
-}
-
 function workspaceHasPermission(
   workspace: PermissionProfile["workspaces"][number] | undefined,
   permission: AppPermission,
 ): boolean {
+  // RBAC permissions are the only grant; "admin.*" is the workspace-wide wildcard.
   return (
-    isWorkspaceAdminRole(workspace?.memberRole) ||
     workspace?.permissions.includes("admin.*") ||
     workspace?.permissions.includes(permission) ||
     false

@@ -47,7 +47,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
-            c.require_workspace_permission(data, user, ws_id, "team", "import")
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
 
             payload_format = data.get("payload_format") or "auto"
             if payload_format not in _PAYLOAD_FORMATS:

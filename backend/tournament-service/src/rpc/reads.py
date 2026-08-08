@@ -10,15 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
+import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
+from sqlalchemy.orm import selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user_optional
 from shared.rpc.query import build_query_model
 from shared.services.division_grid_access import build_workspace_division_grid_normalizer
 from shared.services.division_grid_normalization import DivisionGridNormalizationError
-import sqlalchemy as sa
-from sqlalchemy.orm import selectinload
 from shared.services.tournament_visibility import assert_tournament_viewable
 from src import models, schemas
 from src.core.workspace import get_division_grid
@@ -282,6 +282,7 @@ def register(broker: Any, logger: Any) -> None:
             return await team_flows.get_all(session, params, workspace_id=_q1(data, "workspace_id", int))
 
         return await _read(logger, op, exclude_none=True)
+
     @broker.subscriber("rpc.tournament.get_veto_configs")
     async def _get_veto_configs(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

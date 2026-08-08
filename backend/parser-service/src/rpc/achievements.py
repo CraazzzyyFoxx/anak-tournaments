@@ -246,7 +246,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.export")
     async def _export(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _user, workspace_id = _require_ws(data, "export")
+            _user, workspace_id = _require_ws(data, "read")
             workspace = await _get_workspace_or_404(session, workspace_id)
             rules = await load_rules_for_workspace(session, workspace_id)
             return build_export_payload(workspace, rules)
@@ -256,7 +256,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.import")
     async def _import(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            user, workspace_id = _require_ws(data, "import")
+            user, workspace_id = _require_ws(data, "create")
             body = AchievementRuleExportEnvelope.model_validate(c.payload(data))
             target_workspace = await _get_workspace_or_404(session, workspace_id)
             source_workspace = None
@@ -373,7 +373,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.evaluate")
     async def _evaluate(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _user, workspace_id = _require_ws(data, "calculate")
+            _user, workspace_id = _require_ws(data, "update")
             body = EvaluateRequest.model_validate(c.payload(data))
             run = await run_evaluation(
                 session=session,
@@ -482,7 +482,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.test")
     async def _test(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _user, workspace_id = _require_ws(data, "calculate")
+            _user, workspace_id = _require_ws(data, "update")
             from src.core.workspace import get_division_grid
             from src.services.achievement.engine.context import EvalContext
             from src.services.achievement.engine.evaluator import evaluate
@@ -562,7 +562,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.lib_import")
     async def _lib_import(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            user, workspace_id = _require_ws(data, "import")
+            user, workspace_id = _require_ws(data, "create")
             body = AchievementLibraryImportRequest.model_validate(c.payload(data))
             target_workspace = await _get_workspace_or_404(session, workspace_id)
             source_workspace = await _get_source_workspace_or_404(

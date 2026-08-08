@@ -22,17 +22,17 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import Paginated
 from shared.messaging.config import (
     DISCORD_GUILD_CHANNELS_QUEUE,
     DISCORD_GUILD_INFO_QUEUE,
     DISCORD_GUILD_ROLES_QUEUE,
 )
+from shared.messaging.rpc import request_dict
 from shared.rbac import (
-    WORKSPACE_SYSTEM_ROLE_NAMES,
     assign_workspace_system_role,
     ensure_workspace_system_roles,
     get_workspace_system_role,
-    legacy_workspace_role_name_for_user,
 )
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission
@@ -70,9 +70,6 @@ async def _member_payload(session: AsyncSession, member: models.WorkspaceMember)
     auth_user_id = await workspace_service.get_member_auth_user_id(session, member)
     auth_user = await _auth_user_repo.get(session, auth_user_id)
     roles = await workspace_service.get_member_workspace_roles(session, member.workspace_id, auth_user_id)
-    legacy_role = await legacy_workspace_role_name_for_user(
-        session, user_id=auth_user_id, workspace_id=member.workspace_id
-    )
     return schemas.WorkspaceMemberRead.model_validate(
         {
             "id": member.id,
@@ -80,7 +77,6 @@ async def _member_payload(session: AsyncSession, member: models.WorkspaceMember)
             "updated_at": member.updated_at,
             "workspace_id": member.workspace_id,
             "auth_user_id": auth_user_id,
-            "role": legacy_role,
             "username": auth_user.username if auth_user else None,
             "email": auth_user.email if auth_user else None,
             "first_name": auth_user.first_name if auth_user else None,
@@ -89,19 +85,6 @@ async def _member_payload(session: AsyncSession, member: models.WorkspaceMember)
             "rbac_roles": roles,
         }
     )
-
-
-def _legacy_role_from_roles(roles: list[models.Role]) -> str:
-    """Highest system role held (owner>admin>member>player), else ``member``.
-
-    In-memory equivalent of ``legacy_workspace_role_name_for_user`` for the
-    batched list path, so a page of members needs no per-row role query.
-    """
-    names = {role.name for role in roles}
-    for system_name in WORKSPACE_SYSTEM_ROLE_NAMES:
-        if system_name in names:
-            return system_name
-    return "member"
 
 
 def _member_read(
@@ -120,7 +103,6 @@ def _member_read(
             "updated_at": member.updated_at,
             "workspace_id": member.workspace_id,
             "auth_user_id": auth_user.id,
-            "role": _legacy_role_from_roles(roles),
             "username": auth_user.username,
             "email": auth_user.email,
             "first_name": auth_user.first_name,
@@ -132,12 +114,15 @@ def _member_read(
 
 
 async def _resolve_role_ids(
-    session: AsyncSession, workspace_id: int, *, role_ids: list[int] | None, legacy_role: str | None
+    session: AsyncSession, workspace_id: int, *, role_ids: list[int] | None, role_name: str | None
 ) -> list[int]:
+    """Resolve the role ids to assign: explicit ``role_ids`` win; otherwise
+    ``role_name`` selects the workspace system role of that name (``member``
+    when omitted)."""
     await ensure_workspace_system_roles(session, workspace_id)
     if role_ids is not None:
         return role_ids
-    role = await get_workspace_system_role(session, workspace_id, legacy_role or "member")
+    role = await get_workspace_system_role(session, workspace_id, role_name or "member")
     if role is None:
         raise HTTPException(status_code=500, detail="Workspace system role is not configured")
     return [role.id]
@@ -281,10 +266,10 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=404, detail="Auth user not found")
             if await workspace_service.get_member(session, workspace_id, body.auth_user_id):
                 raise HTTPException(status_code=400, detail="User is already a member")
-            role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, legacy_role=body.role)
+            role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
             try:
                 member = await workspace_service.add_member_with_roles(
-                    session, workspace_id, body.auth_user_id, role_ids=role_ids, legacy_role=body.role or "member"
+                    session, workspace_id, body.auth_user_id, role_ids=role_ids
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -309,7 +294,7 @@ def register(broker: Any, logger: Any) -> None:
             body = schemas.WorkspaceMemberUpdate.model_validate(c.payload(data))
             if body.role_ids is None and body.role is None:
                 raise HTTPException(status_code=400, detail="role_ids or role is required")
-            role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, legacy_role=body.role)
+            role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
             try:
                 member = await workspace_service.update_member_roles(session, member, role_ids=role_ids)
             except ValueError as exc:
@@ -393,11 +378,19 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.clear_custom_domain", op, session_factory=_SF)
-    # --- Discord entities (roles, channels, server status) -------------------------
+
+    # --- Discord entities (roles, channels, server status) ------------------
+    # Reads of an organizer's own server config, so they carry the same
+    # workspace.update gate as the custom-domain endpoints above: the role and
+    # channel lists (and the server's name and headcount) are private to the
+    # guild, and these only ever back the workspace settings pickers.
     @broker.subscriber("rpc.app.workspaces.discord_roles")
     async def _discord_roles(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            ensure_workspace_permission(user, workspace_id, "workspace", "update")
             workspace = await workspace_service.get_by_id(session, workspace_id)
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
@@ -405,13 +398,15 @@ def register(broker: Any, logger: Any) -> None:
                 return {"guild_id": None, "roles": []}
 
             try:
-                res = await broker.request(
+                res = await request_dict(
+                    broker,
                     {"guild_id": workspace.discord_guild_id},
                     DISCORD_GUILD_ROLES_QUEUE,
                     timeout=5.0,
                 )
-                return res if isinstance(res, dict) else {"guild_id": workspace.discord_guild_id, "roles": []}
+                return res or {"guild_id": workspace.discord_guild_id, "roles": []}
             except Exception as exc:
+                logger.warning(f"discord_roles RPC failed for workspace {workspace_id}: {exc}")
                 return {"guild_id": workspace.discord_guild_id, "roles": [], "error": str(exc)}
 
         return await c.envelope(logger, "workspaces.discord_roles", op, session_factory=_SF)
@@ -420,6 +415,9 @@ def register(broker: Any, logger: Any) -> None:
     async def _discord_channels(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            ensure_workspace_permission(user, workspace_id, "workspace", "update")
             workspace = await workspace_service.get_by_id(session, workspace_id)
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
@@ -427,13 +425,15 @@ def register(broker: Any, logger: Any) -> None:
                 return {"guild_id": None, "channels": []}
 
             try:
-                res = await broker.request(
+                res = await request_dict(
+                    broker,
                     {"guild_id": workspace.discord_guild_id},
                     DISCORD_GUILD_CHANNELS_QUEUE,
                     timeout=5.0,
                 )
-                return res if isinstance(res, dict) else {"guild_id": workspace.discord_guild_id, "channels": []}
+                return res or {"guild_id": workspace.discord_guild_id, "channels": []}
             except Exception as exc:
+                logger.warning(f"discord_channels RPC failed for workspace {workspace_id}: {exc}")
                 return {"guild_id": workspace.discord_guild_id, "channels": [], "error": str(exc)}
 
         return await c.envelope(logger, "workspaces.discord_channels", op, session_factory=_SF)
@@ -442,6 +442,9 @@ def register(broker: Any, logger: Any) -> None:
     async def _discord_guild(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id = _path_int(data, "workspace_id")
+            user = c.actor(data)
+            c.require_active(user)
+            ensure_workspace_permission(user, workspace_id, "workspace", "update")
             workspace = await workspace_service.get_by_id(session, workspace_id)
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
@@ -449,13 +452,21 @@ def register(broker: Any, logger: Any) -> None:
                 return {"guild_id": None, "connected": False, "name": None, "icon_url": None, "member_count": 0}
 
             try:
-                res = await broker.request(
+                res = await request_dict(
+                    broker,
                     {"guild_id": workspace.discord_guild_id},
                     DISCORD_GUILD_INFO_QUEUE,
                     timeout=5.0,
                 )
-                return res if isinstance(res, dict) else {"guild_id": workspace.discord_guild_id, "connected": False}
+                return res or {
+                    "guild_id": workspace.discord_guild_id,
+                    "connected": False,
+                    "name": None,
+                    "icon_url": None,
+                    "member_count": 0,
+                }
             except Exception as exc:
+                logger.warning(f"discord_guild RPC failed for workspace {workspace_id}: {exc}")
                 return {"guild_id": workspace.discord_guild_id, "connected": False, "error": str(exc)}
 
         return await c.envelope(logger, "workspaces.discord_guild", op, session_factory=_SF)

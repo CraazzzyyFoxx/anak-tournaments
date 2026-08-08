@@ -120,7 +120,6 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
                 2,
                 22,
                 role_ids=[5],
-                legacy_role="member",
             )
 
         self.assertIs(result, member)

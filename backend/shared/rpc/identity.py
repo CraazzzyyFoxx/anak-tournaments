@@ -18,7 +18,7 @@ the per-service ``_resolve_user_from_db`` consumes:
       "roles": [str, ...],                       # global role names
       "permissions": [{"resource","action"}],    # global permissions
       "workspaces": [                            # membership
-        {"workspace_id": int, "role": str,
+        {"workspace_id": int,
          "rbac_roles": [...], "rbac_permissions": [{"resource","action"}]}
       ]
     }

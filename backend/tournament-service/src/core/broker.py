@@ -36,3 +36,19 @@ def require_broker(broker: Any | None = None) -> Any:
             "set_worker_broker(broker) at worker startup (serve.py)."
         )
     return _worker_broker
+
+
+def optional_broker(broker: Any | None = None) -> Any | None:
+    """``require_broker`` for callers that can work without one.
+
+    Some consumers only want the broker as an optimisation -- the subscription
+    resolver, for instance, batches role lookups over RPC when a broker exists
+    and falls back to direct Discord REST when it does not. Those must not take
+    down the request just because this process never registered a broker, and
+    they must not spell that intent as a bare ``except Exception`` around
+    ``require_broker`` either, which is how a *typo* in the surrounding code
+    ends up looking like "no broker configured".
+    """
+    if broker is not None:
+        return broker
+    return _worker_broker

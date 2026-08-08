@@ -67,7 +67,7 @@ describe("tournament creation wizard model", () => {
     expect(canCreateNow(basics({ source: "challonge", challongeSlug: "cup" }))).toBe(true);
   });
 
-  it("step 4 hidden without team.import", () => {
+  it("step 4 hidden without team.create", () => {
     expect(visibleWizardSteps(false)).toEqual(["basics", "schedule", "rules", "review"]);
     expect(visibleWizardSteps(true)).toEqual(WIZARD_STEPS);
   });

@@ -181,7 +181,6 @@ class WorkspaceMemberRoleRead(BaseModel):
 class WorkspaceMemberRead(BaseRead):
     workspace_id: int
     auth_user_id: int
-    role: str
     username: str | None = None
     email: str | None = None
     first_name: str | None = None

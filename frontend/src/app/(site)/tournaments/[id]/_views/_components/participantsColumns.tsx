@@ -201,11 +201,12 @@ const ROLE_COLORS: Record<string, string> = {
   support: "text-[color:var(--aqt-support)]",
 };
 
-export function useHeroesMap(): Map<string, Hero> {
+export function useHeroesMap({ enabled = true }: { enabled?: boolean } = {}): Map<string, Hero> {
   const { data: heroesData } = useQuery({
     queryKey: ["heroes-all"],
     queryFn: () => heroService.getAll({ perPage: -1 }),
     staleTime: 5 * 60_000,
+    enabled,
   });
 
   return useMemo(() => {
@@ -221,14 +222,16 @@ export function useHeroesMap(): Map<string, Hero> {
 
 function TopHeroesCell({
   roles,
-  heroesMap: heroesMapProp,
+  heroesMap,
 }: {
   roles: RegistrationRole[];
-  heroesMap?: Map<string, Hero>;
+  /**
+   * Hoisted by the caller. The cell must never query heroes itself: it renders
+   * once per row, so a per-row query observer and map rebuild is exactly the
+   * cost this prop removes.
+   */
+  heroesMap: Map<string, Hero>;
 }) {
-  const fallbackHeroesMap = useHeroesMap();
-  const heroesMap = heroesMapProp ?? fallbackHeroesMap;
-
   const sortedRoles = useMemo(() => {
     if (!roles) return [];
     return [...roles].sort((a, b) => {
@@ -425,6 +428,15 @@ function formatDate(iso: string | null, locale: string = "ru"): ReactNode {
 // Built-in field mapping
 // ---------------------------------------------------------------------------
 
+const EMPTY_HEROES_MAP: Map<string, Hero> = new Map();
+
+/** Per-table values the built-in cells need, hoisted out of the row render. */
+interface BuiltInRenderContext {
+  heroesMap: Map<string, Hero>;
+  grid?: DivisionGrid | null;
+  showRanks?: boolean;
+}
+
 interface BuiltInFieldDef {
   id: string;
   label: string;
@@ -433,7 +445,7 @@ interface BuiltInFieldDef {
   widthClass?: string;
   width?: ColumnDefinition["width"];
   align?: ColumnDefinition["align"];
-  render: (reg: Registration) => ReactNode;
+  render: (reg: Registration, ctx: BuiltInRenderContext) => ReactNode;
   searchValue?: (reg: Registration) => string | null;
 }
 
@@ -506,7 +518,7 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     responsive: "always",
     align: "center",
     width: "badge",
-    render: (reg) => <RolesCell roles={reg.roles} />,
+    render: (reg, ctx) => <RolesCell roles={reg.roles} grid={ctx.grid} showRanks={ctx.showRanks} />,
     searchValue: (reg) =>
       reg.roles?.map((r) => r.role).join(" ") ?? null,
   },
@@ -516,7 +528,7 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     defaultVisible: true,
     responsive: "sm",
     align: "center",
-    render: (reg) => <TopHeroesCell roles={reg.roles} heroesMap={undefined} />,
+    render: (reg, ctx) => <TopHeroesCell roles={reg.roles} heroesMap={ctx.heroesMap} />,
     searchValue: (reg) =>
       reg.roles?.flatMap((r) => r.top_heroes).join(" ") ?? null,
   },
@@ -562,6 +574,12 @@ export function buildParticipantColumns(
   heroesMap?: Map<string, Hero>,
 ): ColumnDefinition[] {
   const columns: ColumnDefinition[] = [];
+
+  const renderContext: BuiltInRenderContext = {
+    heroesMap: heroesMap ?? EMPTY_HEROES_MAP,
+    grid,
+    showRanks: form?.show_ranks,
+  };
 
   const getLocalizedLabel = (key: string, fallback: string): string => {
     switch (key) {
@@ -633,11 +651,7 @@ export function buildParticipantColumns(
       widthClass: def.widthClass,
       width: def.width,
       align: def.align,
-      render: def.id === "roles"
-        ? (reg) => <RolesCell roles={reg.roles} grid={grid} showRanks={form?.show_ranks} />
-        : def.id === "top_heroes"
-          ? (reg) => <TopHeroesCell roles={reg.roles} heroesMap={heroesMap} />
-          : (reg) => def.render(reg),
+      render: (reg) => def.render(reg, renderContext),
       searchValue: def.searchValue,
     });
   }
@@ -650,7 +664,7 @@ export function buildParticipantColumns(
       category: "built_in",
       defaultVisible: true,
       responsive: "always",
-      render: (reg) => identity.render(reg),
+      render: (reg) => identity.render(reg, renderContext),
       searchValue: identity.searchValue,
     });
   }
@@ -667,7 +681,7 @@ export function buildParticipantColumns(
       responsive: notesDef.responsive ?? "sm",
       widthClass: notesDef.widthClass,
       align: notesDef.align,
-      render: (reg) => notesDef.render(reg),
+      render: (reg) => notesDef.render(reg, renderContext),
       searchValue: notesDef.searchValue,
     });
   }

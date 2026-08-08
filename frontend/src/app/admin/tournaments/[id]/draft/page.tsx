@@ -29,7 +29,7 @@ export default function DraftTabPage() {
   return (
     <DraftSessionDashboard
       tournamentId={tournamentId}
-      canManage={canAccessPermission("team.import", workspaceId)}
+      canManage={canAccessPermission("team.create", workspaceId)}
     />
   );
 }

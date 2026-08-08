@@ -71,6 +71,17 @@ function memberCustomRoleIds(member: WorkspaceMember): number[] {
   return member.rbac_roles.filter((role) => !role.is_system).map((role) => role.id);
 }
 
+/**
+ * Highest-priority system role a member holds, mirroring the backend's RBAC
+ * derivation. `undefined` when the member holds no system role at all -- a real
+ * state the "Fill missing roles" action exists to repair.
+ */
+export function memberPrimaryRole(member: WorkspaceMember): WorkspaceSystemRole | undefined {
+  return SYSTEM_ROLES.find((name) =>
+    member.rbac_roles.some((role) => role.is_system && role.name === name)
+  );
+}
+
 export default function WorkspaceMembersPage() {
   const { isSuperuser, canAccessAnyPermission } = usePermissions();
   const queryClient = useQueryClient();
@@ -153,7 +164,7 @@ export default function WorkspaceMembersPage() {
 
   const changePrimaryRole = useCallback(
     (member: WorkspaceMember, nextRole: WorkspaceSystemRole) => {
-      if (nextRole === member.role) return;
+      if (nextRole === memberPrimaryRole(member)) return;
       const sysId = systemRoleId(nextRole);
       if (sysId == null) {
         notify.error("That workspace role is not configured yet");
@@ -172,7 +183,8 @@ export default function WorkspaceMembersPage() {
       const current = new Set(memberCustomRoleIds(member));
       if (current.has(roleId)) current.delete(roleId);
       else current.add(roleId);
-      const sysId = systemRoleId(member.role);
+      const primary = memberPrimaryRole(member);
+      const sysId = primary != null ? systemRoleId(primary) : undefined;
       updateRolesMutation.mutate({
         authUserId: member.auth_user_id,
         roleIds: [...(sysId != null ? [sysId] : []), ...current]
@@ -233,14 +245,14 @@ export default function WorkspaceMembersPage() {
           return (
             <div className="flex items-center gap-2">
               <Select
-                value={member.role}
+                value={memberPrimaryRole(member)}
                 onValueChange={(value) => changePrimaryRole(member, value as WorkspaceSystemRole)}
               >
                 <SelectTrigger
                   className="h-8 w-32 text-sm"
                   aria-label={`Workspace role for ${memberLabel(member)}`}
                 >
-                  <SelectValue />
+                  <SelectValue placeholder="No role" />
                 </SelectTrigger>
                 <SelectContent>
                   {SYSTEM_ROLES.map((name) => (

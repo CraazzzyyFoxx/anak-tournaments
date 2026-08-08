@@ -243,19 +243,33 @@ class TestVerdictShape(IsolatedAsyncioTestCase):
         assert verdict.expires_at > verdict.checked_at
 
 
+def _rpc_reply(body):
+    """A FastStream RPC reply: ``broker.request`` hands back the MESSAGE.
+
+    Mocking it as a bare dict is what let the un-decoded ``isinstance(res, dict)``
+    check ship green while every real call took the fallback path.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    return MagicMock(decode=AsyncMock(return_value=body))
+
+
 class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
     async def test_resolve_many_uses_rpc_when_available(self):
         from unittest.mock import AsyncMock, patch
+
         from shared.services.subscription_strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
-        fake_broker.request.return_value = {
-            "guild_role_ids": ["100", "200"],
-            "members": {
-                "discord-id-1": {"found": True, "roles": ["200"]},
-                "discord-id-2": {"found": False, "roles": []},
-            },
-        }
+        fake_broker.request.return_value = _rpc_reply(
+            {
+                "guild_role_ids": ["100", "200"],
+                "members": {
+                    "discord-id-1": {"found": True, "roles": ["200"]},
+                    "discord-id-2": {"found": False, "roles": []},
+                },
+            }
+        )
 
         session = AsyncMock()
         strategy = BoostyDiscordStrategy(session, bot_token="token", broker=fake_broker)
@@ -271,8 +285,33 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         assert verdicts[1].tier_rank == 2
         assert verdicts[2].state == SubscriptionState.INACTIVE
 
+    async def test_resolve_many_reports_unlinked_user_without_rpc_lookup(self):
+        """A user with no Discord link is never asked about over RPC."""
+        from unittest.mock import AsyncMock, patch
+
+        from shared.services.subscription_strategies import BoostyDiscordStrategy
+
+        fake_broker = AsyncMock()
+        fake_broker.request.return_value = _rpc_reply(
+            {"guild_role_ids": ["100", "200"], "members": {"discord-id-1": {"found": True, "roles": ["200"]}}}
+        )
+
+        strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
+        with patch(
+            "shared.services.subscription_strategies.load_provider_user_ids",
+            AsyncMock(return_value={1: "discord-id-1"}),
+        ):
+            verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1, 7])
+
+        assert verdicts[1].state == SubscriptionState.ACTIVE
+        assert verdicts[7].state == SubscriptionState.UNKNOWN
+        assert verdicts[7].evidence["reason"] == "no_linked_discord_account"
+        sent = fake_broker.request.await_args.args[0]
+        assert sent["user_ids"] == ["discord-id-1"]
+
     async def test_resolve_many_falls_back_to_http_when_rpc_fails(self):
         from unittest.mock import AsyncMock, patch
+
         from shared.services.subscription_strategies import BoostyDiscordStrategy
 
         fake_broker = AsyncMock()
@@ -284,14 +323,45 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         dummy_resolver = AsyncMock()
         dummy_resolver.resolve.return_value = AsyncMock(state=SubscriptionState.ACTIVE)
 
-        with patch(
-            "shared.services.subscription_strategies.load_provider_user_ids",
-            AsyncMock(return_value={1: "discord-id-1"}),
-        ), patch(
-            "shared.services.subscription_strategies.DiscordRoleResolver",
-            return_value=dummy_resolver,
+        with (
+            patch(
+                "shared.services.subscription_strategies.load_provider_user_ids",
+                AsyncMock(return_value={1: "discord-id-1"}),
+            ),
+            patch(
+                "shared.services.subscription_strategies.DiscordRoleResolver",
+                return_value=dummy_resolver,
+            ),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1])
 
         fake_broker.request.assert_awaited_once()
+        assert 1 in verdicts
+
+    async def test_resolve_many_falls_back_when_peer_answers_with_an_error(self):
+        """``guild_not_found`` from discord-service must not be read as a verdict."""
+        from unittest.mock import AsyncMock, patch
+
+        from shared.services.subscription_strategies import BoostyDiscordStrategy
+
+        fake_broker = AsyncMock()
+        fake_broker.request.return_value = _rpc_reply({"error": "guild_not_found", "guild_role_ids": [], "members": {}})
+
+        strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
+        dummy_resolver = AsyncMock()
+        dummy_resolver.resolve.return_value = AsyncMock(state=SubscriptionState.ACTIVE)
+
+        with (
+            patch(
+                "shared.services.subscription_strategies.load_provider_user_ids",
+                AsyncMock(return_value={1: "discord-id-1"}),
+            ),
+            patch(
+                "shared.services.subscription_strategies.DiscordRoleResolver",
+                return_value=dummy_resolver,
+            ),
+        ):
+            verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1])
+
+        dummy_resolver.resolve.assert_awaited()
         assert 1 in verdicts

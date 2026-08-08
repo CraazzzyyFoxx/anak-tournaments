@@ -192,9 +192,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("challonge", "sync")).
+            # Route: Depends(require_tournament_permission("challonge", "update")).
             await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="challonge", action="sync"
+                session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
             dry_run = _q1(data, "dry_run", _bool, default=False)
             # import_tournament commits internally.
@@ -208,7 +208,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             tournament_id = _require_id(data)
             await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="challonge", action="sync"
+                session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
             # export_tournament commits internally.
             return await challonge_sync.export_tournament(session, tournament_id)
@@ -220,9 +220,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            # Route: Depends(require_encounter_permission("challonge", "sync")).
+            # Route: Depends(require_encounter_permission("challonge", "update")).
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "challonge", "sync")
+            ensure_workspace_permission(user, ws_id, "challonge", "update")
             # auto_push_on_confirm commits internally.
             await challonge_sync.auto_push_on_confirm(session, encounter_id)
             return {"status": "ok"}
@@ -285,9 +285,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "import")).
+            # Route: Depends(require_tournament_permission("team", "create")).
             await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="team", action="import"
+                session, user, tournament_id=tournament_id, resource="team", action="create"
             )
             body = admin_schemas.BalancerGoogleSheetFeedUpsert.model_validate(_payload(data))
             # upsert_google_sheet_feed commits internally.
@@ -310,9 +310,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
-            # Route: Depends(require_tournament_permission("team", "import")).
+            # Route: Depends(require_tournament_permission("team", "create")).
             await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="team", action="import"
+                session, user, tournament_id=tournament_id, resource="team", action="create"
             )
             # sync_google_sheet_feed commits internally.
             result = await registration_service.sync_google_sheet_feed(session, tournament_id)
@@ -473,7 +473,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             grid_id = _require_id(data)
             grid = await division_grid_service.get_grid_by_id(session, grid_id)
-            await require_workspace_permission(grid.workspace_id, session=session, user=user, action="export")
+            await require_workspace_permission(grid.workspace_id, session=session, user=user, action="read")
             return _dump(await division_grid_portable.export_portable_document(session, grid_id=grid_id))
 
         return await _run(logger, op)
@@ -483,7 +483,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _path_int(data, "workspace_id")
-            await require_workspace_permission(workspace_id, session=session, user=user, action="import")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="create")
             body = schemas.DivisionGridPortableImportRequest.model_validate(_payload(data))
             grid = await division_grid_portable.import_portable_document(
                 session,
@@ -535,7 +535,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _path_int(data, "workspace_id")
-            await require_workspace_permission(workspace_id, session=session, user=user, action="import")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="create")
             body = schemas.DivisionGridMarketplaceImportRequest.model_validate(_payload(data))
             source_workspace = await _get_source_workspace_or_404(
                 session,
@@ -569,7 +569,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _path_int(data, "workspace_id")
-            await require_workspace_permission(workspace_id, session=session, user=user, action="import")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="create")
             body = schemas.DivisionGridMarketplaceImportRequest.model_validate(_payload(data))
             source_workspace = await _get_source_workspace_or_404(
                 session,
@@ -715,7 +715,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             version_id = _require_id(data)
             version = await division_grid_service.get_version(session, version_id)
-            await require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="publish")
+            await require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="update")
             version = await division_grid_service.publish_version(session, version_id)
             await session.commit()  # route commits explicitly (service does not).
             return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
@@ -749,7 +749,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id,
                 session=session,
                 user=user,
-                action="publish",
+                action="update",
             )
             version = await division_grid_service.activate_version(
                 session,

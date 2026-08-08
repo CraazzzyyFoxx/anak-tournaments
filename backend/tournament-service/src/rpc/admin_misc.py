@@ -144,9 +144,7 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            encounter = await captain_service.reopen_encounter_result(
-                session, encounter_id, actor_user_id=user.id
-            )
+            encounter = await captain_service.reopen_encounter_result(session, encounter_id, actor_user_id=user.id)
             return _serialize_result(encounter)
 
         return await _run(logger, op)
@@ -334,7 +332,7 @@ def register(broker: Any, logger: Any) -> None:
                 user,
                 tournament_id=tournament_id,
                 resource="standing",
-                action="recalculate",
+                action="update",
             )
             # recalculate_standings commits internally; returns a job.
             job = await standing_service.recalculate_standings(
@@ -361,7 +359,7 @@ def register(broker: Any, logger: Any) -> None:
                 user,
                 tournament_id=job.tournament_id,
                 resource="standing" if job.kind == "standings" else "stage",
-                action="recalculate" if job.kind == "standings" else "update",
+                action="update",
             )
             return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
 

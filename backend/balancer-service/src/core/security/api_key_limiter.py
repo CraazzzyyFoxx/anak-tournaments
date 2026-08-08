@@ -18,7 +18,7 @@ DEFAULT_LIMITS: dict[str, int] = {
 }
 
 # Finite-but-generous ceilings for interactive session principals (workspace
-# members with ``team.import``). Previously these users were completely
+# members with ``team.create``). Previously these users were completely
 # unbounded — no payload/player/concurrency cap — which let a single member
 # exhaust CPU with large rosters or many parallel jobs (review H5). API keys
 # keep their own per-key limits; these apply to everyone else.

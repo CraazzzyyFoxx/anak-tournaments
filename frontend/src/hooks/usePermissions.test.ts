@@ -31,7 +31,6 @@ describe("usePermissions helpers", () => {
       workspaces: [
         {
           workspace_id: 7,
-          memberRole: "member",
           permissions: ["team.read"],
         },
       ],
@@ -46,7 +45,6 @@ describe("usePermissions helpers", () => {
       workspaces: [
         {
           workspace_id: 9,
-          memberRole: "admin",
           permissions: ["match.read"],
         },
       ],
@@ -60,30 +58,15 @@ describe("usePermissions helpers", () => {
       workspaces: [
         {
           workspace_id: 11,
-          memberRole: "admin",
           permissions: ["admin.*"],
         },
       ],
     });
 
     expect(hasWorkspacePermissionForProfile(profile, 11, "tournament.read")).toBe(true);
-    expect(hasWorkspacePermissionForProfile(profile, 11, "team.import")).toBe(true);
+    expect(hasWorkspacePermissionForProfile(profile, 11, "team.create")).toBe(true);
     expect(hasWorkspacePermissionForProfile(profile, 12, "tournament.read")).toBe(false);
     expect(canAccessAnyPermissionForProfile(profile, ["standing.read"])).toBe(true);
-  });
-
-  it("does not trust legacy workspace memberRole as a permission wildcard", () => {
-    const profile = createProfile({
-      workspaces: [
-        {
-          workspace_id: 13,
-          memberRole: "admin",
-          permissions: [],
-        },
-      ],
-    });
-
-    expect(hasWorkspacePermissionForProfile(profile, 13, "team.import")).toBe(false);
   });
 
   it("does not treat read-only permissions as admin panel access", () => {
@@ -92,7 +75,6 @@ describe("usePermissions helpers", () => {
       workspaces: [
         {
           workspace_id: 21,
-          memberRole: "member",
           permissions: ["workspace.read", "workspace_member.read", "team.read"],
         },
       ],
@@ -108,7 +90,6 @@ describe("usePermissions helpers", () => {
       workspaces: [
         {
           workspace_id: 22,
-          memberRole: "member",
           permissions: ["team.read", "team.update"],
         },
       ],
@@ -123,7 +104,6 @@ describe("usePermissions helpers", () => {
       workspaces: [
         {
           workspace_id: 24,
-          memberRole: "owner",
           permissions: ["admin.*"],
         },
       ],

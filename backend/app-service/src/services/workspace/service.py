@@ -12,7 +12,6 @@ from shared.models.identity.rbac import user_roles
 from shared.rbac import (
     WORKSPACE_SYSTEM_ROLE_NAMES,
     ensure_workspace_system_roles,
-    legacy_workspace_role_name_for_user,
     replace_user_workspace_roles,
     user_has_only_workspace_owner_role,
 )
@@ -170,35 +169,6 @@ async def verify_custom_domain(session: AsyncSession, workspace: models.Workspac
 
 async def get_all(session: AsyncSession) -> typing.Sequence[models.Workspace]:
     return await _workspace_repo.list_ordered(session)
-
-
-async def get_user_workspaces(
-    session: AsyncSession, auth_user_id: int
-) -> typing.Sequence[tuple[models.Workspace, str]]:
-    """Workspaces ``auth_user_id`` belongs to, with the RBAC-derived legacy role name.
-
-    ``workspace_member`` no longer stores a denormalized ``role`` column; the
-    role string is computed per-workspace from ``user_roles`` (RBAC), which
-    stays keyed on ``auth_user_id``.
-    """
-    result = await session.execute(
-        sa.select(models.Workspace)
-        .join(
-            models.WorkspaceMember,
-            models.WorkspaceMember.workspace_id == models.Workspace.id,
-        )
-        .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-        .where(models.User.auth_user_id == auth_user_id)
-        .order_by(models.Workspace.id)
-    )
-    workspaces = result.scalars().all()
-    return [
-        (
-            workspace,
-            await legacy_workspace_role_name_for_user(session, user_id=auth_user_id, workspace_id=workspace.id),
-        )
-        for workspace in workspaces
-    ]
 
 
 async def validate_default_division_grid_version(
@@ -475,7 +445,6 @@ async def add_member_with_roles(
     auth_user_id: int,
     *,
     role_ids: list[int],
-    legacy_role: str = "member",
 ) -> models.WorkspaceMember:
     member = await add_member(session, workspace_id, auth_user_id)
     await replace_user_workspace_roles(

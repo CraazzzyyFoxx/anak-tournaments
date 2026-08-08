@@ -125,14 +125,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # PUT /balancer/tournaments/{tournament_id}/registration-form
-    #   dep: require_tournament_permission("team", "import")
+    #   dep: require_tournament_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_form_upsert")
     async def _reg_form_upsert(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             body = RegistrationFormUpsert.model_validate(_payload(data))
             # get_tournament_workspace_id above already 404s on a missing
             # tournament; upsert_registration_form commits internally.
@@ -197,14 +197,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # POST /balancer/tournaments/{tournament_id}/registrations  (201)
-    #   dep: require_tournament_permission("team", "import")
+    #   dep: require_tournament_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_create_manual")
     async def _reg_create_manual(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             body = admin_schemas.BalancerRegistrationCreateRequest.model_validate(_payload(data))
 
             await registration_service.ensure_tournament_exists(session, tournament_id)
@@ -278,14 +278,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # PATCH /balancer/registrations/{registration_id}/approve
-    #   dep: require_registration_permission("team", "import")
+    #   dep: require_registration_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_approve")
     async def _reg_approve(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             registration_id = _require_id(data)
             ws_id = await auth.get_registration_workspace_id(session, registration_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             registration = await registration_service.approve_registration(
                 session,
                 registration_id,
@@ -302,14 +302,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # PATCH /balancer/registrations/{registration_id}/reject
-    #   dep: require_registration_permission("team", "import")
+    #   dep: require_registration_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_reject")
     async def _reg_reject(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             registration_id = _require_id(data)
             ws_id = await auth.get_registration_workspace_id(session, registration_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             registration = await registration_service.reject_registration(
                 session,
                 registration_id,
@@ -392,14 +392,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # DELETE /balancer/registrations/{registration_id}  (204)
-    #   dep: require_registration_permission("team", "import")
+    #   dep: require_registration_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_delete")
     async def _reg_delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             registration_id = _require_id(data)
             ws_id = await auth.get_registration_workspace_id(session, registration_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             tournament_id = await session.scalar(
                 select(models.BalancerRegistration.tournament_id).where(
                     models.BalancerRegistration.id == registration_id
@@ -417,14 +417,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # POST /balancer/tournaments/{tournament_id}/registrations/bulk-approve
-    #   dep: require_tournament_permission("team", "import")
+    #   dep: require_tournament_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_bulk_approve")
     async def _reg_bulk_approve(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             payload = _payload(data)
             registration_ids = _bulk_ids(payload)
             approved, skipped = await registration_service.bulk_approve_registrations(
@@ -465,14 +465,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # POST /balancer/tournaments/{tournament_id}/registrations/bulk-add-to-balancer
-    #   dep: require_tournament_permission("team", "import")
+    #   dep: require_tournament_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_bulk_add_balancer")
     async def _reg_bulk_add_balancer(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             payload = _payload(data)
             registration_ids = _bulk_ids(payload)
             balancer_status = payload.get("balancer_status", "ready")
@@ -590,14 +590,14 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # POST /balancer/tournaments/{tournament_id}/registrations/export-users
-    #   dep: require_tournament_permission("team", "import")
+    #   dep: require_tournament_permission("team", "create")
     @broker.subscriber("rpc.tournament.reg_export_users")
     async def _reg_export_users(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
-            ensure_workspace_permission(user, ws_id, "team", "import")
+            ensure_workspace_permission(user, ws_id, "team", "create")
             result = await registration_service.export_registrations_to_users(session, tournament_id)
             return _dump(admin_schemas.RegistrationUserExportResponse(**result))
 

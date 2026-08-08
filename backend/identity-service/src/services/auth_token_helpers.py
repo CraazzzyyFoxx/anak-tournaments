@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.rbac import WORKSPACE_SYSTEM_ROLE_NAMES
 from src import models, schemas
 from src.services import auth_service
 from src.services.session_cache import get_rbac, is_session_blacklisted, set_rbac
@@ -66,9 +65,7 @@ async def _build_access_token_payload(
 
     # Fetch workspace memberships. ``workspace_member`` is anchored on
     # ``player_id``; join through ``players.user.auth_user_id`` to reach it
-    # from the auth identity. The denormalized ``role`` column is gone — each
-    # membership's legacy role name is derived from RBAC below so the token
-    # contract (``WorkspaceMembership.role``) stays populated.
+    # from the auth identity.
     workspace_rows = await session.execute(
         sa.select(models.WorkspaceMember.workspace_id, models.Workspace.slug)
         .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
@@ -98,21 +95,10 @@ async def _build_access_token_payload(
     for row in ws_memberships:
         ws_id, slug = row
         ws_data = ws_rbac.get(ws_id, ([], []))
-        # Derive the legacy role name from the RBAC role names we already
-        # fetched (ws_data[0]) instead of a per-membership DB round-trip. This
-        # mirrors legacy_workspace_role_name_for_user (first matching system
-        # role by priority, else "member") and keeps ``role`` consistent with
-        # the sibling ``rbac_roles`` field, which can come from the RBAC cache.
-        ws_role_names = ws_data[0]
-        member_role = next(
-            (name for name in WORKSPACE_SYSTEM_ROLE_NAMES if name in ws_role_names),
-            "member",
-        )
         workspaces.append(
             schemas.WorkspaceMembership(
                 workspace_id=ws_id,
                 slug=slug,
-                role=member_role,
                 rbac_roles=ws_data[0],
                 rbac_permissions=ws_data[1],
             )

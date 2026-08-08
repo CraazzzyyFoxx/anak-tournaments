@@ -34,6 +34,7 @@ Discord access notes (verified against the API docs, see the design doc):
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
@@ -92,8 +93,10 @@ class DiscordRoleResolver:
 
     Discord is injected as two async callables so the whole decision table is
     unit-testable without a network or a bot token. ``fetch_guild_role_ids`` is
-    memoized per instance: construct one resolver per batch, never a process-wide
-    singleton, or a stale role list would outlive the request that fetched it.
+    memoized per instance behind a lock, because one instance serves a batch
+    whose users resolve concurrently: construct one resolver per batch, never a
+    process-wide singleton, or a stale role list would outlive the request that
+    fetched it.
     """
 
     source = SubscriptionSource.DISCORD_ROLE
@@ -109,6 +112,7 @@ class DiscordRoleResolver:
         self._fetch_guild_role_ids = fetch_guild_role_ids
         self._ttl_seconds = ttl_seconds
         self._guild_roles_memo: dict[str, set[str]] = {}
+        self._guild_roles_lock = asyncio.Lock()
 
     async def resolve(
         self,
@@ -184,11 +188,17 @@ class DiscordRoleResolver:
         )
 
     async def _guild_role_ids(self, guild_id: str) -> set[str]:
-        cached = self._guild_roles_memo.get(guild_id)
-        if cached is None:
-            cached = {str(role_id) for role_id in await self._fetch_guild_role_ids(guild_id)}
-            self._guild_roles_memo[guild_id] = cached
-        return cached
+        # The lock, not just the dict, is the memo: a batch resolves its users
+        # concurrently and the drift check below is on the hot path for every
+        # NON-subscriber, so an unguarded check-then-set lets the whole batch
+        # miss together and fire one `GET /guilds/{id}/roles` each -- into the
+        # per-guild bucket whose invalid-request budget is a ban risk.
+        async with self._guild_roles_lock:
+            cached = self._guild_roles_memo.get(guild_id)
+            if cached is None:
+                cached = {str(role_id) for role_id in await self._fetch_guild_role_ids(guild_id)}
+                self._guild_roles_memo[guild_id] = cached
+            return cached
 
     @staticmethod
     def _now() -> datetime:

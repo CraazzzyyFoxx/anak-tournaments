@@ -157,8 +157,9 @@ async def get_by_tournament(
     """
     Retrieves all standings for a specific tournament and converts them to Pydantic schemas.
 
-    Standings only change when a recalculation commits (results_changed) or a
-    stage is restructured (structure_changed) — both already invalidate this
+    Standings rows change on a recalculation (results_changed) or a stage
+    restructure (structure_changed); the embedded ``matches_history`` also moves
+    whenever an encounter does (bracket_changed). All three invalidate this
     cache via tournament_cache_patterns, so a plain TTL cache here is safe.
 
     Parameters:
@@ -183,7 +184,9 @@ async def get_by_tournament(
     # stages/stage_items — precompute/memoize instead of re-serializing per row.
     tournament_cache = None
     if _entity_requested(entities, "tournament"):
-        tournament_model = tournament if tournament is not None else await tournament_flows.get(session, tournament_id, [])
+        tournament_model = (
+            tournament if tournament is not None else await tournament_flows.get(session, tournament_id, [])
+        )
         tournament_cache = await tournament_flows.to_pydantic(session, tournament_model, [])
     team_cache: dict[int, schemas.TeamRead] = {}
     return [

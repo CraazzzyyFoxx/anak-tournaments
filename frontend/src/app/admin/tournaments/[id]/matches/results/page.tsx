@@ -60,10 +60,11 @@ export default function MatchesTabPage() {
       canCreateEncounter={canAccessPermission("match.create", workspaceId)}
       canUpdateEncounter={canAccessPermission("match.update", workspaceId)}
       canDeleteEncounter={canAccessPermission("match.delete", workspaceId)}
-      canSyncEncounters={canAccessPermission("match.sync", workspaceId)}
+      // Encounter sync hits the Challonge import endpoint, so gate on the Challonge permission.
+      canSyncEncounters={canAccessPermission("challonge.update", workspaceId)}
       canUpdateStanding={canAccessPermission("standing.update", workspaceId)}
       canDeleteStanding={canAccessPermission("standing.delete", workspaceId)}
-      canRecalculateStandings={canAccessPermission("standing.recalculate", workspaceId)}
+      canRecalculateStandings={canAccessPermission("standing.update", workspaceId)}
     />
   );
 }

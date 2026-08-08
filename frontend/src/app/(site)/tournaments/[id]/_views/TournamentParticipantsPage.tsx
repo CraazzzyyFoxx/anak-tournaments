@@ -11,7 +11,7 @@ import {
   useSyncExternalStore
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Check,
@@ -690,7 +690,6 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
   const { user, status: authStatus } = useAuthProfile();
   const queryClient = useQueryClient();
   const pathname = usePathname();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const searchParamsString = searchParams.toString();
   const resultsHeadingRef = useRef<HTMLDivElement>(null);
@@ -699,7 +698,9 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
   const [isCheckInDialogOpen, setIsCheckInDialogOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
-  const toggleExpanded = (registrationId: number) =>
+  // Stable identity: the row list is memoized, and a fresh callback per render
+  // would invalidate it on every parent update.
+  const toggleExpanded = useCallback((registrationId: number) => {
     setExpandedIds((current) => {
       const next = new Set(current);
       if (next.has(registrationId)) {
@@ -709,6 +710,7 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
       }
       return next;
     });
+  }, []);
 
   const isAuthenticated = authStatus === "authenticated" && user !== null;
 
@@ -775,7 +777,8 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
     isCheckInWindowActive(tournament);
 
   const divisionGrid = useDivisionGrid();
-  const heroesMap = useHeroesMap();
+  const [needsHeroes, setNeedsHeroes] = useState(false);
+  const heroesMap = useHeroesMap({ enabled: needsHeroes });
 
   // Dynamic columns
   const allColumns = useMemo(
@@ -906,6 +909,15 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
       ),
     [allColumns, visibleColumnIdSet]
   );
+
+  // The hero catalogue backs only the top_heroes cells, so its request stays
+  // unsent while that column is hidden. Latched on: toggling the column off
+  // must not discard a catalogue the user can re-reveal in one click.
+  useEffect(() => {
+    if (visibleColumnIdSet.has("top_heroes")) {
+      setNeedsHeroes(true);
+    }
+  }, [visibleColumnIdSet]);
 
   useEffect(() => {
     latestParamsRef.current = searchParamsString;

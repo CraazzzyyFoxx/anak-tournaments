@@ -30,6 +30,7 @@ from shared.services.distributed_lock import (
     release_distributed_lock,
 )
 from src.core import db
+from src.core.broker import optional_broker
 from src.core.config import settings
 from src.rpc._clients import realtime_redis
 
@@ -89,12 +90,7 @@ async def run_subscription_collection_tick(
                         logger.debug("Subscription collection not due until {}; skipping tick", due_at)
                         return 0
 
-                active_broker = None
-                try:
-                    from src.core.broker import require_broker
-                    active_broker = require_broker()
-                except Exception:
-                    active_broker = None
+                active_broker = optional_broker()
 
                 count = await service.collect_subscriptions_for_active_tournaments(
                     session,

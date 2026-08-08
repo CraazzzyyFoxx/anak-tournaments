@@ -23,6 +23,7 @@ from shared.services import settings_provider
 from shared.services.subscription_wiring import build_resolver
 from shared.subscriptions import parse_requirement
 from src import models
+from src.core.broker import optional_broker
 
 from . import service
 
@@ -281,12 +282,7 @@ async def trigger_collection(
 
     Returns the number of (user, provider) checks performed.
     """
-    active_broker = None
-    try:
-        from src.core.broker import require_broker
-        active_broker = require_broker(broker)
-    except Exception:
-        active_broker = broker
+    active_broker = optional_broker(broker)
 
     if user_id is None:
         cfg = await settings_provider.get_subscription_collection_config(session)

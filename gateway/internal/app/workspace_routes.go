@@ -23,4 +23,11 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/custom-domain", Queue: "rpc.app.workspaces.set_custom_domain", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/custom-domain/verify", Queue: "rpc.app.workspaces.verify_custom_domain", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/workspaces/{workspace_id}/custom-domain", Queue: "rpc.app.workspaces.clear_custom_domain", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	// --- discord entities: read the linked guild's roles, text channels and
+	// connection status for the workspace settings pickers. Reads, but gated on
+	// workspace.update in the worker like the custom-domain endpoints -- a guild's
+	// role and channel names are not public.
+	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/roles", Queue: "rpc.app.workspaces.discord_roles", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/channels", Queue: "rpc.app.workspaces.discord_channels", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/discord/guild", Queue: "rpc.app.workspaces.discord_guild", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 }

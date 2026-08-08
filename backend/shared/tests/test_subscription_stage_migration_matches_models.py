@@ -97,7 +97,7 @@ class TestTheRevision:
         text = _text()
         assert f'_CHECK_IN = "{DEFAULT}"' in text
         assert "server_default=_CHECK_IN" in text
-        assert f"set subscription_stage = '{{_CHECK_IN}}'" in text
+        assert "set subscription_stage = '{_CHECK_IN}'" in text
         assert '"registration"' not in text.split("def upgrade")[1]
 
     def test_downgrade_drops_the_column(self):

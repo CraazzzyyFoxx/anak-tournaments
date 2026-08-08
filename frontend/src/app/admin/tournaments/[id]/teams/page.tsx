@@ -48,7 +48,7 @@ export default function TeamsTabPage() {
       canCreateTeam={canAccessPermission("team.create", workspaceId)}
       canUpdateTeam={canAccessPermission("team.update", workspaceId)}
       canDeleteTeam={canAccessPermission("team.delete", workspaceId)}
-      canImportTeams={canAccessPermission("team.import", workspaceId)}
+      canImportTeams={canAccessPermission("team.create", workspaceId)}
       canCreatePlayer={canAccessPermission("player.create", workspaceId)}
       canUpdatePlayer={canAccessPermission("player.update", workspaceId)}
       canDeletePlayer={canAccessPermission("player.delete", workspaceId)}

@@ -135,7 +135,7 @@ export default function NewTournamentPage() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const timezone =
     workspaces.find((ws) => ws.id === currentWorkspaceId)?.timezone ?? DEFAULT_WORKSPACE_TIMEZONE;
-  const canTeamImport = canAccessPermission("team.import", currentWorkspaceId);
+  const canTeamImport = canAccessPermission("team.create", currentWorkspaceId);
   const steps = useMemo(() => visibleWizardSteps(canTeamImport), [canTeamImport]);
 
   const [step, setStep] = useState<WizardStep>("basics");

@@ -205,15 +205,13 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.parser.logs.retry")
     async def _retry(data: dict, msg: RabbitMessage) -> dict:
-        # POST /admin/logs/{record_id}/retry — dependency: require_log_record_permission("log","reprocess").
+        # POST /admin/logs/{record_id}/retry — dependency: require_log_record_permission("log","update").
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
             record_id = c.require_id(data)
             workspace_id = await auth._get_log_record_workspace_id(session, record_id)
-            await auth._require_workspace_permission(
-                user, workspace_id=workspace_id, resource="log", action="reprocess"
-            )
+            await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
 
             result = await session.execute(
                 select(models.LogProcessingRecord).where(models.LogProcessingRecord.id == record_id)
@@ -252,7 +250,7 @@ def register(broker: Any, logger: Any) -> None:
             except (KeyError, TypeError, ValueError) as exc:
                 raise HTTPException(status_code=422, detail="tournament_id is required") from exc
             await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="log", action="upload"
+                session, user, tournament_id=tournament_id, resource="log", action="create"
             )
 
             files = data.get("files") or []

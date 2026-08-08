@@ -4,7 +4,6 @@ import { getAccessTokenCookie, refreshAccessToken } from "@/lib/auth-tokens";
 export type WorkspaceRbac = {
   workspace_id: number;
   slug: string;
-  memberRole: string;
   roles: string[];
   permissions: string[];
 };
@@ -147,7 +146,6 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
         workspaces?: Array<{
           workspace_id: number;
           slug: string;
-          role: string;
           rbac_roles?: string[];
           rbac_permissions?: string[];
         }>;
@@ -173,7 +171,6 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
           workspaces: (data.workspaces ?? []).map((ws) => ({
             workspace_id: ws.workspace_id,
             slug: ws.slug,
-            memberRole: ws.role,
             roles: ws.rbac_roles ?? [],
             permissions: ws.rbac_permissions ?? [],
           })),

@@ -1,7 +1,7 @@
 """Token payload workspace membership: joins through ``players.user`` and
-derives ``WorkspaceMembership.role`` from RBAC now that ``workspace_member``
-no longer stores ``auth_user_id``/``role`` (real-DB integration; mirrors the
-DB-skip pattern in ``test_signup_provisions_player.py``).
+reports the membership's RBAC role names now that ``workspace_member`` stores
+neither ``auth_user_id`` nor a denormalized ``role`` (real-DB integration;
+mirrors the DB-skip pattern in ``test_signup_provisions_player.py``).
 
 Redis is never initialised in this test process, so the RBAC cache
 read/write in ``_build_access_token_payload`` degrades gracefully to a
@@ -82,10 +82,10 @@ def db_session():
         asyncio.run(session.close())
 
 
-def test_token_payload_includes_workspace_membership_with_rbac_derived_role(db_session) -> None:
+def test_token_payload_includes_workspace_membership_with_rbac_roles(db_session) -> None:
     """A user who is a member of workspace W (via player_id) gets a
-    WorkspaceMembership for W with a non-empty ``role`` derived from RBAC,
-    even though ``workspace_member.role`` no longer exists.
+    WorkspaceMembership for W carrying the RBAC role names assigned in that
+    workspace -- the only role signal that exists.
     """
     suffix = uuid.uuid4().hex[:10]
 
@@ -135,5 +135,4 @@ def test_token_payload_includes_workspace_membership_with_rbac_derived_role(db_s
 
     membership = next((m for m in token_payload.workspaces if m.workspace_id == workspace_id), None)
     assert membership is not None, token_payload.workspaces
-    assert membership.role == "admin"
     assert "admin" in membership.rbac_roles

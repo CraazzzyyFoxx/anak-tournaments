@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.rbac import legacy_workspace_role_name_for_user
 from shared.repository import ApiKeyRepository, WorkspaceMemberRepository, WorkspaceRepository
 from src import models, schemas
 from src.core import key_derivation
@@ -148,12 +147,10 @@ async def _has_workspace_import_access(
     member = await _get_workspace_member(session, user_id=user.id, workspace_id=workspace_id)
     if member is None:
         return False
-    # ``workspace_member`` no longer stores a denormalized ``role``; derive the
-    # legacy role name from RBAC (``user_roles``, keyed on ``auth_user_id``).
-    legacy_role = await legacy_workspace_role_name_for_user(session, user_id=user.id, workspace_id=workspace_id)
-    if legacy_role in {"admin", "owner"}:
-        return True
-
+    # No legacy role-name shortcut here: it bypassed RBAC entirely, so a
+    # workspace role narrowed to exclude ``team.create`` would still have
+    # passed on the strength of its name alone. Owner is covered below by the
+    # wildcard ``*``/``*`` grant behind ``admin.*``.
     workspace_rbac = await AuthService.get_workspace_roles_and_permissions_db(session, user.id, [workspace_id])
     _, permissions = workspace_rbac.get(workspace_id, ([], []))
     return _has_permission_payload(permissions, "team", "create")
@@ -346,8 +343,12 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> schemas.Token
             schemas.WorkspaceMembership(
                 workspace_id=api_key.workspace_id,
                 slug=api_key.workspace.slug,
-                role="api_key",
                 rbac_roles=[],
+                # ``team.create`` is what every balancer job path actually
+                # checks (rpc/admin.py, rpc/binary.py, rpc/draft.py, and
+                # WorkspaceAccessPolicy's default). The grant must stay in
+                # lockstep with those checks: any mismatch 403s every keyed
+                # balancer request.
                 rbac_permissions=[{"resource": "team", "action": "create"}],
             )
         ],

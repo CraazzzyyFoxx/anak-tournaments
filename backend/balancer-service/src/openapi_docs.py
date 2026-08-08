@@ -15,7 +15,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.admin.tournament_config_upsert": {
         "summary": "Upsert tournament balancer config",
-        "description": "Creates or updates the per-tournament balancer config (requires workspace team-import) and emits a balancer config-changed realtime event.",
+        "description": "Creates or updates the per-tournament balancer config (requires workspace team-create) and emits a balancer config-changed realtime event.",
     },
     "rpc.balancer.admin.tournament_summary_get": {
         "summary": "Get tournament summary",
@@ -27,7 +27,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.admin.balance_save": {
         "summary": "Save tournament balance",
-        "description": "Persists a computed team balance for the tournament (requires workspace team-import) and emits a balance-saved realtime event.",
+        "description": "Persists a computed team balance for the tournament (requires workspace team-create) and emits a balance-saved realtime event.",
     },
     "rpc.balancer.admin.balance_export": {
         "summary": "Export balance to teams",
@@ -39,7 +39,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.admin.workspace_config_upsert": {
         "summary": "Upsert workspace balancer config",
-        "description": "Creates or updates the workspace-level rank-delta threshold and hide-from-pool settings, requiring workspace admin permission.",
+        "description": "Creates or updates the workspace-level rank-delta threshold and hide-from-pool settings, requiring workspace update permission.",
     },
     "rpc.balancer.admin.teams_import": {
         "summary": "Import teams file",
@@ -75,7 +75,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.feasibility": {
         "summary": "Get draft feasibility",
-        "description": "Reports whether every remaining team-role slot can be filled. Requires workspace team-import permission.",
+        "description": "Reports whether every remaining team-role slot can be filled. Requires workspace team-create permission.",
     },
     "rpc.balancer.draft.pick_options": {
         "summary": "Get safe draft pick options",
@@ -83,43 +83,43 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.player_role_edit": {
         "summary": "Preview or add a draft player role",
-        "description": "Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason. Requires workspace team-import permission.",
+        "description": "Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason. Requires workspace team-create permission.",
     },
     "rpc.balancer.draft.session_create": {
         "summary": "Create draft session",
-        "description": "Creates a new draft session for a tournament (requires workspace team-import) and publishes a session-updated realtime event.",
+        "description": "Creates a new draft session for a tournament (requires workspace team-create) and publishes a session-updated realtime event.",
     },
     "rpc.balancer.draft.seed": {
         "summary": "Seed draft session",
-        "description": "Seeds a draft session with captains and players from the balancer pool or a manual list (requires team-import); 422 if neither is provided.",
+        "description": "Seeds a draft session with captains and players from the balancer pool or a manual list (requires team-create); 422 if neither is provided.",
     },
     "rpc.balancer.draft.session_patch": {
         "summary": "Patch draft session",
-        "description": "Updates mutable draft settings (pick time, autopick strategy, override flag, rounds, settings) before the draft starts, requiring team-import.",
+        "description": "Updates mutable draft settings (pick time, autopick strategy, override flag, rounds, settings) before the draft starts, requiring team-create.",
     },
     "rpc.balancer.draft.start": {
         "summary": "Start draft session",
-        "description": "Starts the draft and opens the first pick (requires team-import), publishing a pick-started realtime event with the clock deadline.",
+        "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline.",
     },
     "rpc.balancer.draft.pause": {
         "summary": "Pause draft session",
-        "description": "Pauses an in-progress draft (requires team-import) and publishes a draft-paused realtime event.",
+        "description": "Pauses an in-progress draft (requires team-create) and publishes a draft-paused realtime event.",
     },
     "rpc.balancer.draft.resume": {
         "summary": "Resume draft session",
-        "description": "Resumes a paused draft (requires team-import) and publishes a draft-resumed realtime event.",
+        "description": "Resumes a paused draft (requires team-create) and publishes a draft-resumed realtime event.",
     },
     "rpc.balancer.draft.cancel": {
         "summary": "Cancel draft session",
-        "description": "Cancels the draft (requires team-import) and publishes a draft-cancelled realtime event.",
+        "description": "Cancels the draft (requires team-create) and publishes a draft-cancelled realtime event.",
     },
     "rpc.balancer.draft.rollback": {
         "summary": "Rollback draft pick",
-        "description": "Rolls back the most recent draft action (requires team-import) and publishes a rollback realtime event.",
+        "description": "Rolls back the most recent draft action (requires team-create) and publishes a rollback realtime event.",
     },
     "rpc.balancer.draft.export": {
         "summary": "Export draft to teams",
-        "description": "Finalizes the drafted rosters into tournament teams (requires team-import) and publishes a draft-completed realtime event.",
+        "description": "Finalizes the drafted rosters into tournament teams (requires team-create) and publishes a draft-completed realtime event.",
     },
     "rpc.balancer.draft.pick_select": {
         "summary": "Select draft pick",
@@ -127,10 +127,10 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.pick_autopick": {
         "summary": "Autopick draft pick",
-        "description": "Auto-selects the best-fit available player for a pick using the session's autopick strategy (requires team-import) and broadcasts the result.",
+        "description": "Auto-selects the best-fit available player for a pick using the session's autopick strategy (requires team-create) and broadcasts the result.",
     },
     "rpc.balancer.draft.pick_override": {
         "summary": "Override draft pick",
-        "description": "Admin-overrides a pick to an arbitrary player (requires team-import), bypassing captain/clock constraints, and broadcasts a pick-made event.",
+        "description": "Admin-overrides a pick to an arbitrary player (requires team-create), bypassing captain/clock constraints, and broadcasts a pick-made event.",
     },
 }

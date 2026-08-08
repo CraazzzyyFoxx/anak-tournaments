@@ -134,36 +134,16 @@ class AuthUser(db.TimeStampIntegerMixin):
             return True
         return workspace_id in self.get_workspace_ids()
 
-    def get_workspace_role(self, workspace_id: int) -> str | None:
-        """Get user's role in a specific workspace."""
-        if self.is_superuser:
-            return "owner"
-        cached = getattr(self, "_cached_workspaces", None)
-        if cached is not None:
-            for w in cached:
-                if w.get("workspace_id") == workspace_id:
-                    return w.get("role")
-        ws_rbac = getattr(self, "_cached_workspace_rbac", None) or {}
-        ws_data = ws_rbac.get(workspace_id)
-        if ws_data:
-            roles = ws_data.get("roles", [])
-            if "owner" in roles:
-                return "owner"
-            if "admin" in roles:
-                return "admin"
-            if roles:
-                return roles[0]
-        for role in getattr(self, "roles", []):
-            if role.workspace_id == workspace_id:
-                return role.name
-        return None
-
     def is_workspace_admin(self, workspace_id: int) -> bool:
-        """Check if user has workspace-scoped admin privileges (owner/admin role or wildcard)."""
+        """Workspace-scoped admin privileges: an owner/admin RBAC role, or a wildcard.
+
+        Answered from RBAC alone. There is deliberately no "what is this user's
+        role here?" accessor to consult first: a member holds a SET of roles, and
+        the single name a previous version derived from that set (first match of
+        owner>admin>member>player) was both lossy and, once it was cached from a
+        token payload, able to shadow the RBAC data below it.
+        """
         if self.is_superuser:
-            return True
-        role = self.get_workspace_role(workspace_id)
-        if role in ("owner", "admin"):
             return True
         ws_rbac = getattr(self, "_cached_workspace_rbac", None) or {}
         ws_data = ws_rbac.get(workspace_id)
@@ -183,6 +163,7 @@ class AuthUser(db.TimeStampIntegerMixin):
                     if (p.resource == "*" or p.resource == "admin") and p.action == "*":
                         return True
         return False
+
     def has_workspace_permission(self, workspace_id: int, resource: str, action: str) -> bool:
         """Check permission within a specific workspace context.
 
@@ -201,8 +182,7 @@ class AuthUser(db.TimeStampIntegerMixin):
         # Workspace owner or admin role grants all non-denied workspace operations
         # except governance (role/permission) and workspace/member deletion
         if self.is_workspace_admin(workspace_id) and not (
-            resource in ("role", "permission")
-            or (resource in ("workspace", "workspace_member") and action == "delete")
+            resource in ("role", "permission") or (resource in ("workspace", "workspace_member") and action == "delete")
         ):
             return True
 

@@ -20,11 +20,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.parser.logs.retry": {
         "summary": "Retry log processing",
-        "description": "Resets a failed/processed log record to pending and re-enqueues it for processing; requires log.reprocess on the record's workspace.",
+        "description": "Resets a failed/processed log record to pending and re-enqueues it for processing; requires log.update on the record's workspace.",
     },
     "rpc.parser.logs.upload": {
         "summary": "Upload match logs",
-        "description": "Multipart (base64) upload of one or more log files for a tournament, storing each to S3 and enqueueing processing, with per-file errors collected; requires log.upload.",
+        "description": "Multipart (base64) upload of one or more log files for a tournament, storing each to S3 and enqueueing processing, with per-file errors collected; requires log.create.",
     },
     "rpc.parser.logs.process_tournament": {
         "summary": "Process tournament logs",
@@ -132,7 +132,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.parser.ach.import": {
         "summary": "Import achievement rules",
-        "description": "Imports portable achievement rules into a workspace (with source-workspace access check) and returns the import result; requires workspace achievement.import.",
+        "description": "Imports portable achievement rules into a workspace (with source-workspace access check) and returns the import result; requires workspace achievement.create.",
     },
     "rpc.parser.ach.evaluate": {
         "summary": "Evaluate achievement rules",
@@ -160,7 +160,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.parser.ach.lib_import": {
         "summary": "Import library rules",
-        "description": "Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs; requires workspace achievement.import.",
+        "description": "Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs; requires workspace achievement.create.",
     },
     "rpc.parser.ach.overrides_list": {
         "summary": "List achievement overrides",

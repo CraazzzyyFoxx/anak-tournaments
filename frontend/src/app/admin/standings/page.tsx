@@ -96,7 +96,7 @@ export default function StandingsPage() {
   const queryClient = useQueryClient();
   const canUpdate = canAccessPermission("standing.update", workspaceId);
   const canDelete = canAccessPermission("standing.delete", workspaceId);
-  const canRecalculate = canAccessPermission("standing.recalculate", workspaceId);
+  const canRecalculate = canAccessPermission("standing.update", workspaceId);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

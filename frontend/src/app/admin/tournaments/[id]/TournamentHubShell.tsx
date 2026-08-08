@@ -165,18 +165,18 @@ export function TournamentHubShell({
   const canCreateTeam = canAccessPermission("team.create", tournamentWorkspaceId);
   const canUpdateTeam = canAccessPermission("team.update", tournamentWorkspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", tournamentWorkspaceId);
-  const canImportTeams = canAccessPermission("team.import", tournamentWorkspaceId);
+  const canImportTeams = canAccessPermission("team.create", tournamentWorkspaceId);
   const canCreatePlayer = canAccessPermission("player.create", tournamentWorkspaceId);
   const canUpdatePlayer = canAccessPermission("player.update", tournamentWorkspaceId);
   const canDeletePlayer = canAccessPermission("player.delete", tournamentWorkspaceId);
   const canCreateEncounter = canAccessPermission("match.create", tournamentWorkspaceId);
   const canUpdateEncounter = canAccessPermission("match.update", tournamentWorkspaceId);
   const canDeleteEncounter = canAccessPermission("match.delete", tournamentWorkspaceId);
-  const canSyncEncounters = canAccessPermission("match.sync", tournamentWorkspaceId);
+  const canSyncEncounters = canAccessPermission("challonge.update", tournamentWorkspaceId);
   const canUpdateStanding = canAccessPermission("standing.update", tournamentWorkspaceId);
   const canDeleteStanding = canAccessPermission("standing.delete", tournamentWorkspaceId);
   const canRecalculateStandings = canAccessPermission(
-    "standing.recalculate",
+    "standing.update",
     tournamentWorkspaceId
   );
 

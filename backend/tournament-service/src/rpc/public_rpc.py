@@ -46,6 +46,7 @@ from shared.services.subscription_wiring import build_resolver, build_store
 from shared.services.tournament_visibility import assert_tournament_viewable
 from src import models, schemas
 from src.core import db
+from src.core.broker import optional_broker
 from src.core.config import settings
 from src.core.redis import get_realtime_redis
 from src.rpc._helpers import (
@@ -105,18 +106,11 @@ def _subscription_resolver(session: Any) -> Any:
     Built per request: the Discord strategy memoizes a guild's role list, and that
     memo must not outlive the request that filled it.
     """
-    active_broker = None
-    try:
-        from src.core.broker import require_broker
-        active_broker = require_broker()
-    except Exception:
-        active_broker = None
-
     return build_resolver(
         session,
         discord_bot_token=settings.discord_token,
         twitch_client_id=settings.twitch_client_id,
-        broker=active_broker,
+        broker=optional_broker(),
         proxy=settings.proxy_url,
         # A gate that flips somebody's verdict tells the workspace so, so an open
         # admin list stops showing the stale outcome.

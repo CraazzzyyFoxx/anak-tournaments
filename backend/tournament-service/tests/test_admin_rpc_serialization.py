@@ -61,7 +61,6 @@ IDENTITY = {
     "workspaces": [
         {
             "workspace_id": 1,
-            "role": "admin",
             "rbac_roles": [],
             "rbac_permissions": [{"resource": "match", "action": "read"}],
         }

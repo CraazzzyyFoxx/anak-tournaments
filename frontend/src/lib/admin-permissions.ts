@@ -22,7 +22,7 @@ export const overviewPermissions: AppPermission[] = [
 export const accessUsersPermissions: AppPermission[] = ["auth_user.read"];
 export const accessRolesPermissions: AppPermission[] = ["role.read"];
 export const accessPermissionsPermissions: AppPermission[] = ["permission.read"];
-export const accessApiKeysPermissions: AppPermission[] = ["team.import"];
+export const accessApiKeysPermissions: AppPermission[] = ["team.create"];
 export const accessAdminPermissions: AppPermission[] = [
   ...accessUsersPermissions,
   ...accessRolesPermissions,

@@ -59,7 +59,6 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
                     {
                         "workspace_id": 7,
                         "slug": "ws-7",
-                        "role": "member",
                         "rbac_roles": ["editor"],
                         "rbac_permissions": [{"resource": "team", "action": "create"}],
                     }
@@ -68,7 +67,7 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(user.is_workspace_member(7))
-        self.assertEqual(user.get_workspace_role(7), "member")
+        self.assertFalse(user.is_workspace_admin(7))
         self.assertTrue(user.has_workspace_permission(7, "team", "create"))
         self.assertFalse(user.has_workspace_permission(8, "team", "create"))
 
@@ -77,7 +76,7 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
         user.set_rbac_cache(
             role_names=[],
             permissions=[],
-            workspaces=[{"workspace_id": 9, "role": "member"}],
+            workspaces=[{"workspace_id": 9}],
             workspace_rbac={9: {"roles": [], "permissions": [{"resource": "team", "action": "read"}]}},
         )
         session = AsyncMock()
@@ -111,13 +110,13 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
         user.set_rbac_cache(
             role_names=[],
             permissions=[],
-            workspaces=[{"workspace_id": 9, "role": "admin"}],
+            workspaces=[{"workspace_id": 9}],
             workspace_rbac={9: {"roles": ["owner"], "permissions": [{"resource": "*", "action": "*"}]}},
         )
         session = AsyncMock()
         session.scalar = AsyncMock(return_value=9)
 
-        checker = auth.require_tournament_permission("team", "import")
+        checker = auth.require_tournament_permission("team", "create")
         result = await checker(tournament_id=55, session=session, current_user=user)
 
         self.assertIs(result, user)
@@ -127,7 +126,7 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
         user.set_rbac_cache(
             role_names=[],
             permissions=[],
-            workspaces=[{"workspace_id": 9, "role": "member"}],
+            workspaces=[{"workspace_id": 9}],
             workspace_rbac={9: {"roles": [], "permissions": []}},
         )
         session = AsyncMock()

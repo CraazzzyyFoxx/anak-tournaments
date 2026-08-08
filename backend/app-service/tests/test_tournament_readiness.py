@@ -85,9 +85,7 @@ def _identity(ws_id: int, perms: list[dict[str, str]]) -> dict:
         "is_active": True,
         "roles": [],
         "permissions": [],
-        "workspaces": [
-            {"workspace_id": ws_id, "role": "member", "rbac_roles": [], "rbac_permissions": perms}
-        ],
+        "workspaces": [{"workspace_id": ws_id, "rbac_roles": [], "rbac_permissions": perms}],
     }
 
 

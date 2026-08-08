@@ -94,7 +94,6 @@ class WorkspaceMembership(BaseModel):
 
     workspace_id: int
     slug: str
-    role: str
     rbac_roles: list[str] = Field(default_factory=list)
     rbac_permissions: list[dict[str, str]] = Field(default_factory=list)
 
@@ -169,7 +168,6 @@ class AuthUserWorkspace(BaseModel):
 
     workspace_id: int
     slug: str
-    role: str
     rbac_roles: list[str] = Field(default_factory=list)
     rbac_permissions: list[str] = Field(default_factory=list)
 

@@ -8,7 +8,6 @@ import {
   createTrailingCoalescer,
   getTournamentRealtimeCatchUpPlan,
   getTournamentRealtimeUpdatePlan,
-  parseTournamentRealtimeMessage,
   strongerTournamentReason,
 } from "@/hooks/tournamentRealtime.helpers";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -31,24 +30,6 @@ function expectInvalidated(
 }
 
 describe("tournament realtime helpers", () => {
-  it("parses tournament update websocket messages for the active tournament", () => {
-    const message = parseTournamentRealtimeMessage(
-      JSON.stringify({
-        type: "tournament:updated",
-        data: {
-          tournament_id: 42,
-          reason: "results_changed",
-        },
-      }),
-      42,
-    );
-
-    expect(message).toEqual({
-      tournamentId: 42,
-      reason: "results_changed",
-    });
-  });
-
   it("maps bracket changes to the encounter prefix only", () => {
     expect(getTournamentRealtimeUpdatePlan(42, 7, "bracket_changed")).toEqual({
       workspaceScope: "bracket",
@@ -99,10 +80,11 @@ describe("tournament realtime helpers", () => {
     ]);
   });
 
-  it("maps registration changes to only the participant prefixes, not bracket/standings/teams", () => {
+  it("maps registration changes to detail and participant prefixes, not bracket/standings/teams", () => {
     expect(getTournamentRealtimeUpdatePlan(42, 7, "registration_changed")).toEqual({
       workspaceScope: "registration",
       queryKeys: [
+        tournamentQueryKeys.detail(42),
         tournamentQueryKeys.registration(7, 42),
         tournamentQueryKeys.registrationsList(7, 42),
         tournamentQueryKeys.registrationForm(7, 42),
@@ -111,10 +93,10 @@ describe("tournament realtime helpers", () => {
     });
   });
 
-  it("omits registration_changed's query keys entirely until the workspace is known", () => {
+  it("still invalidates the detail key for registration_changed before the workspace is known", () => {
     expect(getTournamentRealtimeUpdatePlan(42, null, "registration_changed")).toEqual({
       workspaceScope: "registration",
-      queryKeys: [],
+      queryKeys: [tournamentQueryKeys.detail(42)],
       shouldRefreshRoute: false,
     });
   });
@@ -281,13 +263,13 @@ describe("tournament realtime helpers", () => {
         untouched: [],
       },
       {
-        // registration_changed's invalidation lives entirely in plan.queryKeys
-        // (getParticipantQueryPrefixes) — the admin bracket/standings/teams
-        // cascade must stay untouched for a plain registration edit.
+        // A registration write stales the admin metadata read (it embeds
+        // participants_count/registrations_count) but nothing in the
+        // stages/standings/encounters/teams cascade — the metadata key is
+        // invalidated exactly so its children stay put.
         reason: "registration_changed" as const,
-        invalidated: [],
+        invalidated: [["admin", "tournament", 42]],
         untouched: [
-          ["admin", "tournament", 42],
           ["admin", "stages", 42],
           ["admin", "tournament", 42, "teams"],
           ["admin", "tournament", 42, "standings"],
