@@ -41,6 +41,15 @@ describe("parseStageBestOf", () => {
       })
     ).toEqual({ by_round: { "1": 2 } });
   });
+
+  it("keeps negative round keys, which lower-bracket rounds use", () => {
+    // Backend `parse_best_of_config` accepts these; dropping them here makes the
+    // admin editor and the server disagree on an LB round's series length.
+    expect(parseStageBestOf({ best_of: { default: 3, by_round: { "-1": 5, "2": 2 } } })).toEqual({
+      default: 3,
+      by_round: { "-1": 5, "2": 2 }
+    });
+  });
 });
 
 describe("resolveBestOf", () => {

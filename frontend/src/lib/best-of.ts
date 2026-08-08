@@ -79,7 +79,11 @@ export function parseStageBestOf(settingsJson: unknown): StageBestOfConfig {
   if (record.by_round && typeof record.by_round === "object") {
     for (const [key, value] of Object.entries(record.by_round as Record<string, unknown>)) {
       // Keys are round-number strings; anything else is ignored, as on the server.
-      if (!/^\d+$/.test(key)) continue;
+      // Lower-bracket rounds are negative ("LB rounds use negative round numbers" in
+      // `_create_encounters_from_skeleton`, services/admin/stage.py), and the backend's
+      // `parse_best_of_config` accepts them. Dropping them here would make this mirror
+      // disagree with the server on an LB round's series length.
+      if (!/^-?\d+$/.test(key)) continue;
       const coerced = positiveInt(value);
       if (coerced !== null) byRound[key] = coerced;
     }
