@@ -15,6 +15,8 @@ __all__ = (
     "EncounterVetoSession",
     "MapVetoConfig",
     "MapVetoConfigMap",
+    "MapVetoConfigSlot",
+    "MapVetoConfigSlotMap",
 )
 
 
@@ -58,6 +60,22 @@ FIRST_PICK_RULE_ENUM = Enum(
     create_type=False,
 )
 
+MAP_VETO_MODE_ENUM = Enum(
+    enums.MapVetoMode,
+    values_callable=lambda e: [x.value for x in e],
+    name="mapvetomode",
+    schema="tournament",
+    create_type=False,
+)
+
+FIRST_BAN_ROTATION_ENUM = Enum(
+    enums.FirstBanRotation,
+    values_callable=lambda e: [x.value for x in e],
+    name="firstbanrotation",
+    schema="tournament",
+    create_type=False,
+)
+
 
 class EncounterMapPool(db.TimeStampIntegerMixin):
     __tablename__ = "encounter_map_pool"
@@ -69,6 +87,10 @@ class EncounterMapPool(db.TimeStampIntegerMixin):
     # Global position of the veto action that touched this entry (bans AND picks),
     # for the room's action timeline. NULL while the map is still available.
     action_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    # Play-order number of the config slot this entry belongs to — the slot's
+    # ``position`` **value**, copied onto the row at session creation, not a FK
+    # to ``map_veto_config_slot.id``. NULL in flat mode.
+    slot: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     picked_by: Mapped[enums.MapPickSide | None] = mapped_column(
         MAP_PICK_SIDE_ENUM,
         nullable=True,
@@ -97,6 +119,12 @@ class MapVetoConfig(db.TimeStampIntegerMixin):
         # has both NULL. One config per cascade level (PG16 NULLS NOT DISTINCT
         # so the (tournament, NULL, NULL) default level is also unique).
         CheckConstraint("round IS NULL OR stage_id IS NOT NULL", name="ck_map_veto_config_round_requires_stage"),
+        # A slot-mode sequence is derived from the slot structure, so a
+        # hand-authored ``custom`` order contradicts the mode. ``mode`` is NOT
+        # NULL, so only ``preset`` can leave the expression NULL, and a CHECK
+        # passes on NULL — the intended reading: an unset preset is not a custom
+        # one.
+        CheckConstraint("NOT (mode = 'slots' AND preset = 'custom')", name="ck_map_veto_config_slots_not_custom"),
         Index(
             "uq_map_veto_config_level",
             "tournament_id",
@@ -112,10 +140,23 @@ class MapVetoConfig(db.TimeStampIntegerMixin):
     stage_id: Mapped[int | None] = mapped_column(ForeignKey(Stage.id, ondelete="CASCADE"), nullable=True)
     # Third cascade level: overrides for a specific bracket round within the stage.
     round: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    # Pool shape: one flat pool for the match, or one pool per slot.
+    mode: Mapped[enums.MapVetoMode] = mapped_column(
+        MAP_VETO_MODE_ENUM,
+        default=enums.MapVetoMode.POOL,
+        server_default=enums.MapVetoMode.POOL.value,
+    )
     first_pick_rule: Mapped[enums.FirstPickRule] = mapped_column(
         FIRST_PICK_RULE_ENUM,
         default=enums.FirstPickRule.HIGHER_SEED,
         server_default=enums.FirstPickRule.HIGHER_SEED.value,
+    )
+    # Slot mode only: whether the same side opens every slot's bans or the
+    # opener alternates slot to slot.
+    first_ban_rotation: Mapped[enums.FirstBanRotation] = mapped_column(
+        FIRST_BAN_ROTATION_ENUM,
+        default=enums.FirstBanRotation.FIXED,
+        server_default=enums.FirstBanRotation.FIXED.value,
     )
     # Per-step timer shown in the room; purely an indicator (never auto-acts).
     turn_timer_seconds: Mapped[int | None] = mapped_column(Integer(), nullable=True)
@@ -135,6 +176,12 @@ class MapVetoConfig(db.TimeStampIntegerMixin):
     map_pool: Mapped[list["MapVetoConfigMap"]] = relationship(
         back_populates="config",
         order_by="MapVetoConfigMap.sort_order",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    slots: Mapped[list["MapVetoConfigSlot"]] = relationship(
+        back_populates="config",
+        order_by="MapVetoConfigSlot.position",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
@@ -159,6 +206,63 @@ class MapVetoConfigMap(db.TimeStampIntegerMixin):
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 
     config: Mapped[MapVetoConfig] = relationship(back_populates="map_pool")
+    map: Mapped[Map] = relationship()
+
+
+class MapVetoConfigSlot(db.TimeStampIntegerMixin):
+    """One slot of a slot-mode :class:`MapVetoConfig`.
+
+    Slots are played in ``position`` order (1..N, N == the match's
+    ``best_of``). Teams ban alternately among the slot's candidate maps until
+    one survives; that map is played. ``reserve_map_id`` is the regulation's
+    stand-in on a draw — labelled in the room, never activated by the platform.
+    """
+
+    __tablename__ = "map_veto_config_slot"
+    __table_args__ = (
+        UniqueConstraint("map_veto_config_id", "position", name="uq_map_veto_config_slot_position"),
+        CheckConstraint("position >= 1", name="ck_map_veto_config_slot_position_positive"),
+        {"schema": "tournament"},
+    )
+
+    map_veto_config_id: Mapped[int] = mapped_column(ForeignKey(MapVetoConfig.id, ondelete="CASCADE"), index=True)
+    # 1-based play order within the config.
+    position: Mapped[int] = mapped_column(Integer(), nullable=False)
+    reserve_map_id: Mapped[int | None] = mapped_column(
+        ForeignKey("overwatch.map.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    config: Mapped[MapVetoConfig] = relationship(back_populates="slots")
+    reserve_map: Mapped[Map | None] = relationship()
+    maps: Mapped[list["MapVetoConfigSlotMap"]] = relationship(
+        back_populates="slot",
+        order_by="MapVetoConfigSlotMap.sort_order",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class MapVetoConfigSlotMap(db.TimeStampIntegerMixin):
+    """One candidate map of a :class:`MapVetoConfigSlot`.
+
+    A map may appear in several slots of the same config (uniqueness is per
+    slot, not per config), which is why slot mode does not reuse
+    ``map_veto_config_map``.
+    """
+
+    __tablename__ = "map_veto_config_slot_map"
+    __table_args__ = (
+        UniqueConstraint("map_veto_config_slot_id", "map_id", name="uq_map_veto_config_slot_map"),
+        {"schema": "tournament"},
+    )
+
+    map_veto_config_slot_id: Mapped[int] = mapped_column(
+        ForeignKey(MapVetoConfigSlot.id, ondelete="CASCADE"), index=True
+    )
+    map_id: Mapped[int] = mapped_column(ForeignKey("overwatch.map.id", ondelete="CASCADE"), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
+
+    slot: Mapped[MapVetoConfigSlot] = relationship(back_populates="maps")
     map: Mapped[Map] = relationship()
 
 
@@ -190,6 +294,9 @@ class EncounterVetoSession(db.TimeStampIntegerMixin):
     # Step tokens with first/second already mapped to home/away
     # (e.g. ["ban_home", "ban_away", "pick_home", "pick_away", "decider"]).
     resolved_sequence_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    # Snapshot of the config's slot reserves, ``{slot_position: map_id}``, so the
+    # room can label them without re-reading (or being mutated by) the config.
+    slot_reserves_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     turn_timer_seconds: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     status: Mapped[enums.MapVetoSessionStatus] = mapped_column(
         MAP_VETO_SESSION_STATUS_ENUM,

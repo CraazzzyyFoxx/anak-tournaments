@@ -382,6 +382,16 @@ class FirstPickRule(StrEnum):
     HIGHER_SEED = "higher_seed"
 
 
+class MapVetoMode(StrEnum):
+    POOL = "pool"
+    SLOTS = "slots"
+
+
+class FirstBanRotation(StrEnum):
+    FIXED = "fixed"
+    ALTERNATE = "alternate"
+
+
 class EncounterStatus(StrEnum):
     COMPLETED = "completed"
     PENDING = "pending"
