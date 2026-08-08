@@ -261,9 +261,7 @@ async def get_encounter_reports(session: AsyncSession, encounter_id: int) -> lis
     reporter_ids = {r.reporter_user_id for r in reports if r.reporter_user_id is not None}
     names_by_user_id: dict[int, str] = {}
     if reporter_ids:
-        rows = await session.execute(
-            select(models.User.id, models.User.name).where(models.User.id.in_(reporter_ids))
-        )
+        rows = await session.execute(select(models.User.id, models.User.name).where(models.User.id.in_(reporter_ids)))
         names_by_user_id = dict(rows.all())
 
     return [

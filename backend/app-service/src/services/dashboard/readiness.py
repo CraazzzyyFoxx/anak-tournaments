@@ -50,9 +50,7 @@ class TournamentReadiness(BaseModel):
 
 
 async def get_tournament_or_404(session: AsyncSession, tournament_id: int) -> models.Tournament:
-    tournament = await session.scalar(
-        sa.select(models.Tournament).where(models.Tournament.id == tournament_id)
-    )
+    tournament = await session.scalar(sa.select(models.Tournament).where(models.Tournament.id == tournament_id))
     if tournament is None:
         raise HTTPException(status_code=404, detail="Tournament not found")
     return tournament
@@ -95,9 +93,7 @@ async def compute_readiness(
         schedule_rows = sa.select(sa.func.count(models.TournamentPhaseSchedule.id)).where(
             models.TournamentPhaseSchedule.tournament_id == tournament_id
         )
-        stages_total = sa.select(sa.func.count(models.Stage.id)).where(
-            models.Stage.tournament_id == tournament_id
-        )
+        stages_total = sa.select(sa.func.count(models.Stage.id)).where(models.Stage.tournament_id == tournament_id)
         slots = (
             sa.select(models.StageItemInput.id, models.StageItemInput.input_type)
             .join(models.StageItem, models.StageItem.id == models.StageItemInput.stage_item_id)
@@ -106,9 +102,7 @@ async def compute_readiness(
             .subquery()
         )
         slots_total = sa.select(sa.func.count(slots.c.id))
-        slots_empty = sa.select(sa.func.count(slots.c.id)).where(
-            slots.c.input_type == enums.StageItemInputType.EMPTY
-        )
+        slots_empty = sa.select(sa.func.count(slots.c.id)).where(slots.c.input_type == enums.StageItemInputType.EMPTY)
         encounters_total = sa.select(sa.func.count(models.Encounter.id)).where(
             models.Encounter.tournament_id == tournament_id
         )
@@ -200,9 +194,7 @@ async def compute_readiness(
             "pool_ready": row[4] or 0,
             "pool_need_fix": row[5] or 0,
             "balance_saved": balance is not None,
-            "balance_exported_at": (
-                balance[0].isoformat() if balance is not None and balance[0] is not None else None
-            ),
+            "balance_exported_at": (balance[0].isoformat() if balance is not None and balance[0] is not None else None),
             "draft_session_status": draft_status,
         }
 

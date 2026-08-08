@@ -27,20 +27,24 @@ def upgrade() -> None:
     conn = op.get_bind()
     now = datetime.now(UTC)
 
-    workspaces = conn.execute(
-        sa.text(
-            """
+    workspaces = (
+        conn.execute(
+            sa.text(
+                """
             SELECT w.id AS workspace_id,
                    (SELECT v.grid_id FROM division_grid_version v
                      WHERE v.id = w.default_division_grid_version_id) AS default_grid_id
             FROM workspace w
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
-    archive_stmt = sa.text(
-        "UPDATE division_grid SET archived_at = :now WHERE id IN :ids"
-    ).bindparams(sa.bindparam("ids", expanding=True))
+    archive_stmt = sa.text("UPDATE division_grid SET archived_at = :now WHERE id IN :ids").bindparams(
+        sa.bindparam("ids", expanding=True)
+    )
 
     for row in workspaces:
         grid_ids = (

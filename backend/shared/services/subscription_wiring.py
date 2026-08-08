@@ -103,4 +103,3 @@ def build_resolver(
         # shows it without polling. Absent Redis, silently no signal.
         event_sink=build_event_sink(redis),
     )
-

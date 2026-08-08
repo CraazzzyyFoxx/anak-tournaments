@@ -156,8 +156,7 @@ def _reject_completed_status(new_status: str | None) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "use_result_endpoint: complete an encounter via "
-                "POST /api/v1/admin/encounters/{encounter_id}/result"
+                "use_result_endpoint: complete an encounter via POST /api/v1/admin/encounters/{encounter_id}/result"
             ),
         )
 

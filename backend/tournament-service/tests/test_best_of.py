@@ -36,9 +36,7 @@ class ParseBestOfConfigTests(TestCase):
             self.assertIsNone(cfg.final)
 
     def test_parses_default_by_round_and_final(self) -> None:
-        cfg = best_of.parse_best_of_config(
-            {"best_of": {"default": 3, "by_round": {"1": 2, "3": 5}, "final": 7}}
-        )
+        cfg = best_of.parse_best_of_config({"best_of": {"default": 3, "by_round": {"1": 2, "3": 5}, "final": 7}})
         self.assertEqual(cfg.default, 3)
         self.assertEqual(cfg.by_round, {1: 2, 3: 5})
         self.assertEqual(cfg.final, 7)

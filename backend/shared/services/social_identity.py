@@ -153,9 +153,7 @@ async def upsert_social_account(
             )
         ).scalar_one_or_none()
         if account is not None and account.user_id != user_id:
-            raise SocialHandleConflict(
-                f"{provider} account is already linked to a different user"
-            )
+            raise SocialHandleConflict(f"{provider} account is already linked to a different user")
     if account is None:
         account = await find_by_handle(session, provider=provider, username=username, user_id=user_id)
 

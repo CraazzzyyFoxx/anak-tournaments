@@ -63,18 +63,14 @@ class EncounterCaptainReport(db.TimeStampIntegerMixin):
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
     # Domain player (players.user) linked to the submitting captain; SET NULL so a
     # deleted account leaves the report intact.
-    reporter_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey(User.id, ondelete="SET NULL"), nullable=True
-    )
+    reporter_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
     home_score: Mapped[int] = mapped_column(Integer())
     away_score: Mapped[int] = mapped_column(Integer())
     # Nullable because the tournament's report form may disable the field entirely.
     closeness: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text(), nullable=True)
     # Organizer-defined text answers, keyed by the definition's ``key``.
-    custom_fields_json: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, server_default="{}", default=dict
-    )
+    custom_fields_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}", default=dict)
 
     encounter: Mapped[Encounter] = relationship(back_populates="captain_reports")
     team: Mapped[Team] = relationship()
@@ -107,9 +103,7 @@ class EncounterMapCode(db.TimeStampIntegerMixin):
         {"schema": "tournament"},
     )
 
-    report_id: Mapped[int] = mapped_column(
-        ForeignKey(EncounterCaptainReport.id, ondelete="CASCADE"), index=True
-    )
+    report_id: Mapped[int] = mapped_column(ForeignKey(EncounterCaptainReport.id, ondelete="CASCADE"), index=True)
     map_index: Mapped[int] = mapped_column(Integer())
     map_id: Mapped[int | None] = mapped_column(
         ForeignKey("overwatch.map.id", ondelete="SET NULL"), nullable=True, index=True
@@ -135,9 +129,7 @@ class EncounterReportForm(db.TimeStampIntegerMixin):
         {"schema": "tournament"},
     )
 
-    tournament_id: Mapped[int] = mapped_column(
-        ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True
-    )
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
     built_in_fields_json: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, server_default="{}", default=dict
     )

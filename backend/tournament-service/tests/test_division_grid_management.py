@@ -33,6 +33,7 @@ import_jobs = importlib.import_module("src.services.division_grid.import_jobs")
 portable = importlib.import_module("src.services.division_grid.portable")
 marketplace = importlib.import_module("src.services.division_grid.marketplace")
 
+
 def test_division_grid_tracks_import_provenance_and_archival() -> None:
     columns = models.DivisionGrid.__table__.c
 
@@ -261,11 +262,15 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
             grid=SimpleNamespace(workspace_id=4),
         )
         src10 = SimpleNamespace(
-            id=10, label="v10", grid=SimpleNamespace(name="Ladder"),
+            id=10,
+            label="v10",
+            grid=SimpleNamespace(name="Ladder"),
             tiers=[SimpleNamespace(id=101, slug="a", name="A")],
         )
         src20 = SimpleNamespace(
-            id=20, label="v20", grid=SimpleNamespace(name="Ladder"),
+            id=20,
+            label="v20",
+            grid=SimpleNamespace(name="Ladder"),
             tiers=[SimpleNamespace(id=201, slug="b", name="B")],
         )
         incomplete = SimpleNamespace(is_complete=False, rules=[])
@@ -501,6 +506,7 @@ def test_icon_copy_batch_has_bounded_concurrency() -> None:
 
     asyncio.run(run())
 
+
 def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() -> None:
     async def run() -> None:
         global_tier = SimpleNamespace(
@@ -535,9 +541,7 @@ def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() 
             tiers=[global_tier, external_tier],
         )
         grid = SimpleNamespace(id=5, slug="ow2", name="OW2", description=None, versions=[version])
-        session = SimpleNamespace(
-            scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=["ow2"])))
-        )
+        session = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=["ow2"]))))
 
         with patch.object(marketplace, "load_mappings_for_versions", AsyncMock(return_value=[])):
             result = await marketplace.preflight_division_grid_import(
@@ -595,9 +599,7 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
                 SimpleNamespace(id=20, version=2, label="Season 2", status="published", tiers=[second_tier]),
             ],
         )
-        session = SimpleNamespace(
-            scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=[])))
-        )
+        session = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=[]))))
 
         with patch.object(marketplace, "load_mappings_for_versions", AsyncMock(return_value=[])):
             result = await marketplace.preflight_division_grid_import(
@@ -760,6 +762,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
 
     asyncio.run(run())
 
+
 def test_import_job_creation_requeues_a_failed_job() -> None:
     async def run() -> None:
         failed = SimpleNamespace(
@@ -881,9 +884,7 @@ def test_stale_import_jobs_are_requeued() -> None:
         error=None,
     )
     session = SimpleNamespace(
-        scalars=AsyncMock(
-            return_value=SimpleNamespace(all=Mock(return_value=[stale]))
-        ),
+        scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=[stale]))),
         commit=AsyncMock(),
     )
     asyncio.run(run())

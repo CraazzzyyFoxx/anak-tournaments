@@ -46,9 +46,7 @@ def _mk_user(user_id: int = 1) -> SimpleNamespace:
     return SimpleNamespace(id=user_id)
 
 
-def _mk_report(
-    *, team_id: int, home: int, away: int, closeness: int | None, report_id: int = 1
-) -> SimpleNamespace:
+def _mk_report(*, team_id: int, home: int, away: int, closeness: int | None, report_id: int = 1) -> SimpleNamespace:
     return SimpleNamespace(
         id=report_id,
         team_id=team_id,
@@ -173,7 +171,12 @@ class CaptainReportValidation(IsolatedAsyncioTestCase):
         session = _mk_session(_mk_encounter(), [100])
         with assert_http_status(self, 422):
             await captain_service.submit_captain_report(
-                session, _mk_user(), 10, home_score=2, away_score=1, closeness=5,
+                session,
+                _mk_user(),
+                10,
+                home_score=2,
+                away_score=1,
+                closeness=5,
                 map_codes=[(1, "AAA"), (1, "BBB")],
             )
 
@@ -292,7 +295,12 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         session = _mk_session(encounter, [100], picked_rows=[(1, 55), (2, 66)])
         with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
             await captain_service.submit_captain_report(
-                session, _mk_user(), 10, home_score=2, away_score=1, closeness=7,
+                session,
+                _mk_user(),
+                10,
+                home_score=2,
+                away_score=1,
+                closeness=7,
                 map_codes=[(1, "AAA"), (2, "BBB"), (3, "CCC"), (4, "  ")],
             )
         report = encounter.captain_reports[0]
@@ -319,7 +327,12 @@ class ConfigurableReportFields(IsolatedAsyncioTestCase):
         )
         with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
             await captain_service.submit_captain_report(
-                session, _mk_user(), 10, home_score=2, away_score=1, closeness=7,
+                session,
+                _mk_user(),
+                10,
+                home_score=2,
+                away_score=1,
+                closeness=7,
                 comment="  close series  ",
                 custom_fields={"vod": "https://example.test/vod", "gone": "dropped"},
             )
@@ -350,9 +363,7 @@ class ConfigurableReportFields(IsolatedAsyncioTestCase):
         session = _mk_session(
             encounter,
             [200],  # away captain
-            report_form_row=_mk_report_form(
-                built_in={"closeness": {"enabled": False, "required": False}}
-            ),
+            report_form_row=_mk_report_form(built_in={"closeness": {"enabled": False, "required": False}}),
         )
         with (
             patch.object(captain_service, "finalize_encounter_score", AsyncMock()),
@@ -370,14 +381,17 @@ class ConfigurableReportFields(IsolatedAsyncioTestCase):
         session = _mk_session(
             _mk_encounter(),
             [100],
-            report_form_row=_mk_report_form(
-                built_in={"map_codes": {"enabled": True, "required": True}}
-            ),
+            report_form_row=_mk_report_form(built_in={"map_codes": {"enabled": True, "required": True}}),
         )
         with assert_http_status(self, 422):
             # 2-1 played three maps; only one code supplied.
             await captain_service.submit_captain_report(
-                session, _mk_user(), 10, home_score=2, away_score=1, closeness=7,
+                session,
+                _mk_user(),
+                10,
+                home_score=2,
+                away_score=1,
+                closeness=7,
                 map_codes=[(1, "AAA")],
             )
 
@@ -517,9 +531,7 @@ class AdminSetResult(IsolatedAsyncioTestCase):
         )
         session = _mk_session(encounter, [])
         with assert_http_status(self, 422):
-            await captain_service.set_encounter_result(
-                session, 10, actor_user_id=self.ADMIN, adopt_report_team_id=2
-            )
+            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, adopt_report_team_id=2)
 
     async def test_rejects_reconfirming_a_confirmed_result(self) -> None:
         """Unlike the old confirm, ``none`` is now a legal starting point — the

@@ -501,7 +501,6 @@ class TestEvaluateRequirement(IsolatedAsyncioTestCase):
         assert twitch.calls == []
 
 
-
 def _code_config(*, method: str, expires_in: int | None = None) -> dict:
     return {
         "verification_method": method,

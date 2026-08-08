@@ -83,9 +83,7 @@ class EncounterMapPool(db.TimeStampIntegerMixin):
     # ``decider`` map, banned and still-available entries. ``picked_by`` stays
     # authoritative for the veto sequence; this is a convenience for report/UI
     # consumers that key off team_id.
-    team_id: Mapped[int | None] = mapped_column(
-        ForeignKey(Team.id, ondelete="SET NULL"), nullable=True, index=True
-    )
+    team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="SET NULL"), nullable=True, index=True)
 
     encounter: Mapped[Encounter] = relationship()
     map: Mapped[Map] = relationship()
@@ -183,9 +181,7 @@ class EncounterVetoSession(db.TimeStampIntegerMixin):
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
     # Informational back-reference; the session carries full snapshots, so the
     # source config may be edited or deleted without affecting a running veto.
-    config_id: Mapped[int | None] = mapped_column(
-        ForeignKey(MapVetoConfig.id, ondelete="SET NULL"), nullable=True
-    )
+    config_id: Mapped[int | None] = mapped_column(ForeignKey(MapVetoConfig.id, ondelete="SET NULL"), nullable=True)
     # Which encounter side acts as "first" in the sequence (seed resolution result).
     first_side: Mapped[enums.MapPickSide] = mapped_column(MAP_PICK_SIDE_ENUM)
     seed_source: Mapped[enums.VetoSeedSource] = mapped_column(VETO_SEED_SOURCE_ENUM)

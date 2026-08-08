@@ -653,10 +653,7 @@ async def get_compare(
 
 @cache(
     ttl=config.settings.users_cache_ttl,
-    key=(
-        "user_compare:v2:{id}:{baseline}:{target_user_id}:{role}:"
-        "{div_min}:{div_max}:{tournament_id}:{grid_version}"
-    ),
+    key=("user_compare:v2:{id}:{baseline}:{target_user_id}:{role}:{div_min}:{div_max}:{tournament_id}:{grid_version}"),
     prefix="backend:",
     lock=True,
 )

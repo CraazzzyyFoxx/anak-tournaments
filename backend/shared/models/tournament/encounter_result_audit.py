@@ -69,9 +69,7 @@ class EncounterResultAudit(db.TimeStampIntegerMixin):
     away_score_after: Mapped[int] = mapped_column(Integer())
 
     # Which side's report was taken as truth, when the admin adopted one.
-    adopted_team_id: Mapped[int | None] = mapped_column(
-        ForeignKey(Team.id, ondelete="SET NULL"), nullable=True
-    )
+    adopted_team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="SET NULL"), nullable=True)
     # Mirrors shared.services.encounter.finalize.FinalizeSource.
     source: Mapped[str] = mapped_column(String(16))
 

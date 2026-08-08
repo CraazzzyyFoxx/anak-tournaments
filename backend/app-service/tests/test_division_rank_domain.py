@@ -89,7 +89,6 @@ class DivisionGridCachedAccessTests(IsolatedAsyncioTestCase):
         load_from_db.assert_not_awaited()
 
 
-
 def _execute_result(rows: list[tuple]) -> Mock:
     result = Mock()
     result.all = Mock(return_value=rows)
@@ -211,9 +210,7 @@ class LoadDivisionGridSnapshotsBatchTests(IsolatedAsyncioTestCase):
         }
 
         with patch.object(division_grid_cache, "get_grid_version_snapshots", AsyncMock(return_value=cached)):
-            result = await division_grid_access.load_division_grid_snapshots(
-                session=session, version_ids=[77, 88]
-            )
+            result = await division_grid_access.load_division_grid_snapshots(session=session, version_ids=[77, 88])
 
         self.assertEqual(cached, result)
         session.scalars.assert_not_awaited()
@@ -313,8 +310,18 @@ class LoadDivisionGridVersionReadPayloadsBatchTests(IsolatedAsyncioTestCase):
 
     async def test_all_cache_hits_never_touch_the_database(self) -> None:
         session = Mock(scalars=AsyncMock())
-        cached_payloads = {77: {"id": 77, "grid_id": 1, "version": 1, "label": "S1", "status": "published",
-                                 "created_from_version_id": None, "published_at": None, "tiers": []}}
+        cached_payloads = {
+            77: {
+                "id": 77,
+                "grid_id": 1,
+                "version": 1,
+                "label": "S1",
+                "status": "published",
+                "created_from_version_id": None,
+                "published_at": None,
+                "tiers": [],
+            }
+        }
 
         with patch.object(
             division_grid_cache, "get_grid_version_read_payloads", AsyncMock(return_value=cached_payloads)

@@ -388,10 +388,7 @@ async def collection_stats(session: AsyncSession) -> dict:
     }
     total = int(await session.scalar(sa.select(sa.func.count()).select_from(state)) or 0)
     never_checked = int(
-        await session.scalar(
-            sa.select(sa.func.count()).select_from(state).where(state.last_checked_at.is_(None))
-        )
-        or 0
+        await session.scalar(sa.select(sa.func.count()).select_from(state).where(state.last_checked_at.is_(None))) or 0
     )
     last_success_at = await session.scalar(sa.select(sa.func.max(state.last_success_at)))
 

@@ -243,9 +243,7 @@ async def _tournament_state(session_maker, tournament_id: int) -> tuple[enums.To
     async with session_maker() as session:
         row = (
             await session.execute(
-                sa.select(Tournament.status, Tournament.auto_transitions_enabled).where(
-                    Tournament.id == tournament_id
-                )
+                sa.select(Tournament.status, Tournament.auto_transitions_enabled).where(Tournament.id == tournament_id)
             )
         ).one()
         return row.status, row.auto_transitions_enabled
@@ -297,9 +295,7 @@ def test_paused_and_future_tournaments_untouched() -> None:
         async with _db_sessions() as session_maker:
             async with session_maker() as session:
                 workspace = await _make_workspace(session)
-                paused = await _make_tournament(
-                    session, workspace_id=workspace.id, auto_transitions_enabled=False
-                )
+                paused = await _make_tournament(session, workspace_id=workspace.id, auto_transitions_enabled=False)
                 await _add_schedule_row(
                     session,
                     tournament_id=paused.id,

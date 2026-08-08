@@ -133,9 +133,7 @@ def downgrade() -> None:
         "check_in_opens_at",
         "check_in_closes_at",
     ):
-        op.add_column(
-            "tournament", sa.Column(column, sa.DateTime(timezone=True), nullable=True), schema="tournament"
-        )
+        op.add_column("tournament", sa.Column(column, sa.DateTime(timezone=True), nullable=True), schema="tournament")
 
     op.execute(
         sa.text(

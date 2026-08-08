@@ -161,9 +161,7 @@ class LoadSourceGridsTests(IsolatedAsyncioTestCase):
         self.assertEqual({}, grids)
 
     async def test_float_version_ids_from_a_dataframe_column_are_coerced(self) -> None:
-        with patch.object(
-            canonical, "load_division_grid_snapshots", AsyncMock(return_value={})
-        ) as load_snapshots:
+        with patch.object(canonical, "load_division_grid_snapshots", AsyncMock(return_value={})) as load_snapshots:
             await canonical.load_source_grids(session=object(), version_ids=[200.0, 300.0])
 
         self.assertEqual({200, 300}, load_snapshots.await_args.args[1])

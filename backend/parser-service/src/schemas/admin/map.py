@@ -28,6 +28,7 @@ class MapUpdate(BaseModel):
     gamemode_id: int | None = None
     in_competitive: bool | None = None
 
+
 class MapListQueryParams(
     pagination.PaginationSortQueryParams[typing.Literal["id", "name", "gamemode_id", "created_at", "updated_at"]]
 ):

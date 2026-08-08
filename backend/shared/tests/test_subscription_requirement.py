@@ -209,8 +209,7 @@ class TestDeferredProviders:
 
     def test_naming_a_provider_the_rule_ignores_changes_nothing(self):
         assert (
-            evaluate_requirement(_req("all", "boosty"), {"boosty": F}, deferred_providers={"twitch"})
-            is Outcome.REFUSED
+            evaluate_requirement(_req("all", "boosty"), {"boosty": F}, deferred_providers={"twitch"}) is Outcome.REFUSED
         )
 
 

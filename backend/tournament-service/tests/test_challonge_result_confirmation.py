@@ -128,14 +128,10 @@ class ConflictGuardProtectsLocalDecisions(IsolatedAsyncioTestCase):
 
     def test_an_untouched_encounter_is_not_protected(self) -> None:
         """Otherwise the importer could never fill in a fresh bracket."""
-        encounter = _encounter(
-            status=enums.EncounterStatus.OPEN, result_status=enums.EncounterResultStatus.NONE
-        )
+        encounter = _encounter(status=enums.EncounterStatus.OPEN, result_status=enums.EncounterResultStatus.NONE)
         self.assertFalse(sync._has_local_decision(encounter))
 
     def test_completed_without_a_result_status_is_still_protected(self) -> None:
         """Legacy rows completed before the state machine existed."""
-        encounter = _encounter(
-            status=enums.EncounterStatus.COMPLETED, result_status=enums.EncounterResultStatus.NONE
-        )
+        encounter = _encounter(status=enums.EncounterStatus.COMPLETED, result_status=enums.EncounterResultStatus.NONE)
         self.assertTrue(sync._has_local_decision(encounter))

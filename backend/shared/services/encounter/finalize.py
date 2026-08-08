@@ -118,9 +118,7 @@ async def _load_encounter_for_update(
     session: AsyncSession,
     encounter_id: int,
 ) -> Encounter:
-    result = await session.execute(
-        select(Encounter).where(Encounter.id == encounter_id).with_for_update(nowait=False)
-    )
+    result = await session.execute(select(Encounter).where(Encounter.id == encounter_id).with_for_update(nowait=False))
     encounter = result.scalar_one_or_none()
     if encounter is None:
         raise ValueError(f"Encounter {encounter_id} not found")

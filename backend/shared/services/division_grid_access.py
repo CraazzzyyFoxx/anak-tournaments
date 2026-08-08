@@ -196,8 +196,7 @@ async def get_effective_division_grid_version_ids(
         )
     ).all()
     own_version_by_tournament = {
-        int(tournament_id): (int(version_id) if version_id is not None else None)
-        for tournament_id, version_id in rows
+        int(tournament_id): (int(version_id) if version_id is not None else None) for tournament_id, version_id in rows
     }
 
     default_version_id: int | None = None

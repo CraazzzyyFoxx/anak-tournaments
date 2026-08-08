@@ -99,9 +99,7 @@ async def upsert_report_form(
 ) -> MatchReportFormRead:
     """Create-or-update the tournament's report form config. Commits internally."""
     form = await get_report_form(session, tournament_id)
-    built_in_fields_json = {
-        key: value.model_dump() for key, value in body.built_in_fields.items()
-    }
+    built_in_fields_json = {key: value.model_dump() for key, value in body.built_in_fields.items()}
     custom_fields_json = [definition.model_dump() for definition in body.custom_fields]
 
     if form is None:
@@ -178,9 +176,7 @@ def validate_submission(
 
     map_codes_config = _config(form, "map_codes")
     if map_codes_config.enabled:
-        sanitized.map_codes = [
-            (map_index, clean) for map_index, code in map_codes if (clean := (code or "").strip())
-        ]
+        sanitized.map_codes = [(map_index, clean) for map_index, code in map_codes if (clean := (code or "").strip())]
         if map_codes_config.required:
             # One code per map actually PLAYED, not per best-of slot: a 2-0 Bo3
             # needs two codes and a 0-0 forfeit none. Clamped to the slots the
@@ -213,9 +209,7 @@ def validate_submission(
                 raise _unprocessable(f'"{definition.label}" is required')
             continue
         if len(value) > CUSTOM_TEXT_MAX_LENGTH:
-            raise _unprocessable(
-                f'"{definition.label}" must be at most {CUSTOM_TEXT_MAX_LENGTH} characters'
-            )
+            raise _unprocessable(f'"{definition.label}" must be at most {CUSTOM_TEXT_MAX_LENGTH} characters')
         sanitized.custom_fields[definition.key] = value
 
     return sanitized

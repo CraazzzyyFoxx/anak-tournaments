@@ -226,7 +226,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.add_column("encounter", sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=True), schema="tournament")
+    op.add_column(
+        "encounter", sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=True), schema="tournament"
+    )
     op.add_column("encounter", sa.Column("submitted_by_id", sa.BigInteger(), nullable=True), schema="tournament")
     op.add_column("encounter", sa.Column("confirmed_by_id", sa.BigInteger(), nullable=True), schema="tournament")
     op.create_foreign_key(

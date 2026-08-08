@@ -174,8 +174,15 @@ class SerializationTests(TestCase):
         data = serialize_map_pool_entry(entry)
 
         self.assertEqual(
-            {"id": 7, "map_id": 7, "order": 0, "action_index": 3, "picked_by": MapPickSide.AWAY,
-             "team_id": None, "status": MapPoolEntryStatus.BANNED},
+            {
+                "id": 7,
+                "map_id": 7,
+                "order": 0,
+                "action_index": 3,
+                "picked_by": MapPickSide.AWAY,
+                "team_id": None,
+                "status": MapPoolEntryStatus.BANNED,
+            },
             data,
         )
 

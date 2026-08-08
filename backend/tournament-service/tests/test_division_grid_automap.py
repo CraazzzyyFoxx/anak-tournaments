@@ -113,9 +113,9 @@ def test_no_slug_and_no_overlap_is_a_conflict() -> None:
 
 def test_mixed_batch_reports_only_the_unmapped_tier() -> None:
     source = [
-        _tier(1, "bronze", 1000, 1099),   # slug match
+        _tier(1, "bronze", 1000, 1099),  # slug match
         _tier(2, "renamed", 1100, 1199),  # overlap match
-        _tier(3, "orphan", 9000, 9099),   # conflict
+        _tier(3, "orphan", 9000, 9099),  # conflict
     ]
     target = [_tier(11, "bronze", 1000, 1099), _tier(12, "silver", 1100, 1199)]
 
@@ -124,6 +124,7 @@ def test_mixed_batch_reports_only_the_unmapped_tier() -> None:
     grouped = _rules_by_source(result)
     assert set(grouped.keys()) == {1, 2}
     assert [c.source_tier_id for c in result.conflicts] == [3]
+
 
 def test_generated_rules_satisfy_runtime_validation() -> None:
     # A complete generation must pass the same validation the runtime mapping
@@ -140,6 +141,7 @@ def test_generated_rules_satisfy_runtime_validation() -> None:
     assert result.is_complete
     source_tier_ids = {tier.id for tier in source}
     assert division_service._validate_mapping(source_tier_ids, result.rules) is True
+
 
 def test_automap_fully_resolves_realistic_ow2_grid_rename() -> None:
     # Smoke: the default 40-tier OW2 grid, re-slugged but keeping the same rank

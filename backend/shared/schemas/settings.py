@@ -63,6 +63,7 @@ class RankCollectionConfig(BaseModel):
     max_consecutive_failures: int = Field(default=5, ge=1, le=100)
     backoff_base_seconds: int = Field(default=60, ge=1, le=86_400)
 
+
 class SubscriptionCollectionConfig(BaseModel):
     """Operational config for the periodic subscription check collector.
 

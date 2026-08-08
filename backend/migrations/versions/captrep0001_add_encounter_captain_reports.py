@@ -77,20 +77,14 @@ def upgrade() -> None:
         sa.Column("map_id", sa.BigInteger(), nullable=True),
         sa.Column("code", sa.String(length=32), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(
-            ["report_id"], ["tournament.encounter_captain_report.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["report_id"], ["tournament.encounter_captain_report.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["map_id"], ["overwatch.map.id"], ondelete="SET NULL"),
         sa.UniqueConstraint("report_id", "map_index", name="uq_encounter_map_code_report_index"),
         sa.CheckConstraint("map_index >= 1", name="ck_encounter_map_code_index"),
         schema="tournament",
     )
-    op.create_index(
-        "ix_encounter_map_code_report_id", "encounter_map_code", ["report_id"], schema="tournament"
-    )
-    op.create_index(
-        "ix_encounter_map_code_map_id", "encounter_map_code", ["map_id"], schema="tournament"
-    )
+    op.create_index("ix_encounter_map_code_report_id", "encounter_map_code", ["report_id"], schema="tournament")
+    op.create_index("ix_encounter_map_code_map_id", "encounter_map_code", ["map_id"], schema="tournament")
 
     # ── encounter_map_pool.team_id (denorm) ───────────────────────────────
     op.add_column(
@@ -108,9 +102,7 @@ def upgrade() -> None:
         referent_schema="tournament",
         ondelete="SET NULL",
     )
-    op.create_index(
-        "ix_encounter_map_pool_team_id", "encounter_map_pool", ["team_id"], schema="tournament"
-    )
+    op.create_index("ix_encounter_map_pool_team_id", "encounter_map_pool", ["team_id"], schema="tournament")
 
     # ── backfill: legacy single-slot submission -> one captain report ──────
     # submitted_by_id is a players.user.id; resolve the team whose captain_id
@@ -163,9 +155,7 @@ def downgrade() -> None:
     op.drop_index("ix_encounter_map_code_report_id", table_name="encounter_map_code", schema="tournament")
     op.drop_table("encounter_map_code", schema="tournament")
 
-    op.drop_index(
-        "ix_encounter_captain_report_team_id", table_name="encounter_captain_report", schema="tournament"
-    )
+    op.drop_index("ix_encounter_captain_report_team_id", table_name="encounter_captain_report", schema="tournament")
     op.drop_index(
         "ix_encounter_captain_report_encounter_id", table_name="encounter_captain_report", schema="tournament"
     )

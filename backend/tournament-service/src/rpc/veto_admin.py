@@ -52,6 +52,7 @@ class AdminVetoAct(BaseModel):
 
 _serialize_config = map_veto_service.serialize_veto_config
 
+
 async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
     encounter = await session.scalar(select(models.Encounter).where(models.Encounter.id == encounter_id))
     if encounter is None:

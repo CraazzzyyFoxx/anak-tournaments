@@ -41,9 +41,7 @@ LABEL_MAX_LENGTH = 64
 CUSTOM_FIELD_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 # Keys that would collide with a built-in report field on the wire.
-RESERVED_CUSTOM_FIELD_KEYS = frozenset(
-    {"home_score", "away_score", "score", "closeness", "map_codes", "comment"}
-)
+RESERVED_CUSTOM_FIELD_KEYS = frozenset({"home_score", "away_score", "score", "closeness", "map_codes", "comment"})
 
 
 class ReportBuiltInFieldConfig(BaseModel):
@@ -80,9 +78,7 @@ class MatchReportFormUpsert(BaseModel):
 
     @field_validator("built_in_fields")
     @classmethod
-    def _known_built_ins(
-        cls, value: dict[str, ReportBuiltInFieldConfig]
-    ) -> dict[str, ReportBuiltInFieldConfig]:
+    def _known_built_ins(cls, value: dict[str, ReportBuiltInFieldConfig]) -> dict[str, ReportBuiltInFieldConfig]:
         """Reject unknown keys rather than storing config nothing will ever read."""
         unknown = sorted(set(value) - set(REPORT_BUILT_IN_FIELDS))
         if unknown:
@@ -91,18 +87,14 @@ class MatchReportFormUpsert(BaseModel):
 
     @field_validator("custom_fields")
     @classmethod
-    def _validate_custom_fields(
-        cls, value: list[ReportCustomFieldDefinition]
-    ) -> list[ReportCustomFieldDefinition]:
+    def _validate_custom_fields(cls, value: list[ReportCustomFieldDefinition]) -> list[ReportCustomFieldDefinition]:
         if len(value) > MAX_CUSTOM_FIELDS:
             raise ValueError(f"at most {MAX_CUSTOM_FIELDS} custom fields are allowed")
 
         seen: set[str] = set()
         for field in value:
             if not CUSTOM_FIELD_KEY_PATTERN.fullmatch(field.key):
-                raise ValueError(
-                    f'custom field key "{field.key}" must match ^[a-z][a-z0-9_]{{0,31}}$'
-                )
+                raise ValueError(f'custom field key "{field.key}" must match ^[a-z][a-z0-9_]{{0,31}}$')
             if field.key in RESERVED_CUSTOM_FIELD_KEYS:
                 raise ValueError(f'custom field key "{field.key}" is reserved')
             if field.key in seen:
@@ -113,9 +105,7 @@ class MatchReportFormUpsert(BaseModel):
             if not label:
                 raise ValueError(f'custom field "{field.key}" must have a label')
             if len(label) > LABEL_MAX_LENGTH:
-                raise ValueError(
-                    f'custom field "{field.key}" label must be at most {LABEL_MAX_LENGTH} characters'
-                )
+                raise ValueError(f'custom field "{field.key}" label must be at most {LABEL_MAX_LENGTH} characters')
             field.label = label
 
             if field.placeholder is not None:

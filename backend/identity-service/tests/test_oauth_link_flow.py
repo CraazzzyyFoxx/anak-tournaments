@@ -386,9 +386,7 @@ def test_link_complete_rejects_when_ticket_has_no_guard_hash_at_all(monkeypatch:
     bearer_user = SimpleNamespace(id=42, username="bearer-owner")
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            oauth_flows.link_complete(session=None, user=bearer_user, ticket=ticket, guard="any-guard-value")
-        )
+        asyncio.run(oauth_flows.link_complete(session=None, user=bearer_user, ticket=ticket, guard="any-guard-value"))
 
     assert exc_info.value.status_code == 400
     link_mock.assert_not_awaited()

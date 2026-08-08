@@ -27,8 +27,9 @@ schemas = importlib.import_module("src.schemas")
 division_service = importlib.import_module("src.services.division_grid.service")
 
 
-def _write_tier(tier_id, slug, rank_min, rank_max, *, name=None, number=1, sort_order=0,
-                icon_url="/i.png", ow_min=None, ow_max=None):
+def _write_tier(
+    tier_id, slug, rank_min, rank_max, *, name=None, number=1, sort_order=0, icon_url="/i.png", ow_min=None, ow_max=None
+):
     return schemas.DivisionGridTierWrite(
         id=tier_id,
         slug=slug,
@@ -45,12 +46,21 @@ def _write_tier(tier_id, slug, rank_min, rank_max, *, name=None, number=1, sort_
 
 def _active_tier(tier_id, slug, rank_min, rank_max, *, name=None, number=1, sort_order=0):
     return SimpleNamespace(
-        id=tier_id, slug=slug, name=name or slug, number=number, sort_order=sort_order,
-        rank_min=rank_min, rank_max=rank_max, icon_url="/i.png", ow_rank_min=None, ow_rank_max=None,
+        id=tier_id,
+        slug=slug,
+        name=name or slug,
+        number=number,
+        sort_order=sort_order,
+        rank_min=rank_min,
+        rank_max=rank_max,
+        icon_url="/i.png",
+        ow_rank_min=None,
+        ow_rank_max=None,
     )
 
 
 # ── classification ────────────────────────────────────────────────────────────
+
 
 def test_classify_cosmetic_when_only_labels_change() -> None:
     active = [_active_tier(1, "bronze", 1000, 1099, name="Bronze")]
@@ -81,11 +91,16 @@ def test_classify_cosmetic_ignores_slug_and_order_changes() -> None:
     payload = [_write_tier(1, "bronze-renamed", 1000, 1099, sort_order=3)]
     assert division_service._classify_tier_change(active, payload) == "cosmetic"
 
+
 # ── save orchestration ────────────────────────────────────────────────────────
+
 
 def _grid_with_active():
     active = SimpleNamespace(
-        id=100, version=1, label="v1", status="published",
+        id=100,
+        version=1,
+        label="v1",
+        status="published",
         tiers=[_active_tier(1, "bronze", 1000, 1099)],
     )
     grid = SimpleNamespace(id=1, name="Ladder", versions=[active])
@@ -94,7 +109,8 @@ def _grid_with_active():
 
 def _readiness(is_ready):
     return schemas.DivisionGridActivationReadiness(
-        target_version_id=200, is_ready=is_ready,
+        target_version_id=200,
+        is_ready=is_ready,
         used_source_version_ids=[100, 200],
         missing_mapping_version_ids=[] if is_ready else [100],
     )
@@ -164,9 +180,7 @@ def test_save_structural_with_conflicts_stays_pending() -> None:
         workspace = SimpleNamespace(id=4, default_division_grid_version_id=100)
         session = SimpleNamespace(flush=AsyncMock())
         gen = SimpleNamespace(rules=[], conflicts=[SimpleNamespace(source_tier_id=1)], is_complete=False)
-        data = schemas.DivisionGridSaveRequest(
-            tiers=[_write_tier(None, "silver", 5000, 5099)]
-        )
+        data = schemas.DivisionGridSaveRequest(tiers=[_write_tier(None, "silver", 5000, 5099)])
         with (
             patch.object(division_service, "_resolve_workspace_grid", AsyncMock(return_value=grid)),
             patch.object(division_service, "create_version", AsyncMock(return_value=new_version)),
@@ -185,7 +199,9 @@ def test_save_structural_with_conflicts_stays_pending() -> None:
 
     asyncio.run(run())
 
+
 # ── delete_grid ───────────────────────────────────────────────────────────────
+
 
 def _grid_for_delete(workspace_id=4, version_ids=(100,)):
     versions = [SimpleNamespace(id=vid) for vid in version_ids]
@@ -264,6 +280,7 @@ def test_delete_grid_rejects_system_grid() -> None:
 
     asyncio.run(run())
 
+
 def test_delete_grid_force_bypasses_guards_and_clears_default() -> None:
     async def run():
         grid = _grid_for_delete(version_ids=(100, 101))
@@ -300,10 +317,14 @@ def test_delete_grid_force_still_rejects_system_grid() -> None:
 
     asyncio.run(run())
 
+
 def test_save_uses_explicit_grid_id_over_workspace_resolution() -> None:
     async def run():
         active = SimpleNamespace(
-            id=100, version=1, label="v1", status="published",
+            id=100,
+            version=1,
+            label="v1",
+            status="published",
             tiers=[_active_tier(1, "bronze", 1000, 1099)],
         )
         grid = SimpleNamespace(id=7, name="Imported", workspace_id=4, versions=[active])

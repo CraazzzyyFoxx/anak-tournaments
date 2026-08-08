@@ -248,7 +248,10 @@ async def create_with_groups(
                 )
             ],
         )
-    if await service.get_by_name_and_league(session, workspace_id, challonge_tournament.name, is_league, []) is not None:
+    if (
+        await service.get_by_name_and_league(session, workspace_id, challonge_tournament.name, is_league, [])
+        is not None
+    ):
         raise errors.ApiHTTPException(
             status_code=400,
             detail=[

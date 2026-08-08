@@ -140,7 +140,9 @@ def test_upsert_builtin_override_invalidates_the_workspace_cache() -> None:
         existing = _fake_status_row()
         existing.kind = "builtin"
         execute_result = Mock(scalar_one_or_none=Mock(return_value=existing))
-        session = SimpleNamespace(execute=AsyncMock(return_value=execute_result), commit=AsyncMock(), refresh=AsyncMock())
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=execute_result), commit=AsyncMock(), refresh=AsyncMock()
+        )
         with (
             patch.object(status_catalog, "ensure_workspace_exists", AsyncMock()),
             patch.object(status_catalog, "get_builtin_canonical_status", AsyncMock(return_value=existing)),
@@ -167,7 +169,9 @@ def test_reset_builtin_override_invalidates_the_workspace_cache() -> None:
         existing = _fake_status_row()
         existing.kind = "builtin"
         execute_result = Mock(scalar_one_or_none=Mock(return_value=existing))
-        session = SimpleNamespace(execute=AsyncMock(return_value=execute_result), delete=AsyncMock(), commit=AsyncMock())
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=execute_result), delete=AsyncMock(), commit=AsyncMock()
+        )
         with patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate:
             await status_catalog.reset_builtin_override(session, workspace_id=5, scope="registration", slug="pending")
         invalidate.assert_awaited_once_with(5)
@@ -181,7 +185,9 @@ def test_reset_builtin_override_no_row_never_invalidates() -> None:
 
     async def run() -> None:
         execute_result = Mock(scalar_one_or_none=Mock(return_value=None))
-        session = SimpleNamespace(execute=AsyncMock(return_value=execute_result), delete=AsyncMock(), commit=AsyncMock())
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=execute_result), delete=AsyncMock(), commit=AsyncMock()
+        )
         with patch.object(status_catalog, "invalidate_status_metas_cache", AsyncMock()) as invalidate:
             await status_catalog.reset_builtin_override(session, workspace_id=5, scope="registration", slug="pending")
         invalidate.assert_not_awaited()

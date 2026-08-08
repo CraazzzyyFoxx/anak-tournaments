@@ -84,9 +84,7 @@ def upgrade() -> None:
     )
 
     bind = op.get_bind()
-    unresolved = bind.execute(
-        sa.text("SELECT count(*) FROM matches.match WHERE log_record_id IS NULL")
-    ).scalar_one()
+    unresolved = bind.execute(sa.text("SELECT count(*) FROM matches.match WHERE log_record_id IS NULL")).scalar_one()
     total = bind.execute(sa.text("SELECT count(*) FROM matches.match")).scalar_one()
     # Not an error: matches predating the ingestion table, logs deleted by the
     # parser on a validation failure, and admin-rewritten log_name values all

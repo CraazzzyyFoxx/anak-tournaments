@@ -60,12 +60,8 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         self.assertEqual("pu1", target_account.provider_user_id)
 
     async def test_does_not_touch_already_verified_target_duplicate(self) -> None:
-        source_account = _account(
-            1, provider="discord", username="Foo", is_verified=True, provider_user_id="pu1"
-        )
-        target_account = _account(
-            2, provider="discord", username="foo", is_verified=True, provider_user_id="pu2"
-        )
+        source_account = _account(1, provider="discord", username="Foo", is_verified=True, provider_user_id="pu1")
+        target_account = _account(2, provider="discord", username="foo", is_verified=True, provider_user_id="pu2")
         source = SimpleNamespace(id=10, social_accounts=[source_account])
         target = SimpleNamespace(id=20, social_accounts=[target_account])
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())

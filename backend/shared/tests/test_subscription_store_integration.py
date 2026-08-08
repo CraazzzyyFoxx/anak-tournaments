@@ -73,8 +73,8 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         # more than one row to prove it, not just parse).
         self.ws = (await self._session.execute(sa.text("select id from workspace order by id limit 1"))).scalar()
         user_rows = (
-            await self._session.execute(sa.text('select id from auth."user" order by id limit 2'))
-        ).scalars().all()
+            (await self._session.execute(sa.text('select id from auth."user" order by id limit 2'))).scalars().all()
+        )
         if self.ws is None or not user_rows:
             self.skipTest("target database has no workspace / auth user to anchor FKs")
         self.au = user_rows[0]

@@ -229,11 +229,7 @@ class Pagination(IsolatedAsyncioTestCase):
                 # Literal binds: the window is the assertion, and a bound
                 # ``LIMIT %(param_1)s`` hides whether it is -1 or capped.
                 seen.append(
-                    str(
-                        statement.compile(
-                            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
-                        )
-                    )
+                    str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
                 )
                 return _Result()
 

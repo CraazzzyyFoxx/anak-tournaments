@@ -439,14 +439,28 @@ def test_list_all_sessions_aggregates_in_sql_and_filters_status() -> None:
     active_user = SimpleNamespace(id=1, email="ada@x.io", username="ada")
     revoked_user = SimpleNamespace(id=2, email="bob@x.io", username="bob")
     active = SimpleNamespace(
-        session_id=uuid4(), user_id=1, user=active_user,
-        created_at=now, session_started_at=now, expires_at=now + timedelta(hours=1),
-        is_revoked=False, revoked_at=None, user_agent="Chrome", ip_address="10.0.0.1",
+        session_id=uuid4(),
+        user_id=1,
+        user=active_user,
+        created_at=now,
+        session_started_at=now,
+        expires_at=now + timedelta(hours=1),
+        is_revoked=False,
+        revoked_at=None,
+        user_agent="Chrome",
+        ip_address="10.0.0.1",
     )
     revoked = SimpleNamespace(
-        session_id=uuid4(), user_id=2, user=revoked_user,
-        created_at=now, session_started_at=now, expires_at=now + timedelta(hours=1),
-        is_revoked=True, revoked_at=now, user_agent="Firefox", ip_address="10.0.0.2",
+        session_id=uuid4(),
+        user_id=2,
+        user=revoked_user,
+        created_at=now,
+        session_started_at=now,
+        expires_at=now + timedelta(hours=1),
+        is_revoked=True,
+        revoked_at=now,
+        user_agent="Firefox",
+        ip_address="10.0.0.2",
     )
 
     session = _FakeSession([{"scalars": [active, revoked]}])
@@ -480,9 +494,7 @@ def test_refresh_grace_replay_rotates_instead_of_killing_the_session(monkeypatch
     session_id = uuid4()
     session_started_at = datetime.now(UTC)
     grace_record = SimpleNamespace(user_id=5, session_id=session_id, session_started_at=session_started_at)
-    fake_user = SimpleNamespace(
-        id=5, email="vpn@example.com", username="vpn-user", is_superuser=False, is_active=True
-    )
+    fake_user = SimpleNamespace(id=5, email="vpn@example.com", username="vpn-user", is_superuser=False, is_active=True)
     revoke_session_calls: list[tuple[int, object, bool, bool]] = []
     reuse_detection_calls: list[str] = []
     create_calls: list[tuple[object, object, bool]] = []
@@ -506,8 +518,15 @@ def test_refresh_grace_replay_rotates_instead_of_killing_the_session(monkeypatch
         return 1
 
     async def fake_create_refresh_token_db(
-        session, user_id, token, request=None, session_id=None, session_started_at=None,
-        commit=True, user_agent=None, ip_address=None,
+        session,
+        user_id,
+        token,
+        request=None,
+        session_id=None,
+        session_started_at=None,
+        commit=True,
+        user_agent=None,
+        ip_address=None,
     ):
         create_calls.append((session_id, session_started_at, commit))
         return SimpleNamespace()
@@ -578,9 +597,7 @@ def test_refresh_outside_grace_still_triggers_reuse_detection(monkeypatch: pytes
 
 def test_get_rotation_grace_record_requires_a_live_session_family() -> None:
     """A logged-out session can never be resurrected through the grace window."""
-    revoked_token = SimpleNamespace(
-        user_id=7, session_id=uuid4(), is_revoked=True, revoked_at=datetime.now(UTC)
-    )
+    revoked_token = SimpleNamespace(user_id=7, session_id=uuid4(), is_revoked=True, revoked_at=datetime.now(UTC))
 
     # No non-revoked sibling => the whole family is gone (logout / revoke session).
     dead_family = _FakeSession([{"scalar": revoked_token}, {"scalar": None}])

@@ -23,10 +23,7 @@ from sqlalchemy.schema import CreateTable
 from shared import models
 
 MIGRATION = (
-    pathlib.Path(__file__).resolve().parents[2]
-    / "migrations"
-    / "versions"
-    / "mtchlog001_add_match_log_record_fk.py"
+    pathlib.Path(__file__).resolve().parents[2] / "migrations" / "versions" / "mtchlog001_add_match_log_record_fk.py"
 )
 
 

@@ -199,7 +199,6 @@ class ValidateVetoConfigTests(TestCase):
         self.assertEqual("sequence must contain at least one pick or a decider", ctx.exception.detail)
 
 
-
 class BuildSequenceForBestOfTests(TestCase):
     """The generated sequence must play exactly ``best_of`` maps and stay inside
     the pool, and it must reproduce the presets the admin editor already ships."""
@@ -305,7 +304,5 @@ class EffectiveSequenceTests(TestCase):
         config = self.config("bo3", self.TEMPLATE)
 
         for best_of in (1, 2, 3, 5, 7):
-            played = sum(
-                1 for token in effective_sequence(config, best_of, 9) if not token.startswith("ban")
-            )
+            played = sum(1 for token in effective_sequence(config, best_of, 9) if not token.startswith("ban"))
             self.assertEqual(best_of, played, f"best_of={best_of}")

@@ -296,8 +296,7 @@ async def apply_identity_selection(
                     (
                         candidate
                         for candidate in target.social_accounts
-                        if (candidate.provider, normalize_social_handle(candidate.provider, candidate.username))
-                        == key
+                        if (candidate.provider, normalize_social_handle(candidate.provider, candidate.username)) == key
                     ),
                     None,
                 )

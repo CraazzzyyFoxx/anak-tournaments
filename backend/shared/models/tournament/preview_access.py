@@ -18,15 +18,9 @@ class TournamentPreviewAccess(db.TimeStampIntegerMixin):
 
     __tablename__ = "tournament_preview_access"
     __table_args__ = (
-        UniqueConstraint(
-            "tournament_id", "auth_user_id", name="uq_tournament_preview_access_tournament_user"
-        ),
+        UniqueConstraint("tournament_id", "auth_user_id", name="uq_tournament_preview_access_tournament_user"),
         {"schema": "tournament"},
     )
 
-    tournament_id: Mapped[int] = mapped_column(
-        ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True
-    )
-    auth_user_id: Mapped[int] = mapped_column(
-        ForeignKey("auth.user.id", ondelete="CASCADE"), index=True
-    )
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
+    auth_user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), index=True)

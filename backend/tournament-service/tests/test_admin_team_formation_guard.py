@@ -130,9 +130,7 @@ def _run_update(draft_status: str | None, update: admin_schemas.TournamentUpdate
                         error = exc
                         await session.rollback()
                 async with session_maker() as session:
-                    formation = await session.scalar(
-                        sa.select(Tournament.team_formation).where(Tournament.id == tid)
-                    )
+                    formation = await session.scalar(sa.select(Tournament.team_formation).where(Tournament.id == tid))
                 return error, formation
             finally:
                 await _cleanup(session_maker, workspace_id=ws_id)
@@ -141,9 +139,7 @@ def _run_update(draft_status: str | None, update: admin_schemas.TournamentUpdate
 
 
 def test_team_formation_change_blocked_by_active_draft() -> None:
-    error, formation = _run_update(
-        enums.DraftStatus.LIVE, admin_schemas.TournamentUpdate(team_formation="balancer")
-    )
+    error, formation = _run_update(enums.DraftStatus.LIVE, admin_schemas.TournamentUpdate(team_formation="balancer"))
     assert error is not None
     assert error.status_code == 400
     assert formation == "draft"  # unchanged
@@ -202,9 +198,7 @@ class _FakeSession:
 
 
 def _tournament_stub() -> SimpleNamespace:
-    return SimpleNamespace(
-        id=1, workspace_id=1, team_formation="draft", division_grid_version_id=None
-    )
+    return SimpleNamespace(id=1, workspace_id=1, team_formation="draft", division_grid_version_id=None)
 
 
 def test_guard_raises_business_error_when_active_session_found() -> None:
@@ -217,9 +211,7 @@ def test_guard_raises_business_error_when_active_session_found() -> None:
 def test_guard_passes_and_excludes_terminal_statuses() -> None:
     session = _FakeSession(draft_status=None)
     asyncio.run(assert_no_active_draft_session(session, 1))  # no raise
-    compiled = str(
-        session.scalar_stmts[0].compile(compile_kwargs={"literal_binds": True})
-    )
+    compiled = str(session.scalar_stmts[0].compile(compile_kwargs={"literal_binds": True}))
     assert "cancelled" in compiled and "completed" in compiled  # terminal statuses excluded
 
 

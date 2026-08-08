@@ -187,9 +187,7 @@ class FinalizeEncounterScoreTests(IsolatedAsyncioTestCase):
         encounter = _encounter()
         session = _Session(encounter)
 
-        with patch.object(
-            finalize.advancement, "advance_winner", AsyncMock(return_value=[SimpleNamespace(id=20)])
-        ):
+        with patch.object(finalize.advancement, "advance_winner", AsyncMock(return_value=[SimpleNamespace(id=20)])):
             result = await finalize.finalize_encounter_score(
                 session, 10, encounter=encounter, home_score=2, away_score=0, source="log"
             )

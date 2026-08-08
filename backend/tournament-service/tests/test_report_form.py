@@ -162,9 +162,7 @@ class UpsertReportForm(IsolatedAsyncioTestCase):
 
     async def test_inserts_when_absent_and_round_trips(self) -> None:
         session = _mk_session(stored=None)
-        out = await report_form.upsert_report_form(
-            session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY)
-        )
+        out = await report_form.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
 
         self.assertEqual(1, len(session._added))
         row = session._added[0]
@@ -183,9 +181,7 @@ class UpsertReportForm(IsolatedAsyncioTestCase):
     async def test_updates_the_existing_row_in_place(self) -> None:
         stored = _mk_stored(built_in={"comment": {"enabled": False, "required": False}}, custom=[])
         session = _mk_session(stored)
-        out = await report_form.upsert_report_form(
-            session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY)
-        )
+        out = await report_form.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
 
         self.assertEqual([], session._added)
         self.assertNotIn("comment", stored.built_in_fields_json)
@@ -208,9 +204,7 @@ class UpsertPayloadRejections(TestCase):
         self.assertIn("unknown built-in report fields", message)
 
     def test_rejects_duplicate_custom_key(self) -> None:
-        message = self._reject(
-            self._custom({"key": "vod", "label": "VOD"}, {"key": "vod", "label": "VOD again"})
-        )
+        message = self._reject(self._custom({"key": "vod", "label": "VOD"}, {"key": "vod", "label": "VOD again"}))
         self.assertIn("duplicate custom field key", message)
 
     def test_rejects_reserved_custom_key(self) -> None:
@@ -279,9 +273,7 @@ class ValidateMapCodes(TestCase):
 
     def test_required_accepts_exactly_the_played_maps(self) -> None:
         form = _mk_form(map_codes=(True, True))
-        out = _validate(
-            form, closeness=5, home_score=2, away_score=1, map_codes=[(1, "A"), (2, "B"), (3, "C")]
-        )
+        out = _validate(form, closeness=5, home_score=2, away_score=1, map_codes=[(1, "A"), (2, "B"), (3, "C")])
         self.assertEqual([(1, "A"), (2, "B"), (3, "C")], out.map_codes)
 
     def test_a_blank_code_does_not_satisfy_the_requirement(self) -> None:

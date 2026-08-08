@@ -33,9 +33,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["tournament_id"], ["tournament.tournament.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["auth_user_id"], ["auth.user.id"], ondelete="CASCADE"),
-        sa.UniqueConstraint(
-            "tournament_id", "auth_user_id", name="uq_tournament_preview_access_tournament_user"
-        ),
+        sa.UniqueConstraint("tournament_id", "auth_user_id", name="uq_tournament_preview_access_tournament_user"),
         schema="tournament",
     )
     op.create_index(
@@ -53,9 +51,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_tournament_preview_access_auth_user", table_name="tournament_preview_access", schema="tournament"
-    )
+    op.drop_index("ix_tournament_preview_access_auth_user", table_name="tournament_preview_access", schema="tournament")
     op.drop_index(
         "ix_tournament_preview_access_tournament", table_name="tournament_preview_access", schema="tournament"
     )

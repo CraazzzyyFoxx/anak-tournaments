@@ -51,9 +51,7 @@ async def enqueue_encounter_completed(
     session: AsyncSession,
     encounter: models.Encounter,
 ) -> None:
-    await shared_encounter_events.enqueue_encounter_completed(
-        session, encounter, source_service="tournament-service"
-    )
+    await shared_encounter_events.enqueue_encounter_completed(session, encounter, source_service="tournament-service")
 
 
 async def get_registration_workspace_id(session: AsyncSession, tournament_id: int) -> int:
