@@ -240,6 +240,7 @@ class SerializationTests(TestCase):
             {
                 "id": 7,
                 "map_id": 7,
+                "slot": None,
                 "order": 0,
                 "action_index": 3,
                 "picked_by": MapPickSide.AWAY,
@@ -286,10 +287,130 @@ class SerializationTests(TestCase):
                     "current_step": None,
                     "expected_action": None,
                     "turn_side": None,
+                    "current_slot": None,
                     "is_complete": False,
                 },
                 state,
             )
+
+    def test_pool_entry_carries_its_slot(self) -> None:
+        """``test_pool_entry_includes_action_index`` is exhaustive, so it already
+        catches the key going missing -- but its fixture is flat (``slot=None``),
+        which a hardcoded ``"slot": None`` would satisfy just as well. A non-None
+        slot is what pins the serializer to the entry's own value.
+        """
+        self.assertEqual(2, serialize_map_pool_entry(make_pool_entry(7, slot=2))["slot"])
+
+    def test_state_exposes_the_active_slot(self) -> None:
+        """Slot 2's candidates are listed first on purpose: the payload must name
+        the lowest unresolved slot, not whichever slot the pool happens to open
+        with."""
+        pool = [
+            make_pool_entry(3, slot=2),
+            make_pool_entry(4, slot=2),
+            make_pool_entry(1, slot=1),
+            make_pool_entry(2, slot=1),
+        ]
+
+        state = build_map_pool_state(["ban_home", "decider", "ban_away", "decider"], pool)
+
+        self.assertEqual(1, state["current_slot"])
+
+    def test_flat_pool_state_exposes_no_slot(self) -> None:
+        state = build_map_pool_state(["ban_home", "pick_away"], [make_pool_entry(1), make_pool_entry(2)])
+
+        self.assertIsNone(state["current_slot"])
+
+    def test_completed_slot_mode_state_serializes_without_raising(self) -> None:
+        """Design property 8. The room keeps reading state after the veto ends,
+        so the terminal slot-mode pool has to serialize at all. An unguarded
+        ``min()`` over an empty available-slot list raised ValueError right here
+        -- on a read path, for every finished slot-mode encounter.
+        """
+        veto = make_veto_session(["ban_home", "decider"], status=MapVetoSessionStatus.COMPLETED)
+        pool = [
+            make_pool_entry(1, slot=1, status=MapPoolEntryStatus.BANNED, picked_by=MapPickSide.HOME, action_index=0),
+            make_pool_entry(
+                2,
+                slot=1,
+                status=MapPoolEntryStatus.PICKED,
+                picked_by=MapPickSide.DECIDER,
+                action_index=1,
+                order=1,
+            ),
+        ]
+
+        state = build_map_pool_state(veto.resolved_sequence_json, pool, viewer_side="home", veto=veto)
+
+        self.assertIsNone(state["current_slot"])
+        self.assertTrue(state["is_complete"])
+
+    def test_both_state_builders_carry_the_same_keys(self) -> None:
+        """The room's state comes from either builder, so a field added to one
+        silently diverges the shape of the other. ``reason`` is the single
+        legitimate exclusive -- it is set only when there is no session, and the
+        frontend type marks it optional for exactly that reason.
+
+        Asserting the key sets against each other, rather than maintaining a
+        second hand-written list, is what makes an omission in *either* builder
+        fail: ``test_unavailable_state_shapes`` covers one direction only, and
+        nothing covered the other.
+        """
+        pool_state = build_map_pool_state(["ban_home"], [make_pool_entry(1)])
+        unavailable_state = build_unavailable_state("not_configured")
+
+        self.assertEqual(
+            {"reason"},
+            set(unavailable_state) - set(pool_state),
+            "the unavailable state carries a key the map pool state does not",
+        )
+        self.assertEqual(
+            set(),
+            set(pool_state) - set(unavailable_state),
+            "the map pool state carries a key the unavailable state does not",
+        )
+
+
+class SlotStateWalkTests(TestCase):
+    NOW = datetime(2026, 7, 18, 13, 0, tzinfo=UTC)
+
+    def test_payload_slot_tracks_the_slot_each_accepted_action_consumes(self) -> None:
+        """``current_slot`` is what the room highlights, so it has to name the
+        slot the engine will actually accept an action in. Checked by advertising
+        first and acting second: every entry the engine consumes must belong to
+        the slot the payload named *before* that action. Slot 2's candidates lead
+        the pool so a positional reading of the slot fails at the first step.
+        """
+        sequence = ["ban_home", "ban_away", "decider", "ban_home", "ban_away", "decider"]
+        veto = make_veto_session(sequence)
+        pool = [
+            make_pool_entry(4, slot=2),
+            make_pool_entry(5, slot=2),
+            make_pool_entry(6, slot=2),
+            make_pool_entry(1, slot=1),
+            make_pool_entry(2, slot=1),
+            make_pool_entry(3, slot=1),
+        ]
+
+        def advertised_slot() -> int | None:
+            return build_map_pool_state(sequence, pool, veto=veto)["current_slot"]
+
+        advertised: list[int | None] = []
+        consumed: list[int | None] = []
+        for side, map_id in (("home", 1), ("away", 2)):
+            advertised.append(advertised_slot())
+            consumed.append(apply_veto_action(veto, pool, side, map_id, "ban", now=self.NOW).slot)
+        advertised.append(advertised_slot())
+        consumed.append(auto_complete_decider_entry(sequence, pool).slot)
+        for side, map_id in (("home", 4), ("away", 5)):
+            advertised.append(advertised_slot())
+            consumed.append(apply_veto_action(veto, pool, side, map_id, "ban", now=self.NOW).slot)
+        advertised.append(advertised_slot())
+        consumed.append(auto_complete_decider_entry(sequence, pool).slot)
+
+        self.assertEqual([1, 1, 1, 2, 2, 2], advertised)
+        self.assertEqual(advertised, consumed)
+        self.assertIsNone(advertised_slot(), "a fully consumed slot pool advertises no slot")
 
 
 class ApplyVetoActionTests(TestCase):

@@ -118,6 +118,7 @@ def serialize_map_pool_entry(entry: models.EncounterMapPool) -> dict[str, Any]:
     return {
         "id": entry.id,
         "map_id": entry.map_id,
+        "slot": entry.slot,
         "order": entry.order,
         "action_index": entry.action_index,
         "picked_by": entry.picked_by,
@@ -216,6 +217,11 @@ def build_unavailable_state(reason: str) -> dict[str, Any]:
         "current_step": None,
         "expected_action": None,
         "turn_side": None,
+        # No pool exists here, so this is "unknown", not "no slot is active".
+        # ``None`` is still the only honest encoding -- any number would assert a
+        # slot that no config has resolved yet -- and ``session is None`` plus
+        # ``reason`` are what tell the client to read it that way.
+        "current_slot": None,
         "is_complete": False,
     }
 
@@ -257,6 +263,7 @@ def build_map_pool_state(
         "current_step": current_step_value,
         "expected_action": expected_action,
         "turn_side": turn_side,
+        "current_slot": current_slot(pool),
         "is_complete": current_step is None,
     }
 
