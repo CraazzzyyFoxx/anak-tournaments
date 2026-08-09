@@ -386,5 +386,14 @@ class ValidateSlotConfigTests(TestCase):
         duplication is meaningless (design Decision 9/11)."""
         validate_slot_config([[1, 2], [1, 3]], reserves=[None, None])
 
+    def test_rejects_a_reserve_that_is_a_candidate_of_its_own_slot(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            validate_slot_config([[1, 2], [3, 4]], reserves=[2, None])
+
+        self.assertIn("reserve must not be one of its own candidate maps", ctx.exception.detail)
+
     def test_allows_a_reserve_that_is_also_a_candidate_elsewhere(self) -> None:
+        # The permitted side of the boundary the test above rejects: map 3 is
+        # slot 1's reserve and slot 2's candidate, which Decision 7 allows
+        # because a reserve is never a pool entry and never activates.
         validate_slot_config([[1, 2], [3, 4]], reserves=[3, None])

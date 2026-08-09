@@ -191,12 +191,15 @@ def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) 
 
     A map may repeat across slots -- only within-slot duplication is
     meaningless, since a slot bans its own candidates down to one survivor.
+    A slot's reserve must likewise not be one of its own candidates: it would
+    either be banned in that slot and then reinstated as the slot's replay map,
+    or be the survivor, making the replay the very map that drew (Decision 7).
     """
     if not slots:
         raise HTTPException(status_code=422, detail="slots must not be empty")
     if len(reserves) != len(slots):
         raise HTTPException(status_code=422, detail="one reserve entry per slot is required")
-    for index, candidates in enumerate(slots, start=1):
+    for index, (candidates, reserve) in enumerate(zip(slots, reserves, strict=True), start=1):
         if len(candidates) < 2:
             raise HTTPException(
                 status_code=422,
@@ -204,6 +207,11 @@ def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) 
             )
         if len(set(candidates)) != len(candidates):
             raise HTTPException(status_code=422, detail=f"slot {index} has duplicate maps")
+        if reserve is not None and reserve in candidates:
+            raise HTTPException(
+                status_code=422,
+                detail=f"slot {index} reserve must not be one of its own candidate maps",
+            )
 
 
 def select_config(
