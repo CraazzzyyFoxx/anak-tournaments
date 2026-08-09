@@ -1,6 +1,12 @@
-import type { MapVetoConfig, Stage, VetoSequenceToken } from "@/types/tournament.types";
+import { buildSequenceForBestOf } from "@/lib/best-of";
+import type {
+  FirstBanRotation,
+  MapVetoConfig,
+  MapVetoMode,
+  Stage,
+  VetoSequenceToken
+} from "@/types/tournament.types";
 
-export type VetoLevelType = "tournament" | "stage" | "stage_round";
 export type VetoStepAction = "ban" | "pick" | "decider";
 export type VetoStepSide = "first" | "second";
 
@@ -102,6 +108,120 @@ export type VetoValidationIssue =
  * `SLOT_CANDIDATE_FLOOR` in `veto_session.py`.
  */
 export const SLOT_CANDIDATE_FLOOR = 2;
+
+/** Turn timer a level with no stored config starts from, in seconds. */
+export const DEFAULT_TURN_TIMER_SECONDS = 30;
+
+/** Which sequence a level runs: the bracket's, or one the organizer authored. */
+export type VetoOrderMode = "bracket" | "custom";
+
+/** One slot as the editor holds it: no `position`, because list order is it. */
+export interface VetoDraftSlot {
+  candidates: number[];
+  reserve_map_id: number | null;
+}
+
+/**
+ * Every field one cascade level's editor owns, in one value.
+ *
+ * Held by the tab rather than by the editor, so collapsing a level's row — which
+ * unmounts the editor — cannot discard an organizer's in-progress work. Both
+ * pool shapes are carried at once for the same reason a mis-click on the shape
+ * toggle must not throw away up to fifteen selections that cannot be undone.
+ */
+export interface VetoDraft {
+  mode: MapVetoMode;
+  /** Flat mode only; the slot-mode payload sends an empty list instead. */
+  mapIds: number[];
+  /** The organizer's authored steps, kept even while the bracket drives them. */
+  sequence: VetoSequenceToken[];
+  orderMode: VetoOrderMode;
+  /** Slot mode only, in play order; the server derives positions 1..N from it. */
+  slots: VetoDraftSlot[];
+  firstBanRotation: FirstBanRotation;
+  turnTimerSeconds: number | null;
+}
+
+/**
+ * The draft a level opens on, derived from its stored config alone.
+ *
+ * Pure and total, so the tab can re-derive it on every render and treat the
+ * presence of a stored draft — not a mount-time effect — as "the organizer has
+ * touched this level". That is what keeps a map-catalogue refetch from reverting
+ * an edit in progress.
+ *
+ * A saved config contributes its flat pool only when it has one: a slot config
+ * reports `map_ids: []` by design (`serialize_veto_config`), so seeding from it
+ * left the flat shape with nothing selected and Save refused the moment an
+ * organizer touched the shape toggle — while a level with no config at all
+ * starts from the whole catalogue. Same emptiness on the wire, same start.
+ *
+ * Only an explicit `custom` preset opts a level out of the bracket: a legacy
+ * `bo*` label and a NULL preset are both bracket-driven, and the server
+ * regenerates their steps from `Encounter.best_of`.
+ */
+export function seedVetoDraft(
+  config: MapVetoConfig | null,
+  /** Maps the bracket plays in this scope's series: one slot each. */
+  bestOf: number,
+  /** Every competitive map, in catalogue order — the flat default. */
+  catalogueIds: number[]
+): VetoDraft {
+  const mapIds = config && config.map_ids.length > 0 ? [...config.map_ids] : [...catalogueIds];
+  // Sorted by `position` rather than trusted in array order: the read carries an
+  // explicit position per slot while the upsert derives it from the list.
+  const stored = [...(config?.slots ?? [])]
+    .sort((left, right) => left.position - right.position)
+    .map((slot) => ({ candidates: [...slot.candidates], reserve_map_id: slot.reserve_map_id }));
+  return {
+    mode: config?.mode ?? "pool",
+    mapIds,
+    // Sized from the pool just resolved to, not from `config.map_ids`: a slot
+    // config's empty list would make this `buildSequenceForBestOf(bestOf, 0)`.
+    sequence:
+      config && config.sequence.length > 0
+        ? [...config.sequence]
+        : buildSequenceForBestOf(bestOf, mapIds.length),
+    orderMode: config?.preset === "custom" ? "custom" : "bracket",
+    // Exactly `bestOf` entries: a shorter stored config gains empty rows to
+    // fill, a longer one is cut to what the bracket plays. Either disagreement
+    // is named by the slot-count warning, which reads the stored length.
+    slots: Array.from(
+      { length: Math.max(bestOf, 0) },
+      (_, index) => stored[index] ?? { candidates: [], reserve_map_id: null }
+    ),
+    firstBanRotation: config?.first_ban_rotation ?? "fixed",
+    turnTimerSeconds: config ? config.turn_timer_seconds : DEFAULT_TURN_TIMER_SECONDS
+  };
+}
+
+function sameNumbers(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Whether two drafts describe the same configuration. Drives the unsaved marker,
+ * so it compares every field the save payload reads — including the ones the
+ * currently selected pool shape does not send, because switching back to the
+ * other shape would send them.
+ */
+export function vetoDraftsEqual(left: VetoDraft, right: VetoDraft): boolean {
+  return (
+    left.mode === right.mode &&
+    left.orderMode === right.orderMode &&
+    left.firstBanRotation === right.firstBanRotation &&
+    left.turnTimerSeconds === right.turnTimerSeconds &&
+    sameNumbers(left.mapIds, right.mapIds) &&
+    left.sequence.length === right.sequence.length &&
+    left.sequence.every((token, index) => token === right.sequence[index]) &&
+    left.slots.length === right.slots.length &&
+    left.slots.every(
+      (slot, index) =>
+        slot.reserve_map_id === right.slots[index].reserve_map_id &&
+        sameNumbers(slot.candidates, right.slots[index].candidates)
+    )
+  );
+}
 
 /**
  * The editor's fields for one pool shape. Discriminated rather than one
