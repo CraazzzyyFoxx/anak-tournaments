@@ -3890,6 +3890,7 @@
     "roundInherits": "Inherits",
     "roundUsesDefault": "Uses the inherited pool",
     "roundPoolSize": "{count, plural, one {# map in the pool} other {# maps in the pool}}",
+    "roundSlotPoolSize": "{slots, plural, one {# slot} other {# slots}}, {candidates, plural, one {# candidate} other {# candidates}}",
     "hasOwnConfig": "Has its own configuration",
     "levelNew": "New configuration",
     "levelExisting": "Own configuration",

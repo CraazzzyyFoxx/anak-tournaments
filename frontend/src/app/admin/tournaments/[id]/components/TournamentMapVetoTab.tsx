@@ -596,20 +596,31 @@ function VetoConfigForm({
   const t = useTranslations();
   const turnTimerId = useId();
 
+  /**
+   * The flat pool. A saved config contributes its own only when it has one: a
+   * slot config reports `map_ids: []` by design (`serialize_veto_config`), so
+   * seeding from it left the flat card with nothing selected and Save refused
+   * the moment an organizer touched the pool-shape toggle — while a level with
+   * no config at all starts from the whole catalogue. Same card, same emptiness
+   * on the wire, so the two start from the same place.
+   */
   const [mapIds, setMapIds] = useState<number[]>(() =>
-    config ? [...config.map_ids] : maps.map((map) => map.id)
+    config && config.map_ids.length > 0 ? [...config.map_ids] : maps.map((map) => map.id)
   );
   /**
    * The organizer's authored steps, kept in state even while the bracket drives
    * the sequence — toggling the mode back restores hand work instead of
    * regenerating over it.
+   *
+   * Sized from the pool `mapIds` just resolved to, not from `config.map_ids`:
+   * this initializer runs once, on the same render that seeded `mapIds`, so
+   * reading it is what keeps the two from disagreeing. Sized from a slot
+   * config's empty `map_ids` this was `buildSequenceForBestOf(bestOf, 0)`, which
+   * is `[]`.
    */
   const [customSequence, setCustomSequence] = useState<VetoSequenceToken[]>(() => {
     if (config && config.sequence.length > 0) return [...config.sequence];
-    return buildSequenceForBestOf(
-      bracketFormat.bestOf,
-      config ? config.map_ids.length : maps.length
-    );
+    return buildSequenceForBestOf(bracketFormat.bestOf, mapIds.length);
   });
   /**
    * Only an explicit `custom` opts a level out of the bracket. A legacy `bo*`
@@ -1693,6 +1704,27 @@ export function TournamentMapVetoTab({
     const roundConfig = configs.find(
       (config) => config.stage_id === activeStageId && config.round === option.round
     );
+    /**
+     * The summary in the config's own terms. A slot config's `map_ids` is empty
+     * by design — `serialize_veto_config` reports `map_ids: []` for it and the
+     * upsert 422s anything else — so counting it announced "0 maps in the pool"
+     * for a fully configured round.
+     *
+     * Both numbers, not just the slot count: that alone is the same for every
+     * round of a given series length, so two empty slots and two full ones would
+     * read identically and an underfilled transcription would stay invisible.
+     */
+    const roundSummary = !roundConfig
+      ? t("mapVetoAdmin.roundUsesDefault")
+      : roundConfig.mode === "slots"
+        ? t("mapVetoAdmin.roundSlotPoolSize", {
+            slots: roundConfig.slots.length,
+            candidates: roundConfig.slots.reduce(
+              (total, slot) => total + slot.candidates.length,
+              0
+            )
+          })
+        : t("mapVetoAdmin.roundPoolSize", { count: roundConfig.map_ids.length });
     return (
       <button
         key={option.round}
@@ -1731,11 +1763,7 @@ export function TournamentMapVetoTab({
             </span>
           )}
         </div>
-        <span className="mt-2 text-[11px] text-muted-foreground">
-          {roundConfig
-            ? t("mapVetoAdmin.roundPoolSize", { count: roundConfig.map_ids.length })
-            : t("mapVetoAdmin.roundUsesDefault")}
-        </span>
+        <span className="mt-2 text-[11px] text-muted-foreground">{roundSummary}</span>
         {/* Configuring this round is still legitimate — the config cascades to
             the encounters the bracket creates later — so the round is marked,
             never disabled. */}

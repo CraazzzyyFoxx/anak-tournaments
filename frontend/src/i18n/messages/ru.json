@@ -3890,6 +3890,7 @@
     "roundInherits": "Наследует",
     "roundUsesDefault": "Использует наследуемый пул",
     "roundPoolSize": "{count, plural, one {# карта в пуле} few {# карты в пуле} many {# карт в пуле} other {# карты в пуле}}",
+    "roundSlotPoolSize": "{slots, plural, one {# слот} few {# слота} many {# слотов} other {# слота}}, {candidates, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
     "hasOwnConfig": "Есть своя конфигурация",
     "levelNew": "Новая конфигурация",
     "levelExisting": "Своя конфигурация",

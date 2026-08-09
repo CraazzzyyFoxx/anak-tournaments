@@ -183,6 +183,38 @@ const SLOT_DRAFT = [
   { candidates: [5, 3], reserve_map_id: 9 }
 ];
 
+/**
+ * A second slot config, on round 2 of the same stage, holding the same number
+ * of slots as `SLOT_CONFIG` but four candidates rather than five.
+ *
+ * Two slot cards on screen whose slot counts agree and whose candidate totals
+ * do not: a summary that reported the slot count twice, or the catalogue size,
+ * or one card's numbers for both, is wrong on at least one of them.
+ */
+const SLOT_CONFIG_ROUND_2: MapVetoConfig = {
+  ...SLOT_CONFIG,
+  id: 911,
+  round: 2,
+  slots: [
+    { position: 1, candidates: [2, 6], reserve_map_id: null },
+    { position: 2, candidates: [8, 11], reserve_map_id: 3 }
+  ]
+};
+
+/**
+ * A flat config on round 3, with a three-map pool — distinct from both slot
+ * configs' slot count (2) and candidate totals (5 and 4), and from the
+ * catalogue's 12, so the flat summary cannot borrow any of them.
+ */
+const FLAT_CONFIG_ROUND_3: MapVetoConfig = {
+  ...TOURNAMENT_DEFAULT,
+  id: 912,
+  stage_id: 188,
+  round: 3,
+  sequence: ["ban_first", "pick_first", "pick_second"],
+  map_ids: [3, 6, 9]
+};
+
 let container: HTMLDivElement;
 let root: Root;
 let client: QueryClient;
@@ -206,6 +238,19 @@ function buttonByText(needle: string): HTMLButtonElement {
     (element.textContent ?? "").includes(needle)
   );
   if (!match) throw new Error(`no button containing ${JSON.stringify(needle)}`);
+  return match as HTMLButtonElement;
+}
+
+/**
+ * A button addressed by its whole label. `Clear` is a substring of nothing on
+ * screen today, but it is short enough that `buttonByText` would silently start
+ * matching something else.
+ */
+function exactButton(label: string): HTMLButtonElement {
+  const match = [...container.querySelectorAll("button")].find(
+    (element) => (element.textContent ?? "").trim() === label
+  );
+  if (!match) throw new Error(`no button labelled ${JSON.stringify(label)}`);
   return match as HTMLButtonElement;
 }
 
@@ -718,6 +763,55 @@ describe("TournamentMapVetoTab pool shape", () => {
     expect(selectedTiles()).toHaveLength(before.length - 1);
   });
 
+  it("opens a slot config's flat card on the pool a new level starts from", async () => {
+    listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
+    await mount();
+    await settle();
+    await selectGroupsRound1();
+
+    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+
+    // A slot config reports `map_ids: []` — the upsert refuses any other value
+    // and nothing mirrors slot candidates into the flat pool. Seeding the flat
+    // card from it left every tile off and Save refused, so one mis-click on the
+    // flat shape stranded the organizer; an unconfigured round, meanwhile, seeds
+    // the whole catalogue. Same card, same emptiness on the wire, so the two
+    // must start from the same place.
+    expect(selectedTiles()).toHaveLength(catalogue().length);
+    expect(text()).not.toContain(en.mapVetoAdmin.validation.emptyPool);
+    expect(text()).not.toContain(en.mapVetoAdmin.validation.emptySequence);
+    expect(buttonByText(en.mapVetoAdmin.save).disabled).toBe(false);
+  });
+
+  it("seeds a slot config's custom sequence for the pool that card will work with", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
+    await mount();
+    await settle();
+    await selectGroupsRound1();
+
+    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+    await click(toggleByText(en.mapVetoAdmin.orderModeCustom));
+
+    // Sized from `config.map_ids.length` this was `buildSequenceForBestOf(2, 0)`
+    // — an empty step list with nothing to reorder and nothing to save. The
+    // fallback has to use the pool the form actually seeded.
+    expect(text()).not.toContain(en.mapVetoAdmin.sequenceEmpty);
+
+    await click(buttonByText(en.mapVetoAdmin.save));
+    const payload = savedPayload();
+    // Bo2 over a twelve-map pool: the two opening bans, then a pick each.
+    expect(payload.sequence).toEqual([
+      "ban_first",
+      "ban_second",
+      "pick_first",
+      "pick_second"
+    ]);
+    // Hand-authored steps in flat shape: the save must name them as such, or the
+    // server regenerates them from the bracket and the sequence above is a lie.
+    expect(payload.preset).toBe("custom");
+  });
+
   it("saves a slot config as slots, with the flat fields empty and the rotation kept", async () => {
     upsertVetoConfig.mockResolvedValue({});
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
@@ -795,8 +889,11 @@ describe("TournamentMapVetoTab pool shape", () => {
     await selectGroupsRound1();
 
     await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
-    // A slot config carries no flat pool, so the form has nothing to save until
-    // maps are picked. Five, so the click order is visible in the payload.
+    // The flat card seeds to the whole catalogue, so clicking five tiles would
+    // deselect them. Cleared and rebuilt by hand instead: five picks, so the
+    // click order is visible in the payload.
+    await click(exactButton(en.mapVetoAdmin.poolClear));
+    expect(selectedTiles()).toEqual([]);
     for (const name of ["Busan", "Dorado", "Havana", "Ilios", "Midtown"]) {
       await click(mapTile(name));
     }
@@ -1187,6 +1284,19 @@ function notGeneratedNames(groupLabel: string): string[] {
     .map((element) => (element.querySelector("span")?.textContent ?? "").trim());
 }
 
+/**
+ * One round card's own text, addressed by the round label its first `span`
+ * carries. Scoped to the card rather than read off the page, because the slot
+ * editor below renders candidate counts of its own.
+ */
+function roundCardText(groupLabel: string, roundLabel: string): string {
+  const match = [...roundGroup(groupLabel).querySelectorAll("button")].find(
+    (element) => (element.querySelector("span")?.textContent ?? "").trim() === roundLabel
+  );
+  if (!match) throw new Error(`no round card labelled ${JSON.stringify(roundLabel)}`);
+  return match.textContent ?? "";
+}
+
 describe("TournamentMapVetoTab round selector", () => {
   it("offers both brackets' rounds, taking them from the encounters that exist", async () => {
     await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
@@ -1330,5 +1440,66 @@ describe("TournamentMapVetoTab round selector", () => {
     // support, and hiding the lower bracket is what the arriving read fixes.
     expect(notGeneratedNames(title)).toEqual([]);
     expect(text()).not.toContain("Lower R");
+  });
+});
+
+/*
+ * Round card summary.
+ *
+ * The card's summary line was written when a config had exactly one shape, so
+ * it read `map_ids.length` unconditionally. A slot config reports `map_ids: []`
+ * by design, so every fully configured slot round announced "0 maps in the
+ * pool" — the one thing an organizer checking twelve transcribed levels would
+ * read as "this one did not save".
+ */
+
+/** ICU-rendered summaries for the fixtures below, numbers included. */
+const ROUND_FLAT_ZERO = "0 maps in the pool";
+const ROUND_FLAT_THREE = "3 maps in the pool";
+const ROUND_SLOTS_2_5 = "2 slots, 5 candidates";
+const ROUND_SLOTS_2_4 = "2 slots, 4 candidates";
+
+describe("TournamentMapVetoTab round card summary", () => {
+  beforeEach(() => {
+    // Rounds 1 and 2 of Groups carry slot configs, round 3 a flat one, rounds 4
+    // and 5 nothing — every summary the card can render, side by side.
+    listVetoConfigs.mockResolvedValue({
+      configs: [SLOT_CONFIG, SLOT_CONFIG_ROUND_2, FLAT_CONFIG_ROUND_3]
+    });
+  });
+
+  it("states a slot round's slots and its candidate total, never a pool of zero", async () => {
+    await mount();
+    await settle();
+    await click(buttonByText("Groups"));
+
+    // Both numbers, because a round with two empty slots and a round with two
+    // full ones must not read identically: the slot count alone is the same for
+    // every Bo2 round whether or not anyone filled it in.
+    expect(roundCardText(GROUPS_ROUNDS_TITLE, "Round 1")).toContain(ROUND_SLOTS_2_5);
+    expect(roundCardText(GROUPS_ROUNDS_TITLE, "Round 1")).not.toContain(ROUND_FLAT_ZERO);
+
+    // Same slot count, a different candidate total: the second number is read
+    // from this config, not copied from the first card or from the slot count.
+    expect(roundCardText(GROUPS_ROUNDS_TITLE, "Round 2")).toContain(ROUND_SLOTS_2_4);
+    expect(roundCardText(GROUPS_ROUNDS_TITLE, "Round 2")).not.toContain(ROUND_FLAT_ZERO);
+  });
+
+  it("leaves a flat round's summary as the pool size, and an unconfigured round's alone", async () => {
+    await mount();
+    await settle();
+    await click(buttonByText("Groups"));
+
+    // Flat mode's copy is untouched, and the slot wording must not leak into it.
+    const flat = roundCardText(GROUPS_ROUNDS_TITLE, "Round 3");
+    expect(flat).toContain(ROUND_FLAT_THREE);
+    expect(flat).not.toContain("slot");
+    expect(flat).not.toContain("candidate");
+
+    // No config at all is still a third thing, distinct from both summaries.
+    const inherited = roundCardText(GROUPS_ROUNDS_TITLE, "Round 4");
+    expect(inherited).toContain(en.mapVetoAdmin.roundUsesDefault);
+    expect(inherited).not.toContain("slot");
+    expect(inherited).not.toContain("in the pool");
   });
 });
