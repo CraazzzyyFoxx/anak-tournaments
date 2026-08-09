@@ -7,7 +7,9 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Check,
   ChevronDown,
+  ChevronsUpDown,
   LayoutGrid,
   LoaderCircle,
   Plus,
@@ -22,6 +24,14 @@ import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -294,9 +304,6 @@ function resolveSlotsAvailability(format: BracketFormat): SlotsAvailability {
       return { available: false, reasonKey: "poolShapeSlotsUnavailableTournament" };
   }
 }
-
-/** Sentinel for "no reserve": a Radix Select item cannot carry an empty value. */
-const RESERVE_NONE = "none";
 
 /** One configurable cascade level, resolved against the bracket and the configs. */
 interface ScopeNode {
@@ -642,6 +649,100 @@ function MapPicker({
             </Button>
           </div>
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * One map out of the whole catalogue, by name.
+ *
+ * A plain `Select` listed thirty-odd maps with no way in but scrolling, which
+ * is the wrong control for a catalogue this size. The search is the same
+ * `matchesMapName` fold the map picker uses, so "Paraiso" and "peninsular"
+ * land in both places rather than only in one.
+ */
+function MapCombobox({
+  label,
+  prefix,
+  value,
+  maps,
+  emptyLabel,
+  disabled,
+  onChange
+}: {
+  /** Accessible name for the trigger, which shows only a value. */
+  label: string;
+  /** Static text before the value: a bare map name says nothing on its own. */
+  prefix: string;
+  value: number | null;
+  /** Everything selectable here; the caller has already excluded what is not. */
+  maps: MapRead[];
+  /** The "no map" choice, and what the trigger reads when nothing is chosen. */
+  emptyLabel: string;
+  disabled: boolean;
+  onChange: (mapId: number | null) => void;
+}) {
+  const t = useTranslations();
+  const [open, setOpen] = useState(false);
+  const selected = maps.find((map) => map.id === value) ?? null;
+
+  const choose = (mapId: number | null) => {
+    onChange(mapId);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={label}
+          disabled={disabled}
+          className="h-8 w-56 justify-between gap-2 text-xs font-normal"
+        >
+          <span className="truncate">
+            <span className="text-muted-foreground">{prefix} </span>
+            {selected ? selected.name : emptyLabel}
+          </span>
+          <ChevronsUpDown aria-hidden className="size-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-0">
+        <Command
+          // The catalogue spells maps differently from the regulations
+          // organizers transcribe, so the fold is the point of the search.
+          filter={(itemValue, search) => (matchesMapName(itemValue, search) ? 1 : 0)}
+        >
+          <CommandInput placeholder={t("mapVetoAdmin.pickerSearchPlaceholder")} />
+          <CommandList>
+            <CommandEmpty>{t("common.noResults")}</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value={emptyLabel} onSelect={() => choose(null)}>
+                <span>{emptyLabel}</span>
+                <Check
+                  aria-hidden
+                  className={cn("ms-auto size-4", value == null ? "opacity-100" : "opacity-0")}
+                />
+              </CommandItem>
+              {maps.map((map) => (
+                <CommandItem key={map.id} value={map.name} onSelect={() => choose(map.id)}>
+                  <span className="truncate">{map.name}</span>
+                  <Check
+                    aria-hidden
+                    className={cn(
+                      "ms-auto size-4",
+                      value === map.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   );
@@ -1291,38 +1392,20 @@ function ScopeEditor({
                           `#${slot.reserve_map_id}`}
                     </span>
                   ) : (
-                  <Select
-                    value={slot.reserve_map_id == null ? RESERVE_NONE : String(slot.reserve_map_id)}
-                    disabled={disabled}
-                    onValueChange={(value: string) =>
-                      patchSlot(index, (current) => ({
-                        ...current,
-                        reserve_map_id: value === RESERVE_NONE ? null : Number(value)
-                      }))
-                    }
-                  >
-                    <SelectTrigger
-                      aria-label={t("mapVetoAdmin.slotReserveLabel", { slot: position })}
-                      className="h-8 w-48 text-xs"
-                    >
-                      {/* A bare map name in a trailing select reads as an
-                          unexplained value; the prefix says what it is. */}
-                      <span className="shrink-0 text-muted-foreground">
-                        {t("mapVetoAdmin.slotReserveShort")}
-                      </span>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={RESERVE_NONE}>
-                        {t("mapVetoAdmin.slotReserveNone")}
-                      </SelectItem>
-                      {reserveOptions.map((map) => (
-                        <SelectItem key={map.id} value={String(map.id)}>
-                          {map.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <MapCombobox
+                      label={t("mapVetoAdmin.slotReserveLabel", { slot: position })}
+                      prefix={t("mapVetoAdmin.slotReserveShort")}
+                      value={slot.reserve_map_id}
+                      maps={reserveOptions}
+                      emptyLabel={t("mapVetoAdmin.slotReserveNone")}
+                      disabled={disabled}
+                      onChange={(reserveMapId) =>
+                        patchSlot(index, (current) => ({
+                          ...current,
+                          reserve_map_id: reserveMapId
+                        }))
+                      }
+                    />
                   )
                 }
               />

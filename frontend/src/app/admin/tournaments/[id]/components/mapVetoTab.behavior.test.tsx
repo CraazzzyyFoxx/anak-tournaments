@@ -526,8 +526,8 @@ async function addToSlot(fullLabel: string, position: number, names: string[]) {
 }
 
 /**
- * Radix Select: the trigger opens on pointerdown and the listbox is portalled
- * out of the container, so the options are read off the document.
+ * The reserve combobox: a popover holding a search field and a listbox, both
+ * portalled out of the container, so they are read off the document.
  */
 async function openReservePicker(fullLabel: string, position: number): Promise<string[]> {
   const trigger = slotRow(fullLabel, position).querySelector<HTMLElement>(
@@ -542,6 +542,19 @@ async function openReservePicker(fullLabel: string, position: number): Promise<s
   return [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].map((element) =>
     (element.textContent ?? "").trim()
   );
+}
+
+/** Every option the open reserve combobox currently offers. */
+function reserveOptions(): string[] {
+  return [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].map((element) =>
+    (element.textContent ?? "").trim()
+  );
+}
+
+async function searchReserve(query: string) {
+  const input = document.body.querySelector<HTMLInputElement>("[cmdk-input]");
+  if (!input) throw new Error("the reserve combobox is not open");
+  await type(input, query);
 }
 
 async function pickReserveOption(label: string) {
@@ -1322,6 +1335,12 @@ describe("TournamentMapVetoTab slot editor", () => {
     // Slot 2's candidates are fair game: a map may repeat across slots.
     expect(options).toContain("Eichenwalde");
     expect(options).toContain("Havana");
+
+    // The same name fold the map picker uses, so a regulation's spelling lands
+    // in both places rather than only in one.
+    await searchReserve("shambali");
+    expect(reserveOptions()).toEqual(["Shambali Monastery"]);
+    await searchReserve("");
 
     await pickReserveOption("Havana");
     await click(saveButton(GROUPS_R1));
