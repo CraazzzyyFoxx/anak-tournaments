@@ -19,6 +19,7 @@ auto-resolve) lives in ``map_veto.py``; this module must not import it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -32,6 +33,7 @@ from shared.core.enums import (
     FirstBanRotation,
     MapPickSide,
     MapPoolEntryStatus,
+    MapVetoMode,
     MapVetoSessionStatus,
     VetoSeedSource,
 )
@@ -125,7 +127,13 @@ def build_sequence_for_best_of(best_of: int, pool_size: int) -> list[str]:
     return tokens
 
 
-def effective_sequence(config: models.MapVetoConfig, best_of: int, pool_size: int) -> list[str]:
+def effective_sequence(
+    config: models.MapVetoConfig,
+    best_of: int,
+    pool_size: int,
+    *,
+    slots: list[list[int]] | None = None,
+) -> list[str]:
     """The sequence a session should actually run.
 
     The bracket owns series length. ``Encounter.best_of`` is resolved from
@@ -138,7 +146,30 @@ def effective_sequence(config: models.MapVetoConfig, best_of: int, pool_size: in
     An explicitly ``custom`` config is the organizer's own step order and is
     passed through untouched; the admin editor flags it when its map count
     disagrees with the bracket.
+
+    Slot mode ignores all three of ``best_of``, ``pool_size`` and the stored
+    sequence: the slots ARE the series (one played map each) and they carry
+    their own candidate counts, so ``slots`` — candidate map ids per slot in
+    position order, from ``load_slot_candidates`` — is the only input. It is
+    checked before the flat guards on purpose: ``preset == 'custom'`` is
+    unstorable alongside ``mode = 'slots'``
+    (``ck_map_veto_config_slots_not_custom``) and a slot config has no
+    hand-authored order to fall back to, while a legacy ``best_of = 0`` says
+    nothing about slots that describe their own length.
     """
+    if config.mode == MapVetoMode.SLOTS:
+        if slots is None:
+            # The caller's bug, not the organizer's: every slot-mode call site
+            # must load the candidates. Falling through to the flat path would
+            # run a plausible-looking veto for the wrong pool shape, so this
+            # fails loudly instead of raising the validator's 422 alongside
+            # messages an admin is meant to act on.
+            raise TypeError("effective_sequence() requires slots= for a slot-mode config")
+        return build_slot_sequence(
+            [len(candidates) for candidates in slots],
+            rotation=config.first_ban_rotation,
+        )
+
     stored = list(config.veto_sequence_json or [])
     if config.preset == CUSTOM_PRESET:
         return stored
@@ -176,6 +207,43 @@ def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[s
         tokens.extend(opener if ban_index % 2 == 0 else responder for ban_index in range(candidate_count - 1))
         tokens.append("decider")
     return tokens
+
+
+def slot_candidates(slots: Sequence[models.MapVetoConfigSlot]) -> list[list[int]]:
+    """Candidate map ids per slot as plain data, in ``position`` order.
+
+    The sort is load-bearing, not tidiness: a mis-ordered slot list still spends
+    the right *number* of steps, so the pool-size invariant ``get_current_step``
+    relies on stays satisfied while slot 1 is offered another slot's ban count.
+    Nothing downstream could detect it, so the order is established here rather
+    than left to a query's row order or to a relationship's ``order_by``.
+
+    Requires each slot's ``maps`` to be loaded; ``load_slot_candidates`` is the
+    await-safe way to get that.
+    """
+    return [[entry.map_id for entry in slot.maps] for slot in sorted(slots, key=lambda slot: slot.position)]
+
+
+async def load_slot_candidates(session: AsyncSession, config: models.MapVetoConfig) -> list[list[int]]:
+    """Fetch ``config``'s slot candidates for ``effective_sequence``.
+
+    ``MapVetoConfig.slots`` is deliberately lazy and ``effective_sequence`` is
+    synchronous, so the async session-creation path cannot reach the slot chain
+    through the relationship without risking ``MissingGreenlet``. Querying the
+    slots directly keeps the eager-load visible at the call site — the
+    convention the model documents — and does not depend on whoever loaded
+    ``config`` having asked for the two-level chain.
+
+    A slot with no candidate maps comes back as an empty list rather than
+    disappearing: session creation re-checks the ``>= 2`` floor, and silently
+    dropping the slot would shorten the sequence instead.
+    """
+    result = await session.execute(
+        select(models.MapVetoConfigSlot)
+        .where(models.MapVetoConfigSlot.map_veto_config_id == config.id)
+        .options(selectinload(models.MapVetoConfigSlot.maps))
+    )
+    return slot_candidates(list(result.scalars().all()))
 
 
 def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
@@ -414,7 +482,8 @@ async def ensure_veto_session(
     a pre-existing admin-assigned pool is respected.
 
     The step sequence comes from ``effective_sequence``: the bracket's
-    ``best_of`` drives it unless the config is explicitly ``custom``.
+    ``best_of`` drives it unless the config is explicitly ``custom``, and a
+    slot-mode config derives it from its slots instead.
     """
     existing = await get_veto_session(session, encounter.id)
     if existing is not None:
@@ -434,6 +503,10 @@ async def ensure_veto_session(
         .where(models.EncounterMapPool.encounter_id == encounter.id)
     )
     pool_size = pool_count or len(config.map_pool)
+    # Slot mode only, and awaited here because ``effective_sequence`` is sync:
+    # the slot chain is lazy, so it must be fetched before the pure function
+    # needs it.
+    slots = await load_slot_candidates(session, config) if config.mode == MapVetoMode.SLOTS else None
 
     seeds = await resolve_seeds(session, encounter)
     now = datetime.now(UTC)
@@ -445,7 +518,7 @@ async def ensure_veto_session(
         home_seed=seeds.home_seed,
         away_seed=seeds.away_seed,
         resolved_sequence_json=resolve_sequence_tokens(
-            effective_sequence(config, encounter.best_of, pool_size), seeds.first_side
+            effective_sequence(config, encounter.best_of, pool_size, slots=slots), seeds.first_side
         ),
         turn_timer_seconds=config.turn_timer_seconds,
         status=MapVetoSessionStatus.ACTIVE,

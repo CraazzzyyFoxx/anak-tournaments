@@ -20,7 +20,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
-from shared.core.enums import MapPickSide, VetoSeedSource  # noqa: E402
+from shared.core.enums import MapPickSide, MapVetoMode, VetoSeedSource  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from src.services.encounter.veto_session import (  # noqa: E402
     build_sequence_for_best_of,
@@ -29,6 +29,7 @@ from src.services.encounter.veto_session import (  # noqa: E402
     effective_sequence,
     resolve_sequence_tokens,
     select_config,
+    slot_candidates,
     validate_slot_config,
     validate_veto_config,
 )
@@ -274,7 +275,9 @@ class EffectiveSequenceTests(TestCase):
 
     @staticmethod
     def config(preset: str | None, sequence: list[str]) -> SimpleNamespace:
-        return SimpleNamespace(preset=preset, veto_sequence_json=sequence)
+        # ``mode`` is NOT NULL with a server default, so every real row carries
+        # it; a fixture without it models a config that cannot exist.
+        return SimpleNamespace(mode=MapVetoMode.POOL, preset=preset, veto_sequence_json=sequence)
 
     def test_regenerates_a_preset_config_from_the_bracket(self) -> None:
         # A Bo3 template on a Bo2 encounter used to hand a two-map series a
@@ -308,6 +311,159 @@ class EffectiveSequenceTests(TestCase):
         for best_of in (1, 2, 3, 5, 7):
             played = sum(1 for token in effective_sequence(config, best_of, 9) if not token.startswith("ban"))
             self.assertEqual(best_of, played, f"best_of={best_of}")
+
+
+class EffectiveSequenceSlotModeTests(TestCase):
+    """Slot mode derives its sequence from the slot structure, never from
+    ``best_of``, the stored template or the flat pool size."""
+
+    #: Impossible as a slot sequence -- slot mode never emits a pick -- so an
+    #: implementation that fell through to the flat path or returned the stored
+    #: template is visible rather than merely differently shaped.
+    TEMPLATE = ["pick_first", "pick_second"]
+
+    #: Two three-candidate slots under ``fixed`` rotation.
+    FIXED_3_3 = ["ban_first", "ban_second", "decider", "ban_first", "ban_second", "decider"]
+
+    @staticmethod
+    def config(
+        *,
+        rotation: str = "fixed",
+        mode: MapVetoMode = MapVetoMode.SLOTS,
+        preset: str | None = "bracket",
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            mode=mode,
+            preset=preset,
+            first_ban_rotation=rotation,
+            veto_sequence_json=EffectiveSequenceSlotModeTests.TEMPLATE,
+        )
+
+    def test_derives_the_sequence_from_the_slots_not_the_stored_template(self) -> None:
+        sequence = effective_sequence(self.config(), 2, 6, slots=[[1, 2, 3], [4, 5, 6]])
+
+        self.assertEqual(self.FIXED_3_3, sequence)
+
+    def test_the_configured_rotation_reaches_the_generator(self) -> None:
+        # ``alternate`` flips the second slot's opener; a hardcoded ``fixed``
+        # (or the preset passed in rotation's place) produces FIXED_3_3.
+        sequence = effective_sequence(self.config(rotation="alternate"), 2, 6, slots=[[1, 2, 3], [4, 5, 6]])
+
+        self.assertEqual(
+            ["ban_first", "ban_second", "decider", "ban_second", "ban_first", "decider"],
+            sequence,
+        )
+
+    def test_each_slot_contributes_its_own_candidate_count(self) -> None:
+        # Counts 2/4/3: deriving them from the slot count instead of each slot's
+        # map count, or emitting them in another order, changes these tokens.
+        sequence = effective_sequence(self.config(), 3, 9, slots=[[1, 2], [3, 4, 5, 6], [7, 8, 9]])
+
+        self.assertEqual(
+            [
+                "ban_first",
+                "decider",
+                "ban_first",
+                "ban_second",
+                "ban_first",
+                "decider",
+                "ban_first",
+                "ban_second",
+                "decider",
+            ],
+            sequence,
+        )
+
+    def test_uneven_slots_keep_one_step_per_pool_entry(self) -> None:
+        # ``get_current_step`` indexes the token list by how many pool entries
+        # are no longer AVAILABLE, so the total must equal the pool size.
+        shapes = (
+            [[1, 2], [3, 4]],
+            [[1, 2], [3, 4, 5, 6], [7, 8, 9]],
+            [[1, 2, 3], [4, 5], [6, 7, 8, 9], [10, 11]],
+            [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]],
+        )
+        for slots in shapes:
+            pool_size = sum(len(candidates) for candidates in slots)
+            for rotation in ("fixed", "alternate"):
+                with self.subTest(slots=slots, rotation=rotation):
+                    sequence = effective_sequence(self.config(rotation=rotation), len(slots), pool_size, slots=slots)
+
+                    self.assertEqual(pool_size, len(sequence))
+                    self.assertEqual(len(slots), sequence.count("decider"))
+                    self.assertEqual([], [token for token in sequence if token.startswith("pick")])
+
+    def test_a_degenerate_best_of_does_not_fall_back_to_the_template(self) -> None:
+        # Slot count is the series length, so a legacy ``best_of=0`` says nothing
+        # about a slot config -- the slots are self-describing.
+        self.assertEqual(self.FIXED_3_3, effective_sequence(self.config(), 0, 6, slots=[[1, 2, 3], [4, 5, 6]]))
+
+    def test_a_custom_preset_cannot_opt_a_slot_config_out(self) -> None:
+        # ``ck_map_veto_config_slots_not_custom`` makes this row unstorable; the
+        # slot structure winning anyway keeps a dropped CHECK from resurrecting
+        # a hand-authored order that slot mode has no way to run.
+        sequence = effective_sequence(self.config(preset="custom"), 3, 6, slots=[[1, 2, 3], [4, 5, 6]])
+
+        self.assertEqual(self.FIXED_3_3, sequence)
+
+    def test_an_empty_slot_list_yields_no_steps(self) -> None:
+        self.assertEqual([], effective_sequence(self.config(), 0, 0, slots=[]))
+
+    def test_missing_slot_data_raises_instead_of_running_a_flat_veto(self) -> None:
+        # Distinguished from ``slots=[]``: absent data is the caller's bug, and
+        # a silent flat sequence would be a plausible-looking wrong veto.
+        with self.assertRaises(TypeError):
+            effective_sequence(self.config(), 3, 9)
+
+    def test_a_pool_mode_config_ignores_slot_candidates(self) -> None:
+        # The dispatch's other direction: routing pool mode into the slot branch
+        # would silently re-shape every existing tournament's veto.
+        sequence = effective_sequence(
+            self.config(mode=MapVetoMode.POOL, rotation="alternate"), 3, 5, slots=[[1, 2, 3], [4, 5, 6]]
+        )
+
+        self.assertEqual(["ban_first", "ban_second", "pick_first", "pick_second", "decider"], sequence)
+
+
+class SlotCandidatesTests(TestCase):
+    """``position`` order, not row order.
+
+    A ``SELECT`` without ``ORDER BY`` returns rows in no guaranteed order, and a
+    mis-ordered slot list still satisfies every invariant this module protects --
+    the step total is unchanged -- while offering one slot's ban count to
+    another. Hence the sort lives here, where a test can pin it.
+    """
+
+    @staticmethod
+    def slot(position: int, map_ids: list[int]) -> SimpleNamespace:
+        return SimpleNamespace(position=position, maps=[SimpleNamespace(map_id=map_id) for map_id in map_ids])
+
+    #: Positions out of order, candidate counts unequal and not ascending, so a
+    #: missing sort produces a different sequence rather than the same one.
+    def rows(self) -> list[SimpleNamespace]:
+        return [self.slot(2, [3, 4, 5, 6]), self.slot(1, [1, 2]), self.slot(3, [7, 8, 9])]
+
+    def test_sorts_by_position_regardless_of_row_order(self) -> None:
+        self.assertEqual([[1, 2], [3, 4, 5, 6], [7, 8, 9]], slot_candidates(self.rows()))
+
+    def test_row_order_would_change_the_sequence_without_changing_its_length(self) -> None:
+        rows = self.rows()
+        ordered = build_slot_sequence([len(candidates) for candidates in slot_candidates(rows)], rotation="fixed")
+        unordered = build_slot_sequence([len(slot.maps) for slot in rows], rotation="fixed")
+
+        self.assertNotEqual(unordered, ordered)
+        # Same step total: the invariant cannot catch this, only the sort can.
+        self.assertEqual(len(unordered), len(ordered))
+
+    def test_keeps_each_slot_s_own_candidate_order(self) -> None:
+        # ``MapVetoConfigSlot.maps`` is ordered by ``sort_order``; the ids must
+        # not be re-sorted on the way out.
+        self.assertEqual([[9, 3, 7]], slot_candidates([self.slot(1, [9, 3, 7])]))
+
+    def test_a_slot_with_no_candidates_is_kept_as_an_empty_list(self) -> None:
+        # The loader outer-joins deliberately: dropping the slot would shorten
+        # the sequence and hide a catalogue delete that took a slot below two.
+        self.assertEqual([[1, 2], []], slot_candidates([self.slot(1, [1, 2]), self.slot(2, [])]))
 
 
 class BuildSlotSequenceTests(TestCase):
