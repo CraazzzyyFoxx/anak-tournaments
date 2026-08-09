@@ -311,10 +311,12 @@ class EffectiveSequenceTests(TestCase):
 
 class BuildSlotSequenceTests(TestCase):
     """One slot = (candidates - 1) alternating bans, then a decider.
-    Steps must total the pool size, because `get_current_step` indexes the flat
-    token list by how many pool entries are no longer AVAILABLE."""
 
-    def test_two_slots_of_three_alternating_from_the_higher_seed(self) -> None:
+    Steps must total the pool size, because ``get_current_step`` indexes the
+    flat token list by how many pool entries are no longer AVAILABLE.
+    """
+
+    def test_fixed_rotation_opens_every_slot_with_the_higher_seed(self) -> None:
         self.assertEqual(
             ["ban_first", "ban_second", "decider", "ban_first", "ban_second", "decider"],
             build_slot_sequence([3, 3], rotation="fixed"),
@@ -326,7 +328,7 @@ class BuildSlotSequenceTests(TestCase):
             build_slot_sequence([3, 3], rotation="alternate"),
         )
 
-    def test_step_count_equals_total_candidates(self) -> None:
+    def test_step_and_decider_counts_match_the_slot_shape(self) -> None:
         for counts in ([3, 3], [3, 3, 3], [2, 4], [3, 3, 3, 3, 3]):
             sequence = build_slot_sequence(counts, rotation="fixed")
             self.assertEqual(sum(counts), len(sequence), f"counts={counts}")
@@ -334,6 +336,7 @@ class BuildSlotSequenceTests(TestCase):
 
     def test_one_decider_per_slot_and_each_closes_its_slot(self) -> None:
         sequence = build_slot_sequence([2, 3], rotation="fixed")
+
         self.assertEqual(["ban_first", "decider", "ban_first", "ban_second", "decider"], sequence)
 
     def test_empty_slot_list_yields_no_steps(self) -> None:

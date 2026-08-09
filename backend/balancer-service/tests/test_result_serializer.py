@@ -25,14 +25,39 @@ os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
+from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
 from src.services.balancer.algorithm.entities import Player, Team  # noqa: E402
 from src.services.balancer.algorithm.result_serializer import teams_to_json  # noqa: E402
 
 MASK = {"Tank": 1, "Damage": 2, "Support": 2}
 
 
-def make_player(uuid: str, ratings: dict[str, int], preferences: list[str]) -> Player:
-    return Player(name=f"P{uuid}", ratings=ratings, preferences=preferences, uuid=uuid, mask=MASK)
+def make_player(
+    uuid: str,
+    ratings: dict[str, int],
+    preferences: list[str],
+    mask: dict[str, int] | None = None,
+) -> Player:
+    return Player(name=f"P{uuid}", ratings=ratings, preferences=preferences, uuid=uuid, mask=mask or MASK)
+
+
+def test_response_is_keyed_by_the_mask_slot_codes() -> None:
+    # The mask is the tournament's resolved roster shape, so every role-keyed
+    # field of the response speaks its slot codes -- not the HeroClass display
+    # names a pre-roster-shape run emitted. Clients keyed by the display names
+    # must translate; this pins which spelling they translate from.
+    mask = DEFAULT_ROSTER_SHAPE.slots
+    player = make_player("1", {"tank": 3000, "dps": 2900}, ["tank", "dps"], mask=mask)
+    team = Team(1, mask)
+    team.add_player("tank", player)
+
+    team_data = teams_to_json([team], mask)["teams"][0]
+
+    assert set(team_data["roster"]) == {"tank", "dps", "support"}
+    serialized = team_data["roster"]["tank"][0]
+    assert serialized["role_preferences"] == ["tank", "dps"]
+    assert set(serialized["all_ratings"]) == {"tank", "dps"}
+    assert set(serialized["all_discomforts"]) == {"tank", "dps", "support"}
 
 
 def test_roster_player_exposes_all_discomforts_snapshot() -> None:

@@ -125,32 +125,6 @@ def build_sequence_for_best_of(best_of: int, pool_size: int) -> list[str]:
     return tokens
 
 
-def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[str]:
-    """Generate the side-agnostic sequence for a slot-mode config.
-
-    Each slot contributes ``(candidates - 1)`` alternating bans and one
-    ``decider`` that closes it, so the step total equals the pool size and
-    ``get_current_step``'s arithmetic keeps working unchanged.
-
-    ``rotation``: ``fixed`` opens every slot with the higher seed; ``alternate``
-    opens odd-numbered slots with the higher seed and even ones with the lower
-    (design Decision 3).
-
-    NOTE: the result carries one decider per slot, mid-sequence. It is a SESSION
-    sequence and must never be passed to ``validate_veto_config``, which rejects
-    more than one decider and requires it last. That validator guards config
-    upserts only (design Decision 16).
-    """
-    tokens: list[str] = []
-    for index, count in enumerate(candidate_counts):
-        opens_first = rotation != FirstBanRotation.ALTERNATE or index % 2 == 0
-        for ban in range(count - 1):
-            first_turn = (ban % 2 == 0) == opens_first
-            tokens.append("ban_first" if first_turn else "ban_second")
-        tokens.append("decider")
-    return tokens
-
-
 def effective_sequence(config: models.MapVetoConfig, best_of: int, pool_size: int) -> list[str]:
     """The sequence a session should actually run.
 
@@ -173,6 +147,35 @@ def effective_sequence(config: models.MapVetoConfig, best_of: int, pool_size: in
         # better guess than an empty sequence.
         return stored
     return build_sequence_for_best_of(best_of, pool_size)
+
+
+# ── slot mode ────────────────────────────────────────────────────────────────
+
+
+def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[str]:
+    """Generate the side-agnostic sequence for a slot-mode config.
+
+    Each slot contributes ``(candidates - 1)`` alternating bans and one
+    ``decider`` that closes it, so the step total equals the pool size and
+    ``get_current_step``'s arithmetic keeps working unchanged.
+
+    ``rotation``: ``fixed`` opens every slot with the higher seed; ``alternate``
+    opens even ``slot_index`` values with the higher seed and odd ones with the
+    lower — in the design's 1-based ordinals, the first, third and fifth slots
+    open with the higher seed (design Decision 3).
+
+    NOTE: the result carries one decider per slot, mid-sequence. It is a SESSION
+    sequence and must never be passed to ``validate_veto_config``, which rejects
+    more than one decider and requires it last. That validator guards config
+    upserts only (design Decision 16).
+    """
+    tokens: list[str] = []
+    for slot_index, candidate_count in enumerate(candidate_counts):
+        opens_first = rotation != FirstBanRotation.ALTERNATE or slot_index % 2 == 0
+        opener, responder = ("ban_first", "ban_second") if opens_first else ("ban_second", "ban_first")
+        tokens.extend(opener if ban_index % 2 == 0 else responder for ban_index in range(candidate_count - 1))
+        tokens.append("decider")
+    return tokens
 
 
 def select_config(

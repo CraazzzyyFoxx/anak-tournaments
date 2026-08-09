@@ -8,6 +8,7 @@ import {
   type PoolLane,
 } from "@/app/balancer/components/balancer-page-helpers";
 import {
+  convertBalanceResponseToInternalPayload,
   createSyntheticApplicationFromRegistration,
   createSyntheticPlayerFromRegistration,
   getPlayerValidationIssues,
@@ -22,6 +23,7 @@ import type {
   BalancerPlayerRecord,
   BuiltInFieldConfig,
 } from "@/types/balancer-admin.types";
+import type { BalanceResponse, PlayerData } from "@/types/balancer.types";
 import { DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
 
@@ -585,5 +587,81 @@ describe("ratesByMaxRank", () => {
     // form is still loading would inflate every player's effective rank.
     expect(ratesByMaxRank(undefined)).toBe(false);
     expect(ratesByMaxRank(null)).toBe(false);
+  });
+});
+
+describe("convertBalanceResponseToInternalPayload", () => {
+  const player = (overrides: Partial<PlayerData> = {}): PlayerData => ({
+    uuid: "p1",
+    name: "player#1234",
+    assigned_rating: 3000,
+    role_discomfort: 0,
+    is_captain: false,
+    role_preferences: ["tank", "dps"],
+    all_ratings: { tank: 3000, dps: 2800 },
+    all_discomforts: { tank: 0, dps: 100, support: 5000 },
+    ...overrides,
+  });
+
+  const response = (roster: Record<string, PlayerData[]>): BalanceResponse =>
+    ({
+      teams: [
+        {
+          id: 1,
+          name: "player#1234",
+          average_mmr: 3000,
+          rating_variance: 0,
+          total_discomfort: 0,
+          max_discomfort: 0,
+          roster,
+        },
+      ],
+      statistics: {},
+    }) as unknown as BalanceResponse;
+
+  it("re-keys the solver's canonical roster codes onto the editor's buckets", () => {
+    // The solver keys the response by the tournament roster shape's slot codes,
+    // so a run whose roster arrives as tank/dps/support must still land in the
+    // Tank/Damage/Support buckets the editor and result_json use.
+    const payload = convertBalanceResponseToInternalPayload(
+      response({ tank: [player({ uuid: "t" })], dps: [player({ uuid: "d" })], support: [player({ uuid: "s" })] }),
+    );
+
+    const roster = payload.teams[0].roster;
+    expect(roster.Tank.map((entry) => entry.uuid)).toEqual(["t"]);
+    expect(roster.Damage.map((entry) => entry.uuid)).toEqual(["d"]);
+    expect(roster.Support.map((entry) => entry.uuid)).toEqual(["s"]);
+  });
+
+  it("re-keys the per-role player maps the editor compares against roster keys", () => {
+    const payload = convertBalanceResponseToInternalPayload(response({ tank: [player()] }));
+
+    const entry = payload.teams[0].roster.Tank[0];
+    expect(entry.role_preferences).toEqual(["Tank", "Damage"]);
+    expect(entry.all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
+    expect(entry.all_discomforts).toEqual({ Tank: 0, Damage: 100, Support: 5000 });
+  });
+
+  it("keeps display-name payloads unchanged", () => {
+    // Saved balances and pre-roster-shape runs carry the display names already.
+    const legacy = player({
+      role_preferences: ["Damage"],
+      all_ratings: { Damage: 2800 },
+      all_discomforts: { Damage: 0 },
+    });
+
+    const payload = convertBalanceResponseToInternalPayload(response({ Damage: [legacy] }));
+
+    const entry = payload.teams[0].roster.Damage[0];
+    expect(entry.role_preferences).toEqual(["Damage"]);
+    expect(entry.all_ratings).toEqual({ Damage: 2800 });
+  });
+
+  it("normalizes benched players the same way", () => {
+    const benched = { ...response({}), benched_players: [player({ uuid: "b" })] };
+
+    const payload = convertBalanceResponseToInternalPayload(benched);
+
+    expect(payload.benched_players?.[0].all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
   });
 });

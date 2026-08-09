@@ -53,6 +53,8 @@ export interface PlayerData {
   is_flex?: boolean;
   role_preferences: string[];
   all_ratings: Record<string, number>;
+  /** Per-role discomfort snapshot from the solver; keyed like `all_ratings`. */
+  all_discomforts?: Record<string, number>;
   sub_role?: string | null;
 }
 

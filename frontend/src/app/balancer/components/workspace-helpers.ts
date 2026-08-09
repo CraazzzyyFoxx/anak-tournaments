@@ -6,12 +6,14 @@ import {
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
   BalancerRoleCode,
+  BalancerRosterKey,
   BuiltInFieldConfig,
   InternalBalancePayload,
+  InternalBalancePlayer,
   RegistrationRankAutofillResponse,
   SavedBalance
 } from "@/types/balancer-admin.types";
-import { BalanceResponse, BalancerConfig } from "@/types/balancer.types";
+import { BalanceResponse, BalancerConfig, PlayerData } from "@/types/balancer.types";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 import { DEFAULT_DIVISION_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/division-grid";
@@ -363,25 +365,78 @@ export function buildVariantFromSavedBalance(balance: SavedBalance): BalanceVari
   };
 }
 
+/**
+ * Solver role spelling -> the editor's roster key.
+ *
+ * A balance response is keyed by the canonical roster slot codes of
+ * `shared/domain/roster_shape.py` (`tank`/`dps`/`support`), because the solver's
+ * role mask is now a projection of the tournament roster shape. The editor and
+ * every persisted `result_json` are keyed by the display names, so the response
+ * is re-keyed on the way in. Both spellings are accepted: runs and saved
+ * balances produced before the roster shape landed carry the display names.
+ *
+ * `flex` is deliberately absent — the three-column editor has no bucket for it,
+ * so a flex roster shape is unsupported here rather than half-rendered.
+ */
+const ROSTER_KEY_BY_SOLVER_ROLE: Record<string, BalancerRosterKey> = {
+  ...API_ROLE_KEYS,
+  Tank: "Tank",
+  Damage: "Damage",
+  Support: "Support"
+};
+
+/**
+ * A response player carries three role-keyed fields besides its bucket, and all
+ * three are compared against roster keys downstream (drop eligibility, off-role
+ * badges, re-rating on move), so they are re-keyed together with the bucket.
+ */
+function normalizeBalanceResponsePlayer(player: PlayerData): InternalBalancePlayer {
+  const normalized: InternalBalancePlayer = {
+    ...player,
+    role_preferences: player.role_preferences.map(
+      (role) => ROSTER_KEY_BY_SOLVER_ROLE[role] ?? role
+    )
+  };
+  for (const field of ["all_ratings", "all_discomforts"] as const) {
+    const map = player[field];
+    if (map) {
+      normalized[field] = Object.fromEntries(
+        Object.entries(map).map(([role, value]) => [ROSTER_KEY_BY_SOLVER_ROLE[role] ?? role, value])
+      );
+    }
+  }
+  return normalized;
+}
+
 export function convertBalanceResponseToInternalPayload(
   response: BalanceResponse
 ): InternalBalancePayload {
   return normalizeInternalPayload({
-    teams: response.teams.map((team) => ({
-      id: team.id,
-      name: team.name,
-      average_mmr: team.average_mmr,
-      rating_variance: team.rating_variance,
-      total_discomfort: team.total_discomfort,
-      max_discomfort: team.max_discomfort,
-      roster: {
-        Tank: team.roster.Tank ?? [],
-        Damage: team.roster.Damage ?? [],
-        Support: team.roster.Support ?? []
+    teams: response.teams.map((team) => {
+      const roster: Record<BalancerRosterKey, InternalBalancePlayer[]> = {
+        Tank: [],
+        Damage: [],
+        Support: []
+      };
+      for (const [role, players] of Object.entries(team.roster)) {
+        const rosterKey = ROSTER_KEY_BY_SOLVER_ROLE[role];
+        if (rosterKey === undefined) {
+          continue;
+        }
+        roster[rosterKey].push(...players.map(normalizeBalanceResponsePlayer));
       }
-    })),
+      return {
+        id: team.id,
+        name: team.name,
+        average_mmr: team.average_mmr,
+        rating_variance: team.rating_variance,
+        total_discomfort: team.total_discomfort,
+        max_discomfort: team.max_discomfort,
+        roster
+      };
+    }),
     statistics: response.statistics,
-    benched_players: response.benched_players ?? []
+    benched_players: (response.benched_players ?? []).map(normalizeBalanceResponsePlayer)
   });
 }
 
