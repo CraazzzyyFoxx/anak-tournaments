@@ -78,8 +78,9 @@ def get_current_step(
 def current_slot(pool: list[models.EncounterMapPool]) -> int | None:
     """The slot the veto is resolving, or None in flat mode and when complete.
 
-    Slots are consumed in ascending order because the generator lays steps out
-    slot by slot and each step consumes exactly one entry. ``None`` is
+    Slots are consumed in ascending order because
+    :func:`~src.services.encounter.veto_session.build_slot_sequence` lays steps
+    out slot by slot and each step consumes exactly one entry. ``None`` is
     unambiguous for callers: flat mode has no slots, and a completed veto has no
     pending step, which :func:`get_current_step` reports first.
     """

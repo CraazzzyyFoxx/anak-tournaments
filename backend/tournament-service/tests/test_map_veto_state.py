@@ -180,6 +180,23 @@ class CurrentSlotTests(TestCase):
 
         self.assertEqual(1, current_slot(pool))
 
+    def test_advances_to_the_lowest_unresolved_slot_regardless_of_pool_order(self) -> None:
+        """Advancement is the load-bearing claim behind ``min``, and the only
+        thing the next slot's action validation can rest on. Slot 1 is fully
+        resolved, so the answer is 2 -- and the entries are deliberately listed
+        out of play order so the assertion pins the ascending slot number rather
+        than the position in the pool."""
+        pool = [
+            make_pool_entry(5, slot=3),
+            make_pool_entry(6, slot=3),
+            make_pool_entry(3, slot=2),
+            make_pool_entry(4, slot=2),
+            make_pool_entry(1, slot=1, status=MapPoolEntryStatus.BANNED),
+            make_pool_entry(2, slot=1, status=MapPoolEntryStatus.PICKED),
+        ]
+
+        self.assertEqual(2, current_slot(pool))
+
     def test_returns_none_when_every_entry_is_consumed(self) -> None:
         """The terminal state of every finished slot-mode veto. An unguarded
         ``min()`` raised here, on the read path that serves the room."""
@@ -193,8 +210,10 @@ class CurrentSlotTests(TestCase):
 
 class SlotScopedDeciderTests(TestCase):
     def test_resolves_slot_one_while_slot_two_still_has_maps(self) -> None:
-        """Pre-fix this raised 400: the check counted AVAILABLE across the whole
-        pool, and slot 2's untouched candidates made it != 1."""
+        """The decider closes one slot at a time: another slot's untouched
+        candidates must not count toward this slot's "exactly one available".
+        Pre-fix the check counted AVAILABLE across the whole pool, so slot 2's
+        three candidates made it != 1 and this raised 400."""
         pool = [
             make_pool_entry(1, slot=1, status=MapPoolEntryStatus.BANNED),
             make_pool_entry(2, slot=1, status=MapPoolEntryStatus.BANNED),
