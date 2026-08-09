@@ -168,6 +168,13 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
       .filter((map): map is MapRead => map != null);
   }, [resolved, mapsById]);
 
+  // Read off `mode`, never off an empty `map_ids`. A slot config always carries
+  // an empty flat pool — the serializer sends both shapes and fills one — but so
+  // does a flat config the organizer left empty, and that one is a genuine
+  // misconfiguration this page must keep reporting as empty. Conflating them
+  // would replace a true error message with a false reassurance.
+  const isSlotMode = resolved?.config.mode === "slots";
+
   const poolGroups = useMemo<PoolGroup[]>(() => {
     const byKey = new Map<string, PoolGroup>();
     for (const map of pool) {
@@ -392,10 +399,15 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
                   {t("mapVeto.mapsPlayed", { count: playedMaps })}
                 </Badge>
               ) : null}
-              <Badge variant="outline" className="gap-1.5">
-                <MapPin className="h-3.5 w-3.5" aria-hidden />
-                {t("mapVeto.mapsInPool", { count: pool.length })}
-              </Badge>
+              {/* A slot config's flat pool is empty by construction, so this
+                  would read "0 maps in the pool" for a round that is fully
+                  configured. The card below states what is true instead. */}
+              {isSlotMode ? null : (
+                <Badge variant="outline" className="gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" aria-hidden />
+                  {t("mapVeto.mapsInPool", { count: pool.length })}
+                </Badge>
+              )}
             </div>
           ) : null}
         </div>
@@ -521,6 +533,23 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
             </CardTitle>
             <CardDescription className="max-w-xl">
               {t("mapVeto.notConfiguredDescription")}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : isSlotMode ? (
+        // This page cannot render per-slot pools yet, so it states that rather
+        // than showing the slot config's empty flat pool as the round's pool.
+        // Solid border, unlike the not-configured card above: the round IS
+        // configured, and dashes read as "nothing here". The branch also drops
+        // the sequence card, which slot mode carries no `sequence` for.
+        <Card>
+          <CardHeader className="items-center gap-2 text-center">
+            <Info className="h-6 w-6 text-muted-foreground" aria-hidden />
+            <CardTitle asChild>
+              <h2 className="text-base font-semibold">{t("mapVeto.slotPoolNotShownTitle")}</h2>
+            </CardTitle>
+            <CardDescription className="max-w-xl">
+              {t("mapVeto.slotPoolNotShownDescription")}
             </CardDescription>
           </CardHeader>
         </Card>

@@ -51,6 +51,9 @@ export default defineConfig({
       "src/app/balancer/redirect-map.test.ts",
       "src/app/**/users/compare/**/*.test.ts",
       "src/app/(site)/tournaments/[id]/_views/_components/participantsColumns.test.tsx",
+      // Same allow-list trap: this folder also holds `bun:test` files, so the
+      // entry is file-level rather than a directory glob.
+      "src/app/(site)/tournaments/[id]/_views/TournamentMapsPage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
       // files, which fail on the import when vitest picks them up.
