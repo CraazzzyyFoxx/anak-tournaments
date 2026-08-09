@@ -613,6 +613,23 @@ class CrossModeClearing(_UpsertCase):
 
         self.assertEqual([], [obj for obj in session.added if isinstance(obj, models.MapVetoConfig)])
 
+    async def test_converting_out_and_back_leaves_neither_shape_behind(self) -> None:
+        # Each direction is pinned above; what this adds is the same row having
+        # carried both shapes, which is when a clear that ran only on the way
+        # out would show up as a config holding a stale pool AND live slots.
+        existing = _config(SLOTS, slots=[[1, 2], [3, 4], [5, 6], [7, 8]])
+
+        await self.invoke(flat_body(), existing=existing)
+        self.assertEqual(([], FLAT_MAP_IDS), (list(existing.slots), [e.map_id for e in existing.map_pool]))
+
+        envelope, _ = await self.invoke(slot_body(), existing=existing)
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual([], list(existing.map_pool))
+        self.assertEqual(SLOTS, existing.mode)
+        self.assertEqual(CANDIDATES, veto_session_service.slot_candidates(existing.slots))
+        self.assertEqual([1, 2, 3], [slot.position for slot in existing.slots])
+
 
 # ── a running session is nobody's business here ──────────────────────────────
 
