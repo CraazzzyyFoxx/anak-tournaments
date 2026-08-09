@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import TestCase
+from typing import Any
+from unittest import IsolatedAsyncioTestCase, TestCase
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -20,16 +22,33 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
-from shared.core.enums import MapPickSide, MapVetoMode, VetoSeedSource  # noqa: E402
+from shared.core.enums import (  # noqa: E402
+    FirstBanRotation,
+    MapPickSide,
+    MapPoolEntryStatus,
+    MapVetoMode,
+    VetoSeedSource,
+)
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
+from src import models  # noqa: E402
 from src.services.encounter.veto_session import (  # noqa: E402
+    REASON_NOT_CONFIGURED,
+    REASON_SLOT_COUNT_MISMATCH,
+    REASON_SLOT_UNDERFILLED,
+    REASON_TEAMS_UNKNOWN,
     build_sequence_for_best_of,
     build_slot_sequence,
     decide_seeds,
     effective_sequence,
+    ensure_veto_session,
+    ordered_slots,
     resolve_sequence_tokens,
     select_config,
     slot_candidates,
+    slot_refusal,
+    slot_reserves,
+    slots_in_play,
+    unavailable_reason,
     validate_slot_config,
     validate_veto_config,
 )
@@ -575,3 +594,431 @@ class ValidateSlotConfigTests(TestCase):
         # slot 1's reserve and slot 2's candidate, which Decision 7 allows
         # because a reserve is never a pool entry and never activates.
         validate_slot_config([[1, 2], [3, 4]], reserves=[3, None])
+
+
+# ── session creation: slots, reserves, reconciliation ────────────────────────
+
+
+def _slot(position: int, map_ids: list[int], *, reserve: int | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        position=position,
+        reserve_map_id=reserve,
+        maps=[SimpleNamespace(map_id=map_id) for map_id in map_ids],
+    )
+
+
+class _Result:
+    def __init__(self, rows: list[Any]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> _Result:
+        return self
+
+    def all(self) -> list[Any]:
+        return list(self._rows)
+
+    def scalar_one_or_none(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+
+class _FakeSession:
+    """Just enough ``AsyncSession`` for ``ensure_veto_session``.
+
+    Dispatches on the statement's primary mapped entity rather than on call
+    order, so adding or reordering a query in the service cannot silently make a
+    test assert against the wrong result set -- it raises instead.
+
+    ``scalar`` sees two shapes: the pool-size ``count()`` probe (no entity) and
+    ``resolve_seeds``' previous-stage lookup (``Stage``). Answering the latter
+    with ``None`` short-circuits the standings branch, so every session here
+    lands on ``fallback_home`` and the resolved sequence is readable.
+    """
+
+    def __init__(
+        self,
+        *,
+        config: Any = None,
+        slot_rows: list[Any] | None = None,
+        existing: Any = None,
+        pool_count: int = 0,
+    ) -> None:
+        self.config = config
+        self.slot_rows = list(slot_rows or [])
+        self.existing = existing
+        self.pool_count = pool_count
+        self.added: list[Any] = []
+        self.slot_queries = 0
+        self.commits = 0
+
+    async def execute(self, statement: Any) -> _Result:
+        entity = statement.column_descriptions[0]["entity"]
+        if entity is models.EncounterVetoSession:
+            return _Result([] if self.existing is None else [self.existing])
+        if entity is models.MapVetoConfig:
+            return _Result([] if self.config is None else [self.config])
+        if entity is models.MapVetoConfigSlot:
+            self.slot_queries += 1
+            return _Result(self.slot_rows)
+        raise AssertionError(f"unexpected execute() entity: {entity}")
+
+    async def scalar(self, statement: Any) -> Any:
+        entity = statement.column_descriptions[0]["entity"]
+        if entity is None:
+            return self.pool_count
+        if entity is models.Stage:
+            return None
+        raise AssertionError(f"unexpected scalar() entity: {entity}")
+
+    def add(self, instance: Any) -> None:
+        self.added.append(instance)
+
+    async def flush(self) -> None:
+        return None
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def rollback(self) -> None:  # pragma: no cover - no IntegrityError here
+        return None
+
+    @property
+    def pool_rows(self) -> list[models.EncounterMapPool]:
+        return [row for row in self.added if isinstance(row, models.EncounterMapPool)]
+
+
+def _encounter(*, best_of: int, home: int | None = 10, away: int | None = 20) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=500,
+        tournament_id=7,
+        stage_id=3,
+        stage_item_id=None,
+        round=2,
+        best_of=best_of,
+        home_team_id=home,
+        away_team_id=away,
+    )
+
+
+def _config(
+    *,
+    mode: MapVetoMode = MapVetoMode.SLOTS,
+    rotation: str = FirstBanRotation.FIXED,
+    map_pool: list[int] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=42,
+        stage_id=None,
+        round=None,
+        mode=mode,
+        preset="bracket",
+        first_ban_rotation=rotation,
+        veto_sequence_json=["pick_first", "pick_second"],
+        turn_timer_seconds=45,
+        map_pool=[SimpleNamespace(map_id=map_id) for map_id in (map_pool or [])],
+    )
+
+
+class SlotReconciliationTests(TestCase):
+    """``best_of`` vs slot count, and the candidate floor, as pure decisions.
+
+    Kept separate from the session tests so the ORDER of the two checks is
+    pinned where it is decided (design Decision 14/21).
+    """
+
+    #: Four slots. Positions are non-contiguous and candidate counts are
+    #: unequal, so ``position``, list index and candidate count are three
+    #: different numbers for every slot but the first.
+    SHAPE = [2, 4, 3, 5]
+
+    def test_best_of_equal_to_the_slot_count_is_playable(self) -> None:
+        self.assertIsNone(slot_refusal(self.SHAPE, 4))
+
+    def test_fewer_maps_than_slots_truncates_rather_than_refusing(self) -> None:
+        self.assertIsNone(slot_refusal(self.SHAPE, 3))
+
+    def test_more_maps_than_slots_refuses(self) -> None:
+        # The bracket wants five maps from four slots; there is nothing to play
+        # as the fifth, and inventing one would hand the match a short series
+        # nobody chose.
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal(self.SHAPE, 5))
+
+    def test_an_underfilled_slot_in_play_refuses(self) -> None:
+        # One candidate, not zero: the boundary a ``< 1`` floor would wave
+        # through, and the shape a catalogue delete actually leaves behind.
+        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 1, 3, 5], 3))
+
+    def test_an_empty_slot_in_play_refuses(self) -> None:
+        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 0, 3, 5], 3))
+
+    def test_the_floor_is_checked_after_truncation_not_before(self) -> None:
+        # Slot 4 is out of play at ``best_of=3``, so its single candidate cannot
+        # stall a veto that never reaches it. Checking the floor over all four
+        # slots first would refuse a session that is perfectly playable.
+        self.assertIsNone(slot_refusal([2, 4, 3, 1], 3))
+
+    def test_truncation_keeps_the_first_slots_not_the_last(self) -> None:
+        # Only the LAST slot is underfilled. Truncating from the wrong end keeps
+        # it in play and refuses.
+        self.assertIsNone(slot_refusal([2, 4, 1], 2))
+        # ... and the mirror: only the FIRST slot is underfilled, so keeping the
+        # first two must refuse. A "last two" truncation would pass.
+        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([1, 4, 3], 2))
+
+    def test_the_bracket_disagreement_outranks_the_floor(self) -> None:
+        # Both wrong at once. "Your config has too few slots" is actionable;
+        # "slot 2 is underfilled" sends the organizer to the wrong control, and
+        # with no truncation to define it there is no in-play set to report on.
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal([2, 1], 4))
+
+    def test_a_degenerate_best_of_plays_every_slot(self) -> None:
+        # Legacy rows carry ``best_of=0``, which says nothing about a config
+        # whose slots describe their own length (matching ``effective_sequence``).
+        # Truncating to zero would create a session with no steps and no pool --
+        # a dead room rather than a refusal.
+        self.assertIsNone(slot_refusal(self.SHAPE, 0))
+        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 4, 3, 1], 0))
+
+
+class SlotsInPlayTests(TestCase):
+    """Position order first, then the ``best_of`` prefix."""
+
+    def rows(self) -> list[SimpleNamespace]:
+        return [_slot(5, [31, 32, 33]), _slot(1, [11, 12]), _slot(8, [41, 42]), _slot(3, [21, 22, 23, 24])]
+
+    def test_orders_by_position_regardless_of_row_order(self) -> None:
+        self.assertEqual([1, 3, 5, 8], [row.position for row in ordered_slots(self.rows())])
+
+    def test_takes_the_first_best_of_slots_in_position_order(self) -> None:
+        # Row order alone would give 5/1/8; list-index truncation of the raw
+        # rows would give 5/1/8 too. Only sort-then-slice gives 1/3/5.
+        self.assertEqual([1, 3, 5], [row.position for row in slots_in_play(self.rows(), 3)])
+
+    def test_best_of_equal_to_the_slot_count_plays_all(self) -> None:
+        self.assertEqual([1, 3, 5, 8], [row.position for row in slots_in_play(self.rows(), 4)])
+
+    def test_a_degenerate_best_of_plays_all(self) -> None:
+        self.assertEqual([1, 3, 5, 8], [row.position for row in slots_in_play(self.rows(), 0)])
+
+
+class SlotReservesSnapshotTests(TestCase):
+    """``{position: reserve_map_id}``, string-keyed, only for slots that have one."""
+
+    def test_only_slots_with_a_reserve_appear(self) -> None:
+        rows = [_slot(1, [11, 12]), _slot(3, [21, 22], reserve=99), _slot(5, [31, 32])]
+
+        self.assertEqual({"3": 99}, slot_reserves(rows))
+
+    def test_keys_are_strings_so_the_value_survives_a_json_round_trip(self) -> None:
+        # The column is JSON: an int-keyed dict is written as ``{"3": 99}`` and
+        # read back string-keyed, so the in-memory session would disagree with
+        # the persisted one and a frontend indexing by slot number would find
+        # nothing on one side of the round trip.
+        snapshot = slot_reserves([_slot(3, [21, 22], reserve=99)])
+
+        self.assertEqual(["3"], list(snapshot))
+        self.assertNotIn(3, snapshot)
+        self.assertEqual(snapshot, json.loads(json.dumps(snapshot)))
+
+    def test_no_reserves_is_an_empty_snapshot_not_a_missing_one(self) -> None:
+        # Distinguishable from flat mode's NULL: a snapshot was taken and the
+        # config had nothing to label.
+        self.assertEqual({}, slot_reserves([_slot(1, [11, 12])]))
+
+
+class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
+    """Session creation in slot mode: pool rows, reserve snapshot, refusals.
+
+    The fixture is deliberately awkward: four slots at positions 1/3/5/8 with
+    candidate counts 2/4/3/5, played at ``best_of=3``. Position, list index,
+    candidate count and ``best_of`` are four different numbers, and the only
+    reserved slots are one in play (position 3) and one out of play (position 8).
+    """
+
+    RESERVE_IN_PLAY = 99
+    RESERVE_OUT_OF_PLAY = 98
+
+    def slot_rows(self) -> list[SimpleNamespace]:
+        # Scrambled on purpose: a query without ORDER BY returns rows in no
+        # guaranteed order.
+        return [
+            _slot(5, [31, 32, 33]),
+            _slot(1, [11, 12]),
+            _slot(8, [41, 42, 43, 44, 45], reserve=self.RESERVE_OUT_OF_PLAY),
+            _slot(3, [21, 22, 23, 24], reserve=self.RESERVE_IN_PLAY),
+        ]
+
+    async def _create(self, *, best_of: int = 3, slot_rows: list[Any] | None = None, **kwargs: Any):
+        session = _FakeSession(
+            config=_config(),
+            slot_rows=self.slot_rows() if slot_rows is None else slot_rows,
+            **kwargs,
+        )
+        veto = await ensure_veto_session(session, _encounter(best_of=best_of))
+        return session, veto
+
+    async def test_pool_rows_carry_the_slot_position_not_its_index(self) -> None:
+        session, veto = await self._create()
+
+        self.assertIsNotNone(veto)
+        # Positions 1/3/5 repeated by candidate count -- never 0/1/2 (list
+        # index) and never 1/2/3 (index + 1).
+        self.assertEqual([1, 1, 3, 3, 3, 3, 5, 5, 5], [row.slot for row in session.pool_rows])
+        self.assertEqual([11, 12, 21, 22, 23, 24, 31, 32, 33], [row.map_id for row in session.pool_rows])
+        # ``order`` runs across the whole pool, as flat mode's does.
+        self.assertEqual(list(range(9)), [row.order for row in session.pool_rows])
+        self.assertEqual({MapPoolEntryStatus.AVAILABLE}, {row.status for row in session.pool_rows})
+        self.assertEqual({500}, {row.encounter_id for row in session.pool_rows})
+
+    async def test_the_sequence_has_one_step_per_pool_row(self) -> None:
+        session, veto = await self._create()
+
+        # ``get_current_step`` indexes the token list by resolved pool entries.
+        self.assertEqual(len(session.pool_rows), len(veto.resolved_sequence_json))
+        self.assertEqual(3, veto.resolved_sequence_json.count("decider"))
+        self.assertEqual(
+            [
+                "ban_home",
+                "decider",
+                "ban_home",
+                "ban_away",
+                "ban_home",
+                "decider",
+                "ban_home",
+                "ban_away",
+                "decider",
+            ],
+            veto.resolved_sequence_json,
+        )
+
+    async def test_the_reserve_snapshot_covers_only_reserved_slots_in_play(self) -> None:
+        _, veto = await self._create()
+
+        # Position 8 has a reserve but is out of play at ``best_of=3``; labelling
+        # it would advertise a fallback for a map the match never plays.
+        self.assertEqual({"3": self.RESERVE_IN_PLAY}, veto.slot_reserves_json)
+
+    async def test_the_reserve_snapshot_does_not_follow_a_later_config_edit(self) -> None:
+        rows = self.slot_rows()
+        session = _FakeSession(config=_config(), slot_rows=rows)
+        encounter = _encounter(best_of=3)
+        veto = await ensure_veto_session(session, encounter)
+        snapshot = veto.slot_reserves_json
+
+        # The admin edits the config's reserves afterwards. The session already
+        # exists, so re-ensuring returns it untouched (Decision 18) -- the room
+        # must keep labelling what it started with.
+        for row in rows:
+            row.reserve_map_id = 777
+        session.existing = veto
+        again = await ensure_veto_session(session, encounter)
+
+        self.assertIs(veto, again)
+        self.assertEqual({"3": self.RESERVE_IN_PLAY}, snapshot)
+        self.assertEqual({"3": self.RESERVE_IN_PLAY}, veto.slot_reserves_json)
+
+    async def test_the_slots_are_loaded_once(self) -> None:
+        # Positions, candidates and reserves all come off the same load: a
+        # second query is a second source of truth that a concurrent config
+        # edit can make disagree with the first.
+        session, _ = await self._create()
+
+        self.assertEqual(1, session.slot_queries)
+
+    async def test_more_maps_than_slots_creates_nothing(self) -> None:
+        session, veto = await self._create(best_of=5)
+
+        self.assertIsNone(veto)
+        self.assertEqual([], session.added)
+        self.assertEqual(0, session.commits)
+
+    async def test_an_underfilled_slot_in_play_creates_nothing(self) -> None:
+        rows = [_slot(1, [11, 12]), _slot(3, [21]), _slot(5, [31, 32, 33]), _slot(8, [41, 42])]
+
+        session, veto = await self._create(slot_rows=rows)
+
+        self.assertIsNone(veto)
+        self.assertEqual([], session.added)
+
+    async def test_an_underfilled_slot_out_of_play_still_creates_the_session(self) -> None:
+        # A catalogue delete emptied slot 8, which ``best_of=3`` never reaches.
+        rows = [_slot(1, [11, 12]), _slot(3, [21, 22, 23, 24]), _slot(5, [31, 32, 33]), _slot(8, [41])]
+
+        session, veto = await self._create(slot_rows=rows)
+
+        self.assertIsNotNone(veto)
+        self.assertEqual([1, 1, 3, 3, 3, 3, 5, 5, 5], [row.slot for row in session.pool_rows])
+
+    async def test_a_pre_existing_pool_is_left_alone(self) -> None:
+        # Mirrors flat mode: the admin-assigned pool wins. The session is still
+        # created, so the sequence still comes from the slots.
+        session, veto = await self._create(pool_count=4)
+
+        self.assertEqual([], session.pool_rows)
+        self.assertEqual(9, len(veto.resolved_sequence_json))
+
+
+class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
+    """Flat mode must be untouched by slot mode's arrival."""
+
+    async def test_flat_pool_rows_have_no_slot_and_no_reserve_snapshot(self) -> None:
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13, 14, 15]))
+
+        veto = await ensure_veto_session(session, _encounter(best_of=3))
+
+        self.assertEqual([None] * 5, [row.slot for row in session.pool_rows])
+        self.assertEqual([11, 12, 13, 14, 15], [row.map_id for row in session.pool_rows])
+        self.assertEqual(list(range(5)), [row.order for row in session.pool_rows])
+        self.assertIsNone(veto.slot_reserves_json)
+        self.assertEqual(["ban_home", "ban_away", "pick_home", "pick_away", "decider"], veto.resolved_sequence_json)
+
+    async def test_flat_mode_never_queries_the_slot_tables(self) -> None:
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13, 14, 15]))
+
+        await ensure_veto_session(session, _encounter(best_of=3))
+
+        self.assertEqual(0, session.slot_queries)
+
+    async def test_a_flat_config_is_never_refused_for_a_slot_reason(self) -> None:
+        # ``best_of`` far above any slot count: the reconciliation must not
+        # reach a config that has no slots to reconcile.
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]))
+
+        veto = await ensure_veto_session(session, _encounter(best_of=9))
+
+        self.assertIsNotNone(veto)
+
+
+class UnavailableReasonTests(IsolatedAsyncioTestCase):
+    """One distinct reason per cause -- a later task needs distinct copy."""
+
+    async def test_unknown_teams_short_circuit_before_any_query(self) -> None:
+        session = _FakeSession()
+
+        self.assertEqual(REASON_TEAMS_UNKNOWN, await unavailable_reason(session, _encounter(best_of=3, away=None)))
+
+    async def test_no_config_is_not_configured(self) -> None:
+        session = _FakeSession(config=None)
+
+        self.assertEqual(REASON_NOT_CONFIGURED, await unavailable_reason(session, _encounter(best_of=3)))
+
+    async def test_a_playable_flat_config_reports_not_configured(self) -> None:
+        # Unreachable in practice (a session would exist); pinned so a slot
+        # reason can never leak onto a flat config.
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]))
+
+        self.assertEqual(REASON_NOT_CONFIGURED, await unavailable_reason(session, _encounter(best_of=9)))
+
+    async def test_more_maps_than_slots_is_slot_count_mismatch(self) -> None:
+        session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12]), _slot(3, [21, 22, 23])])
+
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, await unavailable_reason(session, _encounter(best_of=3)))
+
+    async def test_an_underfilled_slot_in_play_is_slot_underfilled(self) -> None:
+        session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12]), _slot(3, [21])])
+
+        self.assertEqual(REASON_SLOT_UNDERFILLED, await unavailable_reason(session, _encounter(best_of=2)))
+
+    async def test_the_two_slot_reasons_are_distinct_strings(self) -> None:
+        self.assertNotEqual(REASON_SLOT_COUNT_MISMATCH, REASON_SLOT_UNDERFILLED)
+        self.assertNotIn(REASON_SLOT_COUNT_MISMATCH, {REASON_NOT_CONFIGURED, REASON_TEAMS_UNKNOWN})
+        self.assertNotIn(REASON_SLOT_UNDERFILLED, {REASON_NOT_CONFIGURED, REASON_TEAMS_UNKNOWN})

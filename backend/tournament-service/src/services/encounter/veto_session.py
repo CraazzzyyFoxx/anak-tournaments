@@ -2,8 +2,9 @@
 
 An :class:`~shared.models.tournament.encounter_map.EncounterVetoSession` is the
 1:1 snapshot of one encounter's veto room. It is created idempotently
-(``ensure_veto_session``) once both teams are known and a config resolves via
-the ``(stage, round) -> (stage, NULL) -> (NULL, NULL)`` cascade, freezing the
+(``ensure_veto_session``) once both teams are known, a config resolves via the
+``(stage, round) -> (stage, NULL) -> (NULL, NULL)`` cascade and — in slot mode —
+that config's slots reconcile with the bracket's ``best_of``, freezing the
 seed resolution and the side-resolved step sequence so later config edits or
 standings recalculations never change a running veto. Resetting = delete the
 session + pool rows and re-create.
@@ -48,6 +49,8 @@ VETO_SEQUENCE_TOKENS = frozenset({"ban_first", "ban_second", "pick_first", "pick
 # VetoUnavailableReason union).
 REASON_TEAMS_UNKNOWN = "teams_unknown"
 REASON_NOT_CONFIGURED = "not_configured"
+REASON_SLOT_COUNT_MISMATCH = "slot_count_mismatch"
+REASON_SLOT_UNDERFILLED = "slot_underfilled"
 
 
 # ── config validation & cascade ─────────────────────────────────────────────
@@ -150,7 +153,7 @@ def effective_sequence(
     Slot mode ignores all three of ``best_of``, ``pool_size`` and the stored
     sequence: the slots ARE the series (one played map each) and they carry
     their own candidate counts, so ``slots`` — candidate map ids per slot in
-    position order, from ``load_slot_candidates`` — is the only input. It is
+    position order, from ``slot_candidates`` — is the only input. It is
     checked before the flat guards on purpose: ``preset == 'custom'`` is
     unstorable alongside ``mode = 'slots'``
     (``ck_map_veto_config_slots_not_custom``) and a slot config has no
@@ -209,8 +212,18 @@ def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[s
     return tokens
 
 
-def slot_candidates(rows: Sequence[models.MapVetoConfigSlot]) -> list[list[int]]:
-    """Candidate map ids per slot as plain data, in ``position`` order.
+#: Minimum candidates a slot in play must have. ``build_slot_sequence`` spends
+#: ``c_i - 1`` bans on a slot, so a single-candidate one contributes a bare
+#: ``decider`` that lands back-to-back with the previous slot's and stalls the
+#: engine (design Decision 15). Enforced at upsert by ``validate_slot_config``
+#: and re-checked at session creation, because ``map_id`` FKs cascade from
+#: ``overwatch.map``: deleting a map can drop a slot below the floor with no
+#: upsert running (Decision 21).
+SLOT_CANDIDATE_FLOOR = 2
+
+
+def ordered_slots(rows: Sequence[models.MapVetoConfigSlot]) -> list[models.MapVetoConfigSlot]:
+    """``rows`` in play order (``position`` ascending).
 
     The sort is load-bearing, not tidiness: a mis-ordered slot list still spends
     the right *number* of steps, so the pool-size invariant ``get_current_step``
@@ -218,40 +231,131 @@ def slot_candidates(rows: Sequence[models.MapVetoConfigSlot]) -> list[list[int]]
     Nothing downstream could detect it, so the order is established here rather
     than left to a query's row order or to a relationship's ``order_by``.
 
-    Requires each row's ``maps`` to be loaded; ``load_slot_candidates`` is the
+    ``position`` is unique per config and >= 1 but NOT contiguous (a deleted
+    middle slot leaves a gap), so a slot's position is not its index in this
+    list and must never be used as one.
+    """
+    return sorted(rows, key=lambda row: row.position)
+
+
+def slots_in_play(rows: Sequence[models.MapVetoConfigSlot], best_of: int) -> list[models.MapVetoConfigSlot]:
+    """The slots this encounter actually plays: the first ``best_of``, in order.
+
+    The bracket owns series length, so a config with more slots than the round
+    plays gives up its tail — deterministically the tail, because "the first
+    ``best_of``" is the only choice an organizer can predict from the editor
+    (design Decision 14 / §4.7). Refusing instead would break the common case of
+    a bracket shrinking a round after its config was authored.
+
+    ``best_of < 1`` plays everything. Legacy rows carry ``best_of = 0``, which
+    says nothing about a config whose slots describe their own length —
+    ``effective_sequence`` already reads it that way — and truncating to zero
+    would build a session with no steps and no pool: a dead room rather than an
+    honest refusal.
+    """
+    ordered = ordered_slots(rows)
+    if best_of < 1:
+        return ordered
+    return ordered[:best_of]
+
+
+def slot_refusal(candidate_counts: Sequence[int], best_of: int) -> str | None:
+    """Why this slot config cannot run for ``best_of``, or None if it can.
+
+    ``candidate_counts`` is one count per slot **in play order** (i.e. derived
+    from ``ordered_slots``), because the floor is checked over the slots that
+    survive truncation.
+
+    Two causes, deliberately two reasons: the room needs distinct copy, and "your
+    config has too few slots" sends the organizer to a different control than
+    "slot 2 has nothing left to ban".
+
+    The bracket disagreement is reported first. It is the more fundamental fact,
+    and with ``best_of`` above the slot count there is no in-play set for a floor
+    report to be about.
+
+    Order matters within the floor check too: it runs over the slots in play,
+    AFTER truncation. A slot beyond the series is never reached, so a catalogue
+    delete that emptied one must not refuse a session that is perfectly playable.
+    """
+    if best_of > len(candidate_counts):
+        return REASON_SLOT_COUNT_MISMATCH
+    in_play = candidate_counts if best_of < 1 else candidate_counts[:best_of]
+    if any(count < SLOT_CANDIDATE_FLOOR for count in in_play):
+        return REASON_SLOT_UNDERFILLED
+    return None
+
+
+def slot_reserves(rows: Sequence[models.MapVetoConfigSlot]) -> dict[str, int]:
+    """Snapshot ``rows``' reserves as ``{position: reserve_map_id}``.
+
+    Pass only the slots in play: labelling a reserve for a slot the series never
+    reaches advertises a fallback that cannot happen.
+
+    Keys are the ``position`` values **as strings**. The column is JSON, so an
+    int-keyed dict would be written as ``{"3": 99}`` and read back string-keyed:
+    the in-memory session would disagree with every later read of the same row,
+    and a consumer indexing by slot number would find the label on one side of
+    the round trip only. Stringifying here makes the two identical.
+
+    Slots without a reserve are omitted rather than mapped to null, so the dict
+    reads directly as "which slots have a label".
+    """
+    return {str(row.position): row.reserve_map_id for row in rows if row.reserve_map_id is not None}
+
+
+def slot_candidates(rows: Sequence[models.MapVetoConfigSlot]) -> list[list[int]]:
+    """Candidate map ids per slot as plain data, in ``position`` order.
+
+    Requires each row's ``maps`` to be loaded; ``load_slot_rows`` is the
     await-safe way to get that.
     """
-    return [[entry.map_id for entry in row.maps] for row in sorted(rows, key=lambda row: row.position)]
+    return [[entry.map_id for entry in row.maps] for row in ordered_slots(rows)]
 
 
-async def load_slot_candidates(session: AsyncSession, config: models.MapVetoConfig) -> list[list[int]]:
-    """Fetch ``config``'s slot candidates for ``effective_sequence``.
+async def load_slot_rows(session: AsyncSession, config: models.MapVetoConfig) -> list[models.MapVetoConfigSlot]:
+    """Fetch ``config``'s slot rows with their candidate maps loaded.
 
-    ``MapVetoConfig.slots`` is deliberately lazy and ``effective_sequence`` is
+    ``MapVetoConfig.slots`` is deliberately lazy and the pure slot helpers are
     synchronous, so the async session-creation path cannot reach the slot chain
     through the relationship without risking ``MissingGreenlet``. Querying the
-    slots directly keeps the eager-load visible at the call site — the
-    convention the model documents — and does not depend on whoever loaded
-    ``config`` having asked for the two-level chain.
+    slots directly keeps the eager-load visible at the call site — the convention
+    the model documents — and does not depend on whoever loaded ``config`` having
+    asked for the two-level chain.
 
-    A slot with no candidate maps comes back as an empty list rather than
+    Returns the ROWS, not just their candidate ids: session creation needs each
+    slot's ``position`` (stamped onto its pool entries) and ``reserve_map_id``
+    (snapshotted onto the session) off the same load. A second query for those
+    would be a second source of truth that a concurrent config edit can make
+    disagree with the first. Row order is not meaningful — every consumer goes
+    through ``ordered_slots``, directly or via ``slot_candidates`` /
+    ``slots_in_play``.
+
+    A slot with no candidate maps comes back with an empty ``maps`` rather than
     disappearing: dropping it would silently shorten the sequence, whereas an
-    empty entry keeps one entry per slot for whoever checks the floor.
-
-    OUTSTANDING: nothing checks that floor yet. ``ensure_veto_session`` passes
-    these counts straight to ``effective_sequence``, so a slot left with fewer
-    than two candidates by a catalogue delete still yields its ``decider`` and
-    the sequence runs past the end of the pool ``get_current_step`` indexes.
-    Decision 21 assigns that re-check to session creation, which is a later
-    task; delete this note when it lands. Unreachable until then only because
-    no code path creates a slot-mode config.
+    empty entry keeps one entry per slot for ``slot_refusal``'s floor check.
     """
     result = await session.execute(
         select(models.MapVetoConfigSlot)
         .where(models.MapVetoConfigSlot.map_veto_config_id == config.id)
         .options(selectinload(models.MapVetoConfigSlot.maps))
     )
-    return slot_candidates(list(result.scalars().all()))
+    return list(result.scalars().all())
+
+
+async def _slot_plan(
+    session: AsyncSession,
+    config: models.MapVetoConfig,
+    best_of: int,
+) -> tuple[list[models.MapVetoConfigSlot], str | None]:
+    """One load, one decision: ordered slot rows plus the reason to refuse them.
+
+    Shared by ``ensure_veto_session`` (which refuses) and ``unavailable_reason``
+    (which names the refusal) so the two can never disagree about whether a
+    config is playable.
+    """
+    rows = ordered_slots(await load_slot_rows(session, config))
+    return rows, slot_refusal([len(row.maps) for row in rows], best_of)
 
 
 def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
@@ -280,7 +384,7 @@ def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) 
     if len(reserves) != len(slots):
         raise HTTPException(status_code=422, detail="reserves must have one entry per slot")
     for index, (candidates, reserve) in enumerate(zip(slots, reserves, strict=True), start=1):
-        if len(candidates) < 2:
+        if len(candidates) < SLOT_CANDIDATE_FLOOR:
             raise HTTPException(status_code=422, detail=f"slot {index} must have at least two candidate maps")
         if len(set(candidates)) != len(candidates):
             repeated = ", ".join(str(m) for m in sorted({m for m in candidates if candidates.count(m) > 1}))
@@ -468,10 +572,30 @@ async def get_veto_session(
     return result.scalar_one_or_none()
 
 
-def unavailable_reason(encounter: models.Encounter) -> str:
-    """Why ``ensure_veto_session`` returned None for this encounter."""
+async def unavailable_reason(session: AsyncSession, encounter: models.Encounter) -> str:
+    """Why ``ensure_veto_session`` returned None for this encounter.
+
+    Re-derives the decision rather than having ``ensure_veto_session`` hand it
+    over: the alternatives are a wider return type on a function with several
+    callers, or stashing the cause on the encounter instance, which degrades to
+    ``not_configured`` — a lie that tells the captain to wait for something that
+    will not happen — for any caller that skips the ensure. Both refusal reasons
+    come from the same ``_slot_plan`` as the refusal itself, so the two cannot
+    diverge.
+
+    The extra queries land only on the branch that has no session to serve;
+    ``ensure_veto_session`` returns before ``resolve_config`` once one exists, so
+    the steady-state room is unaffected.
+    """
     if encounter.home_team_id is None or encounter.away_team_id is None:
         return REASON_TEAMS_UNKNOWN
+    config = await resolve_config(session, encounter)
+    if config is None:
+        return REASON_NOT_CONFIGURED
+    if config.mode == MapVetoMode.SLOTS:
+        _, refusal = await _slot_plan(session, config, encounter.best_of)
+        if refusal is not None:
+            return refusal
     return REASON_NOT_CONFIGURED
 
 
@@ -484,14 +608,20 @@ async def ensure_veto_session(
     """Idempotently create the encounter's veto session (and pool) if possible.
 
     Returns the existing session untouched when one exists. No-ops (returns
-    None) when either team is unknown or no config cascades onto the
-    encounter — ``unavailable_reason`` names which. The config pool is copied
-    to ``encounter_map_pool`` ONLY when the encounter has no pool rows yet, so
-    a pre-existing admin-assigned pool is respected.
+    None) when either team is unknown, no config cascades onto the encounter, or
+    a slot-mode config cannot be reconciled with the bracket's ``best_of`` —
+    ``unavailable_reason`` names which. The config pool is copied to
+    ``encounter_map_pool`` ONLY when the encounter has no pool rows yet, so a
+    pre-existing admin-assigned pool is respected.
 
     The step sequence comes from ``effective_sequence``: the bracket's
     ``best_of`` drives it unless the config is explicitly ``custom``, and a
-    slot-mode config derives it from its slots instead.
+    slot-mode config derives it from the slots it actually plays instead.
+
+    Slot mode additionally stamps each pool row with its slot's ``position`` and
+    snapshots the played slots' reserves onto ``slot_reserves_json``, because
+    ``build_map_pool_state`` never sees a config and must not be able to observe
+    a later config edit (design Decision 18).
     """
     existing = await get_veto_session(session, encounter.id)
     if existing is not None:
@@ -511,10 +641,20 @@ async def ensure_veto_session(
         .where(models.EncounterMapPool.encounter_id == encounter.id)
     )
     pool_size = pool_count or len(config.map_pool)
-    # Slot mode only, and awaited here because ``effective_sequence`` is sync:
-    # the slot chain is lazy, so it must be fetched before the pure function
-    # needs it.
-    slots = await load_slot_candidates(session, config) if config.mode == MapVetoMode.SLOTS else None
+    # Slot mode only, and awaited here because the slot chain is lazy while
+    # ``effective_sequence`` and the reconciliation are sync. One load feeds all
+    # three of the sequence, the pool rows' ``slot`` and the reserve snapshot.
+    slot_rows: list[models.MapVetoConfigSlot] | None = None
+    slots: list[list[int]] | None = None
+    if config.mode == MapVetoMode.SLOTS:
+        rows, refusal = await _slot_plan(session, config, encounter.best_of)
+        if refusal is not None:
+            # The bracket and the config disagree, or a slot in play has nothing
+            # left to ban. Either way a session built here would stall with no
+            # recovery but a reset; the room reports the reason instead.
+            return None
+        slot_rows = slots_in_play(rows, encounter.best_of)
+        slots = slot_candidates(slot_rows)
 
     seeds = await resolve_seeds(session, encounter)
     now = datetime.now(UTC)
@@ -529,6 +669,7 @@ async def ensure_veto_session(
             effective_sequence(config, encounter.best_of, pool_size, slots=slots), seeds.first_side
         ),
         turn_timer_seconds=config.turn_timer_seconds,
+        slot_reserves_json=None if slot_rows is None else slot_reserves(slot_rows),
         status=MapVetoSessionStatus.ACTIVE,
         started_at=now,
         current_step_started_at=now,
@@ -536,15 +677,34 @@ async def ensure_veto_session(
     session.add(veto)
 
     if not pool_count:
-        for idx, config_map in enumerate(config.map_pool):
-            session.add(
-                models.EncounterMapPool(
-                    encounter_id=encounter.id,
-                    map_id=config_map.map_id,
-                    order=idx,
-                    status=MapPoolEntryStatus.AVAILABLE,
+        if slot_rows is not None:
+            # ``order`` runs across the whole pool as flat mode's does, so
+            # ``get_current_step``'s arithmetic is unchanged; ``slot`` is the
+            # slot's ``position`` VALUE, never its index in this list — the two
+            # differ as soon as a deleted slot leaves a gap in the positions.
+            order = 0
+            for row in slot_rows:
+                for entry in row.maps:
+                    session.add(
+                        models.EncounterMapPool(
+                            encounter_id=encounter.id,
+                            map_id=entry.map_id,
+                            order=order,
+                            slot=row.position,
+                            status=MapPoolEntryStatus.AVAILABLE,
+                        )
+                    )
+                    order += 1
+        else:
+            for idx, config_map in enumerate(config.map_pool):
+                session.add(
+                    models.EncounterMapPool(
+                        encounter_id=encounter.id,
+                        map_id=config_map.map_id,
+                        order=idx,
+                        status=MapPoolEntryStatus.AVAILABLE,
+                    )
                 )
-            )
 
     register_map_veto_realtime_update(session, encounter.id)
     if commit:
@@ -567,8 +727,10 @@ async def reset_veto_session(
 ) -> models.EncounterVetoSession | None:
     """Drop the encounter's veto session + pool rows and re-create them.
 
-    Re-resolves config and seeds from scratch; returns the new session (or
-    None when it can no longer be created — teams unknown / not configured).
+    Re-resolves config and seeds from scratch; returns the new session (or None
+    when it can no longer be created — see ``unavailable_reason``). A config
+    switched to slot mode, or a bracket whose ``best_of`` has outgrown the slot
+    count, is applied here: sessions are never rewritten in place.
     """
     await session.execute(
         sa.delete(models.EncounterVetoSession).where(models.EncounterVetoSession.encounter_id == encounter.id)

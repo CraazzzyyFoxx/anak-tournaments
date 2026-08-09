@@ -288,7 +288,7 @@ async def get_map_pool_state(
     # missing config/pool, it reports why there is no session instead.
     veto = await veto_session_service.ensure_veto_session(session, encounter)
     if veto is None:
-        return build_unavailable_state(veto_session_service.unavailable_reason(encounter))
+        return build_unavailable_state(await veto_session_service.unavailable_reason(session, encounter))
 
     pool = await get_map_pool(session, encounter_id)
     return build_map_pool_state(
