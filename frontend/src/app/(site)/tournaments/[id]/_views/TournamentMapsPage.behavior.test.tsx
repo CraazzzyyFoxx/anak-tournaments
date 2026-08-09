@@ -201,44 +201,56 @@ async function render(configs: MapVetoConfig[]) {
 }
 
 /**
+ * The image a tile actually shows. `next/image` wraps the source in its own
+ * optimizer URL — sometimes relative, sometimes absolute — which is Next's
+ * business and not this page's, so the `url` parameter is unwrapped and the
+ * underlying path is what gets asserted.
+ */
+function artSrc(img: Element | null): string | null {
+  const src = img?.getAttribute("src");
+  if (!src) return null;
+  if (!src.includes("/_next/image")) return src;
+  return new URLSearchParams(src.slice(src.indexOf("?") + 1)).get("url") ?? src;
+}
+
+/**
  * The page, flattened to the shape the regulation document has: one card per
  * stage, then each round with one row per map of the series.
  *
- * `background-image` is read rather than the tile's text, because the map art is
- * the point of the row: a candidate whose picture is missing would still pass a
- * name-only assertion.
+ * Addressed through `data-slot-*` hooks and the tile's `img src`, not through
+ * class fragments and text: the map art is the point of a row, so a candidate
+ * whose picture went missing must fail, and a visual pass that renames a utility
+ * class must not.
  */
 function stages() {
-  return Array.from(container.querySelectorAll("section[role=group]")).map((stage) => ({
-    title: stage.querySelector("h2")?.textContent?.trim() ?? null,
-    label: stage.getAttribute("aria-label"),
-    headings: Array.from(stage.querySelectorAll("p[class*=uppercase]:not([class*=gap-x])")).map(
-      (p) => p.textContent?.trim()
-    ),
-    rounds: Array.from(stage.querySelectorAll("h3")).map((heading) => {
-      const level = heading.parentElement;
-      return {
-        label: heading.textContent?.trim(),
-        rows: Array.from(level?.querySelectorAll("ol > li") ?? []).map((row) => {
-          const caption = row.querySelector("p");
-          const spans = Array.from(caption?.querySelectorAll("span") ?? []).map((span) =>
-            span.textContent?.trim()
-          );
-          return {
-            slot: spans[0],
-            mode: spans[1] ?? null,
+  return Array.from(container.querySelectorAll("section[role=group]")).map((stage) => {
+    const bandTexts = Array.from(stage.querySelectorAll("p")).map((p) => p.textContent?.trim());
+    return {
+      title: stage.querySelector("h2")?.textContent?.trim() ?? null,
+      label: stage.getAttribute("aria-label"),
+      // The two bracket-half bands, in DOM order, and nothing else that happens
+      // to be a paragraph.
+      headings: bandTexts.filter(
+        (text) => text === COPY.roundGroupUpper || text === COPY.roundGroupLower
+      ),
+      rounds: Array.from(stage.querySelectorAll("h3")).map((heading) => {
+        const level = heading.parentElement;
+        return {
+          label: heading.textContent?.trim(),
+          rows: Array.from(level?.querySelectorAll("ol > li") ?? []).map((row) => ({
+            slot: row.querySelector("[data-slot-index]")?.textContent?.trim(),
+            slotName: row.querySelector("[data-slot-index]")?.getAttribute("aria-label") ?? null,
+            mode: row.querySelector("[data-slot-mode]")?.textContent?.trim() ?? null,
+            modeIcon: artSrc(row.querySelector("[data-slot-mode] img")),
             maps: Array.from(row.querySelectorAll("ul > li")).map((tile) => ({
               name: tile.querySelector("span")?.textContent?.trim(),
-              art:
-                tile
-                  .querySelector<HTMLElement>("[style*=background-image]")
-                  ?.style.backgroundImage.replace(/^url\("?|"?\)$/g, "") ?? null
+              art: artSrc(tile.querySelector("img"))
             }))
-          };
-        })
-      };
-    })
-  }));
+          }))
+        };
+      })
+    };
+  });
 }
 
 /** Every map tile on the page, in DOM order. */
@@ -347,7 +359,10 @@ describe("every configured round, in play order", () => {
     // Lower R4 arrives as positions 7, 2, 4.
     const lowerR4 = stages()[0]?.rounds[2];
     expect(lowerR4?.label).toBe("Lower R4");
-    expect(lowerR4?.rows.map((row) => row.slot)).toEqual([
+    // The badge shows the bare numeral and carries the full label as its
+    // accessible name, so a screen reader hears "Slot 4" where the eye sees "4".
+    expect(lowerR4?.rows.map((row) => row.slot)).toEqual(["2", "4", "7"]);
+    expect(lowerR4?.rows.map((row) => row.slotName)).toEqual([
       ROOM.slot.label.replace("{n}", "2"),
       ROOM.slot.label.replace("{n}", "4"),
       ROOM.slot.label.replace("{n}", "7")
@@ -392,8 +407,12 @@ describe("every configured round, in play order", () => {
       label: "Round 2",
       rows: [
         {
+          // A flat config plays one pool for the whole series, so there is no
+          // numeral to badge and no single mode to name.
           slot: COPY.roundPoolShared,
+          slotName: null,
           mode: null,
+          modeIcon: null,
           maps: [
             { name: "Busan", art: "/maps/52.jpg" },
             { name: "Ilios", art: "/maps/37.jpg" },
@@ -411,8 +430,11 @@ describe("candidates are map art", () => {
 
     // Repeats included: the same map may legitimately appear twice in one slot.
     expect(stages()[0]?.rounds[2]?.rows[0]).toEqual({
-      slot: ROOM.slot.label.replace("{n}", "2"),
+      slot: "2",
+      slotName: ROOM.slot.label.replace("{n}", "2"),
       mode: "Push",
+      // The mode's own icon, from the same catalogue entry that named it.
+      modeIcon: "/gamemodes/3.jpg",
       maps: [
         { name: "Colosseo", art: "/maps/84.jpg" },
         { name: "Colosseo", art: "/maps/84.jpg" }
@@ -438,6 +460,32 @@ describe("candidates are map art", () => {
       { name: ROOM.maps.mapNumber.replace("{id}", String(RETIRED_MAP_ID)), art: null },
       { name: "Ilios", art: "/maps/37.jpg" }
     ]);
+  });
+
+  it("falls back to a flat tile when the art fails to load", async () => {
+    await render([
+      config({
+        id: 480,
+        stage_id: 188,
+        round: 1,
+        mode: "slots",
+        slots: [{ position: 1, candidates: [52, 37], reserve_map_id: null }]
+      })
+    ]);
+
+    const first = container.querySelector("ol > li ul > li img");
+    expect(first).not.toBeNull();
+    await act(async () => {
+      first?.dispatchEvent(new Event("error"));
+    });
+
+    // The catalogue holds paths for maps whose file was never uploaded, and two of
+    // them sit in this tournament's pool. The tile keeps its name and drops the
+    // picture rather than leaving the browser's broken-image glyph on the page.
+    const maps = stages()[0]?.rounds[0]?.rows[0]?.maps;
+    expect(maps?.[0]).toEqual({ name: "Busan", art: null });
+    // Only the failing tile gives up its art.
+    expect(maps?.[1]).toEqual({ name: "Ilios", art: "/maps/37.jpg" });
   });
 });
 

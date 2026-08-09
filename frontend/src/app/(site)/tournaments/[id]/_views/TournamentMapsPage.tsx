@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { cn } from "@/lib/utils";
 import mapService from "@/services/map.service";
 import tournamentService from "@/services/tournament.service";
 import type { MapRead } from "@/types/map.types";
@@ -206,6 +206,53 @@ function sharedGamemode(candidates: PoolEntry[]): string | null {
   return names.size === 1 ? [...names][0] : null;
 }
 
+/**
+ * One candidate, as its map art.
+ *
+ * The picture is the point, so the art gets the tile and the scrim only covers
+ * the bottom half it has to: under a scrim three quarters deep, Havana and Dorado
+ * were two brown smudges.
+ *
+ * `next/image` rather than a CSS background: it lazy-loads, so a page holding a
+ * hundred map photographs fetches the handful on screen instead of all of them.
+ * `alt=""` because the name is rendered over it — the picture decorates a label
+ * that already says what it is.
+ *
+ * A component of its own because art can 404: the catalogue holds paths for maps
+ * whose file was never uploaded, and two of them sit in this tournament's pool.
+ * The failure falls back to the same flat wash a map with no path at all gets,
+ * rather than leaving the browser's broken-image glyph on a public page.
+ *
+ * The hairline is pure white at 10%, not `--aqt-border`: a tinted neutral outline
+ * picks up the map art underneath it and reads as dirt along the edge.
+ */
+function CandidateTile({ art, name }: { art: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <li className="relative flex h-[5.25rem] min-w-0 flex-1 basis-[calc(50%-0.25rem)] items-end overflow-hidden rounded-lg bg-[color:var(--aqt-overlay-2)] ring-1 ring-inset ring-[hsl(0_0%_100%/0.1)] sm:h-24 sm:w-44 sm:flex-none sm:basis-auto">
+      {art && !failed ? (
+        <Image
+          src={art}
+          alt=""
+          fill
+          sizes="(min-width: 640px) 176px, 50vw"
+          className="object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+      {/* Explicit scrim rather than trusting image luminance: map art ranges from
+          Antarctic white to Havana night and the label must read on both. */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/90 via-black/55 to-transparent"
+      />
+      <span className="relative z-10 line-clamp-2 px-2.5 pb-2 text-[13px] font-semibold leading-tight text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+        {name}
+      </span>
+    </li>
+  );
+}
+
 export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageProps) {
   const t = useTranslations();
 
@@ -308,48 +355,24 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
   }
 
   /**
-   * One candidate, as its map art.
-   *
-   * The picture is the point: a captain recognises Havana faster than the word
-   * "Havana", and three pictures side by side read as three alternatives without
-   * any prose saying so. An id the catalogue cannot resolve keeps its tile and
-   * its name — a slot's candidate count is what the regulation is written
-   * against, so dropping the tile would report a three-way ban as a two-way one.
-   *
-   * The hairline is pure white at 10%, not `--aqt-border`: a tinted neutral
-   * outline picks up the map art underneath it and reads as dirt along the edge.
+   * An id the catalogue cannot resolve keeps its tile and its name: a slot's
+   * candidate count is what the regulation is written against, so dropping the
+   * tile would report a three-way ban as a two-way one.
    */
-  const renderCandidate = (entry: PoolEntry, index: number) => {
-    const name = entry.map?.name ?? t("encounters.veto.room.maps.mapNumber", { id: entry.id });
-    return (
-      <li
-        // The same map legitimately appears in more than one slot and even twice
-        // in one, so the key carries the position it is listed at.
-        key={`${entry.id}-${index}`}
-        className="relative flex h-16 min-w-0 flex-1 basis-[calc(50%-0.25rem)] items-end overflow-hidden rounded-lg bg-[color:var(--aqt-overlay-2)] p-2 ring-1 ring-inset ring-[hsl(0_0%_100%/0.1)] sm:w-40 sm:flex-none sm:basis-auto"
-      >
-        {entry.map?.image_path ? (
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url("${entry.map.image_path}")` }}
-          />
-        ) : null}
-        {/* Explicit scrim rather than trusting image luminance: map art ranges
-            from Antarctic white to Havana night and the label must read on both. */}
-        <div
-          aria-hidden
-          className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/85 via-black/55 to-transparent"
-        />
-        <span className="relative z-10 line-clamp-2 text-xs font-semibold leading-tight text-white">
-          {name}
-        </span>
-      </li>
-    );
-  };
+  const renderCandidate = (entry: PoolEntry, index: number) => (
+    <CandidateTile
+      // The same map legitimately appears in more than one slot and even twice in
+      // one, so the key carries the position it is listed at.
+      key={`${entry.id}-${index}`}
+      art={entry.map?.image_path ?? null}
+      name={entry.map?.name ?? t("encounters.veto.room.maps.mapNumber", { id: entry.id })}
+    />
+  );
 
   const renderRow = (row: LevelRow, index: number) => {
     const mode = sharedGamemode(row.candidates);
+    const modeIcon = row.candidates.find((candidate) => candidate.map?.gamemode?.name === mode)?.map
+      ?.gamemode?.image_path;
     const reserveName =
       row.reserve?.map?.name ??
       (row.reserve ? t("encounters.veto.room.maps.mapNumber", { id: row.reserve.id }) : null);
@@ -359,16 +382,43 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
       // and thirty-three stacked label-then-pictures blocks did not.
       <div
         key={row.position ?? index}
-        className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-4"
+        className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3.5"
       >
-        <p className="flex flex-wrap items-baseline gap-x-2 text-[11px] font-semibold uppercase tracking-wider sm:w-28 sm:shrink-0 sm:flex-col sm:items-start sm:gap-y-0.5 sm:pt-1">
-          <span className="text-[color:var(--aqt-fg-muted)]">
-            {row.position != null
-              ? t("encounters.veto.room.slot.label", { n: row.position })
-              : t("mapVeto.roundPoolShared")}
-          </span>
+        <p className="flex items-center gap-2 sm:w-40 sm:shrink-0 sm:pt-1">
+          {row.position != null ? (
+            // The numeral, not the word: a column of 1 / 2 / 3 down the left edge
+            // is the rhythm that tells a reader where one map of the series ends
+            // and the next begins. Mono and tabular so the digits line up.
+            <span
+              data-slot-index
+              aria-label={t("encounters.veto.room.slot.label", { n: row.position })}
+              // `tabular-nums` rather than the site's `.aqt-mono`: that class
+              // reads `var(--aqt-mono)`, which is declared on `:root` while the
+              // font variable it points at is declared on `<body>`, so it
+              // resolves to nothing and silently renders Inter.
+              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] text-[11px] font-bold tabular-nums text-[color:var(--aqt-teal)]"
+            >
+              {row.position}
+            </span>
+          ) : (
+            <span
+              data-slot-index
+              className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]"
+            >
+              {t("mapVeto.roundPoolShared")}
+            </span>
+          )}
           {/* The rule behind the row: one mode per map of the series. */}
-          {mode ? <span className="text-[color:var(--aqt-teal)]">{mode}</span> : null}
+          {mode ? (
+            <span data-slot-mode className="flex min-w-0 items-center gap-1.5">
+              {modeIcon ? (
+                <Image src={modeIcon} alt="" width={14} height={14} className="opacity-70" />
+              ) : null}
+              <span className="truncate text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+                {mode}
+              </span>
+            </span>
+          ) : null}
         </p>
         <div className="min-w-0 flex-1 space-y-1.5">
           {row.position != null && row.candidates.length < SLOT_CANDIDATE_FLOOR ? (
@@ -388,14 +438,14 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
   };
 
   const renderLevel = (level: LevelView) => (
-    <div
-      key={level.key}
-      className="space-y-3 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)] p-3"
-    >
-      <h3 className="text-sm font-semibold">{level.label}</h3>
+    // No box of its own: nested inside the stage card it was a third grey
+    // rectangle competing with the two around it. A divider and a heading carry
+    // the same separation and leave the map art as the only colour on the page.
+    <div key={level.key} className="px-4 py-3.5">
+      <h3 className="text-sm font-semibold tracking-tight">{level.label}</h3>
       {/* Ordered, because the order is the answer: a slot's number is the map of
           the series it decides, and a series only reaches the later ones. */}
-      <ol className="space-y-3">
+      <ol className="mt-2.5 space-y-3">
         {level.rows.map((row, index) => (
           <li key={row.position ?? index}>{renderRow(row, index)}</li>
         ))}
@@ -419,25 +469,31 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
       // a wall to scroll past instead of a place to land.
       <section
         key={view.key}
-        className={cn("tn-card", styles.mapsSurface)}
+        className="tn-card overflow-hidden"
         role="group"
         aria-label={title}
       >
-        <h2 className="text-base font-semibold">{title}</h2>
-        <div className="mt-3 space-y-3">
-          {halves.map(({ half, heading }) => {
+        <header className="border-b border-[color:var(--aqt-border)] px-4 py-3">
+          <h2 className="text-base font-bold tracking-tight">{title}</h2>
+        </header>
+        <div className="divide-y divide-[color:var(--aqt-border)]">
+          {halves.flatMap(({ half, heading }) => {
             const levels = view.levels.filter((level) => level.half === half);
-            if (levels.length === 0) return null;
-            return (
-              <div key={half} className="space-y-2">
-                {heading ? (
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-faint)]">
-                    {heading}
-                  </p>
-                ) : null}
-                {levels.map(renderLevel)}
-              </div>
-            );
+            if (levels.length === 0) return [];
+            return [
+              // A full-bleed band rather than a line of small text: the same
+              // sectioning label the rest of the tournament chrome uses, so the
+              // two halves of a bracket separate at a glance.
+              heading ? (
+                <p
+                  key={`${half}-heading`}
+                  className="bg-[color:var(--aqt-overlay-1)] px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-faint)]"
+                >
+                  {heading}
+                </p>
+              ) : null,
+              ...levels.map(renderLevel)
+            ];
           })}
         </div>
       </section>
