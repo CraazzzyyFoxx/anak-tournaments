@@ -67,9 +67,9 @@ class CaptainService {
 
   /**
    * Fetch the full map-pool veto state. The backend now answers 200 with
-   * `session: null` + `reason` ("not_configured" | "teams_unknown") when the
-   * room can't exist yet; reads also lazily create the session when the
-   * encounter is ready. `null` is kept only for hard failures (404 encounter).
+   * `session: null` + a `reason` (see `VetoUnavailableReason`) when the room
+   * can't exist yet; reads also lazily create the session when the encounter is
+   * ready. `null` is kept only for hard failures (404 encounter).
    */
   async getMapPoolState(
     encounterId: number,

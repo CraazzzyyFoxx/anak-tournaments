@@ -12,9 +12,13 @@ function entry(overrides: Partial<EncounterMapPoolEntry>): EncounterMapPoolEntry
   return {
     id: 1,
     map_id: 1,
+    // Flat pool: nothing under test here reads `slot`, and these cases describe
+    // a `"pool"`-mode veto, where every entry's slot is null.
+    slot: null,
     order: 0,
     action_index: null,
     picked_by: null,
+    team_id: null,
     status: "available",
     ...overrides,
   };
@@ -47,6 +51,7 @@ function state(overrides: Partial<EncounterMapPoolState>): EncounterMapPoolState
     current_step: null,
     expected_action: null,
     turn_side: null,
+    current_slot: null,
     is_complete: false,
     ...overrides,
   };

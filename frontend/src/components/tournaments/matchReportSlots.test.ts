@@ -8,6 +8,9 @@ function entry(overrides: Partial<EncounterMapPoolEntry>): EncounterMapPoolEntry
   return {
     id: 1,
     map_id: 100,
+    // `buildMapCodeSlots` reads status/order/map_id only; these cases describe a
+    // flat pool, where every entry's slot is null.
+    slot: null,
     order: 1,
     action_index: null,
     picked_by: null,
@@ -29,6 +32,7 @@ function poolState(pool: EncounterMapPoolEntry[]): EncounterMapPoolState {
     current_step: null,
     expected_action: null,
     turn_side: null,
+    current_slot: null,
     is_complete: false,
   };
 }

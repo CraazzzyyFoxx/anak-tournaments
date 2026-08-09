@@ -113,11 +113,15 @@ const TOURNAMENT_DEFAULT: MapVetoConfig = {
   tournament_id: 78,
   stage_id: null,
   round: null,
+  mode: "pool",
   preset: "bo3",
   first_pick_rule: "higher_seed",
+  // Serialized on every config; slot mode is what reads it.
+  first_ban_rotation: "fixed",
   turn_timer_seconds: 30,
   sequence: ["ban_first", "ban_second", "pick_first", "pick_second", "decider"],
-  map_ids: [1, 4, 7, 2, 5]
+  map_ids: [1, 4, 7, 2, 5],
+  slots: []
 };
 
 // Groups runs Bo2, so a config carrying a Bo3 template disagrees with the

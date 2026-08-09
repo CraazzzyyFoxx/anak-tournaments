@@ -149,6 +149,17 @@ export interface Tournament {
 export interface EncounterMapPoolEntry {
   id: number;
   map_id: number;
+  /**
+   * Slot this candidate belongs to, or null in `"pool"` (flat) mode.
+   *
+   * Every entry of a `"slots"`-mode pool carries one and every entry of a flat
+   * pool carries null, so this — not `EncounterMapPoolState.current_slot` — is
+   * what tells the two modes apart: a completed slot veto also reports
+   * `current_slot: null`.
+   *
+   * The value is the config slot's `position`, never an index into this pool.
+   */
+  slot: number | null;
   order: number;
   /** Global veto-action order (bans AND picks); null while still available. */
   action_index: number | null;
@@ -173,12 +184,26 @@ export interface EncounterVetoSession {
   current_step_started_at: string | null;
 }
 
-/** Reason the room has no session yet (state responses with `session: null`). */
-export type VetoUnavailableReason = "not_configured" | "teams_unknown";
+/**
+ * Reason the room has no session yet (state responses with `session: null`).
+ *
+ * `slot_count_mismatch` (the bracket wants more maps than the config has slots)
+ * and `slot_underfilled` (a slot in play has fewer than two candidates) both
+ * describe a config that exists but disagrees with the bracket, so they must
+ * not share the `not_configured` copy.
+ */
+export type VetoUnavailableReason =
+  | "not_configured"
+  | "teams_unknown"
+  | "slot_count_mismatch"
+  | "slot_underfilled";
 
 export interface EncounterMapPoolState {
   session: EncounterVetoSession | null;
-  /** Set only when `session` is null. */
+  /**
+   * Set only when `session` is null. Its presence — not `session === null`
+   * alone — is what identifies the unavailable state.
+   */
   reason?: VetoUnavailableReason;
   /** Step tokens already resolved to sides (e.g. "ban_home", "decider"). */
   sequence: string[];
@@ -190,6 +215,15 @@ export interface EncounterMapPoolState {
   current_step: string | null;
   expected_action: MapVetoAction | "decider" | null;
   turn_side: "home" | "away" | null;
+  /**
+   * Slot the veto is resolving, and null in three distinct situations: a
+   * `"pool"`-mode veto (no slots at all), a completed slot veto (no pending
+   * step), and the unavailable state (`session: null`).
+   *
+   * So it is neither a completion signal — `is_complete` is the authority —
+   * nor a mode signal; read the mode off `pool[].slot`.
+   */
+  current_slot: number | null;
   is_complete: boolean;
 }
 
@@ -215,16 +249,55 @@ export type VetoSequenceToken =
  */
 export type VetoPreset = "bracket" | "custom" | "bo1" | "bo2" | "bo3" | "bo5" | "bo7";
 
+/** Which pool shape a veto config uses. Mirrors the backend `MapVetoMode`. */
+export type MapVetoMode = "pool" | "slots";
+
+/**
+ * Which side opens each slot's bans, in `"slots"` mode only. Mirrors the
+ * backend `FirstBanRotation`.
+ */
+export type FirstBanRotation = "fixed" | "alternate";
+
+/** One slot as the config serializer returns it. */
+export interface MapVetoConfigSlot {
+  /**
+   * 1-based play order. Carried even though the upsert derives it: pool entries
+   * and the session's reserve snapshot are both keyed by this value.
+   */
+  position: number;
+  /** Candidate map ids, in the organizer's authored order. */
+  candidates: number[];
+  reserve_map_id: number | null;
+}
+
 export interface MapVetoConfig {
   id: number;
   tournament_id: number;
   stage_id: number | null;
   round: number | null;
+  /** Which pool shape the fields below carry. */
+  mode: MapVetoMode;
   preset: VetoPreset | null;
   first_pick_rule: "higher_seed";
+  /** Slot mode only; nothing reads it in `"pool"` mode. */
+  first_ban_rotation: FirstBanRotation;
   turn_timer_seconds: number | null;
+  /** Empty in `"slots"` mode. */
   sequence: VetoSequenceToken[];
+  /** Empty in `"slots"` mode. */
   map_ids: number[];
+  /** Empty in `"pool"` mode: the serializer always sends both pool shapes. */
+  slots: MapVetoConfigSlot[];
+}
+
+/**
+ * One slot of a slot-mode upsert. Deliberately carries no `position`, unlike
+ * `MapVetoConfigSlot`: the list order IS the play order and the server derives
+ * the positions from it.
+ */
+export interface MapVetoConfigSlotUpsertInput {
+  candidates: number[];
+  reserve_map_id?: number | null;
 }
 
 export interface MapVetoConfigUpsertInput {
@@ -233,14 +306,29 @@ export interface MapVetoConfigUpsertInput {
   /**
    * Required by the server with no default: the upsert replaces the pool
    * wholesale, so a default would let a stale tab convert a slot config to flat
-   * and orphan its slot rows. Only `"pool"` is reachable from this editor until
-   * the slot UI lands; the full slot-mode typing comes with it.
+   * and orphan its slot rows.
    */
-  mode: "pool" | "slots";
+  mode: MapVetoMode;
   preset?: VetoPreset | null;
+  /**
+   * Slot mode only. Optional because the server defaults it to `"fixed"`, which
+   * is exactly the trap: omitting it on an edit rewrites an `"alternate"`
+   * config back to `"fixed"` with no error. Any editor that renders slot mode
+   * must send it on every save.
+   */
+  first_ban_rotation?: FirstBanRotation;
   turn_timer_seconds?: number | null;
+  /** Must be `[]` in `"slots"` mode; the server 422s a non-empty list. */
   sequence: VetoSequenceToken[];
+  /** Must be `[]` in `"slots"` mode; the server 422s a non-empty list. */
   map_ids: number[];
+  /**
+   * Slot mode only; the server 422s a non-empty list in `"pool"` mode. Optional
+   * where `sequence` and `map_ids` are required, so that a pool-only caller
+   * that predates slot mode still compiles; all three default to `[]`
+   * server-side.
+   */
+  slots?: MapVetoConfigSlotUpsertInput[];
 }
 
 export interface OwalStandingDay {
