@@ -179,6 +179,10 @@ class MapVetoConfig(db.TimeStampIntegerMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    # Deliberately lazy, like ``map_pool``: every query site that needs slots
+    # eager-loads the two-level chain explicitly
+    # (``selectinload(slots).selectinload(maps)``), so the loading strategy stays
+    # visible at the call site instead of being implied here.
     slots: Mapped[list["MapVetoConfigSlot"]] = relationship(
         back_populates="config",
         order_by="MapVetoConfigSlot.position",
@@ -226,7 +230,6 @@ class MapVetoConfigSlot(db.TimeStampIntegerMixin):
     )
 
     map_veto_config_id: Mapped[int] = mapped_column(ForeignKey(MapVetoConfig.id, ondelete="CASCADE"), index=True)
-    # 1-based play order within the config.
     position: Mapped[int] = mapped_column(Integer(), nullable=False)
     reserve_map_id: Mapped[int | None] = mapped_column(
         ForeignKey("overwatch.map.id", ondelete="SET NULL"), nullable=True, index=True
