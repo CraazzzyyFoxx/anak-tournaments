@@ -181,37 +181,36 @@ def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[s
 def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
     """Validate a slot-mode config upsert.
 
+    ``index`` in the messages is the slot's 1-based ``position``, so callers
+    must pass ``slots`` in position order: the schema guarantees positions are
+    unique and >= 1, not that they are contiguous.
+
     Slots need >= 2 candidates. ``build_slot_sequence`` spends ``c_i - 1`` bans
     on a slot, so a single-candidate one contributes a bare ``decider`` that
     lands back-to-back with the previous slot's. ``auto_complete_decider``
-    resolves at most one decider per call, and ``perform_veto_action``
-    intercepts a decider step rather than applying a captain's action, so
-    consecutive deciders advance only one per state read and no captain move
-    can drive them (design Decision 15).
+    resolves at most one decider per call and ``get_map_pool`` calls it once per
+    state read, so consecutive deciders advance only one per read (design
+    Decision 15).
 
     A map may repeat across slots -- only within-slot duplication is
-    meaningless, since a slot bans its own candidates down to one survivor.
-    A slot's reserve must likewise not be one of its own candidates: it would
-    either be banned in that slot and then reinstated as the slot's replay map,
-    or be the survivor, making the replay the very map that drew (Decision 7).
+    meaningless, since a slot bans its own candidates down to one survivor. A
+    slot's reserve -- the map the regulation replays if that slot's map draws --
+    must likewise not be one of its own candidates: it would either be banned
+    there and then reinstated as that slot's replay map, or be the survivor,
+    making the replay the very map that drew (Decision 7).
     """
     if not slots:
         raise HTTPException(status_code=422, detail="slots must not be empty")
     if len(reserves) != len(slots):
-        raise HTTPException(status_code=422, detail="one reserve entry per slot is required")
+        raise HTTPException(status_code=422, detail="reserves must have one entry per slot")
     for index, (candidates, reserve) in enumerate(zip(slots, reserves, strict=True), start=1):
         if len(candidates) < 2:
-            raise HTTPException(
-                status_code=422,
-                detail=f"slot {index} needs at least two candidate maps",
-            )
+            raise HTTPException(status_code=422, detail=f"slot {index} must have at least two candidate maps")
         if len(set(candidates)) != len(candidates):
-            raise HTTPException(status_code=422, detail=f"slot {index} has duplicate maps")
+            repeated = ", ".join(str(m) for m in sorted({m for m in candidates if candidates.count(m) > 1}))
+            raise HTTPException(status_code=422, detail=f"slot {index} must not repeat candidate map(s): {repeated}")
         if reserve is not None and reserve in candidates:
-            raise HTTPException(
-                status_code=422,
-                detail=f"slot {index} reserve must not be one of its own candidate maps",
-            )
+            raise HTTPException(status_code=422, detail=f"slot {index} reserve must not be one of its own candidates")
 
 
 def select_config(

@@ -363,7 +363,8 @@ class ValidateSlotConfigTests(TestCase):
         with self.assertRaises(HTTPException) as ctx:
             validate_slot_config([[1, 2, 3], [4]], reserves=[None, None])
 
-        self.assertIn("at least two candidate maps", ctx.exception.detail)
+        self.assertEqual(422, ctx.exception.status_code)
+        self.assertIn("slot 2 must have at least two candidate maps", ctx.exception.detail)
 
     def test_rejects_an_empty_slot_list(self) -> None:
         with self.assertRaises(HTTPException):
@@ -375,11 +376,17 @@ class ValidateSlotConfigTests(TestCase):
         with self.assertRaises(HTTPException) as ctx:
             validate_slot_config([[1, 2], [3, 4]], reserves=[None])
 
-        self.assertIn("one reserve entry per slot", ctx.exception.detail)
+        self.assertEqual(422, ctx.exception.status_code)
+        self.assertIn("one entry per slot", ctx.exception.detail)
 
     def test_rejects_duplicate_candidates_within_one_slot(self) -> None:
-        with self.assertRaises(HTTPException):
+        with self.assertRaises(HTTPException) as ctx:
             validate_slot_config([[1, 1, 2]], reserves=[None])
+
+        self.assertEqual(422, ctx.exception.status_code)
+        # The message names the offending map: the regulation's near-miss
+        # spellings make "this slot has a duplicate" unactionable by eye.
+        self.assertIn("slot 1 must not repeat candidate map(s): 1", ctx.exception.detail)
 
     def test_allows_the_same_map_in_two_different_slots(self) -> None:
         """A map may be a candidate of one slot and of another; only within-slot
@@ -390,7 +397,17 @@ class ValidateSlotConfigTests(TestCase):
         with self.assertRaises(HTTPException) as ctx:
             validate_slot_config([[1, 2], [3, 4]], reserves=[2, None])
 
-        self.assertIn("reserve must not be one of its own candidate maps", ctx.exception.detail)
+        self.assertEqual(422, ctx.exception.status_code)
+        self.assertIn("slot 1 reserve must not be one of its own candidates", ctx.exception.detail)
+
+    def test_reports_the_candidate_floor_before_the_reserve_rule(self) -> None:
+        # A slot that breaks both rules must report the more fundamental one,
+        # or the organizer is sent to the reserve control to fix a slot whose
+        # real problem is that it has nothing to ban.
+        with self.assertRaises(HTTPException) as ctx:
+            validate_slot_config([[1]], reserves=[1])
+
+        self.assertIn("at least two candidate maps", ctx.exception.detail)
 
     def test_allows_a_reserve_that_is_also_a_candidate_elsewhere(self) -> None:
         # The permitted side of the boundary the test above rejects: map 3 is
