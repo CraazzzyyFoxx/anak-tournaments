@@ -969,20 +969,6 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
         self.assertEqual([], session.added)
         self.assertEqual(0, session.commits)
 
-    async def test_a_pre_existing_pool_is_left_alone(self) -> None:
-        # PINNED, NOT ENDORSED. This mirrors flat mode -- the admin-assigned pool
-        # wins -- but in slot mode the result is a room that cannot run: nine
-        # slot-shaped tokens over four NULL-``slot`` entries that ``current_slot``
-        # can never select, so no action is ever legal (design §4.7). The fix is
-        # the ``initialize_map_pool`` 409 guard, which is a separate task; this
-        # test exists so that task can see the current behaviour rather than
-        # re-derive it, and it should be REPLACED, not preserved, when the guard
-        # lands.
-        session, veto = await self._create(pool_count=4)
-
-        self.assertEqual([], session.pool_rows)
-        self.assertEqual(9, len(veto.resolved_sequence_json))
-
 
 class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
     """Flat mode must be untouched by slot mode's arrival."""

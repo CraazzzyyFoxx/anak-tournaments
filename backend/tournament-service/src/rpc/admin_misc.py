@@ -28,6 +28,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel
 
 from shared.core import http_status as status
+from shared.core.enums import MapVetoMode
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
@@ -60,6 +61,7 @@ from src.services.computation import jobs as computation_jobs
 from src.services.encounter import captain as captain_service
 from src.services.encounter import map_veto as map_veto_service
 from src.services.encounter import report_form as report_form_service
+from src.services.encounter import veto_session as veto_session_service
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament import schedule as schedule_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
@@ -85,6 +87,61 @@ class AdminMapPoolAssign(BaseModel):
 
 
 # --- helpers -----------------------------------------------------------------
+
+
+#: 409 detail for the refusal below. Code-prefixed the way
+#: ``use_result_endpoint`` is, so a client can branch on it without parsing prose.
+SLOT_MODE_POOL_REFUSAL = (
+    "slot_mode_veto: this encounter's map veto uses slot pools — "
+    "edit the config's slots instead of assigning a flat pool"
+)
+
+
+async def _require_flat_veto(session: Any, encounter_id: int) -> None:
+    """Refuse a flat pool assignment when this encounter's veto is slot-shaped.
+
+    Every entry ``initialize_map_pool`` creates has a NULL ``slot`` — it takes
+    only map ids — and a NULL-slot entry belongs to no slot. Nothing here is a
+    type error: ``current_slot`` filters ``slot is not None``, so a NULL is
+    skipped rather than compared to an ``int``. It is that neither ordering has
+    a way back out.
+
+    A session already exists, so its pool is already slot-shaped: the appended
+    NULL rows fail ``in_current_slot`` against every slot in play, so they can
+    never be banned or picked. The slot rows still satisfy the sequence and the
+    veto completes, leaving the NULL rows as permanently AVAILABLE entries in
+    the room's ``pool`` payload.
+
+    No session exists yet: ``ensure_veto_session`` copies the config pool only
+    when the encounter has none, so the session it later builds sizes its
+    sequence from the slots while the pool stays these NULL rows. With no
+    slotted entry anywhere ``current_slot`` is None and ``in_current_slot``
+    admits everything, so the NULL rows are consumed — and then the sequence
+    still has steps left with nothing available. Every further action 400s and
+    only a reset recovers.
+
+    Which authority answers "slot mode" follows from that split. A live session
+    runs entirely off its own snapshot and ``config_id`` is ``ON DELETE SET
+    NULL``, so the config may have been re-moded or deleted underneath it; the
+    snapshot decides. With no session there is no snapshot, so the cascaded
+    config's ``mode`` is all there is.
+    """
+    veto = await veto_session_service.get_veto_session(session, encounter_id)
+    if veto is not None:
+        # ``slot_reserves_json`` is the snapshot's slot marker:
+        # ``ensure_veto_session`` fills it from the same slot rows that stamp
+        # ``slot`` on the pool entries, and leaves it NULL in flat mode. The
+        # test is ``is not None`` and must stay so — a slot config where no slot
+        # names a reserve snapshots an empty dict, which is falsy.
+        if veto.slot_reserves_json is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=SLOT_MODE_POOL_REFUSAL)
+        return
+    # The caller resolved the encounter's workspace first, which 404s an
+    # encounter that does not exist, so this load cannot come back None.
+    encounter = await session.get(models.Encounter, encounter_id)
+    config = await veto_session_service.resolve_config(session, encounter)
+    if config is not None and config.mode == MapVetoMode.SLOTS:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=SLOT_MODE_POOL_REFUSAL)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -168,6 +225,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = AdminMapPoolAssign.model_validate(_payload(data))
+            await _require_flat_veto(session, encounter_id)
             # initialize_map_pool commits internally; route returns {"assigned": N}.
             entries = await map_veto_service.initialize_map_pool(session, encounter_id, body.map_ids)
             return {"assigned": len(entries)}
