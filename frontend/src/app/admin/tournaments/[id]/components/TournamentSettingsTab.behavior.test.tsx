@@ -120,6 +120,33 @@ function click(node: Element | null | undefined) {
   node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
+/** Type into a controlled input the way React's synthetic layer sees it. */
+function type(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    globalThis.HTMLInputElement.prototype,
+    "value"
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** Opens the Discord dialog and returns the form portalled out of the tab. */
+async function openChannelDialog(scope: Element) {
+  const addChannel = [...scope.querySelectorAll("button")].find((button) =>
+    button.textContent?.includes("Add channel")
+  );
+  await act(async () => {
+    click(addChannel);
+  });
+  await settle();
+
+  // The dialog is portalled out of the form, but React events bubble through
+  // the React tree, so its submit would otherwise reach the settings form.
+  const dialogForm = [...document.querySelectorAll("form")].find((form) => !scope.contains(form));
+  if (!dialogForm) throw new Error("channel dialog not rendered");
+  return dialogForm;
+}
+
 function integrationsCard(scope: Element) {
   const card = scope.querySelector("#settings-challonge")?.closest("[data-ui='card']");
   if (!card) throw new Error("integrations card not rendered");
@@ -167,26 +194,31 @@ describe("TournamentSettingsTab integrations card", () => {
 
   it("saves the Discord channel without saving the tournament with it", async () => {
     const scope = await mount();
+    const dialogForm = await openChannelDialog(scope);
 
-    const addChannel = [...scope.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("Add channel")
-    );
-    await act(async () => {
-      click(addChannel);
-    });
-
-    // The dialog is portalled out of the form, but React events bubble through
-    // the React tree, so its submit would otherwise reach the settings form.
-    const dialogForm = [...document.querySelectorAll("form")].find((form) => !scope.contains(form));
-    expect(dialogForm).toBeDefined();
+    // No guild is reachable in tests, so the picker offers its manual fallback.
+    type(dialogForm.querySelector<HTMLInputElement>("#discord-channel-id")!, "987654321098765432");
 
     await act(async () => {
-      dialogForm?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      dialogForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
     await settle();
 
     expect(setDiscordChannel).toHaveBeenCalledTimes(1);
     expect(updateTournament).not.toHaveBeenCalled();
     expect(setTournamentSchedule).not.toHaveBeenCalled();
+  });
+
+  it("refuses to save a channel that was never chosen", async () => {
+    const scope = await mount();
+    const dialogForm = await openChannelDialog(scope);
+
+    await act(async () => {
+      dialogForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await settle();
+
+    expect(setDiscordChannel).not.toHaveBeenCalled();
+    expect(dialogForm.querySelector("[role=alert]")?.textContent).toContain("Pick the channel");
   });
 });

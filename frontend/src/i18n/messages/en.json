@@ -3766,6 +3766,15 @@
       "managed": "managed",
       "idAria": "Discord role ID"
     },
+    "channel": {
+      "placeholder": "Select a Discord channel",
+      "loading": "Loading channels…",
+      "refresh": "Refresh channels from Discord",
+      "manual": "Enter a channel ID instead",
+      "dropdown": "Pick from the list",
+      "uncategorized": "Uncategorized",
+      "idAria": "Discord channel ID"
+    },
     "server": {
       "checking": "Checking the Discord bot…",
       "fallbackName": "Discord server",
@@ -3970,6 +3979,7 @@
       "default": "built-in Overwatch 5v5 default"
     },
     "overriding": "This tournament pins its own shape instead of following the workspace.",
+    "willInherit": "Saving hands this tournament back to the workspace shape.",
     "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
   }
 }

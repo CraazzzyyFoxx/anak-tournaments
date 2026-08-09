@@ -1,4 +1,9 @@
+"use client";
+
 import React from "react";
+import { Code2, Hash, RefreshCw } from "lucide-react";
+import { useTranslations } from "next-intl";
+
 import { useDiscordChannels } from "@/hooks/useDiscordEntities";
 import { DiscordChannel } from "@/types/discord.types";
 import {
@@ -12,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Code2, Hash } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface DiscordChannelSelectProps {
   workspaceId: number | null | undefined;
@@ -21,6 +26,10 @@ export interface DiscordChannelSelectProps {
   onChannelNameSelected?: (channelName: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Accessible name for the control, when no visible `<label for>` names it. */
+  ariaLabel?: string;
+  /** Id of the visible label, when there is one. */
+  id?: string;
   className?: string;
 }
 
@@ -30,57 +39,65 @@ export function DiscordChannelSelect({
   onChange,
   onChannelNameSelected,
   disabled,
-  placeholder = "Select Discord channel...",
+  placeholder,
+  ariaLabel,
+  id,
   className,
 }: DiscordChannelSelectProps) {
+  const t = useTranslations("discord.channel");
   const { data, isLoading, refetch } = useDiscordChannels(workspaceId);
   const [manualMode, setManualMode] = React.useState(false);
 
   const channels: DiscordChannel[] = data?.channels ?? [];
   const hasChannels = channels.length > 0;
 
-  // Group channels by category
   const categories = React.useMemo(() => {
     const grouped = new Map<string, DiscordChannel[]>();
-    for (const ch of channels) {
-      const cat = ch.category_name || "Uncategorized";
-      if (!grouped.has(cat)) grouped.set(cat, []);
-      grouped.get(cat)!.push(ch);
+    for (const channel of channels) {
+      const category = channel.category_name || t("uncategorized");
+      const bucket = grouped.get(category);
+      if (bucket) bucket.push(channel);
+      else grouped.set(category, [channel]);
     }
-    return Array.from(grouped.entries());
-  }, [channels]);
+    return [...grouped];
+  }, [channels, t]);
 
   const handleSelectChannel = (selectedChannelId: string) => {
     onChange(selectedChannelId);
-    if (onChannelNameSelected) {
-      const selectedChannel = channels.find((c) => c.id === selectedChannelId);
-      if (selectedChannel) {
-        onChannelNameSelected(selectedChannel.name);
-      }
-    }
+    const selected = channels.find((channel) => channel.id === selectedChannelId);
+    if (selected) onChannelNameSelected?.(selected.name);
   };
 
+  // `className` lands on the WRAPPER, not the trigger: this renders a row —
+  // control plus one or two buttons — into the caller's layout, so the wrapper
+  // is what has to carry their width. Same contract as `DiscordRoleSelect`.
+  //
+  // Manual entry is the only way out when our bot cannot read the guild, so it
+  // stays reachable — but it is the fallback, never the advertised workflow.
   if (manualMode || (!isLoading && !hasChannels)) {
     return (
-      <div className="flex items-center gap-1.5 w-full">
+      <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
         <Input
+          id={id}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
           disabled={disabled}
+          aria-label={ariaLabel ?? t("idAria")}
           placeholder="123456789012345678"
+          inputMode="numeric"
+          autoComplete="off"
           maxLength={19}
-          className={className}
+          className="w-full min-w-0 font-mono"
         />
         {hasChannels && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="shrink-0 px-2 text-xs"
             onClick={() => setManualMode(false)}
-            title="Switch back to channel dropdown"
           >
-            Dropdown
+            {t("dropdown")}
           </Button>
         )}
       </div>
@@ -88,22 +105,18 @@ export function DiscordChannelSelect({
   }
 
   return (
-    <div className="flex items-center gap-1.5 w-full">
-      <Select
-        value={value}
-        onValueChange={handleSelectChannel}
-        disabled={disabled || isLoading}
-      >
-        <SelectTrigger className={className}>
-          <SelectValue placeholder={isLoading ? "Loading channels..." : placeholder}>
+    <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
+      <Select value={value} onValueChange={handleSelectChannel} disabled={disabled || isLoading}>
+        <SelectTrigger id={id} className="w-full min-w-0" aria-label={ariaLabel}>
+          <SelectValue placeholder={isLoading ? t("loading") : (placeholder ?? t("placeholder"))}>
             {(() => {
-              const matched = channels.find((c) => c.id === value);
+              const matched = channels.find((channel) => channel.id === value);
               if (matched) {
                 return (
-                  <div className="flex items-center gap-1.5 truncate">
-                    <Hash className="size-3.5 text-muted-foreground shrink-0" />
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Hash aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate">{matched.name}</span>
-                  </div>
+                  </span>
                 );
               }
               return value ? <span className="font-mono text-xs">{value}</span> : null;
@@ -111,17 +124,17 @@ export function DiscordChannelSelect({
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {categories.map(([categoryName, chs]) => (
+          {categories.map(([categoryName, categoryChannels]) => (
             <SelectGroup key={categoryName}>
               <SelectLabel className="text-xs uppercase tracking-wider text-muted-foreground">
                 {categoryName}
               </SelectLabel>
-              {chs.map((ch) => (
-                <SelectItem key={ch.id} value={ch.id}>
-                  <div className="flex items-center gap-1.5">
-                    <Hash className="size-3.5 text-muted-foreground shrink-0" />
-                    <span className="font-medium">{ch.name}</span>
-                  </div>
+              {categoryChannels.map((channel) => (
+                <SelectItem key={channel.id} value={channel.id}>
+                  <span className="flex items-center gap-1.5">
+                    <Hash aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="font-medium">{channel.name}</span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -132,22 +145,27 @@ export function DiscordChannelSelect({
         type="button"
         variant="ghost"
         size="icon"
-        className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+        className="size-9 shrink-0 text-muted-foreground hover:text-foreground"
         onClick={() => refetch()}
         disabled={isLoading}
-        title="Refresh channels from Discord"
+        aria-label={t("refresh")}
+        title={t("refresh")}
       >
-        <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        <RefreshCw
+          aria-hidden
+          className={cn("size-3.5", isLoading && "animate-spin motion-reduce:animate-none")}
+        />
       </Button>
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+        className="size-9 shrink-0 text-muted-foreground hover:text-foreground"
         onClick={() => setManualMode(true)}
-        title="Enter Channel ID manually"
+        aria-label={t("manual")}
+        title={t("manual")}
       >
-        <Code2 className="size-3.5" />
+        <Code2 aria-hidden className="size-3.5" />
       </Button>
     </div>
   );

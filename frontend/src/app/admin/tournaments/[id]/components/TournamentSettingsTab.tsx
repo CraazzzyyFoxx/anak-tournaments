@@ -151,13 +151,21 @@ export function TournamentSettingsTab({
     (phase) => phase !== "draft" || formData.team_formation === "draft"
   );
 
-  // The server rejects an out-of-range roster total with a 422; blocking the save
-  // here keeps that verdict inline, where the numbers are.
+  // The server rejects an out-of-range roster total with a 422. The save stays
+  // clickable — a greyed-out button a viewport away from the error explains
+  // nothing — and instead walks the admin to the numbers that block it.
   const rosterTotalError = payloadTotalError(formData.roster_slots_json);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (rosterTotalError) return;
+    if (rosterTotalError) {
+      const target =
+        document.getElementById("settings-roster-slot-tank") ??
+        document.getElementById("settings-roster-shape-mode");
+      target?.scrollIntoView({ block: "center" });
+      target?.focus();
+      return;
+    }
 
     const payload: TournamentUpdateInput = {
       name: formData.name.trim(),
@@ -190,12 +198,12 @@ export function TournamentSettingsTab({
     <form onSubmit={handleSubmit} className="space-y-6 pb-20">
       {/* Dirty state notification bar — the only place settings are saved from. */}
       {isDirty && (
-        <div className="sticky top-4 z-40 flex items-center justify-between gap-4 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3.5 shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-2 text-sm text-primary">
+        <div className="sticky top-4 z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3.5 shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-300 motion-reduce:animate-none">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-primary">
             <Info className="size-4 shrink-0" aria-hidden />
             <span className="font-medium">You have unsaved changes in settings.</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="ms-auto flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
@@ -211,7 +219,7 @@ export function TournamentSettingsTab({
               type="submit"
               size="sm"
               className="h-8"
-              disabled={updateMutation.isPending || rosterTotalError !== null}
+              disabled={updateMutation.isPending}
             >
               <Save className="mr-1.5 size-3.5" aria-hidden />
               {updateMutation.isPending ? "Saving…" : "Save changes"}
@@ -417,14 +425,6 @@ export function TournamentSettingsTab({
                   </div>
                 </div>
               </section>
-
-              <RosterShapeEditor
-                value={formData.roster_slots_json}
-                effective={tournament.roster_shape}
-                locked={tournament.roster_locked_by_draft === true}
-                disabled={!canUpdateTournament}
-                onChange={(next) => setFormData({ ...formData, roster_slots_json: next })}
-              />
             </CardContent>
           </Card>
         </div>
@@ -492,6 +492,20 @@ export function TournamentSettingsTab({
             </CardContent>
           </Card>
         </div>
+
+        {/* Roster shape: full width, and its own card. Tucked under the scoring
+            block of "Rules & grid configuration" it was an unannounced seventh
+            section of a card whose description never mentioned it, and its
+            controls-plus-outcome pair had one column to lay out in. Spanning
+            the grid also lets the two columns above it finish level. */}
+        <RosterShapeEditor
+          className="xl:col-span-2"
+          value={formData.roster_slots_json}
+          effective={tournament.roster_shape}
+          locked={tournament.roster_locked_by_draft === true}
+          disabled={!canUpdateTournament}
+          onChange={(next) => setFormData({ ...formData, roster_slots_json: next })}
+        />
 
         {/* Schedule: full width so the phase grid can lay out as rows. In half a
             grid it needs 780px of columns and overflows the card. */}

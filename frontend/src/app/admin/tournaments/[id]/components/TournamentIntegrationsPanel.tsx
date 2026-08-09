@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DiscordChannelSelect } from "@/components/discord/DiscordChannelSelect";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
@@ -19,7 +20,14 @@ import adminService from "@/services/admin.service";
 import type { DiscordChannelInput, DiscordChannelRead } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
 import { ChallongeIntegrationSection } from "./ChallongeIntegrationSection";
+import { hasUnsavedChanges } from "@/lib/form-change";
 import { getTournamentWorkspaceQueryKeys } from "./tournamentWorkspace.queryKeys";
+
+const EMPTY_CHANNEL_FORM: DiscordChannelInput = {
+  channel_id: "",
+  channel_name: "",
+  is_active: true
+};
 
 interface TournamentIntegrationsPanelProps {
   tournamentId: number;
@@ -73,11 +81,11 @@ export function TournamentIntegrationsPanel({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [form, setForm] = useState<DiscordChannelInput>({
-    channel_id: "",
-    channel_name: "",
-    is_active: true
-  });
+  const [form, setForm] = useState<DiscordChannelInput>(EMPTY_CHANNEL_FORM);
+  // Baseline the dialog opened with. Without it the discard prompt fired on
+  // every close, including one where nothing had been typed.
+  const [openedWith, setOpenedWith] = useState<DiscordChannelInput>(EMPTY_CHANNEL_FORM);
+  const [channelMissing, setChannelMissing] = useState(false);
 
   const saveMutation = useMutation({
     mutationFn: (data: DiscordChannelInput) => adminService.setDiscordChannel(tournamentId, data),
@@ -98,11 +106,14 @@ export function TournamentIntegrationsPanel({
   });
 
   const openDialog = () => {
-    setForm({
+    const next: DiscordChannelInput = {
       channel_id: discordChannel?.channel_id ?? "",
       channel_name: discordChannel?.channel_name ?? "",
       is_active: discordChannel?.is_active ?? true
-    });
+    };
+    setForm(next);
+    setOpenedWith(next);
+    setChannelMissing(false);
     saveMutation.reset();
     setDialogOpen(true);
   };
@@ -155,8 +166,13 @@ export function TournamentIntegrationsPanel({
               <Skeleton className="h-16 w-full" />
             ) : discordChannel ? (
               <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 sm:grid-cols-2">
-                <DetailField label="Channel" value={discordChannel.channel_id} />
-                <DetailField label="Name" value={discordChannel.channel_name ?? "—"} />
+                <DetailField
+                  label="Channel"
+                  value={
+                    discordChannel.channel_name ? `#${discordChannel.channel_name}` : "Unnamed"
+                  }
+                />
+                <DetailField label="Channel ID" value={discordChannel.channel_id} />
               </div>
             ) : (
               <p className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3 text-xs text-muted-foreground">
@@ -197,32 +213,45 @@ export function TournamentIntegrationsPanel({
         description={`Set the Discord channel for ${tournament.name}.`}
         onSubmit={(event) => {
           event.preventDefault();
+          if (!form.channel_id) {
+            setChannelMissing(true);
+            return;
+          }
           saveMutation.mutate(form);
         }}
         isSubmitting={saveMutation.isPending}
         submittingLabel="Saving…"
         errorMessage={saveMutation.isError ? saveMutation.error.message : undefined}
-        isDirty
+        isDirty={hasUnsavedChanges(form, openedWith)}
       >
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="discord-channel-id">Channel ID</Label>
-            <Input
+            <Label htmlFor="discord-channel-id">Channel</Label>
+            <DiscordChannelSelect
               id="discord-channel-id"
-              type="text"
-              inputMode="numeric"
+              workspaceId={tournament.workspace_id}
               value={form.channel_id}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  channel_id: event.target.value.replace(/\D/g, "")
-                }))
+              onChange={(channelId) => {
+                setChannelMissing(false);
+                setForm((current) => ({ ...current, channel_id: channelId }));
+              }}
+              onChannelNameSelected={(channelName) =>
+                setForm((current) => ({ ...current, channel_name: channelName }))
               }
-              placeholder="987654321098765432"
             />
+            {channelMissing ? (
+              <p className="text-xs font-medium text-destructive" role="alert">
+                Pick the channel the bot should read match logs from.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Channels come from the workspace&apos;s Discord server. Not listed? Switch to
+                manual entry and paste the channel ID.
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="discord-channel-name">Channel name (optional)</Label>
+            <Label htmlFor="discord-channel-name">Display name (optional)</Label>
             <Input
               id="discord-channel-name"
               value={form.channel_name ?? ""}
