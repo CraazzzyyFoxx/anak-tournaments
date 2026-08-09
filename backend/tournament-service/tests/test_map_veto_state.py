@@ -29,6 +29,7 @@ from src.services.encounter.map_veto import (  # noqa: E402
     auto_complete_decider_entry,
     build_map_pool_state,
     build_unavailable_state,
+    current_slot,
     serialize_map_pool_entry,
     serialize_veto_session,
 )
@@ -42,6 +43,7 @@ def make_pool_entry(
     action_index: int | None = None,
     picked_by: MapPickSide | None = None,
     team_id: int | None = None,
+    slot: int | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=map_id,
@@ -51,6 +53,7 @@ def make_pool_entry(
         status=status,
         picked_by=picked_by,
         team_id=team_id,
+        slot=slot,
     )
 
 
@@ -165,6 +168,47 @@ class AutoCompleteDeciderEntryTests(TestCase):
         self.assertEqual(MapPickSide.DECIDER, resolved.picked_by)
         self.assertEqual(2, resolved.order)
         self.assertEqual(2, resolved.action_index)
+
+
+class CurrentSlotTests(TestCase):
+    def test_returns_the_lowest_slot_with_an_available_map(self) -> None:
+        pool = [
+            make_pool_entry(1, slot=1, status=MapPoolEntryStatus.BANNED),
+            make_pool_entry(2, slot=1),
+            make_pool_entry(3, slot=2),
+        ]
+
+        self.assertEqual(1, current_slot(pool))
+
+    def test_returns_none_when_every_entry_is_consumed(self) -> None:
+        """The terminal state of every finished slot-mode veto. An unguarded
+        ``min()`` raised here, on the read path that serves the room."""
+        pool = [make_pool_entry(1, slot=1, status=MapPoolEntryStatus.PICKED)]
+
+        self.assertIsNone(current_slot(pool))
+
+    def test_returns_none_for_a_flat_pool(self) -> None:
+        self.assertIsNone(current_slot([make_pool_entry(1), make_pool_entry(2)]))
+
+
+class SlotScopedDeciderTests(TestCase):
+    def test_resolves_slot_one_while_slot_two_still_has_maps(self) -> None:
+        """Pre-fix this raised 400: the check counted AVAILABLE across the whole
+        pool, and slot 2's untouched candidates made it != 1."""
+        pool = [
+            make_pool_entry(1, slot=1, status=MapPoolEntryStatus.BANNED),
+            make_pool_entry(2, slot=1, status=MapPoolEntryStatus.BANNED),
+            make_pool_entry(3, slot=1),
+            make_pool_entry(4, slot=2),
+            make_pool_entry(5, slot=2),
+            make_pool_entry(6, slot=2),
+        ]
+        sequence = ["ban_home", "ban_away", "decider", "ban_home", "ban_away", "decider"]
+
+        entry = auto_complete_decider_entry(sequence, pool)
+
+        self.assertEqual(3, entry.map_id)
+        self.assertEqual(MapPoolEntryStatus.PICKED, entry.status)
 
 
 class SerializationTests(TestCase):

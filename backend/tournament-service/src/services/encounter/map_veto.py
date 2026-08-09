@@ -75,6 +75,18 @@ def get_current_step(
     return completed, veto_sequence[completed]
 
 
+def current_slot(pool: list[models.EncounterMapPool]) -> int | None:
+    """The slot the veto is resolving, or None in flat mode and when complete.
+
+    Slots are consumed in ascending order because the generator lays steps out
+    slot by slot and each step consumes exactly one entry. ``None`` is
+    unambiguous for callers: flat mode has no slots, and a completed veto has no
+    pending step, which :func:`get_current_step` reports first.
+    """
+    slots = [entry.slot for entry in pool if entry.status == MapPoolEntryStatus.AVAILABLE and entry.slot is not None]
+    return min(slots) if slots else None
+
+
 def serialize_veto_config(config: models.MapVetoConfig) -> dict[str, Any]:
     return {
         "id": config.id,
@@ -127,7 +139,12 @@ def auto_complete_decider_entry(
     if step_action != "decider":
         return None
 
-    available = [entry for entry in pool if entry.status == MapPoolEntryStatus.AVAILABLE]
+    active_slot = current_slot(pool)
+    available = [
+        entry
+        for entry in pool
+        if entry.status == MapPoolEntryStatus.AVAILABLE and (active_slot is None or entry.slot == active_slot)
+    ]
     if len(available) != 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
