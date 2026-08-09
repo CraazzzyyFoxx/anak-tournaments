@@ -397,11 +397,11 @@ class SlotRestrictionTests(TestCase):
         """Banning map 1 while slot 1 is active must leave slot 2's entry for
         the same map AVAILABLE -- the lookup keys on (map_id, slot), not map_id.
 
-        Slot 2's copy is listed *first* on purpose. ``_load_pool`` orders by
-        ``order``, which every AVAILABLE entry shares, so pool position carries
-        no slot information; a lookup that resolves by position instead of by
-        slot must fail here, and pre-fix it did -- ``next(map_id == 1)`` returned
-        slot 2's entry and banned it.
+        Slot 2's copy is listed *first* deliberately, and must stay that way:
+        the lookup has to resolve by slot and never by pool position, and only
+        an ordering that puts a later slot's copy ahead of the active slot's can
+        tell those two apart. Tidied into ascending slot order, this test passes
+        against a ``map_id``-only lookup -- which is exactly the pre-fix bug.
         """
         veto = make_veto_session(["ban_home", "decider", "ban_away", "decider"])
         slot_two_shared = make_pool_entry(1, slot=2)
