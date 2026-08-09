@@ -1438,8 +1438,13 @@ function ScopeEditor({
           ) : null}
         </div>
 
-        <CollapsibleContent className="space-y-6 pt-4">
-          <div className="space-y-2">
+        {/* Three groups, in the order a level is decided: what the pool is,
+            how it is played, how long a turn lasts. Each one is a section under
+            its own heading with its own explanation, because a flat run of
+            headings and loose muted lines left every hint next to something it
+            did not describe. */}
+        <CollapsibleContent className="divide-y divide-border/50 pt-2">
+          <section className="space-y-2 py-4">
             <ChoiceCardGroup
               title={t("mapVetoAdmin.poolShapeTitle")}
               value={draft.mode}
@@ -1467,46 +1472,20 @@ function ScopeEditor({
                 {t(`mapVetoAdmin.${slotsAvailability.reasonKey}`)}
               </p>
             )}
-            <p className="text-xs leading-normal text-muted-foreground">
-              {isSlotMode
-                ? t("mapVetoAdmin.slotsDescription")
-                : t("mapVetoAdmin.poolDescription")}
-            </p>
+            {/* The two cards above already say what each shape does, so the only
+                prose left here is what they do not: the slot rules. */}
             {isSlotMode ? (
               <p className="text-xs leading-normal text-muted-foreground">
-                {t("mapVetoAdmin.slotReserveHint")}
+                {t("mapVetoAdmin.slotsDescription")} {t("mapVetoAdmin.slotReserveHint")}
               </p>
             ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={turnTimerId} className="text-sm font-semibold">
-              {t("mapVetoAdmin.turnTimerLabel")}
-            </Label>
-            <div className="flex items-center gap-2">
-              <NumberInput
-                id={turnTimerId}
-                value={draft.turnTimerSeconds}
-                onValueChange={(turnTimerSeconds) => patch({ turnTimerSeconds })}
-                min={1}
-                integer
-                disabled={!canManage}
-                className="w-24"
-              />
-              <span className="text-sm text-muted-foreground">
-                {t("mapVetoAdmin.turnTimerUnit")}
-              </span>
-            </div>
-            <p className="text-xs leading-normal text-muted-foreground">
-              {t("mapVetoAdmin.turnTimerHint")}
-            </p>
-          </div>
+          </section>
 
           {isSlotMode ? (
             /* Two buttons and one shared hint rather than a `ChoiceCardGroup`:
                `firstBanHint` describes both choices at once, and repeating it
                under each card would say the same thing twice. */
-            <section className="space-y-2">
+            <section className="space-y-2 py-4">
               <h4 className="text-sm font-semibold">{t("mapVetoAdmin.firstBanTitle")}</h4>
               <div
                 role="group"
@@ -1537,7 +1516,7 @@ function ScopeEditor({
               </p>
             </section>
           ) : (
-            <>
+            <section className="space-y-4 py-4">
               <ChoiceCardGroup
                 title={t("mapVetoAdmin.orderModeTitle")}
                 value={draft.orderMode}
@@ -1557,12 +1536,14 @@ function ScopeEditor({
                 ]}
               />
 
-              <section className="space-y-2">
+              <div className="space-y-2">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div className="space-y-0.5">
-                    <h4 className="text-sm font-semibold">
+                    <h5 className="text-sm font-semibold">
                       {isCustom ? t("mapVetoAdmin.sequenceTitle") : t("mapVetoAdmin.previewTitle")}
-                    </h4>
+                    </h5>
+                    {/* Where the length comes from belongs next to the steps it
+                        produced, not in a footer under the whole panel. */}
                     <p className="text-xs leading-normal text-muted-foreground">
                       {isCustom
                         ? t("mapVetoAdmin.sequenceDescription")
@@ -1571,7 +1552,9 @@ function ScopeEditor({
                           : t("mapVetoAdmin.previewHint", {
                               format: bestOfLabel(bracketFormat.bestOf),
                               count: draft.mapIds.length
-                            })}
+                            })}{" "}
+                      {t("mapVetoAdmin.formatSourceBracket")} —{" "}
+                      {t("mapVetoAdmin.formatEditStage")}
                     </p>
                   </div>
                   <Badge variant="outline" className="tabular-nums">
@@ -1611,30 +1594,47 @@ function ScopeEditor({
                     {t("mapVetoAdmin.storedFallbackHint")}
                   </p>
                 )}
-              </section>
-            </>
+              </div>
+            </section>
           )}
 
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-            {/* Read-only on purpose: a control here would imply the veto sets the
-                series length, which it has not done since the session started
-                rebuilding its steps from `Encounter.best_of`. */}
-            <span>{t("mapVetoAdmin.formatSourceBracket")}</span>
-            <span aria-hidden>·</span>
-            <span>{t("mapVetoAdmin.formatEditStage")}</span>
-            {onRequestDelete ? (
+          <section className="space-y-2 py-4">
+            <Label htmlFor={turnTimerId} className="text-sm font-semibold">
+              {t("mapVetoAdmin.turnTimerLabel")}
+            </Label>
+            <div className="flex items-center gap-2">
+              <NumberInput
+                id={turnTimerId}
+                value={draft.turnTimerSeconds}
+                onValueChange={(turnTimerSeconds) => patch({ turnTimerSeconds })}
+                min={1}
+                integer
+                disabled={!canManage}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground">
+                {t("mapVetoAdmin.turnTimerUnit")}
+              </span>
+            </div>
+            <p className="text-xs leading-normal text-muted-foreground">
+              {t("mapVetoAdmin.turnTimerHint")}
+            </p>
+          </section>
+
+          {onRequestDelete ? (
+            <div className="flex py-3">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={onRequestDelete}
-                className="ms-auto gap-1.5 text-destructive hover:text-destructive"
+                className="gap-1.5 text-destructive hover:text-destructive"
               >
                 <Trash2 aria-hidden />
                 {t("mapVetoAdmin.deleteLevel")}
               </Button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </CollapsibleContent>
       </Collapsible>
       )}
@@ -2023,45 +2023,40 @@ export function TournamentMapVetoTab({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1.5">
-          <h1 className="text-xl font-bold tracking-tight">{t("mapVetoAdmin.title")}</h1>
-          <p className="max-w-2xl text-pretty text-sm leading-normal text-muted-foreground">
-            {t("mapVetoAdmin.description")}
-          </p>
+    <div className="space-y-4">
+      {/* No page title here: the workspace header already names the tournament
+          and this tab, and a second heading restating both pushed the levels
+          below the fold for nothing. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div
+          role="group"
+          aria-label={t("mapVetoAdmin.densityLabel")}
+          className="flex items-center gap-1 rounded-lg border border-border/70 p-0.5"
+        >
+          {(
+            [
+              ["normal", t("mapVetoAdmin.densityNormal"), LayoutGrid],
+              ["compact", t("mapVetoAdmin.densityCompact"), Rows3]
+            ] as const
+          ).map(([value, label, Icon]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={density === value ? "secondary" : "ghost"}
+              aria-pressed={density === value}
+              onClick={() => setDensity(value)}
+              className="h-7 gap-1.5 px-2.5 text-xs"
+            >
+              <Icon aria-hidden />
+              {label}
+            </Button>
+          ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            role="group"
-            aria-label={t("mapVetoAdmin.densityLabel")}
-            className="flex items-center gap-1 rounded-lg border border-border/70 p-0.5"
-          >
-            {(
-              [
-                ["normal", t("mapVetoAdmin.densityNormal"), LayoutGrid],
-                ["compact", t("mapVetoAdmin.densityCompact"), Rows3]
-              ] as const
-            ).map(([value, label, Icon]) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={density === value ? "secondary" : "ghost"}
-                aria-pressed={density === value}
-                onClick={() => setDensity(value)}
-                className="h-7 gap-1.5 px-2.5 text-xs"
-              >
-                <Icon aria-hidden />
-                {label}
-              </Button>
-            ))}
-          </div>
-          <Badge variant="secondary" className="gap-1 tabular-nums">
-            <Shield className="size-3.5" aria-hidden />
-            {t("mapVetoAdmin.stats.configured", { count: configs.length })}
-          </Badge>
-        </div>
+        <Badge variant="secondary" className="gap-1 tabular-nums">
+          <Shield className="size-3.5" aria-hidden />
+          {t("mapVetoAdmin.stats.configured", { count: configs.length })}
+        </Badge>
       </div>
 
       {dataReady ? (

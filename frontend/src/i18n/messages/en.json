@@ -3833,8 +3833,6 @@
       "stageRound": "{stage} · Round {round}",
       "unknownStage": "Stage #{id}"
     },
-    "title": "Map pool",
-    "description": "Every map that can be played at this tournament. Captains ban and pick from it in each match.",
     "mapsInPool": "{count, plural, one {# map in the pool} other {# maps in the pool}}",
     "mapsPlayed": "{count, plural, one {# map played} other {# maps played}}",
     "notConfiguredTitle": "The organizer has not published a map pool yet",
@@ -3845,6 +3843,11 @@
       "tournament": "Inherited from the tournament default"
     },
     "poolTitle": "Maps in the pool",
+    "roundsTitle": "Pool by round",
+    "roundGroupUpper": "Upper bracket",
+    "roundGroupLower": "Lower bracket",
+    "wholeStage": "Whole stage",
+    "roundPoolShared": "Whole series",
     "poolDescription": "Every map captains can ban or pick in this scope.",
     "poolEmpty": "No maps in this game mode.",
     "filterAll": "All",
@@ -3865,8 +3868,6 @@
     "slotUnderfilled": "Slot {n} has fewer than two candidate maps, so there is nothing to ban there and the veto cannot open."
   },
   "mapVetoAdmin": {
-    "title": "Map pool and veto builder",
-    "description": "Configure the available maps and the veto sequence, per tournament, stage or bracket round.",
     "stats": {
       "configured": "{count, plural, one {# configured level} other {# configured levels}}"
     },
@@ -3888,7 +3889,6 @@
     "turnTimerUnit": "seconds",
     "turnTimerHint": "Countdown shown to captains in the veto room. It does not enforce a turn.",
     "poolTitle": "Map pool",
-    "poolDescription": "Select the maps captains may ban and pick. The chips read in pool order.",
     "poolSelected": "{count, plural, one {# map selected} other {# maps selected}}",
     "poolEmpty": "No maps in this game mode.",
     "poolSelectAll": "Select all",

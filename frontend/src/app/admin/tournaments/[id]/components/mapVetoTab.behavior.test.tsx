@@ -926,9 +926,11 @@ describe("TournamentMapVetoTab pool shape", () => {
 
     expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeFlat)).toBe("true");
     expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeSlots)).toBe("false");
-    expect(editorText(LEVEL_TOURNAMENT)).toContain(en.mapVetoAdmin.poolDescription);
+    // The flat shape has a pool row and a step order; the slot rules belong to
+    // the other shape and must not be described here.
+    expect(poolRow(LEVEL_TOURNAMENT)).toBeTruthy();
+    expect(() => slotRow(LEVEL_TOURNAMENT, 1)).toThrow();
     expect(editorText(LEVEL_TOURNAMENT)).not.toContain(en.mapVetoAdmin.slotsDescription);
-    // Step order belongs to the flat shape only.
     expect(editorText(LEVEL_TOURNAMENT)).toContain(en.mapVetoAdmin.orderModeTitle);
   });
 
@@ -943,7 +945,8 @@ describe("TournamentMapVetoTab pool shape", () => {
     expect(editorText(GROUPS_R1)).toContain(en.mapVetoAdmin.slotsDescription);
     // A flat pool row here would collect selections the slot-mode payload
     // discards, and a step-order choice cannot coexist with slots at all.
-    expect(editorText(GROUPS_R1)).not.toContain(en.mapVetoAdmin.poolDescription);
+    // Structural, not textual: "Map pool" is a prefix of "Map pool shape",
+    // which the shape control renders in both shapes.
     expect(() => poolRow(GROUPS_R1)).toThrow();
     expect(editorText(GROUPS_R1)).not.toContain(en.mapVetoAdmin.orderModeTitle);
   });
