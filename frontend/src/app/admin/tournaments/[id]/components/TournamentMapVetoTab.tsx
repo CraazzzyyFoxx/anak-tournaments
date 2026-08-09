@@ -993,6 +993,9 @@ export function TournamentMapVetoTab({
     upsertMutation.mutate({
       stage_id: levelType === "tournament" ? null : stageId,
       round: levelType === "stage_round" ? round : null,
+      // Required, no server-side default. This editor only builds flat pools;
+      // the slot-mode control arrives with the slot cards.
+      mode: "pool",
       map_ids: values.mapIds,
       sequence: values.sequence,
       turn_timer_seconds: values.turnTimerSeconds,

@@ -230,6 +230,13 @@ export interface MapVetoConfig {
 export interface MapVetoConfigUpsertInput {
   stage_id?: number | null;
   round?: number | null;
+  /**
+   * Required by the server with no default: the upsert replaces the pool
+   * wholesale, so a default would let a stale tab convert a slot config to flat
+   * and orphan its slot rows. Only `"pool"` is reachable from this editor until
+   * the slot UI lands; the full slot-mode typing comes with it.
+   */
+  mode: "pool" | "slots";
   preset?: VetoPreset | null;
   turn_timer_seconds?: number | null;
   sequence: VetoSequenceToken[];
