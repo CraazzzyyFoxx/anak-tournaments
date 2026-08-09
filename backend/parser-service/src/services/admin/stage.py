@@ -176,18 +176,32 @@ async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     await _publish_tournament_changed(tournament_id, "structure_changed")
 
 
-def _map_veto_signature(config: models.MapVetoConfig) -> tuple[tuple, tuple, enums.MapVetoMode, tuple]:
+def _map_veto_signature(
+    config: models.MapVetoConfig,
+) -> tuple[tuple, tuple, enums.MapVetoMode, enums.FirstBanRotation | None, tuple]:
     """Structural identity of ``config`` for stage-merge dedup.
 
     ``_merge_map_veto_configs`` refuses ONLY when two source signatures differ,
     so whatever this leaves out is merged away in silence: one config survives
     and the other's structure is dropped without a word. Hence the slot
     PARTITION rather than its flat union — ``[[4, 9], [6, 2]]`` and
-    ``[[4, 9, 6], [2]]`` union to the same map list and would merge.
+    ``[[4, 9, 6], [2]]`` union to the same map list and would merge. Hence also
+    ``first_ban_rotation``: it decides which side opens each slot's bans
+    (``build_slot_sequence``), so two configs that differ only there run
+    different vetos.
 
-    ``mode`` and the slots are APPENDED, so a flat config's signature still
-    carries the pre-slot ``(sequence, pool)`` pair as its prefix and no pair of
-    flat configs changes its merge verdict.
+    ``mode``, the rotation and the slots are APPENDED to the pre-slot
+    ``(sequence, pool)`` pair. Appending only REFINES the equivalence, so it can
+    add a 409 but can never introduce a silent merge. A genuine flat config
+    carries no slot rows and has its rotation gated to None, so every pair of
+    them agrees on all three appended components and keeps its verdict exactly.
+    Nothing forbids a ``pool``-mode row from also holding slot rows — no writer
+    produces that today — and two such rows that used to merge now raise
+    instead; that is the safe direction.
+
+    The rotation is gated on ``mode`` rather than appended unconditionally
+    because it is slot-mode-only: in ``pool`` mode it changes nothing, and
+    signing it there would refuse two flat configs over an inert field.
 
     Significant: the slot ``position`` values (unique per config but not
     necessarily contiguous, and part of what a slot IS — the same candidate lists
@@ -199,15 +213,20 @@ def _map_veto_signature(config: models.MapVetoConfig) -> tuple[tuple, tuple, enu
     left to the query, which would let two separately loaded copies of one
     structure hash apart into a spurious 409.
 
-    ``map_pool`` is deliberately NOT sorted here: it was normalized out of the
-    old ``map_pool_ids`` JSON array (dbarch05) into ``map_veto_config_map`` and
-    its relationship order is that array's order, which this signature has
-    always treated as significant.
+    ``map_pool`` carries that same tie risk (``map_veto_config_map`` has the
+    identical ``UNIQUE(config, map)`` + ``sort_order`` default 0 shape) and is
+    still deliberately NOT sorted: its relationship order is the order of the old
+    ``map_pool_ids`` JSON array it was normalized out of (dbarch05), which this
+    signature has always treated as significant, and re-ordering it here would
+    change what flat configs hash to — the one thing slot mode must not do.
     """
+    # Slot-mode-only, so it must not enter a flat config's signature at all.
+    rotation = config.first_ban_rotation if config.mode == enums.MapVetoMode.SLOTS else None
     return (
         tuple(config.veto_sequence_json or []),
         tuple(entry.map_id for entry in config.map_pool),
         config.mode,
+        rotation,
         tuple(
             (
                 slot.position,

@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
 backend_root = Path(__file__).resolve().parents[2]
@@ -24,6 +24,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 
 stage_service = importlib.import_module("src.services.admin.stage")
 enums = importlib.import_module("shared.core.enums")
+eager_loading = importlib.import_module("shared.tests.eager_loading")
 
 
 def _scalars_result(values: list):
@@ -174,6 +175,8 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
 
 POOL_MODE = enums.MapVetoMode.POOL
 SLOTS_MODE = enums.MapVetoMode.SLOTS
+FIXED = enums.FirstBanRotation.FIXED
+ALTERNATE = enums.FirstBanRotation.ALTERNATE
 
 
 def _slot_row(
@@ -200,6 +203,7 @@ def _veto_config(
     pool: tuple[int, ...] = (),
     slots: list[SimpleNamespace] | None = None,
     stage_id: int | None = None,
+    rotation: enums.FirstBanRotation = FIXED,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         mode=mode,
@@ -207,6 +211,7 @@ def _veto_config(
         map_pool=[SimpleNamespace(map_id=map_id) for map_id in pool],
         slots=list(slots or []),
         stage_id=stage_id,
+        first_ban_rotation=rotation,
     )
 
 
@@ -227,7 +232,7 @@ def _slot_union(config: SimpleNamespace) -> tuple[int, ...]:
     return tuple(entry.map_id for slot in sorted(config.slots, key=lambda row: row.position) for entry in slot.maps)
 
 
-class MapVetoSignatureTests(IsolatedAsyncioTestCase):
+class MapVetoSignatureTests(TestCase):
     """``_map_veto_signature`` decides whether ``_merge_map_veto_configs``
     refuses, so anything it leaves out is merged away in silence."""
 
@@ -241,7 +246,7 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             stage_service._map_veto_signature(config),
-            (("ban_home", "pick_away", "decider"), (7, 3, 11), POOL_MODE, ()),
+            (("ban_home", "pick_away", "decider"), (7, 3, 11), POOL_MODE, None, ()),
         )
 
     def test_flat_pairs_keep_their_pre_slot_merge_verdicts(self) -> None:
@@ -250,6 +255,9 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
             _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2)),
             _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(2, 1)),
             _veto_config(mode=POOL_MODE, sequence=["ban_home", "decider"], pool=(1, 2)),
+            # A flat config's rotation is inert, so this one must stay verdict-equal
+            # to the two identical FIXED ones above.
+            _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2), rotation=ALTERNATE),
             _veto_config(mode=POOL_MODE, sequence=None, pool=()),
         ]
         for index, config in enumerate(flats):
@@ -265,7 +273,7 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
 
     def test_signature_handles_empty_pool_and_sequence(self) -> None:
         config = _veto_config(mode=POOL_MODE)
-        self.assertEqual(stage_service._map_veto_signature(config), ((), (), POOL_MODE, ()))
+        self.assertEqual(stage_service._map_veto_signature(config), ((), (), POOL_MODE, None, ()))
 
     def test_slot_partition_is_significant_where_the_union_is_not(self) -> None:
         left = _veto_config(
@@ -349,16 +357,66 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
         signatures = [stage_service._map_veto_signature(config(reserve)) for reserve in (None, 13, 21)]
         self.assertEqual(len(set(signatures)), 3, signatures)
 
-    def test_mode_is_significant_for_otherwise_identical_configs(self) -> None:
+    def test_mode_is_carried_and_separates_otherwise_identical_configs(self) -> None:
         # Nothing forbids a config from holding both a flat pool and slot rows,
-        # so mode is the only thing saying which of the two is played.
+        # so mode is what says which of the two is played. Asserting the mode is
+        # PRESENT as well as that the two differ: with the rotation gated on mode,
+        # inequality alone would still hold if mode itself were dropped.
+        slots = [_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])]
+        flat = stage_service._map_veto_signature(
+            _veto_config(mode=POOL_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
+        )
+        slotted = stage_service._map_veto_signature(
+            _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
+        )
+        self.assertIn(POOL_MODE, flat)
+        self.assertIn(SLOTS_MODE, slotted)
+        self.assertNotEqual(flat, slotted)
+
+    def test_slot_signature_shape_is_pinned(self) -> None:
+        config = _veto_config(
+            mode=SLOTS_MODE,
+            sequence=["ban_first", "decider"],
+            slots=[
+                # Arrival order reversed on both levels; the pin is the sorted result.
+                _slot_row(2, [(1, 2), (0, 6)]),
+                _slot_row(1, [(1, 9), (0, 4)], reserve_map_id=13),
+            ],
+            rotation=ALTERNATE,
+        )
+        self.assertEqual(
+            stage_service._map_veto_signature(config),
+            (
+                ("ban_first", "decider"),
+                (),
+                SLOTS_MODE,
+                ALTERNATE,
+                ((1, 13, (4, 9)), (2, None, (6, 2))),
+            ),
+        )
+
+    def test_ban_rotation_is_significant_in_slot_mode(self) -> None:
+        # ALTERNATE hands the opening ban of every second slot to the other side
+        # (build_slot_sequence), so these two run different vetos.
         slots = [_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])]
         self.assertNotEqual(
             stage_service._map_veto_signature(
-                _veto_config(mode=POOL_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
+                _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=FIXED)
             ),
             stage_service._map_veto_signature(
-                _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
+                _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=ALTERNATE)
+            ),
+        )
+
+    def test_ban_rotation_is_gated_out_of_flat_signatures(self) -> None:
+        # The field is slot-mode-only, so signing it unconditionally would refuse
+        # two flat configs over something that changes nothing for them.
+        self.assertEqual(
+            stage_service._map_veto_signature(
+                _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(7, 3), rotation=FIXED)
+            ),
+            stage_service._map_veto_signature(
+                _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(7, 3), rotation=ALTERNATE)
             ),
         )
 
@@ -421,27 +479,42 @@ class MapVetoMergeDedupTests(IsolatedAsyncioTestCase):
         self.assertEqual(left.stage_id, 10)
         session.delete.assert_awaited_once_with(right)
 
+    async def test_merge_refuses_sources_that_differ_only_in_ban_rotation(self) -> None:
+        slots = [_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])]
+        left = _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=FIXED, stage_id=11)
+        right = _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=ALTERNATE, stage_id=12)
+        session = self._session([left, right])
+        with self.assertRaises(stage_service.HTTPException) as caught:
+            await self._merge(session)
+        self.assertEqual(caught.exception.status_code, stage_service.status.HTTP_409_CONFLICT)
+        self.assertEqual([left.stage_id, right.stage_id], [11, 12])
+        session.delete.assert_not_awaited()
+
     async def test_merge_eager_loads_the_slot_chain_it_signs(self) -> None:
         session = self._session([])
         await self._merge(session)
         source_statement = session.execute.await_args_list[1].args[0]
-        paths = [str(option.path) for option in source_statement._with_options]
-        self.assertTrue(
-            any("MapVetoConfig.slots" in path and "MapVetoConfigSlot.maps" in path for path in paths),
-            paths,
-        )
+        eager_loading.assert_eager_loads(self, source_statement, "MapVetoConfig.slots", "MapVetoConfigSlot.maps")
 
 
-class MapVetoSignatureCopyTests(IsolatedAsyncioTestCase):
+class MapVetoSignatureCopyTests(TestCase):
     """dbarch05 records that ``_map_veto_signature`` exists verbatim in BOTH
     tournament-service and parser-service. Nothing else makes a one-sided edit
-    fail, so compare the two copies mechanically."""
+    fail, so compare the two copies mechanically. parser-service's suite carries
+    the mirror of this test, so a one-sided CI job fails too."""
 
     def test_both_service_copies_are_identical(self) -> None:
+        opening = "def _map_veto_signature"
+        closing = "async def _merge_map_veto_configs"
+
         def extract(relative: str) -> str:
             source = (backend_root / relative).read_text(encoding="utf-8")
-            start = source.index("def _map_veto_signature")
-            return source[start : source.index("async def _merge_map_veto_configs", start)]
+            # Named assertions rather than an opaque ValueError out of str.index
+            # if either anchor is ever renamed.
+            self.assertIn(opening, source, relative)
+            self.assertIn(closing, source, relative)
+            start = source.index(opening)
+            return source[start : source.index(closing, start)]
 
         self.assertEqual(
             extract("tournament-service/src/services/admin/stage.py"),

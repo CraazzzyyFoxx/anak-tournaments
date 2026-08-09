@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
 backend_root = Path(__file__).resolve().parents[2]
@@ -29,6 +29,7 @@ os.environ.setdefault("CHALLONGE_API_KEY", "test")
 stage_service = importlib.import_module("src.services.admin.stage")
 admin_schemas = importlib.import_module("src.schemas.admin.stage")
 enums = importlib.import_module("shared.core.enums")
+eager_loading = importlib.import_module("shared.tests.eager_loading")
 
 
 def _scalars_result(values: list):
@@ -408,20 +409,48 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
         )
 
     @staticmethod
-    def _config(mode, sequence: list[str], pool: tuple[int, ...] = (), slots: list | None = None) -> SimpleNamespace:
+    def _config(
+        mode,
+        sequence: list[str],
+        pool: tuple[int, ...] = (),
+        slots: list | None = None,
+        rotation=enums.FirstBanRotation.FIXED,
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             mode=mode,
             veto_sequence_json=sequence,
             map_pool=[SimpleNamespace(map_id=map_id) for map_id in pool],
             slots=list(slots or []),
             stage_id=None,
+            first_ban_rotation=rotation,
         )
 
     def test_flat_signature_keeps_the_pre_slot_pair_as_its_prefix(self) -> None:
         config = self._config(enums.MapVetoMode.POOL, ["ban_home", "pick_away", "decider"], pool=(7, 3, 11))
         self.assertEqual(
             stage_service._map_veto_signature(config),
-            (("ban_home", "pick_away", "decider"), (7, 3, 11), enums.MapVetoMode.POOL, ()),
+            (("ban_home", "pick_away", "decider"), (7, 3, 11), enums.MapVetoMode.POOL, None, ()),
+        )
+
+    def test_ban_rotation_is_significant_in_slot_mode_only(self) -> None:
+        slots = [self._slot(1, [(0, 4), (1, 9)]), self._slot(2, [(0, 6), (1, 2)])]
+        fixed = enums.FirstBanRotation.FIXED
+        alternate = enums.FirstBanRotation.ALTERNATE
+        self.assertNotEqual(
+            stage_service._map_veto_signature(
+                self._config(enums.MapVetoMode.SLOTS, ["ban_first"], slots=slots, rotation=fixed)
+            ),
+            stage_service._map_veto_signature(
+                self._config(enums.MapVetoMode.SLOTS, ["ban_first"], slots=slots, rotation=alternate)
+            ),
+        )
+        self.assertEqual(
+            stage_service._map_veto_signature(
+                self._config(enums.MapVetoMode.POOL, ["ban_home"], pool=(7, 3), rotation=fixed)
+            ),
+            stage_service._map_veto_signature(
+                self._config(enums.MapVetoMode.POOL, ["ban_home"], pool=(7, 3), rotation=alternate)
+            ),
         )
 
     def test_slot_partition_is_significant_where_the_union_is_not(self) -> None:
@@ -467,9 +496,32 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
         session.delete.assert_not_awaited()
         # Resolves this service's ``models.MapVetoConfigSlot`` for real: without
         # the eager load the signature would lazy-load ``slots`` after an await.
-        source_statement = session.execute.await_args_list[1].args[0]
-        paths = [str(option.path) for option in source_statement._with_options]
-        self.assertTrue(
-            any("MapVetoConfig.slots" in path and "MapVetoConfigSlot.maps" in path for path in paths),
-            paths,
+        eager_loading.assert_eager_loads(
+            self,
+            session.execute.await_args_list[1].args[0],
+            "MapVetoConfig.slots",
+            "MapVetoConfigSlot.maps",
+        )
+
+
+class MapVetoSignatureCopyTests(TestCase):
+    """Mirror of tournament-service's drift guard, so a parser-only CI job also
+    fails on a one-sided edit to this service's verbatim copy (dbarch05)."""
+
+    def test_both_service_copies_are_identical(self) -> None:
+        opening = "def _map_veto_signature"
+        closing = "async def _merge_map_veto_configs"
+
+        def extract(relative: str) -> str:
+            source = (backend_root / relative).read_text(encoding="utf-8")
+            # Named assertions rather than an opaque ValueError out of str.index
+            # if either anchor is ever renamed.
+            self.assertIn(opening, source, relative)
+            self.assertIn(closing, source, relative)
+            start = source.index(opening)
+            return source[start : source.index(closing, start)]
+
+        self.assertEqual(
+            extract("tournament-service/src/services/admin/stage.py"),
+            extract("parser-service/src/services/admin/stage.py"),
         )
