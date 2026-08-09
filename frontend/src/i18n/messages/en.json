@@ -2054,7 +2054,11 @@
           "notConfiguredTitle": "Veto is not configured",
           "notConfiguredHint": "The organizer has not set veto rules for this match yet. Check back later.",
           "teamsUnknownTitle": "Teams are not decided yet",
-          "teamsUnknownHint": "The veto room opens once both teams of this match are known."
+          "teamsUnknownHint": "The veto room opens once both teams of this match are known.",
+          "slotCountMismatchTitle": "The map pool does not cover this series",
+          "slotCountMismatchHint": "This match plays more maps than the configured pool has slots, so the veto cannot open. The organizer has to add the missing slots — waiting will not fix it.",
+          "slotUnderfilledTitle": "A slot has too few maps",
+          "slotUnderfilledHint": "One of this match's slots has fewer than two candidate maps, so there is nothing to ban there. The organizer has to fill it before the veto can open."
         },
         "steps": {
           "title": "Veto steps",
@@ -2076,7 +2080,8 @@
             "available": "Available",
             "banned": "Banned",
             "picked": "Picked",
-            "played": "Played"
+            "played": "Played",
+            "remaining": "Remaining"
           },
           "by": {
             "home": "home",
@@ -2118,6 +2123,14 @@
           "resetConfirmAction": "Reset",
           "resetSuccess": "Veto session reset",
           "resetFailed": "Failed to reset the veto session"
+        },
+        "slot": {
+          "label": "Slot {n}",
+          "current": "current slot",
+          "resolved": "resolved",
+          "upcoming": "opens later",
+          "locked": "Slot {n} opens once the earlier slots are decided.",
+          "inPlayCount": "{count, plural, one {# slot in play} other {# slots in play}}"
         }
       }
     },
@@ -3860,7 +3873,9 @@
     "bracketFormatVaries": "Varies by round",
     "bracketFormatUnknown": "Depends on the stage",
     "customOrder": "Custom veto order",
-    "customOrderMismatch": "This custom order plays {played, plural, one {# map} other {# maps}}, but the bracket calls for {expected, plural, one {# map} other {# maps}}."
+    "customOrderMismatch": "This custom order plays {played, plural, one {# map} other {# maps}}, but the bracket calls for {expected, plural, one {# map} other {# maps}}.",
+    "slotPoolNotShownTitle": "This round uses a different pool per map",
+    "slotPoolNotShownDescription": "The organizer configured candidate maps for each map of the series. This page does not show them yet — captains see the full pool in the veto room when the match starts."
   },
   "mapVetoAdmin": {
     "title": "Map pool and veto builder",
@@ -3925,7 +3940,8 @@
       "multipleDeciders": "Only one decider step is allowed.",
       "deciderNotLast": "The decider step must be the last step.",
       "noPickOrDecider": "The sequence needs at least one pick or a decider.",
-      "sequenceLongerThanPool": "The sequence has {steps} steps but the pool only has {maps} maps."
+      "sequenceLongerThanPool": "The sequence has {steps} steps but the pool only has {maps} maps.",
+      "slotTooFewCandidates": "Slot {slot} needs at least two candidate maps."
     },
     "save": "Save configuration",
     "saving": "Saving…",
@@ -3953,7 +3969,32 @@
     "previewStale": "Select maps to preview the generated steps.",
     "mismatchTitle": "This order disagrees with the bracket",
     "mismatchBody": "The steps play {played, plural, one {# map} other {# maps}} while the bracket calls for {expected, plural, one {# map} other {# maps}}. The custom order wins — fix one of the two.",
-    "storedFallbackHint": "Saved as a fallback. Each match regenerates its own steps from its best-of."
+    "storedFallbackHint": "Saved as a fallback. Each match regenerates its own steps from its best-of.",
+    "poolShapeTitle": "Map pool shape",
+    "poolShapeFlat": "One pool for the whole match",
+    "poolShapeFlatHint": "Captains ban and pick from a single pool of maps, in the veto order below.",
+    "poolShapeSlots": "A different pool per map in the series",
+    "poolShapeSlotsHint": "Each map of the series gets its own candidates. Captains ban inside one slot until a single map is left, then move on to the next slot.",
+    "poolShapeSlotsUnavailableStage": "The rounds of this stage play series of different lengths, so the number of slots is not fixed here. Choose a single round.",
+    "poolShapeSlotsUnavailableTournament": "The tournament default applies to every stage, so the series length is not known here. Choose a stage or a single round.",
+    "firstBanTitle": "Who bans first",
+    "firstBanFixed": "Always the higher seed",
+    "firstBanAlternate": "Take turns",
+    "firstBanHint": "Either the higher seed opens every slot, or the teams take turns: the higher seed opens the odd-numbered slots and the lower seed the even-numbered ones.",
+    "slotsTitle": "Pool per map",
+    "slotsDescription": "One slot per map of the series. Each slot needs at least two candidate maps; captains ban inside it until one is left.",
+    "slotsCountHint": "{count, plural, one {# slot} other {# slots}}, one per map in the series. The bracket sets this number; it cannot be edited here.",
+    "slotLabel": "Slot {n}",
+    "slotCandidates": "{count, plural, one {# candidate} other {# candidates}}",
+    "slotToggleAria": "{map}, {gamemode}, slot {slot}",
+    "slotNameFilterLabel": "Find a map for slot {slot}",
+    "slotNameFilterPlaceholder": "Map name",
+    "slotNameFilterEmpty": "No map matches “{query}”.",
+    "slotReserveLabel": "Reserve map for slot {slot}",
+    "slotReserveNone": "No reserve",
+    "slotReserveHint": "The regulation plays this map if the slot's map ends in a draw. The platform only shows it and never switches to it.",
+    "slotsStageScopeWarning": "These slots apply to all {count, plural, one {# round} other {# rounds}} of this stage. A regulation with a different pool per round needs one configuration per round.",
+    "slotCountMismatchWarning": "This level has {slots, plural, one {# slot} other {# slots}} configured while the bracket now calls for {maps, plural, one {# map} other {# maps}}. Extra slots are dropped from the end; missing ones stop the veto from opening."
   },
   "rosterShape": {
     "title": "Roster shape",

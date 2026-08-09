@@ -13,7 +13,9 @@ import ru from "./messages/ru.json";
  * placeholders and fail on any reported error or unresolved key.
  */
 
-const NAMESPACES = ["mapVeto", "mapVetoAdmin"] as const;
+// `encounters.veto.room` is the veto room's own namespace and carries slot-mode
+// plurals of its own, so it is checked here rather than left unguarded.
+const NAMESPACES = ["mapVeto", "mapVetoAdmin", "encounters.veto.room"] as const;
 
 type Leaf = { key: string; message: string };
 
@@ -41,7 +43,16 @@ function pluralArg(message: string): string | null {
 
 function collectLeaves(messages: typeof en): Leaf[] {
   return NAMESPACES.flatMap((namespace) =>
-    leaves((messages as Record<string, unknown>)[namespace], namespace)
+    leaves(
+      // Dotted walk: `encounters.veto.room` is not a top-level key.
+      namespace
+        .split(".")
+        .reduce<unknown>(
+          (node, key) => (node as Record<string, unknown> | undefined)?.[key],
+          messages as Record<string, unknown>
+        ),
+      namespace
+    )
   );
 }
 
