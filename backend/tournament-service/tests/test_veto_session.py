@@ -29,6 +29,7 @@ from src.services.encounter.veto_session import (  # noqa: E402
     effective_sequence,
     resolve_sequence_tokens,
     select_config,
+    validate_slot_config,
     validate_veto_config,
 )
 
@@ -353,3 +354,37 @@ class BuildSlotSequenceTests(TestCase):
 
         self.assertEqual(["decider", "ban_first", "ban_second", "decider"], sequence)
         self.assertEqual(4, len(sequence))
+
+
+class ValidateSlotConfigTests(TestCase):
+    """Slot-mode upsert validation (design Decision 15/16)."""
+
+    def test_rejects_a_slot_with_fewer_than_two_candidates(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            validate_slot_config([[1, 2, 3], [4]], reserves=[None, None])
+
+        self.assertIn("at least two candidate maps", ctx.exception.detail)
+
+    def test_rejects_an_empty_slot_list(self) -> None:
+        with self.assertRaises(HTTPException):
+            validate_slot_config([], reserves=[])
+
+    def test_rejects_a_reserve_list_that_does_not_match_the_slot_count(self) -> None:
+        # The reserve list is positional: a short or long list silently
+        # misaligns every reserve after the gap.
+        with self.assertRaises(HTTPException) as ctx:
+            validate_slot_config([[1, 2], [3, 4]], reserves=[None])
+
+        self.assertIn("one reserve entry per slot", ctx.exception.detail)
+
+    def test_rejects_duplicate_candidates_within_one_slot(self) -> None:
+        with self.assertRaises(HTTPException):
+            validate_slot_config([[1, 1, 2]], reserves=[None])
+
+    def test_allows_the_same_map_in_two_different_slots(self) -> None:
+        """A map may be a candidate of one slot and of another; only within-slot
+        duplication is meaningless (design Decision 9/11)."""
+        validate_slot_config([[1, 2], [1, 3]], reserves=[None, None])
+
+    def test_allows_a_reserve_that_is_also_a_candidate_elsewhere(self) -> None:
+        validate_slot_config([[1, 2], [3, 4]], reserves=[3, None])

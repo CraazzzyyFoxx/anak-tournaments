@@ -178,6 +178,34 @@ def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[s
     return tokens
 
 
+def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
+    """Validate a slot-mode config upsert.
+
+    Slots need >= 2 candidates. ``build_slot_sequence`` spends ``c_i - 1`` bans
+    on a slot, so a single-candidate one contributes a bare ``decider`` that
+    lands back-to-back with the previous slot's. ``auto_complete_decider``
+    resolves at most one decider per call, and ``perform_veto_action``
+    intercepts a decider step rather than applying a captain's action, so
+    consecutive deciders advance only one per state read and no captain move
+    can drive them (design Decision 15).
+
+    A map may repeat across slots -- only within-slot duplication is
+    meaningless, since a slot bans its own candidates down to one survivor.
+    """
+    if not slots:
+        raise HTTPException(status_code=422, detail="slots must not be empty")
+    if len(reserves) != len(slots):
+        raise HTTPException(status_code=422, detail="one reserve entry per slot is required")
+    for index, candidates in enumerate(slots, start=1):
+        if len(candidates) < 2:
+            raise HTTPException(
+                status_code=422,
+                detail=f"slot {index} needs at least two candidate maps",
+            )
+        if len(set(candidates)) != len(candidates):
+            raise HTTPException(status_code=422, detail=f"slot {index} has duplicate maps")
+
+
 def select_config(
     configs: list[models.MapVetoConfig],
     *,
