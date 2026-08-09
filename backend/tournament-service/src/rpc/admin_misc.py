@@ -114,14 +114,17 @@ async def _require_flat_veto(session: Any, encounter_id: int) -> None:
 
     No session exists yet: ``ensure_veto_session`` copies the config pool only
     when the encounter has none, so the session it later builds sizes its
-    sequence from the slots while the pool stays these NULL rows. With no
-    slotted entry anywhere ``current_slot`` is None, ``in_current_slot`` admits
-    everything, and the veto degenerates to a flat one over these maps driven by
-    a sequence that describes slots they were never candidates of. A slot
-    sequence spends one token per candidate, so the two-candidate floor makes it
-    at least twice the series length: whenever the assigned pool is shorter than
-    that it runs out mid-sequence, every further action 400s on an empty pool,
-    and only a reset recovers.
+    sequence from the slots while the pool stays these NULL rows. Every slot
+    closes with a ``decider``, so one lands mid-sequence, and
+    ``auto_complete_decider_entry`` demands exactly one available map scoped by
+    ``in_current_slot`` — which a pool with no slots at all turns into an
+    identity, making the demand "exactly one available map in the whole pool".
+    It 400s there at ANY pool size, not only a short one: verified over a
+    two-slot sequence at 3, 4 and 9 maps, and a two-map pool only reaches one
+    step further before 400ing on an already-banned map. Nor is the pool ever
+    empty — ``apply_veto_action`` marks rows BANNED/PICKED instead of deleting
+    them, so ``perform_veto_action``'s ``if not pool:`` guard is unreachable
+    from here. Only a reset recovers.
 
     Which authority answers "slot mode" follows from that split. A live session
     runs entirely off its own snapshot and ``config_id`` is ``ON DELETE SET

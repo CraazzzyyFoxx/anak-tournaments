@@ -1,17 +1,16 @@
 """``rpc.tournament.encounter_assign_map_pool`` must refuse a slot-mode veto.
 
 The admin pool escape hatch creates entries with a NULL ``slot``, and neither
-ordering survives that. Appended onto an existing slot-mode session they fail
-``in_current_slot`` against every slot in play, so they can never be banned or
-picked and linger as permanently AVAILABLE entries in the room's payload.
-Assigned before the session exists they become the whole pool,
-``ensure_veto_session`` keeps it and sizes its sequence from the slots anyway,
-and the veto runs as a flat one over maps that sequence never described — 400ing
-on an empty pool as soon as the sequence outruns it.
+ordering survives that: appended onto a live slot-mode session they become rows
+no step can ever select, and assigned before the session exists they become the
+pool a slot-sized sequence is then run over. So the guard has two authorities,
+and which one answers depends on the ordering: a live session's own snapshot,
+and — with no session to snapshot — the cascaded config's ``mode``.
 
-So the guard has two authorities, and which one answers depends on the ordering:
-a live session's own snapshot, and — with no session to snapshot — the cascaded
-config's ``mode``.
+Why each ordering is unrecoverable is spelled out once, on
+``admin_misc._require_flat_veto``. This module deliberately does not restate it:
+an earlier copy here drifted from the guard's and went stale, so the mechanism
+has exactly one home and the tests below name only what they assert.
 
 Everything below drives the real subscriber through the real permission path with
 a session fake that answers by the entity each query actually targets, so a guard
@@ -275,9 +274,11 @@ class AssignMapPoolSlotGuard(IsolatedAsyncioTestCase):
         # ``test_veto_session.py::test_a_pre_existing_pool_is_left_alone``, which
         # pinned the resulting broken state as a starting point for this guard and
         # was retired with it: ``ensure_veto_session`` keeps a pool that already
-        # exists (``if not pool_count``) and sizes its sequence from the slots
-        # anyway, so the pool this call would write is the pool the room is then
-        # stuck with. Refusing the write is what makes that state unreachable.
+        # exists (``if not pool_count``, pinned by
+        # ``test_veto_session.py::test_an_existing_pool_is_never_overwritten_by_the_config``)
+        # and sizes its sequence from the slots anyway, so the pool this call
+        # would write is the pool the room is then stuck with. Refusing the write
+        # is what makes that state unreachable.
         envelope, calls, targets = await self._invoke(configs=[_config(SLOTS)])
 
         self._assert_refused(envelope, calls)

@@ -1000,6 +1000,27 @@ class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(veto)
 
+    async def test_an_existing_pool_is_never_overwritten_by_the_config(self) -> None:
+        # The admin pool escape hatch's whole point, and the mechanism both halves
+        # of ``admin_misc._require_flat_veto``'s docstring rest on: a pool that
+        # already exists is left alone, so a slot-mode config would size a
+        # sequence for slots while the pool stayed the admin's. Slot mode can no
+        # longer reach this state (that route 409s), which is why the coverage
+        # lives here, in the mode where a pre-existing pool is legitimate.
+        #
+        # ``pool_count`` is 4 against a 5-map config on purpose: the two counts
+        # must disagree for either half to be visible. A copy that happened
+        # anyway shows up in the rows, and ``pool_size = pool_count or
+        # len(config.map_pool)`` shows up in the sequence, which is sized from
+        # the pool that will actually be drawn from -- 4 maps buys one opening
+        # ban where 5 buys two.
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13, 14, 15]), pool_count=4)
+
+        veto = await ensure_veto_session(session, _encounter(best_of=3))
+
+        self.assertEqual([], session.pool_rows)
+        self.assertEqual(["ban_home", "pick_home", "pick_away", "decider"], veto.resolved_sequence_json)
+
 
 class UnavailableReasonTests(IsolatedAsyncioTestCase):
     """One distinct reason per cause -- a later task needs distinct copy."""
