@@ -80,7 +80,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
 
   return (
     <HeroFrame className="aqt-player" variant="profile" roleTint={primaryRole ? roleTint : undefined}>
-      <div className="flex items-center justify-between gap-3 px-9 pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pt-4 md:px-9 md:pt-5">
         <p className="aqt-mono m-0 text-[12px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]">
           <span aria-hidden className="mr-1.5 text-[color:var(--aqt-fg-dim)]">{"//"}</span>
           <Link href="/users" className="hover:text-[color:var(--aqt-fg-muted)]">{t("users.profile.breadcrumb")}</Link>
@@ -105,7 +105,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
         />
       </div>
 
-      <div className="grid items-center gap-8 p-7 pt-6 md:grid-cols-[auto_1fr_auto] md:px-9 md:py-7">
+      <div className="grid gap-6 px-5 pb-6 pt-5 md:grid-cols-[auto_1fr_auto] md:items-center md:gap-8 md:px-9 md:py-7">
         <div className="relative h-[110px] w-[110px] flex-shrink-0">
           <div
             className="absolute -inset-1 rounded-[22px] opacity-40 blur-2xl"
@@ -133,33 +133,57 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
         </div>
 
         <div className="flex min-w-0 flex-col gap-2">
-          <h1 className="aqt-hero-title m-0 flex flex-wrap items-baseline gap-2.5 text-[clamp(28px,4vw,48px)] font-onest font-semibold tracking-[-0.01em] leading-none">
+          <h1 className="aqt-hero-title m-0 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[clamp(28px,4vw,48px)] font-onest font-semibold tracking-[-0.01em] leading-none">
             <span>{name}</span>
-            {tag ? <span className="text-[22px] font-medium tracking-[0.04em] text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
-            {hasVerifiedSocial(user.social_accounts) ? (
-              <span
-                className="inline-flex items-center text-[18px] text-[color:var(--aqt-teal)]"
-                title={t("users.profile.header.verifiedIdentity")}
-              >
-                <BadgeCheck size={20} aria-hidden />
-                <span className="sr-only">{t("users.profile.header.verifiedIdentity")}</span>
+            {/* Tag + verified mark travel together: as one nowrap group they can
+                never be orphaned onto their own line at narrow widths, and both
+                scale with the clamped h1 instead of sitting at a fixed 22px. */}
+            {tag || hasVerifiedSocial(user.social_accounts) ? (
+              <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
+                {tag ? (
+                  <span className="text-[0.46em] font-medium tracking-[0.04em] text-[color:var(--aqt-fg-faint)]">
+                    #{tag}
+                  </span>
+                ) : null}
+                {hasVerifiedSocial(user.social_accounts) ? (
+                  <span
+                    className="inline-flex items-center text-[color:var(--aqt-teal)]"
+                    title={t("users.profile.header.verifiedIdentity")}
+                  >
+                    <BadgeCheck aria-hidden className="size-[0.42em] min-h-4 min-w-4" />
+                    <span className="sr-only"> {t("users.profile.header.verifiedIdentity")}</span>
+                  </span>
+                ) : null}
               </span>
             ) : null}
           </h1>
           {primaryRole ? (
-            <div className="aqt-mono flex flex-wrap items-center gap-1.5 text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)]">
+            <div className="aqt-mono flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)]">
               <span className="inline-flex h-4 w-4 items-center justify-center">
                 <PlayerRoleIcon role={primaryRole.role} size={14} color={roleSwatchColor} decorative />
               </span>
-              <span>{primaryRole.role}</span>
-              <span>· {t("users.profile.header.tournamentsCount", { count: profile.tournaments_count })}</span>
-              <span>· {t("users.profile.header.mapsCount", { count: profile.maps_total })}</span>
+              {/* Each fact carries its own trailing separator so a wrap ends a
+                  line with "·" instead of starting the next one with it. */}
+              {[
+                primaryRole.role,
+                t("users.profile.header.tournamentsCount", { count: profile.tournaments_count }),
+                t("users.profile.header.mapsCount", { count: profile.maps_total })
+              ].map((fact, index, all) => (
+                <span key={fact} className="whitespace-nowrap">
+                  {fact}
+                  {index < all.length - 1 ? (
+                    <span aria-hidden className="ml-1.5 text-[color:var(--aqt-fg-faint)]">
+                      ·
+                    </span>
+                  ) : null}
+                </span>
+              ))}
             </div>
           ) : null}
           <SocialAccountList accounts={user.social_accounts} className="mt-1 flex flex-wrap gap-1.5" />
         </div>
 
-        <div className="grid w-full items-end gap-4 md:w-auto md:min-w-[460px] md:grid-cols-4">
+        <div className="grid w-full grid-cols-2 items-start gap-x-4 gap-y-5 md:w-auto md:min-w-[460px] md:grid-cols-4 md:gap-y-4">
           <PfStat
             label={t("users.profile.stats.tournaments")}
             value={`${profile.tournaments_count}`}
