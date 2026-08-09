@@ -30,8 +30,15 @@ export interface AdminComboboxProps {
   id?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Trigger text — the selected label, or the placeholder when nothing is selected. */
-  label: string;
+  /** Trigger content — the selected label, or the placeholder when nothing is selected. */
+  label: ReactNode;
+  /**
+   * Plain-text form of `label`, for the trigger's `title`. Only needed when
+   * `label` is not a string, since a `ReactNode` cannot be a tooltip.
+   */
+  labelTitle?: string;
+  /** Merged after the trigger's own classes, so height and width can be overridden. */
+  triggerClassName?: string;
   disabled?: boolean;
   searchValue: string;
   onSearchValueChange: (value: string) => void;
@@ -61,6 +68,8 @@ export function AdminCombobox({
   open,
   onOpenChange,
   label,
+  labelTitle,
+  triggerClassName,
   disabled = false,
   searchValue,
   onSearchValueChange,
@@ -85,15 +94,26 @@ export function AdminCombobox({
           aria-haspopup="listbox"
           aria-expanded={open}
           disabled={disabled}
-          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
+          className={cn(
+            "h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90",
+            triggerClassName
+          )}
         >
-          <span className="truncate" title={label}>
+          <span
+            className="truncate"
+            title={labelTitle ?? (typeof label === "string" ? label : undefined)}
+          >
             {label}
           </span>
           <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+      <PopoverContent
+        align="start"
+        // Trigger-width by default, but a compact trigger must not produce a
+        // list too narrow to read; the inner min() keeps it inside the viewport.
+        className="w-[var(--radix-popover-trigger-width)] min-w-[min(16rem,var(--radix-popover-content-available-width))] p-0"
+      >
         <Command shouldFilter={shouldFilter}>
           <CommandInput
             value={searchValue}

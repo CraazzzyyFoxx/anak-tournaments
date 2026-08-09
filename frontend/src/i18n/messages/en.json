@@ -3764,7 +3764,10 @@
       "manual": "Enter a role ID instead",
       "dropdown": "Pick from the list",
       "managed": "managed",
-      "idAria": "Discord role ID"
+      "idAria": "Discord role ID",
+      "searchPlaceholder": "Search roles…",
+      "searchLabel": "Search Discord roles",
+      "empty": "No role matches that search. Paste a role ID to find one by id."
     },
     "channel": {
       "placeholder": "Select a Discord channel",
@@ -3773,7 +3776,10 @@
       "manual": "Enter a channel ID instead",
       "dropdown": "Pick from the list",
       "uncategorized": "Uncategorized",
-      "idAria": "Discord channel ID"
+      "idAria": "Discord channel ID",
+      "searchPlaceholder": "Search channels…",
+      "searchLabel": "Search Discord channels",
+      "empty": "No channel matches that search. Paste a channel ID to find one by id."
     },
     "server": {
       "checking": "Checking the Discord bot…",

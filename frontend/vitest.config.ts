@@ -13,8 +13,9 @@ export default defineConfig({
     // Externalized deps are loaded by Node and resolve their own CJS `react`,
     // whose hook dispatcher react-dom never sets. `@tanstack/react-table` calls
     // hooks, so every `useReactTable` render threw "Invalid hook call" until it
-    // was inlined through Vite alongside the app code.
-    server: { deps: { inline: ["@tanstack/react-table"] } },
+    // was inlined through Vite alongside the app code. `cmdk` calls `useRef` the
+    // same way, so every combobox popover threw the moment it opened.
+    server: { deps: { inline: ["@tanstack/react-table", "cmdk"] } },
     environment: "node",
     include: [
       "src/app/**/tournaments/**/draft/**/*.test.ts",
@@ -55,6 +56,9 @@ export default defineConfig({
       "src/components/balancer/form/**/*.test.tsx",
       "src/components/admin/**/*.test.tsx",
       "src/components/admin/**/*.test.ts",
+      // `include` is an allow-list, so a test under a directory absent from it
+      // never runs and the suite still reports green.
+      "src/components/discord/**/*.test.tsx",
       "src/components/ui/data-pagination.test.tsx",
       "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",

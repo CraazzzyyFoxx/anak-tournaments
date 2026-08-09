@@ -3764,7 +3764,10 @@
       "manual": "Ввести ID роли вручную",
       "dropdown": "Выбрать из списка",
       "managed": "служебная",
-      "idAria": "ID роли Discord"
+      "idAria": "ID роли Discord",
+      "searchPlaceholder": "Поиск ролей…",
+      "searchLabel": "Поиск ролей Discord",
+      "empty": "Ни одна роль не подходит под запрос. Вставьте ID роли, чтобы найти её по идентификатору."
     },
     "channel": {
       "placeholder": "Выберите канал Discord",
@@ -3773,7 +3776,10 @@
       "manual": "Ввести ID канала вручную",
       "dropdown": "Выбрать из списка",
       "uncategorized": "Без категории",
-      "idAria": "ID канала Discord"
+      "idAria": "ID канала Discord",
+      "searchPlaceholder": "Поиск каналов…",
+      "searchLabel": "Поиск каналов Discord",
+      "empty": "Ни один канал не подходит под запрос. Вставьте ID канала, чтобы найти его по идентификатору."
     },
     "server": {
       "checking": "Проверяем бота Discord…",

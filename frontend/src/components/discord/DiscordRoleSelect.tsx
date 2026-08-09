@@ -1,21 +1,16 @@
 "use client";
 
 import React from "react";
-import { RefreshCw, Code2 } from "lucide-react";
+import { Code2, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { useDiscordRoles } from "@/hooks/useDiscordEntities";
-import { DiscordRole } from "@/types/discord.types";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
 import { Button } from "@/components/ui/button";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
+import { useDiscordRoles } from "@/hooks/useDiscordEntities";
 import { cn } from "@/lib/utils";
+import { DiscordRole } from "@/types/discord.types";
 
 export interface DiscordRoleSelectProps {
   workspaceId: number | null | undefined;
@@ -24,9 +19,10 @@ export interface DiscordRoleSelectProps {
   onRoleNameSelected?: (roleName: string) => void;
   disabled?: boolean;
   placeholder?: string;
-  /** Accessible name for the control. Rows of these carry no visible label of
-   *  their own, so the caller has to name them. */
+  /** Accessible name for the manual ID field, which has no visible label. */
   ariaLabel?: string;
+  /** Id of the visible label, when there is one. */
+  id?: string;
   className?: string;
 }
 
@@ -51,30 +47,31 @@ export function DiscordRoleSelect({
   disabled,
   placeholder,
   ariaLabel,
+  id,
   className,
 }: DiscordRoleSelectProps) {
   const t = useTranslations("discord.role");
   const { data, isLoading, refetch } = useDiscordRoles(workspaceId);
   const [manualMode, setManualMode] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
 
   const roles: DiscordRole[] = data?.roles ?? [];
   const hasRoles = roles.length > 0;
+  const selected = roles.find((role) => role.id === value);
 
-  const handleSelectRole = (selectedRoleId: string) => {
-    onChange(selectedRoleId);
-    if (onRoleNameSelected) {
-      const selectedRole = roles.find((r) => r.id === selectedRoleId);
-      if (selectedRole && selectedRole.name !== "@everyone") {
-        onRoleNameSelected(selectedRole.name);
-      }
-    }
+  const pick = (role: DiscordRole) => {
+    onChange(role.id);
+    // `@everyone` is every member, so adopting it as a tier label would name the
+    // tier after the absence of a role.
+    if (role.name !== "@everyone") onRoleNameSelected?.(role.name);
+    setOpen(false);
+    setSearch("");
   };
 
-  // `className` lands on the WRAPPER, not on the trigger: this component renders
-  // a row -- control plus one or two buttons -- into the caller's flex layout, so
-  // the wrapper is the thing that has to carry their `flex-1`. Sizing the trigger
-  // instead left the wrapper on `w-full`, which claimed the whole row and
-  // stretched the trigger, and with it the popup, across the entire card.
+  // `className` lands on the WRAPPER, not on the trigger: this renders a row --
+  // control plus one or two buttons -- into the caller's flex layout, so the
+  // wrapper is what has to carry their width.
   //
   // Manual entry is the only way out when our bot cannot read the guild, so it
   // stays reachable -- but it is the fallback, never the advertised workflow.
@@ -82,8 +79,9 @@ export function DiscordRoleSelect({
     return (
       <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
         <Input
+          id={id}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
           disabled={disabled}
           aria-label={ariaLabel ?? t("idAria")}
           placeholder="123456789012345678"
@@ -97,7 +95,7 @@ export function DiscordRoleSelect({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="h-8 shrink-0 px-2 text-xs"
             onClick={() => setManualMode(false)}
           >
             {t("dropdown")}
@@ -109,39 +107,59 @@ export function DiscordRoleSelect({
 
   return (
     <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
-      <Select value={value} onValueChange={handleSelectRole} disabled={disabled || isLoading}>
-        <SelectTrigger className="h-8 w-full min-w-0" aria-label={ariaLabel}>
-          <SelectValue placeholder={isLoading ? t("loading") : (placeholder ?? t("placeholder"))}>
-            {(() => {
-              const matched = roles.find((r) => r.id === value);
-              if (matched) {
-                return (
-                  <div className="flex items-center gap-2 truncate">
-                    <RoleDot color={matched.color} />
-                    <span className="truncate">{matched.name}</span>
-                  </div>
-                );
-              }
-              return value ? <span className="font-mono text-xs">{value}</span> : null;
-            })()}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
+      <AdminCombobox
+        id={id}
+        open={open}
+        onOpenChange={setOpen}
+        disabled={disabled || isLoading}
+        triggerClassName="h-8 min-w-0 border-input bg-transparent text-sm hover:bg-transparent"
+        // The trigger names itself from its content: the chosen role once there
+        // is one, the purpose while there is not. An aria-label here would
+        // override that and hide which role is selected.
+        label={
+          selected ? (
+            <span className="flex items-center gap-2 truncate">
+              <RoleDot color={selected.color} />
+              <span className="truncate">{selected.name}</span>
+            </span>
+          ) : value ? (
+            // A stored role the guild no longer returns: the id is all we know.
+            <span className="font-mono text-xs">{value}</span>
+          ) : isLoading ? (
+            t("loading")
+          ) : (
+            (placeholder ?? t("placeholder"))
+          )
+        }
+        labelTitle={selected?.name ?? value ?? undefined}
+        searchValue={search}
+        onSearchValueChange={setSearch}
+        searchPlaceholder={t("searchPlaceholder")}
+        searchLabel={t("searchLabel")}
+        emptyMessage={t("empty")}
+      >
+        <CommandGroup>
           {roles.map((role) => (
-            <SelectItem key={role.id} value={role.id}>
-              <div className="flex w-full items-center gap-2">
+            // The id joins the search text so a pasted snowflake still finds it.
+            <CommandItem
+              key={role.id}
+              value={`${role.name} ${role.id}`}
+              onSelect={() => pick(role)}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-2">
                 <RoleDot color={role.color} />
-                <span className="font-medium">{role.name}</span>
+                <span className="truncate font-medium">{role.name}</span>
                 {role.managed && (
-                  <span className="ms-auto rounded bg-muted px-1 py-0.5 font-mono text-xs uppercase text-muted-foreground">
+                  <span className="ms-auto shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-xs uppercase text-muted-foreground">
                     {t("managed")}
                   </span>
                 )}
-              </div>
-            </SelectItem>
+              </span>
+              <AdminComboboxCheck selected={role.id === value} />
+            </CommandItem>
           ))}
-        </SelectContent>
-      </Select>
+        </CommandGroup>
+      </AdminCombobox>
       <Button
         type="button"
         variant="ghost"
