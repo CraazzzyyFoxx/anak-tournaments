@@ -52,6 +52,32 @@ vi.mock("@/services/map.service", () => ({
   default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
 }));
 
+/**
+ * The query string the page reads its stage from. `render` sets it; the two
+ * router shims below are the smallest surface that keeps the switcher's own
+ * contract — an `<a href>` carrying `?stage=` — assertable without standing up an
+ * app router.
+ */
+let search = new URLSearchParams();
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => search
+}));
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+  } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  )
+}));
+
 const COPY = en.mapVeto;
 /**
  * The veto room's own copy, borrowed on purpose: a slot and a map the catalogue
@@ -184,8 +210,9 @@ async function settle(ticks = 3) {
   }
 }
 
-async function render(configs: MapVetoConfig[]) {
+async function render(configs: MapVetoConfig[], stage?: string) {
   getVetoConfigs.mockResolvedValue({ configs });
+  search = new URLSearchParams(stage === undefined ? "" : `stage=${stage}`);
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
@@ -198,6 +225,16 @@ async function render(configs: MapVetoConfig[]) {
   });
   await settle();
   return container.textContent ?? "";
+}
+
+/** The stage switcher, in DOM order. Absent entirely when there is one stage. */
+function stageTabs() {
+  return Array.from(container.querySelectorAll(".stage-tabs a")).map((tab) => ({
+    label: tab.textContent?.replace(tab.querySelector(".count")?.textContent ?? "", "").trim(),
+    count: tab.querySelector(".count")?.textContent?.trim() ?? null,
+    href: tab.getAttribute("href"),
+    current: tab.getAttribute("aria-current") === "page"
+  }));
 }
 
 /**
@@ -324,33 +361,77 @@ const REGULATION = [
 ];
 
 describe("every configured round, in play order", () => {
-  it("gives each stage its own card, ordered the way the stages are played", async () => {
+  it("shows one stage at a time, and switches in the order they are played", async () => {
     await render(REGULATION);
 
-    const [playoffs, groups] = stages();
     // Playoffs first: `order` says so, while the ids and the arrival order both
-    // say the opposite.
-    expect(playoffs?.title).toBe("Playoffs");
-    expect(playoffs?.label).toBe("Playoffs");
-    expect(groups?.title).toBe("Groups");
+    // say the opposite. It is also the one on screen with no `?stage=` to go by.
+    expect(stageTabs()).toEqual([
+      {
+        label: "Playoffs",
+        count: "3",
+        href: `/tournaments/${TOURNAMENT_ID}/maps?stage=189`,
+        current: true
+      },
+      {
+        label: "Groups",
+        count: "2",
+        href: `/tournaments/${TOURNAMENT_ID}/maps?stage=188`,
+        current: false
+      }
+    ]);
+
+    const [visible, ...rest] = stages();
+    expect(rest).toEqual([]);
+    expect(visible?.title).toBe("Playoffs");
+    expect(visible?.label).toBe("Playoffs");
     // Upper rounds ascend, then the lower bracket by depth — play order, not the
     // numeric order that would put -4 before -1.
-    expect(playoffs?.rounds.map((round) => round.label)).toEqual([
+    expect(visible?.rounds.map((round) => round.label)).toEqual([
       "Round 1",
       "Lower R1",
       "Lower R4"
     ]);
-    expect(groups?.rounds.map((round) => round.label)).toEqual(["Round 1", "Round 5"]);
+  });
+
+  it("follows `?stage=` to the stage it names", async () => {
+    await render(REGULATION, "188");
+
+    expect(stages().map((stage) => stage.title)).toEqual(["Groups"]);
+    expect(stages()[0]?.rounds.map((round) => round.label)).toEqual(["Round 1", "Round 5"]);
+    expect(stageTabs().find((tab) => tab.current)?.label).toBe("Groups");
+  });
+
+  it("falls back to the first stage when `?stage=` names one it does not have", async () => {
+    await render(REGULATION, "4242");
+
+    // An empty page would be the wrong answer to a stale link.
+    expect(stages().map((stage) => stage.title)).toEqual(["Playoffs"]);
+  });
+
+  it("offers no switcher when the tournament configures one stage", async () => {
+    await render([
+      config({
+        id: 490,
+        stage_id: 188,
+        round: 1,
+        mode: "slots",
+        slots: [{ position: 1, candidates: [52, 37], reserve_map_id: null }]
+      })
+    ]);
+
+    expect(stageTabs()).toEqual([]);
+    expect(stages().map((stage) => stage.title)).toEqual(["Groups"]);
   });
 
   it("heads the two brackets only where a stage has both", async () => {
     await render(REGULATION);
+    expect(stages()[0]?.headings).toEqual([COPY.roundGroupUpper, COPY.roundGroupLower]);
 
-    const [playoffs, groups] = stages();
-    expect(playoffs?.headings).toEqual([COPY.roundGroupUpper, COPY.roundGroupLower]);
     // Groups has no lower bracket, so "Upper bracket" would name a distinction it
     // does not have.
-    expect(groups?.headings).toEqual([]);
+    await render(REGULATION, "188");
+    expect(stages()[0]?.headings).toEqual([]);
   });
 
   it("orders a round's rows on the slot's own position, not on the wire order", async () => {
@@ -492,10 +573,10 @@ describe("candidates are map art", () => {
 describe("the game mode a slot shares", () => {
   it("names the mode when every candidate agrees", async () => {
     await render(REGULATION);
+    expect(stages()[0]?.rounds[1]?.rows[0]?.mode).toBe("Hybrid");
 
-    const [playoffs, groups] = stages();
-    expect(groups?.rounds[0]?.rows.map((row) => row.mode)).toEqual(["Control", "Hybrid"]);
-    expect(playoffs?.rounds[1]?.rows[0]?.mode).toBe("Hybrid");
+    await render(REGULATION, "188");
+    expect(stages()[0]?.rounds[0]?.rows.map((row) => row.mode)).toEqual(["Control", "Hybrid"]);
   });
 
   it("stays silent on a slot whose candidates disagree", async () => {
@@ -537,7 +618,9 @@ describe("levels that are not rounds", () => {
     // holding every map — the duplicate aggregate list this page dropped.
     expect(text).not.toContain(COPY.scope.tournamentDefault);
     expect(text).not.toContain(COPY.wholeStage);
-    expect(stages().map((stage) => stage.title)).toEqual(["Playoffs", "Groups"]);
+    // Both stages still switchable, neither carrying a whole-series entry.
+    expect(stageTabs().map((tab) => tab.label)).toEqual(["Playoffs", "Groups"]);
+    expect(stageTabs().map((tab) => tab.count)).toEqual(["3", "2"]);
   });
 
   it("renders a whole-series level when it is the only thing configured", async () => {
@@ -556,7 +639,7 @@ describe("levels that are not rounds", () => {
     getStages.mockResolvedValue([]);
     await render(REGULATION);
 
-    expect(stages().map((stage) => stage.title)).toEqual([
+    expect(stageTabs().map((tab) => tab.label)).toEqual([
       COPY.scope.unknownStage.replace("{id}", "188"),
       COPY.scope.unknownStage.replace("{id}", "189")
     ]);
@@ -599,10 +682,13 @@ describe("the shared public-page design system", () => {
     const shell = container.querySelector("section[class*=publicDataPage]");
     expect(shell).not.toBeNull();
     expect(shell?.getAttribute("aria-label")).toBe(en.common.maps);
-    // Every stage surface is `tn-card`, the shared surface token.
+    // The stage on screen is a `tn-card`, the shared surface token, and it is the
+    // only one: the switcher above swaps it rather than stacking every stage.
     const surfaces = Array.from(container.querySelectorAll("section[role=group]"));
-    expect(surfaces).toHaveLength(2);
-    expect(surfaces.every((surface) => surface.classList.contains("tn-card"))).toBe(true);
+    expect(surfaces).toHaveLength(1);
+    expect(surfaces[0]?.classList.contains("tn-card")).toBe(true);
+    // The switcher rides the public pages' own control rail.
+    expect(container.querySelector(`[class*=controlRail] .stage-tabs`)).not.toBeNull();
   });
 
   it("announces the loading state instead of showing silent grey blocks", async () => {

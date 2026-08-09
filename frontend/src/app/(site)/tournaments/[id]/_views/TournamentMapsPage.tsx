@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { cn } from "@/lib/utils";
 import mapService from "@/services/map.service";
 import tournamentService from "@/services/tournament.service";
 import type { MapRead } from "@/types/map.types";
@@ -255,6 +258,7 @@ function CandidateTile({ art, name }: { art: string | null; name: string }) {
 
 export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageProps) {
   const t = useTranslations();
+  const searchParams = useSearchParams();
 
   // No `.catch(() => ({ configs: [] }))` here: swallowing the failure would make
   // a 422/500/offline read indistinguishable from "the organizer configured
@@ -319,6 +323,16 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
       ),
     [configs, stagesById, mapsById, t]
   );
+
+  /**
+   * The stage on screen, from `?stage=` the way the bracket reads it, so a link
+   * to one stage's pools survives being pasted. A parameter naming a stage this
+   * tournament does not configure falls back to the first one it plays rather
+   * than to an empty page, and `useSearchParams` is optional-chained because it
+   * yields null wherever this renders without a router around it.
+   */
+  const activeStage =
+    stageViews.find((view) => view.key === searchParams?.get("stage")) ?? stageViews[0] ?? null;
 
   /**
    * The same loading / empty / updating / refresh-error vocabulary every other
@@ -507,7 +521,7 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     <section className={styles.publicDataPage} aria-label={t("common.maps")}>
       {presentation.showUpdating ? <UpdatingBadge /> : null}
 
-      {presentation.contentState === "empty" || stageViews.length === 0 ? (
+      {presentation.contentState === "empty" || stageViews.length === 0 || !activeStage ? (
         <TournamentPageState
           state="empty"
           title={t("mapVeto.notConfiguredTitle")}
@@ -515,12 +529,30 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
         />
       ) : (
         <>
-          {/* The one rule the pictures cannot carry: within a slot the captains
-              ban until a single map is left, and the slots play in order. */}
-          <p className="max-w-3xl text-xs leading-relaxed text-[color:var(--aqt-fg-muted)]">
-            {t("mapVeto.slotPoolDescription")}
-          </p>
-          {stageViews.map(renderStageView)}
+          {/* The bracket's own stage switcher, on the bracket's own classes, so
+              the two surfaces change stage the same way and a link to one round's
+              pool survives being pasted. A single stage needs no switch. */}
+          {stageViews.length > 1 ? (
+            <div className={styles.controlRail}>
+              <div className="stage-tabs" role="group" aria-label={t("common.stages")}>
+                {stageViews.map((view) => {
+                  const isActive = view.key === activeStage.key;
+                  return (
+                    <Link
+                      key={view.key}
+                      href={`/tournaments/${tournamentId}/maps?stage=${view.key}`}
+                      aria-current={isActive ? "page" : undefined}
+                      className={cn("stage-tab", isActive && "active")}
+                    >
+                      {view.title ?? t("mapVeto.scope.tournamentDefault")}
+                      <span className="count">{view.levels.length}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          {renderStageView(activeStage)}
         </>
       )}
     </section>

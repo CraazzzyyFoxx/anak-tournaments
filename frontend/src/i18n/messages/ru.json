@@ -3855,7 +3855,6 @@
     "bracketFormatUnknown": "Зависит от этапа",
     "customOrder": "Свой порядок вето",
     "customOrderMismatch": "Этот свой порядок играет {played, plural, one {# карту} few {# карты} many {# карт} other {# карты}}, а сетка требует {expected, plural, one {# карту} few {# карты} many {# карт} other {# карты}}.",
-    "slotPoolDescription": "У каждой карты серии свои кандидаты. Капитаны банят внутри слота, пока не останется одна карта, и переходят к следующему — слоты ниже идут в этом порядке.",
     "slotPoolSize": "{slots, plural, one {# слот} few {# слота} many {# слотов} other {# слота}}, {candidates, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
     "slotCandidates": "{count, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
     "slotUnderfilled": "В слоте {n} меньше двух карт-кандидатов: банить там нечего, и вето не сможет открыться."
