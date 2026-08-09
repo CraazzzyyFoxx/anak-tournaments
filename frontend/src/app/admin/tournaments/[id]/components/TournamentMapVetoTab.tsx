@@ -809,7 +809,7 @@ function MapToken({
   }
 
   const tileClass =
-    "group relative h-16 w-32 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-card text-left transition-colors";
+    "group relative h-16 w-32 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-background text-left transition-colors";
   const art = map ? (
     <MapArt map={map} />
   ) : (
@@ -917,7 +917,7 @@ function MapSelectionRow({
     <div
       role="group"
       aria-label={label}
-      className="space-y-2 rounded-xl border border-border/60 bg-accent/10 p-3"
+      className="space-y-2 rounded-xl border border-border/60 bg-muted/40 p-3 shadow-2xs"
     >
       <div className="flex flex-wrap items-center gap-2">
         <h5 className="text-sm font-semibold">{label}</h5>
@@ -2019,7 +2019,7 @@ export function TournamentMapVetoTab({
           <CollapsibleTrigger asChild>
             <button
               type="button"
-              className="group flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-start transition-colors hover:bg-accent/40"
+              className="group flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-start transition-colors hover:bg-accent/40 data-[state=open]:bg-accent/30"
             >
               <span className="flex flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
                 <span className={headingClassName}>{scope.label}</span>
@@ -2055,7 +2055,10 @@ export function TournamentMapVetoTab({
             </button>
           </CollapsibleTrigger>
         </h3>
-        <CollapsibleContent>
+        {/* A recessed well with a rule running down its leading edge: three
+            surfaces — card, well, row — are what tie a slot to the level it
+            belongs to when a dozen of them are open at once. */}
+        <CollapsibleContent className="ms-3 rounded-e-lg border-s-2 border-primary/40 bg-background pb-1 ps-2">
           <ScopeEditor
             scope={scope}
             draft={draft}
@@ -2160,7 +2163,7 @@ export function TournamentMapVetoTab({
             return (
               <Collapsible key={stage.id} defaultOpen asChild>
                 <Card role="group" aria-label={stage.name} className="overflow-hidden">
-                  <CardHeader className="border-b border-border/50 p-0">
+                  <CardHeader className="border-b border-border/50 bg-muted/30 p-0">
                     <h2 className="flex">
                       <CollapsibleTrigger asChild>
                         <button
