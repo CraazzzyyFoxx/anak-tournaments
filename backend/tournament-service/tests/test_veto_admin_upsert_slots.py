@@ -704,6 +704,39 @@ class SerializeNeedsTheSlotChain(_UpsertCase):
         )
 
 
+class RefreshMustNotReachForTheSlotChain(_UpsertCase):
+    """The one site in this sweep that must NOT gain ``slots``.
+
+    ``Session.refresh(instance, attribute_names)`` expires exactly the named
+    attributes and reloads them with ``only_load_props``; it takes no loader
+    options at all (SQLAlchemy 2.0.45), so it cannot express
+    ``slots -> maps``. Today ``config.slots`` and each slot's ``maps`` are
+    correct here without any reload: they were assigned above and
+    ``expire_on_commit=False`` leaves them loaded across the commit.
+
+    Adding ``"slots"`` would therefore expire a correct collection and reload it
+    with every slot's ``maps`` lazy, turning ``serialize_veto_config``'s
+    ``slot.maps`` read into exactly the ``MissingGreenlet`` the rest of this
+    sweep exists to prevent. If ``slots`` ever does need re-reading here, the fix
+    is a fresh SELECT carrying the two-level chain, never a wider refresh.
+    """
+
+    async def test_the_upsert_refreshes_the_flat_pool_and_nothing_else(self) -> None:
+        _, session = await self.invoke(slot_body(), existing=_config(POOL, map_ids=FLAT_MAP_IDS))
+
+        self.assertEqual([["map_pool"]], [names for _obj, names in session.refreshes])
+
+    async def test_the_response_still_carries_the_slots_across_the_commit(self) -> None:
+        # The observable half: whatever the refresh does, the serialized slots
+        # must survive it, so this fails on a refresh that dropped the pool shape
+        # rather than only on the argument list above.
+        envelope, _ = await self.invoke(slot_body(), existing=_config(POOL, map_ids=FLAT_MAP_IDS))
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(CANDIDATES, [slot["candidates"] for slot in envelope["data"]["slots"]])
+        self.assertEqual([], envelope["data"]["map_ids"])
+
+
 class SerializeOrdersSlotsByPosition(IsolatedAsyncioTestCase):
     """The one thing the upsert's own round trip cannot pin.
 

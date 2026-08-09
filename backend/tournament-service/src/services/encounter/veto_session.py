@@ -443,7 +443,19 @@ def select_config(
 
 
 async def resolve_config(session: AsyncSession, encounter: models.Encounter) -> models.MapVetoConfig | None:
-    """Cascade-resolve the veto config applicable to this encounter."""
+    """Cascade-resolve the veto config applicable to this encounter.
+
+    Loads ``map_pool`` and deliberately NOT the slot chain, which is why it is
+    the one ``selectinload(MapVetoConfig.map_pool)`` site in the codebase with no
+    ``slots`` beside it. Every consumer -- ``ensure_veto_session``,
+    ``unavailable_reason`` and ``admin_misc._require_flat_veto`` -- reads
+    only columns off the config (``id``, ``mode``, ``preset``,
+    ``first_ban_rotation``, ``turn_timer_seconds``, ``veto_sequence_json``) plus
+    this ``map_pool``; the slot rows they need arrive from ``load_slot_rows``,
+    which carries its own eager load and does not depend on how ``config`` was
+    fetched. Adding the chain here would buy two SELECTs per unavailable-room
+    poll for data nobody reads.
+    """
     result = await session.execute(
         select(models.MapVetoConfig)
         .where(

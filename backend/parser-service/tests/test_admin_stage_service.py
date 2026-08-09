@@ -503,6 +503,24 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
             "MapVetoConfigSlot.maps",
         )
 
+    async def test_the_target_query_loads_nothing_because_nothing_is_read_off_it(self) -> None:
+        # Mirror of tournament-service's pin, for the same reason the signature
+        # copies are compared: this service's ``_merge_map_veto_configs`` is a
+        # separate deployment, so a one-sided edit has to fail here too.
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=[_scalars_result([]), _scalars_result([])]),
+            delete=AsyncMock(),
+        )
+
+        await stage_service._merge_map_veto_configs(
+            session,
+            target_stage=SimpleNamespace(id=10, tournament_id=99),
+            source_stage_ids=[11, 12],
+        )
+
+        target_statement = session.execute.await_args_list[0].args[0]
+        self.assertEqual([], eager_loading.eager_loaded_chains(target_statement))
+
 
 class MapVetoSignatureCopyTests(TestCase):
     """Mirror of tournament-service's drift guard, so a parser-only CI job also

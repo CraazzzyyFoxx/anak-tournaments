@@ -278,13 +278,16 @@ async def _merge_map_veto_configs(
     target_stage: models.Stage,
     source_stage_ids: list[int],
 ) -> None:
+    # No loader options on purpose: the target configs are only counted (just
+    # below) and truthiness-tested (further down), so no relationship on them is
+    # ever read. A ``map_pool`` eager load here bought an extra SELECT whenever a
+    # target config existed, and sitting beside the source query's chain it read
+    # as a slot chain someone had forgotten rather than one never needed.
     target_result = await session.execute(
-        select(models.MapVetoConfig)
-        .where(
+        select(models.MapVetoConfig).where(
             models.MapVetoConfig.tournament_id == target_stage.tournament_id,
             models.MapVetoConfig.stage_id == target_stage.id,
         )
-        .options(selectinload(models.MapVetoConfig.map_pool))
     )
     target_configs = list(target_result.scalars().all())
     if len(target_configs) > 1:
@@ -302,6 +305,12 @@ async def _merge_map_veto_configs(
         # Only the SOURCE configs get signed, so the slot chain is eager-loaded
         # only here. ``MapVetoConfig.slots`` is deliberately lazy, so reaching it
         # after this await would raise ``MissingGreenlet``.
+        #
+        # Unconditional, even though the ``if target_configs`` branch below
+        # deletes these without signing them and both relationships are
+        # ``passive_deletes=True`` (so the delete needs neither loaded): making a
+        # load whose absence is a 500 depend on a branch is not worth three small
+        # SELECTs on an organizer-triggered merge.
         .options(selectinload(models.MapVetoConfig.map_pool))
         .options(selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps))
     )

@@ -496,6 +496,17 @@ class MapVetoMergeDedupTests(IsolatedAsyncioTestCase):
         source_statement = session.execute.await_args_list[1].args[0]
         eager_loading.assert_eager_loads(self, source_statement, "MapVetoConfig.slots", "MapVetoConfigSlot.maps")
 
+    async def test_the_target_query_loads_nothing_because_nothing_is_read_off_it(self) -> None:
+        # ``target_configs`` is only counted and truthiness-tested, so any loader
+        # option here is dead. It is pinned rather than merely deleted because a
+        # dead ``map_pool`` sitting beside the source query's chain reads as a
+        # slot chain someone forgot, which is how a sweep grows a cargo-culted
+        # option that costs a SELECT and proves nothing.
+        session = self._session([])
+        await self._merge(session)
+        target_statement = session.execute.await_args_list[0].args[0]
+        self.assertEqual([], eager_loading.eager_loaded_chains(target_statement))
+
 
 class MapVetoSignatureCopyTests(TestCase):
     """dbarch05 records that ``_map_veto_signature`` exists verbatim in BOTH

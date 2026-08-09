@@ -30,6 +30,7 @@ from shared.core.enums import (  # noqa: E402
     VetoSeedSource,
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
+from shared.tests import eager_loading  # noqa: E402
 from src import models  # noqa: E402
 from src.services.encounter.veto_session import (  # noqa: E402
     REASON_NOT_CONFIGURED,
@@ -647,7 +648,7 @@ class _FakeSession:
         self.existing = existing
         self.pool_count = pool_count
         self.added: list[Any] = []
-        self.slot_queries = 0
+        self.slot_statements: list[Any] = []
         self.commits = 0
 
     async def execute(self, statement: Any) -> _Result:
@@ -657,7 +658,7 @@ class _FakeSession:
         if entity is models.MapVetoConfig:
             return _Result([] if self.config is None else [self.config])
         if entity is models.MapVetoConfigSlot:
-            self.slot_queries += 1
+            self.slot_statements.append(statement)
             return _Result(self.slot_rows)
         raise AssertionError(f"unexpected execute() entity: {entity}")
 
@@ -684,6 +685,10 @@ class _FakeSession:
     @property
     def pool_rows(self) -> list[models.EncounterMapPool]:
         return [row for row in self.added if isinstance(row, models.EncounterMapPool)]
+
+    @property
+    def slot_queries(self) -> int:
+        return len(self.slot_statements)
 
 
 def _encounter(*, best_of: int, home: int | None = 10, away: int | None = 20) -> SimpleNamespace:
@@ -968,6 +973,43 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
         self.assertIsNone(veto)
         self.assertEqual([], session.added)
         self.assertEqual(0, session.commits)
+
+
+class LoadSlotRowsEagerLoadTests(IsolatedAsyncioTestCase):
+    """``load_slot_rows``' own eager load, which is what keeps every other
+    slot-mode reader off the lazy ``MapVetoConfig.slots`` relationship.
+
+    ``resolve_config`` deliberately does NOT carry a slot chain: its consumers
+    read only columns (``mode``, ``id``, ``turn_timer_seconds``) and the
+    eager-loaded ``map_pool``, and every slot row they need arrives through this
+    query instead. So this one option carries the whole slot-mode session path,
+    and nothing else in the suite pinned it.
+
+    ``MapVetoConfigSlot.maps`` is lazy like its parent. ``_slot_plan`` reads
+    ``row.maps`` for the candidate floor and ``slot_candidates`` reads it again
+    for the sequence, both after this await -- so a dropped option is
+    ``MissingGreenlet`` on every slot-mode session creation and on every
+    ``unavailable_reason`` that has to name a slot refusal.
+    """
+
+    async def test_the_slot_query_eager_loads_each_slot_s_candidates(self) -> None:
+        session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12]), _slot(2, [21, 22])])
+
+        veto = await ensure_veto_session(session, _encounter(best_of=2))
+
+        self.assertIsNotNone(veto)
+        eager_loading.assert_eager_loads(self, session.slot_statements[0], "MapVetoConfigSlot.maps")
+
+    async def test_the_refusal_path_loads_the_candidates_it_counts(self) -> None:
+        # ``unavailable_reason`` reaches ``row.maps`` through the same helper but
+        # from a different caller, and it runs on encounters that never gain a
+        # session -- so the room re-pays for it on every poll.
+        session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12])])
+
+        reason = await unavailable_reason(session, _encounter(best_of=3))
+
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, reason)
+        eager_loading.assert_eager_loads(self, session.slot_statements[0], "MapVetoConfigSlot.maps")
 
 
 class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
