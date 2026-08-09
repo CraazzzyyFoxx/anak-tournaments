@@ -88,6 +88,18 @@ def current_slot(pool: list[models.EncounterMapPool]) -> int | None:
     return min(slots) if slots else None
 
 
+def in_current_slot(entry: models.EncounterMapPool, active_slot: int | None) -> bool:
+    """Whether ``entry`` belongs to the slot the veto is resolving.
+
+    ``active_slot is None`` answers True, not False: it means there is no slot
+    to be outside of, because a flat pool has no slots at all. Every caller
+    uses this to filter a candidate list, so the flat case has to be an
+    identity -- a predicate that failed instead would reject the whole pool
+    and turn flat mode into a permanent 400.
+    """
+    return active_slot is None or entry.slot == active_slot
+
+
 def serialize_veto_config(config: models.MapVetoConfig) -> dict[str, Any]:
     return {
         "id": config.id,
@@ -142,9 +154,7 @@ def auto_complete_decider_entry(
 
     active_slot = current_slot(pool)
     available = [
-        entry
-        for entry in pool
-        if entry.status == MapPoolEntryStatus.AVAILABLE and (active_slot is None or entry.slot == active_slot)
+        entry for entry in pool if entry.status == MapPoolEntryStatus.AVAILABLE and in_current_slot(entry, active_slot)
     ]
     if len(available) != 1:
         raise HTTPException(
@@ -323,12 +333,21 @@ def apply_veto_action(
             detail=f"It's {expected_side} team's turn, not {captain_side}",
         )
 
-    # Find the map entry
-    entry = next((e for e in pool if e.map_id == map_id), None)
+    # Find the map entry, scoped to the slot in play: the same map may be a
+    # candidate of several slots, so map_id alone can resolve to another slot's entry.
+    active_slot = current_slot(pool)
+    entry = next(
+        (candidate for candidate in pool if candidate.map_id == map_id and in_current_slot(candidate, active_slot)),
+        None,
+    )
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Map is not in the pool for this encounter",
+            detail=(
+                "Map is not in the pool for this encounter"
+                if active_slot is None
+                else f"Map is not a candidate of slot {active_slot}"
+            ),
         )
     if entry.status != MapPoolEntryStatus.AVAILABLE:
         raise HTTPException(

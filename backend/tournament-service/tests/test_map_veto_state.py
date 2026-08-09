@@ -362,3 +362,58 @@ class ApplyVetoActionTests(TestCase):
             apply_veto_action(veto, pool, "home", 1, "ban", now=self.NOW)
 
         self.assertEqual("Veto sequence is already complete", ctx.exception.detail)
+
+
+class SlotRestrictionTests(TestCase):
+    NOW = datetime(2026, 7, 18, 13, 0, tzinfo=UTC)
+
+    def test_rejects_banning_a_map_from_a_future_slot(self) -> None:
+        """Slots are played one at a time, so a candidate of slot 2 is not a
+        legal target while slot 1 is unresolved. Pre-fix the lookup keyed on
+        ``map_id`` alone and happily banned it, consuming a step of slot 1 to
+        remove a map slot 1 never offered."""
+        veto = make_veto_session(["ban_home", "ban_away", "decider", "ban_home", "ban_away", "decider"])
+        pool = [
+            make_pool_entry(1, slot=1),
+            make_pool_entry(2, slot=1),
+            make_pool_entry(3, slot=1),
+            make_pool_entry(4, slot=2),
+            make_pool_entry(5, slot=2),
+            make_pool_entry(6, slot=2),
+        ]
+
+        with self.assertRaises(HTTPException) as ctx:
+            apply_veto_action(veto, pool, "home", 4, "ban", now=self.NOW)
+
+        self.assertEqual(400, ctx.exception.status_code)
+        self.assertEqual("Map is not a candidate of slot 1", str(ctx.exception.detail))
+        self.assertEqual(
+            [MapPoolEntryStatus.AVAILABLE] * 6,
+            [entry.status for entry in pool],
+            "a rejected action must not consume any entry",
+        )
+
+    def test_the_same_map_in_two_slots_resolves_to_the_current_slot_entry(self) -> None:
+        """Banning map 1 while slot 1 is active must leave slot 2's entry for
+        the same map AVAILABLE -- the lookup keys on (map_id, slot), not map_id.
+
+        Slot 2's copy is listed *first* on purpose. ``_load_pool`` orders by
+        ``order``, which every AVAILABLE entry shares, so pool position carries
+        no slot information; a lookup that resolves by position instead of by
+        slot must fail here, and pre-fix it did -- ``next(map_id == 1)`` returned
+        slot 2's entry and banned it.
+        """
+        veto = make_veto_session(["ban_home", "decider", "ban_away", "decider"])
+        slot_two_shared = make_pool_entry(1, slot=2)
+        slot_two_other = make_pool_entry(2, slot=2)
+        slot_one_shared = make_pool_entry(1, slot=1)
+        slot_one_other = make_pool_entry(3, slot=1)
+        pool = [slot_two_shared, slot_two_other, slot_one_shared, slot_one_other]
+
+        entry = apply_veto_action(veto, pool, "home", 1, "ban", now=self.NOW)
+
+        self.assertIs(slot_one_shared, entry)
+        self.assertEqual(MapPoolEntryStatus.BANNED, slot_one_shared.status)
+        self.assertEqual(MapPoolEntryStatus.AVAILABLE, slot_two_shared.status)
+        self.assertEqual(MapPoolEntryStatus.AVAILABLE, slot_one_other.status)
+        self.assertEqual(MapPoolEntryStatus.AVAILABLE, slot_two_other.status)
