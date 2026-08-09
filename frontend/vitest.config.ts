@@ -20,6 +20,10 @@ export default defineConfig({
     include: [
       "src/app/**/tournaments/**/draft/**/*.test.ts",
       "src/app/**/tournaments/**/veto/**/*.test.ts",
+      // `.tsx` needs its own entry: the line above ends in `.test.ts`, so the
+      // veto room's behaviour test would never run and the suite would still
+      // report green.
+      "src/app/**/tournaments/**/veto/**/*.test.tsx",
       "src/app/admin/tournaments/**/components/draft/**/*.test.ts",
       "src/app/admin/tournaments/**/overview/**/*.test.ts",
       "src/app/admin/tournaments/new/**/*.test.ts",

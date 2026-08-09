@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, Ban, CalendarOff, Loader2, ShieldAlert, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  CalendarOff,
+  Loader2,
+  ShieldAlert,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -18,7 +26,7 @@ import mapService from "@/services/map.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapVetoAction } from "@/types/tournament.types";
 
-import type { VetoSide } from "./veto-model";
+import { VETO_UNAVAILABLE_COPY, type VetoSide, type VetoUnavailableIcon } from "./veto-model";
 import { VetoAdminControls } from "./VetoAdminControls";
 import { VetoHero } from "./VetoHero";
 import { VetoMapGrid } from "./VetoMapGrid";
@@ -27,6 +35,15 @@ import { VetoStepTimeline } from "./VetoStepTimeline";
 interface VetoRoomProps {
   encounterId: number;
 }
+
+/** One icon per cause, keyed by what `VETO_UNAVAILABLE_COPY` names. */
+const UNAVAILABLE_ICON: Record<VetoUnavailableIcon, ReactNode> = {
+  teams: <Users className="h-6 w-6 text-[color:var(--aqt-teal)]" aria-hidden />,
+  unconfigured: <CalendarOff className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
+  misconfigured: (
+    <SlidersHorizontal className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />
+  ),
+};
 
 export function VetoRoom({ encounterId }: VetoRoomProps) {
   const t = useTranslations("encounters.veto.room");
@@ -126,18 +143,18 @@ export function VetoRoom({ encounterId }: VetoRoomProps) {
   }
 
   if (!state.session) {
-    const teamsUnknown = state.reason === "teams_unknown";
+    // Every reason gets its own copy: `slot_count_mismatch` and
+    // `slot_underfilled` describe a config that exists and disagrees with the
+    // bracket, and telling that captain to "check back later" points them at a
+    // wait that never ends. `reason` is optional on the wire type only — the
+    // server's `build_unavailable_state` takes it as a required argument — so
+    // the `??` closes a type hole rather than absorbing an unmapped cause.
+    const copy = VETO_UNAVAILABLE_COPY[state.reason ?? "not_configured"];
     return (
       <EmptyRoomCard
-        icon={
-          teamsUnknown ? (
-            <Users className="h-6 w-6 text-[color:var(--aqt-teal)]" aria-hidden />
-          ) : (
-            <CalendarOff className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />
-          )
-        }
-        title={teamsUnknown ? t("empty.teamsUnknownTitle") : t("empty.notConfiguredTitle")}
-        hint={teamsUnknown ? t("empty.teamsUnknownHint") : t("empty.notConfiguredHint")}
+        icon={UNAVAILABLE_ICON[copy.icon]}
+        title={t(copy.titleKey)}
+        hint={t(copy.hintKey)}
         encounterId={encounterId}
       />
     );
@@ -189,6 +206,7 @@ export function VetoRoom({ encounterId }: VetoRoomProps) {
           pool={state.pool}
           currentStepIndex={state.current_step_index}
           isComplete={state.is_complete}
+          currentSlot={state.current_slot}
           mapsById={mapsById}
           sideName={sideName}
         />
@@ -198,6 +216,7 @@ export function VetoRoom({ encounterId }: VetoRoomProps) {
             mapsById={mapsById}
             selectedMapId={selectedMapId}
             canSelect={canSelectMaps}
+            currentSlot={state.current_slot}
             onSelect={(mapId) =>
               setSelectedMapId((current) => (current === mapId ? null : mapId))
             }
