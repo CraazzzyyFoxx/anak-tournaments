@@ -97,6 +97,25 @@ async function type(input: HTMLInputElement, value: string) {
   });
 }
 
+/** Radix Select: the trigger opens on pointerdown, and the listbox is portalled
+ *  out of the container, so options are looked up on the document. */
+async function pickMethod(container: HTMLElement, label: string) {
+  const trigger = container.querySelector<HTMLElement>('button[role="combobox"]');
+  if (!trigger) throw new Error("no method select rendered");
+  await act(async () => {
+    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (el) => (el.textContent ?? "").trim() === label
+  );
+  if (!option) throw new Error(`no method option matching ${label}`);
+  await act(async () => {
+    option.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
   listSubscriptionProviders.mockReset();
@@ -141,7 +160,7 @@ describe("SubscriptionProvidersCard", () => {
     ]);
 
     expect(button(container, "Save").disabled).toBe(true);
-    expect(container.textContent).toContain("Two tiers on the same role id");
+    expect(container.textContent).toContain(en.subscriptionProviders.warnings.duplicateRole);
   });
 
   it("warns that a guild with no role mapping fails open", async () => {
@@ -226,26 +245,36 @@ describe("verification method", () => {
   });
 
   it("labels the live option after the mechanism the provider actually uses", async () => {
-    const boosty = await mount([BOOSTY_WITH_STORED_CODE]);
-    expect(boosty.textContent).toContain("Discord role");
+    const boosty = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "live" }]);
+    expect(boosty.textContent).toContain(en.subscriptionProviders.methods.live.boosty.label);
 
     document.body.innerHTML = "";
     const twitch = await mount([
-      { provider: "twitch", enabled: true, role_tiers: [], codes: [], verification_method: "any" }
+      { provider: "twitch", enabled: true, role_tiers: [], codes: [], verification_method: "live" }
     ]);
-    expect(twitch.textContent).toContain("Twitch subscription");
-    expect(twitch.textContent).not.toContain("Discord role");
+    expect(twitch.textContent).toContain(en.subscriptionProviders.methods.live.twitch.label);
+    expect(twitch.textContent).not.toContain(en.subscriptionProviders.methods.live.boosty.label);
+  });
+
+  // The radio list spelled every consequence out at once; a dropdown shows one
+  // label. Keeping the selected mechanism's description on screen is what makes
+  // the trade acceptable, so it is a contract, not decoration.
+  it("keeps only the selected mechanism's consequence on screen", async () => {
+    const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "code" }]);
+
+    expect(container.textContent).toContain(en.subscriptionProviders.methods.code.description);
+    expect(container.textContent).not.toContain(en.subscriptionProviders.methods.any.description);
   });
 
   it("hides the code input under live-only, and the role mapping under code-only", async () => {
     const live = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "live" }]);
-    expect(live.textContent).toContain("Discord guild:");
+    expect(live.textContent).toContain(en.subscriptionProviders.guild.hint);
     expect(live.textContent).not.toContain("Challenge codes");
 
     document.body.innerHTML = "";
     const code = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "code" }]);
     expect(code.textContent).toContain("Challenge codes");
-    expect(code.textContent).not.toContain("Discord guild:");
+    expect(code.textContent).not.toContain(en.subscriptionProviders.guild.hint);
   });
 
   it("offers challenge codes for twitch too — code-only with no input would fail open", async () => {
@@ -253,7 +282,7 @@ describe("verification method", () => {
       { provider: "twitch", enabled: true, role_tiers: [], codes: [], verification_method: "code" }
     ]);
     expect(container.textContent).toContain("Challenge codes");
-    expect(container.textContent).not.toContain("Broadcaster id");
+    expect(container.textContent).not.toContain(en.subscriptionProviders.broadcaster.idLabel);
   });
 
   it("omits the fields of a rejected mechanism instead of blanking them", async () => {
@@ -272,10 +301,7 @@ describe("verification method", () => {
   it("sends the method the admin picked", async () => {
     const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "any" }]);
 
-    const liveRadio = [...container.querySelectorAll("input")].find(
-      (el) => (el as HTMLInputElement).value === "live"
-    ) as HTMLInputElement;
-    await click(liveRadio);
+    await pickMethod(container, en.subscriptionProviders.methods.live.boosty.label);
     await click(button(container, "Save"));
 
     const [, body] = upsertSubscriptionProvider.mock.calls[0];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -11,9 +11,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DiscordRoleSelect } from "@/components/discord/DiscordRoleSelect";
 import { DiscordServerStatus } from "@/components/discord/DiscordServerStatus";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS } from "@/lib/subscription-requirement";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
@@ -128,6 +136,7 @@ function ProviderEditor({
   onSaved: () => void;
 }) {
   const t = useTranslations("subscriptionProviders");
+  const methodSelectId = useId();
   const label = PROVIDER_LABELS[config.provider] ?? config.provider;
   const isBoosty = config.provider === "boosty";
 
@@ -149,6 +158,7 @@ function ProviderEditor({
     LIVE_METHOD_KEYS[config.provider as keyof typeof LIVE_METHOD_KEYS] ?? GENERIC_LIVE_KEYS;
 
   const methodOptions = [{ value: "live" as const, ...liveKeys }, ...CODE_AND_EITHER];
+  const selectedMethod = methodOptions.find((option) => option.value === method);
 
   const save = useMutation({
     mutationFn: () =>
@@ -187,7 +197,7 @@ function ProviderEditor({
     method === "code" && enabled && config.codes.length === 0 && newCodes.length === 0;
 
   return (
-    <Card className="border-border/50 bg-muted/10 shadow-none">
+    <Card className="rounded-lg border-border/50 bg-muted/10 shadow-none">
       <CardHeader className="p-3 pb-2 flex flex-row items-center justify-between space-y-0">
         <div className="flex items-center gap-2">
           <Checkbox
@@ -221,39 +231,53 @@ function ProviderEditor({
       </CardHeader>
 
       <CardContent className="p-3 pt-1 space-y-3">
-        <fieldset className="space-y-1.5">
-          <legend className="text-xs font-medium text-muted-foreground">
-            {t("methodsLegend")}
-          </legend>
-          {methodOptions.map((option) => (
-            <label key={option.value} className="flex cursor-pointer items-start gap-2 text-xs">
-              <input
-                type="radio"
-                className="mt-0.5"
-                name={`method-${config.provider}`}
-                value={option.value}
-                checked={method === option.value}
-                onChange={() => setMethod(option.value)}
-              />
-              <span>
-                <span className="font-medium">{t(option.labelKey)}</span>
-                <span className="block text-muted-foreground">{t(option.descriptionKey)}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        <div className="space-y-1.5">
+          <Label htmlFor={methodSelectId} className="text-xs font-medium text-muted-foreground">
+            {t("methodLabel")}
+          </Label>
+          <Select value={method} onValueChange={(next) => setMethod(next as VerificationMethod)}>
+            <SelectTrigger
+              id={methodSelectId}
+              className="h-8 w-full text-xs sm:max-w-xs"
+              aria-label={t("methodAria")}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {methodOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value} className="text-xs">
+                  {t(option.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* The chosen mechanism's consequence stays on screen. A dropdown that
+              hid it would turn "Either" against "Challenge code" into a guess,
+              which is what the radio list spelled out for free. */}
+          {selectedMethod && (
+            <p className="max-w-prose text-xs text-muted-foreground">
+              {t(selectedMethod.descriptionKey)}
+            </p>
+          )}
+        </div>
 
         {acceptsLive &&
           (isBoosty ? (
             <div className="space-y-3 pt-1">
               <div className="space-y-1">
-                <p className={`text-xs ${guildMissing ? "font-medium text-destructive" : "text-muted-foreground"}`}>
-                  {discordGuildId
-                    ? t("guild.current", { guildId: discordGuildId })
-                    : guildMissing
-                      ? t("guild.missing")
-                      : t("guild.unset")}
-                </p>
+                {/* The server's own identity is the status card above — name, icon,
+                    bot reachability. This line only speaks up when there is nothing
+                    to show; the raw snowflake was never the useful half. */}
+                {!discordGuildId && (
+                  <p
+                    className={cn(
+                      "text-xs",
+                      guildMissing ? "font-medium text-destructive" : "text-muted-foreground"
+                    )}
+                  >
+                    {guildMissing ? t("guild.missing") : t("guild.unset")}
+                  </p>
+                )}
                 <p className="max-w-prose text-xs text-muted-foreground">{t("guild.hint")}</p>
               </div>
 
@@ -277,7 +301,7 @@ function ProviderEditor({
                 </div>
 
                 {roleTiers.map((tier, index) => (
-                  <div key={index} className="flex items-center gap-2">
+                  <div key={index} className="flex flex-wrap items-center gap-2">
                     <DiscordRoleSelect
                       workspaceId={workspaceId}
                       value={tier.role_id}
@@ -295,7 +319,8 @@ function ProviderEditor({
                           )
                         )
                       }
-                      className="h-8 flex-1"
+                      ariaLabel={t("roles.roleAria")}
+                      className="h-8 min-w-40 flex-1"
                     />
                     <Input
                       type="number"
@@ -313,6 +338,7 @@ function ProviderEditor({
                     />
                     <Input
                       value={tier.tier_label ?? ""}
+                      aria-label={t("roles.tierLabelAria")}
                       onChange={(event) =>
                         setRoleTiers((rows) =>
                           rows.map((row, i) =>
@@ -321,13 +347,13 @@ function ProviderEditor({
                         )
                       }
                       placeholder={t("roles.tierLabelPlaceholder")}
-                      className="h-8 flex-1"
+                      className="h-8 min-w-40 flex-1"
                     />
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      aria-label={t("roles.removeAria", { role: tier.role_id || index + 1 })}
+                      aria-label={t("roles.removeAria", { number: index + 1 })}
                       onClick={() => setRoleTiers((rows) => rows.filter((_, i) => i !== index))}
                     >
                       <Trash2 className="size-3.5" aria-hidden />
@@ -402,7 +428,7 @@ function ProviderEditor({
               )}
             </p>
             {newCodes.map((code, index) => (
-              <div key={index} className="flex items-center gap-2">
+              <div key={index} className="flex flex-wrap items-center gap-2">
                 <Input
                   value={code.code ?? ""}
                   onChange={(event) =>
@@ -413,8 +439,9 @@ function ProviderEditor({
                     )
                   }
                   placeholder={t("codes.codePlaceholder")}
+                  aria-label={t("codes.codeAria")}
                   autoComplete="off"
-                  className="h-8 flex-1"
+                  className="h-8 min-w-40 flex-1"
                 />
                 <Input
                   type="number"

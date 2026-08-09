@@ -1,9 +1,15 @@
+"use client";
+
 import React from "react";
+import { CheckCircle2, XCircle, Users, RefreshCw } from "lucide-react";
+import { useTranslations } from "next-intl";
+
 import { useDiscordGuildInfo } from "@/hooks/useDiscordEntities";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { CheckCircle2, XCircle, Users, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function DiscordServerStatus({
   workspaceId,
@@ -12,47 +18,58 @@ export function DiscordServerStatus({
   workspaceId: number | null | undefined;
   className?: string;
 }) {
+  const t = useTranslations("discord.server");
   const { data, isLoading, refetch } = useDiscordGuildInfo(workspaceId);
 
   if (!workspaceId) return null;
 
   if (isLoading) {
     return (
-      <div className={`flex items-center gap-2 text-xs text-muted-foreground ${className}`}>
-        <RefreshCw className="size-3.5 animate-spin" />
-        <span>Checking Discord bot status...</span>
+      <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", className)}>
+        <RefreshCw aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />
+        <span>{t("checking")}</span>
       </div>
     );
   }
 
   const isConnected = data?.connected ?? false;
+  const name = data?.name || t("fallbackName");
 
   return (
-    <div className={`flex items-center justify-between p-3 rounded-lg border bg-card text-card-foreground text-sm ${className}`}>
-      <div className="flex items-center gap-3">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm text-card-foreground",
+        className
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
         <Avatar className="size-8 rounded-full border">
-          {data?.icon_url ? <AvatarImage src={data.icon_url} alt={data.name || "Discord Guild"} /> : null}
-          <AvatarFallback className="text-xs bg-muted">DC</AvatarFallback>
+          {data?.icon_url ? <AvatarImage src={data.icon_url} alt="" /> : null}
+          <AvatarFallback className="bg-muted text-xs">DC</AvatarFallback>
         </Avatar>
-        <div>
-          <div className="flex items-center gap-2 font-medium">
-            <span>{data?.name || "Discord Server"}</span>
-            {isConnected ? (
-              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-emerald-500/30 text-emerald-500 bg-emerald-500/10">
-                <CheckCircle2 className="size-3 mr-1" />
-                Connected
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-destructive/30 text-destructive bg-destructive/10">
-                <XCircle className="size-3 mr-1" />
-                Not Connected
-              </Badge>
-            )}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 font-medium">
+            <span className="truncate">{name}</span>
+            {/* Icon plus word, never colour alone. */}
+            <Badge
+              variant="outline"
+              className={cn(
+                "px-1.5 py-0 text-xs",
+                isConnected ? TONE_CLASS.success : TONE_CLASS.danger
+              )}
+            >
+              {isConnected ? (
+                <CheckCircle2 aria-hidden className="me-1 size-3" />
+              ) : (
+                <XCircle aria-hidden className="me-1 size-3" />
+              )}
+              {isConnected ? t("connected") : t("disconnected")}
+            </Badge>
           </div>
           {data?.member_count ? (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-              <Users className="size-3" />
-              <span>{data.member_count} members</span>
+            <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+              <Users aria-hidden className="size-3" />
+              <span className="tabular-nums">{t("members", { count: data.member_count })}</span>
             </div>
           ) : null}
         </div>
@@ -61,11 +78,12 @@ export function DiscordServerStatus({
         type="button"
         variant="ghost"
         size="icon"
-        className="size-7 text-muted-foreground hover:text-foreground"
+        className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
         onClick={() => refetch()}
-        title="Refresh status"
+        aria-label={t("refresh")}
+        title={t("refresh")}
       >
-        <RefreshCw className="size-3.5" />
+        <RefreshCw aria-hidden className="size-3.5" />
       </Button>
     </div>
   );

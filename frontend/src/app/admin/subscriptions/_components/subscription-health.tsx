@@ -16,6 +16,7 @@ import type { SubscriptionCollectionStats } from "@/types/admin.types";
 import {
   PROVIDER_LABELS,
   STATE_BAR,
+  STATE_LABELS,
   STATE_ORDER,
   formatInterval,
   formatRelative
@@ -51,7 +52,7 @@ function StateBar({ stats }: { stats: SubscriptionCollectionStats }) {
           counts[s] ? (
             <span key={s} className="inline-flex items-center gap-1.5 text-muted-foreground">
               <span aria-hidden className={cn("h-2 w-2 rounded-full", STATE_BAR[s])} />
-              {s} <span className="tabular-nums text-foreground">{counts[s]}</span>
+              {STATE_LABELS[s] ?? s} <span className="tabular-nums text-foreground">{counts[s]}</span>
             </span>
           ) : null
         )}
@@ -76,7 +77,9 @@ export function SubscriptionHealthDashboard() {
     // No `user_id` = sweep every open tournament that requires a subscription.
     mutationFn: () => adminService.triggerSubscriptionCollection({}),
     onSuccess: (result) => {
-      notify.success(`Checked ${result.checked} subscription(s)`);
+      notify.success(
+        result.checked === 1 ? "Checked 1 subscription" : `Checked ${result.checked} subscriptions`
+      );
       queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
     },
     onError: (error) =>
@@ -140,8 +143,9 @@ export function SubscriptionHealthDashboard() {
             {stats.enabled ? "Collecting" : "Paused"}
           </span>
           <span className="text-muted-foreground">
-            <span className="tabular-nums">{stats.active_tournaments}</span> tournament(s) gated ·
-            every <span className="tabular-nums">{formatInterval(stats.interval_seconds)}</span> ·{" "}
+            <span className="tabular-nums">{stats.active_tournaments}</span>{" "}
+            {stats.active_tournaments === 1 ? "tournament" : "tournaments"} gated · every{" "}
+            <span className="tabular-nums">{formatInterval(stats.interval_seconds)}</span> ·{" "}
             <span className="tabular-nums">{stats.batch_size}</span>/batch
           </span>
         </div>
@@ -153,7 +157,7 @@ export function SubscriptionHealthDashboard() {
             onClick={() => sweepMutation.mutate()}
           >
             {sweepMutation.isPending ? (
-              <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin" />
+              <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
             ) : (
               <RefreshCw aria-hidden className="mr-1.5 h-4 w-4" />
             )}
@@ -167,7 +171,7 @@ export function SubscriptionHealthDashboard() {
               onClick={() => toggleMutation.mutate()}
             >
               {toggleMutation.isPending ? (
-                <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin" />
+                <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
               ) : stats.enabled ? (
                 <Pause aria-hidden className="mr-1.5 h-4 w-4" />
               ) : (

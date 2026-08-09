@@ -1,4 +1,9 @@
+"use client";
+
 import React from "react";
+import { RefreshCw, Code2 } from "lucide-react";
+import { useTranslations } from "next-intl";
+
 import { useDiscordRoles } from "@/hooks/useDiscordEntities";
 import { DiscordRole } from "@/types/discord.types";
 import {
@@ -10,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Code2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface DiscordRoleSelectProps {
   workspaceId: number | null | undefined;
@@ -19,7 +24,23 @@ export interface DiscordRoleSelectProps {
   onRoleNameSelected?: (roleName: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Accessible name for the control. Rows of these carry no visible label of
+   *  their own, so the caller has to name them. */
+  ariaLabel?: string;
   className?: string;
+}
+
+/** Discord ships a per-role hex, which is real data and belongs inline. Anything
+ *  else is not a colour we will hand to `style`, so it falls back to a token. */
+function RoleDot({ color }: { color: string | null | undefined }) {
+  const hex = color && /^#[0-9A-Fa-f]{6}$/.test(color) ? color : null;
+  return (
+    <span
+      aria-hidden
+      className={cn("size-2.5 shrink-0 rounded-full", hex ? undefined : "bg-muted-foreground/40")}
+      style={hex ? { backgroundColor: hex } : undefined}
+    />
+  );
 }
 
 export function DiscordRoleSelect({
@@ -28,9 +49,11 @@ export function DiscordRoleSelect({
   onChange,
   onRoleNameSelected,
   disabled,
-  placeholder = "Select Discord role...",
+  placeholder,
+  ariaLabel,
   className,
 }: DiscordRoleSelectProps) {
+  const t = useTranslations("discord.role");
   const { data, isLoading, refetch } = useDiscordRoles(workspaceId);
   const [manualMode, setManualMode] = React.useState(false);
 
@@ -47,16 +70,21 @@ export function DiscordRoleSelect({
     }
   };
 
+  // Manual entry is the only way out when our bot cannot read the guild, so it
+  // stays reachable — but it is the fallback, never the advertised workflow.
   if (manualMode || (!isLoading && !hasRoles)) {
     return (
-      <div className="flex items-center gap-1.5 w-full">
+      <div className="flex w-full items-center gap-1.5">
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
+          aria-label={ariaLabel ?? t("idAria")}
           placeholder="123456789012345678"
+          inputMode="numeric"
+          autoComplete="off"
           maxLength={19}
-          className={className}
+          className={cn("font-mono", className)}
         />
         {hasRoles && (
           <Button
@@ -65,9 +93,8 @@ export function DiscordRoleSelect({
             size="sm"
             className="h-8 px-2 text-xs"
             onClick={() => setManualMode(false)}
-            title="Switch back to role dropdown"
           >
-            Dropdown
+            {t("dropdown")}
           </Button>
         )}
       </div>
@@ -75,23 +102,16 @@ export function DiscordRoleSelect({
   }
 
   return (
-    <div className="flex items-center gap-1.5 w-full">
-      <Select
-        value={value}
-        onValueChange={handleSelectRole}
-        disabled={disabled || isLoading}
-      >
-        <SelectTrigger className={className}>
-          <SelectValue placeholder={isLoading ? "Loading roles..." : placeholder}>
+    <div className="flex w-full items-center gap-1.5">
+      <Select value={value} onValueChange={handleSelectRole} disabled={disabled || isLoading}>
+        <SelectTrigger className={className} aria-label={ariaLabel}>
+          <SelectValue placeholder={isLoading ? t("loading") : (placeholder ?? t("placeholder"))}>
             {(() => {
               const matched = roles.find((r) => r.id === value);
               if (matched) {
                 return (
                   <div className="flex items-center gap-2 truncate">
-                    <span
-                      className="size-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: matched.color || "#a1a1aa" }}
-                    />
+                    <RoleDot color={matched.color} />
                     <span className="truncate">{matched.name}</span>
                   </div>
                 );
@@ -103,15 +123,12 @@ export function DiscordRoleSelect({
         <SelectContent>
           {roles.map((role) => (
             <SelectItem key={role.id} value={role.id}>
-              <div className="flex items-center gap-2 w-full">
-                <span
-                  className="size-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: role.color || "#a1a1aa" }}
-                />
+              <div className="flex w-full items-center gap-2">
+                <RoleDot color={role.color} />
                 <span className="font-medium">{role.name}</span>
                 {role.managed && (
-                  <span className="text-[10px] uppercase font-mono px-1 py-0.5 rounded bg-muted text-muted-foreground ml-auto">
-                    managed
+                  <span className="ms-auto rounded bg-muted px-1 py-0.5 font-mono text-xs uppercase text-muted-foreground">
+                    {t("managed")}
                   </span>
                 )}
               </div>
@@ -126,9 +143,13 @@ export function DiscordRoleSelect({
         className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
         onClick={() => refetch()}
         disabled={isLoading}
-        title="Refresh roles from Discord"
+        aria-label={t("refresh")}
+        title={t("refresh")}
       >
-        <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        <RefreshCw
+          aria-hidden
+          className={cn("size-3.5", isLoading && "animate-spin motion-reduce:animate-none")}
+        />
       </Button>
       <Button
         type="button"
@@ -136,9 +157,10 @@ export function DiscordRoleSelect({
         size="icon"
         className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
         onClick={() => setManualMode(true)}
-        title="Enter Role ID manually"
+        aria-label={t("manual")}
+        title={t("manual")}
       >
-        <Code2 className="size-3.5" />
+        <Code2 aria-hidden className="size-3.5" />
       </Button>
     </div>
   );

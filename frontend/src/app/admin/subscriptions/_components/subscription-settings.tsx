@@ -86,7 +86,7 @@ export function SubscriptionSettingsPanel() {
           <Label htmlFor="sub-enabled">Enable background subscription auto-check</Label>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="sub-interval">Check interval (seconds)</Label>
             <NumberInput

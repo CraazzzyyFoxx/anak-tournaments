@@ -20,6 +20,25 @@ export const STATE_BAR: Record<string, string> = {
 /** Canonical display order for states. */
 export const STATE_ORDER = ["active", "inactive", "unknown", "error"] as const;
 
+/** Display wording per check state. The stored values are machine tokens, and a
+ *  row that reads "unknown" in lower case is the enum leaking, not a label. */
+export const STATE_LABELS: Record<string, string> = {
+  active: "Active",
+  inactive: "Inactive",
+  unknown: "Unresolved",
+  error: "Error"
+};
+
+/** Display wording per check trigger. `check_in` in particular must never reach
+ *  a table cell with its underscore intact. */
+export const SOURCE_LABELS: Record<string, string> = {
+  scheduled: "Scheduled sweep",
+  registration: "Registration",
+  check_in: "Check-in",
+  manual: "Manual re-check",
+  redeem: "Code redeemed"
+};
+
 /** Providers the subscription domain can verify. Lookups fall back to the raw
  *  key, so a provider added backend-side still renders, just less prettily. */
 export const PROVIDER_LABELS: Record<string, string> = {
@@ -88,7 +107,7 @@ export function formatInterval(seconds: number): string {
 export function StateBadge({ state }: { state: string | null }) {
   return (
     <Badge variant="outline" className={STATE_STYLES[state ?? ""] ?? TONE_CLASS.neutral}>
-      {state ?? "never"}
+      {state ? (STATE_LABELS[state] ?? state) : "Never checked"}
     </Badge>
   );
 }

@@ -18,6 +18,8 @@ import adminService from "@/services/admin.service";
 import {
   PROVIDER_LABELS,
   REASON_LABELS,
+  SOURCE_LABELS,
+  STATE_LABELS,
   StateBadge,
   formatDate
 } from "./subscription-shared";
@@ -65,7 +67,7 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
             <h2>Check history</h2>
           </CardTitle>
           <span className="flex items-center gap-1 text-xs font-normal text-success">
-            <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-success motion-reduce:animate-none" />
             live
           </span>
         </div>
@@ -77,7 +79,7 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
             <SelectContent>
               {STATE_FILTERS.map((value) => (
                 <SelectItem key={value} value={value} className="text-xs">
-                  {value === "all" ? "All states" : value}
+                  {value === "all" ? "All states" : (STATE_LABELS[value] ?? value)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -101,7 +103,7 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
             <SelectContent>
               {SOURCE_FILTERS.map((value) => (
                 <SelectItem key={value} value={value} className="text-xs">
-                  {value === "all" ? "All triggers" : value}
+                  {value === "all" ? "All triggers" : (SOURCE_LABELS[value] ?? value)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -176,7 +178,7 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
                         {row.tier_label ?? (row.tier_rank != null ? `Tier ${row.tier_rank}` : "—")}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground" title={row.mechanism ?? undefined}>
-                        {row.source}
+                        {SOURCE_LABELS[row.source] ?? row.source}
                       </TableCell>
                       <TableCell
                         className={cn("max-w-64 truncate text-xs", row.error ? "text-danger" : "text-muted-foreground")}

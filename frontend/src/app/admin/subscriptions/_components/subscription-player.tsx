@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw, Search } from "lucide-react";
 
@@ -16,7 +16,9 @@ import userService from "@/services/user.service";
 import {
   PROVIDER_LABELS,
   REASON_LABELS,
+  SOURCE_LABELS,
   STATE_BAR,
+  STATE_LABELS,
   StateBadge,
   formatDate,
   formatRelative
@@ -34,7 +36,11 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
+  // APG combobox: DOM focus never leaves the input, so the highlighted row is
+  // tracked here and pointed at through `aria-activedescendant`.
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
 
   useEffect(() => {
     const handle = setTimeout(() => setDebounced(term.trim()), 300);
@@ -59,10 +65,40 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
   const results = searchQuery.data ?? [];
   const showDropdown = open && debounced.length >= 2;
 
+  // A highlight kept across a new result set would send Enter to whoever now
+  // occupies that index. Cleared in the render that first sees the new data, not
+  // in an effect: an effect leaves the stale row highlighted for one paint.
+  const [seenResults, setSeenResults] = useState(searchQuery.data);
+  if (seenResults !== searchQuery.data) {
+    setSeenResults(searchQuery.data);
+    setActiveIndex(-1);
+  }
+
   const pick = (id: number, name: string) => {
     onSelect(id, name);
     setOpen(false);
+    setActiveIndex(-1);
     setTerm("");
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+      setActiveIndex(-1);
+      return;
+    }
+    if (!showDropdown || results.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((index) => (index + 1) % results.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((index) => (index <= 0 ? results.length - 1 : index - 1));
+    } else if (event.key === "Enter" && activeIndex >= 0) {
+      event.preventDefault();
+      const picked = results[activeIndex];
+      if (picked) pick(picked.id, picked.name);
+    }
   };
 
   return (
@@ -73,7 +109,13 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
       />
       <Input
         className="pl-8"
+        role="combobox"
         aria-label="Search player by name"
+        aria-autocomplete="list"
+        aria-expanded={showDropdown}
+        aria-controls={listId}
+        aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+        autoComplete="off"
         placeholder="Search player by name…"
         value={term}
         onChange={(event) => {
@@ -81,29 +123,50 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") setOpen(false);
-        }}
+        onKeyDown={onKeyDown}
       />
+      {/* Stable region, updated in place: an inserted live region announces
+          unreliably, and the result count is the one thing a sighted user gets
+          for free here. */}
+      <p role="status" className="sr-only">
+        {showDropdown && !searchQuery.isLoading
+          ? results.length === 1
+            ? "1 player found"
+            : `${results.length} players found`
+          : ""}
+      </p>
       {showDropdown && (
         <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
           {searchQuery.isLoading ? (
             <p className="px-3 py-2 text-sm text-muted-foreground">Searching…</p>
           ) : results.length > 0 ? (
-            <div className="max-h-72 divide-y divide-border overflow-y-auto">
-              {results.map((user) => (
-                <button
+            <div
+              id={listId}
+              role="listbox"
+              aria-label="Matching players"
+              className="max-h-72 divide-y divide-border overflow-y-auto"
+            >
+              {results.map((user, index) => (
+                <div
                   key={user.id}
-                  type="button"
+                  id={`${listId}-${index}`}
+                  role="option"
+                  aria-selected={activeIndex === index}
+                  tabIndex={-1}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => pick(user.id, user.name)}
-                  className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/50"
+                  className={cn(
+                    "cursor-pointer px-3 py-2 text-sm",
+                    activeIndex === index ? "bg-muted/60" : "hover:bg-muted/50"
+                  )}
                 >
                   {user.name}
-                </button>
+                </div>
               ))}
             </div>
           ) : (
-            <p className="px-3 py-2 text-sm text-muted-foreground">
+            <p id={listId} className="px-3 py-2 text-sm text-muted-foreground">
               No player matches “{debounced}”.
             </p>
           )}
@@ -150,13 +213,15 @@ function PlayerCheckTimeline({ userId }: { userId: number }) {
                 <span aria-hidden className={cn("h-2 w-2 rounded-full", STATE_BAR[row.state] ?? "bg-muted")} />
                 <span className="tabular-nums text-muted-foreground">{formatDate(row.created_at)}</span>
                 <span className="font-medium">{PROVIDER_LABELS[row.provider] ?? row.provider}</span>
-                <span>{row.state}</span>
+                <span>{STATE_LABELS[row.state] ?? row.state}</span>
                 {row.tier_label || row.tier_rank != null ? (
                   <span className="text-muted-foreground">
                     {row.tier_label ?? `Tier ${row.tier_rank}`}
                   </span>
                 ) : null}
-                <span className="text-muted-foreground">· {row.source}</span>
+                <span className="text-muted-foreground">
+                  · {SOURCE_LABELS[row.source] ?? row.source}
+                </span>
                 {reason ? (
                   <span className={cn("truncate", row.error ? "text-danger" : "text-muted-foreground")}>
                     · {reason}
@@ -193,9 +258,11 @@ export function SubscriptionPlayerDetail({ userId, label, onClose }: Subscriptio
       adminService.triggerSubscriptionCollection({ user_id: userId, providers }),
     onSuccess: (result) => {
       notify.success(
-        result.checked > 0
-          ? `Checked ${result.checked} subscription(s)`
-          : "Nothing to check — this player is not registered in a tournament that requires a subscription"
+        result.checked === 0
+          ? "Nothing to check — this player is not registered in a tournament that requires a subscription"
+          : result.checked === 1
+            ? "Checked 1 subscription"
+            : `Checked ${result.checked} subscriptions`
       );
       queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
     },
@@ -216,7 +283,7 @@ export function SubscriptionPlayerDetail({ userId, label, onClose }: Subscriptio
               <h3 className="text-sm font-semibold">Current entitlements</h3>
               <Button size="sm" disabled={triggerMutation.isPending} onClick={() => triggerMutation.mutate(null)}>
                 {triggerMutation.isPending ? (
-                  <Loader2 aria-hidden className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 aria-hidden className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
                 ) : (
                   <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
                 )}
@@ -273,7 +340,7 @@ export function SubscriptionPlayerDetail({ userId, label, onClose }: Subscriptio
                           size="sm"
                           disabled={triggerMutation.isPending}
                           onClick={() => triggerMutation.mutate([row.provider])}
-                          aria-label={`Re-check ${row.provider} for ${label}`}
+                          aria-label={`Re-check ${PROVIDER_LABELS[row.provider] ?? row.provider} for ${label}`}
                         >
                           <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
                           Re-check

@@ -3682,8 +3682,8 @@
     }
   },
   "subscriptionProviders": {
-    "title": "Subscription Providers Setup",
-    "description": "Raw ids for now — paste the role ids by hand (enable Developer Mode in Discord, then right-click → Copy ID). Boosty's own bot assigns those roles, so the mapping is what turns a role into a subscription tier.",
+    "title": "Subscription providers",
+    "description": "Each provider proves a subscription its own way. Pick the mechanism, then map what it returns to a tier.",
     "loading": "Loading…",
     "save": "Save",
     "saved": "{provider} configuration saved",
@@ -3692,7 +3692,8 @@
       "active": "Active",
       "disabled": "Disabled"
     },
-    "methodsLegend": "How a subscription is proven",
+    "methodLabel": "How a subscription is proven",
+    "methodAria": "Verification method",
     "methods": {
       "live": {
         "boosty": {
@@ -3718,21 +3719,21 @@
       }
     },
     "guild": {
-      "current": "Discord guild: {guildId}",
-      "unset": "No Discord guild is set for this workspace.",
-      "missing": "Live verification needs a Discord guild. Set it in workspace settings.",
+      "unset": "No Discord server is set for this workspace.",
+      "missing": "Live verification needs a Discord server. Set it in workspace settings.",
       "hint": "Set once per workspace, in workspace settings. Boosty's bot assigns subscriber roles in that server; our bot must also be a member of it."
     },
     "roles": {
       "label": "Role → tier",
       "add": "Add role",
-      "roleIdPlaceholder": "role id",
+      "roleAria": "Discord role",
       "tierRankAria": "tier rank",
       "tierLabelPlaceholder": "Level 2",
-      "removeAria": "Remove role {role}"
+      "tierLabelAria": "tier name",
+      "removeAria": "Remove role {number}"
     },
     "broadcaster": {
-      "idLabel": "Broadcaster id",
+      "idLabel": "Broadcaster ID",
       "loginLabel": "Broadcaster login",
       "loginPlaceholder": "channel_name",
       "note": "Only works for Affiliate/Partner channels — Twitch has no subscriptions API for anyone else, and a non-eligible channel resolves to <em>undetermined</em>, which fails open."
@@ -3744,14 +3745,34 @@
       "stored": "Currently stored: {codes}. Codes are stored hashed and cannot be shown again.",
       "tierFallback": "tier {rank}",
       "codePlaceholder": "code from the post",
+      "codeAria": "challenge code",
       "tierRankAria": "tier rank",
       "removeAria": "Remove code {number}",
       "replaceWarning": "{count, plural, one {Saving replaces every stored code with the one above.} other {Saving replaces every stored code with the # above.}}"
     },
     "warnings": {
-      "duplicateRole": "Two tiers on the same role id. The server rejects this — the resulting verdict would depend on ordering.",
-      "rolesMissing": "A guild without a role mapping resolves to <em>undetermined</em>, which fails open — the gate will not enforce anything.",
+      "duplicateRole": "Two tiers point at the same Discord role. The server rejects this — the resulting verdict would depend on ordering.",
+      "rolesMissing": "A Discord server without a role mapping resolves to <em>undetermined</em>, which fails open — the gate will not enforce anything.",
       "codesMissing": "Code-only with no code configured is unsatisfiable, so it resolves to <em>undetermined</em> and fails open — nobody is checked, and nobody is blocked."
+    }
+  },
+  "discord": {
+    "role": {
+      "placeholder": "Select a Discord role",
+      "loading": "Loading roles…",
+      "refresh": "Refresh roles from Discord",
+      "manual": "Enter a role ID instead",
+      "dropdown": "Pick from the list",
+      "managed": "managed",
+      "idAria": "Discord role ID"
+    },
+    "server": {
+      "checking": "Checking the Discord bot…",
+      "fallbackName": "Discord server",
+      "connected": "Connected",
+      "disconnected": "Not connected",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "refresh": "Refresh the Discord server status"
     }
   },
   "subscriptionWorkspace": {
