@@ -24,6 +24,7 @@ from shared.core.enums import MapPickSide, VetoSeedSource  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from src.services.encounter.veto_session import (  # noqa: E402
     build_sequence_for_best_of,
+    build_slot_sequence,
     decide_seeds,
     effective_sequence,
     resolve_sequence_tokens,
@@ -306,3 +307,46 @@ class EffectiveSequenceTests(TestCase):
         for best_of in (1, 2, 3, 5, 7):
             played = sum(1 for token in effective_sequence(config, best_of, 9) if not token.startswith("ban"))
             self.assertEqual(best_of, played, f"best_of={best_of}")
+
+
+class BuildSlotSequenceTests(TestCase):
+    """One slot = (candidates - 1) alternating bans, then a decider.
+    Steps must total the pool size, because `get_current_step` indexes the flat
+    token list by how many pool entries are no longer AVAILABLE."""
+
+    def test_two_slots_of_three_alternating_from_the_higher_seed(self) -> None:
+        self.assertEqual(
+            ["ban_first", "ban_second", "decider", "ban_first", "ban_second", "decider"],
+            build_slot_sequence([3, 3], rotation="fixed"),
+        )
+
+    def test_alternate_rotation_flips_who_opens_each_slot(self) -> None:
+        self.assertEqual(
+            ["ban_first", "ban_second", "decider", "ban_second", "ban_first", "decider"],
+            build_slot_sequence([3, 3], rotation="alternate"),
+        )
+
+    def test_step_count_equals_total_candidates(self) -> None:
+        for counts in ([3, 3], [3, 3, 3], [2, 4], [3, 3, 3, 3, 3]):
+            sequence = build_slot_sequence(counts, rotation="fixed")
+            self.assertEqual(sum(counts), len(sequence), f"counts={counts}")
+            self.assertEqual(len(counts), sequence.count("decider"), f"counts={counts}")
+
+    def test_one_decider_per_slot_and_each_closes_its_slot(self) -> None:
+        sequence = build_slot_sequence([2, 3], rotation="fixed")
+        self.assertEqual(["ban_first", "decider", "ban_first", "ban_second", "decider"], sequence)
+
+    def test_empty_slot_list_yields_no_steps(self) -> None:
+        self.assertEqual([], build_slot_sequence([], rotation="fixed"))
+
+    def test_a_single_candidate_slot_is_played_unbanned(self) -> None:
+        # A 1-candidate slot has no bans to spend, so it is one step -- its
+        # decider -- and the pool-size invariant still holds. Pinned as the
+        # generator's arithmetic, NOT as an endorsement: design Decision 15
+        # forbids c_i < 2 because consecutive deciders stall the engine, and
+        # rejecting it belongs to the mode-aware validator (task 5) and to
+        # session creation, not to this pure function.
+        sequence = build_slot_sequence([1, 3], rotation="fixed")
+
+        self.assertEqual(["decider", "ban_first", "ban_second", "decider"], sequence)
+        self.assertEqual(4, len(sequence))

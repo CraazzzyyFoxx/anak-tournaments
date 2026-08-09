@@ -28,7 +28,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.core.enums import MapPickSide, MapPoolEntryStatus, MapVetoSessionStatus, VetoSeedSource
+from shared.core.enums import (
+    FirstBanRotation,
+    MapPickSide,
+    MapPoolEntryStatus,
+    MapVetoSessionStatus,
+    VetoSeedSource,
+)
 from shared.core.errors import BaseAPIException as HTTPException
 from src import models
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
@@ -115,6 +121,32 @@ def build_sequence_for_best_of(best_of: int, pool_size: int) -> list[str]:
     tokens = ["ban_first" if index % 2 == 0 else "ban_second" for index in range(bans)]
     tokens.extend("pick_first" if index % 2 == 0 else "pick_second" for index in range(picks))
     if played % 2:
+        tokens.append("decider")
+    return tokens
+
+
+def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[str]:
+    """Generate the side-agnostic sequence for a slot-mode config.
+
+    Each slot contributes ``(candidates - 1)`` alternating bans and one
+    ``decider`` that closes it, so the step total equals the pool size and
+    ``get_current_step``'s arithmetic keeps working unchanged.
+
+    ``rotation``: ``fixed`` opens every slot with the higher seed; ``alternate``
+    opens odd-numbered slots with the higher seed and even ones with the lower
+    (design Decision 3).
+
+    NOTE: the result carries one decider per slot, mid-sequence. It is a SESSION
+    sequence and must never be passed to ``validate_veto_config``, which rejects
+    more than one decider and requires it last. That validator guards config
+    upserts only (design Decision 16).
+    """
+    tokens: list[str] = []
+    for index, count in enumerate(candidate_counts):
+        opens_first = rotation != FirstBanRotation.ALTERNATE or index % 2 == 0
+        for ban in range(count - 1):
+            first_turn = (ban % 2 == 0) == opens_first
+            tokens.append("ban_first" if first_turn else "ban_second")
         tokens.append("decider")
     return tokens
 
