@@ -302,6 +302,10 @@ describe("slot-mode map grid", () => {
     expect(survivor).toBeDefined();
     expect(survivor!.textContent).toContain(ROOM.maps.status.remaining);
     expect(survivor!.textContent).not.toContain(ROOM.maps.status.picked);
+    // Slot mode drops the "· decider" marker from the order list — every
+    // survivor is one there — and `entry.slot == null` is the only thing
+    // scoping that to slot mode.
+    expect(container.textContent).not.toContain(`· ${ROOM.maps.by.decider}`);
   });
 
   it("keeps a flat decider on Picked", async () => {
@@ -323,6 +327,10 @@ describe("slot-mode map grid", () => {
     expect(decider).toBeDefined();
     expect(decider!.textContent).toContain(ROOM.maps.status.picked);
     expect(decider!.textContent).not.toContain(ROOM.maps.status.remaining);
+    // ...and the order list still names it, since in flat mode the decider is
+    // the one map no side chose. Nothing else pins this copy, so dropping the
+    // `entry.slot == null` conjunct above would strip it from every flat veto.
+    expect(container.textContent).toContain(`1. Map 23 · ${ROOM.maps.by.decider}`);
   });
 
   it("opens the live slot's candidate and leaves an upcoming slot's inert", async () => {
@@ -339,7 +347,17 @@ describe("slot-mode map grid", () => {
     expect(live!.disabled).toBe(false);
     expect(future!.disabled).toBe(true);
     expect(future!.className).toContain("border-dashed");
-    expect(future!.getAttribute("title")).toBe(ROOM.slot.locked.replace("{n}", "9"));
+    const lockedText = ROOM.slot.locked.replace("{n}", "9");
+    expect(future!.getAttribute("title")).toBe(lockedText);
+    // `title` is the one affordance an inert tile cannot lean on — a disabled
+    // button's tooltip is not reliably announced — so the reason must also be
+    // real text in the group AND reachable from the control that it explains.
+    expect(container.querySelector('[data-veto-map-slot="9"]')?.textContent).toContain(lockedText);
+    const describedBy = future!.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(container.querySelector(`#${describedBy}`)?.textContent?.trim()).toBe(lockedText);
+    // The live slot has nothing to explain, so it must not borrow the hint.
+    expect(live!.getAttribute("aria-describedby")).toBeNull();
   });
 
   it("does not select an upcoming slot's map when it is clicked", async () => {
@@ -441,13 +459,11 @@ describe("slot-mode timeline", () => {
 
   /** Timeline slot groups keyed by the slot they resolve. */
   const timelineGroups = () => {
-    const card = container.querySelectorAll("[data-veto-slot]");
     const bySlot = new Map<number, HTMLElement>();
-    for (const node of card) {
-      // Both the grid and the timeline expose the hook; only the timeline's
-      // groups carry step rows, which is what separates them here.
-      if (!node.className.includes("gap-1.5")) continue;
-      bySlot.set(Number(node.getAttribute("data-veto-slot")), node as HTMLElement);
+    // The grid carries `data-veto-map-slot`, so this hook reaches the timeline's
+    // groups alone — no filtering on a spacing class a visual tweak can change.
+    for (const node of container.querySelectorAll("[data-veto-step-slot]")) {
+      bySlot.set(Number(node.getAttribute("data-veto-step-slot")), node as HTMLElement);
     }
     return bySlot;
   };

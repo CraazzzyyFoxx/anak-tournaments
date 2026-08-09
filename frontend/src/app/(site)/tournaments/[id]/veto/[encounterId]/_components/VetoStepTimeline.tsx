@@ -138,7 +138,7 @@ export function VetoStepTimeline({
               return (
                 <div
                   key={group.slot}
-                  data-veto-slot={group.slot}
+                  data-veto-step-slot={group.slot}
                   className={cn("flex-col gap-1.5", folded ? "hidden lg:flex" : "flex")}
                 >
                   <div className="flex flex-wrap items-center gap-2 pt-1.5">

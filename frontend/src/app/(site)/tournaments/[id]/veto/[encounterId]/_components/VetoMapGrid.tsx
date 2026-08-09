@@ -40,6 +40,9 @@ const STATUS_BADGE_VARIANT: Record<MapPoolEntryStatus, "secondary" | "destructiv
   played: "secondary",
 };
 
+/** Ties a locked slot's tiles to the paragraph that explains why they are inert. */
+const lockedHintId = (slot: number) => `veto-slot-${slot}-locked`;
+
 export function VetoMapGrid({
   pool,
   mapsById,
@@ -56,10 +59,11 @@ export function VetoMapGrid({
   const currentSlotRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     // Below `lg` the timeline stacks above the grid, so a Bo5 slot veto leaves
-    // the live slot well under the fold — and it moves as slots resolve. Guarded
-    // on a live slot rather than on slot mode: a completed veto also reports
-    // null and must not yank the reader away from the final order.
-    if (currentSlot == null) return;
+    // the live slot well under the fold — and it moves as slots resolve. The ref
+    // is the whole guard: it is attached only to the group whose state is
+    // "current", so a completed veto — which reports a null slot exactly as a
+    // live-slot-less one does — leaves it null and this call a no-op, rather
+    // than yanking the reader away from the final order.
     currentSlotRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [currentSlot]);
 
@@ -80,6 +84,10 @@ export function VetoMapGrid({
         // upcoming slot's candidate is `available` — indistinguishable from a
         // live one without it.
         title={lockedSlot != null ? t("slot.locked", { n: lockedSlot }) : undefined}
+        // `title` is not reliably announced on a disabled control, so the same
+        // reason reaches a screen reader from the tile itself via the group's
+        // hint paragraph rather than only as prose sitting next to it.
+        aria-describedby={lockedSlot != null ? lockedHintId(lockedSlot) : undefined}
         onClick={() => onSelect(entry.map_id)}
         className={cn(
           "group relative flex flex-col overflow-hidden rounded-xl border text-left outline-none transition-shadow",
@@ -168,7 +176,7 @@ export function VetoMapGrid({
             return (
               <div
                 key={group.slot}
-                data-veto-slot={group.slot}
+                data-veto-map-slot={group.slot}
                 ref={state === "current" ? currentSlotRef : undefined}
                 aria-current={state === "current" ? "step" : undefined}
                 className="flex flex-col gap-2"
@@ -187,7 +195,7 @@ export function VetoMapGrid({
                   </Badge>
                 </div>
                 {locked ? (
-                  <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+                  <p id={lockedHintId(group.slot)} className="text-xs text-[color:var(--aqt-fg-muted)]">
                     {t("slot.locked", { n: group.slot })}
                   </p>
                 ) : null}
