@@ -1,20 +1,23 @@
 // @vitest-environment happy-dom
 //
-// Two shapes of lie are pinned here, because both have shipped on this page.
+// This page is the tournament's map pool, and nothing else.
 //
-//  1. A slot config carries an EMPTY `map_ids` — the serializer sends both pool
-//     shapes and fills exactly one. Rendered as a flat pool that produced two
-//     false statements about a fully configured round: the badge "0 maps in the
-//     pool" and the pool card's "No maps in this game mode.". So the branch keys
-//     off `config.mode`, never off an empty pool: an empty FLAT pool is a genuine
-//     misconfiguration and must keep saying so. Collapsing the two would swap a
-//     true error message for a false reassurance.
+// It used to be a per-level view of one veto config, chosen through a
+// stage/round picker. That picker built its rounds from `Stage.max_rounds`, so
+// it could not reach a lower-bracket round at all, and it offered rounds an
+// elimination bracket never plays. Worse, the cascade it fed starts at the
+// tournament default — so a tournament whose organizer wrote only per-round
+// configs, which is the normal shape, opened on "the organizer has not published
+// a map pool yet" and stayed there until the viewer guessed a configured round.
 //
-//  2. `mapsById` is built from the competitive-only catalogue, so a candidate
-//     retired from rotation does not resolve. Dropping its tile would report a
-//     slot as holding fewer candidates than the organizer configured, and a
-//     slot's candidate count is regulation-critical — the backend refuses fewer
-//     than two. The page names the unresolved map instead of shrinking the slot.
+// The pool is now the union over every config, with no scope to choose, and the
+// per-match ban/pick machinery lives with the match. What is pinned here:
+//  1. the union, deduplicated, across levels a picker could never reach;
+//  2. slot candidates and a slot's regulation reserve count as pool members;
+//  3. an id the competitive catalogue cannot resolve is dropped, not named —
+//     the opposite of the veto room, where a slot's candidate count is
+//     regulation-critical and a missing tile would under-report it;
+//  4. none of the veto presentation is left behind on this page.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -23,7 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { MapRead } from "@/types/map.types";
-import type { MapVetoConfig, MapVetoConfigSlot } from "@/types/tournament.types";
+import type { MapVetoConfig } from "@/types/tournament.types";
 
 import TournamentMapsPage from "./TournamentMapsPage";
 
@@ -50,42 +53,63 @@ const COPY = en.mapVeto;
 const TOURNAMENT_ID = 88;
 
 /**
- * Six maps whose ids are deliberately not 1..6 and never equal a slot position,
- * a candidate count or the tournament id, so nothing can pass by confusing one
- * for another. Two gamemodes, of unequal size, so grouping is exercised.
+ * Every field spelled out rather than cast into place: `tsconfig.json` excludes
+ * test files, so a fixture that lies about its shape type-checks green and feeds
+ * the component a hole.
  */
-const MAPS: MapRead[] = [
-  { id: 37, name: "Busan", gamemode: { id: 4, name: "Control" } },
-  { id: 45, name: "Ilios", gamemode: { id: 4, name: "Control" } },
-  { id: 52, name: "King's Row", gamemode: { id: 6, name: "Hybrid" } },
-  { id: 63, name: "Numbani", gamemode: { id: 6, name: "Hybrid" } },
-  { id: 71, name: "Oasis", gamemode: { id: 4, name: "Control" } },
-  { id: 84, name: "Eichenwalde", gamemode: { id: 6, name: "Hybrid" } }
-].map((map) => ({
-  ...map,
-  created_at: new Date("2026-01-01T00:00:00Z"),
-  updated_at: null,
-  image_path: `/maps/${map.id}.jpg`,
-  gamemode_id: map.gamemode.id,
-  in_competitive: true,
-  aliases: []
-})) as MapRead[];
+function map(id: number, name: string, gamemode: string, gamemodeId: number): MapRead {
+  return {
+    id,
+    created_at: new Date(0),
+    updated_at: null,
+    name,
+    image_path: `/maps/${id}.jpg`,
+    gamemode_id: gamemodeId,
+    in_competitive: true,
+    aliases: [],
+    gamemode: {
+      id: gamemodeId,
+      created_at: new Date(0),
+      updated_at: null,
+      name: gamemode,
+      image_path: `/gamemodes/${gamemodeId}.jpg`,
+      slug: gamemode.toLowerCase(),
+      description: "",
+      aliases: []
+    }
+  };
+}
 
 /**
- * A map id the page's catalogue does not carry. `mapsById` is built from maps
- * filtered to `in_competitive !== false`, so a candidate retired from rotation
- * reaches the component exactly like this: an id with nothing behind it.
+ * Six maps whose ids are deliberately not 1..6 and never equal a slot position,
+ * a candidate count or the tournament id, so nothing can pass by confusing one
+ * for another. Three gamemodes of unequal size, so grouping and its size
+ * ordering are both exercised.
+ *
+ * Listed out of alphabetical order: the page sorts inside a group itself rather
+ * than leaning on the maps endpoint keeping its `sort=name`, and a fixture in
+ * sorted order could not tell the two apart.
+ */
+const MAPS: MapRead[] = [
+  map(52, "Busan", "Control", 1),
+  map(37, "Ilios", "Control", 1),
+  map(71, "Oasis", "Control", 1),
+  map(63, "Numbani", "Hybrid", 2),
+  map(45, "King's Row", "Hybrid", 2),
+  map(84, "Colosseo", "Push", 3)
+];
+
+/**
+ * A map id the page's catalogue does not carry. `maps` is filtered to
+ * `in_competitive !== false`, so a candidate retired from rotation reaches the
+ * component exactly like this: an id with nothing behind it.
  */
 const RETIRED_MAP_ID = 96;
 
-/**
- * Every field spelled out rather than spread from a caller: `tsconfig.json`
- * excludes test files, so a builder that drops a required field type-checks
- * green and silently feeds the component a hole.
- */
+/** Same reason as `map`: no field left to a default the wire does not have. */
 function config(overrides: Partial<MapVetoConfig>): MapVetoConfig {
   return {
-    id: 118,
+    id: 1,
     tournament_id: TOURNAMENT_ID,
     stage_id: null,
     round: null,
@@ -93,7 +117,7 @@ function config(overrides: Partial<MapVetoConfig>): MapVetoConfig {
     preset: "bracket",
     first_pick_rule: "higher_seed",
     first_ban_rotation: "fixed",
-    turn_timer_seconds: null,
+    turn_timer_seconds: 30,
     sequence: [],
     map_ids: [],
     slots: [],
@@ -101,33 +125,16 @@ function config(overrides: Partial<MapVetoConfig>): MapVetoConfig {
   };
 }
 
-/**
- * Three slots at gapped positions 4, 9 and 15 — none is a 0- or 1-based index,
- * and none equals the slot count (3), any candidate count (2, 4, 5) or the
- * catalogue size (6), so no assertion can pass by confusing two of them.
- *
- * Listed out of position order on purpose: the serializer sorts by `position`
- * today, so a fixture in wire order could not tell a page that sorts from one
- * that trusts the array. Maps 37, 45, 52 and 63 each appear in more than one
- * slot, which is legal and must render every time. Slot 4 names no reserve,
- * slot 9 names one the catalogue resolves, slot 15 names one it does not, and
- * slot 9 also holds a candidate the catalogue cannot resolve.
- */
-const SLOTS: MapVetoConfigSlot[] = [
-  { position: 15, candidates: [71, 37, 52, 63, 45], reserve_map_id: RETIRED_MAP_ID },
-  { position: 4, candidates: [37, 52], reserve_map_id: null },
-  { position: 9, candidates: [63, 45, 84, RETIRED_MAP_ID], reserve_map_id: 52 }
-];
-
 let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
   getAllMaps.mockResolvedValue({ results: MAPS });
-  // No stages: the scope picker is then skipped entirely and the tournament
-  // default is the resolved config, which is all these cases need.
-  getStages.mockResolvedValue([]);
+  // Stages are no longer read at all: the pool spans every level, so there is
+  // nothing on this page for a stage list to select. A stub that rejects would
+  // fail the render if the page ever reached for one again.
+  getStages.mockRejectedValue(new Error("the maps page must not read stages"));
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -165,146 +172,193 @@ async function render(configs: MapVetoConfig[]) {
   return container.textContent ?? "";
 }
 
-/** Map names actually on screen, read off the pool grid rather than the DOM at large. */
+/** Map names on screen, read off the tiles rather than the DOM at large. */
 function tileNames() {
   return Array.from(container.querySelectorAll("li > span")).map((span) =>
     span.textContent?.trim()
   );
 }
 
-/**
- * The pool card's sections in DOM order — one per slot in slot mode, one per
- * gamemode in flat mode — each with the heading that identifies it and only its
- * own tiles. Read per section rather than off the whole grid, so tiles landing
- * under the wrong slot cannot pass.
- */
+/** The gamemode sections in DOM order, each with only its own tiles. */
 function sections() {
   return Array.from(container.querySelectorAll("section")).map((section) => ({
     heading: section.querySelector("h3")?.textContent?.trim(),
     tiles: Array.from(section.querySelectorAll("li > span")).map((span) =>
       span.textContent?.trim()
-    ),
-    text: section.textContent ?? ""
+    )
   }));
 }
 
-describe("slot-mode config", () => {
-  const slotConfig = () => config({ id: 219, mode: "slots", slots: SLOTS });
+function pills() {
+  const group = container.querySelector<HTMLElement>(
+    `[role="group"][aria-label="${COPY.filterLabel}"]`
+  );
+  return Array.from(group?.querySelectorAll("button") ?? []).map((button) => ({
+    label: button.textContent?.trim(),
+    pressed: button.getAttribute("aria-pressed") === "true",
+    button
+  }));
+}
 
-  it("renders every slot in position order, whatever order the wire listed them in", async () => {
-    await render([slotConfig()]);
+/**
+ * The shape the reported tournament actually had: twelve per-round configs, no
+ * tournament default and no stage default, spread over a Swiss stage and both
+ * halves of a double-elimination bracket. Under the old picker the four
+ * lower-bracket levels were unreachable and the page opened on "not configured".
+ */
+const PER_ROUND_ONLY = [
+  config({ id: 401, stage_id: 188, round: 1, mode: "pool", map_ids: [52, 37] }),
+  config({ id: 402, stage_id: 188, round: 5, mode: "pool", map_ids: [37, 71] }),
+  config({ id: 403, stage_id: 189, round: 3, mode: "pool", map_ids: [45] }),
+  // Lower bracket: reachable through no round the old selector offered.
+  config({ id: 404, stage_id: 189, round: -1, mode: "pool", map_ids: [63, 45] }),
+  config({ id: 405, stage_id: 189, round: -4, mode: "pool", map_ids: [84] })
+];
 
-    expect(sections().map((section) => section.heading)).toEqual(["Slot 4", "Slot 9", "Slot 15"]);
-  });
+describe("the pool spans every configured level", () => {
+  it("unions the maps of every config, deduplicated", async () => {
+    const text = await render(PER_ROUND_ONLY);
 
-  it("gives each slot its own candidates, in configured order, repeats included", async () => {
-    await render([slotConfig()]);
-
-    expect(sections().map((section) => section.tiles)).toEqual([
-      ["Busan", "King's Row"],
-      ["Numbani", "Ilios", "Eichenwalde", "Map #96"],
-      ["Oasis", "Busan", "King's Row", "Numbani", "Ilios"]
-    ]);
-  });
-
-  it("names a candidate the competitive catalogue cannot resolve instead of dropping it", async () => {
-    await render([slotConfig()]);
-
-    const slot9 = sections()[1];
-    // Four tiles for four configured candidates: reporting three would
-    // under-state a count the regulation is written against.
-    expect(slot9?.tiles).toHaveLength(4);
-    expect(slot9?.tiles).toContain("Map #96");
-    expect(slot9?.text).toContain("4 candidates");
-  });
-
-  it("marks the reserve map of the slots that name one, and only those", async () => {
-    await render([slotConfig()]);
-
-    const [slot4, slot9, slot15] = sections();
-    expect(slot4?.text).not.toContain("Regulation reserve on a draw");
-    expect(slot9?.text).toContain("Regulation reserve on a draw: King's Row");
-    // An unresolved reserve is named the same way an unresolved candidate is,
-    // rather than leaving the slot looking as if it named no reserve at all.
-    expect(slot15?.text).toContain("Regulation reserve on a draw: Map #96");
-  });
-
-  it("replaces the pool-size badge with the size of the slot config", async () => {
-    const text = await render([slotConfig()]);
-
-    // 3 slots holding 2 + 4 + 5 candidates, counted off the config and never off
-    // the catalogue, so the unresolved candidate is still counted.
-    expect(text).toContain("3 slots, 11 candidates");
-    expect(text).not.toContain("0 maps in the pool");
-    expect(text).not.toContain(COPY.poolEmpty);
-  });
-
-  it("states the order captains resolve the slots in, without listing steps", async () => {
-    const text = await render([slotConfig()]);
-
-    expect(text).toContain(COPY.slotPoolDescription);
-    // The flat pool's own description describes a pool that does not exist here.
-    expect(text).not.toContain(COPY.poolDescription);
-    // A generated step list would be a second copy of the server's
-    // `build_slot_sequence`; the prose above is the whole answer.
-    expect(text).not.toContain(COPY.sequenceTitle);
-  });
-
-  it("keeps the truthful cascade context it does not replace", async () => {
-    const text = await render([slotConfig()]);
-
-    // The config IS configured, so "not configured" would be its own lie, and
-    // where it was inherited from is true regardless of pool shape.
+    // Six maps named across five configs with repeats; five distinct ones.
+    expect(tileNames()).toEqual(["Busan", "Ilios", "Oasis", "King's Row", "Numbani", "Colosseo"]);
+    expect(text).toContain("6 maps in the pool");
     expect(text).not.toContain(COPY.notConfiguredTitle);
-    expect(text).toContain(COPY.source.tournament);
   });
 
-  it("says a slot that cannot be banned down to one map cannot open the veto", async () => {
-    // Reachable with no invalid save: `map_id` cascades from `overwatch.map`, so
-    // deleting a map drops a stored slot under the floor the upsert checks.
+  it("includes a lower-bracket round's maps, which no round selector could reach", async () => {
+    // Colosseo exists only on round -4 and Numbani only on round -1. Both were
+    // invisible on this page for as long as rounds came from `max_rounds`.
+    expect(await render(PER_ROUND_ONLY)).toContain("6 maps in the pool");
+    expect(tileNames()).toContain("Colosseo");
+    expect(tileNames()).toContain("Numbani");
+  });
+
+  it("counts a slot's candidates and its regulation reserve as pool members", async () => {
     await render([
       config({
-        id: 219,
+        id: 410,
+        stage_id: 189,
+        round: 2,
         mode: "slots",
+        // A slot config carries an empty `map_ids` by construction — the
+        // serializer sends both shapes and fills exactly one — so reading the
+        // flat pool alone reported this fully configured tournament as empty.
         slots: [
-          { position: 2, candidates: [37], reserve_map_id: null },
-          { position: 7, candidates: [], reserve_map_id: null },
-          { position: 11, candidates: [45, 63, 84], reserve_map_id: null }
+          { position: 4, candidates: [37, 52], reserve_map_id: null },
+          // The reserve is a map the series lands on when a slot draws, so it
+          // belongs to the pool as much as any candidate does.
+          { position: 9, candidates: [63], reserve_map_id: 84 }
         ]
       })
     ]);
 
-    const [slot2, slot7, slot11] = sections();
-    expect(slot2?.text).toContain(COPY.slotUnderfilled.replace("{n}", "2"));
-    expect(slot2?.tiles).toEqual(["Busan"]);
-    expect(slot7?.text).toContain(COPY.slotUnderfilled.replace("{n}", "7"));
-    expect(slot7?.tiles).toEqual([]);
-    expect(slot11?.text).not.toContain("the veto cannot open");
+    expect(tileNames()).toEqual(["Busan", "Ilios", "Numbani", "Colosseo"]);
+  });
+
+  it("drops an id the competitive catalogue cannot resolve", async () => {
+    const text = await render([
+      config({
+        id: 411,
+        mode: "slots",
+        slots: [
+          { position: 4, candidates: [52, RETIRED_MAP_ID], reserve_map_id: RETIRED_MAP_ID }
+        ]
+      })
+    ]);
+
+    // A map retired from rotation is not something anyone will play, and this
+    // page is a list of maps rather than a count the regulation is written
+    // against — so it is left out instead of named as "Map #96".
+    expect(tileNames()).toEqual(["Busan"]);
+    expect(text).toContain("1 map in the pool");
+    expect(text).not.toContain(String(RETIRED_MAP_ID));
   });
 });
 
-describe("flat-mode config", () => {
-  it("still reports a genuinely empty flat pool as empty, not as a slot pool", async () => {
-    const text = await render([config({ id: 320, mode: "pool", map_ids: [] })]);
+describe("grouping and filtering", () => {
+  it("groups by gamemode, largest first, alphabetically inside a group", async () => {
+    await render(PER_ROUND_ONLY);
 
-    expect(text).toContain(COPY.poolEmpty);
-    expect(text).toContain("0 maps in the pool");
-    expect(text).not.toContain(COPY.slotPoolDescription);
+    expect(sections()).toEqual([
+      { heading: "Control (3)", tiles: ["Busan", "Ilios", "Oasis"] },
+      { heading: "Hybrid (2)", tiles: ["King's Row", "Numbani"] },
+      { heading: "Push (1)", tiles: ["Colosseo"] }
+    ]);
+  });
+
+  it("filters to one gamemode and drops the now-redundant headings", async () => {
+    await render(PER_ROUND_ONLY);
+
+    expect(pills().map((pill) => pill.label)).toEqual([
+      "All (6)",
+      "Control (3)",
+      "Hybrid (2)",
+      "Push (1)"
+    ]);
+
+    const hybrid = pills().find((pill) => pill.label === "Hybrid (2)");
+    await act(async () => hybrid?.button.click());
+
+    expect(tileNames()).toEqual(["King's Row", "Numbani"]);
+    // The pressed pill names the mode, so no section heading repeats it.
     expect(sections()).toEqual([]);
   });
 
-  it("renders a populated flat pool unchanged", async () => {
-    // Three maps across two gamemodes, so the count differs from both group
-    // sizes and from the number of groups.
-    const text = await render([config({ id: 320, mode: "pool", map_ids: [52, 37, 45] })]);
+  it("offers no filter for a pool that is all one gamemode", async () => {
+    await render([config({ id: 420, mode: "pool", map_ids: [52, 37] })]);
 
-    expect(tileNames()).toEqual(["Busan", "Ilios", "King's Row"]);
-    expect(text).toContain("3 maps in the pool");
-    expect(text).toContain(COPY.poolTitle);
-    expect(text).toContain(COPY.poolDescription);
+    expect(pills()).toEqual([]);
+    expect(tileNames()).toEqual(["Busan", "Ilios"]);
+  });
+});
+
+describe("nothing to show", () => {
+  it("says so when the tournament has no config at all", async () => {
+    const text = await render([]);
+
+    expect(text).toContain(COPY.notConfiguredTitle);
+    expect(tileNames()).toEqual([]);
+  });
+
+  it("says so when every config is empty, rather than an empty pool card", async () => {
+    // An organizer who created the levels and never filled them has published
+    // no pool, which is exactly what the empty state says.
+    const text = await render([
+      config({ id: 430, stage_id: 188, round: 1, mode: "pool", map_ids: [] }),
+      config({ id: 431, stage_id: 188, round: 2, mode: "slots", slots: [] })
+    ]);
+
+    expect(text).toContain(COPY.notConfiguredTitle);
     expect(text).not.toContain(COPY.poolEmpty);
+    expect(tileNames()).toEqual([]);
+  });
+});
+
+describe("the veto presentation is gone from this page", () => {
+  it("shows no scope picker, no per-match format and no step list", async () => {
+    const text = await render([
+      ...PER_ROUND_ONLY,
+      config({
+        id: 440,
+        stage_id: 189,
+        round: 1,
+        preset: "custom",
+        sequence: ["ban_first", "pick_second", "decider"],
+        map_ids: [52, 37, 45]
+      })
+    ]);
+
+    // The picker and the cascade it fed.
+    expect(text).not.toContain(COPY.source.exact);
+    expect(text).not.toContain(COPY.source.tournament);
+    // Series length and the ban/pick order are properties of one match, not of
+    // the tournament's pool; they belong on the match's own page.
+    expect(text).not.toContain(COPY.bracketFormat);
+    expect(text).not.toContain(COPY.sequenceTitle);
+    expect(text).not.toContain(COPY.customOrder);
+    expect(text).not.toContain(en.mapVeto.step.banFirst);
+    // Slots are the shape of one series' veto, so no slot survives either.
     expect(text).not.toContain(COPY.slotPoolDescription);
-    // Gamemode groups, not slots: nothing here is numbered as a slot.
-    expect(sections().map((section) => section.heading)).toEqual(["Control (2)", "Hybrid (1)"]);
+    expect(container.querySelector("select")).toBeNull();
   });
 });

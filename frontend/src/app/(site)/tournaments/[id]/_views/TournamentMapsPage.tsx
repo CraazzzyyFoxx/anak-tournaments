@@ -3,68 +3,20 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Info, Layers, MapPin, Swords } from "lucide-react";
+import { Info, MapPin } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { bestOfMessageKey, buildSequenceForBestOf, hasPerRoundBestOf, parseStageBestOf, resolveBestOf } from "@/lib/best-of";
 import { cn } from "@/lib/utils";
 import mapService from "@/services/map.service";
 import tournamentService from "@/services/tournament.service";
 import type { MapRead } from "@/types/map.types";
-import type { MapVetoConfig, StageType, VetoSequenceToken } from "@/types/tournament.types";
-import {
-  getMapsPlayedCount,
-  getVetoLevelDescriptor,
-  tokenAction,
-  tokenLabelKey
-} from "@/app/admin/tournaments/[id]/components/mapVeto.helpers";
+import type { MapVetoConfig } from "@/types/tournament.types";
 import { TournamentPageState } from "../_components/TournamentPageState";
 
 interface TournamentMapsPageProps {
   tournamentId: number;
-}
-
-/**
- * Which cascade level the displayed pool actually came from, relative to the
- * viewer's stage/round selection. Surfaced verbatim so an inherited pool is
- * never mistaken for one the organizer configured for the selected round.
- */
-type PoolSource = "exact" | "stage" | "tournament";
-
-interface ResolvedPool {
-  config: MapVetoConfig;
-  source: PoolSource;
-}
-
-/**
- * The series length the bracket says the selected scope plays.
- *
- * `resolved` is the only shape allowed to name a number. The bracket resolves
- * `best_of` per round, so a scope that spans rounds which differ — or the
- * tournament default, which spans whole stages — has no single truthful answer,
- * and saying "Bo3" there would be the same fabrication this page exists to
- * stop telling.
- */
-type BracketFormat =
-  | { kind: "resolved"; bestOf: number }
-  | { kind: "varies" }
-  | { kind: "unknown" };
-
-interface SequenceView {
-  sequence: VetoSequenceToken[];
-  /** The organizer authored these steps, opting this scope out of the bracket. */
-  isCustom: boolean;
-  /** Set when a custom order plays a different number of maps than the bracket. */
-  mismatch: { played: number; expected: number } | null;
 }
 
 interface PoolGroup {
@@ -72,22 +24,6 @@ interface PoolGroup {
   key: string;
   label: string;
   maps: MapRead[];
-}
-
-/** One candidate or reserve map of a slot, named even when it does not resolve. */
-interface SlotMap {
-  id: number;
-  /** Null when the competitive catalogue carries no map with this id. */
-  map: MapRead | null;
-}
-
-interface SlotView {
-  /** The config slot's `position`, NOT its index: positions can be gapped. */
-  position: number;
-  /** Candidates in configured order, one entry per configured id. */
-  candidates: SlotMap[];
-  /** The map the regulation plays on a draw, or null when the slot names none. */
-  reserve: SlotMap | null;
 }
 
 const ALL_FILTER = "all";
@@ -100,24 +36,35 @@ const PILL_ON = "border-primary bg-primary text-primary-foreground shadow-xs";
 const PILL_OFF =
   "border-border/70 bg-card text-foreground hover:border-primary/50 hover:bg-accent/40";
 const MAP_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6";
+
 /**
- * Candidates a slot needs to be bannable down to one map. Mirrors the server's
- * `SLOT_CANDIDATE_FLOOR`, which refuses fewer at upsert and re-checks at session
- * creation, because a slot's candidate rows carry `map_id` FKs that cascade from
- * `overwatch.map`: deleting a map can drop a stored slot under the floor with no
- * upsert running.
+ * Every map id the tournament's veto configs name, anywhere.
+ *
+ * The union across all twelve possible cascade levels rather than one level's
+ * pool. This page answers "which maps does this tournament play"; which subset a
+ * single match plays, and in what order captains ban down to it, belongs to that
+ * match. A per-level view here needed a stage/round picker that could not reach
+ * a lower-bracket round at all, and left a tournament whose organizer wrote only
+ * per-round configs — the normal shape — showing nothing until the viewer
+ * guessed a round.
+ *
+ * A slot's candidates and its regulation reserve count exactly like a flat
+ * pool's entries: all three are maps a series can land on.
  */
-const SLOT_CANDIDATE_FLOOR = 2;
-/** Stage types whose last round is the final the `final` override applies to. */
-const ELIMINATION_STAGES: Partial<Record<StageType, true>> = {
-  single_elimination: true,
-  double_elimination: true
-};
+function collectPoolIds(configs: MapVetoConfig[]): Set<number> {
+  const ids = new Set<number>();
+  for (const config of configs) {
+    for (const id of config.map_ids) ids.add(id);
+    for (const slot of config.slots) {
+      for (const id of slot.candidates) ids.add(id);
+      if (slot.reserve_map_id != null) ids.add(slot.reserve_map_id);
+    }
+  }
+  return ids;
+}
 
 export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageProps) {
   const t = useTranslations();
-  const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
-  const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [gamemodeFilter, setGamemodeFilter] = useState<string>(ALL_FILTER);
 
   // No `.catch(() => ({ configs: [] }))` here: swallowing the failure would make
@@ -128,15 +75,6 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
   const vetoConfigsQuery = useQuery({
     queryKey: ["public", "tournament", tournamentId, "veto-configs"],
     queryFn: () => tournamentService.getVetoConfigs(tournamentId)
-  });
-
-  // Stages are different: losing them only costs the scope picker, and the
-  // tournament default still renders correctly without it. So this one degrades
-  // rather than blocking — but it is still not swallowed, so the failure stays
-  // visible to the global error handler.
-  const stagesQuery = useQuery({
-    queryKey: ["public", "tournament", tournamentId, "stages"],
-    queryFn: () => tournamentService.getStages(tournamentId)
   });
 
   // `entities: ["gamemode"]` is load-bearing: the maps endpoint only serialises
@@ -153,80 +91,19 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     const raw = mapsQuery.data?.results ?? [];
     return raw.filter((map) => map.in_competitive !== false);
   }, [mapsQuery.data]);
-  const mapsById = useMemo(() => new Map(maps.map((map) => [map.id, map])), [maps]);
-  const stages = useMemo(() => stagesQuery.data ?? [], [stagesQuery.data]);
-  const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
   const configs = useMemo(() => vetoConfigsQuery.data?.configs ?? [], [vetoConfigsQuery.data]);
 
-  // Strict cascade: exact (stage + round) -> stage default -> tournament
-  // default -> nothing. There is deliberately no "first config we can find"
-  // fallback: presenting an arbitrary stage config as the tournament default
-  // invents a rule the organizer never wrote.
-  const resolved = useMemo<ResolvedPool | null>(() => {
-    if (selectedStageId != null && selectedRound != null) {
-      const exact = configs.find(
-        (config) => config.stage_id === selectedStageId && config.round === selectedRound
-      );
-      if (exact) return { config: exact, source: "exact" };
-    }
-
-    if (selectedStageId != null) {
-      const stageDefault = configs.find(
-        (config) => config.stage_id === selectedStageId && config.round == null
-      );
-      if (stageDefault) return { config: stageDefault, source: "stage" };
-    }
-
-    const tournamentDefault = configs.find(
-      (config) => config.stage_id == null && config.round == null
-    );
-    return tournamentDefault ? { config: tournamentDefault, source: "tournament" } : null;
-  }, [configs, selectedStageId, selectedRound]);
-
-  // Only ever the configured pool. An empty result is an empty pool, never a
-  // licence to show the whole competitive catalogue.
+  /**
+   * The pool as the catalogue knows it. An id the competitive catalogue cannot
+   * resolve is a map retired from rotation, and nobody is going to play it, so
+   * it is dropped rather than named — unlike in the veto room, where a slot's
+   * candidate count is what the regulation is written against and a missing tile
+   * would under-report it.
+   */
   const pool = useMemo(() => {
-    if (!resolved) return [];
-    return resolved.config.map_ids
-      .map((id) => mapsById.get(id))
-      .filter((map): map is MapRead => map != null);
-  }, [resolved, mapsById]);
-
-  // The slot pools, or null for a flat config. Read off `mode`, never off an
-  // empty `map_ids`. A slot config always carries an empty flat pool — the
-  // serializer sends both shapes and fills one — but so does a flat config the
-  // organizer left empty, and that one is a genuine misconfiguration this page
-  // must keep reporting as empty. Conflating them would replace a true error
-  // message with a false reassurance.
-  //
-  // Unresolved ids are kept as entries with a null `map` rather than filtered
-  // out the way the flat pool filters them: a slot's candidate count is what the
-  // regulation is written against, so showing two tiles for a three-candidate
-  // slot would under-report the organizer's own configuration.
-  const slotViews = useMemo<SlotView[] | null>(() => {
-    if (resolved?.config.mode !== "slots") return null;
-    const named = (id: number): SlotMap => ({ id, map: mapsById.get(id) ?? null });
-    // Sorted on `position` rather than trusted from the wire, the same way the
-    // admin editor sorts the stored slots. `serialize_veto_config` does emit
-    // them in position order today, so this is not compensating for a known
-    // defect — it is refusing to depend on it, because `position` is the play
-    // order and nothing else here reconstructs it.
-    return [...resolved.config.slots]
-      .sort((left, right) => left.position - right.position)
-      .map((slot) => ({
-        position: slot.position,
-        candidates: slot.candidates.map(named),
-        reserve: slot.reserve_map_id != null ? named(slot.reserve_map_id) : null
-      }));
-  }, [resolved, mapsById]);
-
-  const slotTotals = useMemo(() => {
-    if (!slotViews) return null;
-    return {
-      slots: slotViews.length,
-      candidates: slotViews.reduce((total, slot) => total + slot.candidates.length, 0)
-    };
-  }, [slotViews]);
+    const ids = collectPoolIds(configs);
+    return maps.filter((map) => ids.has(map.id));
+  }, [configs, maps]);
 
   const poolGroups = useMemo<PoolGroup[]>(() => {
     const byKey = new Map<string, PoolGroup>();
@@ -240,6 +117,8 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
       }
     }
     const groups = Array.from(byKey.values());
+    // Alphabetical inside a group, so the page's own order does not depend on
+    // the maps endpoint keeping its `sort=name`.
     for (const group of groups) {
       group.maps.sort((a, b) => a.name.localeCompare(b.name));
     }
@@ -251,7 +130,7 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     });
   }, [pool, t]);
 
-  // A filter left over from a previous scope must not blank the grid: fall back
+  // A filter left over from a previous pool must not blank the grid: fall back
   // to "all" whenever the remembered gamemode is absent from the current pool.
   const activeFilter = poolGroups.some((group) => group.key === gamemodeFilter)
     ? gamemodeFilter
@@ -259,101 +138,12 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
   const activeGroup =
     activeFilter === ALL_FILTER ? null : poolGroups.find((group) => group.key === activeFilter);
 
-  /** Rounds of the selected stage that own a config instead of inheriting one. */
-  const configuredRounds = useMemo(() => {
-    const rounds = new Set<number>();
-    if (selectedStageId == null) return rounds;
-    for (const config of configs) {
-      if (config.stage_id === selectedStageId && config.round != null) rounds.add(config.round);
-    }
-    return rounds;
-  }, [configs, selectedStageId]);
-
-  const selectedStage = selectedStageId != null ? stagesById.get(selectedStageId) : undefined;
-  const roundCount = Math.max(0, selectedStage?.max_rounds ?? 0);
-
-  // Series length belongs to the bracket, never to the veto config: a session
-  // regenerates its steps from `Encounter.best_of`, so the config's stored
-  // preset and sequence are only a fallback template. Read it from the stage
-  // the viewer selected, and refuse to name a number for a scope that spans
-  // rounds or stages which may each run a different length.
-  const bracketFormat = useMemo<BracketFormat>(() => {
-    if (!selectedStage) return { kind: "unknown" };
-    const bestOfConfig = parseStageBestOf(selectedStage.settings_json);
-
-    if (selectedRound != null) {
-      // An approximation: the server decides `isFinal` from the max round of
-      // the *generated* encounter set, which this page cannot see. Presented as
-      // the configured length, not as a promise about a specific match.
-      const isFinal =
-        ELIMINATION_STAGES[selectedStage.stage_type] === true &&
-        selectedRound === selectedStage.max_rounds;
-      return { kind: "resolved", bestOf: resolveBestOf(bestOfConfig, selectedRound, { isFinal }) };
-    }
-
-    if (hasPerRoundBestOf(bestOfConfig)) return { kind: "varies" };
-    // No per-round entries and no final override, so every round of this stage
-    // resolves identically; round 1 stands for all of them.
-    return { kind: "resolved", bestOf: resolveBestOf(bestOfConfig, 1) };
-  }, [selectedStage, selectedRound]);
-
-  // The steps the room will actually take. A `custom` config is the organizer's
-  // own order and is shown verbatim; anything else is regenerated from the
-  // bracket exactly as the server's `effective_sequence` does, because the
-  // stored template may have been authored for a different series length.
-  const sequenceView = useMemo<SequenceView | null>(() => {
-    if (!resolved) return null;
-    const expected = bracketFormat.kind === "resolved" ? bracketFormat.bestOf : null;
-
-    if (resolved.config.preset === "custom") {
-      if (resolved.config.sequence.length === 0) return null;
-      const played = getMapsPlayedCount(resolved.config.sequence);
-      return {
-        sequence: resolved.config.sequence,
-        isCustom: true,
-        mismatch: expected != null && played !== expected ? { played, expected } : null
-      };
-    }
-
-    // Without a known series length there is no sequence to preview: generating
-    // one would put steps on screen for a length nobody configured.
-    if (expected == null) return null;
-    const sequence = buildSequenceForBestOf(expected, pool.length);
-    return sequence.length > 0 ? { sequence, isCustom: false, mismatch: null } : null;
-  }, [resolved, bracketFormat, pool.length]);
-
-  /**
-   * How many maps the listed sequence plays — null when there is no sequence to
-   * count, which is the same ambiguous-scope case that hides the sequence card.
-   */
-  const playedMaps = sequenceView ? getMapsPlayedCount(sequenceView.sequence) : null;
-
-  const sourceLabel = useMemo(() => {
-    if (!resolved) return null;
-    if (resolved.source === "exact") return t("mapVeto.source.exact");
-    if (resolved.source === "tournament") return t("mapVeto.source.tournament");
-    const descriptor = getVetoLevelDescriptor(resolved.config, stagesById);
-    const stage =
-      descriptor.kind === "tournament"
-        ? t("mapVeto.scope.tournamentDefault")
-        : (descriptor.stageName ?? t("mapVeto.scope.unknownStage", { id: descriptor.stageId }));
-    return t("mapVeto.source.stage", { stage });
-  }, [resolved, stagesById, t]);
-
-  const isInitialLoading =
-    vetoConfigsQuery.isLoading || stagesQuery.isLoading || mapsQuery.isLoading;
-
-  if (isInitialLoading) {
+  if (vetoConfigsQuery.isLoading || mapsQuery.isLoading) {
     return (
       <div className="space-y-6">
         <div className="space-y-2">
           <Skeleton className="h-7 w-56" />
           <Skeleton className="h-4 w-full max-w-xl" />
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Skeleton className="h-6 w-24 rounded-md" />
-            <Skeleton className="h-6 w-28 rounded-md" />
-            <Skeleton className="h-6 w-32 rounded-md" />
-          </div>
         </div>
         <Card>
           <CardContent className="pt-6">
@@ -383,35 +173,20 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     );
   }
 
-  // Only the lengths the stage editor offers have a translated Bo label; a
-  // stage configured to anything else still deserves a readable figure rather
-  // than a missing key.
-  const bestOfLabel = (bestOf: number) => {
-    const key = bestOfMessageKey(bestOf);
-    return key ? t(key) : `Bo${bestOf}`;
-  };
-
-  const formatValue =
-    bracketFormat.kind === "resolved"
-      ? bestOfLabel(bracketFormat.bestOf)
-      : bracketFormat.kind === "varies"
-        ? t("mapVeto.bracketFormatVaries")
-        : t("mapVeto.bracketFormatUnknown");
-
   /**
-   * `imagePath` is null for a map the catalogue cannot resolve, which falls back
-   * to the same flat wash a map with no art gets — there is no second tile.
+   * `image_path` is null for a map with no art, which falls back to the same
+   * flat wash — there is no second tile.
    */
-  const renderTile = (key: string, name: string, imagePath: string | null) => (
+  const renderMapTile = (map: MapRead) => (
     <li
-      key={key}
+      key={map.id}
       className="relative flex h-28 items-end overflow-hidden rounded-xl border border-border/70 bg-card p-2.5"
     >
-      {imagePath ? (
+      {map.image_path ? (
         <div
           aria-hidden
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url("${imagePath}")` }}
+          style={{ backgroundImage: `url("${map.image_path}")` }}
         />
       ) : (
         <div aria-hidden className="absolute inset-0 bg-muted/60" />
@@ -423,397 +198,104 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
         className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-background via-background/85 to-transparent"
       />
       <span className="relative z-10 line-clamp-2 text-sm font-semibold leading-tight text-foreground">
-        {name}
+        {map.name}
       </span>
     </li>
   );
 
-  const renderMapTile = (map: MapRead) => renderTile(String(map.id), map.name, map.image_path);
-
-  /**
-   * The room's own fallback for an id it cannot resolve, reused verbatim so both
-   * player surfaces name a retired map the same way instead of dropping it.
-   */
-  const slotMapName = (entry: SlotMap) =>
-    entry.map?.name ?? t("encounters.veto.room.maps.mapNumber", { id: entry.id });
-
   return (
     <div className="space-y-6">
-      <header className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <h2 className="text-2xl font-bold tracking-tight">{t("mapVeto.title")}</h2>
-            <p className="max-w-2xl text-sm text-muted-foreground">{t("mapVeto.description")}</p>
-          </div>
-
-          {resolved ? (
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Badge variant="secondary" className="gap-1.5">
-                <Swords className="h-3.5 w-3.5" aria-hidden />
-                {t("mapVeto.bracketFormat")}
-                {": "}
-                {formatValue}
-              </Badge>
-              {/* Counted off the sequence that will actually run, not off the
-                  bracket: a custom order overrides the bracket, so quoting the
-                  bracket's figure here would contradict the steps listed below.
-                  Omitted for an ambiguous scope, where any figure would have to
-                  pick one of several lengths and call it the one. */}
-              {playedMaps != null ? (
-                <Badge variant="outline" className="gap-1.5">
-                  <Layers className="h-3.5 w-3.5" aria-hidden />
-                  {t("mapVeto.mapsPlayed", { count: playedMaps })}
-                </Badge>
-              ) : null}
-              {/* A slot config's flat pool is empty by construction, so the
-                  flat badge would read "0 maps in the pool" for a round that is
-                  fully configured. Its own size is slots and candidates, both
-                  counted off the config: a candidate the catalogue cannot
-                  resolve is still a candidate the regulation names. */}
-              {slotTotals ? (
-                <Badge variant="outline" className="gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" aria-hidden />
-                  {t("mapVeto.slotPoolSize", slotTotals)}
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" aria-hidden />
-                  {t("mapVeto.mapsInPool", { count: pool.length })}
-                </Badge>
-              )}
-            </div>
-          ) : null}
-        </div>
-
-        {resolved ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span
-              className={cn(
-                "rounded-md px-2 py-0.5 text-xs font-semibold",
-                resolved.source === "exact"
-                  ? "bg-primary/15 text-primary"
-                  : "bg-muted text-muted-foreground"
-              )}
-            >
-              {sourceLabel}
-            </span>
-            {poolGroups.length > 0 ? (
-              <ul className="flex flex-wrap items-center gap-1.5">
-                {poolGroups.map((group) => (
-                  <li key={group.key}>
-                    <Badge variant="outline" className="font-medium text-muted-foreground">
-                      {t("mapVeto.filterOption", {
-                        gamemode: group.label,
-                        count: group.maps.length
-                      })}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
+      <header className="space-y-1">
+        <h2 className="text-2xl font-bold tracking-tight">{t("mapVeto.title")}</h2>
+        <p className="max-w-2xl text-sm text-muted-foreground">{t("mapVeto.description")}</p>
       </header>
 
-      {stages.length > 0 ? (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle asChild>
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
-                <Layers className="h-4 w-4 text-primary" aria-hidden />
-                {t("mapVeto.scopeTitle")}
-              </h2>
-            </CardTitle>
-            <CardDescription>{t("mapVeto.scopeDescription")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div
-              role="group"
-              aria-label={t("mapVeto.stageFilterLabel")}
-              className="flex flex-wrap gap-2"
-            >
-              <button
-                type="button"
-                aria-pressed={selectedStageId == null}
-                onClick={() => {
-                  setSelectedStageId(null);
-                  setSelectedRound(null);
-                }}
-                className={cn(PILL_BASE, selectedStageId == null ? PILL_ON : PILL_OFF)}
-              >
-                {t("mapVeto.tournamentDefaultOption")}
-              </button>
-
-              {stages.map((stage) => {
-                const isSelected = selectedStageId === stage.id;
-                return (
-                  <button
-                    key={stage.id}
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => {
-                      setSelectedStageId(stage.id);
-                      setSelectedRound(null);
-                    }}
-                    className={cn(PILL_BASE, isSelected ? PILL_ON : PILL_OFF)}
-                  >
-                    {stage.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            {selectedStageId != null ? (
-              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-accent/30 p-2">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  {t("mapVeto.roundLabel")}
-                </span>
-                <Select
-                  value={selectedRound != null ? String(selectedRound) : "default"}
-                  onValueChange={(value) =>
-                    setSelectedRound(value === "default" ? null : Number(value))
-                  }
-                >
-                  <SelectTrigger className="h-7 w-56 text-xs" aria-label={t("mapVeto.roundLabel")}>
-                    <SelectValue placeholder={t("mapVeto.stageDefaultOption")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">{t("mapVeto.stageDefaultOption")}</SelectItem>
-                    {/* Rounds that own a config are marked, so a viewer knows up
-                        front whether a selection will show a configured pool or
-                        an inherited one. */}
-                    {Array.from({ length: roundCount }, (_, index) => index + 1).map((round) => (
-                      <SelectItem key={round} value={String(round)}>
-                        {configuredRounds.has(round)
-                          ? t("mapVeto.roundOptionConfigured", { round })
-                          : t("mapVeto.roundOption", { round })}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {!resolved ? (
+      {pool.length === 0 ? (
         <Card className="border-dashed">
           <CardHeader className="items-center gap-2 text-center">
             <Info className="h-6 w-6 text-muted-foreground" aria-hidden />
             <CardTitle asChild>
-              <h2 className="text-base font-semibold">{t("mapVeto.notConfiguredTitle")}</h2>
+              <h3 className="text-base font-semibold">{t("mapVeto.notConfiguredTitle")}</h3>
             </CardTitle>
             <CardDescription className="max-w-xl">
               {t("mapVeto.notConfiguredDescription")}
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : slotViews ? (
-        // Per-slot pools. No sequence card: the steps are the server's
-        // `build_slot_sequence`, and regenerating them here would be a second
-        // source of truth for the order — the description states the rule
-        // instead. No gamemode filter either: a slot is already the grouping,
-        // and the filter is derived from the flat pool this config has none of.
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle asChild>
-              <h2 className="text-sm font-semibold">{t("mapVeto.poolTitle")}</h2>
-            </CardTitle>
-            <CardDescription>{t("mapVeto.slotPoolDescription")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {slotViews.map((slot) => (
-                <section key={slot.position} className="space-y-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* The slot's own position, never its index in this list:
-                        the same map legitimately sits in several slots, so the
-                        number is the only thing telling two of them apart. */}
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t("encounters.veto.room.slot.label", { n: slot.position })}
-                    </h3>
-                    <Badge variant="outline" className="font-medium text-muted-foreground">
-                      {t("mapVeto.slotCandidates", { count: slot.candidates.length })}
-                    </Badge>
-                  </div>
-                  {slot.candidates.length < SLOT_CANDIDATE_FLOOR ? (
-                    <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-foreground">
-                      {t("mapVeto.slotUnderfilled", { n: slot.position })}
-                    </p>
-                  ) : null}
-                  {slot.reserve ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t("encounters.veto.room.slot.reserve", {
-                        map: slotMapName(slot.reserve)
-                      })}
-                    </p>
-                  ) : null}
-                  {slot.candidates.length > 0 ? (
-                    <ul className={MAP_GRID}>
-                      {slot.candidates.map((candidate) =>
-                        renderTile(
-                          String(candidate.id),
-                          slotMapName(candidate),
-                          candidate.map?.image_path ?? null
-                        )
-                      )}
-                    </ul>
-                  ) : null}
-                </section>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       ) : (
-        <>
-          <Card>
-            <CardHeader className="flex flex-col gap-3 pb-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-1.5">
-                <CardTitle asChild>
-                  <h2 className="text-sm font-semibold">{t("mapVeto.poolTitle")}</h2>
-                </CardTitle>
-                <CardDescription>{t("mapVeto.poolDescription")}</CardDescription>
-              </div>
+        <Card>
+          <CardHeader className="flex flex-col gap-3 pb-4 lg:flex-row lg:items-center lg:justify-between">
+            <Badge variant="secondary" className="w-fit gap-1.5">
+              <MapPin className="h-3.5 w-3.5" aria-hidden />
+              {t("mapVeto.mapsInPool", { count: pool.length })}
+            </Badge>
 
-              {poolGroups.length > 1 ? (
-                <div
-                  role="group"
-                  aria-label={t("mapVeto.filterLabel")}
-                  className="flex flex-wrap gap-1.5"
+            {poolGroups.length > 1 ? (
+              <div
+                role="group"
+                aria-label={t("mapVeto.filterLabel")}
+                className="flex flex-wrap gap-1.5"
+              >
+                <button
+                  type="button"
+                  aria-pressed={activeFilter === ALL_FILTER}
+                  onClick={() => setGamemodeFilter(ALL_FILTER)}
+                  className={cn(
+                    PILL_BASE,
+                    "px-2.5 py-1",
+                    activeFilter === ALL_FILTER ? PILL_ON : PILL_OFF
+                  )}
                 >
+                  {t("mapVeto.filterOption", {
+                    gamemode: t("mapVeto.filterAll"),
+                    count: pool.length
+                  })}
+                </button>
+                {poolGroups.map((group) => (
                   <button
+                    key={group.key}
                     type="button"
-                    aria-pressed={activeFilter === ALL_FILTER}
-                    onClick={() => setGamemodeFilter(ALL_FILTER)}
+                    aria-pressed={activeFilter === group.key}
+                    onClick={() => setGamemodeFilter(group.key)}
                     className={cn(
                       PILL_BASE,
                       "px-2.5 py-1",
-                      activeFilter === ALL_FILTER ? PILL_ON : PILL_OFF
+                      activeFilter === group.key ? PILL_ON : PILL_OFF
                     )}
                   >
                     {t("mapVeto.filterOption", {
-                      gamemode: t("mapVeto.filterAll"),
-                      count: pool.length
+                      gamemode: group.label,
+                      count: group.maps.length
                     })}
                   </button>
-                  {poolGroups.map((group) => (
-                    <button
-                      key={group.key}
-                      type="button"
-                      aria-pressed={activeFilter === group.key}
-                      onClick={() => setGamemodeFilter(group.key)}
-                      className={cn(
-                        PILL_BASE,
-                        "px-2.5 py-1",
-                        activeFilter === group.key ? PILL_ON : PILL_OFF
-                      )}
-                    >
+                ))}
+              </div>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            {activeGroup ? (
+              // A single gamemode is filtered: the pressed pill already names
+              // it, so a repeated heading would be noise.
+              <ul className={MAP_GRID}>{activeGroup.maps.map(renderMapTile)}</ul>
+            ) : (
+              // Grouped by gamemode: "Control (7) / Hybrid (8)" is how a captain
+              // reasons about a pool; an alphabetical run of thirty tiles is not.
+              <div className="space-y-6">
+                {poolGroups.map((group) => (
+                  <section key={group.key} className="space-y-2.5">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {t("mapVeto.filterOption", {
                         gamemode: group.label,
                         count: group.maps.length
                       })}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </CardHeader>
-            <CardContent>
-              {pool.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-                  {t("mapVeto.poolEmpty")}
-                </p>
-              ) : activeGroup ? (
-                // A single gamemode is filtered: the pressed pill already names
-                // it, so a repeated heading would be noise.
-                <ul className={MAP_GRID}>{activeGroup.maps.map(renderMapTile)}</ul>
-              ) : (
-                // Grouped by gamemode: "Control (6) / Hybrid (5)" is how a
-                // captain reasons about a pool; an alphabetical run of 31 tiles
-                // is not. The heading carries the mode, so tiles omit the badge.
-                <div className="space-y-6">
-                  {poolGroups.map((group) => (
-                    <section key={group.key} className="space-y-2.5">
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t("mapVeto.filterOption", {
-                          gamemode: group.label,
-                          count: group.maps.length
-                        })}
-                      </h3>
-                      <ul className={MAP_GRID}>{group.maps.map(renderMapTile)}</ul>
-                    </section>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {sequenceView ? (
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle asChild>
-                    <h2 className="flex items-center gap-2 text-sm font-semibold">
-                      <Swords className="h-4 w-4 text-primary" aria-hidden />
-                      {t("mapVeto.sequenceTitle")}
-                    </h2>
-                  </CardTitle>
-                  {sequenceView.isCustom ? (
-                    <Badge variant="secondary" className="text-[11px]">
-                      {t("mapVeto.customOrder")}
-                    </Badge>
-                  ) : null}
-                </div>
-                <CardDescription>{t("mapVeto.sequenceDescription")}</CardDescription>
-                {/* The custom order is the one the room follows, so the bracket
-                    is the side that gives. Name both numbers instead of leaving
-                    a viewer to reconcile the veto with the bracket silently. */}
-                {sequenceView.mismatch ? (
-                  <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-foreground">
-                    {t("mapVeto.customOrderMismatch", sequenceView.mismatch)}
-                  </p>
-                ) : null}
-              </CardHeader>
-              <CardContent>
-                <ol className="flex flex-wrap gap-2">
-                  {sequenceView.sequence.map((token, index) => {
-                    const action = tokenAction(token);
-                    const label = t(`mapVeto.step.${tokenLabelKey(token)}`);
-                    return (
-                      <li
-                        key={`${index}-${token}`}
-                        className="flex items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5"
-                      >
-                        <span className="sr-only">
-                          {t("mapVeto.sequenceStepAria", { n: index + 1, label })}
-                        </span>
-                        <span
-                          aria-hidden
-                          className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground"
-                        >
-                          {index + 1}
-                        </span>
-                        <Badge
-                          aria-hidden
-                          variant={
-                            action === "ban"
-                              ? "destructive"
-                              : action === "pick"
-                                ? "default"
-                                : "secondary"
-                          }
-                          className="text-[11px]"
-                        >
-                          {label}
-                        </Badge>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </CardContent>
-            </Card>
-          ) : null}
-        </>
+                    </h3>
+                    <ul className={MAP_GRID}>{group.maps.map(renderMapTile)}</ul>
+                  </section>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
