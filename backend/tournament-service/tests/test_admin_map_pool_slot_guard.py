@@ -1,13 +1,17 @@
 """``rpc.tournament.encounter_assign_map_pool`` must refuse a slot-mode veto.
 
-The admin pool escape hatch creates entries with a NULL ``slot``, which belongs
-to no slot and can therefore never be banned or picked. Both orderings dead-end:
-appended onto an existing slot-mode session the NULL rows survive as permanently
-AVAILABLE payload entries, and assigned before the session exists they become the
-whole pool a slot-sized sequence then runs over, which stalls once they are
-consumed (``test_veto_session.EnsureVetoSessionSlotModeTests`` covers that side).
-So the guard has two authorities: a live session's own snapshot, and — with no
-session to snapshot — the cascaded config's ``mode``.
+The admin pool escape hatch creates entries with a NULL ``slot``, and neither
+ordering survives that. Appended onto an existing slot-mode session they fail
+``in_current_slot`` against every slot in play, so they can never be banned or
+picked and linger as permanently AVAILABLE entries in the room's payload.
+Assigned before the session exists they become the whole pool,
+``ensure_veto_session`` keeps it and sizes its sequence from the slots anyway,
+and the veto runs as a flat one over maps that sequence never described — 400ing
+on an empty pool as soon as the sequence outruns it.
+
+So the guard has two authorities, and which one answers depends on the ordering:
+a live session's own snapshot, and — with no session to snapshot — the cascaded
+config's ``mode``.
 
 Everything below drives the real subscriber through the real permission path with
 a session fake that answers by the entity each query actually targets, so a guard
