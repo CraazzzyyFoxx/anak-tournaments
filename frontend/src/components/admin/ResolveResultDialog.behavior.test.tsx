@@ -97,6 +97,18 @@ function findButton(label: string): HTMLButtonElement | undefined {
   );
 }
 
+/** The mode chooser is a Radix radio group: each item is a `<button role="radio">`
+ *  named by a sibling `<label for>`, so reach it through the label. */
+function findRadio(labelText: string): HTMLButtonElement {
+  const label = Array.from(document.body.querySelectorAll("label")).find((node) =>
+    (node.textContent ?? "").includes(labelText)
+  );
+  if (!label) throw new Error(`no option labelled ${labelText}`);
+  const radio = document.getElementById(label.htmlFor);
+  if (!radio) throw new Error(`label ${labelText} points at no control`);
+  return radio as HTMLButtonElement;
+}
+
 describe("ResolveResultDialog", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -125,6 +137,44 @@ describe("ResolveResultDialog", () => {
       adopt_report_team_id: 1,
       closeness: undefined
     });
+  });
+
+  it("adopts the other side once the admin picks it", async () => {
+    const body = await mount(<ResolveResultDialog row={row()} open onOpenChange={() => {}} />);
+
+    const away = findRadio("Adopt B report");
+    expect(away.getAttribute("role")).toBe("radio");
+    expect(away.getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => {
+      away.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // B reported 0 – 2, so the preview has to follow the selection.
+    expect(body.textContent).toContain("0 – 2");
+    await act(async () => {
+      findButton("Confirm result")?.click();
+    });
+    expect(setEncounterResult).toHaveBeenCalledWith(10, {
+      adopt_report_team_id: 2,
+      closeness: undefined
+    });
+  });
+
+  it("cannot adopt a side that filed nothing", async () => {
+    await mount(
+      <ResolveResultDialog row={row({ away_report: null })} open onOpenChange={() => {}} />
+    );
+
+    const away = findRadio("Adopt B report");
+    expect(away.getAttribute("data-disabled")).not.toBeNull();
+
+    await act(async () => {
+      away.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // Still on the home report, because the empty side is not selectable.
+    expect(findRadio("Adopt A report").getAttribute("aria-checked")).toBe("true");
   });
 
   it("refuses a draw on an elimination stage before sending it", async () => {

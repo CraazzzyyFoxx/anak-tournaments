@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronDown, History, Loader2 } from "lucide-react";
 
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsRow, EncounterSetResultInput } from "@/types/admin.types";
@@ -255,6 +256,7 @@ function ResolveForm({
   pending: boolean;
   onConfirm: (payload: EncounterSetResultInput) => void;
 }>) {
+  const modeFieldId = useId();
   // Preselect the side with evidence. When only one captain has reported that
   // report is all there is, so defaulting to manual entry would make the
   // commonest case the most laborious.
@@ -333,29 +335,44 @@ function ResolveForm({
   return (
     <>
       <fieldset className="space-y-2">
-        <legend className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <legend
+          id={`${modeFieldId}-legend`}
+          className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+        >
           Which score is right?
         </legend>
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className="flex items-center gap-2 text-sm data-[disabled=true]:opacity-50"
-            data-disabled={option.disabled}
-          >
-            <input
-              type="radio"
-              name="resolve-mode"
-              value={option.value}
-              checked={mode === option.value}
-              disabled={option.disabled}
-              onChange={() => setMode(option.value)}
-            />
-            <span>{option.label}</span>
-            {option.detail ? (
-              <span className="font-mono text-xs text-muted-foreground">{option.detail}</span>
-            ) : null}
-          </label>
-        ))}
+        {/* `aria-labelledby` rather than a repeated `aria-label`: the legend is
+            already on screen, and duplicating it would announce it twice. */}
+        <RadioGroup
+          value={mode}
+          onValueChange={(next) => setMode(next as Mode)}
+          aria-labelledby={`${modeFieldId}-legend`}
+        >
+          {options.map((option) => (
+            <div
+              key={option.value}
+              className="flex items-center gap-2 data-[disabled=true]:opacity-50"
+              data-disabled={option.disabled}
+            >
+              <RadioGroupItem
+                id={`${modeFieldId}-${option.value}`}
+                value={option.value}
+                disabled={option.disabled}
+              />
+              {/* `<button>` is a labelable element, so `htmlFor` both names the
+                  radio and makes the whole row its hit target. */}
+              <Label
+                htmlFor={`${modeFieldId}-${option.value}`}
+                className="flex flex-wrap items-center gap-2 font-normal"
+              >
+                <span>{option.label}</span>
+                {option.detail ? (
+                  <span className="font-mono text-xs text-muted-foreground">{option.detail}</span>
+                ) : null}
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
 
         {mode === "manual" ? (
           <div className="flex flex-wrap items-end gap-2 pt-1">
