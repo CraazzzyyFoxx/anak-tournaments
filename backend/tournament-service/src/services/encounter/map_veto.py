@@ -155,6 +155,8 @@ def auto_complete_decider_entry(
     entry.action_index = sum(1 for pool_entry in pool if pool_entry.status != MapPoolEntryStatus.AVAILABLE)
     entry.status = MapPoolEntryStatus.PICKED
     entry.picked_by = MapPickSide.DECIDER
+    # The PICKED assignment above must precede this count, which includes this entry and so makes ``order``
+    # 1-based. Hoisting the count above it 0-bases every picked map on the public page and the captain's report.
     entry.order = sum(1 for pool_entry in pool if pool_entry.status == MapPoolEntryStatus.PICKED)
     return entry
 
