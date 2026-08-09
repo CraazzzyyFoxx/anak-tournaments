@@ -74,6 +74,22 @@ interface PoolGroup {
   maps: MapRead[];
 }
 
+/** One candidate or reserve map of a slot, named even when it does not resolve. */
+interface SlotMap {
+  id: number;
+  /** Null when the competitive catalogue carries no map with this id. */
+  map: MapRead | null;
+}
+
+interface SlotView {
+  /** The config slot's `position`, NOT its index: positions can be gapped. */
+  position: number;
+  /** Candidates in configured order, one entry per configured id. */
+  candidates: SlotMap[];
+  /** The map the regulation plays on a draw, or null when the slot names none. */
+  reserve: SlotMap | null;
+}
+
 const ALL_FILTER = "all";
 /** Cannot collide with a gamemode name, which is always a bare proper noun. */
 const UNGROUPED_FILTER = "__ungrouped__";
@@ -84,6 +100,14 @@ const PILL_ON = "border-primary bg-primary text-primary-foreground shadow-xs";
 const PILL_OFF =
   "border-border/70 bg-card text-foreground hover:border-primary/50 hover:bg-accent/40";
 const MAP_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6";
+/**
+ * Candidates a slot needs to be bannable down to one map. Mirrors the server's
+ * `SLOT_CANDIDATE_FLOOR`, which refuses fewer at upsert and re-checks at session
+ * creation, because a slot's candidate rows carry `map_id` FKs that cascade from
+ * `overwatch.map`: deleting a map can drop a stored slot under the floor with no
+ * upsert running.
+ */
+const SLOT_CANDIDATE_FLOOR = 2;
 /** Stage types whose last round is the final the `final` override applies to. */
 const ELIMINATION_STAGES: Partial<Record<StageType, true>> = {
   single_elimination: true,
@@ -168,12 +192,41 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
       .filter((map): map is MapRead => map != null);
   }, [resolved, mapsById]);
 
-  // Read off `mode`, never off an empty `map_ids`. A slot config always carries
-  // an empty flat pool — the serializer sends both shapes and fills one — but so
-  // does a flat config the organizer left empty, and that one is a genuine
-  // misconfiguration this page must keep reporting as empty. Conflating them
-  // would replace a true error message with a false reassurance.
-  const isSlotMode = resolved?.config.mode === "slots";
+  // The slot pools, or null for a flat config. Read off `mode`, never off an
+  // empty `map_ids`. A slot config always carries an empty flat pool — the
+  // serializer sends both shapes and fills one — but so does a flat config the
+  // organizer left empty, and that one is a genuine misconfiguration this page
+  // must keep reporting as empty. Conflating them would replace a true error
+  // message with a false reassurance.
+  //
+  // Unresolved ids are kept as entries with a null `map` rather than filtered
+  // out the way the flat pool filters them: a slot's candidate count is what the
+  // regulation is written against, so showing two tiles for a three-candidate
+  // slot would under-report the organizer's own configuration.
+  const slotViews = useMemo<SlotView[] | null>(() => {
+    if (resolved?.config.mode !== "slots") return null;
+    const named = (id: number): SlotMap => ({ id, map: mapsById.get(id) ?? null });
+    // Sorted on `position` rather than trusted from the wire, the same way the
+    // admin editor sorts the stored slots. `serialize_veto_config` does emit
+    // them in position order today, so this is not compensating for a known
+    // defect — it is refusing to depend on it, because `position` is the play
+    // order and nothing else here reconstructs it.
+    return [...resolved.config.slots]
+      .sort((left, right) => left.position - right.position)
+      .map((slot) => ({
+        position: slot.position,
+        candidates: slot.candidates.map(named),
+        reserve: slot.reserve_map_id != null ? named(slot.reserve_map_id) : null
+      }));
+  }, [resolved, mapsById]);
+
+  const slotTotals = useMemo(() => {
+    if (!slotViews) return null;
+    return {
+      slots: slotViews.length,
+      candidates: slotViews.reduce((total, slot) => total + slot.candidates.length, 0)
+    };
+  }, [slotViews]);
 
   const poolGroups = useMemo<PoolGroup[]>(() => {
     const byKey = new Map<string, PoolGroup>();
@@ -345,16 +398,20 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
         ? t("mapVeto.bracketFormatVaries")
         : t("mapVeto.bracketFormatUnknown");
 
-  const renderMapTile = (map: MapRead) => (
+  /**
+   * `imagePath` is null for a map the catalogue cannot resolve, which falls back
+   * to the same flat wash a map with no art gets — there is no second tile.
+   */
+  const renderTile = (key: string, name: string, imagePath: string | null) => (
     <li
-      key={map.id}
+      key={key}
       className="relative flex h-28 items-end overflow-hidden rounded-xl border border-border/70 bg-card p-2.5"
     >
-      {map.image_path ? (
+      {imagePath ? (
         <div
           aria-hidden
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url("${map.image_path}")` }}
+          style={{ backgroundImage: `url("${imagePath}")` }}
         />
       ) : (
         <div aria-hidden className="absolute inset-0 bg-muted/60" />
@@ -366,10 +423,19 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
         className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-background via-background/85 to-transparent"
       />
       <span className="relative z-10 line-clamp-2 text-sm font-semibold leading-tight text-foreground">
-        {map.name}
+        {name}
       </span>
     </li>
   );
+
+  const renderMapTile = (map: MapRead) => renderTile(String(map.id), map.name, map.image_path);
+
+  /**
+   * The room's own fallback for an id it cannot resolve, reused verbatim so both
+   * player surfaces name a retired map the same way instead of dropping it.
+   */
+  const slotMapName = (entry: SlotMap) =>
+    entry.map?.name ?? t("encounters.veto.room.maps.mapNumber", { id: entry.id });
 
   return (
     <div className="space-y-6">
@@ -399,10 +465,17 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
                   {t("mapVeto.mapsPlayed", { count: playedMaps })}
                 </Badge>
               ) : null}
-              {/* A slot config's flat pool is empty by construction, so this
-                  would read "0 maps in the pool" for a round that is fully
-                  configured. The card below states what is true instead. */}
-              {isSlotMode ? null : (
+              {/* A slot config's flat pool is empty by construction, so the
+                  flat badge would read "0 maps in the pool" for a round that is
+                  fully configured. Its own size is slots and candidates, both
+                  counted off the config: a candidate the catalogue cannot
+                  resolve is still a candidate the regulation names. */}
+              {slotTotals ? (
+                <Badge variant="outline" className="gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" aria-hidden />
+                  {t("mapVeto.slotPoolSize", slotTotals)}
+                </Badge>
+              ) : (
                 <Badge variant="outline" className="gap-1.5">
                   <MapPin className="h-3.5 w-3.5" aria-hidden />
                   {t("mapVeto.mapsInPool", { count: pool.length })}
@@ -536,22 +609,61 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : isSlotMode ? (
-        // This page cannot render per-slot pools yet, so it states that rather
-        // than showing the slot config's empty flat pool as the round's pool.
-        // Solid border, unlike the not-configured card above: the round IS
-        // configured, and dashes read as "nothing here". The branch also drops
-        // the sequence card, which slot mode carries no `sequence` for.
+      ) : slotViews ? (
+        // Per-slot pools. No sequence card: the steps are the server's
+        // `build_slot_sequence`, and regenerating them here would be a second
+        // source of truth for the order — the description states the rule
+        // instead. No gamemode filter either: a slot is already the grouping,
+        // and the filter is derived from the flat pool this config has none of.
         <Card>
-          <CardHeader className="items-center gap-2 text-center">
-            <Info className="h-6 w-6 text-muted-foreground" aria-hidden />
+          <CardHeader className="pb-4">
             <CardTitle asChild>
-              <h2 className="text-base font-semibold">{t("mapVeto.slotPoolNotShownTitle")}</h2>
+              <h2 className="text-sm font-semibold">{t("mapVeto.poolTitle")}</h2>
             </CardTitle>
-            <CardDescription className="max-w-xl">
-              {t("mapVeto.slotPoolNotShownDescription")}
-            </CardDescription>
+            <CardDescription>{t("mapVeto.slotPoolDescription")}</CardDescription>
           </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {slotViews.map((slot) => (
+                <section key={slot.position} className="space-y-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* The slot's own position, never its index in this list:
+                        the same map legitimately sits in several slots, so the
+                        number is the only thing telling two of them apart. */}
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t("encounters.veto.room.slot.label", { n: slot.position })}
+                    </h3>
+                    <Badge variant="outline" className="font-medium text-muted-foreground">
+                      {t("mapVeto.slotCandidates", { count: slot.candidates.length })}
+                    </Badge>
+                  </div>
+                  {slot.candidates.length < SLOT_CANDIDATE_FLOOR ? (
+                    <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-foreground">
+                      {t("mapVeto.slotUnderfilled", { n: slot.position })}
+                    </p>
+                  ) : null}
+                  {slot.reserve ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("encounters.veto.room.slot.reserve", {
+                        map: slotMapName(slot.reserve)
+                      })}
+                    </p>
+                  ) : null}
+                  {slot.candidates.length > 0 ? (
+                    <ul className={MAP_GRID}>
+                      {slot.candidates.map((candidate) =>
+                        renderTile(
+                          String(candidate.id),
+                          slotMapName(candidate),
+                          candidate.map?.image_path ?? null
+                        )
+                      )}
+                    </ul>
+                  ) : null}
+                </section>
+              ))}
+            </div>
+          </CardContent>
         </Card>
       ) : (
         <>

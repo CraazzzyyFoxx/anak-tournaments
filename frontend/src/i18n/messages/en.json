@@ -3867,8 +3867,10 @@
     "bracketFormatUnknown": "Depends on the stage",
     "customOrder": "Custom veto order",
     "customOrderMismatch": "This custom order plays {played, plural, one {# map} other {# maps}}, but the bracket calls for {expected, plural, one {# map} other {# maps}}.",
-    "slotPoolNotShownTitle": "This round uses a different pool per map",
-    "slotPoolNotShownDescription": "The organizer configured candidate maps for each map of the series. This page does not show them yet — captains see the full pool in the veto room when the match starts."
+    "slotPoolDescription": "Each map of the series has its own candidates. Captains ban inside a slot until one map is left, then move on to the next — the slots below are in that order.",
+    "slotPoolSize": "{slots, plural, one {# slot} other {# slots}}, {candidates, plural, one {# candidate} other {# candidates}}",
+    "slotCandidates": "{count, plural, one {# candidate} other {# candidates}}",
+    "slotUnderfilled": "Slot {n} has fewer than two candidate maps, so there is nothing to ban there and the veto cannot open."
   },
   "mapVetoAdmin": {
     "title": "Map pool and veto builder",
