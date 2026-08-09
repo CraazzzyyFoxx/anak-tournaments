@@ -24,6 +24,11 @@ export function SocialAccountBadge({ account, linkify = true }: SocialAccountBad
   // 6-digit hex. `hexToRgba` returns null instead, and we fall back to no tint.
   const surface = hexToRgba(config.color, 0.0625);
   const border = hexToRgba(config.color, 0.25);
+  // Raw brand hues fail WCAG AA as 12.5px label text on our dark surfaces
+  // (Discord #5865f2 → 4.04:1, Twitch #9146ff → 4.01:1). The mark keeps the
+  // exact brand colour; the *label* is lifted toward white, which reads at
+  // 5.4:1+ while staying unmistakably Discord-blurple / Twitch-purple.
+  const labelColor = `color-mix(in srgb, ${config.color} 80%, white)`;
 
   const badge = (
     <span
@@ -31,7 +36,7 @@ export function SocialAccountBadge({ account, linkify = true }: SocialAccountBad
       style={{
         background: surface ?? undefined,
         borderColor: border ?? "var(--aqt-border-2)",
-        color: config.color
+        color: labelColor
       }}
       title={
         account.is_verified

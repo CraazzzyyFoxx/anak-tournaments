@@ -1595,11 +1595,15 @@
   --aqt-border-3: hsl(216 16% 26%);
   --aqt-fg: hsl(214 33% 96%);
   --aqt-fg-muted: hsl(212 13% 65%);
-  /* Lifted from 46%/34%: at the old values, tertiary copy measured 3.96:1 and
-     placeholders 2.37:1 against the card surface — both below WCAG AA 4.5:1.
-     54%/46% keep the four-tier ramp (96 / 65 / 54 / 46) ordered. */
-  --aqt-fg-dim: hsl(213 9% 54%);
-  --aqt-fg-faint: hsl(214 10% 46%);
+  /* Lifted twice. 46%/34% failed badly; the 54%/46% pass fixed --aqt-fg-dim but
+     left --aqt-fg-faint at 3.70:1 on --aqt-card-2, 3.92:1 on --aqt-card and
+     4.13:1 on --aqt-bg — still under WCAG AA 4.5:1, and faint paints every stat
+     label, table header and card caption in the app (70 distinct nodes on one
+     player profile alone). 58%/52% clear 4.5:1 on the lightest first-class
+     surface (--aqt-card-2) and keep the four-tier ramp (96 / 65 / 58 / 52)
+     ordered and visually distinct. */
+  --aqt-fg-dim: hsl(213 9% 58%);
+  --aqt-fg-faint: hsl(214 10% 52%);
   --aqt-teal: hsl(172 70% 49%);
   --aqt-teal-deep: hsl(173 81% 32%);
   --aqt-emerald: hsl(150 57% 52%);
