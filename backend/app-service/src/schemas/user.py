@@ -235,7 +235,11 @@ class UserTournament(BaseModel):
     role: enums.HeroClass | None = None
     division: int | None = None
     division_grid_version: DivisionGridVersionRead | None = None
-    encounters: list[EncounterReadWithUserStats]
+    # Populated only by `get_tournament_encounters` (the lazy per-tournament
+    # dossier detail); `get_tournaments` (the list endpoint) leaves this `[]`
+    # so the list response doesn't ship every tournament's full encounter/
+    # match history up front — see services/user/flows.py::get_tournaments.
+    encounters: list[EncounterReadWithUserStats] = Field(default_factory=list)
 
 
 class UserTournamentStat(BaseModel):

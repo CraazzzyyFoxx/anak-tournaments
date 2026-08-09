@@ -96,6 +96,20 @@ export default class userService {
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
+  /** Lazy per-tournament dossier detail: one tournament's encounters (with
+   *  per-match stats). Split out of `getUserTournaments` so the list fetch
+   *  doesn't ship every tournament's encounter/match history up front —
+   *  called only for the tournament currently open in the dossier. Cached
+   *  by the gateway with full event-driven invalidation (tournament_id is
+   *  a path param), same as `getUserTournament`. */
+  static async getUserTournamentEncounters(
+    id: number,
+    tournamentId: number
+  ): Promise<EncounterWithUserStats[]> {
+    return apiFetch(`/api/v1/users/${id}/tournaments/${tournamentId}/encounters`, {
+      next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
+    }).then((res) => res.json());
+  }
   static async getUserMaps(
     id: number,
     {

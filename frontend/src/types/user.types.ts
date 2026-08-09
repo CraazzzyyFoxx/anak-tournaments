@@ -182,7 +182,11 @@ export interface UserTournament {
   division_grid_version: DivisionGridVersion | null;
   role: string;
 
-  encounters: EncounterWithUserStats[];
+  /** Only populated after a lazy fetch of `/tournaments/{id}/encounters` for
+   *  the tournament currently open in the dossier — the list endpoint omits
+   *  it so a career-spanning history doesn't ship every event's full
+   *  encounter/match log up front. */
+  encounters?: EncounterWithUserStats[];
 }
 
 export interface UserProfile {

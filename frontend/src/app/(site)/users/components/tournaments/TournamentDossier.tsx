@@ -35,6 +35,10 @@ import {
 interface Props {
   group: TournamentGroup | null;
   selfUserId: number;
+  /** True while the selected event's encounters are still being fetched
+   *  lazily (see TournamentsHistory) — shows a run-section skeleton instead
+   *  of a misleading "no run recorded" flash. */
+  loadingEncounters?: boolean;
 }
 
 const MEDAL_COLOR: Record<string, string> = {
@@ -154,7 +158,15 @@ const summaryCells = (
 };
 
 /** Roster table + per-stage "run" for one tournament entry. */
-const EventBody = ({ t, selfUserId }: { t: UserTournament; selfUserId: number }) => {
+const EventBody = ({
+  t,
+  selfUserId,
+  loadingEncounters
+}: {
+  t: UserTournament;
+  selfUserId: number;
+  loadingEncounters?: boolean;
+}) => {
   const tr = useTranslations();
   const stages = groupEncountersByStage(t, selfUserId);
   const hasEncounters = (t.encounters ?? []).length > 0;
@@ -171,7 +183,15 @@ const EventBody = ({ t, selfUserId }: { t: UserTournament; selfUserId: number })
       </div>
       <div>
         <SectionLabel>{tr("users.tournaments.dossier.run")}</SectionLabel>
-        {hasEncounters ? (
+        {loadingEncounters ? (
+          // Skeleton while TournamentsHistory's lazy fetch is in flight —
+          // avoids a misleading "no run recorded" flash on every selection.
+          <div className="flex flex-col gap-1.5 overflow-hidden rounded-[10px] border border-[color:var(--aqt-border)] p-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <span key={i} className="h-9 w-full animate-pulse rounded bg-[color:var(--aqt-card-2)]" />
+            ))}
+          </div>
+        ) : hasEncounters ? (
           <div className="overflow-hidden rounded-[10px] border border-[color:var(--aqt-border)]">
             {stages.map((stage) => (
               <div key={stage.key}>
@@ -197,7 +217,15 @@ const EventBody = ({ t, selfUserId }: { t: UserTournament; selfUserId: number })
   );
 };
 
-const SingleDossier = ({ t, selfUserId }: { t: UserTournament; selfUserId: number }) => {
+const SingleDossier = ({
+  t,
+  selfUserId,
+  loadingEncounters
+}: {
+  t: UserTournament;
+  selfUserId: number;
+  loadingEncounters?: boolean;
+}) => {
   const tr = useTranslations();
   const agg = groupAggregate(t);
   const verdict = useVerdict(t.placement, t.count_teams);
@@ -241,7 +269,7 @@ const SingleDossier = ({ t, selfUserId }: { t: UserTournament; selfUserId: numbe
       </div>
       <SummaryStrip cells={cells} />
       {verdict ? <Verdict text={verdict} /> : null}
-      <EventBody t={t} selfUserId={selfUserId} />
+      <EventBody t={t} selfUserId={selfUserId} loadingEncounters={loadingEncounters} />
     </div>
   );
 };
@@ -264,7 +292,15 @@ const DivisionHeader = ({ t }: { t: UserTournament }) => {
   );
 };
 
-const LeagueDossier = ({ entries, selfUserId }: { entries: UserTournament[]; selfUserId: number }) => {
+const LeagueDossier = ({
+  entries,
+  selfUserId,
+  loadingEncounters
+}: {
+  entries: UserTournament[];
+  selfUserId: number;
+  loadingEncounters?: boolean;
+}) => {
   const tr = useTranslations();
   const agg = entries.reduce(
     (acc, t) => {
@@ -326,7 +362,7 @@ const LeagueDossier = ({ entries, selfUserId }: { entries: UserTournament[]; sel
         {entries.map((t) => (
           <div key={t.id} className="overflow-hidden rounded-[10px] border border-[color:var(--aqt-border)]">
             <DivisionHeader t={t} />
-            <EventBody t={t} selfUserId={selfUserId} />
+            <EventBody t={t} selfUserId={selfUserId} loadingEncounters={loadingEncounters} />
           </div>
         ))}
       </div>
@@ -334,7 +370,7 @@ const LeagueDossier = ({ entries, selfUserId }: { entries: UserTournament[]; sel
   );
 };
 
-const TournamentDossier = ({ group, selfUserId }: Props) => {
+const TournamentDossier = ({ group, selfUserId, loadingEncounters }: Props) => {
   const t = useTranslations();
   if (!group) {
     return (
@@ -345,9 +381,11 @@ const TournamentDossier = ({ group, selfUserId }: Props) => {
     );
   }
   if (isLeagueGroup(group)) {
-    return <LeagueDossier entries={groupEntries(group)} selfUserId={selfUserId} />;
+    return (
+      <LeagueDossier entries={groupEntries(group)} selfUserId={selfUserId} loadingEncounters={loadingEncounters} />
+    );
   }
-  return <SingleDossier t={group} selfUserId={selfUserId} />;
+  return <SingleDossier t={group} selfUserId={selfUserId} loadingEncounters={loadingEncounters} />;
 };
 
 export default TournamentDossier;

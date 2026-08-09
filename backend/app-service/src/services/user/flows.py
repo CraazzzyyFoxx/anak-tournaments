@@ -1166,7 +1166,15 @@ async def get_tournaments(
     session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
 ) -> list[schemas.UserTournament]:
     """
-    Retrieves a user's tournament history, including statistics and encounters.
+    Retrieves a user's tournament history with per-event stats (record,
+    placement, roster, avg MVP, signature heroes).
+
+    Deliberately does NOT populate `UserTournament.encounters` — that used to
+    make this endpoint ship every tournament's full encounter/match history
+    (a veteran player's response ran past 1 MB) even though the Tournaments
+    tab only ever renders one selected tournament's encounters at a time
+    (master-detail dossier). Callers that need the per-match run for one
+    tournament call `get_tournament_encounters` lazily instead.
 
     Args:
         session: An SQLAlchemy `AsyncSession` for database interaction.
@@ -1179,10 +1187,6 @@ async def get_tournaments(
     output: list[schemas.UserTournament] = []
     tournaments = await service.get_tournaments_with_stats(session, user.id, workspace_id=workspace_id)
     tournaments_ids = [tournament[0].tournament_id for tournament in tournaments]
-    encounters: dict[int, list[schemas.EncounterReadWithUserStats]] = {}
-    encounters_cache: dict[int, dict[int, models.Encounter]] = {}
-    matches_cache: dict[int, dict[int, list[schemas.MatchReadWithUserStats]]] = {}
-    matches = await _repositories.get_user_encounter_matches_unpaginated(session, user.id)
     placements = await _repositories.count_teams_by_tournament_bulk(session, tournaments_ids)
 
     # Per-roster-player enrichment (avg MVP + signature heroes), scoped to the
@@ -1199,46 +1203,6 @@ async def get_tournaments(
     )
     avg_mvp_map = await _repositories.get_roster_avg_mvp_bulk(session, tournaments_ids, roster_user_ids)
     top_heroes_map = await _repositories.get_roster_top_heroes_bulk(session, tournaments_ids, roster_user_ids)
-
-    for (
-        team,
-        encounter,
-        match,
-        performance,
-        heroes,
-        impact_rank,
-        impact_points,
-        overperformance_score,
-        overperf_pos,
-    ) in matches:
-        encounters.setdefault(team.id, [])
-        encounters_cache.setdefault(team.id, {})
-        matches_cache.setdefault(team.id, {})
-        encounters_cache[team.id].setdefault(encounter.id, encounter)
-        matches_cache[team.id].setdefault(encounter.id, [])
-
-        if match:
-            matches_cache[team.id][encounter.id].append(
-                _mappers.to_match_with_user_stats(
-                    match,
-                    performance=performance,
-                    heroes=heroes,
-                    impact_rank=impact_rank,
-                    impact_points=impact_points,
-                    overperformance_score=overperformance_score,
-                    overperf_pos=overperf_pos,
-                )
-            )
-
-    for team_id, encounter_dict in encounters_cache.items():
-        for encounter_id, encounter in encounter_dict.items():
-            encounters[team_id].append(
-                _mappers.to_encounter_with_user_stats(
-                    encounter,
-                    matches=matches_cache.get(team_id, {}).get(encounter_id, []),
-                    viewer_user_id=user.id,
-                )
-            )
 
     for team, wins, losses, avg_closeness in tournaments:
         user_role: enums.HeroClass | None = None
@@ -1312,12 +1276,79 @@ async def get_tournaments(
             won=won,
             lost=lost,
             draw=draw,
-            encounters=encounters.get(team.id, []),
         )
         output.append(tournament)
 
     output = sorted(output, key=lambda x: x.id, reverse=True)
     return output
+
+
+@cache(
+    ttl=config.settings.users_cache_ttl,
+    key="user_tournament_encounters:{id}:{tournament_id}",
+    prefix="backend:",
+)
+async def get_tournament_encounters(
+    session: AsyncSession, id: int, tournament_id: int
+) -> list[schemas.EncounterReadWithUserStats]:
+    """
+    Retrieves one user's encounters (with their per-match stats) within a
+    single tournament — the lazy detail behind the Tournaments-tab dossier,
+    split out of `get_tournaments` so the list endpoint doesn't have to ship
+    every tournament's encounters up front (see that function's docstring).
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        id: The ID of the user.
+        tournament_id: The tournament to scope the encounters to.
+
+    Returns:
+        The user's encounters in that tournament (all teams, if the user
+        played on more than one — e.g. a mid-tournament substitution).
+    """
+    user = await get(session, id, [])
+    rows = await _repositories.get_user_encounter_matches_unpaginated(
+        session, user.id, tournament_id=tournament_id
+    )
+
+    encounters_cache: dict[int, models.Encounter] = {}
+    matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}
+
+    for (
+        _team,
+        encounter,
+        match,
+        performance,
+        heroes,
+        impact_rank,
+        impact_points,
+        overperformance_score,
+        overperf_pos,
+    ) in rows:
+        encounters_cache.setdefault(encounter.id, encounter)
+        matches_cache.setdefault(encounter.id, [])
+
+        if match:
+            matches_cache[encounter.id].append(
+                _mappers.to_match_with_user_stats(
+                    match,
+                    performance=performance,
+                    heroes=heroes,
+                    impact_rank=impact_rank,
+                    impact_points=impact_points,
+                    overperformance_score=overperformance_score,
+                    overperf_pos=overperf_pos,
+                )
+            )
+
+    return [
+        _mappers.to_encounter_with_user_stats(
+            encounter,
+            matches=matches_cache.get(encounter_id, []),
+            viewer_user_id=user.id,
+        )
+        for encounter_id, encounter in encounters_cache.items()
+    ]
 
 
 # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own

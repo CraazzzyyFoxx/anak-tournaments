@@ -123,6 +123,10 @@ DOCS: dict[str, dict] = {
         "summary": "User tournament stats",
         "description": "Returns a player's participation and stats for one tournament, resolved against that tournament's division grid (public).",
     },
+    "rpc.app.users.tournament_encounters": {
+        "summary": "User tournament encounters",
+        "description": "Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI (public).",
+    },
     "rpc.app.users.tournament_leaderboard": {
         "summary": "Tournament stat leaderboard",
         "description": "Returns every player in a tournament ranked by a single stat — the full ranked list behind a user's per-stat rank/total on the tournament-stats page. Inverse stats like Deaths rank ascending. The `stat` must be one of the ranked tournament stats (public).",
