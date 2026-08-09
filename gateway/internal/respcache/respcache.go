@@ -32,11 +32,12 @@
 // Redis pub/sub is fire-and-forget: a gateway that is briefly disconnected
 // misses invalidations. The TTL bounds that damage window too.
 //
-// Bounds: entries are LRU-evicted past maxEntries, and bodies larger than
-// maxBodyBytes are served but never stored. The key space is derived from
-// request URLs, which an anonymous client controls (arbitrary query strings),
-// so the LRU bound is what keeps a query-string flood from growing the map —
-// the same posture as principal.Resolver's token LRU.
+// Bounds: entries are LRU-evicted past maxEntries or past maxTotalBytes
+// aggregate stored size, and individual bodies larger than maxBodyBytes are
+// served but never stored. The key space is derived from request URLs, which
+// an anonymous client controls (arbitrary query strings), so the LRU bound is
+// what keeps a query-string flood from growing the map — the same posture as
+// principal.Resolver's token LRU.
 //
 // Concurrent misses for one key are collapsed via singleflight so a cold or
 // just-invalidated hot key costs ONE upstream RPC, not one per waiting client.
@@ -69,8 +70,22 @@ const (
 	maxEntries = 4096
 	// maxBodyBytes: responses larger than this are proxied through but not
 	// stored (the RPC reply is already fully in memory, so recording adds no
-	// extra buffering — only storing is capped).
-	maxBodyBytes = 1 << 20
+	// extra buffering — only storing is capped). Raised from the original
+	// 1 MiB after a real profile (/api/v1/users/{id}/tournaments, a veteran
+	// player with 40+ tournaments of nested encounters) measured ~1.045 MiB
+	// and silently never cached — every page view paid the full upstream RPC
+	// forever. 3 MiB gives headroom for larger histories; maxTotalBytes below
+	// keeps the aggregate footprint bounded regardless of this per-entry cap.
+	maxBodyBytes = 3 << 20
+	// maxTotalBytes bounds the sum of stored entry bodies. Without this, a
+	// cache full of maxBodyBytes-sized entries could reach maxEntries *
+	// maxBodyBytes (12 GiB) — wildly past the gateway container's 256 MiB
+	// limit (docker-compose.production.yml). 32 MiB is 32x the profile that
+	// motivated the raise above, comfortably covers realistic concurrent
+	// large-profile traffic (most cached bodies are a few KB), and still
+	// leaves ~87% of the hard memory limit for the Go runtime, connection
+	// buffers, and the gateway's other in-memory caches.
+	maxTotalBytes = 32 << 20
 )
 
 // Extractor resolves the invalidation scope for a request: a positive
@@ -133,16 +148,18 @@ type entry struct {
 // *Cache is valid and inert (Wrap returns next unchanged, Broadcast is a
 // no-op), so callers can wire it unconditionally and disable via config.
 type Cache struct {
-	ttl    time.Duration
-	max    int
-	log    *slog.Logger
-	now    func() time.Time
-	flight singleflight.Group
+	ttl      time.Duration
+	max      int
+	maxBytes int64
+	log      *slog.Logger
+	now      func() time.Time
+	flight   singleflight.Group
 
-	mu   sync.Mutex
-	keys map[string]*list.Element // key -> element (holds *entry)
-	lru  *list.List               // front = most recently used
-	byID map[int64]map[string]struct{}
+	mu         sync.Mutex
+	keys       map[string]*list.Element // key -> element (holds *entry)
+	lru        *list.List               // front = most recently used
+	byID       map[int64]map[string]struct{}
+	totalBytes int64 // sum of len(entry.body) for all stored entries
 }
 
 // New returns a Cache with the given staleness backstop, or nil (disabled)
@@ -151,18 +168,19 @@ func New(ttl time.Duration, log *slog.Logger) *Cache {
 	if ttl <= 0 {
 		return nil
 	}
-	return newCache(ttl, maxEntries, log)
+	return newCache(ttl, maxEntries, maxTotalBytes, log)
 }
 
-func newCache(ttl time.Duration, max int, log *slog.Logger) *Cache {
+func newCache(ttl time.Duration, max int, maxBytes int64, log *slog.Logger) *Cache {
 	return &Cache{
-		ttl:  ttl,
-		max:  max,
-		log:  log,
-		now:  time.Now,
-		keys: make(map[string]*list.Element),
-		lru:  list.New(),
-		byID: make(map[int64]map[string]struct{}),
+		ttl:      ttl,
+		max:      max,
+		maxBytes: maxBytes,
+		log:      log,
+		now:      time.Now,
+		keys:     make(map[string]*list.Element),
+		lru:      list.New(),
+		byID:     make(map[int64]map[string]struct{}),
 	}
 }
 
@@ -452,7 +470,7 @@ func (c *Cache) store(e *entry) {
 	if el, ok := c.keys[e.key]; ok {
 		c.removeLocked(el)
 	}
-	for len(c.keys) >= c.max {
+	for len(c.keys) >= c.max || (c.lru.Len() > 0 && c.totalBytes+int64(len(e.body)) > c.maxBytes) {
 		back := c.lru.Back()
 		if back == nil {
 			break
@@ -461,6 +479,7 @@ func (c *Cache) store(e *entry) {
 	}
 	el := c.lru.PushFront(e)
 	c.keys[e.key] = el
+	c.totalBytes += int64(len(e.body))
 	ids, ok := c.byID[e.tournamentID]
 	if !ok {
 		ids = make(map[string]struct{})
@@ -473,6 +492,7 @@ func (c *Cache) removeLocked(el *list.Element) {
 	e := el.Value.(*entry)
 	delete(c.keys, e.key)
 	c.lru.Remove(el)
+	c.totalBytes -= int64(len(e.body))
 	if ids, ok := c.byID[e.tournamentID]; ok {
 		delete(ids, e.key)
 		if len(ids) == 0 {

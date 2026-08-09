@@ -13,7 +13,7 @@ import (
 
 func testCache(t *testing.T) *Cache {
 	t.Helper()
-	return newCache(time.Minute, maxEntries, slog.Default())
+	return newCache(time.Minute, maxEntries, maxTotalBytes, slog.Default())
 }
 
 // counting handler: JSON 200, upstream call counter.
@@ -560,7 +560,7 @@ func TestTTLOnlyCachedButEventImmune(t *testing.T) {
 // past max, and must evict oldest-used first.
 func TestLRUBound(t *testing.T) {
 	var calls atomic.Int64
-	c := newCache(time.Minute, 3, slog.Default())
+	c := newCache(time.Minute, 3, maxTotalBytes, slog.Default())
 	h := c.Wrap(upstream(&calls), Rule{Extract: FromQuery("tournament_id")})
 
 	for i := 1; i <= 4; i++ {
@@ -660,5 +660,60 @@ func TestOversizedBodyNotStored(t *testing.T) {
 	doGet(h, "/api/v1/tournaments/72", "")
 	if calls.Load() != 2 {
 		t.Fatal("oversized body was stored")
+	}
+}
+
+// The byte budget: entries are evicted oldest-first once their combined size
+// would exceed maxBytes, even when the entry count is still under max. This
+// is what makes raising maxBodyBytes safe — a cache full of large bodies
+// cannot grow past a bounded memory footprint.
+func TestByteBudgetEvictsOldestOnOverflow(t *testing.T) {
+	var calls atomic.Int64
+	const entrySize = 100
+	c := newCache(time.Minute, maxEntries, 3*entrySize, slog.Default())
+	body := make([]byte, entrySize)
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write(body)
+	}), Rule{Extract: FromQuery("tournament_id")})
+
+	for i := 1; i <= 4; i++ {
+		doGet(h, fmt.Sprintf("/api/v1/encounters?tournament_id=72&page=%d", i), "")
+	}
+	if len(c.keys) != 3 {
+		t.Fatalf("cache grew past the byte budget: %d entries", len(c.keys))
+	}
+	if c.totalBytes > 3*entrySize {
+		t.Fatalf("totalBytes = %d, want <= %d", c.totalBytes, 3*entrySize)
+	}
+	// page=1 (oldest) evicted for space; page=4 present.
+	if rec := doGet(h, "/api/v1/encounters?tournament_id=72&page=4", ""); rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("newest entry evicted")
+	}
+	before := calls.Load()
+	doGet(h, "/api/v1/encounters?tournament_id=72&page=1", "")
+	if calls.Load() != before+1 {
+		t.Fatal("oldest entry survived past the byte budget")
+	}
+}
+
+// A single entry within maxBodyBytes but larger than the whole configured
+// byte budget must still be stored (and served as a HIT) rather than being
+// endlessly evicted-and-skipped; store() must terminate its eviction loop.
+func TestByteBudgetSmallerThanSingleEntryStillStores(t *testing.T) {
+	var calls atomic.Int64
+	body := make([]byte, 200)
+	c := newCache(time.Minute, maxEntries, 50, slog.Default())
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write(body)
+	}), Rule{Extract: FromPathValue("id")})
+
+	doGet(h, "/api/v1/tournaments/72", "")
+	if rec := doGet(h, "/api/v1/tournaments/72", ""); rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("entry over budget but under maxBodyBytes must still be cached")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("calls = %d, want 1", calls.Load())
 	}
 }
