@@ -28,6 +28,7 @@ import type { Encounter } from "@/types/encounter.types";
 import type {
   EncounterMapPoolEntry,
   EncounterMapPoolState,
+  EncounterVetoSession,
   VetoUnavailableReason,
 } from "@/types/tournament.types";
 
@@ -72,10 +73,13 @@ vi.mock("next/image", () => ({
 const ROOM = en.encounters.veto.room;
 
 /**
- * Nine maps whose ids are deliberately NOT 1..9 and never equal a slot number,
- * so nothing can pass by confusing a map id with a slot or an index.
+ * Nine pool maps plus two reserves, all with ids deliberately NOT 1..11 and
+ * never equal to a slot number, so nothing can pass by confusing a map id with
+ * a slot or an index. 84 and 26 are the reserves and are candidates of nothing,
+ * so a label that named a candidate — or a candidate tile that borrowed the
+ * reserve's name — reads as wrong rather than as plausible.
  */
-const MAPS = [21, 22, 23, 32, 33, 41, 42, 43, 44].map((id) => ({
+const MAPS = [21, 22, 23, 26, 32, 33, 41, 42, 43, 44, 84].map((id) => ({
   id,
   name: `Map ${id}`,
   image_path: null,
@@ -111,19 +115,26 @@ function entry(overrides: Partial<EncounterMapPoolEntry>): EncounterMapPoolEntry
   };
 }
 
+/** Spelled out for the same reason `entry` is: test files are unchecked. */
+function session(overrides: Partial<EncounterVetoSession> = {}): EncounterVetoSession {
+  return {
+    id: 1,
+    status: "active",
+    first_side: "home",
+    seed_source: "bracket_slot",
+    home_seed: 1,
+    away_seed: 4,
+    turn_timer_seconds: null,
+    started_at: "2026-08-01T10:00:00Z",
+    current_step_started_at: null,
+    slot_reserves: null,
+    ...overrides
+  };
+}
+
 function state(overrides: Partial<EncounterMapPoolState>): EncounterMapPoolState {
   return {
-    session: {
-      id: 1,
-      status: "active",
-      first_side: "home",
-      seed_source: "bracket_slot",
-      home_seed: 1,
-      away_seed: 4,
-      turn_timer_seconds: null,
-      started_at: "2026-08-01T10:00:00Z",
-      current_step_started_at: null
-    },
+    session: session(),
     sequence: [],
     pool: [],
     viewer_side: "home",
@@ -445,6 +456,65 @@ describe("slot-mode map grid", () => {
     );
     await render();
     expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Slots 5 and 9 name a reserve and slot 2 does not, so the snapshot is sparse
+   * — it omits a slot with no reserve rather than mapping it to null — and the
+   * keys are the gapped positions AS STRINGS, which is how the JSON column
+   * round-trips them. Two of three slots carry a label, so neither "every slot"
+   * nor "only the live slot" passes.
+   */
+  const reserved = (slot_reserves: Record<string, number> | null) =>
+    liveState({ session: session({ slot_reserves }) });
+  const groupText = (slot: number) =>
+    container.querySelector(`[data-veto-map-slot="${slot}"]`)?.textContent ?? "";
+  /** The copy with nothing substituted — what an empty label would still emit. */
+  const RESERVE_PREFIX = ROOM.slot.reserve.split("{map}")[0];
+
+  it("labels each slot's reserve from the session snapshot", async () => {
+    getMapPoolState.mockResolvedValue(reserved({ "5": 84, "9": 26 }));
+    await render();
+
+    expect(groupText(5)).toContain(ROOM.slot.reserve.replace("{map}", "Map 84"));
+    expect(groupText(9)).toContain(ROOM.slot.reserve.replace("{map}", "Map 26"));
+    // Scoped per group, because one shared caption listing both reserves — or a
+    // label rendered under the wrong slot — passes a whole-document assertion.
+    expect(groupText(5)).not.toContain("Map 26");
+    expect(groupText(9)).not.toContain("Map 84");
+  });
+
+  it("renders no reserve line at all for a slot the snapshot omits", async () => {
+    getMapPoolState.mockResolvedValue(reserved({ "5": 84, "9": 26 }));
+    await render();
+
+    // Slot 2 is absent from the snapshot. The failure this pins is the caption
+    // rendering with nothing after the colon, which `toContain` on a full label
+    // would miss — hence the prefix.
+    expect(groupText(2)).not.toContain(RESERVE_PREFIX);
+  });
+
+  it.each([
+    // A slot config that named no reserve snapshots `{}`; a flat pool snapshots
+    // null. Different facts on the wire, same absence of a label.
+    ["a slot session that named none", {} as Record<string, number>],
+    ["a flat session", null]
+  ])("shows no reserve anywhere for %s", async (_label, snapshot) => {
+    getMapPoolState.mockResolvedValue(reserved(snapshot));
+    await render();
+
+    expect(container.textContent).not.toContain(RESERVE_PREFIX);
+  });
+
+  it("keeps the reserve on a resolved slot, which the regulation can still reach", async () => {
+    // Slot 2 has already produced its survivor. The map may yet draw, so the
+    // regulation's fallback still applies and dimming the slot must not drop it.
+    getMapPoolState.mockResolvedValue(reserved({ "2": 84 }));
+    await render();
+
+    expect(groupText(2)).toContain(ROOM.slot.reserve.replace("{map}", "Map 84"));
+    expect(groupText(5)).not.toContain(RESERVE_PREFIX);
+    expect(groupText(9)).not.toContain(RESERVE_PREFIX);
   });
 });
 

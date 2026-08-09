@@ -119,12 +119,16 @@ async def _require_flat_veto(session: Any, encounter_id: int) -> None:
     ``auto_complete_decider_entry`` demands exactly one available map scoped by
     ``in_current_slot`` — which a pool with no slots at all turns into an
     identity, making the demand "exactly one available map in the whole pool".
-    It 400s there at ANY pool size, not only a short one: verified over a
-    two-slot sequence at 3, 4 and 9 maps, and a two-map pool only reaches one
-    step further before 400ing on an already-banned map. Nor is the pool ever
-    empty — ``apply_veto_action`` marks rows BANNED/PICKED instead of deleting
-    them, so ``perform_veto_action``'s ``if not pool:`` guard is unreachable
-    from here. Only a reset recovers.
+    Where it dies depends on the FIRST slot's candidate count, not on pool size:
+    that decider is reached with ``c1 - 1`` maps already banned, so it resolves
+    only when the pool holds exactly ``c1`` maps and 400s at every other size.
+    Both endings are dead. Over a two-slot ``[3, 3]`` sequence, pools of 2, 4 and
+    9 maps 400 at the decider ("requires exactly one available map") while a
+    3-map pool resolves it and 400s one step later on the following ban, with
+    nothing left to ban ("Map is already banned"). Nor is the pool ever empty —
+    ``apply_veto_action`` marks rows BANNED/PICKED instead of deleting them, so
+    ``perform_veto_action``'s ``if not pool:`` guard is unreachable from here.
+    Only a reset recovers.
 
     Which authority answers "slot mode" follows from that split. A live session
     runs entirely off its own snapshot and ``config_id`` is ``ON DELETE SET

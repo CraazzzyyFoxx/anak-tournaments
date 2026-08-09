@@ -30,6 +30,12 @@ interface VetoMapGridProps {
    * signal — slot mode comes from `pool[].slot` via `poolSlotGroups`.
    */
   currentSlot: number | null;
+  /**
+   * Reserve map per slot position, from the session's snapshot — never from the
+   * live config, so a config edit cannot move a running veto's labels. Slots
+   * that named no reserve are simply absent.
+   */
+  slotReserves: Map<number, number>;
   onSelect: (mapId: number) => void;
 }
 
@@ -49,6 +55,7 @@ export function VetoMapGrid({
   selectedMapId,
   canSelect,
   currentSlot,
+  slotReserves,
   onSelect,
 }: VetoMapGridProps) {
   const t = useTranslations("encounters.veto.room");
@@ -173,6 +180,10 @@ export function VetoMapGrid({
           slotGroups.map((group) => {
             const state = slotState(group, currentSlot);
             const locked = state === "upcoming";
+            // Absent, not null, for a slot that named no reserve — so this is
+            // undefined for most slots and the caption is skipped entirely
+            // rather than rendered with nothing after it.
+            const reserveMapId = slotReserves.get(group.slot);
             return (
               <div
                 key={group.slot}
@@ -197,6 +208,11 @@ export function VetoMapGrid({
                 {locked ? (
                   <p id={lockedHintId(group.slot)} className="text-xs text-[color:var(--aqt-fg-muted)]">
                     {t("slot.locked", { n: group.slot })}
+                  </p>
+                ) : null}
+                {reserveMapId != null ? (
+                  <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {t("slot.reserve", { map: mapName(reserveMapId) })}
                   </p>
                 ) : null}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">

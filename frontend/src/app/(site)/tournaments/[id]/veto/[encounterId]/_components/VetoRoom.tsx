@@ -26,7 +26,12 @@ import mapService from "@/services/map.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapVetoAction } from "@/types/tournament.types";
 
-import { VETO_UNAVAILABLE_COPY, type VetoSide, type VetoUnavailableIcon } from "./veto-model";
+import {
+  VETO_UNAVAILABLE_COPY,
+  slotReserveMaps,
+  type VetoSide,
+  type VetoUnavailableIcon,
+} from "./veto-model";
 import { VetoAdminControls } from "./VetoAdminControls";
 import { VetoHero } from "./VetoHero";
 import { VetoMapGrid } from "./VetoMapGrid";
@@ -217,6 +222,7 @@ export function VetoRoom({ encounterId }: VetoRoomProps) {
             selectedMapId={selectedMapId}
             canSelect={canSelectMaps}
             currentSlot={state.current_slot}
+            slotReserves={slotReserveMaps(session)}
             onSelect={(mapId) =>
               setSelectedMapId((current) => (current === mapId ? null : mapId))
             }

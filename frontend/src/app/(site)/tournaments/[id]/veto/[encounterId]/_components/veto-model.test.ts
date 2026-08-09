@@ -15,6 +15,7 @@ import {
   parseStepToken,
   pickedMapsInOrder,
   poolSlotGroups,
+  slotReserveMaps,
   slotState,
   statusLabelKey,
   stepSlotGroups,
@@ -397,5 +398,41 @@ describe("statusLabelKey", () => {
     expect(statusLabelKey(entry({ slot: 2, status: "banned" }))).toBe("maps.status.banned");
     // A slot map that has been played really was played.
     expect(statusLabelKey(entry({ slot: 2, status: "played" }))).toBe("maps.status.played");
+  });
+});
+
+describe("slotReserveMaps", () => {
+  it("re-keys the wire's string positions to the numbers the room reads slots by", () => {
+    // The column is JSON, so the snapshot arrives string-keyed while every slot
+    // number in the room — `pool[].slot`, `current_slot`, a group's `slot` — is a
+    // number. `Map.get` is strict, so leaving the keys as strings would leave
+    // every lookup undefined and the label silently absent on every slot.
+    const reserves = slotReserveMaps(session({ slot_reserves: { "2": 84, "9": 26 } }));
+
+    expect([...reserves.keys()]).toEqual([2, 9]);
+    expect(reserves.get(2)).toBe(84);
+    expect(reserves.get(9)).toBe(26);
+  });
+
+  it("omits a slot the snapshot never named rather than inventing an entry", () => {
+    // Positions are gapped and a slot with no reserve is absent, not null, so 5
+    // is missing for both reasons at once — and 3 was never a position at all.
+    const reserves = slotReserveMaps(session({ slot_reserves: { "2": 84, "9": 26 } }));
+
+    expect(reserves.has(5)).toBe(false);
+    expect(reserves.has(3)).toBe(false);
+    expect(reserves.size).toBe(2);
+  });
+
+  it("is empty for a flat session and for a slot config that named no reserve", () => {
+    // Null and `{}` are different facts on the wire — "no slots at all" versus
+    // "slots that named nothing" — but the room draws no label for either.
+    expect(slotReserveMaps(session({ slot_reserves: null })).size).toBe(0);
+    expect(slotReserveMaps(session({ slot_reserves: {} })).size).toBe(0);
+  });
+
+  it("is empty when there is no session", () => {
+    // The unavailable state sends `session: null`, and the grid still renders.
+    expect(slotReserveMaps(null).size).toBe(0);
   });
 });

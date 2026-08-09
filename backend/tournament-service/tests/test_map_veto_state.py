@@ -62,7 +62,16 @@ def make_veto_session(
     *,
     status: MapVetoSessionStatus = MapVetoSessionStatus.ACTIVE,
     first_side: MapPickSide = MapPickSide.HOME,
+    slot_reserves_json: dict | None = None,
+    config_reserves: dict[int, int] | None = None,
 ) -> SimpleNamespace:
+    """A veto session row.
+
+    ``config_reserves`` stands in for the live ``MapVetoConfig`` the session was
+    built from, mapping position to reserve map id. It exists so a test can make
+    the config DISAGREE with the snapshot: ``config_id`` is a real relationship,
+    so reading reserves off it is one attribute away and would look harmless.
+    """
     started = datetime(2026, 7, 18, 12, 0, tzinfo=UTC)
     return SimpleNamespace(
         id=1,
@@ -75,6 +84,13 @@ def make_veto_session(
         started_at=started,
         current_step_started_at=started,
         resolved_sequence_json=sequence,
+        slot_reserves_json=slot_reserves_json,
+        config=SimpleNamespace(
+            slots=[
+                SimpleNamespace(position=position, reserve_map_id=map_id)
+                for position, map_id in sorted((config_reserves or {}).items())
+            ]
+        ),
     )
 
 
@@ -260,6 +276,42 @@ class SerializationTests(TestCase):
         self.assertEqual(MapVetoSessionStatus.ACTIVE, data["status"])
         self.assertEqual(1, data["home_seed"])
         self.assertEqual(4, data["away_seed"])
+
+    def test_veto_session_carries_the_reserve_snapshot_out_verbatim(self) -> None:
+        # The room's reserve label reads this and nothing else (Decision 18), so
+        # the serializer must not re-key, sort or fill it: the keys stay the
+        # ``position`` strings the column holds, gaps and all, and a slot with no
+        # reserve stays absent rather than becoming an explicit null the client
+        # would have to filter. Positions 2/5/9 are gapped and never equal a map
+        # id here, so an index-for-position slip cannot pass.
+        veto = make_veto_session(["ban_home", "decider"], slot_reserves_json={"2": 41, "9": 33})
+
+        data = serialize_veto_session(veto)
+
+        self.assertEqual({"2": 41, "9": 33}, data["slot_reserves"])
+        self.assertNotIn("5", data["slot_reserves"])
+
+    def test_veto_session_reports_a_flat_pool_as_a_null_snapshot(self) -> None:
+        # NULL, not ``{}``: the client distinguishes "no slots at all" from "slots
+        # that named no reserve" the same way ``_require_flat_veto`` does.
+        data = serialize_veto_session(make_veto_session(["ban_home", "pick_away"]))
+
+        self.assertIsNone(data["slot_reserves"])
+
+    def test_veto_session_prefers_the_snapshot_over_a_config_that_has_since_changed(self) -> None:
+        # Decision 18: the session runs off its own snapshot, and the config it
+        # was built from stays editable underneath it. The two disagree on every
+        # slot here — including one the config added and one it dropped — so
+        # reading the relationship instead cannot coincide with the right answer.
+        veto = make_veto_session(
+            ["ban_home", "decider"],
+            slot_reserves_json={"2": 41, "9": 33},
+            config_reserves={2: 44, 5: 21, 9: 22},
+        )
+
+        data = serialize_veto_session(veto)
+
+        self.assertEqual({"2": 41, "9": 33}, data["slot_reserves"])
 
     def test_state_includes_sequence_and_session(self) -> None:
         veto = make_veto_session(["ban_home", "pick_away"])

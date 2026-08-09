@@ -182,6 +182,20 @@ export interface EncounterVetoSession {
   turn_timer_seconds: number | null;
   started_at: string | null;
   current_step_started_at: string | null;
+  /**
+   * The reserve map each in-play slot named, snapshotted when the session was
+   * created and never re-read from the config, so a running veto keeps the
+   * reserves it started with.
+   *
+   * Keyed by the slot's `position` **as a string** — the backing column is JSON,
+   * so the server stringifies the key to survive the round trip — while slot
+   * numbers everywhere else in the room are numbers. `slotReserveMaps` is where
+   * that boundary is crossed.
+   *
+   * Null in `"pool"` mode. A slot that named no reserve is absent rather than
+   * mapped to null, so a lookup missing is the normal case, not an anomaly.
+   */
+  slot_reserves: Record<string, number> | null;
 }
 
 /**
@@ -261,8 +275,10 @@ export type FirstBanRotation = "fixed" | "alternate";
 /** One slot as the config serializer returns it. */
 export interface MapVetoConfigSlot {
   /**
-   * 1-based play order. Carried even though the upsert derives it: pool entries
-   * and the session's reserve snapshot are both keyed by this value.
+   * 1-based play order. Carried even though the upsert derives it: the editor
+   * sorts the stored slots by this rather than trusting the array's order, and
+   * it is the same ordinal `EncounterMapPoolEntry.slot` carries, so the config
+   * and the room name a slot identically.
    */
   position: number;
   /** Candidate map ids, in the organizer's authored order. */

@@ -47,13 +47,11 @@ VETO_SEQUENCE_TOKENS = frozenset({"ban_first", "ban_second", "pick_first", "pick
 
 # ``session: null`` reasons on the state read path.
 #
-# OWED: the frontend's ``VetoUnavailableReason`` union
-# (``frontend/src/types/tournament.types.ts``) still lists only
-# ``not_configured`` and ``teams_unknown``, so the two slot reasons below reach
-# ``VetoRoom.tsx`` with no copy of their own and fall through to "not
-# configured / check back later" — false for a config that exists but disagrees
-# with the bracket. Widening the union and giving each cause its own copy is a
-# later task (design §4.7); until it lands the room under-reports these two.
+# The frontend mirrors this set by hand as ``VetoUnavailableReason``
+# (``frontend/src/types/tournament.types.ts``) and keys ``VETO_UNAVAILABLE_COPY``
+# off it as a total ``Record``. Adding a reason here therefore needs the union
+# widened there too; once it is, the ``Record`` forces the new cause its own
+# title and hint instead of letting it borrow another's.
 REASON_TEAMS_UNKNOWN = "teams_unknown"
 REASON_NOT_CONFIGURED = "not_configured"
 REASON_SLOT_COUNT_MISMATCH = "slot_count_mismatch"
@@ -307,8 +305,9 @@ def slot_reserves(rows: Sequence[models.MapVetoConfigSlot]) -> dict[str, int]:
     Keys are the ``position`` values **as strings**. The column is JSON, so an
     int-keyed dict would be written as ``{"3": 99}`` and read back string-keyed:
     the in-memory session would disagree with every later read of the same row,
-    and a consumer indexing by slot number would find the label on one side of
-    the round trip only. Stringifying here makes the two identical.
+    and the room's reserve label — which looks this snapshot up by slot number —
+    would find it on one side of the round trip only. Stringifying here makes
+    the two identical.
 
     Slots without a reserve are omitted rather than mapped to null, so the dict
     reads directly as "which slots have a label".

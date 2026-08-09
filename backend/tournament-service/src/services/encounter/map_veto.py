@@ -148,9 +148,13 @@ def serialize_veto_config(config: models.MapVetoConfig) -> dict[str, Any]:
         "map_ids": [entry.map_id for entry in config.map_pool],
         "slots": [
             {
-                # Carried even though the upsert derives it: the room's pool
-                # entries and the session's reserve snapshot are both keyed by
-                # this value, so without it a reader cannot correlate the two.
+                # Carried even though the upsert derives it: the editor sorts the
+                # stored slots by this rather than trusting the array's order
+                # (``TournamentMapVetoTab.tsx``), and it is the same 1-based
+                # ordinal ``encounter_map_pool.slot`` carries, so the config and
+                # the room name a slot identically. Nothing correlates it with
+                # the session's reserve snapshot: the room reads that snapshot
+                # off the session and never loads a config at all.
                 "position": slot.position,
                 "candidates": [entry.map_id for entry in slot.maps],
                 "reserve_map_id": slot.reserve_map_id,
@@ -184,6 +188,13 @@ def serialize_veto_session(veto: models.EncounterVetoSession) -> dict[str, Any]:
         "home_seed": veto.home_seed,
         "away_seed": veto.away_seed,
         "turn_timer_seconds": veto.turn_timer_seconds,
+        # The room's only route to the reserve labels: ``build_map_pool_state``
+        # receives the session and never a config, which is why the snapshot
+        # exists (Decision 18). Passed through unchanged -- string-keyed by slot
+        # ``position``, gaps and all, with reserve-less slots absent -- so the
+        # client reads exactly what the session was created with and a later
+        # config edit cannot move a running veto's labels.
+        "slot_reserves": veto.slot_reserves_json,
         "started_at": veto.started_at.isoformat() if veto.started_at else None,
         "current_step_started_at": (veto.current_step_started_at.isoformat() if veto.current_step_started_at else None),
     }

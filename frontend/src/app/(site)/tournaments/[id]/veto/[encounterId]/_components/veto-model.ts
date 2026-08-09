@@ -1,6 +1,7 @@
 import type {
   EncounterMapPoolEntry,
   EncounterMapPoolState,
+  EncounterVetoSession,
   MapPoolEntryStatus,
   MapVetoAction,
   VetoUnavailableReason,
@@ -188,6 +189,27 @@ export type VetoSlotState = "current" | "resolved" | "upcoming";
 export function slotState(group: VetoPoolSlot, currentSlot: number | null): VetoSlotState {
   if (group.slot === currentSlot) return "current";
   return group.entries.some((entry) => entry.status === "available") ? "upcoming" : "resolved";
+}
+
+/**
+ * The session's reserve snapshot as a lookup by slot position.
+ *
+ * `slot_reserves` arrives **string**-keyed — the backing column is JSON, so the
+ * server stringifies each slot `position` to keep the in-memory session and
+ * every later read of the row identical — while every slot number the room
+ * handles (`VetoPoolSlot.slot`, `current_slot`, `pool[].slot`) is a number. The
+ * conversion happens here, once, so no caller has to remember which side of
+ * that boundary it is on; a `Map` rather than the raw object because `get` is
+ * strict about it and an object index would coerce the two together silently.
+ *
+ * Empty for a flat session (null snapshot), for a slot config that named no
+ * reserve (`{}`) and for no session at all. Slots without a reserve are absent
+ * from the snapshot, so a miss is the normal case and the caller draws nothing.
+ */
+export function slotReserveMaps(session: EncounterVetoSession | null): Map<number, number> {
+  return new Map(
+    Object.entries(session?.slot_reserves ?? {}).map(([position, mapId]) => [Number(position), mapId]),
+  );
 }
 
 /**

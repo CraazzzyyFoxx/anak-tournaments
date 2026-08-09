@@ -297,8 +297,9 @@ class EncounterVetoSession(db.TimeStampIntegerMixin):
     # Step tokens with first/second already mapped to home/away
     # (e.g. ["ban_home", "ban_away", "pick_home", "pick_away", "decider"]).
     resolved_sequence_json: Mapped[list] = mapped_column(JSON, nullable=False)
-    # Snapshot of the config's slot reserves, ``{slot_position: map_id}``, so the
-    # room can label them without re-reading (or being mutated by) the config.
+    # Snapshot of the config's slot reserves, ``{"<slot position>": map_id}`` —
+    # string-keyed because the column is JSON — so the room can label them
+    # without re-reading (or being mutated by) the config.
     slot_reserves_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     turn_timer_seconds: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     status: Mapped[enums.MapVetoSessionStatus] = mapped_column(
