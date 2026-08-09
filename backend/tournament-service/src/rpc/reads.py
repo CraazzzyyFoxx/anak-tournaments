@@ -292,7 +292,13 @@ def register(broker: Any, logger: Any) -> None:
             stmt = (
                 sa.select(models.MapVetoConfig)
                 .where(models.MapVetoConfig.tournament_id == tournament_id)
-                .options(selectinload(models.MapVetoConfig.map_pool))
+                # ``serialize_veto_config`` reads the slot chain, and both
+                # relationships are lazy: a miss here is a ``MissingGreenlet``
+                # 500 on the first config that has slots.
+                .options(
+                    selectinload(models.MapVetoConfig.map_pool),
+                    selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps),
+                )
                 .order_by(
                     models.MapVetoConfig.stage_id.asc().nulls_first(),
                     models.MapVetoConfig.round.asc().nulls_first(),

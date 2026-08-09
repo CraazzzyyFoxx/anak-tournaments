@@ -108,16 +108,43 @@ def in_current_slot(entry: models.EncounterMapPool, active_slot: int | None) -> 
 
 
 def serialize_veto_config(config: models.MapVetoConfig) -> dict[str, Any]:
+    """Wire shape of one veto config, for the admin editor and the public page.
+
+    Both pool shapes are always present: a flat config reports ``slots: []`` and
+    a slot config reports ``map_ids: []`` and ``sequence: []``, because the
+    upsert refuses any other combination and nothing mirrors slot candidates
+    into the flat pool (design Decision 19, withdrawn at arbitration).
+
+    ``config.slots`` and each slot's ``maps`` must already be loaded. Both
+    relationships are deliberately lazy, so every caller eager-loads the
+    two-level chain: a miss here is a ``MissingGreenlet`` 500 on the first
+    attribute touch, not a wrong answer.
+    """
     return {
         "id": config.id,
         "tournament_id": config.tournament_id,
         "stage_id": config.stage_id,
         "round": config.round,
+        "mode": config.mode,
         "preset": config.preset,
         "first_pick_rule": config.first_pick_rule,
+        "first_ban_rotation": config.first_ban_rotation,
         "turn_timer_seconds": config.turn_timer_seconds,
         "sequence": list(config.veto_sequence_json or []),
         "map_ids": [entry.map_id for entry in config.map_pool],
+        "slots": [
+            {
+                # Carried even though the upsert derives it: the room's pool
+                # entries and the session's reserve snapshot are both keyed by
+                # this value, so without it a reader cannot correlate the two.
+                "position": slot.position,
+                "candidates": [entry.map_id for entry in slot.maps],
+                "reserve_map_id": slot.reserve_map_id,
+            }
+            # Play order, not row order -- ``ordered_slots`` is where that sort
+            # is pinned for every consumer.
+            for slot in veto_session_service.ordered_slots(config.slots)
+        ],
     }
 
 

@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
+from shared.core.enums import FirstBanRotation, MapVetoMode
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from src import models
@@ -31,15 +32,38 @@ from src.services.encounter import map_veto as map_veto_service
 from src.services.encounter import veto_session as veto_session_service
 
 
+class VetoConfigSlotUpsert(BaseModel):
+    """One slot of a slot-mode upsert body.
+
+    Deliberately carries no ``position``: the list order IS the play order and
+    positions are derived from it, so a payload cannot describe a gap, a
+    duplicate or a zero that ``uq_map_veto_config_slot_position`` and
+    ``ck_map_veto_config_slot_position_positive`` would then have to reject.
+    """
+
+    candidates: list[int]
+    reserve_map_id: int | None = None
+
+
 class VetoConfigUpsert(BaseModel):
     """Body for the veto-config upsert route (PUT .../veto-configs)."""
 
     stage_id: int | None = None
     round: int | None = None
+    # Required, no default (design Decision 17). This route replaces the pool
+    # wholesale, so a default would let a stale admin tab that predates slot
+    # mode save a slot config as flat and drop its slots with no signal.
+    mode: MapVetoMode
+    # Slot mode only; inert in flat mode, where nothing reads it. Defaulted
+    # rather than required because the column's server_default is the same
+    # value and no client that omits it can be editing an existing slot config:
+    # writing one requires sending ``mode`` explicitly, which no stale tab does.
+    first_ban_rotation: FirstBanRotation = FirstBanRotation.FIXED
     preset: str | None = Field(default=None, max_length=32)
     turn_timer_seconds: int | None = Field(default=None, ge=1)
     sequence: list[str]
     map_ids: list[int]
+    slots: list[VetoConfigSlotUpsert] = Field(default_factory=list)
 
 
 class AdminVetoAct(BaseModel):
@@ -51,6 +75,33 @@ class AdminVetoAct(BaseModel):
 
 
 _serialize_config = map_veto_service.serialize_veto_config
+
+
+#: Loader chain every ``serialize_veto_config`` caller needs. ``slots`` and its
+#: ``maps`` are both deliberately lazy relationships, so a miss is a
+#: ``MissingGreenlet`` 500 rather than a wrong answer.
+_CONFIG_LOAD = (
+    selectinload(models.MapVetoConfig.map_pool),
+    selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps),
+)
+
+
+def _reject_other_modes_field(value: list, name: str, *, mode: MapVetoMode) -> None:
+    """422 a field that belongs to the pool shape this payload did not pick.
+
+    Ignoring it instead would be the hazard Decision 17 exists to prevent, one
+    field over: a stale tab still holding the other shape's data would save with
+    that data discarded and nothing to tell the organizer it was lost.
+
+    The message names the empty list rather than saying only "must be empty",
+    because omitting the key and sending ``[]`` arrive here identically and a
+    client author otherwise has no way to know which one this route wants.
+    """
+    if value:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{name} must be empty in {mode.value} mode; send {name}: []",
+        )
 
 
 async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
@@ -71,7 +122,7 @@ def register(broker: Any, logger: Any) -> None:
             result = await session.execute(
                 select(models.MapVetoConfig)
                 .where(models.MapVetoConfig.tournament_id == tournament_id)
-                .options(selectinload(models.MapVetoConfig.map_pool))
+                .options(*_CONFIG_LOAD)
                 .order_by(
                     models.MapVetoConfig.stage_id.asc().nulls_first(),
                     models.MapVetoConfig.round.asc().nulls_first(),
@@ -91,7 +142,26 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = VetoConfigUpsert.model_validate(_payload(data))
 
-            veto_session_service.validate_veto_config(body.sequence, body.map_ids)
+            if body.mode == MapVetoMode.SLOTS:
+                _reject_other_modes_field(body.map_ids, "map_ids", mode=body.mode)
+                _reject_other_modes_field(body.sequence, "sequence", mode=body.mode)
+                if body.preset == veto_session_service.CUSTOM_PRESET:
+                    # ``ck_map_veto_config_slots_not_custom`` would refuse this
+                    # row, and an IntegrityError surfaces as an opaque 500. The
+                    # combination is contradictory anyway: a slot config's
+                    # sequence is derived from its slots, so there is no
+                    # hand-authored order for ``custom`` to name.
+                    raise HTTPException(
+                        status_code=422,
+                        detail="preset 'custom' is not valid in slots mode; the slots derive the sequence",
+                    )
+                veto_session_service.validate_slot_config(
+                    [slot.candidates for slot in body.slots],
+                    reserves=[slot.reserve_map_id for slot in body.slots],
+                )
+            else:
+                _reject_other_modes_field(body.slots, "slots", mode=body.mode)
+                veto_session_service.validate_veto_config(body.sequence, body.map_ids)
             if body.round is not None and body.stage_id is None:
                 raise HTTPException(status_code=422, detail="round requires stage_id")
             if body.stage_id is not None:
@@ -111,7 +181,7 @@ def register(broker: Any, logger: Any) -> None:
             existing_query = (
                 select(models.MapVetoConfig)
                 .where(models.MapVetoConfig.tournament_id == tournament_id)
-                .options(selectinload(models.MapVetoConfig.map_pool))
+                .options(*_CONFIG_LOAD)
             )
             if body.stage_id is None:
                 existing_query = existing_query.where(models.MapVetoConfig.stage_id.is_(None))
@@ -128,18 +198,48 @@ def register(broker: Any, logger: Any) -> None:
                     tournament_id=tournament_id,
                     stage_id=body.stage_id,
                     round=body.round,
+                    mode=body.mode,
+                    first_ban_rotation=body.first_ban_rotation,
                     preset=body.preset,
                     turn_timer_seconds=body.turn_timer_seconds,
                     veto_sequence_json=body.sequence,
                 )
                 session.add(config)
             else:
+                config.mode = body.mode
+                config.first_ban_rotation = body.first_ban_rotation
                 config.preset = body.preset
                 config.turn_timer_seconds = body.turn_timer_seconds
                 config.veto_sequence_json = body.sequence
-            # Full pool replace preserving order as sort_order (delete-orphan cascade).
+            # Both shapes are replaced on every upsert, whichever mode won. The
+            # guards above force the losing one's payload to be empty, so these
+            # two assignments are also what clears the other mode's rows on a
+            # conversion -- in this transaction, via the delete-orphan cascade.
+            #
+            # Wholesale, not reconciled: nothing outside a slot's own children
+            # references its id (``encounter_map_pool.slot`` carries the
+            # ``position`` VALUE and ``EncounterVetoSession`` snapshots the
+            # reserves), so recreating the rows costs new ids and nothing else.
             config.map_pool = [
                 models.MapVetoConfigMap(map_id=map_id, sort_order=idx) for idx, map_id in enumerate(body.map_ids)
+            ]
+            config.slots = [
+                models.MapVetoConfigSlot(
+                    # 1-based and contiguous, in payload order:
+                    # ``validate_slot_config`` reports these as ordinals,
+                    # ``slot_reserves`` keys its snapshot by them, and a 0 would
+                    # violate ``ck_map_veto_config_slot_position_positive``.
+                    position=index + 1,
+                    reserve_map_id=slot.reserve_map_id,
+                    # Payload order is the candidate order the room shows and the
+                    # order pool rows are stamped in; ``sort_order`` is what
+                    # carries it back out through ``MapVetoConfigSlot.maps``.
+                    maps=[
+                        models.MapVetoConfigSlotMap(map_id=map_id, sort_order=order)
+                        for order, map_id in enumerate(slot.candidates)
+                    ],
+                )
+                for index, slot in enumerate(body.slots)
             ]
             await session.commit()
             await session.refresh(config, ["map_pool"])
