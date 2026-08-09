@@ -29,7 +29,7 @@ const StatCell = ({
   highlight?: string;
   title?: string;
 }) => (
-  <div className="flex flex-col gap-1 rounded-[8px] border border-[color:var(--aqt-border)] px-3 py-2.5">
+  <div className="flex min-w-[140px] flex-1 flex-col gap-1 rounded-[8px] border border-[color:var(--aqt-border)] px-3 py-2.5">
     <span
       className="aqt-mono text-[10.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]"
       title={title}
@@ -55,7 +55,6 @@ interface FinishSegment {
 
 const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
   const t = await getTranslations();
-  const winrate = profile.maps_total > 0 ? (profile.maps_won / profile.maps_total) * 100 : null;
   const closeness = profile.avg_closeness === null ? null : profile.avg_closeness * 100;
 
   // Finishes distribution from real per-event placements (same source the
@@ -95,16 +94,21 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
     highlight?: string;
     title?: string;
   }
+  // Deliberately NOT the hero's numbers again. The header already leads with
+  // tournaments, map winrate, maps won/total and average placement; repeating
+  // them here padded the panel to eight cells in a three-column grid (one
+  // permanently empty slot) and printed "42 events" directly beside
+  // "Tournaments 26". What the header cannot show is *depth* — groups versus
+  // playoffs, how close the games were, and how many were actually won.
   const cells: Cell[] = [
-    { key: "tournaments", label: t("users.overview.career.tournaments"), value: `${profile.tournaments_count}` },
     {
       key: "won",
       label: t("users.overview.career.tournamentsWon"),
       value: `${profile.tournaments_won}`,
       highlight: profile.tournaments_won > 0 ? "var(--aqt-amber)" : undefined
     },
-    { key: "winrate", label: t("users.overview.career.winrate"), value: fmt(winrate, 2, "%") },
-    { key: "maps", label: t("users.overview.career.maps"), value: `${profile.maps_won} / ${profile.maps_total}` },
+    { key: "avgGroup", label: t("users.overview.career.avgGroupPlace"), value: fmt(profile.avg_group_placement, 0) },
+    { key: "avgPlayoff", label: t("users.overview.career.avgPlayoffPlace"), value: fmt(profile.avg_playoff_placement) },
     ...(closeness !== null
       ? [
           {
@@ -114,10 +118,7 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
             title: t("users.overview.career.closenessGlossary")
           }
         ]
-      : []),
-    { key: "avgPlacement", label: t("users.overview.career.avgPlacement"), value: fmt(profile.avg_placement) },
-    { key: "avgPlayoff", label: t("users.overview.career.avgPlayoffPlace"), value: fmt(profile.avg_playoff_placement) },
-    { key: "avgGroup", label: t("users.overview.career.avgGroupPlace"), value: fmt(profile.avg_group_placement, 0) }
+      : [])
   ];
 
   return (
@@ -129,7 +130,7 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
               {t("users.overview.career.finishes")}
             </span>
             <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
-              {t("users.overview.career.events", { count: totalPlaced })}
+              {t("users.overview.career.placements", { count: totalPlaced })}
             </span>
           </div>
           <div className="flex h-[8px] w-full overflow-hidden rounded-full border border-[color:var(--aqt-border)]" aria-hidden>
@@ -153,8 +154,10 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
         </div>
       ) : null}
 
+      {/* Cells flex-grow instead of sitting in a fixed 3-up grid, so the last row
+          is always full whatever the cell count resolves to. */}
       <div
-        className={`grid grid-cols-2 gap-2.5 px-[18px] pt-3.5 sm:grid-cols-3 ${showVerdict ? "pb-1" : "pb-4"} ${
+        className={`flex flex-wrap gap-2.5 px-[18px] pt-3.5 ${showVerdict ? "pb-1" : "pb-4"} ${
           totalPlaced > 0 ? "border-t border-[color:var(--aqt-border)]" : ""
         }`}
       >

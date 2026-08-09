@@ -2130,7 +2130,8 @@
           "resolved": "определён",
           "upcoming": "откроется позже",
           "locked": "Слот {n} откроется, когда решатся предыдущие слоты.",
-          "inPlayCount": "{count, plural, one {# слот в игре} few {# слота в игре} many {# слотов в игре} other {# слота в игре}}"
+          "inPlayCount": "{count, plural, one {# слот в игре} few {# слота в игре} many {# слотов в игре} other {# слота в игре}}",
+          "reserve": "Резерв по регламенту при ничьей: {map}"
         }
       }
     },
@@ -2226,17 +2227,13 @@
       "loss": "L",
       "career": {
         "title": "Карьера",
-        "tournaments": "Турниры",
         "tournamentsWon": "Побед на турнирах",
-        "winrate": "Винрейт",
-        "maps": "Карты",
         "closeness": "Близость",
         "closenessGlossary": "Насколько равными были ваши матчи в среднем — выше значит более близкая игра.",
-        "avgPlacement": "Среднее место",
         "avgPlayoffPlace": "Среднее место в плей-офф",
         "avgGroupPlace": "Среднее место в группе",
         "finishes": "Распределение мест",
-        "events": "{count, plural, one {# ивент} few {# ивента} many {# ивентов} other {# ивента}}",
+        "placements": "{count, plural, one {# место} few {# места} many {# мест} other {# места}}",
         "finish": {
           "first": "1-е",
           "second": "2-е",
@@ -2244,14 +2241,14 @@
           "topHalf": "Верхняя половина",
           "bottom": "Нижняя половина"
         },
-        "verdictPodium": "Подиум в {pct}% случаев ({count, plural, one {# ивент} few {# ивента} many {# ивентов} other {# ивента}})."
+        "verdictPodium": "Подиум в {pct}% случаев ({count, plural, one {# зафиксированное место} few {# зафиксированных места} many {# зафиксированных мест} other {# зафиксированных места}})."
       },
       "mostPlayed": {
         "title": "Самые играемые герои"
       },
       "topHeroes": {
         "title": "Топ героев",
-        "played": "сыграно {count}",
+        "playedByTime": "сыграно {count} · топ по времени",
         "lowSample": "мало игр",
         "lowSampleTitle": "Скрыто при менее чем {games} играх",
         "vsAvgTitle": "Ваш % побед против среднего по всем игрокам на этом герое",
@@ -2259,6 +2256,7 @@
           "hero": "Герой",
           "role": "Роль",
           "games": "Игр",
+          "time": "Время",
           "winrate": "% побед",
           "kda": "KDA",
           "dmg10": "Урон/10",
@@ -2297,11 +2295,6 @@
         "subtitle": "{maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}} · {tournaments, plural, one {# турнир} few {# турнира} many {# турниров} other {# турнира}}",
         "main": "Основная",
         "ofPool": "от пула",
-        "short": {
-          "tank": "Т",
-          "damage": "Дамаг",
-          "support": "Сап"
-        },
         "signatureTitle": "Коронный герой по ролям",
         "games": "{count, plural, one {# игра} few {# игры} many {# игр} other {# игры}}",
         "kda": "KDA {value}"
@@ -2311,7 +2304,7 @@
         "dialogSubtitle": "{count, plural, one {# уникальный тиммейт} few {# уникальных тиммейта} many {# уникальных тиммейтов} other {# уникальных тиммейта}} · {maps, plural, one {# карта вместе} few {# карты вместе} many {# карт вместе} other {# карты вместе}}",
         "you": "Вы",
         "edgesHint": "Толщина связей — по числу совместных турниров",
-        "wrHint": "полоса — винрейт вместе",
+        "wrHint": "Полоса — винрейт вместе",
         "playedMaps": "{count}× · {maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
         "footer": "{count, plural, one {# уникальный} few {# уникальных} many {# уникальных} other {# уникальных}} · {maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
         "searchPlaceholder": "Поиск тиммейтов…",
@@ -2329,7 +2322,7 @@
       },
       "leaderboard": {
         "open": "Открыть таблицу лобби · {stat}",
-        "vsLeader": "полоса = относительно лидера",
+        "vsLeader": "Полоса — относительно лидера",
         "lowerIsBetter": "меньше — лучше",
         "yourRank": "Твой ранг: #{rank} из {total} · топ {pct}%",
         "you": "ты"
@@ -2341,11 +2334,11 @@
         "playtimeNoHours": "{minutes}м в игре",
         "mapWinrate": "винрейт по картам",
         "lobbyRank": "Ранг в лобби",
-        "percentileHint": "полоса = перцентиль · полнее — лучше",
+        "percentileHint": "Полоса — ранг в лобби · полнее лучше",
         "rankTop": "Топ {pct}%",
         "players": "{count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}}",
         "mapResults": "Результаты карт",
-        "mapResultsAggregate": "агрегат · порядок карт не сохранён",
+        "mapResultsAggregate": "Суммарный итог · порядок карт не сохранён",
         "mapWon": "Карта выиграна",
         "mapLost": "Карта проиграна",
         "stat": {

@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { ArrowRight, Swords } from "lucide-react";
 import Link from "next/link";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { tournamentTag } from "@/app/(site)/users/components/shared/list-utils";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
@@ -62,7 +63,7 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
         );
         const stage = getStageLabel(enc);
         const tour = enc.tournament;
-        const tournamentLabel = tour ? tour.name.slice(0, 3) : "T?";
+        const tournamentLabel = tour ? tournamentTag(tour.name) : null;
         const score = enc.score;
         const scoreKind = score.home === score.away ? "draw" : (isUserHome ? score.home > score.away : score.away > score.home) ? "win" : "loss";
         const scoreStr = `${score.home} - ${score.away}`;
@@ -75,7 +76,6 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
           if (userScore < oppScore) return "loss";
           return "draw";
         });
-        const stageShort = stage ? stage.split(" ")[0] : "";
         const subLabel = stage || `BO${enc.best_of || "?"}`;
         const mapCount = enc.matches?.length || 0;
 
@@ -98,8 +98,11 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
             href={`/encounters/${enc.id}`}
             className="grid cursor-pointer grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)] sm:grid-cols-[auto_1fr_auto_auto_auto_auto]"
           >
-            <span className="aqt-mono min-w-[42px] text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
-              {tournamentLabel}{stageShort ? `·${stageShort.charAt(0)}` : ""}
+            <span
+              className="aqt-mono min-w-[42px] text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]"
+              title={tour?.name}
+            >
+              {tournamentLabel}
             </span>
             <div className="flex flex-col gap-0.5 leading-tight">
               <div className="text-[14px] font-semibold text-[color:var(--aqt-fg)]">

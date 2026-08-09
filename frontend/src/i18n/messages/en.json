@@ -2130,7 +2130,8 @@
           "resolved": "resolved",
           "upcoming": "opens later",
           "locked": "Slot {n} opens once the earlier slots are decided.",
-          "inPlayCount": "{count, plural, one {# slot in play} other {# slots in play}}"
+          "inPlayCount": "{count, plural, one {# slot in play} other {# slots in play}}",
+          "reserve": "Regulation reserve on a draw: {map}"
         }
       }
     },
@@ -2226,17 +2227,13 @@
       "loss": "L",
       "career": {
         "title": "Career",
-        "tournaments": "Tournaments",
         "tournamentsWon": "Tournaments won",
-        "winrate": "Winrate",
-        "maps": "Maps",
         "closeness": "Closeness",
         "closenessGlossary": "How competitive your matches were on average — higher means tighter games.",
-        "avgPlacement": "Avg placement",
         "avgPlayoffPlace": "Avg playoff place",
         "avgGroupPlace": "Avg group place",
         "finishes": "Finishes",
-        "events": "{count, plural, one {# event} other {# events}}",
+        "placements": "{count, plural, one {# placement} other {# placements}}",
         "finish": {
           "first": "1st",
           "second": "2nd",
@@ -2244,14 +2241,14 @@
           "topHalf": "Top half",
           "bottom": "Bottom"
         },
-        "verdictPodium": "Podium finish in {pct}% of {count, plural, one {# event} other {# events}}."
+        "verdictPodium": "Podium in {pct}% of {count, plural, one {# recorded placement} other {# recorded placements}}."
       },
       "mostPlayed": {
         "title": "Most played heroes"
       },
       "topHeroes": {
         "title": "Top heroes",
-        "played": "{count, plural, one {# played} other {# played}}",
+        "playedByTime": "{count, plural, one {# played} other {# played}} · top by playtime",
         "lowSample": "low sample",
         "lowSampleTitle": "Hidden under {games} games",
         "vsAvgTitle": "Your win% vs the global average on this hero",
@@ -2259,6 +2256,7 @@
           "hero": "Hero",
           "role": "Role",
           "games": "Games",
+          "time": "Time",
           "winrate": "Win%",
           "kda": "KDA",
           "dmg10": "Dmg/10",
@@ -2297,11 +2295,6 @@
         "subtitle": "{maps, plural, one {# map} other {# maps}} · {tournaments, plural, one {# tournament} other {# tournaments}}",
         "main": "Main",
         "ofPool": "of pool",
-        "short": {
-          "tank": "T",
-          "damage": "Damage",
-          "support": "Sup"
-        },
         "signatureTitle": "Signature hero per role",
         "games": "{count, plural, one {# game} other {# games}}",
         "kda": "KDA {value}"
@@ -2311,7 +2304,7 @@
         "dialogSubtitle": "{count, plural, one {# unique stack-mate} other {# unique stack-mates}} · {maps, plural, one {# map together} other {# maps together}}",
         "you": "You",
         "edgesHint": "Edges sized by appearances",
-        "wrHint": "bar = win rate together",
+        "wrHint": "Bar = win rate together",
         "playedMaps": "{count}× · {maps, plural, one {# map} other {# maps}}",
         "footer": "{count, plural, one {# unique} other {# unique}} · {maps, plural, one {# map} other {# maps}}",
         "searchPlaceholder": "Search teammates…",
@@ -2329,7 +2322,7 @@
       },
       "leaderboard": {
         "open": "Open lobby leaderboard · {stat}",
-        "vsLeader": "bar = vs leader",
+        "vsLeader": "Bar = vs leader",
         "lowerIsBetter": "lower is better",
         "yourRank": "Your rank: #{rank} of {total} · top {pct}%",
         "you": "you"
@@ -2341,11 +2334,11 @@
         "playtimeNoHours": "{minutes}m playtime",
         "mapWinrate": "map winrate",
         "lobbyRank": "Rank in lobby",
-        "percentileHint": "bar = percentile · fuller is better",
+        "percentileHint": "Bar = rank in lobby · fuller is better",
         "rankTop": "Top {pct}%",
         "players": "{count, plural, one {# player} other {# players}}",
         "mapResults": "Map results",
-        "mapResultsAggregate": "aggregate · map order not recorded",
+        "mapResultsAggregate": "Aggregate result · map order not recorded",
         "mapWon": "Map won",
         "mapLost": "Map lost",
         "stat": {

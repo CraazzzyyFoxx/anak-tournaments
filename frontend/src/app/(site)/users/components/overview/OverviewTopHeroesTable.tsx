@@ -7,7 +7,7 @@ import { UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
-import { formatStatValue, getOverall } from "@/app/(site)/users/components/heroes/utils";
+import { formatSeconds, formatStatValue, getOverall } from "@/app/(site)/users/components/heroes/utils";
 import HeroImage from "@/components/hero/HeroImage";
 import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -71,6 +71,8 @@ interface Row {
   stats: HeroWithUserStats["stats"];
   roleKey: AqtRoleKey | null;
   games: number;
+  /** Total seconds on the hero — this is what the table is ordered by. */
+  playtime: number;
   winPct: number | null;
   kda: number | null;
   dmg10: number | null;
@@ -78,6 +80,10 @@ interface Row {
   vsAvg: number | null;
   lowSample: boolean;
 }
+
+/** Placeholder for a cell with no value. One glyph everywhere: the table used to
+ *  mix an em dash (winrate) with an en dash (vs-avg) in the same row. */
+const EMPTY = "—";
 
 const numHeader = "aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]";
 const textHeader = "aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]";
@@ -102,24 +108,40 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
     .map((h) => ({ h, playtime: getOverall(h, LogStatsName.HeroTimePlayed) }))
     .sort((a, b) => b.playtime - a.playtime)
     .slice(0, limit)
-    .map(({ h }) => {
+    .map(({ h, playtime }) => {
       const winStat = h.stats.find((s) => s.name === LogStatsName.Winrate);
       const winFrac = toFraction(winStat?.avg_10);
       const globalFrac = winStat && winStat.avg_10_all > 0 ? toFraction(winStat.avg_10_all) : null;
       const games = gamesByHero.get(h.hero.id) ?? 0;
+      const lowSample = hasGamesData && games < LOW_SAMPLE_GAMES;
       return {
         id: h.hero.id,
         hero: h.hero,
         stats: h.stats,
         roleKey: normalizeRole(h.hero.type ?? h.hero.role),
         games,
-        winPct: winFrac == null ? null : winFrac * 100,
+        playtime,
+        winPct: lowSample || winFrac == null ? null : winFrac * 100,
         kda: statAvg10(h.stats, LogStatsName.KDA),
         dmg10: statAvg10(h.stats, LogStatsName.HeroDamageDealt),
-        vsAvg: winFrac != null && globalFrac != null ? winFrac - globalFrac : null,
-        lowSample: hasGamesData && games < LOW_SAMPLE_GAMES
+        vsAvg: lowSample || winFrac == null || globalFrac == null ? null : winFrac - globalFrac,
+        lowSample
       };
     });
+
+  // Only render a metric column when at least one row can fill it. The overview
+  // fetches heroes without an explicit stat list, and the backend's default set
+  // omits winrate — which shipped WIN% and VS AVG as two full columns of dashes.
+  // Gating on the data (as the games column already did) keeps the table honest
+  // and self-heals the day those stats start arriving.
+  const columns = {
+    games: hasGamesData,
+    playtime: rows.some((r) => r.playtime > 0),
+    winrate: rows.some((r) => r.winPct != null),
+    kda: rows.some((r) => r.kda != null),
+    dmg10: rows.some((r) => r.dmg10 != null),
+    vsAvg: rows.some((r) => r.vsAvg != null)
+  };
 
   const lowSampleTitle = t("users.overview.topHeroes.lowSampleTitle", { games: LOW_SAMPLE_GAMES });
 
@@ -127,7 +149,7 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
     <CardSurface
       title={t("users.overview.topHeroes.title")}
       icon={<Swords size={15} />}
-      subtitle={t("users.overview.topHeroes.played", { count: heroes.length })}
+      subtitle={t("users.overview.topHeroes.playedByTime", { count: heroes.length })}
       action={
         <Link href={`/users/${userSlug}?tab=heroes`} className="aqt-seeall">
           {t("common.all")} {heroes.length}
@@ -141,11 +163,12 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
             <tr>
               <th className={textHeader}>{t("users.overview.topHeroes.col.hero")}</th>
               <th className={`${textHeader} text-center`}>{t("users.overview.topHeroes.col.role")}</th>
-              {hasGamesData ? <th className={numHeader}>{t("users.overview.topHeroes.col.games")}</th> : null}
-              <th className={numHeader}>{t("users.overview.topHeroes.col.winrate")}</th>
-              <th className={numHeader}>{t("users.overview.topHeroes.col.kda")}</th>
-              <th className={numHeader}>{t("users.overview.topHeroes.col.dmg10")}</th>
-              <th className={numHeader}>{t("users.overview.topHeroes.col.vsAvg")}</th>
+              {columns.games ? <th className={numHeader}>{t("users.overview.topHeroes.col.games")}</th> : null}
+              {columns.playtime ? <th className={numHeader}>{t("users.overview.topHeroes.col.time")}</th> : null}
+              {columns.winrate ? <th className={numHeader}>{t("users.overview.topHeroes.col.winrate")}</th> : null}
+              {columns.kda ? <th className={numHeader}>{t("users.overview.topHeroes.col.kda")}</th> : null}
+              {columns.dmg10 ? <th className={numHeader}>{t("users.overview.topHeroes.col.dmg10")}</th> : null}
+              {columns.vsAvg ? <th className={numHeader}>{t("users.overview.topHeroes.col.vsAvg")}</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -190,52 +213,60 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
                       />
                     </div>
                   </td>
-                  {hasGamesData ? (
-                    <td className={numCell}>{r.games}</td>
+                  {columns.games ? <td className={numCell}>{r.games}</td> : null}
+                  {columns.playtime ? (
+                    <td className={numCell}>{r.playtime > 0 ? formatSeconds(r.playtime) : EMPTY}</td>
                   ) : null}
-                  <td className={numCell}>
-                    {r.lowSample || r.winPct == null ? (
-                      <span title={r.lowSample ? lowSampleTitle : undefined} className="text-[color:var(--aqt-fg-faint)]">
-                        —
-                      </span>
-                    ) : (
-                      <span className="font-bold" style={{ color: winrateColor(r.winPct) }}>
-                        {r.winPct.toFixed(0)}%
-                      </span>
-                    )}
-                  </td>
-                  <td className={`${numCell} font-semibold text-[color:var(--aqt-fg)]`}>
-                    {r.kda == null ? "—" : r.kda.toFixed(2)}
-                  </td>
-                  <td className={numCell}>{r.dmg10 == null ? "—" : formatStatValue("dmg", r.dmg10)}</td>
-                  <td className={numCell}>
-                    {r.lowSample ? (
-                      <span title={lowSampleTitle} className="text-[color:var(--aqt-fg-faint)]">
-                        —
-                      </span>
-                    ) : r.vsAvg == null ? (
-                      <span className="text-[color:var(--aqt-fg-faint)]" title={t("users.overview.topHeroes.vsAvgTitle")}>
-                        –
-                      </span>
-                    ) : (
-                      <span
-                        className="font-bold"
-                        title={t("users.overview.topHeroes.vsAvgTitle")}
-                        style={{
-                          color:
-                            r.vsAvg > 0
-                              ? "var(--aqt-emerald)"
-                              : r.vsAvg < 0
-                                ? "var(--aqt-rose)"
-                                : "var(--aqt-fg-muted)"
-                        }}
-                      >
-                        <span aria-hidden>{r.vsAvg > 0 ? "▲" : r.vsAvg < 0 ? "▼" : "–"}</span>{" "}
-                        <span className="sr-only">{r.vsAvg > 0 ? "+" : r.vsAvg < 0 ? "−" : ""}</span>
-                        {Math.abs(r.vsAvg * 100).toFixed(0)}
-                      </span>
-                    )}
-                  </td>
+                  {columns.winrate ? (
+                    <td className={numCell}>
+                      {r.winPct == null ? (
+                        <span title={r.lowSample ? lowSampleTitle : undefined} className="text-[color:var(--aqt-fg-faint)]">
+                          {EMPTY}
+                        </span>
+                      ) : (
+                        <span className="font-bold" style={{ color: winrateColor(r.winPct) }}>
+                          {r.winPct.toFixed(0)}%
+                        </span>
+                      )}
+                    </td>
+                  ) : null}
+                  {columns.kda ? (
+                    <td className={`${numCell} font-semibold text-[color:var(--aqt-fg)]`}>
+                      {r.kda == null ? EMPTY : r.kda.toFixed(2)}
+                    </td>
+                  ) : null}
+                  {columns.dmg10 ? (
+                    <td className={numCell}>{r.dmg10 == null ? EMPTY : formatStatValue("dmg", r.dmg10)}</td>
+                  ) : null}
+                  {columns.vsAvg ? (
+                    <td className={numCell}>
+                      {r.vsAvg == null ? (
+                        <span
+                          className="text-[color:var(--aqt-fg-faint)]"
+                          title={r.lowSample ? lowSampleTitle : t("users.overview.topHeroes.vsAvgTitle")}
+                        >
+                          {EMPTY}
+                        </span>
+                      ) : (
+                        <span
+                          className="font-bold"
+                          title={t("users.overview.topHeroes.vsAvgTitle")}
+                          style={{
+                            color:
+                              r.vsAvg > 0
+                                ? "var(--aqt-emerald)"
+                                : r.vsAvg < 0
+                                  ? "var(--aqt-rose)"
+                                  : "var(--aqt-fg-muted)"
+                          }}
+                        >
+                          <span aria-hidden>{r.vsAvg > 0 ? "▲" : r.vsAvg < 0 ? "▼" : "–"}</span>{" "}
+                          <span className="sr-only">{r.vsAvg > 0 ? "+" : r.vsAvg < 0 ? "−" : ""}</span>
+                          {Math.abs(r.vsAvg * 100).toFixed(0)}
+                        </span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}

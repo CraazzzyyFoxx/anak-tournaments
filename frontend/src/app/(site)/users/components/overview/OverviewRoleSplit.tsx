@@ -26,12 +26,6 @@ const ROLE_LABEL_KEY: Record<AqtRoleKey, string> = {
   support: "common.roles.support"
 };
 
-const ROLE_SHORT_KEY: Record<AqtRoleKey, string> = {
-  tank: "users.overview.roleSplit.short.tank",
-  damage: "users.overview.roleSplit.short.damage",
-  support: "users.overview.roleSplit.short.support"
-};
-
 const ROLE_COLOR: Record<AqtRoleKey, string> = {
   tank: "var(--aqt-tank)",
   damage: "var(--aqt-damage)",
@@ -168,7 +162,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
             {buckets.map((b) => (
               <span key={b.key} className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--aqt-fg-muted)]">
                 <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: ROLE_COLOR[b.key] }} aria-hidden />
-                {t(ROLE_SHORT_KEY[b.key] as Parameters<typeof t>[0])}
+                {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
                 <span className="aqt-tnum font-bold text-[color:var(--aqt-fg)]">{b.maps}</span>
                 <span className="aqt-mono text-[color:var(--aqt-fg-faint)]">{Math.round(b.share * 100)}%</span>
               </span>
@@ -261,12 +255,17 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
                       {sig.kda != null ? t("users.overview.roleSplit.kda", { value: sig.kda.toFixed(2) }) : "—"}
                     </div>
                   </div>
-                  <div
-                    className="aqt-display aqt-tnum text-[15px] font-bold"
-                    style={{ color: sig.winPct != null ? winrateColor(sig.winPct) : "var(--aqt-fg-muted)" }}
-                  >
-                    {sig.winPct != null ? `${sig.winPct.toFixed(0)}%` : "—"}
-                  </div>
+                  {/* Empty when the hero has no winrate sample: an `auto` track
+                      collapses to nothing, where a placeholder dash printed a
+                      column of three bare em dashes down the card. */}
+                  {sig.winPct != null ? (
+                    <div
+                      className="aqt-display aqt-tnum text-[15px] font-bold"
+                      style={{ color: winrateColor(sig.winPct) }}
+                    >
+                      {sig.winPct.toFixed(0)}%
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
