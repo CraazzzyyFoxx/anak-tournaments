@@ -10,7 +10,10 @@ completes the session.
 
 The state read path (``get_map_pool_state``) lazily ensures the session and
 never 400s on a missing config/pool: it returns ``session: null`` plus a
-``reason`` (``teams_unknown``/``not_configured``) with empty defaults instead.
+``reason`` with empty defaults instead. ``veto_session.py`` owns the reason set
+(``teams_unknown``, ``not_configured``, and the slot-mode ``slot_count_mismatch``
+/ ``slot_underfilled``); this module only forwards whatever it names, so the list
+is not repeated here.
 """
 
 from datetime import UTC, datetime

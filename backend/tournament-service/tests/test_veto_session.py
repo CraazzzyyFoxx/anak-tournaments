@@ -718,65 +718,65 @@ def _config(
     )
 
 
-class SlotReconciliationTests(TestCase):
-    """``best_of`` vs slot count, and the candidate floor, as pure decisions.
+class SlotRefusalTests(TestCase):
+    """The two refusal rules, and which one outranks the other.
 
-    Kept separate from the session tests so the ORDER of the two checks is
-    pinned where it is decided (design Decision 14/21).
+    ``slot_refusal`` no longer truncates: ``_slot_plan`` hands it the in-play
+    counts and the total slot count separately, so "check the floor before
+    truncating" is not expressible here. The ordering is pinned end to end
+    instead, by ``EnsureVetoSessionSlotModeTests`` and ``UnavailableReasonTests``,
+    which go through the real ``_slot_plan``.
     """
 
-    #: Four slots. Positions are non-contiguous and candidate counts are
-    #: unequal, so ``position``, list index and candidate count are three
-    #: different numbers for every slot but the first.
+    #: Candidate counts, unequal and not ascending. Nothing here is a position:
+    #: ``slot_refusal`` never sees one. Position-versus-index confusion is pinned
+    #: by ``SlotsInPlayTests`` and the session tests, which use real slot rows.
     SHAPE = [2, 4, 3, 5]
 
     def test_best_of_equal_to_the_slot_count_is_playable(self) -> None:
-        self.assertIsNone(slot_refusal(self.SHAPE, 4))
+        self.assertIsNone(slot_refusal(self.SHAPE, slot_count=4, best_of=4))
 
-    def test_fewer_maps_than_slots_truncates_rather_than_refusing(self) -> None:
-        self.assertIsNone(slot_refusal(self.SHAPE, 3))
+    def test_fewer_maps_than_slots_is_playable(self) -> None:
+        # Four slots, three played: the in-play counts are the truncated ones.
+        self.assertIsNone(slot_refusal([2, 4, 3], slot_count=4, best_of=3))
 
     def test_more_maps_than_slots_refuses(self) -> None:
         # The bracket wants five maps from four slots; there is nothing to play
         # as the fifth, and inventing one would hand the match a short series
         # nobody chose.
-        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal(self.SHAPE, 5))
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal(self.SHAPE, slot_count=4, best_of=5))
 
     def test_an_underfilled_slot_in_play_refuses(self) -> None:
         # One candidate, not zero: the boundary a ``< 1`` floor would wave
         # through, and the shape a catalogue delete actually leaves behind.
-        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 1, 3, 5], 3))
+        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 1, 3], slot_count=4, best_of=3))
 
     def test_an_empty_slot_in_play_refuses(self) -> None:
-        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 0, 3, 5], 3))
-
-    def test_the_floor_is_checked_after_truncation_not_before(self) -> None:
-        # Slot 4 is out of play at ``best_of=3``, so its single candidate cannot
-        # stall a veto that never reaches it. Checking the floor over all four
-        # slots first would refuse a session that is perfectly playable.
-        self.assertIsNone(slot_refusal([2, 4, 3, 1], 3))
-
-    def test_truncation_keeps_the_first_slots_not_the_last(self) -> None:
-        # Only the LAST slot is underfilled. Truncating from the wrong end keeps
-        # it in play and refuses.
-        self.assertIsNone(slot_refusal([2, 4, 1], 2))
-        # ... and the mirror: only the FIRST slot is underfilled, so keeping the
-        # first two must refuse. A "last two" truncation would pass.
-        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([1, 4, 3], 2))
+        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 0, 3], slot_count=4, best_of=3))
 
     def test_the_bracket_disagreement_outranks_the_floor(self) -> None:
         # Both wrong at once. "Your config has too few slots" is actionable;
         # "slot 2 is underfilled" sends the organizer to the wrong control, and
-        # with no truncation to define it there is no in-play set to report on.
-        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal([2, 1], 4))
+        # with ``best_of`` past the slot count there is no in-play set to report
+        # on.
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal([2, 1], slot_count=2, best_of=4))
 
-    def test_a_degenerate_best_of_plays_every_slot(self) -> None:
-        # Legacy rows carry ``best_of=0``, which says nothing about a config
-        # whose slots describe their own length (matching ``effective_sequence``).
-        # Truncating to zero would create a session with no steps and no pool --
-        # a dead room rather than a refusal.
-        self.assertIsNone(slot_refusal(self.SHAPE, 0))
-        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 4, 3, 1], 0))
+    def test_a_degenerate_best_of_is_playable_when_slots_exist(self) -> None:
+        # Legacy rows carry ``best_of=0``, which says nothing about a config whose
+        # slots describe their own length (matching ``effective_sequence``), so
+        # every slot is in play and the floor still applies to all of them.
+        self.assertIsNone(slot_refusal(self.SHAPE, slot_count=4, best_of=0))
+        self.assertEqual(REASON_SLOT_UNDERFILLED, slot_refusal([2, 4, 3, 1], slot_count=4, best_of=0))
+
+    def test_a_config_with_no_slots_refuses_at_every_best_of(self) -> None:
+        # ``0 > 0`` is False and ``any([])`` is False, so without the explicit
+        # empty guard a legacy ``best_of=0`` against a config whose last slot was
+        # deleted builds a session with an empty sequence, an empty reserve
+        # snapshot and no pool rows -- the dead room ``slots_in_play`` refuses to
+        # truncate into, reached from the other side.
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal([], slot_count=0, best_of=0))
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal([], slot_count=0, best_of=-1))
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, slot_refusal([], slot_count=0, best_of=3))
 
 
 class SlotsInPlayTests(TestCase):
@@ -829,9 +829,16 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
     """Session creation in slot mode: pool rows, reserve snapshot, refusals.
 
     The fixture is deliberately awkward: four slots at positions 1/3/5/8 with
-    candidate counts 2/4/3/5, played at ``best_of=3``. Position, list index,
-    candidate count and ``best_of`` are four different numbers, and the only
-    reserved slots are one in play (position 3) and one out of play (position 8).
+    candidate counts 2/4/3/5, played at ``best_of=3``, rows returned scrambled.
+    The property that carries these tests is per-slot: for every slot but the
+    first, its ``position`` equals neither its list index nor its candidate
+    count, so a stamp built from either is visible. ``best_of`` is NOT distinct
+    from all of them (3 is also slot 2's position and slot 3's count) — it does
+    not need to be, because what it has to differ from is the slot count, 4.
+
+    The only reserved slots are one in play (position 3) and one out of play
+    (position 8), so a snapshot that ignores truncation and one that ignores the
+    "has a reserve" filter fail differently.
     """
 
     RESERVE_IN_PLAY = 99
@@ -941,6 +948,9 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
 
     async def test_an_underfilled_slot_out_of_play_still_creates_the_session(self) -> None:
         # A catalogue delete emptied slot 8, which ``best_of=3`` never reaches.
+        # This is where the floor's ORDERING is pinned: ``_slot_plan`` truncates
+        # first, so running the floor over all four slots refuses a match that is
+        # perfectly playable.
         rows = [_slot(1, [11, 12]), _slot(3, [21, 22, 23, 24]), _slot(5, [31, 32, 33]), _slot(8, [41])]
 
         session, veto = await self._create(slot_rows=rows)
@@ -948,9 +958,26 @@ class EnsureVetoSessionSlotModeTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(veto)
         self.assertEqual([1, 1, 3, 3, 3, 3, 5, 5, 5], [row.slot for row in session.pool_rows])
 
+    async def test_a_config_with_no_slots_creates_nothing_even_at_best_of_zero(self) -> None:
+        # ``best_of=0`` is the one value at which the reconciliation's ``>``
+        # comparison cannot fire, so without the explicit empty guard this builds
+        # a session with an empty sequence, ``slot_reserves_json == {}`` and no
+        # pool rows: a room that renders, accepts nothing and never completes.
+        session, veto = await self._create(best_of=0, slot_rows=[])
+
+        self.assertIsNone(veto)
+        self.assertEqual([], session.added)
+        self.assertEqual(0, session.commits)
+
     async def test_a_pre_existing_pool_is_left_alone(self) -> None:
-        # Mirrors flat mode: the admin-assigned pool wins. The session is still
-        # created, so the sequence still comes from the slots.
+        # PINNED, NOT ENDORSED. This mirrors flat mode -- the admin-assigned pool
+        # wins -- but in slot mode the result is a room that cannot run: nine
+        # slot-shaped tokens over four NULL-``slot`` entries that ``current_slot``
+        # can never select, so no action is ever legal (design §4.7). The fix is
+        # the ``initialize_map_pool`` 409 guard, which is a separate task; this
+        # test exists so that task can see the current behaviour rather than
+        # re-derive it, and it should be REPLACED, not preserved, when the guard
+        # lands.
         session, veto = await self._create(pool_count=4)
 
         self.assertEqual([], session.pool_rows)
@@ -1017,6 +1044,24 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
         session = _FakeSession(config=_config(), slot_rows=[_slot(1, [11, 12]), _slot(3, [21])])
 
         self.assertEqual(REASON_SLOT_UNDERFILLED, await unavailable_reason(session, _encounter(best_of=2)))
+
+    async def test_a_config_with_no_slots_is_slot_count_mismatch(self) -> None:
+        # Both refusals reach the room through the same ``_slot_plan``, so the
+        # empty-config guard has to name a reason here too, not just decline to
+        # create.
+        session = _FakeSession(config=_config(), slot_rows=[])
+
+        self.assertEqual(REASON_SLOT_COUNT_MISMATCH, await unavailable_reason(session, _encounter(best_of=0)))
+
+    async def test_an_underfilled_slot_out_of_play_is_not_a_reason(self) -> None:
+        # The ordering pin on this side of ``_slot_plan``: slot 5 is beyond
+        # ``best_of=2``, so the floor must not see it. Checking before truncation
+        # would report ``slot_underfilled`` for a config the bracket can play, and
+        # the room would tell a captain their config is broken when it is not.
+        rows = [_slot(1, [11, 12]), _slot(3, [21, 22, 23]), _slot(5, [31])]
+        session = _FakeSession(config=_config(), slot_rows=rows)
+
+        self.assertEqual(REASON_NOT_CONFIGURED, await unavailable_reason(session, _encounter(best_of=2)))
 
     async def test_the_two_slot_reasons_are_distinct_strings(self) -> None:
         self.assertNotEqual(REASON_SLOT_COUNT_MISMATCH, REASON_SLOT_UNDERFILLED)

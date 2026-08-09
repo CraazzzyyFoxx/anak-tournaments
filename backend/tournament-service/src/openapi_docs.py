@@ -695,7 +695,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.captain_map_pool_state": {
         "summary": "Get map veto state",
-        "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
+        "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown, or slot_count_mismatch/slot_underfilled when a slot-mode config disagrees with the bracket) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
     },
     "rpc.tournament.captain_veto": {
         "summary": "Veto map",

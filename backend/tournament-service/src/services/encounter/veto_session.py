@@ -45,8 +45,15 @@ from src.services.encounter.realtime_commit import register_map_veto_realtime_up
 # Side-agnostic step tokens allowed on MapVetoConfig.veto_sequence_json.
 VETO_SEQUENCE_TOKENS = frozenset({"ban_first", "ban_second", "pick_first", "pick_second", "decider"})
 
-# ``session: null`` reasons on the state read path (mirrors the frontend's
-# VetoUnavailableReason union).
+# ``session: null`` reasons on the state read path.
+#
+# OWED: the frontend's ``VetoUnavailableReason`` union
+# (``frontend/src/types/tournament.types.ts``) still lists only
+# ``not_configured`` and ``teams_unknown``, so the two slot reasons below reach
+# ``VetoRoom.tsx`` with no copy of their own and fall through to "not
+# configured / check back later" — false for a config that exists but disagrees
+# with the bracket. Widening the union and giving each cause its own copy is a
+# later task (design §4.7); until it lands the room under-reports these two.
 REASON_TEAMS_UNKNOWN = "teams_unknown"
 REASON_NOT_CONFIGURED = "not_configured"
 REASON_SLOT_COUNT_MISMATCH = "slot_count_mismatch"
@@ -259,12 +266,13 @@ def slots_in_play(rows: Sequence[models.MapVetoConfigSlot], best_of: int) -> lis
     return ordered[:best_of]
 
 
-def slot_refusal(candidate_counts: Sequence[int], best_of: int) -> str | None:
+def slot_refusal(in_play_counts: Sequence[int], *, slot_count: int, best_of: int) -> str | None:
     """Why this slot config cannot run for ``best_of``, or None if it can.
 
-    ``candidate_counts`` is one count per slot **in play order** (i.e. derived
-    from ``ordered_slots``), because the floor is checked over the slots that
-    survive truncation.
+    ``in_play_counts`` is one candidate count per slot the encounter ACTUALLY
+    PLAYS — ``_slot_plan`` truncates before calling, so the floor cannot be
+    checked against a wider set than the session runs. ``slot_count`` is the
+    config's total, which is what the bracket disagreement is about.
 
     Two causes, deliberately two reasons: the room needs distinct copy, and "your
     config has too few slots" sends the organizer to a different control than
@@ -274,14 +282,18 @@ def slot_refusal(candidate_counts: Sequence[int], best_of: int) -> str | None:
     and with ``best_of`` above the slot count there is no in-play set for a floor
     report to be about.
 
-    Order matters within the floor check too: it runs over the slots in play,
-    AFTER truncation. A slot beyond the series is never reached, so a catalogue
-    delete that emptied one must not refuse a session that is perfectly playable.
+    A config with NO slots is that same disagreement in its extreme form and is
+    reported as such at every ``best_of``, including the legacy ``best_of = 0``
+    that ``slots_in_play`` otherwise reads as "play everything": there, "play
+    everything" is nothing at all, and ``any([])`` would wave through a session
+    with an empty sequence, an empty reserve snapshot and no pool rows — exactly
+    the dead room ``slots_in_play`` refuses to truncate into, reached from the
+    other side. Unstorable via ``validate_slot_config``, but reachable by
+    deleting a config's last slot.
     """
-    if best_of > len(candidate_counts):
+    if not slot_count or best_of > slot_count:
         return REASON_SLOT_COUNT_MISMATCH
-    in_play = candidate_counts if best_of < 1 else candidate_counts[:best_of]
-    if any(count < SLOT_CANDIDATE_FLOOR for count in in_play):
+    if any(count < SLOT_CANDIDATE_FLOOR for count in in_play_counts):
         return REASON_SLOT_UNDERFILLED
     return None
 
@@ -348,14 +360,25 @@ async def _slot_plan(
     config: models.MapVetoConfig,
     best_of: int,
 ) -> tuple[list[models.MapVetoConfigSlot], str | None]:
-    """One load, one decision: ordered slot rows plus the reason to refuse them.
+    """One load, one truncation, one decision.
+
+    Returns the slots the encounter PLAYS (position-ordered, ``best_of``-capped)
+    and the reason to refuse them, or None.
+
+    Truncating here rather than in ``slot_refusal`` is what makes the ordering
+    Decision 21 needs structural instead of conventional: the refusal only ever
+    sees the in-play set, so "check the floor before truncating" is not a bug you
+    can write in one function without the other noticing. Both callers ignore the
+    untruncated rows entirely, so nothing needs them.
 
     Shared by ``ensure_veto_session`` (which refuses) and ``unavailable_reason``
     (which names the refusal) so the two can never disagree about whether a
     config is playable.
     """
-    rows = ordered_slots(await load_slot_rows(session, config))
-    return rows, slot_refusal([len(row.maps) for row in rows], best_of)
+    rows = await load_slot_rows(session, config)
+    in_play = slots_in_play(rows, best_of)
+    refusal = slot_refusal([len(row.maps) for row in in_play], slot_count=len(rows), best_of=best_of)
+    return in_play, refusal
 
 
 def validate_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
@@ -583,9 +606,15 @@ async def unavailable_reason(session: AsyncSession, encounter: models.Encounter)
     come from the same ``_slot_plan`` as the refusal itself, so the two cannot
     diverge.
 
-    The extra queries land only on the branch that has no session to serve;
-    ``ensure_veto_session`` returns before ``resolve_config`` once one exists, so
-    the steady-state room is unaffected.
+    COST, stated plainly because it is permanent, not transient: an encounter on
+    this branch never gains a session, so every poll of the room pays for it
+    again. ``resolve_config`` runs TWICE per request (once in the ensure, once
+    here) — three queries per poll where the unavailable path used to cost two,
+    and four in slot mode. The steady-state room is untouched, because
+    ``ensure_veto_session`` returns before ``resolve_config`` once a session
+    exists. Judged the right trade against a reason that can lie; revisit by
+    widening ``ensure_veto_session``'s return type, never by caching the cause
+    on the encounter instance.
     """
     if encounter.home_team_id is None or encounter.away_team_id is None:
         return REASON_TEAMS_UNKNOWN
@@ -647,13 +676,16 @@ async def ensure_veto_session(
     slot_rows: list[models.MapVetoConfigSlot] | None = None
     slots: list[list[int]] | None = None
     if config.mode == MapVetoMode.SLOTS:
-        rows, refusal = await _slot_plan(session, config, encounter.best_of)
+        slot_rows, refusal = await _slot_plan(session, config, encounter.best_of)
         if refusal is not None:
             # The bracket and the config disagree, or a slot in play has nothing
             # left to ban. Either way a session built here would stall with no
             # recovery but a reset; the room reports the reason instead.
             return None
-        slot_rows = slots_in_play(rows, encounter.best_of)
+        # ``slot_candidates`` re-sorts an already-ordered list. That is a no-op on
+        # at most a handful of rows, and it is where the sort is pinned; reaching
+        # past it to save the call would duplicate its mapping and un-pin the one
+        # ordering guarantee the whole mode rests on.
         slots = slot_candidates(slot_rows)
 
     seeds = await resolve_seeds(session, encounter)
