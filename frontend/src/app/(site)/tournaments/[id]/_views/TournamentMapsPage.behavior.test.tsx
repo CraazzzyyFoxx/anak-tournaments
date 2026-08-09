@@ -161,6 +161,7 @@ const STAGES: Stage[] = [
 
 let container: HTMLDivElement;
 let root: Root;
+let client: QueryClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -189,7 +190,7 @@ async function settle(ticks = 3) {
 
 async function render(configs: MapVetoConfig[]) {
   getVetoConfigs.mockResolvedValue({ configs });
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -229,10 +230,15 @@ function tileNames() {
   );
 }
 
-/** The pool's gamemode sections in DOM order, each with only its own tiles. */
+/**
+ * The pool's gamemode sections in DOM order, each with only its own tiles.
+ *
+ * The outline is `h2` surface -> `h3` group -> `h4` level, so nothing skips a
+ * level under the page's own `h1` and no deeper heading outsizes its parent.
+ */
 function sections() {
   return Array.from(poolBlock().querySelectorAll("section")).map((section) => ({
-    heading: section.querySelector("h4")?.textContent?.trim(),
+    heading: section.querySelector("h3")?.textContent?.trim(),
     tiles: Array.from(section.querySelectorAll("li > span")).map((span) =>
       span.textContent?.trim()
     )
@@ -245,9 +251,9 @@ function sections() {
  */
 function rounds() {
   return Array.from(roundsBlock().querySelectorAll("section")).map((section) => ({
-    stage: section.querySelector("h4")?.textContent?.trim() ?? null,
+    stage: section.querySelector("h3")?.textContent?.trim() ?? null,
     headings: Array.from(section.querySelectorAll("p")).map((p) => p.textContent?.trim()),
-    levels: Array.from(section.querySelectorAll("h5")).map((heading) => {
+    levels: Array.from(section.querySelectorAll("h4")).map((heading) => {
       const level = heading.parentElement;
       return {
         label: heading.textContent?.trim(),
@@ -262,15 +268,25 @@ function rounds() {
   }));
 }
 
+/**
+ * The gamemode filters. Label and count are read apart, because the shared
+ * `FilterChip` puts the count in its own `.aqt-count` element rather than
+ * concatenating it into the label the way this page's local pills used to.
+ */
 function pills() {
   const group = container.querySelector<HTMLElement>(
     `[role="group"][aria-label="${COPY.filterLabel}"]`
   );
-  return Array.from(group?.querySelectorAll("button") ?? []).map((button) => ({
-    label: button.textContent?.trim(),
-    pressed: button.getAttribute("aria-pressed") === "true",
-    button
-  }));
+  return Array.from(group?.querySelectorAll("button") ?? []).map((button) => {
+    const count = button.querySelector(".aqt-count");
+    return {
+      chip: button.classList.contains("aqt-filter-chip"),
+      label: (button.textContent ?? "").replace(count?.textContent ?? "", "").trim(),
+      count: count?.textContent?.trim() ?? null,
+      pressed: button.getAttribute("aria-pressed") === "true",
+      button
+    };
+  });
 }
 
 /**
@@ -421,18 +437,21 @@ describe("grouping and filtering", () => {
   it("filters to one gamemode and drops the now-redundant headings", async () => {
     await render(REGULATION);
 
-    expect(pills().map((pill) => pill.label)).toEqual([
-      "All (6)",
-      "Control (3)",
-      "Hybrid (2)",
-      "Push (1)"
+    // The site-wide chip, not a local pill: label and count are separate
+    // elements, and the count carries the shared `.aqt-count` treatment.
+    expect(pills()).toMatchObject([
+      { chip: true, label: COPY.filterAll, count: "6", pressed: true },
+      { chip: true, label: "Control", count: "3", pressed: false },
+      { chip: true, label: "Hybrid", count: "2", pressed: false },
+      { chip: true, label: "Push", count: "1", pressed: false }
     ]);
 
-    const hybrid = pills().find((pill) => pill.label === "Hybrid (2)");
+    const hybrid = pills().find((pill) => pill.label === "Hybrid");
     await act(async () => hybrid?.button.click());
 
     expect(tileNames()).toEqual(["King's Row", "Numbani"]);
-    // The pressed pill names the mode, so no section heading repeats it.
+    expect(pills().find((pill) => pill.label === "Hybrid")?.pressed).toBe(true);
+    // The pressed chip names the mode, so no section heading repeats it.
     expect(sections()).toEqual([]);
   });
 
@@ -627,5 +646,68 @@ describe("the per-match veto machinery is not on this page", () => {
     expect(text).not.toContain(COPY.customOrder);
     expect(text).not.toContain(en.mapVeto.step.banFirst);
     expect(container.querySelector("select")).toBeNull();
+  });
+});
+
+/*
+ * The page reached this file as a shadcn `Card` island with hand-rolled filter
+ * pills, its own loading skeleton and its own error gate — a second design
+ * system inside a tab strip whose other six pages share one. These pin the
+ * shared vocabulary so it cannot drift back.
+ */
+describe("the shared public-page design system", () => {
+  it("renders inside the public-page container, on shared card surfaces", async () => {
+    await render(REGULATION);
+
+    // `styles.publicDataPage` is what pins every child to `min-width: 0`, so a
+    // wide descendant owns its overflow instead of scrolling the document.
+    const shell = container.querySelector("section[class*=publicDataPage]");
+    expect(shell).not.toBeNull();
+    expect(shell?.getAttribute("aria-label")).toBe(en.common.maps);
+    // Both surfaces are `tn-card`, the shared surface token, and neither is a
+    // local rounded-border div.
+    expect(poolBlock().classList.contains("tn-card")).toBe(true);
+    expect(roundsBlock().classList.contains("tn-card")).toBe(true);
+  });
+
+  it("announces the loading state instead of showing silent grey blocks", async () => {
+    // A read that never settles: the page must be in its shared skeleton.
+    getVetoConfigs.mockReturnValue(new Promise(() => {}));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <NextIntlClientProvider locale="en" messages={en}>
+            <TournamentMapsPage tournamentId={TOURNAMENT_ID} />
+          </NextIntlClientProvider>
+        </QueryClientProvider>
+      );
+    });
+    await settle();
+
+    const region = container.querySelector('[role="status"]');
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-live")).toBe("polite");
+    expect(region?.getAttribute("data-skeleton-variant")).toBe("maps");
+    expect(region?.textContent).toContain(en.tournamentDetail.loading.pages.maps);
+  });
+
+  it("keeps the rendered pool on screen when a refetch fails", async () => {
+    await render(REGULATION);
+    expect(tileNames()).toHaveLength(6);
+
+    // The reads have landed once; now the catalogue refetch fails. The old gate
+    // tested `isError` before anything else and threw the whole page away for a
+    // full-page error card, losing content the viewer was already reading.
+    getAllMaps.mockRejectedValue(new Error("network"));
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ["maps", "all", "gamemode"] }).catch(() => {});
+    });
+    await settle();
+
+    expect(tileNames()).toHaveLength(6);
+    expect(container.textContent ?? "").toContain(
+      en.tournamentDetail.pageState.refreshError.title
+    );
   });
 });

@@ -3,17 +3,19 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Info, MapPin } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { cn } from "@/lib/utils";
 import mapService from "@/services/map.service";
 import tournamentService from "@/services/tournament.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapVetoConfig, Stage } from "@/types/tournament.types";
+
+import styles from "../TournamentDetail.module.css";
 import { TournamentPageState } from "../_components/TournamentPageState";
+import { TournamentMapsSkeleton } from "../_components/TournamentSkeletons";
+import { UpdatingBadge } from "../_components/UpdatingBadge";
+import { getPublicPageQueryPresentation } from "./publicPageQueryPresentation";
 
 interface TournamentMapsPageProps {
   tournamentId: number;
@@ -30,11 +32,6 @@ const ALL_FILTER = "all";
 /** Cannot collide with a gamemode name, which is always a bare proper noun. */
 const UNGROUPED_FILTER = "__ungrouped__";
 
-const PILL_BASE =
-  "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const PILL_ON = "border-primary bg-primary text-primary-foreground shadow-xs";
-const PILL_OFF =
-  "border-border/70 bg-card text-foreground hover:border-primary/50 hover:bg-accent/40";
 const MAP_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6";
 
 /**
@@ -298,49 +295,53 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
   const activeGroup =
     activeFilter === ALL_FILTER ? null : poolGroups.find((group) => group.key === activeFilter);
 
-  if (vetoConfigsQuery.isLoading || mapsQuery.isLoading || stagesQuery.isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-56" />
-          <Skeleton className="h-4 w-full max-w-xl" />
-        </div>
-        <Card>
-          <CardContent className="pt-6">
-            <div className={MAP_GRID}>
-              {Array.from({ length: 12 }).map((_, index) => (
-                <Skeleton key={index} className="h-28 rounded-xl" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  /**
+   * The same loading / empty / updating / refresh-error vocabulary every other
+   * public tournament page speaks.
+   *
+   * `data` is withheld until BOTH load-bearing reads land: without the configs
+   * there is no pool, and without the catalogue no id can be named, so either
+   * one missing means the page cannot say anything true yet. Once they have
+   * landed, a failing refetch keeps the rendered pool on screen under a
+   * refresh-error banner instead of replacing it with a full-page error, which
+   * is what the hand-rolled `isError` gate below used to do.
+   *
+   * The stages read is deliberately absent: it only supplies stage names, and a
+   * stage it does not carry is named by its id.
+   */
+  const presentation = getPublicPageQueryPresentation({
+    data: vetoConfigsQuery.data && mapsQuery.data ? vetoConfigsQuery.data : undefined,
+    itemCount: pool.length,
+    isPending: vetoConfigsQuery.isPending || mapsQuery.isPending,
+    isError: vetoConfigsQuery.isError || mapsQuery.isError,
+    isFetching: vetoConfigsQuery.isFetching || mapsQuery.isFetching
+  });
+
+  const retry = () => {
+    if (vetoConfigsQuery.isError) void vetoConfigsQuery.refetch();
+    if (mapsQuery.isError) void mapsQuery.refetch();
+  };
+
+  if (presentation.initialState === "error") {
+    return <TournamentPageState state="initial-error" onRetry={retry} />;
   }
 
-  // The pool and the map catalogue are both load-bearing: without either, the
-  // page cannot say anything true about the map pool. Offer a retry instead of
-  // guessing.
-  if (vetoConfigsQuery.isError || mapsQuery.isError) {
-    return (
-      <TournamentPageState
-        state="initial-error"
-        onRetry={() => {
-          if (vetoConfigsQuery.isError) void vetoConfigsQuery.refetch();
-          if (mapsQuery.isError) void mapsQuery.refetch();
-        }}
-      />
-    );
+  if (presentation.initialState === "skeleton" || presentation.contentState === null) {
+    return <TournamentMapsSkeleton />;
   }
 
   /**
    * `image_path` is null for a map with no art, which falls back to the same
    * flat wash — there is no second tile.
+   *
+   * The hairline is pure white at 10%, not `--aqt-border`: a tinted neutral
+   * outline picks up the map art underneath it and reads as dirt along the
+   * edge. Same notation the rest of the codebase writes such hairlines in.
    */
   const renderMapTile = (map: MapRead) => (
     <li
       key={map.id}
-      className="relative flex h-28 items-end overflow-hidden rounded-xl border border-border/70 bg-card p-2.5"
+      className="relative flex h-28 items-end overflow-hidden rounded-xl bg-[color:var(--aqt-overlay-2)] p-2.5 ring-1 ring-inset ring-[hsl(0_0%_100%/0.1)]"
     >
       {map.image_path ? (
         <div
@@ -374,8 +375,14 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     entry.map?.name ?? t("encounters.veto.room.maps.mapNumber", { id: entry.id });
 
   const renderLevel = (level: LevelView) => (
-    <div key={level.key} className="space-y-2 rounded-lg border border-border/70 bg-card/40 p-3">
-      <h5 className="text-sm font-semibold">{level.label}</h5>
+    <div
+      key={level.key}
+      className="space-y-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)] p-3"
+    >
+      {/* One step below the stage heading above it, and a step smaller than the
+          card's own title, so the outline descends instead of the deepest
+          heading shouting loudest. */}
+      <h4 className="text-xs font-semibold uppercase tracking-wide">{level.label}</h4>
       {/* Ordered, because the order is the answer: a slot's number is the map of
           the series it decides, and a series only reaches the later ones. */}
       <ol className="space-y-2">
@@ -384,7 +391,7 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
             key={row.position ?? index}
             className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3"
           >
-            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-24">
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-muted)] sm:w-24">
               {row.position != null
                 ? t("encounters.veto.room.slot.label", { n: row.position })
                 : t("mapVeto.roundPoolShared")}
@@ -395,7 +402,7 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
                 // twice in one, so the key carries the position it is listed at.
                 <span
                   key={`${candidate.id}-${candidateIndex}`}
-                  className="rounded-md border border-border/70 bg-background px-2 py-0.5 text-xs font-medium"
+                  className="rounded-md border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-2 py-0.5 text-xs font-medium"
                 >
                   {entryName(candidate)}
                 </span>
@@ -406,7 +413,7 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
                 </span>
               ) : null}
               {row.reserve ? (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-[color:var(--aqt-fg-muted)]">
                   {t("encounters.veto.room.slot.reserve", { map: entryName(row.reserve) })}
                 </span>
               ) : null}
@@ -429,9 +436,9 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     return (
       <section key={view.key} className="space-y-3">
         {view.title ? (
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-primary">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[color:var(--aqt-teal)]">
             {view.title}
-          </h4>
+          </h3>
         ) : null}
         {halves.map(({ half, heading }) => {
           const levels = view.levels.filter((level) => level.half === half);
@@ -439,7 +446,7 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
           return (
             <div key={half} className="space-y-2">
               {heading ? (
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-faint)]">
                   {heading}
                 </p>
               ) : null}
@@ -451,81 +458,63 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     );
   };
 
-  return (
-    // No heading here: the tournament page already names the tournament and this
-    // tab, and the cards below say what each block is.
-    <div className="space-y-6">
-      {pool.length === 0 ? (
-        <Card className="border-dashed">
-          <CardHeader className="items-center gap-2 text-center">
-            <Info className="h-6 w-6 text-muted-foreground" aria-hidden />
-            <CardTitle asChild>
-              <h3 className="text-base font-semibold">{t("mapVeto.notConfiguredTitle")}</h3>
-            </CardTitle>
-            <CardDescription className="max-w-xl">
-              {t("mapVeto.notConfiguredDescription")}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+  // One string per surface, used as both the visible heading and the region's
+  // accessible name, so the two can never drift apart.
+  const poolLabel = t("mapVeto.poolTitle");
+  const roundsLabel = t("mapVeto.roundsTitle");
+
+  const content = (
+    // The container every public tournament page uses: it pins its own children
+    // to `min-width: 0`, so an intrinsically wide descendant owns its overflow
+    // locally instead of taking the document's horizontal scrollbar with it.
+    <section className={styles.publicDataPage} aria-label={t("common.maps")}>
+      {presentation.showUpdating ? <UpdatingBadge /> : null}
+
+      {presentation.contentState === "empty" ? (
+        <TournamentPageState
+          state="empty"
+          title={t("mapVeto.notConfiguredTitle")}
+          description={t("mapVeto.notConfiguredDescription")}
+        />
       ) : (
         <>
-          <Card role="group" aria-label={t("mapVeto.poolTitle")}>
-            <CardHeader className="flex flex-col gap-3 pb-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle asChild>
-                  <h3 className="text-sm font-semibold">{t("mapVeto.poolTitle")}</h3>
-                </CardTitle>
-                <Badge variant="secondary" className="gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" aria-hidden />
-                  {t("mapVeto.mapsInPool", { count: pool.length })}
-                </Badge>
-              </div>
-
-              {poolGroups.length > 1 ? (
-                <div
-                  role="group"
-                  aria-label={t("mapVeto.filterLabel")}
-                  className="flex flex-wrap gap-1.5"
+          {/* The site-wide filter control, not a local copy of it: the same chip
+              the heroes, teams and matches tabs use, with its own 34px target,
+              its tinted active state and its 2px focus ring. */}
+          {poolGroups.length > 1 ? (
+            <div
+              className={styles.controlRail}
+              role="group"
+              aria-label={t("mapVeto.filterLabel")}
+            >
+              <FilterChip
+                active={activeFilter === ALL_FILTER}
+                count={pool.length}
+                onClick={() => setGamemodeFilter(ALL_FILTER)}
+              >
+                {t("mapVeto.filterAll")}
+              </FilterChip>
+              {poolGroups.map((group) => (
+                <FilterChip
+                  key={group.key}
+                  active={activeFilter === group.key}
+                  count={group.maps.length}
+                  onClick={() => setGamemodeFilter(group.key)}
                 >
-                  <button
-                    type="button"
-                    aria-pressed={activeFilter === ALL_FILTER}
-                    onClick={() => setGamemodeFilter(ALL_FILTER)}
-                    className={cn(
-                      PILL_BASE,
-                      "px-2.5 py-1",
-                      activeFilter === ALL_FILTER ? PILL_ON : PILL_OFF
-                    )}
-                  >
-                    {t("mapVeto.filterOption", {
-                      gamemode: t("mapVeto.filterAll"),
-                      count: pool.length
-                    })}
-                  </button>
-                  {poolGroups.map((group) => (
-                    <button
-                      key={group.key}
-                      type="button"
-                      aria-pressed={activeFilter === group.key}
-                      onClick={() => setGamemodeFilter(group.key)}
-                      className={cn(
-                        PILL_BASE,
-                        "px-2.5 py-1",
-                        activeFilter === group.key ? PILL_ON : PILL_OFF
-                      )}
-                    >
-                      {t("mapVeto.filterOption", {
-                        gamemode: group.label,
-                        count: group.maps.length
-                      })}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </CardHeader>
-            <CardContent>
+                  {group.label}
+                </FilterChip>
+              ))}
+            </div>
+          ) : null}
+
+          <div className={cn("tn-card", styles.mapsSurface)} role="group" aria-label={poolLabel}>
+            <h2 className="text-base font-semibold">{poolLabel}</h2>
+            <p className="mt-1 text-xs text-[color:var(--aqt-fg-muted)]">
+              {t("mapVeto.mapsInPool", { count: pool.length })}
+            </p>
+            <div className="mt-4">
               {activeGroup ? (
-                // A single gamemode is filtered: the pressed pill already names
+                // A single gamemode is filtered: the pressed chip already names
                 // it, so a repeated heading would be noise.
                 <ul className={MAP_GRID}>{activeGroup.maps.map(renderMapTile)}</ul>
               ) : (
@@ -534,37 +523,53 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
                 <div className="space-y-6">
                   {poolGroups.map((group) => (
                     <section key={group.key} className="space-y-2.5">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
                         {t("mapVeto.filterOption", {
                           gamemode: group.label,
                           count: group.maps.length
                         })}
-                      </h4>
+                      </h3>
                       <ul className={MAP_GRID}>{group.maps.map(renderMapTile)}</ul>
                     </section>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* The pool above says what the tournament plays; this says when. Only
               levels the organizer configured appear — a round that inherits has
               no entry of its own, and resolving the cascade here would print the
               same pool under a dozen headings. */}
           {stageViews.length > 0 ? (
-            <Card role="group" aria-label={t("mapVeto.roundsTitle")}>
-              <CardHeader className="pb-4">
-                <CardTitle asChild>
-                  <h3 className="text-sm font-semibold">{t("mapVeto.roundsTitle")}</h3>
-                </CardTitle>
-                <CardDescription>{t("mapVeto.slotPoolDescription")}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">{stageViews.map(renderStageView)}</CardContent>
-            </Card>
+            <div
+              className={cn("tn-card", styles.mapsSurface)}
+              role="group"
+              aria-label={roundsLabel}
+            >
+              <h2 className="text-base font-semibold">{roundsLabel}</h2>
+              <p className="mt-1 text-xs text-[color:var(--aqt-fg-muted)]">
+                {t("mapVeto.slotPoolDescription")}
+              </p>
+              <div className="mt-4 space-y-6">{stageViews.map(renderStageView)}</div>
+            </div>
           ) : null}
         </>
       )}
-    </div>
+    </section>
   );
+
+  if (presentation.showRefreshError) {
+    return (
+      <TournamentPageState
+        state="refresh-error"
+        onRetry={retry}
+        isUpdating={vetoConfigsQuery.isFetching || mapsQuery.isFetching}
+      >
+        {content}
+      </TournamentPageState>
+    );
+  }
+
+  return content;
 }

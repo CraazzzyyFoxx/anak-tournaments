@@ -19,7 +19,7 @@ function SkeletonRegion({
   message,
   children
 }: {
-  variant: "shell" | "bracket" | "teams" | "participants" | "matches" | "heroes" | "standings";
+  variant: "shell" | "bracket" | "teams" | "participants" | "matches" | "heroes" | "standings" | "maps";
   message: string;
   children: React.ReactNode;
 }) {
@@ -284,6 +284,34 @@ export function TournamentStandingsSkeleton() {
             <TableRowsSkeleton count={5} />
           </div>
         ))}
+      </TournamentPageSkeletonLayout>
+    </SkeletonRegion>
+  );
+}
+
+export function TournamentMapsSkeleton() {
+  const t = useTranslations();
+
+  return (
+    <SkeletonRegion variant="maps" message={t("tournamentDetail.loading.pages.maps")}>
+      <TournamentPageSkeletonLayout>
+        <ControlRowSkeleton />
+        {/* Two surfaces, because the page has two: the pool grid, then the
+            per-round breakdown. One tall block would promise a shape the
+            arriving content does not have. */}
+        <div className={styles.skeletonSurface}>
+          <div className={styles.skeletonRows}>
+            {Array.from({ length: 3 }, (_, row) => (
+              <div className={styles.skeletonRow} key={row}>
+                <SkeletonBlock style={{ width: "7rem", height: "0.55rem" }} />
+                <SkeletonBlock style={{ width: "100%", height: "3.5rem" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className={styles.skeletonSurface}>
+          <TableRowsSkeleton count={4} />
+        </div>
       </TournamentPageSkeletonLayout>
     </SkeletonRegion>
   );

@@ -1657,7 +1657,8 @@
         "participants": "Loading tournament participants",
         "matches": "Loading tournament matches",
         "heroes": "Loading hero statistics",
-        "standings": "Loading tournament standings"
+        "standings": "Loading tournament standings",
+        "maps": "Loading the tournament map pool"
       }
     },
     "participants": {
