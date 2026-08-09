@@ -212,6 +212,7 @@ class _FakeSession:
         self.added: list = []
         self.commits = 0
         self.refreshes: list[tuple[object, list[str]]] = []
+        self.flushes: list[dict[str, list[int]]] = []
 
     def _record(self, query):
         entity = query.column_descriptions[0]["entity"]
@@ -243,6 +244,26 @@ class _FakeSession:
 
     async def refresh(self, obj, names):
         self.refreshes.append((obj, list(names)))
+
+    async def flush(self):
+        # Snapshots the config's two child collections AS THEY STAND, which is
+        # the only thing a fake can see about flush ordering: whether the
+        # handler emitted the clear on its own or bundled it with the rebuild.
+        # A real database distinguishes the two by rejecting the second, since
+        # SQLAlchemy sends child INSERTs before child DELETEs.
+        config = self._existing
+        if config is None:
+            configs = [obj for obj in self.added if isinstance(obj, models.MapVetoConfig)]
+            config = configs[0] if configs else None
+        if config is None:
+            self.flushes.append({"map_pool": [], "slots": []})
+            return
+        self.flushes.append(
+            {
+                "map_pool": [entry.map_id for entry in config.map_pool],
+                "slots": [slot.position for slot in config.slots],
+            }
+        )
 
     def __call__(self):
         return self
@@ -332,55 +353,45 @@ class ModeIsRequired(_UpsertCase):
 
 
 class ModeContradictions(_UpsertCase):
-    async def test_slot_mode_refuses_a_non_empty_map_pool(self) -> None:
-        # Decision 19 was withdrawn: nothing mirrors slot candidates into
-        # ``map_veto_config_map``, so a pool sent alongside slots is a
-        # contradiction rather than an alternative spelling.
-        envelope, session = await self.invoke(slot_body(map_ids=[101, 102]))
-
-        self.assert_unprocessable(envelope, "map_ids", "[]")
-        self.assertEqual(0, session.commits)
-
-    async def test_slot_mode_refuses_a_non_empty_sequence(self) -> None:
-        # The slots ARE the sequence; a stored one would be dead input that
-        # ``effective_sequence``'s slot branch never reads.
-        envelope, session = await self.invoke(slot_body(sequence=["ban_first"]))
-
-        self.assert_unprocessable(envelope, "sequence", "[]")
-        self.assertEqual(0, session.commits)
-
-    async def test_pool_mode_refuses_a_non_empty_slot_list(self) -> None:
-        # The mirror image, and the same hazard as a defaulted ``mode``: a stale
-        # tab still holding slot data would save as flat and clear the slots with
-        # no signal that anything was lost.
-        envelope, session = await self.invoke(flat_body(slots=slot_payload()))
-
-        self.assert_unprocessable(envelope, "slots", "[]")
-        self.assertEqual(0, session.commits)
-
-    async def test_each_contradiction_message_names_the_empty_list_not_omission(self) -> None:
-        # The client author has to know whether to omit the key or send ``[]``;
-        # a message that says only "must be empty" leaves them guessing.
+    async def test_each_contradiction_is_refused_and_names_the_empty_list(self) -> None:
+        # Three payloads that pick one pool shape and then carry the other's
+        # data. Slot mode: Decision 19 was withdrawn, so nothing mirrors slot
+        # candidates into ``map_veto_config_map`` and the slots ARE the
+        # sequence -- neither field is an alternative spelling of anything.
+        # Pool mode: the same hazard as a defaulted ``mode``, a stale tab still
+        # holding slot data saving as flat with the slots cleared and no signal.
+        #
+        # Each message must name ``[]`` rather than say only "must be empty":
+        # all three fields default to empty, so omitting the key and sending
+        # ``[]`` arrive identically and a client author would be left guessing.
         cases = {
-            "map_ids": slot_body(map_ids=[101]),
-            "sequence": slot_body(sequence=["decider"]),
+            "map_ids": slot_body(map_ids=[101, 102]),
+            "sequence": slot_body(sequence=["ban_first"]),
             "slots": flat_body(slots=slot_payload()),
         }
         for field, body in cases.items():
             with self.subTest(field=field):
-                envelope, _ = await self.invoke(body)
+                envelope, session = await self.invoke(body)
                 message = self.assert_unprocessable(envelope, field)
                 self.assertIn(f"send {field}: []", message)
+                self.assertEqual(0, session.commits)
 
 
 class CustomPresetIsUnstorableInSlotMode(_UpsertCase):
     async def test_a_custom_preset_is_refused_rather_than_left_to_the_check(self) -> None:
         # ``ck_map_veto_config_slots_not_custom`` would raise IntegrityError,
-        # which ``_run`` maps to an opaque 500. The organizer gets a 422 naming
-        # the field instead.
+        # which ``_run`` maps to an opaque 500. The organizer gets a 422 instead,
+        # and -- like the three contradiction messages -- it says what to send
+        # rather than only what is wrong. ``BRACKET_PRESET`` by reference, so the
+        # message cannot drift from the constant it advertises.
         envelope, session = await self.invoke(slot_body(preset=veto_session_service.CUSTOM_PRESET))
 
-        self.assert_unprocessable(envelope, "preset", "custom")
+        self.assert_unprocessable(
+            envelope,
+            "preset",
+            "custom",
+            f"send preset: '{veto_session_service.BRACKET_PRESET}' or null",
+        )
         self.assertEqual(0, session.commits)
 
     async def test_a_custom_preset_is_still_accepted_in_pool_mode(self) -> None:
@@ -564,6 +575,22 @@ class FlatModeIsUnchanged(_UpsertCase):
         self.assert_unprocessable(envelope, "map_ids must not be empty")
         self.assertEqual(0, session.commits)
 
+    async def test_omitting_the_list_fields_entirely_is_still_refused(self) -> None:
+        # ``sequence`` and ``map_ids`` default to empty so that slot mode has one
+        # spelling of "this mode does not use it". Flat mode must not become
+        # laxer for it: the refusal moves from the schema to
+        # ``validate_veto_config``, which is the message an organizer already
+        # knows, but it still refuses.
+        for missing in ("sequence", "map_ids"):
+            with self.subTest(missing=missing):
+                body = flat_body()
+                del body[missing]
+
+                envelope, session = await self.invoke(body)
+
+                self.assert_unprocessable(envelope, f"{missing} must not be empty")
+                self.assertEqual(0, session.commits)
+
 
 # ── converting between the modes ─────────────────────────────────────────────
 
@@ -614,9 +641,11 @@ class CrossModeClearing(_UpsertCase):
         self.assertEqual([], [obj for obj in session.added if isinstance(obj, models.MapVetoConfig)])
 
     async def test_converting_out_and_back_leaves_neither_shape_behind(self) -> None:
-        # Each direction is pinned above; what this adds is the same row having
-        # carried both shapes, which is when a clear that ran only on the way
-        # out would show up as a config holding a stale pool AND live slots.
+        # Executable documentation, not a gap-closer. No mutant kills this test
+        # alone -- every candidate is already caught by one of the two
+        # directional tests above or by the wholesale-replace one. It is kept
+        # because the compound case is what an organizer actually does, and a
+        # reader should not have to assemble it from three others.
         existing = _config(SLOTS, slots=[[1, 2], [3, 4], [5, 6], [7, 8]])
 
         await self.invoke(flat_body(), existing=existing)
@@ -629,6 +658,57 @@ class CrossModeClearing(_UpsertCase):
         self.assertEqual(SLOTS, existing.mode)
         self.assertEqual(CANDIDATES, veto_session_service.slot_candidates(existing.slots))
         self.assertEqual([1, 2, 3], [slot.position for slot in existing.slots])
+
+
+# ── the clear must reach the database before the replacements do ─────────────
+
+
+class ReplacementRowsAreFlushedAfterTheClear(_UpsertCase):
+    """The one failure only a real database shows, so it is pinned structurally.
+
+    SQLAlchemy's unit of work emits a mapper's child INSERTs before its child
+    DELETEs. Replacing either collection in a single step therefore sends the
+    new rows while the old ones are still present, and both child tables carry a
+    plain non-deferrable UNIQUE the new rows land on:
+    ``uq_map_veto_config_slot_position`` always, because positions are
+    re-derived as 1..N, and ``uq_map_veto_config_map_config_map`` whenever the
+    new map set overlaps the old. Postgres rejects the INSERT and the
+    IntegrityError reaches ``_run``'s bare ``except Exception`` as an opaque 500.
+
+    A fake session cannot reproduce that -- it has no constraints and no unit of
+    work -- so what is pinned instead is the shape that avoids it: the handler
+    empties both collections and flushes THAT, before building any replacement.
+    """
+
+    async def test_the_clear_is_flushed_before_the_replacements_are_built(self) -> None:
+        existing = _config(SLOTS, slots=[[1, 2], [3, 4], [5, 6], [7, 8]])
+
+        envelope, session = await self.invoke(slot_body(), existing=existing)
+
+        self.assertTrue(envelope["ok"], envelope)
+        # Exactly one flush, and both collections were empty at that moment.
+        self.assertEqual([{"map_pool": [], "slots": []}], session.flushes)
+
+    async def test_a_flat_edit_flushes_its_cleared_pool_too(self) -> None:
+        # ``uq_map_veto_config_map_config_map`` is the same hazard on the flat
+        # side: FLAT_MAP_IDS resent over itself is a total overlap.
+        existing = _config(POOL, map_ids=FLAT_MAP_IDS)
+
+        envelope, session = await self.invoke(flat_body(), existing=existing)
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual([{"map_pool": [], "slots": []}], session.flushes)
+
+    async def test_the_flush_lands_before_the_commit(self) -> None:
+        # A flush emitted after the rebuild would snapshot the new rows, and one
+        # emitted after the commit would not help at all.
+        existing = _config(SLOTS, slots=CANDIDATES)
+
+        _, session = await self.invoke(slot_body(), existing=existing)
+
+        self.assertEqual(1, len(session.flushes))
+        self.assertEqual({"map_pool": [], "slots": []}, session.flushes[0])
+        self.assertEqual(1, session.commits)
 
 
 # ── a running session is nobody's business here ──────────────────────────────

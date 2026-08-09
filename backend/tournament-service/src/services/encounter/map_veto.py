@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.enums import MapPickSide, MapPoolEntryStatus, MapVetoSessionStatus
@@ -107,6 +108,21 @@ def in_current_slot(entry: models.EncounterMapPool, active_slot: int | None) -> 
     return active_slot is None or entry.slot == active_slot
 
 
+#: Loader options every ``serialize_veto_config`` call site must apply, kept
+#: beside the function that imposes the requirement rather than restated at each
+#: query. ``MapVetoConfig.slots`` and ``MapVetoConfigSlot.maps`` are both
+#: deliberately lazy, so a caller that omits this gets a ``MissingGreenlet`` 500
+#: on the first attribute touch, not a wrong answer.
+#:
+#: Only for statements whose rows are SERIALIZED. Loading configs to count or
+#: cascade them needs none of it -- see ``veto_session.resolve_config`` and the
+#: stage-merge target queries, which deliberately carry fewer options or none.
+SERIALIZE_LOAD_OPTIONS = (
+    selectinload(models.MapVetoConfig.map_pool),
+    selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps),
+)
+
+
 def serialize_veto_config(config: models.MapVetoConfig) -> dict[str, Any]:
     """Wire shape of one veto config, for the admin editor and the public page.
 
@@ -115,10 +131,8 @@ def serialize_veto_config(config: models.MapVetoConfig) -> dict[str, Any]:
     upsert refuses any other combination and nothing mirrors slot candidates
     into the flat pool (design Decision 19, withdrawn at arbitration).
 
-    ``config.slots`` and each slot's ``maps`` must already be loaded. Both
-    relationships are deliberately lazy, so every caller eager-loads the
-    two-level chain: a miss here is a ``MissingGreenlet`` 500 on the first
-    attribute touch, not a wrong answer.
+    ``config.slots`` and each slot's ``maps`` must already be loaded; apply
+    :data:`SERIALIZE_LOAD_OPTIONS` to whatever statement produced ``config``.
     """
     return {
         "id": config.id,

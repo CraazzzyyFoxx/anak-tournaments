@@ -12,7 +12,6 @@ from typing import Any
 
 import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.orm import selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user_optional
@@ -292,13 +291,7 @@ def register(broker: Any, logger: Any) -> None:
             stmt = (
                 sa.select(models.MapVetoConfig)
                 .where(models.MapVetoConfig.tournament_id == tournament_id)
-                # ``serialize_veto_config`` reads the slot chain, and both
-                # relationships are lazy: a miss here is a ``MissingGreenlet``
-                # 500 on the first config that has slots.
-                .options(
-                    selectinload(models.MapVetoConfig.map_pool),
-                    selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps),
-                )
+                .options(*map_veto_service.SERIALIZE_LOAD_OPTIONS)
                 .order_by(
                     models.MapVetoConfig.stage_id.asc().nulls_first(),
                     models.MapVetoConfig.round.asc().nulls_first(),

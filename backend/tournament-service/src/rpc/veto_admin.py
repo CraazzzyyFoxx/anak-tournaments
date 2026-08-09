@@ -19,7 +19,6 @@ from typing import Any, Literal
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.enums import FirstBanRotation, MapVetoMode
@@ -62,8 +61,13 @@ class VetoConfigUpsert(BaseModel):
     first_ban_rotation: FirstBanRotation = FirstBanRotation.FIXED
     preset: str | None = Field(default=None, max_length=32)
     turn_timer_seconds: int | None = Field(default=None, ge=1)
-    sequence: list[str]
-    map_ids: list[int]
+    # All three list fields default to empty so that "this mode does not use it"
+    # has exactly one spelling. A flat payload that omits them is still refused,
+    # by ``validate_veto_config``'s own non-empty checks rather than by the
+    # schema, which keeps the two flat messages the ones an organizer already
+    # sees.
+    sequence: list[str] = Field(default_factory=list)
+    map_ids: list[int] = Field(default_factory=list)
     slots: list[VetoConfigSlotUpsert] = Field(default_factory=list)
 
 
@@ -78,27 +82,21 @@ class AdminVetoAct(BaseModel):
 _serialize_config = map_veto_service.serialize_veto_config
 
 
-#: Loader chain this module's ``serialize_veto_config`` call sites need.
-#: ``slots`` and its ``maps`` are both deliberately lazy relationships, so a
-#: miss is a ``MissingGreenlet`` 500 rather than a wrong answer.
-_CONFIG_LOAD = (
-    selectinload(models.MapVetoConfig.map_pool),
-    selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps),
-)
+#: This module's ``serialize_veto_config`` call sites all use the shared loader
+#: chain; it lives next to the serializer because that is what imposes it.
+_CONFIG_LOAD = map_veto_service.SERIALIZE_LOAD_OPTIONS
 
 
-def _reject_other_modes_field(value: list, name: str, *, mode: MapVetoMode) -> None:
+def _reject_other_modes_field(value: list[Any], name: str, *, mode: MapVetoMode) -> None:
     """422 a field that belongs to the pool shape this payload did not pick.
 
     Ignoring it instead would be the hazard Decision 17 exists to prevent, one
     field over: a stale tab still holding the other shape's data would save with
     that data discarded and nothing to tell the organizer it was lost.
 
-    The message names the empty list rather than saying only "must be empty".
-    ``slots`` has a default, so omitting it and sending ``[]`` arrive here
-    identically and a client author has no way to tell which spelling this route
-    wants; ``map_ids`` and ``sequence`` are required, so for those ``[]`` is
-    simply the shortest value that satisfies both this check and the schema.
+    All three fields default to empty, so omitting one and sending ``[]`` arrive
+    here identically and "must be empty" alone would leave a client author
+    guessing which spelling this route wants. The message names one.
     """
     if value:
         raise HTTPException(
@@ -156,7 +154,10 @@ def register(broker: Any, logger: Any) -> None:
                     # hand-authored order for ``custom`` to name.
                     raise HTTPException(
                         status_code=422,
-                        detail="preset 'custom' is not valid in slots mode; the slots derive the sequence",
+                        detail=(
+                            "preset 'custom' is not valid in slots mode; the slots derive the sequence, "
+                            f"so send preset: '{veto_session_service.BRACKET_PRESET}' or null"
+                        ),
                     )
                 veto_session_service.validate_slot_config(
                     [slot.candidates for slot in body.slots],
@@ -215,14 +216,30 @@ def register(broker: Any, logger: Any) -> None:
                 config.turn_timer_seconds = body.turn_timer_seconds
                 config.veto_sequence_json = body.sequence
             # Both shapes are replaced on every upsert, whichever mode won. The
-            # guards above force the losing one's payload to be empty, so these
-            # two assignments are also what clears the other mode's rows on a
-            # conversion -- in this transaction, via the delete-orphan cascade.
+            # guards above force the losing one's payload to be empty, so this
+            # is also what clears the other mode's rows on a conversion -- in
+            # this transaction, via the delete-orphan cascade.
             #
             # Wholesale, not reconciled: nothing outside a slot's own children
             # references its id (``encounter_map_pool.slot`` carries the
             # ``position`` VALUE and ``EncounterVetoSession`` snapshots the
             # reserves), so recreating the rows costs new ids and nothing else.
+            #
+            # CLEARED AND FLUSHED FIRST, then rebuilt. SQLAlchemy's unit of work
+            # emits a mapper's child INSERTs before its child DELETEs, so
+            # replacing the collection in one step sends the new rows while the
+            # old ones are still present. Both child tables carry a plain,
+            # non-deferrable UNIQUE that the new rows land on:
+            # ``uq_map_veto_config_slot_position`` always, since positions are
+            # re-derived as 1..N, and ``uq_map_veto_config_map_config_map``
+            # whenever the new map set overlaps the old. Either way Postgres
+            # rejects the INSERT and the IntegrityError reaches ``_run``'s bare
+            # ``except Exception`` as an opaque 500. The flush makes the DELETEs
+            # a separate statement that lands first.
+            config.map_pool = []
+            config.slots = []
+            await session.flush()
+
             config.map_pool = [
                 models.MapVetoConfigMap(map_id=map_id, sort_order=idx) for idx, map_id in enumerate(body.map_ids)
             ]
