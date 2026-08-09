@@ -19,6 +19,7 @@ import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import {
@@ -49,6 +50,7 @@ import {
   buildToken,
   getMapsPlayedCount,
   getVetoLevelDescriptor,
+  matchesMapName,
   tokenAction,
   tokenLabelKey,
   tokenSide,
@@ -117,8 +119,42 @@ type BracketFormat =
       perRound: { round: number; bestOf: number }[] | null;
       /** The stage's final-round override, elimination stages only. */
       finalBestOf: number | null;
+      /** Rounds this scope covers, for the copy that says how many share it. */
+      roundCount: number;
     }
   | { scope: "tournament"; bestOf: number };
+
+/**
+ * Whether slot mode is offerable, and why not when it is not.
+ *
+ * Written against the `scope` discriminator rather than against `bestOf`: every
+ * variant carries a number, `tournament` included — it falls back to
+ * `DEFAULT_BEST_OF` — so a numeric test would open slot mode exactly where the
+ * series length is unknowable (design Decision 12). Slots are the maps of one
+ * series, so a scope spanning series of different lengths has no slot count.
+ */
+type SlotsAvailability =
+  | { available: true }
+  | {
+      available: false;
+      reasonKey: "poolShapeSlotsUnavailableStage" | "poolShapeSlotsUnavailableTournament";
+    };
+
+function resolveSlotsAvailability(format: BracketFormat): SlotsAvailability {
+  switch (format.scope) {
+    case "round":
+      return { available: true };
+    case "stage":
+      return format.perRound === null && format.finalBestOf === null
+        ? { available: true }
+        : { available: false, reasonKey: "poolShapeSlotsUnavailableStage" };
+    case "tournament":
+      return { available: false, reasonKey: "poolShapeSlotsUnavailableTournament" };
+  }
+}
+
+/** Sentinel for "no reserve": a Radix Select item cannot carry an empty value. */
+const RESERVE_NONE = "none";
 
 /** Which sequence a level runs: the bracket's, or one the organizer authored. */
 type VetoOrderMode = "bracket" | "custom";
@@ -140,8 +176,12 @@ function ChoiceCardGroup<T extends string>({
   onChange
 }: {
   title: string;
-  /** Labels and hints arrive resolved, so this component stays locale-agnostic. */
-  options: readonly { value: T; label: string; hint: string }[];
+  /**
+   * Labels and hints arrive resolved, so this component stays locale-agnostic.
+   * `disabled` per option is how a gated choice stays visible: the caller
+   * renders the reason beside the group rather than dropping the card.
+   */
+  options: readonly { value: T; label: string; hint: string; disabled?: boolean }[];
   value: T;
   disabled: boolean;
   onChange: (next: T) => void;
@@ -158,7 +198,7 @@ function ChoiceCardGroup<T extends string>({
               type="button"
               variant={active ? "default" : "outline"}
               aria-pressed={active}
-              disabled={disabled}
+              disabled={disabled || option.disabled === true}
               onClick={() => onChange(option.value)}
               className={cn(
                 "h-auto flex-col items-start gap-1 whitespace-normal px-3 py-2.5 text-left",
@@ -252,6 +292,209 @@ function MapPoolTile({
 }
 
 /**
+ * One slot's editor: candidates in play order, plus an optional reserve.
+ *
+ * The gamemode filter and the name query are the card's own state, not the
+ * form's. A group round is gamemode-homogeneous per *slot*, so "filter to
+ * Control, select the three" is two gestures per card — and a card filtered to
+ * Control while its neighbour shows Escort is the whole point of Decision 24.
+ */
+function SlotCard({
+  slot,
+  position,
+  maps,
+  groups,
+  disabled,
+  onToggleCandidate,
+  onSelectVisible,
+  onReserveChange
+}: {
+  slot: MapVetoConfigSlotUpsertInput;
+  /** 1-based play order — the position the server derives from list order. */
+  position: number;
+  maps: MapRead[];
+  /** Gamemode buckets over the whole catalogue, so the filter counts are stable. */
+  groups: GamemodeGroup[];
+  disabled: boolean;
+  onToggleCandidate: (mapId: number) => void;
+  /** Every map the card currently shows; the caller adds the missing ones. */
+  onSelectVisible: (mapIds: number[]) => void;
+  onReserveChange: (mapId: number | null) => void;
+}) {
+  const t = useTranslations();
+  const nameFilterId = useId();
+  const [gamemodeFilter, setGamemodeFilter] = useState<string>(ALL_FILTER);
+  const [nameQuery, setNameQuery] = useState("");
+
+  const slotLabel = t("mapVetoAdmin.slotLabel", { n: position });
+  const candidateIndex = new Map(slot.candidates.map((id, index) => [id, index]));
+
+  const inGamemode =
+    gamemodeFilter === ALL_FILTER
+      ? maps
+      : maps.filter((map) => (map.gamemode?.name ?? UNGROUPED_FILTER) === gamemodeFilter);
+  const visibleMaps = inGamemode.filter((map) => matchesMapName(map.name, nameQuery));
+  const visibleIds = visibleMaps.map((map) => map.id);
+  const allVisibleChosen = visibleIds.every((id) => candidateIndex.has(id));
+
+  /**
+   * Composition reads the candidates, not the filter: a stray Push map among
+   * three Control ones is what the chips exist to show without counting tiles.
+   */
+  const composition = groups
+    .map((group) => ({
+      key: group.key,
+      gamemode: group.name ?? t("mapVetoAdmin.ungrouped"),
+      count: group.maps.reduce((total, map) => (candidateIndex.has(map.id) ? total + 1 : total), 0)
+    }))
+    .filter((entry) => entry.count > 0);
+
+  /**
+   * A slot's reserve must not be one of its own candidates: it would either be
+   * banned there and then reinstated as that slot's replay map, or be the
+   * survivor, making the replay the very map that drew. Withholding them from
+   * the picker beats rejecting the choice afterwards.
+   */
+  const reserveOptions = maps.filter((map) => !candidateIndex.has(map.id));
+
+  return (
+    <div
+      role="group"
+      aria-label={slotLabel}
+      className="space-y-3 rounded-xl border border-border/70 bg-accent/10 p-3"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h4 className="text-sm font-semibold">{slotLabel}</h4>
+          <Badge variant="secondary" className="tabular-nums">
+            {t("mapVetoAdmin.slotCandidates", { count: slot.candidates.length })}
+          </Badge>
+          {composition.map((entry) => (
+            <Badge key={entry.key} variant="outline" className="tabular-nums">
+              {t("mapVeto.filterOption", { gamemode: entry.gamemode, count: entry.count })}
+            </Badge>
+          ))}
+        </div>
+        {/* Present but disabled rather than hidden: it sits in the card header,
+            and dropping it mid-save would shift every tile below it. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled || allVisibleChosen}
+          onClick={() => onSelectVisible(visibleIds)}
+        >
+          {t("mapVetoAdmin.poolSelectAll")}
+        </Button>
+      </div>
+
+      <div
+        role="group"
+        aria-label={t("mapVetoAdmin.filterLabel")}
+        className="flex flex-wrap gap-1.5"
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant={gamemodeFilter === ALL_FILTER ? "default" : "outline"}
+          aria-pressed={gamemodeFilter === ALL_FILTER}
+          onClick={() => setGamemodeFilter(ALL_FILTER)}
+          className="h-7 px-2.5 text-xs"
+        >
+          {t("mapVetoAdmin.filterOption", {
+            gamemode: t("mapVetoAdmin.filterAll"),
+            count: maps.length
+          })}
+        </Button>
+        {groups.map((group) => (
+          <Button
+            key={group.key}
+            type="button"
+            size="sm"
+            variant={gamemodeFilter === group.key ? "default" : "outline"}
+            aria-pressed={gamemodeFilter === group.key}
+            onClick={() => setGamemodeFilter(group.key)}
+            className="h-7 px-2.5 text-xs"
+          >
+            {t("mapVetoAdmin.filterOption", {
+              gamemode: group.name ?? t("mapVetoAdmin.ungrouped"),
+              count: group.maps.length
+            })}
+          </Button>
+        ))}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor={nameFilterId} className="text-xs font-medium text-muted-foreground">
+          {t("mapVetoAdmin.slotNameFilterLabel", { slot: position })}
+        </Label>
+        <Input
+          id={nameFilterId}
+          value={nameQuery}
+          onChange={(event) => setNameQuery(event.target.value)}
+          placeholder={t("mapVetoAdmin.slotNameFilterPlaceholder")}
+          className="h-8 max-w-xs text-xs"
+        />
+      </div>
+
+      {visibleMaps.length === 0 ? (
+        <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+          {nameQuery.trim() === ""
+            ? t("mapVetoAdmin.poolEmpty")
+            : t("mapVetoAdmin.slotNameFilterEmpty", { query: nameQuery })}
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+          {visibleMaps.map((map) => {
+            const gamemodeLabel = map.gamemode?.name ?? t("mapVetoAdmin.ungrouped");
+            return (
+              <MapPoolTile
+                key={map.id}
+                map={map}
+                gamemodeLabel={gamemodeLabel}
+                ariaLabel={t("mapVetoAdmin.slotToggleAria", {
+                  map: map.name,
+                  gamemode: gamemodeLabel,
+                  slot: position
+                })}
+                selectionIndex={candidateIndex.get(map.id) ?? -1}
+                disabled={disabled}
+                onToggle={() => onToggleCandidate(map.id)}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          value={slot.reserve_map_id == null ? RESERVE_NONE : String(slot.reserve_map_id)}
+          disabled={disabled}
+          onValueChange={(value: string) =>
+            onReserveChange(value === RESERVE_NONE ? null : Number(value))
+          }
+        >
+          <SelectTrigger
+            aria-label={t("mapVetoAdmin.slotReserveLabel", { slot: position })}
+            className="h-8 w-56 text-xs"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={RESERVE_NONE}>{t("mapVetoAdmin.slotReserveNone")}</SelectItem>
+            {reserveOptions.map((map) => (
+              <SelectItem key={map.id} value={String(map.id)}>
+                {map.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+/**
  * One cascade level's editor. Every field is seeded once from `config` in a
  * `useState` initializer — the parent remounts this component with a fresh
  * `key` when the scope or the saved config changes, so there is never a
@@ -311,6 +554,12 @@ function VetoConfigForm({
   );
   const [poolShape, setPoolShape] = useState<MapVetoMode>(() => config?.mode ?? "pool");
   /**
+   * One slot per map of the series, as the bracket resolves it for this scope.
+   * Not editable: the veto does not decide how long a series is, and the gate
+   * above is what keeps this number meaningful.
+   */
+  const slotCount = bracketFormat.bestOf;
+  /**
    * Slot candidates in play order, held across a pool-shape toggle for the same
    * reason `customSequence` survives an order-mode toggle: a mis-click must not
    * discard up to fifteen selections that cannot be undone.
@@ -319,13 +568,22 @@ function VetoConfigForm({
    * spellings differ: the read carries an explicit position per slot while the
    * upsert derives positions 1..N from the array. Converting once, here, is what
    * keeps them from disagreeing.
+   *
+   * Exactly `slotCount` entries: a shorter stored config gains empty cards to
+   * fill, a longer one is cut to what the bracket plays. Either disagreement is
+   * named by `slotCountMismatchWarning`, which reads the stored length so it
+   * still has both numbers to report.
    */
-  const [slotDraft] = useState<MapVetoConfigSlotUpsertInput[]>(() =>
-    [...(config?.slots ?? [])]
+  const [slotDraft, setSlotDraft] = useState<MapVetoConfigSlotUpsertInput[]>(() => {
+    const stored = [...(config?.slots ?? [])]
       .sort((left, right) => left.position - right.position)
-      .map((slot) => ({ candidates: [...slot.candidates], reserve_map_id: slot.reserve_map_id }))
-  );
-  const [firstBanRotation] = useState<FirstBanRotation>(
+      .map((slot) => ({ candidates: [...slot.candidates], reserve_map_id: slot.reserve_map_id }));
+    return Array.from(
+      { length: slotCount },
+      (_, index) => stored[index] ?? { candidates: [], reserve_map_id: null }
+    );
+  });
+  const [firstBanRotation, setFirstBanRotation] = useState<FirstBanRotation>(
     () => config?.first_ban_rotation ?? "fixed"
   );
   const [gamemodeFilter, setGamemodeFilter] = useState<string>(ALL_FILTER);
@@ -383,6 +641,55 @@ function VetoConfigForm({
     setMapIds((current) => current.filter((id) => !visible.has(id)));
   };
 
+  /**
+   * One slot, replaced rather than mutated: the draft array identity is what
+   * tells React the cards changed.
+   */
+  const patchSlot = (
+    index: number,
+    mutate: (slot: MapVetoConfigSlotUpsertInput) => MapVetoConfigSlotUpsertInput
+  ) => {
+    setSlotDraft((current) => current.map((slot, at) => (at === index ? mutate(slot) : slot)));
+  };
+
+  /**
+   * `withoutReserveClash` is the other direction of the reserve rule: the picker
+   * never offers a candidate, but promoting the current reserve into the
+   * candidate list would create the pair the upsert refuses, so it drops.
+   */
+  const withoutReserveClash = (
+    candidates: number[],
+    reserveMapId: number | null | undefined
+  ): MapVetoConfigSlotUpsertInput => ({
+    candidates,
+    reserve_map_id:
+      reserveMapId != null && candidates.includes(reserveMapId) ? null : reserveMapId ?? null
+  });
+
+  const toggleCandidate = (index: number, mapId: number) => {
+    patchSlot(index, (slot) =>
+      withoutReserveClash(
+        slot.candidates.includes(mapId)
+          ? slot.candidates.filter((id) => id !== mapId)
+          : [...slot.candidates, mapId],
+        slot.reserve_map_id
+      )
+    );
+  };
+
+  const selectVisibleInSlot = (index: number, visibleIds: number[]) => {
+    patchSlot(index, (slot) =>
+      withoutReserveClash(
+        [...slot.candidates, ...visibleIds.filter((id) => !slot.candidates.includes(id))],
+        slot.reserve_map_id
+      )
+    );
+  };
+
+  const setSlotReserve = (index: number, mapId: number | null) => {
+    patchSlot(index, (slot) => ({ ...slot, reserve_map_id: mapId }));
+  };
+
   /** Custom mode only: a generated sequence has no hand-edited counterpart. */
   const patchSequence = (mutate: (steps: VetoSequenceToken[]) => VetoSequenceToken[]) => {
     setCustomSequence((current) => mutate([...current]));
@@ -412,6 +719,24 @@ function VetoConfigForm({
   const sequence = isCustom ? customSequence : generatedSequence;
   const editable = canManage && isCustom;
 
+  const slotsAvailability = resolveSlotsAvailability(bracketFormat);
+  /**
+   * A stored slot config keeps the option live even where the gate is shut: its
+   * slots already exist, and locking the way back would strand them behind one
+   * mis-click on the flat card. What the gate prevents is opting *into* slots
+   * where the slot count has no meaning.
+   */
+  const slotsLocked = !slotsAvailability.available && config?.mode !== "slots";
+  /**
+   * The stored slot count against what the bracket now plays. Read from the
+   * saved config, not from the draft: the draft is already `slotCount` long, so
+   * comparing it to `slotCount` could never disagree. A bracket regeneration can
+   * change a round's best-of without changing its number, which is how a
+   * previously correct config ends up here.
+   */
+  const storedSlotCount = config?.slots.length ?? 0;
+  const slotCountMismatch = storedSlotCount > 0 && storedSlotCount !== slotCount;
+
   /**
    * Only the lengths the stage editor offers have a translated Bo label; a stage
    * configured to anything else still deserves a readable figure over a missing
@@ -434,10 +759,13 @@ function VetoConfigForm({
       : null;
 
   /**
-   * Flat-pool rules only. A slot config sends neither `map_ids` nor a
-   * `sequence`, so every check in here would fire on a valid slot draft.
+   * Mode-aware: the two shapes share no rule, so the validator takes the shape
+   * rather than a flat pair. Slot mode used to skip validation entirely, which
+   * left Save enabled into a draft the upsert rejects.
    */
-  const issues: VetoValidationIssue[] = isSlotMode ? [] : validateVetoConfigForm(sequence, mapIds);
+  const issues: VetoValidationIssue[] = isSlotMode
+    ? validateVetoConfigForm({ mode: "slots", slots: slotDraft })
+    : validateVetoConfigForm({ mode: "pool", sequence, mapIds });
   const canSave = canManage && issues.length === 0 && !isSaving;
 
   const handleSubmit = (event: FormEvent) => {
@@ -599,35 +927,126 @@ function VetoConfigForm({
             </div>
           </div>
 
-          <ChoiceCardGroup
-            title={t("mapVetoAdmin.poolShapeTitle")}
-            value={poolShape}
-            disabled={!canManage}
-            onChange={setPoolShape}
-            options={[
-              {
-                value: "pool",
-                label: t("mapVetoAdmin.poolShapeFlat"),
-                hint: t("mapVetoAdmin.poolShapeFlatHint")
-              },
-              {
-                value: "slots",
-                label: t("mapVetoAdmin.poolShapeSlots"),
-                hint: t("mapVetoAdmin.poolShapeSlotsHint")
-              }
-            ]}
-          />
+          <div className="space-y-2">
+            <ChoiceCardGroup
+              title={t("mapVetoAdmin.poolShapeTitle")}
+              value={poolShape}
+              disabled={!canManage}
+              onChange={setPoolShape}
+              options={[
+                {
+                  value: "pool",
+                  label: t("mapVetoAdmin.poolShapeFlat"),
+                  hint: t("mapVetoAdmin.poolShapeFlatHint")
+                },
+                {
+                  value: "slots",
+                  label: t("mapVetoAdmin.poolShapeSlots"),
+                  hint: t("mapVetoAdmin.poolShapeSlotsHint"),
+                  disabled: slotsLocked
+                }
+              ]}
+            />
+            {/* Disabled with its reason, never absent. Silent absence reads as
+                "the feature does not exist", and the gate shuts on the very
+                stages whose rounds most need a pool per map. */}
+            {slotsAvailability.available ? null : (
+              <p className="text-xs text-muted-foreground">
+                {t(`mapVetoAdmin.${slotsAvailability.reasonKey}`)}
+              </p>
+            )}
+          </div>
 
           {isSlotMode ? (
-            // The slot cards themselves are not built yet. Naming the section is
-            // what the shape control just promised; a flat pool grid or a step
-            // order here would collect edits the slot-mode payload discards.
-            <section className="space-y-3">
+            <section className="space-y-4">
               <div className="space-y-0.5">
                 <h3 className="text-sm font-semibold">{t("mapVetoAdmin.slotsTitle")}</h3>
                 <p className="text-xs text-muted-foreground">
                   {t("mapVetoAdmin.slotsDescription")}
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  {t("mapVetoAdmin.slotsCountHint", { count: slotDraft.length })}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t("mapVetoAdmin.slotReserveHint")}
+                </p>
+              </div>
+
+              {/* The live region has to exist before the warnings do. Both are
+                  warnings, not blocks: one shared stage config is legal, and a
+                  bracket that changed length is still saveable. */}
+              <div aria-live="polite" className="space-y-2">
+                {bracketFormat.scope === "stage" ? (
+                  <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                    <span>
+                      {t("mapVetoAdmin.slotsStageScopeWarning", {
+                        count: bracketFormat.roundCount
+                      })}
+                    </span>
+                  </div>
+                ) : null}
+                {slotCountMismatch ? (
+                  <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                    <span>
+                      {t("mapVetoAdmin.slotCountMismatchWarning", {
+                        slots: storedSlotCount,
+                        maps: slotCount
+                      })}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Two buttons and one shared hint rather than a `ChoiceCardGroup`:
+                  `firstBanHint` describes both choices at once, and repeating it
+                  under each card would say the same thing twice. */}
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">{t("mapVetoAdmin.firstBanTitle")}</h3>
+                <div
+                  role="group"
+                  aria-label={t("mapVetoAdmin.firstBanTitle")}
+                  className="flex flex-wrap gap-2"
+                >
+                  {(
+                    [
+                      ["fixed", t("mapVetoAdmin.firstBanFixed")],
+                      ["alternate", t("mapVetoAdmin.firstBanAlternate")]
+                    ] as const
+                  ).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      size="sm"
+                      variant={firstBanRotation === value ? "default" : "outline"}
+                      aria-pressed={firstBanRotation === value}
+                      disabled={!canManage}
+                      onClick={() => setFirstBanRotation(value)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">{t("mapVetoAdmin.firstBanHint")}</p>
+              </section>
+
+              <div className="space-y-4">
+                {slotDraft.map((slot, index) => (
+                  // Positional identity: slot 1 is always the first card and the
+                  // list is never reordered, so the index IS the slot.
+                  <SlotCard
+                    key={index}
+                    slot={slot}
+                    position={index + 1}
+                    maps={maps}
+                    groups={groups}
+                    disabled={!canManage || isSaving}
+                    onToggleCandidate={(mapId) => toggleCandidate(index, mapId)}
+                    onSelectVisible={(visibleIds) => selectVisibleInSlot(index, visibleIds)}
+                    onReserveChange={(mapId) => setSlotReserve(index, mapId)}
+                  />
+                ))}
               </div>
             </section>
           ) : (
@@ -957,8 +1376,10 @@ function VetoConfigForm({
                   {t("mapVetoAdmin.validationTitle")}
                 </p>
                 <ul className="list-inside list-disc space-y-0.5">
-                  {issues.map((issue) => (
-                    <li key={issue.key}>
+                  {/* Keyed by position too: slot mode raises the same `key` once
+                      per offending slot, so the key alone is not unique. */}
+                  {issues.map((issue, index) => (
+                    <li key={`${issue.key}:${index}`}>
                       {t(`mapVetoAdmin.validation.${issue.key}`, issue.values)}
                     </li>
                   ))}
@@ -1170,7 +1591,8 @@ export function TournamentMapVetoTab({
             bestOf: resolveBestOf(stageBestOfConfig, roundNumber)
           }))
         : null,
-      finalBestOf: isEliminationStage ? stageBestOfConfig.final ?? null : null
+      finalBestOf: isEliminationStage ? stageBestOfConfig.final ?? null : null,
+      roundCount
     };
   }, [levelType, activeStage, stageBestOfConfig, isEliminationStage, round, roundCount]);
 
