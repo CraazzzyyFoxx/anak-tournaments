@@ -176,13 +176,46 @@ async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     await _publish_tournament_changed(tournament_id, "structure_changed")
 
 
-def _map_veto_signature(config: models.MapVetoConfig) -> tuple[tuple, tuple]:
-    # ``map_pool`` was normalized out of the old ``map_pool_ids`` JSON array
-    # (dbarch05) into the ``map_veto_config_map`` child table; the relationship
-    # is ordered by ``sort_order`` so the tuple mirrors the old array order.
+def _map_veto_signature(config: models.MapVetoConfig) -> tuple[tuple, tuple, enums.MapVetoMode, tuple]:
+    """Structural identity of ``config`` for stage-merge dedup.
+
+    ``_merge_map_veto_configs`` refuses ONLY when two source signatures differ,
+    so whatever this leaves out is merged away in silence: one config survives
+    and the other's structure is dropped without a word. Hence the slot
+    PARTITION rather than its flat union — ``[[4, 9], [6, 2]]`` and
+    ``[[4, 9, 6], [2]]`` union to the same map list and would merge.
+
+    ``mode`` and the slots are APPENDED, so a flat config's signature still
+    carries the pre-slot ``(sequence, pool)`` pair as its prefix and no pair of
+    flat configs changes its merge verdict.
+
+    Significant: the slot ``position`` values (unique per config but not
+    necessarily contiguous, and part of what a slot IS — the same candidate lists
+    at positions 1/2 and at 1/3 are different configs), each slot's candidates in
+    ``sort_order`` order, and each slot's reserve. NOT significant: the order the
+    slot and candidate rows arrive in. Both relationships declare an
+    ``order_by``, but only ``(slot, map)`` is unique — ``sort_order`` defaults to
+    0 and may tie — so tied candidates are ordered by ``map_id`` here rather than
+    left to the query, which would let two separately loaded copies of one
+    structure hash apart into a spurious 409.
+
+    ``map_pool`` is deliberately NOT sorted here: it was normalized out of the
+    old ``map_pool_ids`` JSON array (dbarch05) into ``map_veto_config_map`` and
+    its relationship order is that array's order, which this signature has
+    always treated as significant.
+    """
     return (
         tuple(config.veto_sequence_json or []),
         tuple(entry.map_id for entry in config.map_pool),
+        config.mode,
+        tuple(
+            (
+                slot.position,
+                slot.reserve_map_id,
+                tuple(entry.map_id for entry in sorted(slot.maps, key=lambda row: (row.sort_order, row.map_id))),
+            )
+            for slot in sorted(config.slots, key=lambda row: row.position)
+        ),
     )
 
 
@@ -213,7 +246,11 @@ async def _merge_map_veto_configs(
             models.MapVetoConfig.tournament_id == target_stage.tournament_id,
             models.MapVetoConfig.stage_id.in_(source_stage_ids),
         )
+        # Only the SOURCE configs get signed, so the slot chain is eager-loaded
+        # only here. ``MapVetoConfig.slots`` is deliberately lazy, so reaching it
+        # after this await would raise ``MissingGreenlet``.
         .options(selectinload(models.MapVetoConfig.map_pool))
+        .options(selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps))
     )
     source_configs = list(source_result.scalars().all())
     if not source_configs:

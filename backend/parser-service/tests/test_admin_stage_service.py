@@ -31,6 +31,14 @@ admin_schemas = importlib.import_module("src.schemas.admin.stage")
 enums = importlib.import_module("shared.core.enums")
 
 
+def _scalars_result(values: list):
+    scalars = Mock()
+    scalars.all.return_value = values
+    result = Mock()
+    result.scalars.return_value = scalars
+    return result
+
+
 class AdminStageServiceTests(IsolatedAsyncioTestCase):
     async def test_create_stage_item_creates_compat_group_and_recalculates_standings(self) -> None:
         stage = SimpleNamespace(
@@ -380,3 +388,88 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
         self.assertTrue(any("DELETE FROM tournament.standing" in sql for sql in sqls))
         session.delete.assert_awaited_once_with(stage)
         session.commit.assert_awaited_once_with()
+
+
+class MapVetoSignatureTests(IsolatedAsyncioTestCase):
+    """This service carries a verbatim copy of ``_map_veto_signature`` (dbarch05).
+
+    tournament-service owns the exhaustive suite and a check that the two copies
+    are textually identical; what only this side can prove is that the copy runs
+    against THIS service's ``models``/``enums`` namespaces.
+    """
+
+    @staticmethod
+    def _slot(position: int, candidates: list[tuple[int, int]], reserve_map_id: int | None = None) -> SimpleNamespace:
+        """``candidates`` are ``(sort_order, map_id)`` pairs in row arrival order."""
+        return SimpleNamespace(
+            position=position,
+            reserve_map_id=reserve_map_id,
+            maps=[SimpleNamespace(sort_order=order, map_id=map_id) for order, map_id in candidates],
+        )
+
+    @staticmethod
+    def _config(mode, sequence: list[str], pool: tuple[int, ...] = (), slots: list | None = None) -> SimpleNamespace:
+        return SimpleNamespace(
+            mode=mode,
+            veto_sequence_json=sequence,
+            map_pool=[SimpleNamespace(map_id=map_id) for map_id in pool],
+            slots=list(slots or []),
+            stage_id=None,
+        )
+
+    def test_flat_signature_keeps_the_pre_slot_pair_as_its_prefix(self) -> None:
+        config = self._config(enums.MapVetoMode.POOL, ["ban_home", "pick_away", "decider"], pool=(7, 3, 11))
+        self.assertEqual(
+            stage_service._map_veto_signature(config),
+            (("ban_home", "pick_away", "decider"), (7, 3, 11), enums.MapVetoMode.POOL, ()),
+        )
+
+    def test_slot_partition_is_significant_where_the_union_is_not(self) -> None:
+        sequence = ["ban_first", "ban_second"]
+        left = self._config(
+            enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9)]), self._slot(2, [(0, 6), (1, 2)])]
+        )
+        right = self._config(
+            enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9), (2, 6)]), self._slot(2, [(0, 2)])]
+        )
+        # Same flat union in the same order, so a union-based signature would
+        # merge these two and drop one partition without a word.
+        self.assertEqual(
+            [entry.map_id for slot in left.slots for entry in slot.maps],
+            [entry.map_id for slot in right.slots for entry in slot.maps],
+        )
+        self.assertNotEqual(
+            stage_service._map_veto_signature(left),
+            stage_service._map_veto_signature(right),
+        )
+
+    async def test_merge_refuses_differing_partitions_and_eager_loads_the_slot_chain(self) -> None:
+        sequence = ["ban_first", "ban_second"]
+        left = self._config(
+            enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9)]), self._slot(2, [(0, 6), (1, 2)])]
+        )
+        right = self._config(
+            enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9), (2, 6)]), self._slot(2, [(0, 2)])]
+        )
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=[_scalars_result([]), _scalars_result([left, right])]),
+            delete=AsyncMock(),
+        )
+
+        with self.assertRaises(stage_service.HTTPException) as caught:
+            await stage_service._merge_map_veto_configs(
+                session,
+                target_stage=SimpleNamespace(id=10, tournament_id=99),
+                source_stage_ids=[11, 12],
+            )
+
+        self.assertEqual(caught.exception.status_code, stage_service.status.HTTP_409_CONFLICT)
+        session.delete.assert_not_awaited()
+        # Resolves this service's ``models.MapVetoConfigSlot`` for real: without
+        # the eager load the signature would lazy-load ``slots`` after an await.
+        source_statement = session.execute.await_args_list[1].args[0]
+        paths = [str(option.path) for option in source_statement._with_options]
+        self.assertTrue(
+            any("MapVetoConfig.slots" in path and "MapVetoConfigSlot.maps" in path for path in paths),
+            paths,
+        )
