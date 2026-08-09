@@ -320,7 +320,10 @@ function ProviderEditor({
                         )
                       }
                       ariaLabel={t("roles.roleAria")}
-                      className="h-8 min-w-40 flex-1"
+                      // Wide enough that the role name survives once the two
+                      // icon buttons take their 32px each; the row wraps rather
+                      // than truncating the value to nothing.
+                      className="min-w-56 flex-1"
                     />
                     <Input
                       type="number"

@@ -70,11 +70,17 @@ export function DiscordRoleSelect({
     }
   };
 
+  // `className` lands on the WRAPPER, not on the trigger: this component renders
+  // a row -- control plus one or two buttons -- into the caller's flex layout, so
+  // the wrapper is the thing that has to carry their `flex-1`. Sizing the trigger
+  // instead left the wrapper on `w-full`, which claimed the whole row and
+  // stretched the trigger, and with it the popup, across the entire card.
+  //
   // Manual entry is the only way out when our bot cannot read the guild, so it
-  // stays reachable — but it is the fallback, never the advertised workflow.
+  // stays reachable -- but it is the fallback, never the advertised workflow.
   if (manualMode || (!isLoading && !hasRoles)) {
     return (
-      <div className="flex w-full items-center gap-1.5">
+      <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -84,7 +90,7 @@ export function DiscordRoleSelect({
           inputMode="numeric"
           autoComplete="off"
           maxLength={19}
-          className={cn("font-mono", className)}
+          className="h-8 w-full min-w-0 font-mono"
         />
         {hasRoles && (
           <Button
@@ -102,9 +108,9 @@ export function DiscordRoleSelect({
   }
 
   return (
-    <div className="flex w-full items-center gap-1.5">
+    <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
       <Select value={value} onValueChange={handleSelectRole} disabled={disabled || isLoading}>
-        <SelectTrigger className={className} aria-label={ariaLabel}>
+        <SelectTrigger className="h-8 w-full min-w-0" aria-label={ariaLabel}>
           <SelectValue placeholder={isLoading ? t("loading") : (placeholder ?? t("placeholder"))}>
             {(() => {
               const matched = roles.find((r) => r.id === value);
