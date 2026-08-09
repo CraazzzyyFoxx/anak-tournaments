@@ -54,10 +54,11 @@ class VetoConfigUpsert(BaseModel):
     # wholesale, so a default would let a stale admin tab that predates slot
     # mode save a slot config as flat and drop its slots with no signal.
     mode: MapVetoMode
-    # Slot mode only; inert in flat mode, where nothing reads it. Defaulted
-    # rather than required because the column's server_default is the same
-    # value and no client that omits it can be editing an existing slot config:
-    # writing one requires sending ``mode`` explicitly, which no stale tab does.
+    # Slot mode only; nothing reads it in flat mode. Optional where ``mode`` is
+    # not, because the two failures are not comparable: this default is the
+    # column's own server_default, and omitting it changes which side opens each
+    # slot's bans -- visible in the editor and undone by another save -- rather
+    # than which rows the config keeps.
     first_ban_rotation: FirstBanRotation = FirstBanRotation.FIXED
     preset: str | None = Field(default=None, max_length=32)
     turn_timer_seconds: int | None = Field(default=None, ge=1)
@@ -77,9 +78,9 @@ class AdminVetoAct(BaseModel):
 _serialize_config = map_veto_service.serialize_veto_config
 
 
-#: Loader chain every ``serialize_veto_config`` caller needs. ``slots`` and its
-#: ``maps`` are both deliberately lazy relationships, so a miss is a
-#: ``MissingGreenlet`` 500 rather than a wrong answer.
+#: Loader chain this module's ``serialize_veto_config`` call sites need.
+#: ``slots`` and its ``maps`` are both deliberately lazy relationships, so a
+#: miss is a ``MissingGreenlet`` 500 rather than a wrong answer.
 _CONFIG_LOAD = (
     selectinload(models.MapVetoConfig.map_pool),
     selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps),
@@ -93,9 +94,11 @@ def _reject_other_modes_field(value: list, name: str, *, mode: MapVetoMode) -> N
     field over: a stale tab still holding the other shape's data would save with
     that data discarded and nothing to tell the organizer it was lost.
 
-    The message names the empty list rather than saying only "must be empty",
-    because omitting the key and sending ``[]`` arrive here identically and a
-    client author otherwise has no way to know which one this route wants.
+    The message names the empty list rather than saying only "must be empty".
+    ``slots`` has a default, so omitting it and sending ``[]`` arrive here
+    identically and a client author has no way to tell which spelling this route
+    wants; ``map_ids`` and ``sequence`` are required, so for those ``[]`` is
+    simply the shortest value that satisfies both this check and the schema.
     """
     if value:
         raise HTTPException(
