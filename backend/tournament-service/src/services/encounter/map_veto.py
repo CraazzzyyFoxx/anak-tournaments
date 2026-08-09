@@ -83,6 +83,10 @@ def current_slot(pool: list[models.EncounterMapPool]) -> int | None:
     out slot by slot and each step consumes exactly one entry. ``None`` is
     unambiguous for callers: flat mode has no slots, and a completed veto has no
     pending step, which :func:`get_current_step` reports first.
+
+    Callers must not read ``None`` as completion -- ``is_complete`` is the
+    authority there -- nor as flat mode, which is distinguishable only via
+    ``entry.slot`` being null on every entry.
     """
     slots = [entry.slot for entry in pool if entry.status == MapPoolEntryStatus.AVAILABLE and entry.slot is not None]
     return min(slots) if slots else None
@@ -217,10 +221,8 @@ def build_unavailable_state(reason: str) -> dict[str, Any]:
         "current_step": None,
         "expected_action": None,
         "turn_side": None,
-        # No pool exists here, so this is "unknown", not "no slot is active".
-        # ``None`` is still the only honest encoding -- any number would assert a
-        # slot that no config has resolved yet -- and ``session is None`` plus
-        # ``reason`` are what tell the client to read it that way.
+        # Unknown rather than "no slot is active" -- ``reason`` is what tells the
+        # client which null this is.
         "current_slot": None,
         "is_complete": False,
     }
