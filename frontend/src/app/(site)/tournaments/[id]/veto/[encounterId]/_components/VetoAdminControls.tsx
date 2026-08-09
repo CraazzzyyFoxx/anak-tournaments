@@ -22,7 +22,7 @@ import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { EncounterMapPoolState, MapVetoAction } from "@/types/tournament.types";
 
-import type { VetoSide } from "./veto-model";
+import type { VetoSide } from "@/components/veto/veto-model";
 
 interface VetoAdminControlsProps {
   encounterId: number;

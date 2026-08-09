@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
+import { EncounterMapPoolModal } from "@/components/veto/EncounterMapPoolModal";
 import {
   buildRoundGroups as buildBracketRoundGroups,
   computeMatchNumbers as computeBracketMatchNumbers,
@@ -591,6 +592,11 @@ function MatchCard({
           >
             <Search className="size-3.5" aria-hidden />
           </Link>
+          <EncounterMapPoolModal
+            encounterId={encounter.id}
+            homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
+            awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
+          />
         </div>
         {meta.timeLabel && (
           <span

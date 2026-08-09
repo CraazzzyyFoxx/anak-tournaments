@@ -31,11 +31,11 @@ import {
   slotReserveMaps,
   type VetoSide,
   type VetoUnavailableIcon,
-} from "./veto-model";
+} from "@/components/veto/veto-model";
+import { VetoMapGrid } from "@/components/veto/VetoMapGrid";
+import { VetoStepTimeline } from "@/components/veto/VetoStepTimeline";
 import { VetoAdminControls } from "./VetoAdminControls";
 import { VetoHero } from "./VetoHero";
-import { VetoMapGrid } from "./VetoMapGrid";
-import { VetoStepTimeline } from "./VetoStepTimeline";
 
 interface VetoRoomProps {
   encounterId: number;

@@ -1816,6 +1816,11 @@
     "round": "Раунд {n}",
     "lowerRound": "Нижняя R{n}",
     "viewMatch": "Посмотреть матч",
+    "viewMapPool": "Пул карт",
+    "mapPool": {
+      "title": "Пул карт",
+      "description": "{home} vs {away}"
+    },
     "pending": "Ожидает",
     "disputed": "Спор",
     "editMatch": "Редактировать матч",

@@ -55,6 +55,8 @@ export default defineConfig({
       // entry is file-level rather than a directory glob.
       "src/app/(site)/tournaments/[id]/_views/TournamentMapsPage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
+      "src/components/veto/**/*.test.ts",
+      "src/components/veto/**/*.test.tsx",
       // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
       // files, which fail on the import when vitest picks them up.
       "src/components/tournaments/MatchReportDialog.behavior.test.tsx",

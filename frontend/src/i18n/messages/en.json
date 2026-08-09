@@ -1816,6 +1816,11 @@
     "round": "Round {n}",
     "lowerRound": "Lower R{n}",
     "viewMatch": "View match",
+    "viewMapPool": "View map pool",
+    "mapPool": {
+      "title": "Map Pool",
+      "description": "{home} vs {away}"
+    },
     "pending": "Pending",
     "disputed": "Disputed",
     "editMatch": "Edit match",

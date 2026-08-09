@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { EncounterMapPoolState, EncounterVetoSession } from "@/types/tournament.types";
 
-import { turnDeadlineMs, type VetoSide } from "./veto-model";
+import { turnDeadlineMs, type VetoSide } from "@/components/veto/veto-model";
 import { VetoCountdown } from "./VetoCountdown";
 
 interface VetoHeroProps {
