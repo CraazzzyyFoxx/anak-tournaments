@@ -36,8 +36,11 @@ import adminService from "@/services/admin.service";
 import mapService from "@/services/map.service";
 import type { MapRead } from "@/types/map.types";
 import type {
+  FirstBanRotation,
   MapVetoConfig,
+  MapVetoConfigSlotUpsertInput,
   MapVetoConfigUpsertInput,
+  MapVetoMode,
   Stage,
   VetoPreset,
   VetoSequenceToken
@@ -53,7 +56,8 @@ import {
   type VetoLevelDescriptor,
   type VetoLevelType,
   type VetoStepAction,
-  type VetoStepSide
+  type VetoStepSide,
+  type VetoValidationIssue
 } from "./mapVeto.helpers";
 
 interface TournamentMapVetoTabProps {
@@ -77,9 +81,17 @@ interface GamemodeGroup {
 
 /** What the form hands back on submit; the parent adds the scope columns. */
 interface VetoFormValues {
+  /** Which pool shape the fields below describe. */
+  mode: MapVetoMode;
+  /** Flat mode only; the slot-mode payload sends an empty list instead. */
   mapIds: number[];
+  /** Flat mode only; a slot config's steps are derived from its slots. */
   sequence: VetoSequenceToken[];
+  /** Slot mode only, in play order; the server derives positions 1..N from it. */
+  slots: MapVetoConfigSlotUpsertInput[];
   preset: VetoPreset;
+  /** Slot mode only, but sent on every save: see the parent's `handleSave`. */
+  firstBanRotation: FirstBanRotation;
   turnTimerSeconds: number | null;
 }
 
@@ -111,18 +123,64 @@ type BracketFormat =
 /** Which sequence a level runs: the bracket's, or one the organizer authored. */
 type VetoOrderMode = "bracket" | "custom";
 
-const ORDER_MODE_OPTIONS = [
-  {
-    mode: "bracket",
-    label: "mapVetoAdmin.orderModeBracket",
-    hint: "mapVetoAdmin.orderModeBracketHint"
-  },
-  {
-    mode: "custom",
-    label: "mapVetoAdmin.orderModeCustom",
-    hint: "mapVetoAdmin.orderModeCustomHint"
-  }
-] as const;
+/**
+ * One exclusive pick, rendered as labelled cards with a hint under each label.
+ *
+ * Used twice, by the pool shape and by the step order. Design Decision 23 keeps
+ * those two separate rather than merging them into one three-way group: slots
+ * change what the pool *is* rather than the order of its steps, and
+ * `ck_map_veto_config_slots_not_custom` forbids the slots-plus-custom pair a
+ * merged group would offer.
+ */
+function ChoiceCardGroup<T extends string>({
+  title,
+  options,
+  value,
+  disabled,
+  onChange
+}: {
+  title: string;
+  /** Labels and hints arrive resolved, so this component stays locale-agnostic. */
+  options: readonly { value: T; label: string; hint: string }[];
+  value: T;
+  disabled: boolean;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div role="group" aria-label={title} className="grid gap-2 sm:grid-cols-2">
+        {options.map((option) => {
+          const active = value === option.value;
+          return (
+            <Button
+              key={option.value}
+              type="button"
+              variant={active ? "default" : "outline"}
+              aria-pressed={active}
+              disabled={disabled}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                "h-auto flex-col items-start gap-1 whitespace-normal px-3 py-2.5 text-left",
+                active ? "ring-2 ring-primary/40" : "border-border/70"
+              )}
+            >
+              <span className="text-sm font-semibold">{option.label}</span>
+              <span
+                className={cn(
+                  "text-[11px] font-normal",
+                  active ? "text-primary-foreground/80" : "text-muted-foreground"
+                )}
+              >
+                {option.hint}
+              </span>
+            </Button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function MapPoolTile({
   map,
@@ -251,6 +309,25 @@ function VetoConfigForm({
   const [turnTimerSeconds, setTurnTimerSeconds] = useState<number | null>(() =>
     config ? config.turn_timer_seconds : 30
   );
+  const [poolShape, setPoolShape] = useState<MapVetoMode>(() => config?.mode ?? "pool");
+  /**
+   * Slot candidates in play order, held across a pool-shape toggle for the same
+   * reason `customSequence` survives an order-mode toggle: a mis-click must not
+   * discard up to fifteen selections that cannot be undone.
+   *
+   * Seeded through `position` and written back as list order, because the two
+   * spellings differ: the read carries an explicit position per slot while the
+   * upsert derives positions 1..N from the array. Converting once, here, is what
+   * keeps them from disagreeing.
+   */
+  const [slotDraft] = useState<MapVetoConfigSlotUpsertInput[]>(() =>
+    [...(config?.slots ?? [])]
+      .sort((left, right) => left.position - right.position)
+      .map((slot) => ({ candidates: [...slot.candidates], reserve_map_id: slot.reserve_map_id }))
+  );
+  const [firstBanRotation] = useState<FirstBanRotation>(
+    () => config?.first_ban_rotation ?? "fixed"
+  );
   const [gamemodeFilter, setGamemodeFilter] = useState<string>(ALL_FILTER);
 
   const groups = useMemo<GamemodeGroup[]>(() => {
@@ -330,6 +407,7 @@ function VetoConfigForm({
     () => buildSequenceForBestOf(bracketFormat.bestOf, mapIds.length),
     [bracketFormat.bestOf, mapIds.length]
   );
+  const isSlotMode = poolShape === "slots";
   const isCustom = orderMode === "custom";
   const sequence = isCustom ? customSequence : generatedSequence;
   const editable = canManage && isCustom;
@@ -355,13 +433,28 @@ function VetoConfigForm({
       ? { played: mapsPlayed, expected: bracketFormat.bestOf }
       : null;
 
-  const issues = validateVetoConfigForm(sequence, mapIds);
+  /**
+   * Flat-pool rules only. A slot config sends neither `map_ids` nor a
+   * `sequence`, so every check in here would fire on a valid slot draft.
+   */
+  const issues: VetoValidationIssue[] = isSlotMode ? [] : validateVetoConfigForm(sequence, mapIds);
   const canSave = canManage && issues.length === 0 && !isSaving;
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!canSave) return;
-    onSave({ mapIds, sequence, preset: isCustom ? "custom" : "bracket", turnTimerSeconds });
+    onSave({
+      mode: poolShape,
+      mapIds,
+      sequence,
+      slots: slotDraft,
+      // A slot config's steps are derived from its slots, so there is no
+      // hand-authored order for `custom` to name and the
+      // `ck_map_veto_config_slots_not_custom` CHECK refuses the pair.
+      preset: !isSlotMode && isCustom ? "custom" : "bracket",
+      firstBanRotation,
+      turnTimerSeconds
+    });
   };
 
   const renderTile = (map: MapRead) => {
@@ -506,333 +599,354 @@ function VetoConfigForm({
             </div>
           </div>
 
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-3">
+          <ChoiceCardGroup
+            title={t("mapVetoAdmin.poolShapeTitle")}
+            value={poolShape}
+            disabled={!canManage}
+            onChange={setPoolShape}
+            options={[
+              {
+                value: "pool",
+                label: t("mapVetoAdmin.poolShapeFlat"),
+                hint: t("mapVetoAdmin.poolShapeFlatHint")
+              },
+              {
+                value: "slots",
+                label: t("mapVetoAdmin.poolShapeSlots"),
+                hint: t("mapVetoAdmin.poolShapeSlotsHint")
+              }
+            ]}
+          />
+
+          {isSlotMode ? (
+            // The slot cards themselves are not built yet. Naming the section is
+            // what the shape control just promised; a flat pool grid or a step
+            // order here would collect edits the slot-mode payload discards.
+            <section className="space-y-3">
               <div className="space-y-0.5">
-                <h3 className="text-sm font-semibold">{t("mapVetoAdmin.poolTitle")}</h3>
+                <h3 className="text-sm font-semibold">{t("mapVetoAdmin.slotsTitle")}</h3>
                 <p className="text-xs text-muted-foreground">
-                  {t("mapVetoAdmin.poolDescription")}
+                  {t("mapVetoAdmin.slotsDescription")}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="tabular-nums">
-                  {t("mapVetoAdmin.poolSelected", { count: mapIds.length })}
-                </Badge>
-                {canManage ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={visibleSelectedCount === visibleMaps.length}
-                      onClick={selectVisible}
-                    >
-                      {t("mapVetoAdmin.poolSelectAll")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={visibleSelectedCount === 0}
-                      onClick={clearVisible}
-                    >
-                      {t("mapVetoAdmin.poolClear")}
-                    </Button>
-                  </>
-                ) : null}
-              </div>
-            </div>
+            </section>
+          ) : (
+            <>
+              <section className="space-y-3">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <h3 className="text-sm font-semibold">{t("mapVetoAdmin.poolTitle")}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {t("mapVetoAdmin.poolDescription")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="tabular-nums">
+                      {t("mapVetoAdmin.poolSelected", { count: mapIds.length })}
+                    </Badge>
+                    {canManage ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={visibleSelectedCount === visibleMaps.length}
+                          onClick={selectVisible}
+                        >
+                          {t("mapVetoAdmin.poolSelectAll")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={visibleSelectedCount === 0}
+                          onClick={clearVisible}
+                        >
+                          {t("mapVetoAdmin.poolClear")}
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
 
-            <div
-              role="group"
-              aria-label={t("mapVetoAdmin.filterLabel")}
-              className="flex flex-wrap gap-1.5"
-            >
-              <Button
-                type="button"
-                size="sm"
-                variant={gamemodeFilter === ALL_FILTER ? "default" : "outline"}
-                aria-pressed={gamemodeFilter === ALL_FILTER}
-                onClick={() => setGamemodeFilter(ALL_FILTER)}
-                className="h-7 px-2.5 text-xs"
-              >
-                {t("mapVetoAdmin.filterOption", {
-                  gamemode: t("mapVetoAdmin.filterAll"),
-                  count: maps.length
-                })}
-              </Button>
-              {groups.map((group) => (
-                <Button
-                  key={group.key}
-                  type="button"
-                  size="sm"
-                  variant={gamemodeFilter === group.key ? "default" : "outline"}
-                  aria-pressed={gamemodeFilter === group.key}
-                  onClick={() => setGamemodeFilter(group.key)}
-                  className="h-7 px-2.5 text-xs"
+                <div
+                  role="group"
+                  aria-label={t("mapVetoAdmin.filterLabel")}
+                  className="flex flex-wrap gap-1.5"
                 >
-                  {t("mapVetoAdmin.filterOption", {
-                    gamemode: group.name ?? t("mapVetoAdmin.ungrouped"),
-                    count: group.maps.length
-                  })}
-                </Button>
-              ))}
-            </div>
-
-            {visibleMaps.length === 0 ? (
-              <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                {t("mapVetoAdmin.poolEmpty")}
-              </p>
-            ) : gamemodeFilter === ALL_FILTER ? (
-              <div className="space-y-4">
-                {visibleGroups.map((group) => (
-                  <div key={group.key} className="space-y-2">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={gamemodeFilter === ALL_FILTER ? "default" : "outline"}
+                    aria-pressed={gamemodeFilter === ALL_FILTER}
+                    onClick={() => setGamemodeFilter(ALL_FILTER)}
+                    className="h-7 px-2.5 text-xs"
+                  >
+                    {t("mapVetoAdmin.filterOption", {
+                      gamemode: t("mapVetoAdmin.filterAll"),
+                      count: maps.length
+                    })}
+                  </Button>
+                  {groups.map((group) => (
+                    <Button
+                      key={group.key}
+                      type="button"
+                      size="sm"
+                      variant={gamemodeFilter === group.key ? "default" : "outline"}
+                      aria-pressed={gamemodeFilter === group.key}
+                      onClick={() => setGamemodeFilter(group.key)}
+                      className="h-7 px-2.5 text-xs"
+                    >
                       {t("mapVetoAdmin.filterOption", {
                         gamemode: group.name ?? t("mapVetoAdmin.ungrouped"),
                         count: group.maps.length
                       })}
-                    </h4>
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
-                      {group.maps.map(renderTile)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
-                {visibleMaps.map(renderTile)}
-              </div>
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold">{t("mapVetoAdmin.orderModeTitle")}</h3>
-            <div
-              role="group"
-              aria-label={t("mapVetoAdmin.orderModeTitle")}
-              className="grid gap-2 sm:grid-cols-2"
-            >
-              {ORDER_MODE_OPTIONS.map((option) => {
-                const active = orderMode === option.mode;
-                return (
-                  <Button
-                    key={option.mode}
-                    type="button"
-                    variant={active ? "default" : "outline"}
-                    aria-pressed={active}
-                    disabled={!canManage}
-                    onClick={() => setOrderMode(option.mode)}
-                    className={cn(
-                      "h-auto flex-col items-start gap-1 whitespace-normal px-3 py-2.5 text-left",
-                      active ? "ring-2 ring-primary/40" : "border-border/70"
-                    )}
-                  >
-                    <span className="text-sm font-semibold">{t(option.label)}</span>
-                    <span
-                      className={cn(
-                        "text-[11px] font-normal",
-                        active ? "text-primary-foreground/80" : "text-muted-foreground"
-                      )}
-                    >
-                      {t(option.hint)}
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div className="space-y-0.5">
-                <h3 className="text-sm font-semibold">
-                  {isCustom ? t("mapVetoAdmin.sequenceTitle") : t("mapVetoAdmin.previewTitle")}
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  {isCustom
-                    ? t("mapVetoAdmin.sequenceDescription")
-                    : mapIds.length === 0
-                      ? t("mapVetoAdmin.previewStale")
-                      : t("mapVetoAdmin.previewHint", {
-                          format: bestOfLabel(bracketFormat.bestOf),
-                          count: mapIds.length
-                        })}
-                </p>
-              </div>
-              <Badge variant="outline" className="tabular-nums">
-                {t("mapVeto.mapsPlayed", { count: mapsPlayed })}
-              </Badge>
-            </div>
-
-            {sequence.length === 0 ? (
-              // A generated sequence is only empty when the pool is, and the
-              // description above already says so.
-              isCustom ? (
-                <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  {t("mapVetoAdmin.sequenceEmpty")}
-                </p>
-              ) : null
-            ) : (
-              <ol className="space-y-2">
-                {sequence.map((token, index) => {
-                  const action = tokenAction(token);
-                  const side = tokenSide(token);
-                  const step = index + 1;
-                  return (
-                    <li
-                      key={index}
-                      className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-2xs"
-                    >
-                      <span
-                        aria-hidden
-                        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums"
-                      >
-                        {step}
-                      </span>
-                      <span className="sr-only">
-                        {t("mapVetoAdmin.sequenceStep", { n: step })}
-                      </span>
-
-                      {editable ? (
-                        <>
-                          <Select
-                            value={action}
-                            onValueChange={(value: string) =>
-                              patchSequence((steps) => {
-                                steps[index] = buildToken(
-                                  value as VetoStepAction,
-                                  side ?? "first"
-                                );
-                                return steps;
-                              })
-                            }
-                          >
-                            <SelectTrigger
-                              aria-label={t("mapVetoAdmin.actionLabel", { n: step })}
-                              className="h-8 w-32 text-xs"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ban">{t("mapVetoAdmin.action.ban")}</SelectItem>
-                              <SelectItem value="pick">{t("mapVetoAdmin.action.pick")}</SelectItem>
-                              <SelectItem value="decider">
-                                {t("mapVetoAdmin.action.decider")}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-
-                          {action === "decider" ? (
-                            <span className="text-xs text-muted-foreground">
-                              {t("mapVetoAdmin.deciderAuto")}
-                            </span>
-                          ) : (
-                            <Select
-                              value={side ?? "first"}
-                              onValueChange={(value: string) =>
-                                patchSequence((steps) => {
-                                  steps[index] = buildToken(action, value as VetoStepSide);
-                                  return steps;
-                                })
-                              }
-                            >
-                              <SelectTrigger
-                                aria-label={t("mapVetoAdmin.sideLabel", { n: step })}
-                                className="h-8 w-36 text-xs"
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="first">
-                                  {t("mapVetoAdmin.side.first")}
-                                </SelectItem>
-                                <SelectItem value="second">
-                                  {t("mapVetoAdmin.side.second")}
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          )}
-
-                          <div className="ml-auto flex items-center gap-0.5">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              aria-label={t("mapVetoAdmin.moveStepUp", { n: step })}
-                              disabled={index === 0}
-                              onClick={() => moveStep(index, -1)}
-                            >
-                              <ArrowUp className="h-3.5 w-3.5" aria-hidden />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              aria-label={t("mapVetoAdmin.moveStepDown", { n: step })}
-                              disabled={index === sequence.length - 1}
-                              onClick={() => moveStep(index, 1)}
-                            >
-                              <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-destructive"
-                              aria-label={t("mapVetoAdmin.removeStep", { n: step })}
-                              onClick={() =>
-                                patchSequence((steps) => {
-                                  steps.splice(index, 1);
-                                  return steps;
-                                })
-                              }
-                            >
-                              <X className="h-3.5 w-3.5" aria-hidden />
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        // Read-only: a resolved label beats a row of dead selects.
-                        <span className="text-xs font-medium">
-                          {t(`mapVeto.step.${tokenLabelKey(token)}`)}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-
-            {editable ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => patchSequence((steps) => [...steps, "ban_first"])}
-                className="gap-1.5"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                {t("mapVetoAdmin.addStep")}
-              </Button>
-            ) : null}
-
-            {/* A warning, not a blocker: the live region has to exist before it
-                does, and saving stays allowed because custom wins on purpose. */}
-            <div aria-live="polite">
-              {mismatch ? (
-                <div className="space-y-1 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-                  <p className="flex items-center gap-2 font-semibold">
-                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-                    {t("mapVetoAdmin.mismatchTitle")}
-                  </p>
-                  <p>{t("mapVetoAdmin.mismatchBody", mismatch)}</p>
+                    </Button>
+                  ))}
                 </div>
-              ) : null}
-            </div>
-          </section>
+
+                {visibleMaps.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    {t("mapVetoAdmin.poolEmpty")}
+                  </p>
+                ) : gamemodeFilter === ALL_FILTER ? (
+                  <div className="space-y-4">
+                    {visibleGroups.map((group) => (
+                      <div key={group.key} className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          {t("mapVetoAdmin.filterOption", {
+                            gamemode: group.name ?? t("mapVetoAdmin.ungrouped"),
+                            count: group.maps.length
+                          })}
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+                          {group.maps.map(renderTile)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+                    {visibleMaps.map(renderTile)}
+                  </div>
+                )}
+              </section>
+
+              <ChoiceCardGroup
+                title={t("mapVetoAdmin.orderModeTitle")}
+                value={orderMode}
+                disabled={!canManage}
+                onChange={setOrderMode}
+                options={[
+                  {
+                    value: "bracket",
+                    label: t("mapVetoAdmin.orderModeBracket"),
+                    hint: t("mapVetoAdmin.orderModeBracketHint")
+                  },
+                  {
+                    value: "custom",
+                    label: t("mapVetoAdmin.orderModeCustom"),
+                    hint: t("mapVetoAdmin.orderModeCustomHint")
+                  }
+                ]}
+              />
+
+              <section className="space-y-3">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <h3 className="text-sm font-semibold">
+                      {isCustom ? t("mapVetoAdmin.sequenceTitle") : t("mapVetoAdmin.previewTitle")}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {isCustom
+                        ? t("mapVetoAdmin.sequenceDescription")
+                        : mapIds.length === 0
+                          ? t("mapVetoAdmin.previewStale")
+                          : t("mapVetoAdmin.previewHint", {
+                              format: bestOfLabel(bracketFormat.bestOf),
+                              count: mapIds.length
+                            })}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="tabular-nums">
+                    {t("mapVeto.mapsPlayed", { count: mapsPlayed })}
+                  </Badge>
+                </div>
+
+                {sequence.length === 0 ? (
+                  // A generated sequence is only empty when the pool is, and the
+                  // description above already says so.
+                  isCustom ? (
+                    <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      {t("mapVetoAdmin.sequenceEmpty")}
+                    </p>
+                  ) : null
+                ) : (
+                  <ol className="space-y-2">
+                    {sequence.map((token, index) => {
+                      const action = tokenAction(token);
+                      const side = tokenSide(token);
+                      const step = index + 1;
+                      return (
+                        <li
+                          key={index}
+                          className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-2xs"
+                        >
+                          <span
+                            aria-hidden
+                            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums"
+                          >
+                            {step}
+                          </span>
+                          <span className="sr-only">
+                            {t("mapVetoAdmin.sequenceStep", { n: step })}
+                          </span>
+
+                          {editable ? (
+                            <>
+                              <Select
+                                value={action}
+                                onValueChange={(value: string) =>
+                                  patchSequence((steps) => {
+                                    steps[index] = buildToken(
+                                      value as VetoStepAction,
+                                      side ?? "first"
+                                    );
+                                    return steps;
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  aria-label={t("mapVetoAdmin.actionLabel", { n: step })}
+                                  className="h-8 w-32 text-xs"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ban">
+                                    {t("mapVetoAdmin.action.ban")}
+                                  </SelectItem>
+                                  <SelectItem value="pick">
+                                    {t("mapVetoAdmin.action.pick")}
+                                  </SelectItem>
+                                  <SelectItem value="decider">
+                                    {t("mapVetoAdmin.action.decider")}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+
+                              {action === "decider" ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {t("mapVetoAdmin.deciderAuto")}
+                                </span>
+                              ) : (
+                                <Select
+                                  value={side ?? "first"}
+                                  onValueChange={(value: string) =>
+                                    patchSequence((steps) => {
+                                      steps[index] = buildToken(action, value as VetoStepSide);
+                                      return steps;
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger
+                                    aria-label={t("mapVetoAdmin.sideLabel", { n: step })}
+                                    className="h-8 w-36 text-xs"
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="first">
+                                      {t("mapVetoAdmin.side.first")}
+                                    </SelectItem>
+                                    <SelectItem value="second">
+                                      {t("mapVetoAdmin.side.second")}
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+
+                              <div className="ml-auto flex items-center gap-0.5">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7"
+                                  aria-label={t("mapVetoAdmin.moveStepUp", { n: step })}
+                                  disabled={index === 0}
+                                  onClick={() => moveStep(index, -1)}
+                                >
+                                  <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7"
+                                  aria-label={t("mapVetoAdmin.moveStepDown", { n: step })}
+                                  disabled={index === sequence.length - 1}
+                                  onClick={() => moveStep(index, 1)}
+                                >
+                                  <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-destructive"
+                                  aria-label={t("mapVetoAdmin.removeStep", { n: step })}
+                                  onClick={() =>
+                                    patchSequence((steps) => {
+                                      steps.splice(index, 1);
+                                      return steps;
+                                    })
+                                  }
+                                >
+                                  <X className="h-3.5 w-3.5" aria-hidden />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            // Read-only: a resolved label beats a row of dead selects.
+                            <span className="text-xs font-medium">
+                              {t(`mapVeto.step.${tokenLabelKey(token)}`)}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+
+                {editable ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => patchSequence((steps) => [...steps, "ban_first"])}
+                    className="gap-1.5"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    {t("mapVetoAdmin.addStep")}
+                  </Button>
+                ) : null}
+
+                {/* A warning, not a blocker: the live region has to exist before it
+                    does, and saving stays allowed because custom wins on purpose. */}
+                <div aria-live="polite">
+                  {mismatch ? (
+                    <div className="space-y-1 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                      <p className="flex items-center gap-2 font-semibold">
+                        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                        {t("mapVetoAdmin.mismatchTitle")}
+                      </p>
+                      <p>{t("mapVetoAdmin.mismatchBody", mismatch)}</p>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            </>
+          )}
 
           {/* The live region has to exist before the issues do. */}
           <div aria-live="polite">
@@ -863,7 +977,7 @@ function VetoConfigForm({
             </div>
           ) : null}
 
-          {orderMode === "bracket" ? (
+          {!isSlotMode && orderMode === "bracket" ? (
             <p className="text-xs text-muted-foreground">
               {t("mapVetoAdmin.storedFallbackHint")}
             </p>
@@ -990,14 +1104,23 @@ export function TournamentMapVetoTab({
   };
 
   const handleSave = (values: VetoFormValues) => {
+    const isSlotMode = values.mode === "slots";
     upsertMutation.mutate({
       stage_id: levelType === "tournament" ? null : stageId,
       round: levelType === "stage_round" ? round : null,
-      // Required, no server-side default. This editor only builds flat pools;
-      // the slot-mode control arrives with the slot cards.
-      mode: "pool",
-      map_ids: values.mapIds,
-      sequence: values.sequence,
+      // Required, no server-side default: this route replaces the pool
+      // wholesale, so a default would let a tab that predates slot mode save a
+      // slot config as flat and orphan its slot rows.
+      mode: values.mode,
+      // Each shape sends its own fields and an empty list for the other's. The
+      // route 422s any other combination, naming the field it wants emptied.
+      map_ids: isSlotMode ? [] : values.mapIds,
+      sequence: isSlotMode ? [] : values.sequence,
+      slots: isSlotMode ? values.slots : [],
+      // Sent on every save, in both shapes: the route assigns this column
+      // unconditionally from a field that defaults to "fixed", so omitting it
+      // rewrites an "alternate" config back to "fixed" with no error.
+      first_ban_rotation: values.firstBanRotation,
       turn_timer_seconds: values.turnTimerSeconds,
       preset: values.preset
     });

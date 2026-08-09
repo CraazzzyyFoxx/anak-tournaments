@@ -131,6 +131,42 @@ const STAGES = [
   stage(189, "Playoffs", 1, 3, { default: 3, final: 5 })
 ];
 
+/**
+ * A slot-mode config, deliberately awkward so a fixture cannot stand in for a
+ * correct implementation:
+ *  - the slots arrive out of `position` order, so trusting array order over
+ *    `position` renumbers them;
+ *  - the slots hold different numbers of candidates, so neither length is
+ *    interchangeable with the other's;
+ *  - candidate ids are unsorted, so a stray sort is visible;
+ *  - only the second slot carries a reserve, so a dropped reserve cannot hide
+ *    behind a uniform value;
+ *  - two slots against the Bo3 tournament default, so the slot count is never
+ *    the same number as the bracket's best-of;
+ *  - `first_ban_rotation` is "alternate", so a save that omits it reads back as
+ *    the server's "fixed" default.
+ */
+const SLOT_CONFIG: MapVetoConfig = {
+  ...TOURNAMENT_DEFAULT,
+  id: 910,
+  mode: "slots",
+  preset: "bracket",
+  first_ban_rotation: "alternate",
+  // A slot config carries neither, and the upsert 422s any other value.
+  sequence: [],
+  map_ids: [],
+  slots: [
+    { position: 2, candidates: [5, 3], reserve_map_id: 9 },
+    { position: 1, candidates: [7, 1, 4], reserve_map_id: null }
+  ]
+};
+
+/** What the upsert must receive for `SLOT_CONFIG`: play order, and no `position`. */
+const SLOT_DRAFT = [
+  { candidates: [7, 1, 4], reserve_map_id: null },
+  { candidates: [5, 3], reserve_map_id: 9 }
+];
+
 let container: HTMLDivElement;
 let root: Root;
 let client: QueryClient;
@@ -154,6 +190,19 @@ function buttonByText(needle: string): HTMLButtonElement {
     (element.textContent ?? "").includes(needle)
   );
   if (!match) throw new Error(`no button containing ${JSON.stringify(needle)}`);
+  return match as HTMLButtonElement;
+}
+
+/**
+ * The pool-shape and step-order cards are the `aria-pressed` controls that carry
+ * no `aria-label`, so they are addressed by their label text rather than by the
+ * attribute — a pool tile is `aria-pressed` too.
+ */
+function toggleByText(label: string): HTMLButtonElement {
+  const match = [...container.querySelectorAll("button[aria-pressed]")].find((element) =>
+    (element.textContent ?? "").includes(label)
+  );
+  if (!match) throw new Error(`no toggle for ${JSON.stringify(label)}`);
   return match as HTMLButtonElement;
 }
 
@@ -335,15 +384,6 @@ describe("TournamentMapVetoTab form seeding", () => {
 });
 
 describe("TournamentMapVetoTab series length comes from the bracket", () => {
-  /** The mode toggles are the only aria-pressed controls without an aria-label. */
-  function modeButton(label: string): HTMLButtonElement {
-    const match = [...container.querySelectorAll("button[aria-pressed]")].find(
-      (element) => (element.textContent ?? "").includes(label)
-    );
-    if (!match) throw new Error(`no mode button for ${JSON.stringify(label)}`);
-    return match as HTMLButtonElement;
-  }
-
   it("never offers a control that claims to set the series format", async () => {
     await mount();
     await settle();
@@ -366,8 +406,8 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
     await settle();
 
     // TOURNAMENT_DEFAULT carries preset "bo3": a template label, not an opinion.
-    expect(modeButton(en.mapVetoAdmin.orderModeBracket).getAttribute("aria-pressed")).toBe("true");
-    expect(modeButton(en.mapVetoAdmin.orderModeCustom).getAttribute("aria-pressed")).toBe("false");
+    expect(toggleByText(en.mapVetoAdmin.orderModeBracket).getAttribute("aria-pressed")).toBe("true");
+    expect(toggleByText(en.mapVetoAdmin.orderModeCustom).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("opens an explicitly custom config in custom mode", async () => {
@@ -377,7 +417,7 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
     await mount();
     await settle();
 
-    expect(modeButton(en.mapVetoAdmin.orderModeCustom).getAttribute("aria-pressed")).toBe("true");
+    expect(toggleByText(en.mapVetoAdmin.orderModeCustom).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("saves preset bracket with a sequence matching the stage's best-of", async () => {
@@ -431,5 +471,176 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
     expect(text()).toContain(en.mapVetoAdmin.mismatchTitle);
     // A custom order deliberately wins, so saving stays available.
     expect(buttonByText(en.mapVetoAdmin.save).disabled).toBe(false);
+  });
+});
+
+describe("TournamentMapVetoTab pool shape", () => {
+  function pressed(label: string): string | null {
+    return toggleByText(label).getAttribute("aria-pressed");
+  }
+
+  /** The single payload of the one save this test performed. */
+  function savedPayload(): Record<string, unknown> {
+    expect(upsertVetoConfig).toHaveBeenCalledTimes(1);
+    const [, payload] = upsertVetoConfig.mock.calls[0] as [number, Record<string, unknown>];
+    return payload;
+  }
+
+  async function click(button: HTMLButtonElement) {
+    await act(async () => {
+      button.click();
+    });
+    await settle(3);
+  }
+
+  it("opens a flat config in pool shape, offering the step-order group", async () => {
+    await mount();
+    await settle();
+
+    expect(pressed(en.mapVetoAdmin.poolShapeFlat)).toBe("true");
+    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("false");
+    // Step order belongs to the flat shape only.
+    expect(text()).toContain(en.mapVetoAdmin.orderModeTitle);
+    expect(text()).toContain(en.mapVetoAdmin.poolDescription);
+    expect(text()).not.toContain(en.mapVetoAdmin.slotsDescription);
+  });
+
+  it("opens a slot-mode config in slot shape, hiding the flat pool and the step order", async () => {
+    listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
+    await mount();
+    await settle();
+
+    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("true");
+    expect(pressed(en.mapVetoAdmin.poolShapeFlat)).toBe("false");
+    expect(text()).toContain(en.mapVetoAdmin.slotsDescription);
+    // A flat pool grid here would collect selections the slot-mode payload
+    // discards, and a step-order choice cannot coexist with slots at all.
+    expect(text()).not.toContain(en.mapVetoAdmin.poolDescription);
+    expect(text()).not.toContain(en.mapVetoAdmin.orderModeTitle);
+    expect(container.querySelectorAll("button[aria-pressed][aria-label]")).toHaveLength(0);
+  });
+
+  it("preserves the slot draft across a pool-shape toggle", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
+    await mount();
+    await settle();
+
+    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+    expect(pressed(en.mapVetoAdmin.poolShapeFlat)).toBe("true");
+    expect(text()).toContain(en.mapVetoAdmin.orderModeTitle);
+
+    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
+    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("true");
+
+    // The draft has no on-screen editor yet, so the save payload is where its
+    // survival is observable: a discarded draft saves an empty slot list.
+    await click(buttonByText(en.mapVetoAdmin.save));
+    expect(savedPayload().slots).toEqual(SLOT_DRAFT);
+  });
+
+  it("preserves the flat pool selection across a pool-shape toggle", async () => {
+    await mount();
+    await settle();
+
+    const before = selectedTiles();
+    expect(before).toContain("Busan");
+    await click(mapTile("Busan"));
+    expect(selectedTiles()).not.toContain("Busan");
+
+    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
+    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+
+    expect(selectedTiles()).not.toContain("Busan");
+    expect(selectedTiles()).toHaveLength(before.length - 1);
+  });
+
+  it("saves a slot config as slots, with the flat fields empty and the rotation kept", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
+    await mount();
+    await settle();
+
+    await click(buttonByText(en.mapVetoAdmin.save));
+
+    const payload = savedPayload();
+    expect(payload.mode).toBe("slots");
+    // A slot config already arrives with both flat fields empty, so this pins
+    // the wire shape rather than the emptying — the two switch-shape-then-save
+    // tests below are where that is load-bearing. The slot order is the play
+    // order the server derives positions 1..N from.
+    expect(payload.map_ids).toEqual([]);
+    expect(payload.sequence).toEqual([]);
+    expect(payload.slots).toEqual(SLOT_DRAFT);
+    // Omitted, the server silently rewrites this config back to "fixed".
+    expect(payload.first_ban_rotation).toBe("alternate");
+    // `slots` + `custom` is refused by a CHECK constraint.
+    expect(payload.preset).not.toBe("custom");
+  });
+
+  it("saves a flat config as pool, with the slot list empty and the rotation kept", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    await mount();
+    await settle();
+
+    await click(buttonByText(en.mapVetoAdmin.save));
+
+    const payload = savedPayload();
+    expect(payload.mode).toBe("pool");
+    expect(payload.map_ids).toEqual(TOURNAMENT_DEFAULT.map_ids);
+    // A non-empty slot list is a 422 in pool mode.
+    expect(payload.slots).toEqual([]);
+    // The server assigns this column on every upsert, whichever mode won.
+    expect(payload.first_ban_rotation).toBe("fixed");
+  });
+
+  it("empties the flat fields when a flat config is switched to slot shape", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    await mount();
+    await settle();
+    // The tournament default arrives with five maps and a five-step sequence,
+    // so both fields hold real content the shape switch has to drop.
+    expect(selectedTiles()).toHaveLength(5);
+
+    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
+    await click(buttonByText(en.mapVetoAdmin.save));
+
+    const payload = savedPayload();
+    expect(payload.mode).toBe("slots");
+    // Both are 422s in slot mode, and the pool selection is still in state.
+    expect(payload.map_ids).toEqual([]);
+    expect(payload.sequence).toEqual([]);
+    expect(payload.slots).toEqual([]);
+  });
+
+  it("empties the slot list when a slot config is switched to pool shape", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
+    await mount();
+    await settle();
+
+    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+    // A slot config carries no flat pool, and the Bo3 default's five steps need
+    // five maps before the form will enable a save at all.
+    for (const name of ["Busan", "Dorado", "Havana", "Ilios", "Midtown"]) {
+      await click(mapTile(name));
+    }
+
+    await click(buttonByText(en.mapVetoAdmin.save));
+
+    const payload = savedPayload();
+    expect(payload.mode).toBe("pool");
+    // Click order, not id order: the pool order is persisted.
+    expect(payload.map_ids).toEqual([2, 8, 9, 3, 6]);
+    expect(payload.sequence).toEqual([
+      "ban_first",
+      "ban_second",
+      "pick_first",
+      "pick_second",
+      "decider"
+    ]);
+    // The slot draft survives the toggle, so it must be emptied on the wire
+    // rather than merely absent: a non-empty list here is a 422.
+    expect(payload.slots).toEqual([]);
   });
 });
