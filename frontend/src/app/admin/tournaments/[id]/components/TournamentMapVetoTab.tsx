@@ -62,10 +62,81 @@ import {
   type VetoValidationIssue
 } from "./mapVeto.helpers";
 
+/**
+ * The two encounter fields the round selector reads. A full `Encounter`
+ * satisfies it structurally, so the page can hand over the tournament-wide
+ * encounters read it already runs for the other hub tabs.
+ */
+export interface StageRoundSource {
+  stage_id: number | null;
+  round: number;
+}
+
 interface TournamentMapVetoTabProps {
   tournamentId: number;
   stages: Stage[];
+  /**
+   * Every encounter of the tournament, or undefined while the read is in
+   * flight. Undefined is not the same as empty: with no encounters known the
+   * selector falls back to the planned rounds alone and marks none of them.
+   */
+  encounters?: StageRoundSource[];
   canManage: boolean;
+}
+
+/** One round the organizer can configure, upper or lower. */
+interface RoundOption {
+  /** Signed: positive is the upper bracket, negative the lower. */
+  round: number;
+  /**
+   * True only when the encounters are known and none of them carries this
+   * round — a round `max_rounds` promises that the bracket has not reached.
+   */
+  notGenerated: boolean;
+}
+
+/**
+ * Split a stage's configurable rounds into the two brackets (Decision 13).
+ *
+ * Upper rounds are the union of `1..maxRounds` with every positive round the
+ * stage's encounters carry: a regenerated bracket can run past the stored
+ * `max_rounds`, and a bracket that has not been generated yet carries nothing.
+ * Lower rounds come from the encounters alone — `max_rounds` counts the upper
+ * progression and nothing on the client derives how many lower rounds a
+ * double-elimination bracket ends up with, so an absent one cannot be planned.
+ *
+ * Both lists may be gapped: a round number is a value here, never an index.
+ */
+function buildRoundOptions(
+  encounters: StageRoundSource[] | undefined,
+  stageId: number,
+  maxRounds: number
+): { upper: RoundOption[]; lower: RoundOption[] } {
+  const existing = new Set<number>();
+  for (const encounter of encounters ?? []) {
+    // Round 0 belongs to neither bracket and has no label a reader could
+    // decode, so it is dropped rather than filed under one of them.
+    if (encounter.stage_id === stageId && encounter.round !== 0) existing.add(encounter.round);
+  }
+
+  const upper = new Set<number>();
+  for (let round = 1; round <= maxRounds; round += 1) upper.add(round);
+  const lower: number[] = [];
+  for (const round of existing) {
+    if (round > 0) upper.add(round);
+    else lower.push(round);
+  }
+
+  const generationKnown = encounters !== undefined;
+  return {
+    upper: [...upper]
+      .sort((left, right) => left - right)
+      .map((round) => ({ round, notGenerated: generationKnown && !existing.has(round) })),
+    // -1 before -2: the order the lower bracket plays, not numeric order.
+    lower: lower
+      .sort((left, right) => right - left)
+      .map((round) => ({ round, notGenerated: false }))
+  };
 }
 
 /** Pool filter showing every map, regardless of game mode. */
@@ -1427,6 +1498,7 @@ function VetoConfigForm({
 export function TournamentMapVetoTab({
   tournamentId,
   stages,
+  encounters,
   canManage
 }: TournamentMapVetoTabProps) {
   const t = useTranslations();
@@ -1554,6 +1626,14 @@ export function TournamentMapVetoTab({
     activeStageName == null ? "" : t("mapVetoAdmin.roundsTitle", { stage: activeStageName });
   const roundCount = activeStage != null && activeStage.max_rounds > 0 ? activeStage.max_rounds : 0;
 
+  const roundOptions = useMemo(
+    () =>
+      activeStage == null
+        ? { upper: [], lower: [] }
+        : buildRoundOptions(encounters, activeStage.id, roundCount),
+    [encounters, activeStage, roundCount]
+  );
+
   /**
    * Series length for the selected scope, resolved from the stage the bracket
    * generator reads. Derived, never stored on the veto config: the veto has no
@@ -1603,6 +1683,81 @@ export function TournamentMapVetoTab({
   // Seeding the form happens exactly once per mount, so it must not mount
   // before both the config it seeds from and the map catalogue have arrived.
   const dataReady = configsQuery.isSuccess && mapsQuery.isSuccess;
+
+  /**
+   * `activeStageId` is passed in rather than read from `stageId` so the caller's
+   * null-narrowing carries into the handler and the config lookup.
+   */
+  const renderRoundButton = (option: RoundOption, activeStageId: number) => {
+    const isRoundSelected = levelType === "stage_round" && round === option.round;
+    const roundConfig = configs.find(
+      (config) => config.stage_id === activeStageId && config.round === option.round
+    );
+    return (
+      <button
+        key={option.round}
+        type="button"
+        aria-pressed={isRoundSelected}
+        onClick={() => selectLevel("stage_round", activeStageId, option.round)}
+        className={cn(
+          "flex flex-col items-start justify-between rounded-lg border p-2.5 text-left transition-colors",
+          isRoundSelected
+            ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+            : roundConfig
+              ? "border-success/50 bg-success/5 hover:border-success"
+              : "border-border/60 bg-card hover:border-primary/50"
+        )}
+      >
+        <div className="flex w-full items-center justify-between gap-1">
+          <span className="text-xs font-semibold">
+            {/* The same label the bracket view gives this round, so the two
+                surfaces name it identically. */}
+            {option.round < 0
+              ? t("bracket.lowerRound", { n: String(-option.round) })
+              : t("mapVetoAdmin.roundLabel", { round: option.round })}
+          </span>
+          {/* The preset no longer names a format, so the only
+              config-specific fact left worth a badge is that a
+              round opted out of the bracket. */}
+          {roundConfig ? (
+            roundConfig.preset === "custom" ? (
+              <Badge variant="outline" className="border-success/60 text-[10px] text-success">
+                {t("mapVeto.preset.custom")}
+              </Badge>
+            ) : null
+          ) : (
+            <span className="text-[10px] text-muted-foreground">
+              {t("mapVetoAdmin.roundInherits")}
+            </span>
+          )}
+        </div>
+        <span className="mt-2 text-[11px] text-muted-foreground">
+          {roundConfig
+            ? t("mapVetoAdmin.roundPoolSize", { count: roundConfig.map_ids.length })
+            : t("mapVetoAdmin.roundUsesDefault")}
+        </span>
+        {/* Configuring this round is still legitimate — the config cascades to
+            the encounters the bracket creates later — so the round is marked,
+            never disabled. */}
+        {option.notGenerated ? (
+          <span className="text-[11px] text-warning">
+            {t("mapVetoAdmin.roundNotGenerated")}
+          </span>
+        ) : null}
+        {roundConfig ? <span className="sr-only">{t("mapVetoAdmin.hasOwnConfig")}</span> : null}
+      </button>
+    );
+  };
+
+  const renderRoundGrid = (label: string, options: RoundOption[], activeStageId: number) => (
+    <div
+      role="group"
+      aria-label={label}
+      className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5"
+    >
+      {options.map((option) => renderRoundButton(option, activeStageId))}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -1709,71 +1864,28 @@ export function TournamentMapVetoTab({
                 </Button>
               </div>
 
-              {roundCount > 0 ? (
-                <div
-                  role="group"
-                  aria-label={roundsTitle}
-                  className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5"
-                >
-                  {Array.from({ length: roundCount }, (_, index) => index + 1).map(
-                    (roundNumber) => {
-                      const isRoundSelected =
-                        levelType === "stage_round" && round === roundNumber;
-                      const roundConfig = configs.find(
-                        (config) => config.stage_id === stageId && config.round === roundNumber
-                      );
-                      return (
-                        <button
-                          key={roundNumber}
-                          type="button"
-                          aria-pressed={isRoundSelected}
-                          onClick={() => selectLevel("stage_round", stageId, roundNumber)}
-                          className={cn(
-                            "flex flex-col items-start justify-between rounded-lg border p-2.5 text-left transition-colors",
-                            isRoundSelected
-                              ? "border-primary bg-primary/10 ring-2 ring-primary/30"
-                              : roundConfig
-                                ? "border-success/50 bg-success/5 hover:border-success"
-                                : "border-border/60 bg-card hover:border-primary/50"
-                          )}
-                        >
-                          <div className="flex w-full items-center justify-between gap-1">
-                            <span className="text-xs font-semibold">
-                              {t("mapVetoAdmin.roundLabel", { round: roundNumber })}
-                            </span>
-                            {/* The preset no longer names a format, so the only
-                                config-specific fact left worth a badge is that a
-                                round opted out of the bracket. */}
-                            {roundConfig ? (
-                              roundConfig.preset === "custom" ? (
-                                <Badge
-                                  variant="outline"
-                                  className="border-success/60 text-[10px] text-success"
-                                >
-                                  {t("mapVeto.preset.custom")}
-                                </Badge>
-                              ) : null
-                            ) : (
-                              <span className="text-[10px] text-muted-foreground">
-                                {t("mapVetoAdmin.roundInherits")}
-                              </span>
-                            )}
-                          </div>
-                          <span className="mt-2 text-[11px] text-muted-foreground">
-                            {roundConfig
-                              ? t("mapVetoAdmin.roundPoolSize", {
-                                  count: roundConfig.map_ids.length
-                                })
-                              : t("mapVetoAdmin.roundUsesDefault")}
-                          </span>
-                          {roundConfig ? (
-                            <span className="sr-only">{t("mapVetoAdmin.hasOwnConfig")}</span>
-                          ) : null}
-                        </button>
-                      );
-                    }
+              {/* Headings only where they discriminate. A stage with no lower
+                  bracket keeps the single unheaded list it has always had. */}
+              {roundOptions.lower.length > 0 ? (
+                <div className="space-y-3">
+                  {(
+                    [
+                      [t("mapVetoAdmin.roundGroupUpper"), roundOptions.upper],
+                      [t("mapVetoAdmin.roundGroupLower"), roundOptions.lower]
+                    ] as const
+                  ).map(([label, options]) =>
+                    options.length === 0 ? null : (
+                      <div key={label} className="space-y-2">
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {label}
+                        </h4>
+                        {renderRoundGrid(label, options, stageId)}
+                      </div>
+                    )
                   )}
                 </div>
+              ) : roundOptions.upper.length > 0 ? (
+                renderRoundGrid(roundsTitle, roundOptions.upper, stageId)
               ) : null}
             </div>
           ) : null}

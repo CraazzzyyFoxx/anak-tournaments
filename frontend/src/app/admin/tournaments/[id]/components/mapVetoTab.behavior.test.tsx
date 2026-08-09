@@ -22,7 +22,7 @@ import en from "@/i18n/messages/en.json";
 import type { MapRead } from "@/types/map.types";
 import type { MapVetoConfig, Stage } from "@/types/tournament.types";
 
-import { TournamentMapVetoTab } from "./TournamentMapVetoTab";
+import { TournamentMapVetoTab, type StageRoundSource } from "./TournamentMapVetoTab";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -306,7 +306,12 @@ async function type(input: HTMLInputElement, value: string) {
   await settle(3);
 }
 
-async function mount() {
+/**
+ * `stages` defaults to the two-stage swiss fixture every earlier test is
+ * written against. `encounters` is left undefined by default, which is also
+ * what the tab sees before the encounters read lands.
+ */
+async function mount(options: { stages?: Stage[]; encounters?: StageRoundSource[] } = {}) {
   container = document.createElement("div");
   document.body.appendChild(container);
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -315,7 +320,12 @@ async function mount() {
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
-          <TournamentMapVetoTab tournamentId={78} stages={STAGES} canManage />
+          <TournamentMapVetoTab
+            tournamentId={78}
+            stages={options.stages ?? STAGES}
+            encounters={options.encounters}
+            canManage
+          />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -1090,5 +1100,235 @@ describe("TournamentMapVetoTab slot editor", () => {
     await click(toggleByText(en.mapVetoAdmin.firstBanFixed));
     await click(buttonByText(en.mapVetoAdmin.save));
     expect(savedPayload().first_ban_rotation).toBe("fixed");
+  });
+});
+
+/*
+ * Round selector — Decision 13.
+ *
+ * The selector used to build `1..max_rounds`, so a lower-bracket round had no
+ * button at all: four of the regulation's twelve levels could not be reached,
+ * and each silently inherited a stage- or tournament-level config authored for
+ * a different series. Round numbers now come from the encounters that exist,
+ * grouped upper (positive) / lower (negative), plus the planned rounds
+ * `max_rounds` promises, marked as not generated.
+ */
+
+/** Only the two fields the selector reads; a real `Encounter` satisfies it. */
+function enc(stageId: number | null, round: number): StageRoundSource {
+  return { stage_id: stageId, round };
+}
+
+/**
+ * A double-elimination stage whose encounters disagree with `max_rounds` in
+ * every direction at once, so no single arithmetic shortcut reproduces the
+ * answer:
+ *  - `max_rounds` is 4, but round 5 exists — a regenerated bracket grew past
+ *    the stored number, so `1..max_rounds` alone loses a real round;
+ *  - round 3 is promised by `max_rounds` and has no encounter, and it sits in
+ *    the middle rather than at the end, so "the tail is planned" is wrong;
+ *  - the lower rounds are -1, -2, -4: gapped, so mirroring `1..n` invents -3,
+ *    and three of them against five upper rounds, so neither count stands in
+ *    for the other;
+ *  - rounds repeat across encounters, so a list that is not deduplicated
+ *    renders the same button twice.
+ */
+const DE_STAGE: Stage = {
+  ...stage(190, "DE Bracket", 2, 4, { default: 3 }),
+  stage_type: "double_elimination"
+} as Stage;
+
+const DE_STAGES = [...STAGES, DE_STAGE];
+
+const DE_ENCOUNTERS: StageRoundSource[] = [
+  enc(190, 4),
+  enc(190, 1),
+  enc(190, -2),
+  enc(190, 1),
+  enc(190, 5),
+  enc(190, -4),
+  enc(190, 2),
+  enc(190, -1),
+  enc(190, -2),
+  // Neither of these belongs to stage 190 and neither may reach its selector:
+  // round 7 would invent an upper round, round -9 a lower one, and the
+  // stage-less encounter would leak into whichever stage is open.
+  enc(188, 7),
+  enc(188, -9),
+  enc(null, 6)
+];
+
+const UPPER = en.mapVetoAdmin.roundGroupUpper;
+const LOWER = en.mapVetoAdmin.roundGroupLower;
+const GROUPS_ROUNDS_TITLE = en.mapVetoAdmin.roundsTitle.replace("{stage}", "Groups");
+
+function roundGroup(label: string): HTMLElement {
+  const match = container.querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`);
+  if (!match) throw new Error(`no round group labelled ${JSON.stringify(label)}`);
+  return match;
+}
+
+/**
+ * The round buttons of one group, in render order. A card's first `span` is its
+ * round label; the rest carry the inheritance hint and the badges.
+ */
+function roundNames(groupLabel: string): string[] {
+  return [...roundGroup(groupLabel).querySelectorAll("button")].map((element) =>
+    (element.querySelector("span")?.textContent ?? "").trim()
+  );
+}
+
+/** Round labels inside one group whose card carries the not-generated marker. */
+function notGeneratedNames(groupLabel: string): string[] {
+  return [...roundGroup(groupLabel).querySelectorAll("button")]
+    .filter((element) =>
+      (element.textContent ?? "").includes(en.mapVetoAdmin.roundNotGenerated)
+    )
+    .map((element) => (element.querySelector("span")?.textContent ?? "").trim());
+}
+
+describe("TournamentMapVetoTab round selector", () => {
+  it("offers both brackets' rounds, taking them from the encounters that exist", async () => {
+    await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
+    await settle();
+    await click(buttonByText("DE Bracket"));
+
+    // Round 5 is past `max_rounds` and round 3 is inside it with no encounter:
+    // the union of both sources, deduplicated, in ascending order.
+    expect(roundNames(UPPER)).toEqual([
+      "Round 1",
+      "Round 2",
+      "Round 3",
+      "Round 4",
+      "Round 5"
+    ]);
+    // Lower rounds come from encounters only — nothing on the client says how
+    // many a double-elimination bracket will have — so the gap at -3 stands,
+    // and they read in play order rather than in numeric order.
+    expect(roundNames(LOWER)).toEqual(["Lower R1", "Lower R2", "Lower R4"]);
+
+    // Another stage's rounds are not this stage's rounds.
+    expect(text()).not.toContain("Round 7");
+    expect(text()).not.toContain("Lower R9");
+    expect(text()).not.toContain("Round 6");
+
+    // Only the promised-but-absent round is marked, and the marker never
+    // reaches a lower round, which is never planned.
+    expect(notGeneratedNames(UPPER)).toEqual(["Round 3"]);
+    expect(notGeneratedNames(LOWER)).toEqual([]);
+  });
+
+  it("round-trips a lower-bracket round through selection, seeding and save", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    listVetoConfigs.mockResolvedValue({
+      configs: [
+        TOURNAMENT_DEFAULT,
+        // The decoy: same stage, same magnitude, opposite sign, and a pool of a
+        // different size. Any `Math.abs` on the way in or on the way out lands
+        // here instead, and the assertions below name which one arrived.
+        {
+          ...TOURNAMENT_DEFAULT,
+          id: 921,
+          stage_id: 190,
+          round: 2,
+          preset: "bracket",
+          map_ids: [3, 6, 9, 12]
+        },
+        {
+          ...TOURNAMENT_DEFAULT,
+          id: 920,
+          stage_id: 190,
+          round: -2,
+          preset: "bracket",
+          map_ids: [11, 2, 8]
+        }
+      ]
+    });
+    await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
+    await settle();
+    await click(buttonByText("DE Bracket"));
+    await click(buttonByText("Lower R2"));
+
+    // Read back: the config on round -2, not the one on round 2.
+    expect(text()).toContain(en.mapVetoAdmin.levelExisting);
+    expect(selectedTiles()).toEqual(["Busan", "Dorado", "Paraíso"].sort());
+
+    await click(buttonByText(en.mapVetoAdmin.save));
+
+    const payload = savedPayload();
+    expect(payload.round).toBe(-2);
+    expect(payload.stage_id).toBe(190);
+  });
+
+  it("keeps a stage with no lower bracket on its single ungrouped list", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    await mount({
+      stages: STAGES,
+      // Groups has generated three of its five rounds. Playoffs has a lower
+      // round, so a selector that grouped by tournament rather than by the
+      // open stage would sprout a Lower bracket heading here.
+      encounters: [enc(188, 2), enc(188, 1), enc(188, 2), enc(188, 3), enc(189, -4), enc(189, 1)]
+    });
+    await settle();
+    await click(buttonByText("Groups"));
+
+    // Exactly what this stage offered before Decision 13, under the same
+    // group label, with no bracket headings introduced.
+    expect(roundNames(GROUPS_ROUNDS_TITLE)).toEqual([
+      "Round 1",
+      "Round 2",
+      "Round 3",
+      "Round 4",
+      "Round 5"
+    ]);
+    expect(text()).not.toContain(UPPER);
+    expect(text()).not.toContain(LOWER);
+    expect(text()).not.toContain("Lower R");
+
+    // The two rounds the bracket has not reached yet are marked, and only them.
+    expect(notGeneratedNames(GROUPS_ROUNDS_TITLE)).toEqual(["Round 4", "Round 5"]);
+
+    // And the round selection still saves what it always did.
+    await click(buttonByText("Round 2"));
+    await click(buttonByText(en.mapVetoAdmin.save));
+    const payload = savedPayload();
+    expect(payload.round).toBe(2);
+    expect(payload.stage_id).toBe(188);
+  });
+
+  it("lets the organizer configure a round the bracket has not generated yet", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
+    await settle();
+    await click(buttonByText("DE Bracket"));
+
+    // Marked, never disabled: a config cascades to encounters created later,
+    // so authoring round 3's pool before round 3 exists is the intended order
+    // of work, not a mistake to block.
+    const planned = buttonByText("Round 3");
+    expect(planned.disabled).toBe(false);
+    expect(planned.textContent).toContain(en.mapVetoAdmin.roundNotGenerated);
+
+    await click(planned);
+    expect(text()).toContain(en.mapVetoAdmin.levelNew);
+
+    await click(buttonByText(en.mapVetoAdmin.save));
+    const payload = savedPayload();
+    expect(payload.round).toBe(3);
+    expect(payload.stage_id).toBe(190);
+  });
+
+  it("claims nothing about generation before the encounters have arrived", async () => {
+    // `encounters` undefined is the state during the read, not an empty stage.
+    await mount({ stages: DE_STAGES });
+    await settle();
+    await click(buttonByText("DE Bracket"));
+
+    const title = en.mapVetoAdmin.roundsTitle.replace("{stage}", "DE Bracket");
+    expect(roundNames(title)).toEqual(["Round 1", "Round 2", "Round 3", "Round 4"]);
+    // Marking every round "not generated" here would be a claim the tab cannot
+    // support, and hiding the lower bracket is what the arriving read fixes.
+    expect(notGeneratedNames(title)).toEqual([]);
+    expect(text()).not.toContain("Lower R");
   });
 });
