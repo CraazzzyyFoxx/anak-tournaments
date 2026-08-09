@@ -387,7 +387,12 @@ class EffectiveSequenceSlotModeTests(TestCase):
             pool_size = sum(len(candidates) for candidates in slots)
             for rotation in ("fixed", "alternate"):
                 with self.subTest(slots=slots, rotation=rotation):
-                    sequence = effective_sequence(self.config(rotation=rotation), len(slots), pool_size, slots=slots)
+                    # ``best_of=0`` deliberately: passing ``len(slots)`` is the
+                    # one value for which a ``best_of``-derived slot count is a
+                    # no-op, so it would make every shape here blind to it --
+                    # and it would read as load-bearing in a mode that ignores
+                    # ``best_of`` entirely.
+                    sequence = effective_sequence(self.config(rotation=rotation), 0, pool_size, slots=slots)
 
                     self.assertEqual(pool_size, len(sequence))
                     self.assertEqual(len(slots), sequence.count("decider"))

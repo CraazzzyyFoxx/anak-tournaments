@@ -75,7 +75,7 @@ def validate_veto_config(sequence: list[str], map_ids: list[int]) -> None:
         raise HTTPException(status_code=422, detail="sequence must contain at least one pick or a decider")
 
 
-# ── series length (owned by the bracket) ─────────────────────────────────────
+# ── sequence selection: mode dispatch + series length (owned by the bracket) ──
 
 #: The only preset value that opts a config out of bracket-driven series
 #: length. Everything else -- the canonical ``"bracket"``, a legacy ``"bo3"``
@@ -209,7 +209,7 @@ def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[s
     return tokens
 
 
-def slot_candidates(slots: Sequence[models.MapVetoConfigSlot]) -> list[list[int]]:
+def slot_candidates(rows: Sequence[models.MapVetoConfigSlot]) -> list[list[int]]:
     """Candidate map ids per slot as plain data, in ``position`` order.
 
     The sort is load-bearing, not tidiness: a mis-ordered slot list still spends
@@ -218,10 +218,10 @@ def slot_candidates(slots: Sequence[models.MapVetoConfigSlot]) -> list[list[int]
     Nothing downstream could detect it, so the order is established here rather
     than left to a query's row order or to a relationship's ``order_by``.
 
-    Requires each slot's ``maps`` to be loaded; ``load_slot_candidates`` is the
+    Requires each row's ``maps`` to be loaded; ``load_slot_candidates`` is the
     await-safe way to get that.
     """
-    return [[entry.map_id for entry in slot.maps] for slot in sorted(slots, key=lambda slot: slot.position)]
+    return [[entry.map_id for entry in row.maps] for row in sorted(rows, key=lambda row: row.position)]
 
 
 async def load_slot_candidates(session: AsyncSession, config: models.MapVetoConfig) -> list[list[int]]:
@@ -235,8 +235,16 @@ async def load_slot_candidates(session: AsyncSession, config: models.MapVetoConf
     ``config`` having asked for the two-level chain.
 
     A slot with no candidate maps comes back as an empty list rather than
-    disappearing: session creation re-checks the ``>= 2`` floor, and silently
-    dropping the slot would shorten the sequence instead.
+    disappearing: dropping it would silently shorten the sequence, whereas an
+    empty entry keeps one entry per slot for whoever checks the floor.
+
+    OUTSTANDING: nothing checks that floor yet. ``ensure_veto_session`` passes
+    these counts straight to ``effective_sequence``, so a slot left with fewer
+    than two candidates by a catalogue delete still yields its ``decider`` and
+    the sequence runs past the end of the pool ``get_current_step`` indexes.
+    Decision 21 assigns that re-check to session creation, which is a later
+    task; delete this note when it lands. Unreachable until then only because
+    no code path creates a slot-mode config.
     """
     result = await session.execute(
         select(models.MapVetoConfigSlot)
