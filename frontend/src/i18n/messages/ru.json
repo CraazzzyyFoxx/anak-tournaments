@@ -3991,7 +3991,13 @@
     "advancedTitle": "Дополнительно",
     "reset": "Отменить изменения",
     "unsaved": "Есть несохранённые изменения",
-    "slotReserveShort": "Резерв:"
+    "slotReserveShort": "Резерв:",
+    "densityLabel": "Размер карт",
+    "densityNormal": "Обычный",
+    "densityCompact": "Компактный",
+    "inheritedFrom": "Наследуется от «{level}». Матчи здесь играют этот пул, пока у уровня нет своего.",
+    "forkLevel": "Задать свой пул для уровня",
+    "poolInheritedTitle": "Наследуемый пул карт"
   },
   "rosterShape": {
     "title": "Форма ростера",

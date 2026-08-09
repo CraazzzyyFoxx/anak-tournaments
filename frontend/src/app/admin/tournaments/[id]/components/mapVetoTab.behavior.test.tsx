@@ -1,14 +1,18 @@
 // @vitest-environment happy-dom
 //
 // The tab lists every cascade level at once — the tournament default, each
-// stage, and each of that stage's rounds — as rows that expand into an editor.
+// stage, and each of that stage's rounds — and every level is expanded on
+// arrival: the maps are the work, so they are on screen the moment the page is.
+// Collapsing exists for reach on a long page, at two granularities only: a
+// whole stage card, or one level.
+//
 // Two properties make that shape safe, and both are pinned here:
 //
-//   1. a level's draft lives in the tab, not in the editor, so collapsing a row
-//      (which unmounts the editor) never discards work, and a map-catalogue
-//      refetch never reverts an edit in progress;
+//   1. a level's draft lives in the tab, not in the editor, so collapsing a
+//      level or its stage (which unmounts the editor) never discards work, and
+//      a map-catalogue refetch never reverts an edit in progress;
 //   2. a level with no draft re-derives its form from its stored config alone,
-//      so a row can never present another level's pool as its own.
+//      so a level can never present another level's pool as its own.
 //
 // The rest of the file is the behaviour the editor has always owed: the series
 // length comes from the bracket, the two pool shapes each send their own wire
@@ -294,59 +298,90 @@ async function type(input: HTMLInputElement, value: string) {
 /*
  * Addressing the page.
  *
- * A level's row is an accordion header (`h3 > button`), so scope rows are
- * distinguishable from the two other expanding controls the editor renders —
- * the map picker and the advanced panel — which are plain buttons.
+ * Every level is a `role="group"` named by its full path, so the same "Round 1"
+ * in two stages stays distinguishable. Inside it, the collapse control is the
+ * only `h3 > button`; the editor is the only `form`.
  */
 
-function scopeRows(scope: ParentNode = container): HTMLButtonElement[] {
-  return [...scope.querySelectorAll<HTMLButtonElement>("h3 > button[aria-expanded]")];
+const LEVEL_TOURNAMENT = en.mapVeto.scope.tournamentDefault;
+
+function levelStage(stageName: string): string {
+  return en.mapVeto.scope.stage.replace("{stage}", stageName);
 }
 
-/** A row's own label: the first span inside the trigger's content wrapper. */
-function rowLabel(trigger: HTMLElement): string {
-  return (trigger.querySelector("span > span")?.textContent ?? "").trim();
+function levelRound(stageName: string, round: number): string {
+  return en.mapVeto.scope.stageRound
+    .replace("{stage}", stageName)
+    .replace("{round}", String(round));
 }
 
-function scopeRow(label: string, scope: ParentNode = container): HTMLButtonElement {
-  const match = scopeRows(scope).find((trigger) => rowLabel(trigger) === label);
-  if (!match) throw new Error(`no level row labelled ${JSON.stringify(label)}`);
+function level(fullLabel: string): HTMLElement {
+  const match = container.querySelector<HTMLElement>(`[role="group"][aria-label="${fullLabel}"]`);
+  if (!match) throw new Error(`no level group labelled ${JSON.stringify(fullLabel)}`);
   return match;
 }
 
-/** One stage's card, which is also the group its rounds live in. */
+/** One stage's card, which is also the group its levels live in. */
 function stageGroup(name: string): HTMLElement {
   const match = container.querySelector<HTMLElement>(`[role="group"][aria-label="${name}"]`);
   if (!match) throw new Error(`no stage group for ${JSON.stringify(name)}`);
   return match;
 }
 
-async function openScope(label: string, scope: ParentNode = container) {
-  const trigger = scopeRow(label, scope);
-  if (trigger.getAttribute("aria-expanded") !== "true") await click(trigger);
+function levelRows(scope: ParentNode = container): HTMLButtonElement[] {
+  return [...scope.querySelectorAll<HTMLButtonElement>("h3 > button")];
 }
 
-/** The one expanded level's editor. Only one row is open at a time. */
-function editor(): HTMLElement {
-  const match = container.querySelector<HTMLElement>('[role="region"][data-state="open"]');
-  if (!match) throw new Error("no level is expanded");
+/** A level's own short label: the first span inside the trigger's wrapper. */
+function rowLabel(trigger: HTMLElement): string {
+  return (trigger.querySelector("span > span")?.textContent ?? "").trim();
+}
+
+function levelTrigger(fullLabel: string): HTMLButtonElement {
+  const match = level(fullLabel).querySelector<HTMLButtonElement>("h3 > button");
+  if (!match) throw new Error(`no collapse control in ${JSON.stringify(fullLabel)}`);
   return match;
 }
 
-function editorText(): string {
-  return editor().textContent ?? "";
+function editor(fullLabel: string): HTMLElement {
+  const match = level(fullLabel).querySelector<HTMLElement>("form");
+  if (!match) throw new Error(`level ${JSON.stringify(fullLabel)} is collapsed`);
+  return match;
 }
 
-function editorButton(needle: string): HTMLButtonElement {
-  const match = [...editor().querySelectorAll("button")].find((element) =>
+function editorText(fullLabel: string): string {
+  return editor(fullLabel).textContent ?? "";
+}
+
+function editorButton(fullLabel: string, needle: string): HTMLButtonElement {
+  const match = [...editor(fullLabel).querySelectorAll("button")].find((element) =>
     (element.textContent ?? "").includes(needle)
   );
-  if (!match) throw new Error(`no editor button containing ${JSON.stringify(needle)}`);
+  if (!match) throw new Error(`no button containing ${JSON.stringify(needle)} in ${fullLabel}`);
   return match as HTMLButtonElement;
 }
 
-function saveButton(): HTMLButtonElement {
-  return editorButton(en.mapVetoAdmin.save);
+function saveButton(fullLabel: string): HTMLButtonElement {
+  return editorButton(fullLabel, en.mapVetoAdmin.save);
+}
+
+/**
+ * A level with no config of its own shows the pool it inherits, read only, and
+ * offers exactly one control: this one, which copies that pool into an editable
+ * draft for the level.
+ */
+async function fork(fullLabel: string) {
+  await click(editorButton(fullLabel, en.mapVetoAdmin.forkLevel));
+}
+
+/**
+ * The pool shape, the step order, the first-ban rotation and the timer are
+ * decided once per level, so they live behind "Advanced" rather than on eleven
+ * copies of the page.
+ */
+async function openAdvanced(fullLabel: string) {
+  const trigger = editorButton(fullLabel, en.mapVetoAdmin.advancedTitle);
+  if (trigger.getAttribute("data-state") !== "open") await click(trigger);
 }
 
 /**
@@ -354,59 +389,70 @@ function saveButton(): HTMLButtonElement {
  * buttons that carry no `aria-label`; a picker tile is `aria-pressed` too, so
  * the absence of the attribute is what separates them.
  */
-function toggleByText(label: string, scope: ParentNode = editor()): HTMLButtonElement {
-  const match = [...scope.querySelectorAll("button[aria-pressed]:not([aria-label])")].find(
-    (element) => (element.textContent ?? "").includes(label)
-  );
-  if (!match) throw new Error(`no toggle for ${JSON.stringify(label)}`);
+function toggleByText(fullLabel: string, label: string): HTMLButtonElement {
+  const match = [
+    ...editor(fullLabel).querySelectorAll("button[aria-pressed]:not([aria-label])")
+  ].find((element) => (element.textContent ?? "").includes(label));
+  if (!match) throw new Error(`no toggle for ${JSON.stringify(label)} in ${fullLabel}`);
   return match as HTMLButtonElement;
 }
 
-function pressed(label: string, scope: ParentNode = editor()): string | null {
-  return toggleByText(label, scope).getAttribute("aria-pressed");
-}
-
-async function openAdvanced() {
-  const trigger = editorButton(en.mapVetoAdmin.advancedTitle);
-  if (trigger.getAttribute("data-state") !== "open") await click(trigger);
+function pressed(fullLabel: string, label: string): string | null {
+  return toggleByText(fullLabel, label).getAttribute("aria-pressed");
 }
 
 /*
  * Selection rows and the picker.
  *
- * A row is `role="group"` under its own label; the maps it holds are chips, one
- * button each. The catalogue lives in a popover the row's "Add maps" button
+ * A row is `role="group"` under its own label; the maps it holds are tokens,
+ * one button each. The catalogue lives in a popover the row's "Add maps" button
  * opens, portalled out of the container under its own group label.
  */
 
-function poolRow(): HTMLElement {
-  const match = editor().querySelector<HTMLElement>(
-    `[role="group"][aria-label="${en.mapVetoAdmin.poolTitle}"]`
+/** The flat pool row, under whichever of its two names this level shows. */
+function poolRow(fullLabel: string): HTMLElement {
+  const match = editor(fullLabel).querySelector<HTMLElement>(
+    `[role="group"][aria-label="${en.mapVetoAdmin.poolTitle}"],` +
+      `[role="group"][aria-label="${en.mapVetoAdmin.poolInheritedTitle}"]`
   );
-  if (!match) throw new Error("no flat pool row");
+  if (!match) throw new Error(`no flat pool row in ${fullLabel}`);
   return match;
 }
 
-function slotRow(position: number): HTMLElement {
+function slotRow(fullLabel: string, position: number): HTMLElement {
   const label = en.mapVetoAdmin.slotLabel.replace("{n}", String(position));
-  const match = editor().querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`);
-  if (!match) throw new Error(`no slot row for position ${position}`);
+  const match = editor(fullLabel).querySelector<HTMLElement>(
+    `[role="group"][aria-label="${label}"]`
+  );
+  if (!match) throw new Error(`no slot ${position} row in ${fullLabel}`);
   return match;
 }
 
-/** The maps a row holds, in the order they are stored in. */
-function chips(row: HTMLElement): string[] {
-  return [...row.querySelectorAll('button[aria-label]:not([role="combobox"])')].map((element) =>
-    (element.querySelector("span")?.textContent ?? "").trim()
+/**
+ * The maps a row holds, in the order they are stored in. An editable token is a
+ * remove button, an inherited one a plain span; both carry the full name as
+ * `title`, which is also what makes a truncated name reachable.
+ */
+function tokens(row: HTMLElement): string[] {
+  return [...row.querySelectorAll('[title]:not([role="combobox"])')].map((element) =>
+    (element.getAttribute("title") ?? "").trim()
   );
 }
 
-function poolChips(): string[] {
-  return chips(poolRow());
+function poolMaps(fullLabel: string): string[] {
+  return tokens(poolRow(fullLabel));
 }
 
-function slotChips(position: number): string[] {
-  return chips(slotRow(position));
+function slotMaps(fullLabel: string, position: number): string[] {
+  return tokens(slotRow(fullLabel, position));
+}
+
+/** Remove one map straight from the row, the way its token does. */
+async function removeFromPool(fullLabel: string, name: string) {
+  const label = en.mapVetoAdmin.poolChipRemove.replace("{map}", name);
+  const token = poolRow(fullLabel).querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  if (!token) throw new Error(`no ${name} token in the pool of ${fullLabel}`);
+  await click(token);
 }
 
 function pickerTrigger(row: HTMLElement): HTMLButtonElement {
@@ -466,15 +512,15 @@ async function withPicker(row: () => HTMLElement, label: string, body: () => Pro
   await click(pickerTrigger(row()));
 }
 
-async function addToPool(names: string[]) {
-  await withPicker(poolRow, POOL_PICKER, async () => {
+async function addToPool(fullLabel: string, names: string[]) {
+  await withPicker(() => poolRow(fullLabel), POOL_PICKER, async () => {
     for (const name of names) await click(pickerTile(POOL_PICKER, name));
   });
 }
 
-async function addToSlot(position: number, names: string[]) {
+async function addToSlot(fullLabel: string, position: number, names: string[]) {
   const label = slotPicker(position);
-  await withPicker(() => slotRow(position), label, async () => {
+  await withPicker(() => slotRow(fullLabel, position), label, async () => {
     for (const name of names) await click(pickerTile(label, name));
   });
 }
@@ -483,8 +529,10 @@ async function addToSlot(position: number, names: string[]) {
  * Radix Select: the trigger opens on pointerdown and the listbox is portalled
  * out of the container, so the options are read off the document.
  */
-async function openReservePicker(position: number): Promise<string[]> {
-  const trigger = slotRow(position).querySelector<HTMLElement>('button[role="combobox"]');
+async function openReservePicker(fullLabel: string, position: number): Promise<string[]> {
+  const trigger = slotRow(fullLabel, position).querySelector<HTMLElement>(
+    'button[role="combobox"]'
+  );
   if (!trigger) throw new Error(`no reserve picker in slot ${position}`);
   await act(async () => {
     trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
@@ -529,55 +577,114 @@ beforeEach(() => {
   listVetoConfigs.mockResolvedValue({ configs: [TOURNAMENT_DEFAULT] });
 });
 
-const ROUND = (n: number) => en.mapVetoAdmin.roundLabel.replace("{round}", String(n));
+const GROUPS_R1 = levelRound("Groups", 1);
+const GROUPS_STAGE = levelStage("Groups");
 const WHOLE_STAGE = en.mapVetoAdmin.stageDefaultButton;
 
-/** Round 1 of Groups: a single round, Bo2, no per-round overrides. */
-async function openGroupsRound1() {
-  await openScope(ROUND(1), stageGroup("Groups"));
-}
-
-describe("TournamentMapVetoTab form seeding", () => {
+describe("TournamentMapVetoTab arrival", () => {
   it("shows no level at all until the configs and the map catalogue have arrived", async () => {
-    // A read that never settles: take the promise and never resolve it. No row
-    // may claim a level is configured, or unconfigured, before it knows.
+    // A read that never settles: take the promise and never resolve it. No level
+    // may claim to be configured, or unconfigured, before it knows.
     const pending = Promise.withResolvers<never>();
     listVetoConfigs.mockReturnValue(pending.promise);
     await mount();
     await settle(5);
 
-    expect(scopeRows()).toEqual([]);
-    expect(text()).not.toContain(en.mapVetoAdmin.levelNew);
-    expect(text()).not.toContain(en.mapVetoAdmin.levelExisting);
+    expect(levelRows()).toEqual([]);
     expect(text()).not.toContain(en.mapVetoAdmin.save);
   });
 
+  it("puts every level's maps on screen without a single click", async () => {
+    listVetoConfigs.mockResolvedValue({
+      configs: [TOURNAMENT_DEFAULT, SLOT_CONFIG, FLAT_CONFIG_ROUND_3]
+    });
+    await mount();
+    await settle();
+
+    // Eleven levels: the tournament default, and both stages' default plus
+    // rounds. All expanded, all showing their maps.
+    expect(levelRows()).toHaveLength(1 + (1 + 5) + (1 + 3));
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual(TOURNAMENT_DEFAULT_POOL);
+    expect(slotMaps(GROUPS_R1, 1)).toEqual([
+      "Circuit Royal",
+      "Antarctic Peninsula",
+      "Blizzard World"
+    ]);
+    expect(poolMaps(levelRound("Groups", 3))).toEqual(["Ilios", "Midtown", "Havana"]);
+  });
+
+  it("collapses a whole stage, and one level, without touching the others", async () => {
+    await mount();
+    await settle();
+
+    const groups = stageGroup("Groups");
+    expect(editor(GROUPS_R1)).toBeTruthy();
+
+    // One level.
+    await click(levelTrigger(GROUPS_R1));
+    expect(() => editor(GROUPS_R1)).toThrow();
+    expect(editor(GROUPS_STAGE)).toBeTruthy();
+    expect(editor(LEVEL_TOURNAMENT)).toBeTruthy();
+
+    // The whole stage card.
+    const stageTrigger = groups.querySelector<HTMLButtonElement>("h2 > button");
+    await click(stageTrigger as HTMLButtonElement);
+    expect(() => editor(GROUPS_STAGE)).toThrow();
+    expect(levelRows(groups)).toEqual([]);
+    // Playoffs and the tournament default are untouched.
+    expect(editor(LEVEL_TOURNAMENT)).toBeTruthy();
+    expect(editor(levelStage("Playoffs"))).toBeTruthy();
+  });
+});
+
+describe("TournamentMapVetoTab map size", () => {
+  it("switches every level between map art and name-only tokens, changing nothing else", async () => {
+    await mount();
+    await settle();
+
+    const hasArt = () =>
+      poolRow(LEVEL_TOURNAMENT).querySelector('[style*="background-image"]') !== null;
+
+    // Art is the default: an organizer recognises a pool by its pictures.
+    expect(hasArt()).toBe(true);
+    const before = poolMaps(LEVEL_TOURNAMENT);
+
+    const toggle = (label: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>("button[aria-pressed]")].find(
+        (element) => (element.textContent ?? "").trim() === label
+      ) as HTMLButtonElement;
+
+    await click(toggle(en.mapVetoAdmin.densityCompact));
+    expect(hasArt()).toBe(false);
+    // Same maps, same order, same remove control: only the size changed.
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual(before);
+    expect(toggle(en.mapVetoAdmin.densityCompact).getAttribute("aria-pressed")).toBe("true");
+    expect(toggle(en.mapVetoAdmin.densityNormal).getAttribute("aria-pressed")).toBe("false");
+
+    await click(toggle(en.mapVetoAdmin.densityNormal));
+    expect(hasArt()).toBe(true);
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual(before);
+  });
+});
+
+describe("TournamentMapVetoTab form seeding", () => {
   it("seeds the pool from the existing config, not from the all-maps default", async () => {
     await mount();
     await settle();
 
-    // The tournament default is the row the page opens on.
-    expect(editorText()).toContain(en.mapVetoAdmin.levelExisting);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.levelNew);
+    expect(editorText(LEVEL_TOURNAMENT)).toContain(en.mapVetoAdmin.save);
     // The config selects 5 of 12 maps; seeding from the default would select 12.
-    // Chips read in the stored pool order, which is not catalogue order.
-    expect(poolChips()).toEqual(TOURNAMENT_DEFAULT_POOL);
+    // Tokens read in the stored pool order, which is not catalogue order.
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual(TOURNAMENT_DEFAULT_POOL);
   });
 
   it("keeps an in-progress edit when the map catalogue changes underneath it", async () => {
     await mount();
     await settle();
 
-    expect(poolChips()).toContain("Busan");
-    // A chip is its own remove control.
-    await click(
-      [...poolRow().querySelectorAll<HTMLButtonElement>("button[aria-label]")].find(
-        (element) =>
-          element.getAttribute("aria-label") ===
-          en.mapVetoAdmin.poolChipRemove.replace("{map}", "Busan")
-      ) as HTMLButtonElement
-    );
-    expect(poolChips()).not.toContain("Busan");
+    expect(poolMaps(LEVEL_TOURNAMENT)).toContain("Busan");
+    await removeFromPool(LEVEL_TOURNAMENT, "Busan");
+    expect(poolMaps(LEVEL_TOURNAMENT)).not.toContain("Busan");
 
     // A refetch that returns genuinely different content, so React Query's
     // structural sharing cannot preserve the old `data` reference and the
@@ -611,10 +718,12 @@ describe("TournamentMapVetoTab form seeding", () => {
 
     expect(getAll.mock.calls.length).toBeGreaterThan(1);
     // The edit stands, and the new map is not auto-selected into the pool.
-    expect(poolChips()).toEqual(TOURNAMENT_DEFAULT_POOL.filter((name) => name !== "Busan"));
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual(
+      TOURNAMENT_DEFAULT_POOL.filter((name) => name !== "Busan")
+    );
 
     // ...while the new map is offered.
-    await withPicker(poolRow, POOL_PICKER, async () => {
+    await withPicker(() => poolRow(LEVEL_TOURNAMENT), POOL_PICKER, async () => {
       expect(pickerMaps(POOL_PICKER)).toContain("Samoa");
     });
   });
@@ -636,46 +745,69 @@ describe("TournamentMapVetoTab form seeding", () => {
     });
     await mount();
     await settle();
-    expect(poolChips()).toEqual(TOURNAMENT_DEFAULT_POOL);
 
-    await openScope(WHOLE_STAGE, stageGroup("Playoffs"));
-
-    expect(poolChips()).toEqual(["Ilios", "Midtown", "Havana"]);
-    expect(editorText()).toContain(en.mapVetoAdmin.levelExisting);
+    // Side by side, with no navigation between them.
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual(TOURNAMENT_DEFAULT_POOL);
+    expect(poolMaps(levelStage("Playoffs"))).toEqual(["Ilios", "Midtown", "Havana"]);
+    // Stage 188 has no config of its own, so it shows what it inherits — the
+    // tournament default — rather than the whole catalogue standing in for a
+    // pool this level does not have.
+    expect(poolMaps(GROUPS_STAGE)).toEqual(TOURNAMENT_DEFAULT_POOL);
+    expect(editorText(GROUPS_STAGE)).toContain(en.mapVetoAdmin.forkLevel);
   });
 
-  it("labels a level with no config of its own as new, without borrowing another level's pool", async () => {
+  it("offers nothing to edit on an inherited level until it is given its own pool", async () => {
+    upsertVetoConfig.mockResolvedValue({});
     await mount();
     await settle();
 
-    await openScope(WHOLE_STAGE, stageGroup("Groups"));
+    const row = poolRow(GROUPS_STAGE);
+    // Read-only means the controls are gone, not disabled: a greyed-out remove
+    // still says "you could take this map out here", which is the opposite of
+    // what an inherited pool means.
+    expect(row.querySelectorAll("button")).toHaveLength(0);
+    expect(editorText(GROUPS_STAGE)).toContain(en.mapVeto.scope.tournamentDefault);
+    expect(() => saveButton(GROUPS_STAGE)).toThrow();
+    expect(() => editorButton(GROUPS_STAGE, en.mapVetoAdmin.advancedTitle)).toThrow();
 
-    // Stage 188 has no config: the level is new, and must not silently present
-    // the tournament default's 5-map pool as this stage's own configuration.
-    expect(editorText()).toContain(en.mapVetoAdmin.levelNew);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.levelExisting);
-    expect(poolChips()).toEqual(CATALOGUE_ORDER);
+    await fork(GROUPS_STAGE);
+
+    // The fork copies the inherited pool rather than the catalogue, so the level
+    // starts from what its matches play today.
+    expect(poolMaps(GROUPS_STAGE)).toEqual(TOURNAMENT_DEFAULT_POOL);
+    expect(saveButton(GROUPS_STAGE).disabled).toBe(false);
+    // A level that owns no config has pending work the moment it is forked:
+    // saving creates a config where there was none.
+    expect(levelTrigger(GROUPS_STAGE).textContent).toContain(en.mapVetoAdmin.unsaved);
+
+    // And discarding puts it back to inheriting.
+    await click(editorButton(GROUPS_STAGE, en.mapVetoAdmin.reset));
+    expect(poolRow(GROUPS_STAGE).querySelectorAll("button")).toHaveLength(0);
+    expect(editorText(GROUPS_STAGE)).toContain(en.mapVetoAdmin.forkLevel);
+
+    // The tournament default has nothing above it, so it stays editable.
+    expect(saveButton(LEVEL_TOURNAMENT).disabled).toBe(false);
   });
 
   it("keeps a level's edit across a collapse, and marks it unsaved until it is saved", async () => {
-    // The whole reason the draft lives in the tab: collapsing a row unmounts its
-    // editor, and an editor that owned its own state would lose the work.
+    // The whole reason the draft lives in the tab: collapsing a level unmounts
+    // its editor, and an editor that owned its own state would lose the work.
     await mount();
     await settle();
 
-    await addToPool(["Ilios"]);
-    expect(poolChips()).toEqual([...TOURNAMENT_DEFAULT_POOL, "Ilios"]);
-    expect(text()).toContain(en.mapVetoAdmin.unsaved);
+    await addToPool(LEVEL_TOURNAMENT, ["Ilios"]);
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual([...TOURNAMENT_DEFAULT_POOL, "Ilios"]);
+    expect(levelTrigger(LEVEL_TOURNAMENT).textContent).toContain(en.mapVetoAdmin.unsaved);
 
-    await openScope(WHOLE_STAGE, stageGroup("Groups"));
-    await openScope(en.mapVetoAdmin.tournamentDefault);
+    await click(levelTrigger(LEVEL_TOURNAMENT));
+    await click(levelTrigger(LEVEL_TOURNAMENT));
 
-    expect(poolChips()).toEqual([...TOURNAMENT_DEFAULT_POOL, "Ilios"]);
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual([...TOURNAMENT_DEFAULT_POOL, "Ilios"]);
 
     // And discarding puts the level back on its stored config.
-    await click(editorButton(en.mapVetoAdmin.reset));
-    expect(poolChips()).toEqual(TOURNAMENT_DEFAULT_POOL);
-    expect(text()).not.toContain(en.mapVetoAdmin.unsaved);
+    await click(editorButton(LEVEL_TOURNAMENT, en.mapVetoAdmin.reset));
+    expect(poolMaps(LEVEL_TOURNAMENT)).toEqual(TOURNAMENT_DEFAULT_POOL);
+    expect(levelTrigger(LEVEL_TOURNAMENT).textContent).not.toContain(en.mapVetoAdmin.unsaved);
   });
 });
 
@@ -683,12 +815,13 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
   it("never offers a control that claims to set the series format", async () => {
     await mount();
     await settle();
+    await openAdvanced(LEVEL_TOURNAMENT);
 
     // The old editor shipped Bo1/Bo2/Bo3/Bo5 buttons whose choice the veto
     // session now overrides, so the format must be stated, not chosen. Asserted
-    // on the controls rather than on prose: the rows carry Bo labels as read-only
-    // badges, so page text cannot tell the two apart.
-    expect(editorText()).toContain(en.mapVetoAdmin.formatSourceBracket);
+    // on the controls rather than on prose: every level carries a Bo label as a
+    // read-only badge, so page text cannot tell the two apart.
+    expect(editorText(LEVEL_TOURNAMENT)).toContain(en.mapVetoAdmin.formatSourceBracket);
 
     const presetLabels = new Set(Object.values(en.mapVeto.preset));
     const formatButtons = [...container.querySelectorAll("button")].filter((element) =>
@@ -700,11 +833,11 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
   it("opens a legacy bo* config in bracket mode, not custom", async () => {
     await mount();
     await settle();
-    await openAdvanced();
+    await openAdvanced(LEVEL_TOURNAMENT);
 
     // TOURNAMENT_DEFAULT carries preset "bo3": a template label, not an opinion.
-    expect(pressed(en.mapVetoAdmin.orderModeBracket)).toBe("true");
-    expect(pressed(en.mapVetoAdmin.orderModeCustom)).toBe("false");
+    expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.orderModeBracket)).toBe("true");
+    expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.orderModeCustom)).toBe("false");
   });
 
   it("opens an explicitly custom config with its authored order already in view", async () => {
@@ -716,7 +849,7 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
 
     // No click on "Advanced": a hand-authored order is the one setting an
     // organizer must not have to go looking for.
-    expect(pressed(en.mapVetoAdmin.orderModeCustom)).toBe("true");
+    expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.orderModeCustom)).toBe("true");
   });
 
   it("saves preset bracket with a sequence matching the stage's best-of", async () => {
@@ -728,8 +861,7 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
     await mount();
     await settle();
 
-    await openScope(WHOLE_STAGE, stageGroup("Groups"));
-    await click(saveButton());
+    await click(saveButton(GROUPS_STAGE));
 
     const payload = savedPayload();
     expect(payload.preset).toBe("bracket");
@@ -755,11 +887,11 @@ describe("TournamentMapVetoTab series length comes from the bracket", () => {
     });
     await mount();
     await settle();
-    await openScope(WHOLE_STAGE, stageGroup("Groups"));
 
-    expect(editorText()).toContain(en.mapVetoAdmin.mismatchTitle);
+    // The warning is not behind "Advanced": it is about the config as it stands.
+    expect(editorText(GROUPS_STAGE)).toContain(en.mapVetoAdmin.mismatchTitle);
     // A custom order deliberately wins, so saving stays available.
-    expect(saveButton().disabled).toBe(false);
+    expect(saveButton(GROUPS_STAGE).disabled).toBe(false);
   });
 });
 
@@ -781,39 +913,39 @@ function tooFewCandidates(slot: number): string {
 async function openEmptySlotEditor() {
   await mount();
   await settle();
-  await openGroupsRound1();
-  await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
+  await fork(GROUPS_R1);
+  await openAdvanced(GROUPS_R1);
+  await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots));
 }
 
 describe("TournamentMapVetoTab pool shape", () => {
   it("opens a flat config in pool shape, offering the step-order group", async () => {
     await mount();
     await settle();
+    await openAdvanced(LEVEL_TOURNAMENT);
 
-    expect(pressed(en.mapVetoAdmin.poolShapeFlat)).toBe("true");
-    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("false");
-    expect(editorText()).toContain(en.mapVetoAdmin.poolDescription);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.slotsDescription);
+    expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeFlat)).toBe("true");
+    expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeSlots)).toBe("false");
+    expect(editorText(LEVEL_TOURNAMENT)).toContain(en.mapVetoAdmin.poolDescription);
+    expect(editorText(LEVEL_TOURNAMENT)).not.toContain(en.mapVetoAdmin.slotsDescription);
     // Step order belongs to the flat shape only.
-    await openAdvanced();
-    expect(editorText()).toContain(en.mapVetoAdmin.orderModeTitle);
+    expect(editorText(LEVEL_TOURNAMENT)).toContain(en.mapVetoAdmin.orderModeTitle);
   });
 
   it("opens a slot-mode config in slot shape, hiding the flat pool and the step order", async () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
+    await openAdvanced(GROUPS_R1);
 
-    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("true");
-    expect(pressed(en.mapVetoAdmin.poolShapeFlat)).toBe("false");
-    expect(editorText()).toContain(en.mapVetoAdmin.slotsDescription);
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots)).toBe("true");
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.poolShapeFlat)).toBe("false");
+    expect(editorText(GROUPS_R1)).toContain(en.mapVetoAdmin.slotsDescription);
     // A flat pool row here would collect selections the slot-mode payload
     // discards, and a step-order choice cannot coexist with slots at all.
-    expect(editorText()).not.toContain(en.mapVetoAdmin.poolDescription);
-    expect(() => poolRow()).toThrow();
-    await openAdvanced();
-    expect(editorText()).not.toContain(en.mapVetoAdmin.orderModeTitle);
+    expect(editorText(GROUPS_R1)).not.toContain(en.mapVetoAdmin.poolDescription);
+    expect(() => poolRow(GROUPS_R1)).toThrow();
+    expect(editorText(GROUPS_R1)).not.toContain(en.mapVetoAdmin.orderModeTitle);
   });
 
   it("preserves the slot draft across a pool-shape toggle", async () => {
@@ -821,62 +953,66 @@ describe("TournamentMapVetoTab pool shape", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
+    await openAdvanced(GROUPS_R1);
 
     // Slot 1's candidates are ids 7, 1, 4 in play order.
-    expect(slotChips(1)).toEqual(["Circuit Royal", "Antarctic Peninsula", "Blizzard World"]);
+    expect(slotMaps(GROUPS_R1, 1)).toEqual([
+      "Circuit Royal",
+      "Antarctic Peninsula",
+      "Blizzard World"
+    ]);
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
-    expect(pressed(en.mapVetoAdmin.poolShapeFlat)).toBe("true");
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeFlat));
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.poolShapeFlat)).toBe("true");
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
-    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("true");
-    expect(slotChips(1)).toEqual(["Circuit Royal", "Antarctic Peninsula", "Blizzard World"]);
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots));
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots)).toBe("true");
+    expect(slotMaps(GROUPS_R1, 1)).toEqual([
+      "Circuit Royal",
+      "Antarctic Peninsula",
+      "Blizzard World"
+    ]);
 
-    await click(saveButton());
+    await click(saveButton(GROUPS_R1));
     expect(savedPayload().slots).toEqual(SLOT_DRAFT);
   });
 
   it("preserves the flat pool selection across a pool-shape toggle", async () => {
     await mount();
     await settle();
-    // Round 1 of Groups has no config of its own, so the pool seeds to the whole
-    // catalogue — and the gate opens there, which the tournament default's does not.
-    await openGroupsRound1();
+    // Round 1 of Groups has no config of its own, so it starts from the pool it
+    // inherits — and the slot gate opens there, which the tournament default's
+    // does not.
+    await fork(GROUPS_R1);
+    await openAdvanced(GROUPS_R1);
 
-    expect(poolChips()).toEqual(CATALOGUE_ORDER);
-    await click(
-      [...poolRow().querySelectorAll<HTMLButtonElement>("button[aria-label]")].find(
-        (element) =>
-          element.getAttribute("aria-label") ===
-          en.mapVetoAdmin.poolChipRemove.replace("{map}", "Busan")
-      ) as HTMLButtonElement
-    );
+    expect(poolMaps(GROUPS_R1)).toEqual(TOURNAMENT_DEFAULT_POOL);
+    await removeFromPool(GROUPS_R1, "Busan");
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
-    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots));
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeFlat));
 
-    expect(poolChips()).toEqual(CATALOGUE_ORDER.filter((name) => name !== "Busan"));
+    expect(poolMaps(GROUPS_R1)).toEqual(TOURNAMENT_DEFAULT_POOL.filter((name) => name !== "Busan"));
   });
 
   it("opens a slot config's flat row on the pool a new level starts from", async () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
+    await openAdvanced(GROUPS_R1);
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeFlat));
 
     // A slot config reports `map_ids: []` — the upsert refuses any other value
     // and nothing mirrors slot candidates into the flat pool. Seeding the flat
-    // row from it left every chip off and Save refused, so one mis-click on the
+    // row from it left every token off and Save refused, so one mis-click on the
     // flat shape stranded the organizer; an unconfigured round, meanwhile, seeds
     // the whole catalogue. Same emptiness on the wire, so the two must start
     // from the same place.
-    expect(poolChips()).toEqual(CATALOGUE_ORDER);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.validation.emptyPool);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.validation.emptySequence);
-    expect(saveButton().disabled).toBe(false);
+    expect(poolMaps(GROUPS_R1)).toEqual(CATALOGUE_ORDER);
+    expect(editorText(GROUPS_R1)).not.toContain(en.mapVetoAdmin.validation.emptyPool);
+    expect(editorText(GROUPS_R1)).not.toContain(en.mapVetoAdmin.validation.emptySequence);
+    expect(saveButton(GROUPS_R1).disabled).toBe(false);
   });
 
   it("seeds a slot config's custom sequence for the pool that row will work with", async () => {
@@ -884,18 +1020,17 @@ describe("TournamentMapVetoTab pool shape", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
+    await openAdvanced(GROUPS_R1);
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
-    await openAdvanced();
-    await click(toggleByText(en.mapVetoAdmin.orderModeCustom));
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeFlat));
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.orderModeCustom));
 
     // Sized from `config.map_ids.length` this was `buildSequenceForBestOf(2, 0)`
     // — an empty step list with nothing to reorder and nothing to save. The
     // fallback has to use the pool the form actually seeded.
-    expect(editorText()).not.toContain(en.mapVetoAdmin.sequenceEmpty);
+    expect(editorText(GROUPS_R1)).not.toContain(en.mapVetoAdmin.sequenceEmpty);
 
-    await click(saveButton());
+    await click(saveButton(GROUPS_R1));
     const payload = savedPayload();
     // Bo2 over a twelve-map pool: the two opening bans, then a pick each.
     expect(payload.sequence).toEqual(["ban_first", "ban_second", "pick_first", "pick_second"]);
@@ -909,9 +1044,8 @@ describe("TournamentMapVetoTab pool shape", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
 
-    await click(saveButton());
+    await click(saveButton(GROUPS_R1));
 
     const payload = savedPayload();
     expect(payload.mode).toBe("slots");
@@ -933,7 +1067,7 @@ describe("TournamentMapVetoTab pool shape", () => {
     await mount();
     await settle();
 
-    await click(saveButton());
+    await click(saveButton(LEVEL_TOURNAMENT));
 
     const payload = savedPayload();
     expect(payload.mode).toBe("pool");
@@ -948,15 +1082,16 @@ describe("TournamentMapVetoTab pool shape", () => {
     upsertVetoConfig.mockResolvedValue({});
     await mount();
     await settle();
-    await openGroupsRound1();
-    // A new level seeds the pool to the whole catalogue, so the flat fields hold
-    // real content the shape switch has to drop.
-    expect(poolChips()).toEqual(CATALOGUE_ORDER);
+    await fork(GROUPS_R1);
+    await openAdvanced(GROUPS_R1);
+    // Forking copies the inherited pool, so the flat fields hold real content
+    // the shape switch has to drop.
+    expect(poolMaps(GROUPS_R1)).toEqual(TOURNAMENT_DEFAULT_POOL);
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
-    await addToSlot(1, ["Busan", "Ilios"]);
-    await addToSlot(2, ["Dorado", "Havana"]);
-    await click(saveButton());
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots));
+    await addToSlot(GROUPS_R1, 1, ["Busan", "Ilios"]);
+    await addToSlot(GROUPS_R1, 2, ["Dorado", "Havana"]);
+    await click(saveButton(GROUPS_R1));
 
     const payload = savedPayload();
     expect(payload.mode).toBe("slots");
@@ -974,20 +1109,20 @@ describe("TournamentMapVetoTab pool shape", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
+    await openAdvanced(GROUPS_R1);
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeFlat));
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeFlat));
     // The flat row seeds to the whole catalogue, so it is cleared and rebuilt by
     // hand: five picks, so the click order is visible in the payload.
-    await withPicker(poolRow, POOL_PICKER, async () => {
+    await withPicker(() => poolRow(GROUPS_R1), POOL_PICKER, async () => {
       await click(pickerButton(POOL_PICKER, en.mapVetoAdmin.poolClear));
-      expect(poolChips()).toEqual([]);
+      expect(poolMaps(GROUPS_R1)).toEqual([]);
       for (const name of ["Busan", "Dorado", "Havana", "Ilios", "Midtown"]) {
         await click(pickerTile(POOL_PICKER, name));
       }
     });
 
-    await click(saveButton());
+    await click(saveButton(GROUPS_R1));
 
     const payload = savedPayload();
     expect(payload.mode).toBe("pool");
@@ -1005,32 +1140,39 @@ describe("TournamentMapVetoTab slot mode gate", () => {
   it("disables slot mode with its reason at the tournament default", async () => {
     await mount();
     await settle();
+    await openAdvanced(LEVEL_TOURNAMENT);
 
     // `{ scope: "tournament" }` carries a concrete DEFAULT_BEST_OF, so a gate
     // asking "is bestOf a number" would open slot mode exactly where the series
     // length is unknowable.
-    expect(toggleByText(en.mapVetoAdmin.poolShapeSlots).disabled).toBe(true);
-    expect(editorText()).toContain(en.mapVetoAdmin.poolShapeSlotsUnavailableTournament);
+    expect(toggleByText(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeSlots).disabled).toBe(true);
+    expect(editorText(LEVEL_TOURNAMENT)).toContain(
+      en.mapVetoAdmin.poolShapeSlotsUnavailableTournament
+    );
     // Disabled with its reason, never absent: silent absence reads as "the
     // feature does not exist".
-    expect(toggleByText(en.mapVetoAdmin.poolShapeFlat).disabled).toBe(false);
+    expect(toggleByText(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeFlat).disabled).toBe(false);
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
-    expect(pressed(en.mapVetoAdmin.poolShapeFlat)).toBe("true");
-    expect(editorText()).not.toContain(en.mapVetoAdmin.slotsDescription);
+    await click(toggleByText(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeSlots));
+    expect(pressed(LEVEL_TOURNAMENT, en.mapVetoAdmin.poolShapeFlat)).toBe("true");
+    expect(editorText(LEVEL_TOURNAMENT)).not.toContain(en.mapVetoAdmin.slotsDescription);
   });
 
   it("disables slot mode with its reason at a stage whose rounds play different lengths", async () => {
     await mount();
     await settle();
     // Playoffs overrides its final round, so the stage has no single best-of.
-    await openScope(WHOLE_STAGE, stageGroup("Playoffs"));
+    const playoffs = levelStage("Playoffs");
+    await fork(playoffs);
+    await openAdvanced(playoffs);
 
-    expect(toggleByText(en.mapVetoAdmin.poolShapeSlots).disabled).toBe(true);
+    expect(toggleByText(playoffs, en.mapVetoAdmin.poolShapeSlots).disabled).toBe(true);
     // Distinct copy per cause: "choose a single round" is actionable here, and
     // the tournament-level reason would send the organizer somewhere useless.
-    expect(editorText()).toContain(en.mapVetoAdmin.poolShapeSlotsUnavailableStage);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.poolShapeSlotsUnavailableTournament);
+    expect(editorText(playoffs)).toContain(en.mapVetoAdmin.poolShapeSlotsUnavailableStage);
+    expect(editorText(playoffs)).not.toContain(
+      en.mapVetoAdmin.poolShapeSlotsUnavailableTournament
+    );
   });
 
   it("opens slot mode at a stage whose rounds all play the same length, warning that one config covers them all", async () => {
@@ -1038,17 +1180,19 @@ describe("TournamentMapVetoTab slot mode gate", () => {
     await settle();
     // Groups is Bo2 throughout, so the gate passes — and that is the trap the
     // warning exists for: one shared config for five rounds that each want one.
-    await openScope(WHOLE_STAGE, stageGroup("Groups"));
+    await fork(GROUPS_STAGE);
+    await openAdvanced(GROUPS_STAGE);
 
-    expect(toggleByText(en.mapVetoAdmin.poolShapeSlots).disabled).toBe(false);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.poolShapeSlotsUnavailableStage);
-    expect(editorText()).not.toContain(en.mapVetoAdmin.poolShapeSlotsUnavailableTournament);
+    expect(toggleByText(GROUPS_STAGE, en.mapVetoAdmin.poolShapeSlots).disabled).toBe(false);
+    expect(editorText(GROUPS_STAGE)).not.toContain(
+      en.mapVetoAdmin.poolShapeSlotsUnavailableStage
+    );
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
-    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("true");
-    expect(editorText()).toContain(STAGE_SCOPE_WARNING_FIVE);
+    await click(toggleByText(GROUPS_STAGE, en.mapVetoAdmin.poolShapeSlots));
+    expect(pressed(GROUPS_STAGE, en.mapVetoAdmin.poolShapeSlots)).toBe("true");
+    expect(editorText(GROUPS_STAGE)).toContain(STAGE_SCOPE_WARNING_FIVE);
     // A warning, not a block: the slot rows are still there to fill.
-    await withPicker(() => slotRow(1), slotPicker(1), async () => {
+    await withPicker(() => slotRow(GROUPS_STAGE, 1), slotPicker(1), async () => {
       expect(pickerMaps(slotPicker(1))).toHaveLength(catalogue().length);
     });
   });
@@ -1056,13 +1200,12 @@ describe("TournamentMapVetoTab slot mode gate", () => {
   it("opens slot mode at a single round, with one row per map and no stage-scope warning", async () => {
     await openEmptySlotEditor();
 
-    expect(pressed(en.mapVetoAdmin.poolShapeSlots)).toBe("true");
-    expect(editorText()).not.toContain(STAGE_SCOPE_WARNING_FIVE);
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots)).toBe("true");
+    expect(editorText(GROUPS_R1)).not.toContain(STAGE_SCOPE_WARNING_FIVE);
     // Bo2, so exactly two rows, derived from the bracket — and no control that
     // adds a third, which is what makes the count self-evident without prose.
-    expect(editorText()).not.toContain(en.mapVetoAdmin.addStep);
-    expect(slotRow(2)).toBeTruthy();
-    expect(() => slotRow(3)).toThrow();
+    expect(slotRow(GROUPS_R1, 2)).toBeTruthy();
+    expect(() => slotRow(GROUPS_R1, 3)).toThrow();
   });
 });
 
@@ -1072,20 +1215,20 @@ describe("TournamentMapVetoTab slot editor", () => {
     await openEmptySlotEditor();
 
     const first = slotPicker(1);
-    await withPicker(() => slotRow(1), first, async () => {
+    await withPicker(() => slotRow(GROUPS_R1, 1), first, async () => {
       await click(pickerButton(first, "Control (3)"));
       expect(pickerMaps(first)).toEqual(["Antarctic Peninsula", "Busan", "Ilios"]);
       await click(pickerButton(first, en.mapVetoAdmin.poolSelectAll));
     });
 
-    expect(slotChips(1)).toEqual(["Antarctic Peninsula", "Busan", "Ilios"]);
+    expect(slotMaps(GROUPS_R1, 1)).toEqual(["Antarctic Peninsula", "Busan", "Ilios"]);
     // The filter belongs to the picker, not to the level: slot 2 is untouched.
-    expect(slotChips(2)).toEqual([]);
+    expect(slotMaps(GROUPS_R1, 2)).toEqual([]);
 
     // Two Escort maps in slot 2, so the two rows end at different lengths and
     // neither count can stand in for the other.
-    await addToSlot(2, ["Dorado", "Havana"]);
-    await click(saveButton());
+    await addToSlot(GROUPS_R1, 2, ["Dorado", "Havana"]);
+    await click(saveButton(GROUPS_R1));
 
     expect(savedPayload().slots).toEqual([
       { candidates: [1, 2, 3], reserve_map_id: null },
@@ -1098,29 +1241,29 @@ describe("TournamentMapVetoTab slot editor", () => {
 
     // Both rows start empty and both are named, so a check that reports only
     // the first failure cannot pass this.
-    expect(editorText()).toContain(tooFewCandidates(1));
-    expect(editorText()).toContain(tooFewCandidates(2));
-    expect(saveButton().disabled).toBe(true);
+    expect(editorText(GROUPS_R1)).toContain(tooFewCandidates(1));
+    expect(editorText(GROUPS_R1)).toContain(tooFewCandidates(2));
+    expect(saveButton(GROUPS_R1).disabled).toBe(true);
 
-    await addToSlot(1, ["Busan", "Ilios"]);
-    await addToSlot(2, ["Dorado"]);
+    await addToSlot(GROUPS_R1, 1, ["Busan", "Ilios"]);
+    await addToSlot(GROUPS_R1, 2, ["Dorado"]);
 
     // Slot 1 is legal, slot 2 is one short: only slot 2 is named, so the message
     // cannot be a fixed string that happens to read correctly.
-    expect(editorText()).not.toContain(tooFewCandidates(1));
-    expect(editorText()).toContain(tooFewCandidates(2));
-    expect(saveButton().disabled).toBe(true);
+    expect(editorText(GROUPS_R1)).not.toContain(tooFewCandidates(1));
+    expect(editorText(GROUPS_R1)).toContain(tooFewCandidates(2));
+    expect(saveButton(GROUPS_R1).disabled).toBe(true);
 
-    await addToSlot(2, ["Havana"]);
-    expect(editorText()).not.toContain(tooFewCandidates(2));
-    expect(saveButton().disabled).toBe(false);
+    await addToSlot(GROUPS_R1, 2, ["Havana"]);
+    expect(editorText(GROUPS_R1)).not.toContain(tooFewCandidates(2));
+    expect(saveButton(GROUPS_R1).disabled).toBe(false);
   });
 
   it("finds each map the regulation spells differently from the catalogue", async () => {
     await openEmptySlotEditor();
     const label = slotPicker(1);
 
-    await withPicker(() => slotRow(1), label, async () => {
+    await withPicker(() => slotRow(GROUPS_R1, 1), label, async () => {
       // Each query differs from the catalogue name on one axis of the normalized
       // comparison: a trailing suffix, case, a diacritic, and the apostrophe.
       for (const [query, expected] of [
@@ -1145,17 +1288,16 @@ describe("TournamentMapVetoTab slot editor", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
 
     // Slot 1 is one map from each of three modes — the cross-mode mistake the
-    // badges exist to make visible without counting chips.
-    const rowOne = slotRow(1).textContent ?? "";
+    // badges exist to make visible without counting tokens.
+    const rowOne = slotRow(GROUPS_R1, 1).textContent ?? "";
     expect(rowOne).toContain("Control (1)");
     expect(rowOne).toContain("Escort (1)");
     expect(rowOne).toContain("Hybrid (1)");
 
     // Slot 2 holds Eichenwalde and Ilios: no Escort candidate at all.
-    const rowTwo = slotRow(2).textContent ?? "";
+    const rowTwo = slotRow(GROUPS_R1, 2).textContent ?? "";
     expect(rowTwo).toContain("Control (1)");
     expect(rowTwo).toContain("Hybrid (1)");
     expect(rowTwo).not.toContain("Escort (1)");
@@ -1166,9 +1308,8 @@ describe("TournamentMapVetoTab slot editor", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
 
-    const options = await openReservePicker(1);
+    const options = await openReservePicker(GROUPS_R1, 1);
     expect(options).toContain(en.mapVetoAdmin.slotReserveNone);
     // Slot 1's own candidates: a reserve there is either banned and then
     // replayed, or is the survivor that drew.
@@ -1180,7 +1321,7 @@ describe("TournamentMapVetoTab slot editor", () => {
     expect(options).toContain("Havana");
 
     await pickReserveOption("Havana");
-    await click(saveButton());
+    await click(saveButton(GROUPS_R1));
     expect(savedPayload().slots).toEqual([
       { candidates: [7, 1, 4], reserve_map_id: 9 },
       { candidates: [5, 3], reserve_map_id: 9 }
@@ -1192,12 +1333,11 @@ describe("TournamentMapVetoTab slot editor", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
 
     // Slot 2 reserves Havana (id 9). Adding Havana there makes the replay map
     // the very map that drew, which the upsert refuses.
-    await addToSlot(2, ["Havana"]);
-    await click(saveButton());
+    await addToSlot(GROUPS_R1, 2, ["Havana"]);
+    await click(saveButton(GROUPS_R1));
 
     // Slot 1's reserve was already null, so only slot 2 changes.
     expect(savedPayload().slots).toEqual([
@@ -1222,17 +1362,16 @@ describe("TournamentMapVetoTab slot editor", () => {
     });
     await mount();
     await settle();
-    await openGroupsRound1();
 
     // The stored config really is custom, so the guard below is reached. Without
     // this the assertion would hold for the wrong reason: a bracket-preset
     // fixture never gets there at all.
-    expect(pressed(en.mapVetoAdmin.orderModeCustom)).toBe("true");
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.orderModeCustom)).toBe("true");
 
-    await click(toggleByText(en.mapVetoAdmin.poolShapeSlots));
-    await addToSlot(1, ["Busan", "Ilios"]);
-    await addToSlot(2, ["Dorado", "Havana"]);
-    await click(saveButton());
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.poolShapeSlots));
+    await addToSlot(GROUPS_R1, 1, ["Busan", "Ilios"]);
+    await addToSlot(GROUPS_R1, 2, ["Dorado", "Havana"]);
+    await click(saveButton(GROUPS_R1));
 
     const payload = savedPayload();
     expect(payload.mode).toBe("slots");
@@ -1256,12 +1395,11 @@ describe("TournamentMapVetoTab slot editor", () => {
     });
     await mount();
     await settle();
-    await openGroupsRound1();
 
     // Three stored slots against a Bo2 round: both numbers named, and the third
     // slot has no row because the bracket does not play it.
-    expect(editorText()).toContain(SLOT_COUNT_MISMATCH_THREE_TWO);
-    expect(() => slotRow(3)).toThrow();
+    expect(editorText(GROUPS_R1)).toContain(SLOT_COUNT_MISMATCH_THREE_TWO);
+    expect(() => slotRow(GROUPS_R1, 3)).toThrow();
   });
 
   it("chooses who bans first, and keeps the choice on the wire", async () => {
@@ -1269,15 +1407,14 @@ describe("TournamentMapVetoTab slot editor", () => {
     listVetoConfigs.mockResolvedValue({ configs: [SLOT_CONFIG] });
     await mount();
     await settle();
-    await openGroupsRound1();
-    await openAdvanced();
+    await openAdvanced(GROUPS_R1);
 
     // The fixture stores "alternate", so the control opens on it.
-    expect(pressed(en.mapVetoAdmin.firstBanAlternate)).toBe("true");
-    expect(pressed(en.mapVetoAdmin.firstBanFixed)).toBe("false");
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.firstBanAlternate)).toBe("true");
+    expect(pressed(GROUPS_R1, en.mapVetoAdmin.firstBanFixed)).toBe("false");
 
-    await click(toggleByText(en.mapVetoAdmin.firstBanFixed));
-    await click(saveButton());
+    await click(toggleByText(GROUPS_R1, en.mapVetoAdmin.firstBanFixed));
+    await click(saveButton(GROUPS_R1));
     expect(savedPayload().first_ban_rotation).toBe("fixed");
   });
 });
@@ -1289,31 +1426,35 @@ describe("TournamentMapVetoTab slot editor", () => {
  * at all: four of the regulation's twelve levels could not be reached, and each
  * silently inherited a stage- or tournament-level config authored for a
  * different series. Round numbers now come from the encounters that exist,
- * grouped upper (positive) / lower (negative), plus the planned rounds
- * `max_rounds` promises, marked as not generated.
+ * grouped upper (positive) / lower (negative), plus — only where `max_rounds`
+ * governs the round count — the rounds it promises, marked as not generated.
  */
 
-/** Only the two fields the list reads; a real `Encounter` satisfies it. */
-function enc(stageId: number | null, round: number): StageRoundSource {
-  return { stage_id: stageId, round };
+/** Only the fields the list reads; a real `Encounter` satisfies it. */
+function enc(stageId: number | null, round: number, bestOf = 3): StageRoundSource {
+  return { stage_id: stageId, round, best_of: bestOf };
 }
 
 /**
- * A double-elimination stage whose encounters disagree with `max_rounds` in
- * every direction at once, so no single arithmetic shortcut reproduces the
- * answer:
- *  - `max_rounds` is 4, but round 5 exists — a regenerated bracket grew past
- *    the stored number, so `1..max_rounds` alone loses a real round;
- *  - round 3 is promised by `max_rounds` and has no encounter, and it sits in
- *    the middle rather than at the end, so "the tail is planned" is wrong;
+ * A double-elimination stage, where `max_rounds` governs nothing: the round
+ * count follows from the team count, and 4 here is just a stored number. Its
+ * encounters disagree with it in every direction at once, so no arithmetic on
+ * it reproduces the answer:
+ *  - round 5 exists, past `max_rounds`, so `1..max_rounds` loses a real round;
+ *  - round 3 is inside `max_rounds` and has no encounter, and it sits in the
+ *    middle rather than at the end, so "the tail is planned" is wrong too;
  *  - the lower rounds are -1, -2, -4: gapped, so mirroring `1..n` invents -3,
- *    and three of them against five upper rounds, so neither count stands in
+ *    and three of them against four upper rounds, so neither count stands in
  *    for the other;
  *  - rounds repeat across encounters, so a list that is not deduplicated
  *    renders the same row twice.
+ *
+ * `final: 7` is played by nothing. Round 4 is the last round `max_rounds`
+ * names, which is where that override used to land — so a Bo7 anywhere on
+ * screen is the stage config answering a question only the bracket can.
  */
 const DE_STAGE: Stage = {
-  ...stage(190, "DE Bracket", 2, 4, { default: 3 }),
+  ...stage(190, "DE Bracket", 2, 4, { default: 3, final: 7 }),
   stage_type: "double_elimination"
 } as Stage;
 
@@ -1324,7 +1465,9 @@ const DE_ENCOUNTERS: StageRoundSource[] = [
   enc(190, 1),
   enc(190, -2),
   enc(190, 1),
-  enc(190, 5),
+  // The real grand final. Bo5 appears nowhere in the stage's config, so the
+  // only way this number reaches the screen is the encounter itself.
+  enc(190, 5, 5),
   enc(190, -4),
   enc(190, 2),
   enc(190, -1),
@@ -1349,31 +1492,31 @@ function bracketGroup(stageName: string, label: string): HTMLElement {
 }
 
 function roundNames(scope: ParentNode): string[] {
-  return scopeRows(scope)
+  return levelRows(scope)
     .map(rowLabel)
     .filter((label) => label !== WHOLE_STAGE);
 }
 
 /** Round labels inside one scope whose row carries the not-generated marker. */
 function notGeneratedNames(scope: ParentNode): string[] {
-  return scopeRows(scope)
-    .filter((trigger) =>
-      (trigger.textContent ?? "").includes(en.mapVetoAdmin.roundNotGenerated)
-    )
+  return levelRows(scope)
+    .filter((trigger) => (trigger.textContent ?? "").includes(en.mapVetoAdmin.roundNotGenerated))
     .map(rowLabel);
 }
 
 describe("TournamentMapVetoTab round list", () => {
-  it("offers both brackets' rounds, taking them from the encounters that exist", async () => {
+  it("takes an elimination stage's rounds from the encounters alone", async () => {
     await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
     await settle();
 
-    // Round 5 is past `max_rounds` and round 3 is inside it with no encounter:
-    // the union of both sources, deduplicated, in ascending order.
+    // Exactly the positive rounds that exist, deduplicated and in ascending
+    // order: gapped at 3, past `max_rounds` at 5, and nothing invented at
+    // either end. `max_rounds` counts a Swiss progression, so planning an
+    // elimination bracket from it offered rounds the bracket never plays and
+    // filed the grand final's length under the last of them.
     expect(roundNames(bracketGroup("DE Bracket", UPPER))).toEqual([
       "Round 1",
       "Round 2",
-      "Round 3",
       "Round 4",
       "Round 5"
     ]);
@@ -1395,13 +1538,37 @@ describe("TournamentMapVetoTab round list", () => {
     expect(roundNames(bracketGroup("DE Bracket", LOWER))).not.toContain("Lower R9");
     expect(text()).not.toContain("Round 6");
 
-    // Only the promised-but-absent round is marked, and the marker never
-    // reaches a lower round, which is never planned.
-    expect(notGeneratedNames(bracketGroup("DE Bracket", UPPER))).toEqual(["Round 3"]);
+    // Nothing here is planned, so nothing can be promised-but-absent.
+    expect(notGeneratedNames(bracketGroup("DE Bracket", UPPER))).toEqual([]);
     expect(notGeneratedNames(bracketGroup("DE Bracket", LOWER))).toEqual([]);
   });
 
-  it("round-trips a lower-bracket round through selection, seeding and save", async () => {
+  it("reads each round's series length from that round's own encounter", async () => {
+    await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
+    await settle();
+
+    // The grand final plays Bo5, a length the stage's config cannot produce for
+    // any round — so this number came from the encounter and nowhere else. It
+    // is also the slot count a slot-mode config on this round is built for.
+    expect(levelTrigger(levelRound("DE Bracket", 5)).textContent).toContain(en.mapVeto.preset.bo5);
+
+    // Round 4 is the last round `max_rounds` names, which is where the stage's
+    // `final` override used to land. It plays Bo3, and no level may claim the
+    // Bo7 that override configures for a final this bracket does not have
+    // there.
+    expect(levelTrigger(levelRound("DE Bracket", 4)).textContent).toContain(en.mapVeto.preset.bo3);
+    expect(bracketGroup("DE Bracket", UPPER).textContent ?? "").not.toContain(
+      en.mapVeto.preset.bo7
+    );
+
+    // Two lengths across the stage's rounds, so the whole-stage level can name
+    // neither of them.
+    expect(levelTrigger(levelStage("DE Bracket")).textContent).toContain(
+      en.mapVeto.bracketFormatVaries
+    );
+  });
+
+  it("round-trips a lower-bracket round through seeding and save", async () => {
     upsertVetoConfig.mockResolvedValue({});
     listVetoConfigs.mockResolvedValue({
       configs: [
@@ -1429,13 +1596,18 @@ describe("TournamentMapVetoTab round list", () => {
     });
     await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
     await settle();
-    await openScope("Lower R2", bracketGroup("DE Bracket", LOWER));
 
+    const lower = levelRound("DE Bracket", -2);
     // Read back: the config on round -2, not the one on round 2.
-    expect(editorText()).toContain(en.mapVetoAdmin.levelExisting);
-    expect(poolChips()).toEqual(["Paraíso", "Busan", "Dorado"]);
+    expect(poolMaps(lower)).toEqual(["Paraíso", "Busan", "Dorado"]);
+    expect(poolMaps(levelRound("DE Bracket", 2))).toEqual([
+      "Ilios",
+      "Midtown",
+      "Havana",
+      "King’s Row"
+    ]);
 
-    await click(saveButton());
+    await click(saveButton(lower));
 
     const payload = savedPayload();
     expect(payload.round).toBe(-2);
@@ -1454,13 +1626,7 @@ describe("TournamentMapVetoTab round list", () => {
     await settle();
 
     const groups = stageGroup("Groups");
-    expect(roundNames(groups)).toEqual([
-      "Round 1",
-      "Round 2",
-      "Round 3",
-      "Round 4",
-      "Round 5"
-    ]);
+    expect(roundNames(groups)).toEqual(["Round 1", "Round 2", "Round 3", "Round 4", "Round 5"]);
     expect(groups.textContent ?? "").not.toContain(UPPER);
     expect(groups.textContent ?? "").not.toContain(LOWER);
     expect(groups.textContent ?? "").not.toContain("Lower R");
@@ -1469,33 +1635,32 @@ describe("TournamentMapVetoTab round list", () => {
     expect(notGeneratedNames(groups)).toEqual(["Round 4", "Round 5"]);
 
     // And the round still saves what it always did.
-    await openScope("Round 2", groups);
-    await click(saveButton());
+    await fork(levelRound("Groups", 2));
+    await click(saveButton(levelRound("Groups", 2)));
     const payload = savedPayload();
     expect(payload.round).toBe(2);
     expect(payload.stage_id).toBe(188);
   });
 
-  it("lets the organizer configure a round the bracket has not generated yet", async () => {
+  it("lets the organizer configure a planned round the bracket has not reached", async () => {
     upsertVetoConfig.mockResolvedValue({});
-    await mount({ stages: DE_STAGES, encounters: DE_ENCOUNTERS });
+    // Groups is Swiss, the one shape whose round count `max_rounds` really
+    // governs, so rounds 4 and 5 are a promise rather than an invention.
+    await mount({ stages: STAGES, encounters: [enc(188, 1), enc(188, 2), enc(188, 3)] });
     await settle();
 
     // Marked, never disabled: a config cascades to encounters created later,
-    // so authoring round 3's pool before round 3 exists is the intended order
+    // so authoring round 4's pool before round 4 exists is the intended order
     // of work, not a mistake to block.
-    const upper = bracketGroup("DE Bracket", UPPER);
-    const planned = scopeRow("Round 3", upper);
-    expect(planned.disabled).toBe(false);
-    expect(planned.textContent).toContain(en.mapVetoAdmin.roundNotGenerated);
+    const planned = levelRound("Groups", 4);
+    expect(levelTrigger(planned).textContent).toContain(en.mapVetoAdmin.roundNotGenerated);
+    await fork(planned);
+    expect(saveButton(planned).disabled).toBe(false);
 
-    await click(planned);
-    expect(editorText()).toContain(en.mapVetoAdmin.levelNew);
-
-    await click(saveButton());
+    await click(saveButton(planned));
     const payload = savedPayload();
-    expect(payload.round).toBe(3);
-    expect(payload.stage_id).toBe(190);
+    expect(payload.round).toBe(4);
+    expect(payload.stage_id).toBe(188);
   });
 
   it("claims nothing about generation before the encounters have arrived", async () => {
@@ -1509,6 +1674,18 @@ describe("TournamentMapVetoTab round list", () => {
     // support, and hiding the lower bracket is what the arriving read fixes.
     expect(notGeneratedNames(de)).toEqual([]);
     expect(de.textContent ?? "").not.toContain("Lower R");
+  });
+
+  it("offers an ungenerated elimination stage its whole-stage level and no rounds", async () => {
+    // The encounters are known and this stage has none. There is no honest round
+    // list to draw: which rounds a bracket ends up with follows from its team
+    // count, and the whole-stage level covers every one of them until it exists.
+    await mount({ stages: DE_STAGES, encounters: [enc(188, 1)] });
+    await settle();
+
+    const de = stageGroup("DE Bracket");
+    expect(roundNames(de)).toEqual([]);
+    expect(levelTrigger(levelStage("DE Bracket")).textContent).toContain(WHOLE_STAGE);
   });
 });
 
@@ -1528,10 +1705,6 @@ const ROUND_FLAT_THREE = "3 maps in the pool";
 const ROUND_SLOTS_2_5 = "2 slots, 5 candidates";
 const ROUND_SLOTS_2_4 = "2 slots, 4 candidates";
 
-function rowText(label: string, scope: ParentNode): string {
-  return scopeRow(label, scope).textContent ?? "";
-}
-
 describe("TournamentMapVetoTab row summary", () => {
   beforeEach(() => {
     // Rounds 1 and 2 of Groups carry slot configs, round 3 a flat one, rounds 4
@@ -1544,33 +1717,33 @@ describe("TournamentMapVetoTab row summary", () => {
   it("states a slot round's slots and its candidate total, never a pool of zero", async () => {
     await mount();
     await settle();
-    const groups = stageGroup("Groups");
 
     // Both numbers, because a round with two empty slots and a round with two
     // full ones must not read identically: the slot count alone is the same for
     // every Bo2 round whether or not anyone filled it in.
-    expect(rowText("Round 1", groups)).toContain(ROUND_SLOTS_2_5);
-    expect(rowText("Round 1", groups)).not.toContain(ROUND_FLAT_ZERO);
+    const one = levelTrigger(GROUPS_R1).textContent ?? "";
+    expect(one).toContain(ROUND_SLOTS_2_5);
+    expect(one).not.toContain(ROUND_FLAT_ZERO);
 
     // Same slot count, a different candidate total: the second number is read
     // from this config, not copied from the first row or from the slot count.
-    expect(rowText("Round 2", groups)).toContain(ROUND_SLOTS_2_4);
-    expect(rowText("Round 2", groups)).not.toContain(ROUND_FLAT_ZERO);
+    const two = levelTrigger(levelRound("Groups", 2)).textContent ?? "";
+    expect(two).toContain(ROUND_SLOTS_2_4);
+    expect(two).not.toContain(ROUND_FLAT_ZERO);
   });
 
   it("leaves a flat round's summary as the pool size, and an unconfigured round's alone", async () => {
     await mount();
     await settle();
-    const groups = stageGroup("Groups");
 
     // Flat mode's copy is untouched, and the slot wording must not leak into it.
-    const flat = rowText("Round 3", groups);
+    const flat = levelTrigger(levelRound("Groups", 3)).textContent ?? "";
     expect(flat).toContain(ROUND_FLAT_THREE);
     expect(flat).not.toContain("slot");
     expect(flat).not.toContain("candidate");
 
     // No config at all is still a third thing, distinct from both summaries.
-    const inherited = rowText("Round 4", groups);
+    const inherited = levelTrigger(levelRound("Groups", 4)).textContent ?? "";
     expect(inherited).toContain(en.mapVetoAdmin.roundUsesDefault);
     expect(inherited).not.toContain("slot");
     expect(inherited).not.toContain("in the pool");
@@ -1582,7 +1755,7 @@ describe("TournamentMapVetoTab row summary", () => {
     await mount();
     await settle();
 
-    const row = scopeRow(en.mapVetoAdmin.tournamentDefault).textContent ?? "";
+    const row = levelTrigger(LEVEL_TOURNAMENT).textContent ?? "";
     expect(row).toContain(en.mapVetoAdmin.tournamentUnconfigured);
     expect(row).not.toContain(en.mapVetoAdmin.roundUsesDefault);
   });

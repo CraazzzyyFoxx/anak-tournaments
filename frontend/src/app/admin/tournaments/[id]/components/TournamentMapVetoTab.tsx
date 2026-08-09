@@ -8,23 +8,19 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
+  LayoutGrid,
   LoaderCircle,
   Plus,
+  Rows3,
   RotateCcw,
   Shield,
   Trash2,
   X
 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger
-} from "@/components/ui/accordion";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,13 +76,19 @@ import {
 } from "./mapVeto.helpers";
 
 /**
- * The two encounter fields the round list reads. A full `Encounter` satisfies it
+ * The encounter fields the round list reads. A full `Encounter` satisfies it
  * structurally, so the page can hand over the tournament-wide encounters read it
  * already runs for the other hub tabs.
  */
 export interface StageRoundSource {
   stage_id: number | null;
   round: number;
+  /**
+   * The series length the generator resolved for this encounter. Read rather
+   * than re-derived: the server picks `final` against the bracket's real last
+   * round, which the client has no way to compute.
+   */
+  best_of: number;
 }
 
 interface TournamentMapVetoTabProps {
@@ -101,60 +103,109 @@ interface TournamentMapVetoTabProps {
   canManage: boolean;
 }
 
+/**
+ * How much room one chosen map takes.
+ *
+ * Map art is what an organizer recognises a pool by, so it is the default. A
+ * twelve-level tournament with five candidates per slot is a long page at that
+ * size, so the same rows collapse to name-only chips on demand. One switch for
+ * the whole page: a per-level setting would make two rows of the same list
+ * disagree about what a token looks like.
+ */
+type Density = "normal" | "compact";
+
 /** One round the organizer can configure, upper or lower. */
 interface RoundOption {
   /** Signed: positive is the upper bracket, negative the lower. */
   round: number;
   /**
-   * True only when the encounters are known and none of them carries this
-   * round — a round `max_rounds` promises that the bracket has not reached.
+   * True only when the round is planned and no encounter carries it. Only a
+   * stage whose round count `max_rounds` actually governs can plan a round, so
+   * an elimination bracket never marks one.
    */
   notGenerated: boolean;
+}
+
+function isEliminationStage(stage: Stage): boolean {
+  return stage.stage_type === "single_elimination" || stage.stage_type === "double_elimination";
+}
+
+/** What one stage's encounters say about the rounds an organizer can configure. */
+interface StageRounds {
+  upper: RoundOption[];
+  lower: RoundOption[];
+  /**
+   * Series length per generated round, keyed by the signed round number. The
+   * bracket's own answer, so a Bo5 grand final reads Bo5 here whatever the
+   * stage's `best_of` config would resolve to for that round number.
+   */
+  bestOfByRound: Map<number, number>;
 }
 
 /**
  * Split a stage's configurable rounds into the two brackets (Decision 13).
  *
- * Upper rounds are the union of `1..maxRounds` with every positive round the
- * stage's encounters carry: a regenerated bracket can run past the stored
- * `max_rounds`, and a bracket that has not been generated yet carries nothing.
- * Lower rounds come from the encounters alone — `max_rounds` counts the upper
- * progression and nothing on the client derives how many lower rounds a
- * double-elimination bracket ends up with, so an absent one cannot be planned.
+ * Rounds come from the encounters the stage actually carries. `max_rounds`
+ * plans on top of them only for a stage whose round count it governs — Swiss
+ * and round-robin. It says nothing about an elimination bracket, whose round
+ * count follows from its team count and whose stored value is just the column
+ * default of 5: planning from it offered a double-elimination stage rounds 4
+ * and 5 of a bracket that ends at round 3, and filed the Bo5 grand final under
+ * the phantom round 5. So an elimination stage takes its upper rounds from the
+ * encounters alone — the rule the lower bracket has always followed, for the
+ * same reason.
  *
  * Both lists may be gapped: a round number is a value here, never an index.
  */
-function buildRoundOptions(
+function buildStageRounds(
   encounters: StageRoundSource[] | undefined,
-  stageId: number,
-  maxRounds: number
-): { upper: RoundOption[]; lower: RoundOption[] } {
-  const existing = new Set<number>();
+  stage: Stage
+): StageRounds {
+  const bestOfByRound = new Map<number, number>();
   for (const encounter of encounters ?? []) {
     // Round 0 belongs to neither bracket and has no label a reader could
     // decode, so it is dropped rather than filed under one of them.
-    if (encounter.stage_id === stageId && encounter.round !== 0) existing.add(encounter.round);
+    if (encounter.stage_id !== stage.id || encounter.round === 0) continue;
+    const seen = bestOfByRound.get(encounter.round);
+    // Two lengths inside one round only happen after a hand edit; the longest
+    // wins, so a slot list is never short of the maps the series can play.
+    bestOfByRound.set(
+      encounter.round,
+      seen === undefined ? encounter.best_of : Math.max(seen, encounter.best_of)
+    );
   }
 
   const upper = new Set<number>();
-  for (let round = 1; round <= maxRounds; round += 1) upper.add(round);
   const lower: number[] = [];
-  for (const round of existing) {
+  for (const round of bestOfByRound.keys()) {
     if (round > 0) upper.add(round);
     else lower.push(round);
   }
+
+  // While the read is in flight nothing is generated and nothing is known, so
+  // the planned rounds are all there is to offer — including for an
+  // elimination stage, whose list the arriving encounters then correct.
+  const planned =
+    isEliminationStage(stage) && encounters !== undefined
+      ? 0
+      : Math.max(0, stage.max_rounds);
+  for (let round = 1; round <= planned; round += 1) upper.add(round);
 
   const generationKnown = encounters !== undefined;
   return {
     upper: [...upper]
       .sort((left, right) => left - right)
-      .map((round) => ({ round, notGenerated: generationKnown && !existing.has(round) })),
+      .map((round) => ({ round, notGenerated: generationKnown && !bestOfByRound.has(round) })),
     // -1 before -2: the order the lower bracket plays, not numeric order.
     lower: lower
       .sort((left, right) => right - left)
-      .map((round) => ({ round, notGenerated: false }))
+      .map((round) => ({ round, notGenerated: false })),
+    bestOfByRound
   };
 }
+
+/** Stand-in for a stage absent from the resolved map; unreachable in practice. */
+const EMPTY_STAGE_ROUNDS: StageRounds = { upper: [], lower: [], bestOfByRound: new Map() };
 
 /** Pool filter showing every map, regardless of game mode. */
 const ALL_FILTER = "all";
@@ -206,8 +257,8 @@ type BracketFormat =
   | {
       scope: "stage";
       bestOf: number;
-      /** Non-null only when the rounds do not all play the same length. */
-      perRound: { round: number; bestOf: number }[] | null;
+      /** True when the stage's rounds do not all play the same length. */
+      varies: boolean;
       /** The stage's final-round override, elimination stages only. */
       finalBestOf: number | null;
       /** Rounds this scope covers, for the copy that says how many share it. */
@@ -236,7 +287,7 @@ function resolveSlotsAvailability(format: BracketFormat): SlotsAvailability {
     case "round":
       return { available: true };
     case "stage":
-      return format.perRound === null && format.finalBestOf === null
+      return !format.varies && format.finalBestOf === null
         ? { available: true }
         : { available: false, reasonKey: "poolShapeSlotsUnavailableStage" };
     case "tournament":
@@ -247,26 +298,33 @@ function resolveSlotsAvailability(format: BracketFormat): SlotsAvailability {
 /** Sentinel for "no reserve": a Radix Select item cannot carry an empty value. */
 const RESERVE_NONE = "none";
 
-/** Accordion value of the tournament-wide level; also the row open on arrival. */
-const TOURNAMENT_SCOPE = "tournament";
-
 /** One configurable cascade level, resolved against the bracket and the configs. */
 interface ScopeNode {
-  /** Accordion value and draft key; encodes stage and round. */
+  /** Draft key; encodes stage and round. */
   key: string;
   stageId: number | null;
   round: number | null;
-  /** Row heading: the level's own name, not its path. */
+  /** Row heading: the level's own name, short, read in the card's context. */
   label: string;
+  /** The level's full path, unique across the page; names its group. */
+  fullLabel: string;
   /** The config sitting exactly on this level — never an inherited one. */
   config: MapVetoConfig | null;
+  /**
+   * The config that governs this level when it has none of its own, resolved up
+   * the cascade (round → stage → tournament). Null only at the root, and
+   * meaningless once `config` is set.
+   */
+  inherited: MapVetoConfig | null;
+  /** Which level `inherited` sits on, for the copy that names the source. */
+  inheritedFrom: string | null;
   bracketFormat: BracketFormat;
   /** A round `max_rounds` promises that the bracket has not generated yet. */
   notGenerated: boolean;
 }
 
 function scopeKey(stageId: number | null, round: number | null): string {
-  if (stageId == null) return TOURNAMENT_SCOPE;
+  if (stageId == null) return "tournament";
   return round == null ? `stage:${stageId}` : `stage:${stageId}:round:${round}`;
 }
 
@@ -319,7 +377,7 @@ function ChoiceCardGroup<T extends string>({
               <span className="text-sm font-semibold">{option.label}</span>
               <span
                 className={cn(
-                  "text-[11px] font-normal leading-normal",
+                  "text-xs font-normal leading-normal",
                   active ? "text-primary-foreground/80" : "text-muted-foreground"
                 )}
               >
@@ -330,6 +388,29 @@ function ChoiceCardGroup<T extends string>({
         })}
       </div>
     </section>
+  );
+}
+
+/** Map art behind a scrim, so a label stays legible whatever the image. */
+function MapArt({ map }: { map: MapRead }) {
+  return (
+    <>
+      {map.image_path ? (
+        <span
+          aria-hidden
+          className="absolute inset-0 bg-cover bg-center opacity-35 transition-opacity group-hover:opacity-55"
+          style={{ backgroundImage: `url("${map.image_path}")` }}
+        />
+      ) : (
+        <span aria-hidden className="absolute inset-0 bg-muted/40" />
+      )}
+      {/* Explicit scrim: map art luminance varies wildly, so the label cannot
+          rely on the image staying dark enough behind it. */}
+      <span
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/30"
+      />
+    </>
   );
 }
 
@@ -365,25 +446,10 @@ function MapPoolTile({
         disabled && "cursor-not-allowed"
       )}
     >
-      {map.image_path ? (
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-cover bg-center opacity-25 transition-opacity group-hover:opacity-40"
-          style={{ backgroundImage: `url("${map.image_path}")` }}
-        />
-      ) : (
-        <div aria-hidden className="absolute inset-0 bg-muted/40" />
-      )}
-      {/* Explicit scrim: map art luminance varies wildly, so the label cannot
-          rely on the image staying dark enough behind it. */}
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/30"
-      />
-
+      <MapArt map={map} />
       {/* `span`, not `<Badge>`: this sits inside a `<button>`, which may only
           contain phrasing content, and `Badge` renders a `div`. */}
-      <div className="relative z-10 flex items-start justify-between gap-1">
+      <span className="relative z-10 flex items-start justify-between gap-1">
         <span className={cn(badgeVariants({ variant: "outline" }), "bg-background/85")}>
           {gamemodeLabel}
         </span>
@@ -395,7 +461,7 @@ function MapPoolTile({
             {selectionIndex + 1}
           </span>
         ) : null}
-      </div>
+      </span>
 
       <span className="relative z-10 truncate text-xs font-semibold text-foreground">
         {map.name}
@@ -409,9 +475,9 @@ function MapPoolTile({
  *
  * The editor used to render this grid inline, once per slot: five slots put
  * sixty tiles, five gamemode filter rows and five search fields on screen at
- * once, for a choice an organizer makes a handful of times. Behind a popover the
- * level's rows stay one line each, and the picker keeps the filters, the
- * name search and the map art it needs to be usable.
+ * once, for a choice an organizer makes a handful of times. Behind a popover
+ * every level's rows stay short, and the picker keeps the filters, the name
+ * search and the map art it needs to be usable.
  */
 function MapPicker({
   groupLabel,
@@ -582,11 +648,119 @@ function MapPicker({
 }
 
 /**
+ * One chosen map, and the control that removes it.
+ *
+ * The two densities are the same button with the same accessible name: art and
+ * a wider footprint, or the name alone. Nothing but size and the picture
+ * changes, so switching density can never change what a row means.
+ *
+ * `readOnly` drops the button entirely rather than disabling it: a level that
+ * inherits its pool has nothing to remove, and a disabled remove control would
+ * still say "you could take this out here", which is exactly wrong.
+ */
+function MapToken({
+  map,
+  name,
+  density,
+  ariaLabel,
+  disabled,
+  readOnly,
+  onRemove
+}: {
+  /** Undefined when the pool holds an id the catalogue no longer serves. */
+  map: MapRead | undefined;
+  name: string;
+  density: Density;
+  ariaLabel: string;
+  disabled: boolean;
+  readOnly: boolean;
+  onRemove: () => void;
+}) {
+  if (density === "compact") {
+    const compactClass =
+      "group inline-flex h-8 max-w-56 items-center gap-1.5 rounded-full border border-border/70 bg-card pe-2 ps-3 text-xs font-medium transition-colors";
+    if (readOnly) {
+      return (
+        <span title={name} className={cn(compactClass, "pe-3")}>
+          <span className="truncate">{name}</span>
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label={ariaLabel}
+        title={name}
+        onClick={onRemove}
+        className={cn(
+          compactClass,
+          disabled ? "cursor-not-allowed opacity-60" : "hover:border-destructive/60"
+        )}
+      >
+        <span className="truncate">{name}</span>
+        <X
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-destructive"
+        />
+      </button>
+    );
+  }
+
+  const tileClass =
+    "group relative h-16 w-32 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-card text-left transition-colors";
+  const art = map ? (
+    <MapArt map={map} />
+  ) : (
+    <span aria-hidden className="absolute inset-0 bg-muted/40" />
+  );
+  const caption = (
+    <span className="absolute inset-x-2 bottom-1.5 z-10 truncate text-xs font-semibold text-foreground">
+      {name}
+    </span>
+  );
+
+  if (readOnly) {
+    return (
+      <span title={name} className={cn(tileClass, "block")}>
+        {art}
+        {caption}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={name}
+      onClick={onRemove}
+      className={cn(
+        tileClass,
+        disabled ? "cursor-not-allowed opacity-60" : "hover:border-destructive/60"
+      )}
+    >
+      {art}
+      {caption}
+      {/* Always visible, not hover-only: hover does not exist on touch, and the
+          remove affordance is the only thing this control does. */}
+      <span
+        aria-hidden
+        className="absolute end-1 top-1 z-10 flex size-5 items-center justify-center rounded-full bg-background/80 text-muted-foreground transition-colors group-hover:text-destructive"
+      >
+        <X className="size-3" />
+      </span>
+    </button>
+  );
+}
+
+/**
  * One row of chosen maps: the level's pool, or one slot's candidates.
  *
- * Chips read left to right in the stored order, which is the order the pool and
- * the slot candidates are persisted in — so the sequence is the layout rather
- * than a numeric badge the reader has to sort by.
+ * Tokens read left to right in the stored order, which is the order the pool
+ * and the slot candidates are persisted in — so the sequence is the layout
+ * rather than a numeric badge the reader has to sort by.
  */
 function MapSelectionRow({
   label,
@@ -595,7 +769,9 @@ function MapSelectionRow({
   maps,
   groups,
   selectedIds,
+  density,
   disabled,
+  readOnly,
   describeRemove,
   onToggle,
   onSelectVisible,
@@ -608,8 +784,11 @@ function MapSelectionRow({
   maps: MapRead[];
   groups: GamemodeGroup[];
   selectedIds: number[];
+  density: Density;
   disabled: boolean;
-  /** Accessible name for one chip's remove action, in this row's terms. */
+  /** The level inherits this pool: show it, offer nothing to change. */
+  readOnly: boolean;
+  /** Accessible name for one token's remove action, in this row's terms. */
   describeRemove: (mapName: string) => string;
   onToggle: (mapId: number) => void;
   onSelectVisible: (mapIds: number[]) => void;
@@ -623,7 +802,7 @@ function MapSelectionRow({
 
   /**
    * Composition reads the selection, not the filter: a stray Push map among
-   * three Control ones is what the chips exist to show without counting tiles.
+   * three Control ones is what the badges exist to show without counting tiles.
    */
   const composition = groups
     .map((group) => ({
@@ -640,7 +819,7 @@ function MapSelectionRow({
       className="space-y-2 rounded-xl border border-border/60 bg-accent/10 p-3"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h4 className="text-sm font-semibold">{label}</h4>
+        <h5 className="text-sm font-semibold">{label}</h5>
         <Badge variant="secondary" className="tabular-nums">
           {countBadge}
         </Badge>
@@ -652,45 +831,41 @@ function MapSelectionRow({
         {trailing ? <div className="ms-auto">{trailing}</div> : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className={cn("flex flex-wrap items-center", density === "normal" ? "gap-2" : "gap-1.5")}>
         {selectedIds.length === 0 ? (
           <span className="text-xs text-muted-foreground">
             {t("mapVetoAdmin.selectionEmpty")}
           </span>
         ) : (
           selectedIds.map((id) => {
-            const name = byId.get(id)?.name ?? `#${id}`;
+            const map = byId.get(id);
+            const name = map?.name ?? `#${id}`;
             return (
-              <button
+              <MapToken
                 key={id}
-                type="button"
+                map={map}
+                name={name}
+                density={density}
+                ariaLabel={describeRemove(name)}
                 disabled={disabled}
-                aria-label={describeRemove(name)}
-                onClick={() => onToggle(id)}
-                className={cn(
-                  "group inline-flex h-8 max-w-56 items-center gap-1.5 rounded-full border border-border/70 bg-card pe-2 ps-3 text-xs font-medium transition-colors",
-                  disabled ? "cursor-not-allowed opacity-60" : "hover:border-destructive/60"
-                )}
-              >
-                <span className="truncate">{name}</span>
-                <X
-                  aria-hidden
-                  className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-destructive"
-                />
-              </button>
+                readOnly={readOnly}
+                onRemove={() => onToggle(id)}
+              />
             );
           })
         )}
-        <MapPicker
-          groupLabel={pickerLabel}
-          maps={maps}
-          groups={groups}
-          selectedIds={selectedIds}
-          disabled={disabled}
-          onToggle={onToggle}
-          onSelectVisible={onSelectVisible}
-          onClearVisible={onClearVisible}
-        />
+        {readOnly ? null : (
+          <MapPicker
+            groupLabel={pickerLabel}
+            maps={maps}
+            groups={groups}
+            selectedIds={selectedIds}
+            disabled={disabled}
+            onToggle={onToggle}
+            onSelectVisible={onSelectVisible}
+            onClearVisible={onClearVisible}
+          />
+        )}
       </div>
     </div>
   );
@@ -852,20 +1027,32 @@ interface ScopeSavePayload {
 }
 
 /**
- * One cascade level's editor, rendered inside that level's row.
+ * One cascade level's editor.
  *
- * Fully controlled: the draft lives in the tab, so collapsing the row — which
- * unmounts this component — never discards work.
+ * What is always on screen is the maps: everything an organizer transcribes
+ * from a regulation. The pool shape, the timer, the ban rotation and the
+ * hand-authored step order are decided once per level and live behind
+ * "Advanced", because eleven copies of them is the wall this page used to be.
+ *
+ * A level with no config of its own shows the pool it actually inherits, read
+ * only, and one control that forks it into an editable draft. Pre-filling it
+ * with the whole catalogue instead said "these 32 maps are this level's pool"
+ * about a level that has no pool at all.
+ *
+ * Fully controlled: the draft lives in the tab, so collapsing a level or its
+ * whole stage — which unmounts this component — never discards work.
  */
 function ScopeEditor({
   scope,
   draft,
   maps,
   groups,
+  density,
   canManage,
   isSaving,
   saveError,
-  /* isDirty is not passed: `onReset` is null exactly when nothing has changed. */
+  readOnly,
+  onFork,
   onChange,
   onSave,
   onReset,
@@ -875,9 +1062,17 @@ function ScopeEditor({
   draft: VetoDraft;
   maps: MapRead[];
   groups: GamemodeGroup[];
+  density: Density;
   canManage: boolean;
   isSaving: boolean;
   saveError?: string;
+  /**
+   * The level inherits everything below from `scope.inheritedFrom`; nothing here
+   * is editable until the organizer forks it.
+   */
+  readOnly: boolean;
+  /** Copy the inherited configuration into an editable draft for this level. */
+  onFork: () => void;
   onChange: (next: VetoDraft) => void;
   onSave: (payload: ScopeSavePayload) => void;
   /** Null when the level has no unsaved changes to discard. */
@@ -994,207 +1189,39 @@ function ScopeEditor({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 px-3 pb-4">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <Badge variant={config ? "default" : "secondary"}>
-          {config ? t("mapVetoAdmin.levelExisting") : t("mapVetoAdmin.levelNew")}
-        </Badge>
-        {/* Read-only on purpose: a control here would imply the veto sets the
-            series length, which it has not done since the session started
-            rebuilding its steps from `Encounter.best_of`. */}
-        <span>{t("mapVetoAdmin.formatSourceBracket")}</span>
-        <span aria-hidden>·</span>
-        <span>{t("mapVetoAdmin.formatEditStage")}</span>
-      </div>
-
+    <form onSubmit={handleSubmit} className="space-y-3 px-3 pb-3">
       {!canManage ? (
         <p className="rounded-xl border border-border/70 bg-accent/30 p-3 text-sm text-muted-foreground">
           {t("mapVetoAdmin.readOnly")}
         </p>
       ) : null}
 
-      <div className="space-y-2">
-        <ChoiceCardGroup
-          title={t("mapVetoAdmin.poolShapeTitle")}
-          value={draft.mode}
-          disabled={!canManage}
-          onChange={(mode: MapVetoMode) => patch({ mode })}
-          options={[
-            {
-              value: "pool",
-              label: t("mapVetoAdmin.poolShapeFlat"),
-              hint: t("mapVetoAdmin.poolShapeFlatHint")
-            },
-            {
-              value: "slots",
-              label: t("mapVetoAdmin.poolShapeSlots"),
-              hint: t("mapVetoAdmin.poolShapeSlotsHint"),
-              disabled: slotsLocked
-            }
-          ]}
-        />
-        {/* Disabled with its reason, never absent. Silent absence reads as "the
-            feature does not exist", and the gate shuts on the very stages whose
-            rounds most need a pool per map. */}
-        {slotsAvailability.available ? null : (
-          <p className="text-xs text-muted-foreground">
-            {t(`mapVetoAdmin.${slotsAvailability.reasonKey}`)}
-          </p>
-        )}
-      </div>
-
-      {isSlotMode ? (
-        <section className="space-y-3">
-          <div className="space-y-0.5">
-            <h4 className="text-sm font-semibold">{t("mapVetoAdmin.slotsTitle")}</h4>
-            <p className="text-xs leading-normal text-muted-foreground">
-              {t("mapVetoAdmin.slotsDescription")}
-            </p>
-            {/* The slot count itself is not stated in prose: there is one row
-                per map with no control to add another, and the row carries the
-                bracket's Bo badge, so a sentence repeating it is noise. */}
-            <p className="text-xs leading-normal text-muted-foreground">
-              {t("mapVetoAdmin.slotReserveHint")}
-            </p>
+      {/* The live region has to exist before the warnings do. Both are warnings,
+          not blocks: one shared stage config is legal, and a bracket that
+          changed length is still saveable. A level showing an inherited pool
+          owns none of them: they describe the level the config sits on. */}
+      <div aria-live="polite" className="empty:hidden space-y-2">
+        {readOnly ? null : (
+          <>
+        {isSlotMode && bracketFormat.scope === "stage" ? (
+          <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              {t("mapVetoAdmin.slotsStageScopeWarning", { count: bracketFormat.roundCount })}
+            </span>
           </div>
-
-          {/* The live region has to exist before the warnings do. Both are
-              warnings, not blocks: one shared stage config is legal, and a
-              bracket that changed length is still saveable. */}
-          <div aria-live="polite" className="space-y-2">
-            {bracketFormat.scope === "stage" ? (
-              <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                <span>
-                  {t("mapVetoAdmin.slotsStageScopeWarning", { count: bracketFormat.roundCount })}
-                </span>
-              </div>
-            ) : null}
-            {slotCountMismatch ? (
-              <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                <span>
-                  {t("mapVetoAdmin.slotCountMismatchWarning", {
-                    slots: storedSlotCount,
-                    maps: draft.slots.length
-                  })}
-                </span>
-              </div>
-            ) : null}
+        ) : null}
+        {isSlotMode && slotCountMismatch ? (
+          <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              {t("mapVetoAdmin.slotCountMismatchWarning", {
+                slots: storedSlotCount,
+                maps: draft.slots.length
+              })}
+            </span>
           </div>
-
-          <div className="space-y-2">
-            {draft.slots.map((slot, index) => {
-              const position = index + 1;
-              const slotLabel = t("mapVetoAdmin.slotLabel", { n: position });
-              /**
-               * A slot's reserve must not be one of its own candidates: it would
-               * either be banned there and then reinstated as that slot's replay
-               * map, or be the survivor, making the replay the very map that
-               * drew. Withholding them from the picker beats rejecting the
-               * choice afterwards.
-               */
-              const reserveOptions = maps.filter((map) => !slot.candidates.includes(map.id));
-              return (
-                // Positional identity: slot 1 is always the first row and the
-                // list is never reordered, so the index IS the slot.
-                <MapSelectionRow
-                  key={index}
-                  label={slotLabel}
-                  pickerLabel={t("mapVetoAdmin.slotPickerLabel", { slot: position })}
-                  countBadge={t("mapVetoAdmin.slotCandidates", { count: slot.candidates.length })}
-                  maps={maps}
-                  groups={groups}
-                  selectedIds={slot.candidates}
-                  disabled={disabled}
-                  describeRemove={(map) =>
-                    t("mapVetoAdmin.slotChipRemove", { map, slot: position })
-                  }
-                  onToggle={(mapId) =>
-                    patchSlot(index, (current) =>
-                      withoutReserveClash(
-                        toggleIn(current.candidates, mapId),
-                        current.reserve_map_id
-                      )
-                    )
-                  }
-                  onSelectVisible={(ids) =>
-                    patchSlot(index, (current) =>
-                      withoutReserveClash(
-                        addMissing(current.candidates, ids),
-                        current.reserve_map_id
-                      )
-                    )
-                  }
-                  onClearVisible={(ids) =>
-                    patchSlot(index, (current) => ({
-                      ...current,
-                      candidates: removeAll(current.candidates, ids)
-                    }))
-                  }
-                  trailing={
-                    <Select
-                      value={slot.reserve_map_id == null ? RESERVE_NONE : String(slot.reserve_map_id)}
-                      disabled={disabled}
-                      onValueChange={(value: string) =>
-                        patchSlot(index, (current) => ({
-                          ...current,
-                          reserve_map_id: value === RESERVE_NONE ? null : Number(value)
-                        }))
-                      }
-                    >
-                      <SelectTrigger
-                        aria-label={t("mapVetoAdmin.slotReserveLabel", { slot: position })}
-                        className="h-8 w-48 text-xs"
-                      >
-                        {/* A bare map name in a trailing select reads as an
-                            unexplained value; the prefix says what it is. */}
-                        <span className="shrink-0 text-muted-foreground">
-                          {t("mapVetoAdmin.slotReserveShort")}
-                        </span>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={RESERVE_NONE}>
-                          {t("mapVetoAdmin.slotReserveNone")}
-                        </SelectItem>
-                        {reserveOptions.map((map) => (
-                          <SelectItem key={map.id} value={String(map.id)}>
-                            {map.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  }
-                />
-              );
-            })}
-          </div>
-        </section>
-      ) : (
-        <section className="space-y-2">
-          <p className="text-xs leading-normal text-muted-foreground">
-            {t("mapVetoAdmin.poolDescription")}
-          </p>
-          <MapSelectionRow
-            label={t("mapVetoAdmin.poolTitle")}
-            pickerLabel={t("mapVetoAdmin.poolPickerLabel")}
-            countBadge={t("mapVetoAdmin.poolSelected", { count: draft.mapIds.length })}
-            maps={maps}
-            groups={groups}
-            selectedIds={draft.mapIds}
-            disabled={disabled}
-            describeRemove={(map) => t("mapVetoAdmin.poolChipRemove", { map })}
-            onToggle={(mapId) => patch({ mapIds: toggleIn(draft.mapIds, mapId) })}
-            onSelectVisible={(ids) => patch({ mapIds: addMissing(draft.mapIds, ids) })}
-            onClearVisible={(ids) => patch({ mapIds: removeAll(draft.mapIds, ids) })}
-          />
-        </section>
-      )}
-
-      {/* A warning, not a blocker: the live region has to exist before it does,
-          and saving stays allowed because a custom order wins on purpose. */}
-      <div aria-live="polite">
+        ) : null}
         {mismatch ? (
           <div className="space-y-1 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
             <p className="flex items-center gap-2 font-semibold">
@@ -1204,21 +1231,254 @@ function ScopeEditor({
             <p>{t("mapVetoAdmin.mismatchBody", mismatch)}</p>
           </div>
         ) : null}
+          </>
+        )}
       </div>
 
+      {isSlotMode ? (
+        <div className="space-y-2">
+          {draft.slots.map((slot, index) => {
+            const position = index + 1;
+            /**
+             * A slot's reserve must not be one of its own candidates: it would
+             * either be banned there and then reinstated as that slot's replay
+             * map, or be the survivor, making the replay the very map that drew.
+             * Withholding them from the picker beats rejecting the choice
+             * afterwards.
+             */
+            const reserveOptions = maps.filter((map) => !slot.candidates.includes(map.id));
+            return (
+              // Positional identity: slot 1 is always the first row and the list
+              // is never reordered, so the index IS the slot.
+              <MapSelectionRow
+                key={index}
+                label={t("mapVetoAdmin.slotLabel", { n: position })}
+                pickerLabel={t("mapVetoAdmin.slotPickerLabel", { slot: position })}
+                countBadge={t("mapVetoAdmin.slotCandidates", { count: slot.candidates.length })}
+                maps={maps}
+                groups={groups}
+                selectedIds={slot.candidates}
+                density={density}
+                disabled={disabled}
+                readOnly={readOnly}
+                describeRemove={(map) => t("mapVetoAdmin.slotChipRemove", { map, slot: position })}
+                onToggle={(mapId) =>
+                  patchSlot(index, (current) =>
+                    withoutReserveClash(toggleIn(current.candidates, mapId), current.reserve_map_id)
+                  )
+                }
+                onSelectVisible={(ids) =>
+                  patchSlot(index, (current) =>
+                    withoutReserveClash(
+                      addMissing(current.candidates, ids),
+                      current.reserve_map_id
+                    )
+                  )
+                }
+                onClearVisible={(ids) =>
+                  patchSlot(index, (current) => ({
+                    ...current,
+                    candidates: removeAll(current.candidates, ids)
+                  }))
+                }
+                trailing={
+                  readOnly ? (
+                    <span className="text-xs text-muted-foreground">
+                      {t("mapVetoAdmin.slotReserveShort")}{" "}
+                      {slot.reserve_map_id == null
+                        ? t("mapVetoAdmin.slotReserveNone")
+                        : maps.find((map) => map.id === slot.reserve_map_id)?.name ??
+                          `#${slot.reserve_map_id}`}
+                    </span>
+                  ) : (
+                  <Select
+                    value={slot.reserve_map_id == null ? RESERVE_NONE : String(slot.reserve_map_id)}
+                    disabled={disabled}
+                    onValueChange={(value: string) =>
+                      patchSlot(index, (current) => ({
+                        ...current,
+                        reserve_map_id: value === RESERVE_NONE ? null : Number(value)
+                      }))
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={t("mapVetoAdmin.slotReserveLabel", { slot: position })}
+                      className="h-8 w-48 text-xs"
+                    >
+                      {/* A bare map name in a trailing select reads as an
+                          unexplained value; the prefix says what it is. */}
+                      <span className="shrink-0 text-muted-foreground">
+                        {t("mapVetoAdmin.slotReserveShort")}
+                      </span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={RESERVE_NONE}>
+                        {t("mapVetoAdmin.slotReserveNone")}
+                      </SelectItem>
+                      {reserveOptions.map((map) => (
+                        <SelectItem key={map.id} value={String(map.id)}>
+                          {map.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  )
+                }
+              />
+            );
+          })}
+        </div>
+      ) : (
+        // "Selected" is a claim about a choice this level made, which an
+        // inherited pool is not.
+        <MapSelectionRow
+          label={readOnly ? t("mapVetoAdmin.poolInheritedTitle") : t("mapVetoAdmin.poolTitle")}
+          pickerLabel={t("mapVetoAdmin.poolPickerLabel")}
+          countBadge={
+            readOnly
+              ? t("mapVeto.mapsInPool", { count: draft.mapIds.length })
+              : t("mapVetoAdmin.poolSelected", { count: draft.mapIds.length })
+          }
+          maps={maps}
+          groups={groups}
+          selectedIds={draft.mapIds}
+          density={density}
+          disabled={disabled}
+          readOnly={readOnly}
+          describeRemove={(map) => t("mapVetoAdmin.poolChipRemove", { map })}
+          onToggle={(mapId) => patch({ mapIds: toggleIn(draft.mapIds, mapId) })}
+          onSelectVisible={(ids) => patch({ mapIds: addMissing(draft.mapIds, ids) })}
+          onClearVisible={(ids) => patch({ mapIds: removeAll(draft.mapIds, ids) })}
+        />
+      )}
+
+      {/* The live region has to exist before the issues do. */}
+      <div aria-live="polite" className="empty:hidden">
+        {issues.length > 0 && !readOnly ? (
+          <div className="space-y-1.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <p className="flex items-center gap-2 font-semibold">
+              <AlertTriangle className="size-4 shrink-0" aria-hidden />
+              {t("mapVetoAdmin.validationTitle")}
+            </p>
+            <ul className="list-inside list-disc space-y-0.5">
+              {/* Keyed by position too: slot mode raises the same `key` once per
+                  offending slot, so the key alone is not unique. */}
+              {issues.map((issue, index) => (
+                <li key={`${issue.key}:${index}`}>
+                  {t(`mapVetoAdmin.validation.${issue.key}`, issue.values)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+
+      {saveError ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>{t("mapVetoAdmin.saveError", { message: saveError })}</span>
+        </div>
+      ) : null}
+
+      {readOnly ? (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <p className="text-xs text-muted-foreground">
+            {t("mapVetoAdmin.inheritedFrom", { level: scope.inheritedFrom ?? "" })}
+          </p>
+          {canManage ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onFork}
+              className="ms-auto gap-1.5"
+            >
+              <Plus aria-hidden />
+              {t("mapVetoAdmin.forkLevel")}
+            </Button>
+          ) : null}
+        </div>
+      ) : (
       <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="gap-1.5 px-2">
-            {/* Chevron, not an arrow: an up/down arrow is the move control in
-                the step list below, and one glyph must mean one thing. */}
-            <ChevronDown
-              aria-hidden
-              className={cn("transition-transform", advancedOpen && "rotate-180")}
-            />
-            {t("mapVetoAdmin.advancedTitle")}
-          </Button>
-        </CollapsibleTrigger>
+        <div className="flex flex-wrap items-center gap-2">
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="gap-1.5 px-2">
+              {/* Chevron, not an arrow: an up/down arrow is the move control in
+                  the step list, and one glyph must mean one thing. */}
+              <ChevronDown
+                aria-hidden
+                className={cn("transition-transform", advancedOpen && "rotate-180")}
+              />
+              {t("mapVetoAdmin.advancedTitle")}
+            </Button>
+          </CollapsibleTrigger>
+          {canManage ? (
+            <div className="ms-auto flex items-center gap-2">
+              {onReset ? (
+                <Button type="button" variant="ghost" size="sm" onClick={onReset} className="gap-1.5">
+                  <RotateCcw aria-hidden />
+                  {t("mapVetoAdmin.reset")}
+                </Button>
+              ) : null}
+              <Button type="submit" size="sm" disabled={!canSave} className="gap-2">
+                {isSaving ? (
+                  <>
+                    <LoaderCircle className="animate-spin" aria-hidden />
+                    {t("mapVetoAdmin.saving")}
+                  </>
+                ) : (
+                  t("mapVetoAdmin.save")
+                )}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
         <CollapsibleContent className="space-y-6 pt-4">
+          <div className="space-y-2">
+            <ChoiceCardGroup
+              title={t("mapVetoAdmin.poolShapeTitle")}
+              value={draft.mode}
+              disabled={!canManage}
+              onChange={(mode: MapVetoMode) => patch({ mode })}
+              options={[
+                {
+                  value: "pool",
+                  label: t("mapVetoAdmin.poolShapeFlat"),
+                  hint: t("mapVetoAdmin.poolShapeFlatHint")
+                },
+                {
+                  value: "slots",
+                  label: t("mapVetoAdmin.poolShapeSlots"),
+                  hint: t("mapVetoAdmin.poolShapeSlotsHint"),
+                  disabled: slotsLocked
+                }
+              ]}
+            />
+            {/* Disabled with its reason, never absent. Silent absence reads as
+                "the feature does not exist", and the gate shuts on the very
+                stages whose rounds most need a pool per map. */}
+            {slotsAvailability.available ? null : (
+              <p className="text-xs leading-normal text-muted-foreground">
+                {t(`mapVetoAdmin.${slotsAvailability.reasonKey}`)}
+              </p>
+            )}
+            <p className="text-xs leading-normal text-muted-foreground">
+              {isSlotMode
+                ? t("mapVetoAdmin.slotsDescription")
+                : t("mapVetoAdmin.poolDescription")}
+            </p>
+            {isSlotMode ? (
+              <p className="text-xs leading-normal text-muted-foreground">
+                {t("mapVetoAdmin.slotReserveHint")}
+              </p>
+            ) : null}
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor={turnTimerId} className="text-sm font-semibold">
               {t("mapVetoAdmin.turnTimerLabel")}
@@ -1301,9 +1561,7 @@ function ScopeEditor({
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div className="space-y-0.5">
                     <h4 className="text-sm font-semibold">
-                      {isCustom
-                        ? t("mapVetoAdmin.sequenceTitle")
-                        : t("mapVetoAdmin.previewTitle")}
+                      {isCustom ? t("mapVetoAdmin.sequenceTitle") : t("mapVetoAdmin.previewTitle")}
                     </h4>
                     <p className="text-xs leading-normal text-muted-foreground">
                       {isCustom
@@ -1356,74 +1614,30 @@ function ScopeEditor({
               </section>
             </>
           )}
-        </CollapsibleContent>
-      </Collapsible>
 
-      {/* The live region has to exist before the issues do. */}
-      <div aria-live="polite">
-        {issues.length > 0 ? (
-          <div className="space-y-1.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            <p className="flex items-center gap-2 font-semibold">
-              <AlertTriangle className="size-4 shrink-0" aria-hidden />
-              {t("mapVetoAdmin.validationTitle")}
-            </p>
-            <ul className="list-inside list-disc space-y-0.5">
-              {/* Keyed by position too: slot mode raises the same `key` once per
-                  offending slot, so the key alone is not unique. */}
-              {issues.map((issue, index) => (
-                <li key={`${issue.key}:${index}`}>
-                  {t(`mapVetoAdmin.validation.${issue.key}`, issue.values)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </div>
-
-      {saveError ? (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <span>{t("mapVetoAdmin.saveError", { message: saveError })}</span>
-        </div>
-      ) : null}
-
-      {canManage ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
-          {onRequestDelete ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onRequestDelete}
-              className="gap-1.5 text-destructive hover:text-destructive"
-            >
-              <Trash2 aria-hidden />
-              {t("mapVetoAdmin.deleteLevel")}
-            </Button>
-          ) : null}
-          <div className="ms-auto flex items-center gap-2">
-            {onReset ? (
-              <Button type="button" variant="ghost" size="sm" onClick={onReset} className="gap-1.5">
-                <RotateCcw aria-hidden />
-                {t("mapVetoAdmin.reset")}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+            {/* Read-only on purpose: a control here would imply the veto sets the
+                series length, which it has not done since the session started
+                rebuilding its steps from `Encounter.best_of`. */}
+            <span>{t("mapVetoAdmin.formatSourceBracket")}</span>
+            <span aria-hidden>·</span>
+            <span>{t("mapVetoAdmin.formatEditStage")}</span>
+            {onRequestDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onRequestDelete}
+                className="ms-auto gap-1.5 text-destructive hover:text-destructive"
+              >
+                <Trash2 aria-hidden />
+                {t("mapVetoAdmin.deleteLevel")}
               </Button>
             ) : null}
-            <Button type="submit" disabled={!canSave} className="gap-2">
-              {isSaving ? (
-                <>
-                  <LoaderCircle className="animate-spin" aria-hidden />
-                  {t("mapVetoAdmin.saving")}
-                </>
-              ) : (
-                t("mapVetoAdmin.save")
-              )}
-            </Button>
           </div>
-        </div>
-      ) : null}
+        </CollapsibleContent>
+      </Collapsible>
+      )}
     </form>
   );
 }
@@ -1438,13 +1652,12 @@ export function TournamentMapVetoTab({
   const queryClient = useQueryClient();
   const configsQueryKey = ["admin", "tournament", tournamentId, "veto-configs"] as const;
 
-  /** One level open at a time: twelve editors on screen is the old wall again. */
-  const [openScope, setOpenScope] = useState<string>(TOURNAMENT_SCOPE);
+  const [density, setDensity] = useState<Density>("normal");
   /**
    * Edits in progress, by scope key. Held here rather than in the editor so a
-   * collapsed row keeps its work, and so the absence of an entry means "this
-   * level is exactly as saved" — which is what lets the seed be re-derived on
-   * every render without ever clobbering an edit.
+   * collapsed stage or level keeps its work, and so the absence of an entry
+   * means "this level is exactly as saved" — which is what lets the seed be
+   * re-derived on every render without ever clobbering an edit.
    */
   const [drafts, setDrafts] = useState<Record<string, VetoDraft>>({});
   const [configPendingDelete, setConfigPendingDelete] = useState<MapVetoConfig | null>(null);
@@ -1477,6 +1690,18 @@ export function TournamentMapVetoTab({
     [stages]
   );
 
+  /**
+   * Each stage's rounds and their series lengths, from the generated
+   * encounters. Resolved once here rather than per row: every level of a stage
+   * reads the same answer, and a row that disagreed with the list it sits in
+   * would offer a slot count for a round the bracket does not have.
+   */
+  const roundsByStage = useMemo(() => {
+    const byStage = new Map<number, StageRounds>();
+    for (const stage of stages) byStage.set(stage.id, buildStageRounds(encounters, stage));
+    return byStage;
+  }, [stages, encounters]);
+
   const describeScope = (descriptor: VetoLevelDescriptor): string => {
     if (descriptor.kind === "tournament") return t("mapVeto.scope.tournamentDefault");
     const stage =
@@ -1500,7 +1725,7 @@ export function TournamentMapVetoTab({
       adminService.upsertVetoConfig(tournamentId, data),
     onSuccess: async (_result, variables) => {
       // The draft is dropped only once the refetched config can take its place,
-      // so the row never flashes back to the pre-save values in between.
+      // so the level never flashes back to the pre-save values in between.
       await queryClient.invalidateQueries({ queryKey: configsQueryKey });
       dropDraft(variables.key);
       notify.success(t("mapVetoAdmin.saved"));
@@ -1524,40 +1749,48 @@ export function TournamentMapVetoTab({
   const failedKey = upsertMutation.isError ? upsertMutation.variables?.key ?? null : null;
 
   /**
-   * Series length for one level, resolved from the stage the bracket generator
-   * reads. Derived, never stored on the veto config: the veto has no say in how
-   * long a series is.
+   * Series length for one level, as the bracket plays it. Derived, never stored
+   * on the veto config: the veto has no say in how long a series is.
+   *
+   * A generated round answers from its own encounters. The stage's `best_of`
+   * config only fills in for a round that does not exist yet, where `isFinal`
+   * can be no better than a guess from `max_rounds` — the server resolves it
+   * against the bracket's real last round, which no client can derive.
    */
   const resolveBracketFormat = (stage: Stage | null, round: number | null): BracketFormat => {
     if (stage == null) return { scope: "tournament", bestOf: DEFAULT_BEST_OF };
     const stageBestOf = parseStageBestOf(stage.settings_json);
-    const roundCount = stage.max_rounds > 0 ? stage.max_rounds : 0;
-    const isElimination =
-      stage.stage_type === "single_elimination" || stage.stage_type === "double_elimination";
+    const generated = roundsByStage.get(stage.id)?.bestOfByRound;
+    const isElimination = isEliminationStage(stage);
     if (round != null) {
-      // `isFinal` is an approximation: the server decides it from the max round
-      // of the generated encounter set, which the client cannot see.
       return {
         scope: "round",
         round,
-        bestOf: resolveBestOf(stageBestOf, round, {
-          isFinal: isElimination && round === stage.max_rounds
-        })
+        bestOf:
+          generated?.get(round) ??
+          resolveBestOf(stageBestOf, round, {
+            isFinal: isElimination && round === stage.max_rounds
+          })
       };
     }
+    // "Varies" is a fact about the rounds that exist, not about the shape of the
+    // config: a stage whose `final` override happens to equal its default plays
+    // one length throughout, and one whose grand final is Bo5 varies whether or
+    // not `by_round` says so.
+    const lengths = [...(generated?.values() ?? [])];
     return {
       scope: "stage",
       bestOf: stageBestOf.default ?? DEFAULT_BEST_OF,
-      perRound: hasPerRoundBestOf(stageBestOf)
-        ? Array.from({ length: roundCount }, (_, index) => index + 1).map((roundNumber) => ({
-            round: roundNumber,
-            bestOf: resolveBestOf(stageBestOf, roundNumber)
-          }))
-        : null,
+      varies: lengths.length > 0 ? new Set(lengths).size > 1 : hasPerRoundBestOf(stageBestOf),
       finalBestOf: isElimination ? stageBestOf.final ?? null : null,
-      roundCount
+      roundCount: lengths.length > 0 ? lengths.length : Math.max(0, stage.max_rounds)
     };
   };
+
+  const findConfig = (stageId: number | null, round: number | null) =>
+    configs.find(
+      (config) => (config.stage_id ?? null) === stageId && (config.round ?? null) === round
+    ) ?? null;
 
   const buildScope = (
     stage: Stage | null,
@@ -1566,18 +1799,30 @@ export function TournamentMapVetoTab({
     notGenerated = false
   ): ScopeNode => {
     const stageId = stage?.id ?? null;
+    // The config sitting exactly here, never an inherited one: the cascade is
+    // resolved server-side at match time, and treating an inherited pool as this
+    // level's own is how a level gets saved a copy it never wanted.
+    const config = findConfig(stageId, round);
+    // What actually governs this level today. The same order the server walks:
+    // (stage, round) → (stage, null) → (null, null).
+    const inherited =
+      config != null || stageId == null
+        ? null
+        : (round != null ? findConfig(stageId, null) : null) ?? findConfig(null, null);
     return {
       key: scopeKey(stageId, round),
       stageId,
       round,
       label,
-      // The config sitting exactly here, never an inherited one: the cascade is
-      // resolved server-side at match time, and showing an inherited pool as
-      // this level's own is how a level gets saved a copy it never wanted.
-      config:
-        configs.find(
-          (config) => (config.stage_id ?? null) === stageId && (config.round ?? null) === round
-        ) ?? null,
+      fullLabel: describeScope(
+        getVetoLevelDescriptor({ stage_id: stageId, round }, stagesById)
+      ),
+      config,
+      inherited,
+      inheritedFrom:
+        inherited == null
+          ? null
+          : describeScope(getVetoLevelDescriptor(inherited, stagesById)),
       bracketFormat: resolveBracketFormat(stage, round),
       notGenerated
     };
@@ -1598,7 +1843,7 @@ export function TournamentMapVetoTab({
   const formatBadge = (format: BracketFormat): string => {
     if (format.scope === "tournament") return t("mapVeto.bracketFormatUnknown");
     if (format.scope === "round") return bestOfLabel(format.bestOf);
-    return format.perRound ? t("mapVeto.bracketFormatVaries") : bestOfLabel(format.bestOf);
+    return format.varies ? t("mapVeto.bracketFormatVaries") : bestOfLabel(format.bestOf);
   };
 
   /**
@@ -1654,92 +1899,126 @@ export function TournamentMapVetoTab({
     });
   };
 
-  // Seeding a level happens from its config alone, so no row may render before
+  // Seeding a level happens from its config alone, so no level may render before
   // both the configs and the map catalogue have arrived.
   const dataReady = configsQuery.isSuccess && mapsQuery.isSuccess;
 
-  const renderScopeRow = (scope: ScopeNode) => {
-    const seed = seedVetoDraft(scope.config, scope.bracketFormat.bestOf, catalogueIds);
+  /**
+   * One level, open by default.
+   *
+   * Collapsing exists for reach on a long page, not as a step in the workflow:
+   * the maps are the work, so they are on screen the moment the page is.
+   */
+  const renderLevel = (scope: ScopeNode, headingClassName: string) => {
+    // A level with no config of its own opens on the pool it actually inherits,
+    // so what is on screen is what the matches here will play — not the whole
+    // catalogue standing in for a pool this level does not have.
+    const seed = seedVetoDraft(
+      scope.config ?? scope.inherited,
+      scope.bracketFormat.bestOf,
+      catalogueIds
+    );
+    const hasDraft = scope.key in drafts;
     const draft = drafts[scope.key] ?? seed;
-    const isDirty = scope.key in drafts && !vetoDraftsEqual(draft, seed);
+    // For a level that owns no config, any draft at all is pending work: saving
+    // it creates a config where there was none.
+    const isDirty = hasDraft && (!scope.config || !vetoDraftsEqual(draft, seed));
+    const readOnly = !scope.config && scope.inherited != null && !hasDraft;
     return (
-      <AccordionItem
+      <Collapsible
         key={scope.key}
-        value={scope.key}
+        defaultOpen
+        role="group"
+        aria-label={scope.fullLabel}
         className="border-b border-border/50 last:border-b-0"
       >
-        <AccordionTrigger className="gap-3 rounded-lg px-3 py-2.5 hover:bg-accent/40 hover:no-underline">
-          <span className="flex flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-start">
-            <span className="text-sm font-semibold">{scope.label}</span>
-            {/* `span`, not `<Badge>`: an accordion trigger is a `<button>`, and
-                `Badge` renders a `div`. */}
-            <span className={badgeVariants({ variant: "outline" })}>
-              {formatBadge(scope.bracketFormat)}
-            </span>
-            <span className="text-xs font-normal text-muted-foreground">{summarize(scope)}</span>
-            {scope.notGenerated ? (
-              <span className="text-xs font-normal text-warning">
-                {t("mapVetoAdmin.roundNotGenerated")}
+        <h3 className="flex">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="group flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-start transition-colors hover:bg-accent/40"
+            >
+              <span className="flex flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
+                <span className={headingClassName}>{scope.label}</span>
+                {/* `span`, not `<Badge>`: this is inside a `<button>`, and
+                    `Badge` renders a `div`. */}
+                <span className={badgeVariants({ variant: "outline" })}>
+                  {formatBadge(scope.bracketFormat)}
+                </span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {summarize(scope)}
+                </span>
+                {scope.notGenerated ? (
+                  <span className="text-xs font-normal text-warning">
+                    {t("mapVetoAdmin.roundNotGenerated")}
+                  </span>
+                ) : null}
+                {isDirty ? (
+                  <span className="text-xs font-normal text-warning">
+                    {t("mapVetoAdmin.unsaved")}
+                  </span>
+                ) : null}
+                {scope.config ? (
+                  <>
+                    <span aria-hidden className="size-2 shrink-0 rounded-full bg-success" />
+                    <span className="sr-only">{t("mapVetoAdmin.hasOwnConfig")}</span>
+                  </>
+                ) : null}
               </span>
-            ) : null}
-            {isDirty ? (
-              <span className="text-xs font-normal text-warning">
-                {t("mapVetoAdmin.unsaved")}
-              </span>
-            ) : null}
-            {scope.config ? (
-              <>
-                <span aria-hidden className="size-2 shrink-0 rounded-full bg-success" />
-                <span className="sr-only">{t("mapVetoAdmin.hasOwnConfig")}</span>
-              </>
-            ) : null}
-          </span>
-        </AccordionTrigger>
-        <AccordionContent className="pt-0">
+              <ChevronDown
+                aria-hidden
+                className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+              />
+            </button>
+          </CollapsibleTrigger>
+        </h3>
+        <CollapsibleContent>
           <ScopeEditor
             scope={scope}
             draft={draft}
             maps={maps}
             groups={groups}
+            density={density}
             canManage={canManage}
             isSaving={savingKey === scope.key}
             saveError={failedKey === scope.key ? upsertMutation.error?.message : undefined}
+            readOnly={readOnly}
+            onFork={() => setDrafts((current) => ({ ...current, [scope.key]: seed }))}
             onChange={(next) => setDrafts((current) => ({ ...current, [scope.key]: next }))}
             onSave={(payload) => handleSave(scope, payload)}
-            onReset={isDirty ? () => dropDraft(scope.key) : null}
+            onReset={hasDraft ? () => dropDraft(scope.key) : null}
             onRequestDelete={
               canManage && scope.config ? () => setConfigPendingDelete(scope.config) : null
             }
           />
-        </AccordionContent>
-      </AccordionItem>
+        </CollapsibleContent>
+      </Collapsible>
     );
   };
 
   const renderRoundGroup = (heading: string | null, options: RoundOption[], stage: Stage) => {
     if (options.length === 0) return null;
     const rows = options.map((option) =>
-      renderScopeRow(
-        buildScope(stage, option.round, roundLabel(option.round), option.notGenerated)
+      renderLevel(
+        buildScope(stage, option.round, roundLabel(option.round), option.notGenerated),
+        "text-sm font-semibold"
       )
     );
     // Grouped for assistive technology only where the two brackets have to be
     // told apart; a stage with one bracket would be announced "Upper bracket"
     // for a distinction it does not have.
     return heading ? (
-      <div key={heading} role="group" aria-label={heading} className="space-y-1">
-        {/* Not a heading: each row below already renders one at `h3`, and a
+      <div key={heading} role="group" aria-label={heading}>
+        {/* Not a heading: each level below already renders one at `h3`, and a
             same-level heading over them would flatten the outline. The group's
             accessible name carries the same distinction. */}
-        <p className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="px-3 pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {heading}
         </p>
         {rows}
       </div>
     ) : (
-      <div key="rounds" className="space-y-1">
-        {rows}
-      </div>
+      <div key="rounds">{rows}</div>
     );
   };
 
@@ -1752,70 +2031,107 @@ export function TournamentMapVetoTab({
             {t("mapVetoAdmin.description")}
           </p>
         </div>
-        <Badge variant="secondary" className="gap-1 tabular-nums">
-          <Shield className="size-3.5" aria-hidden />
-          {t("mapVetoAdmin.stats.configured", { count: configs.length })}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label={t("mapVetoAdmin.densityLabel")}
+            className="flex items-center gap-1 rounded-lg border border-border/70 p-0.5"
+          >
+            {(
+              [
+                ["normal", t("mapVetoAdmin.densityNormal"), LayoutGrid],
+                ["compact", t("mapVetoAdmin.densityCompact"), Rows3]
+              ] as const
+            ).map(([value, label, Icon]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={density === value ? "secondary" : "ghost"}
+                aria-pressed={density === value}
+                onClick={() => setDensity(value)}
+                className="h-7 gap-1.5 px-2.5 text-xs"
+              >
+                <Icon aria-hidden />
+                {label}
+              </Button>
+            ))}
+          </div>
+          <Badge variant="secondary" className="gap-1 tabular-nums">
+            <Shield className="size-3.5" aria-hidden />
+            {t("mapVetoAdmin.stats.configured", { count: configs.length })}
+          </Badge>
+        </div>
       </div>
 
       {dataReady ? (
-        <Accordion
-          type="single"
-          collapsible
-          value={openScope}
-          onValueChange={setOpenScope}
-          className="space-y-4"
-        >
-          {/* No group role: the card holds one row, whose own heading already
-              names it, so a wrapper would announce the same words twice. */}
+        <div className="space-y-4">
           <Card className="overflow-hidden">
             <CardContent className="p-1.5">
-              {renderScopeRow(buildScope(null, null, t("mapVetoAdmin.tournamentDefault")))}
+              {renderLevel(
+                buildScope(null, null, t("mapVetoAdmin.tournamentDefault")),
+                "text-base font-semibold"
+              )}
             </CardContent>
           </Card>
 
           {sortedStages.map((stage) => {
             const format = resolveBracketFormat(stage, null);
-            const options = buildRoundOptions(
-              encounters,
-              stage.id,
-              stage.max_rounds > 0 ? stage.max_rounds : 0
-            );
+            const options = roundsByStage.get(stage.id) ?? EMPTY_STAGE_ROUNDS;
             const hasLower = options.lower.length > 0;
             return (
-              <Card key={stage.id} role="group" aria-label={stage.name} className="overflow-hidden">
-                <CardHeader className="flex flex-row flex-wrap items-center gap-2 space-y-0 border-b border-border/50 py-3">
-                  <CardTitle asChild>
-                    <h2 className="text-base font-semibold">{stage.name}</h2>
-                  </CardTitle>
-                  <Badge variant="outline">
-                    {formatBadge(format)}
-                  </Badge>
-                  {format.scope === "stage" && format.finalBestOf != null ? (
-                    <span className="text-xs text-muted-foreground">
-                      {t("mapVetoAdmin.formatFinalRound", {
-                        format: bestOfLabel(format.finalBestOf)
-                      })}
-                    </span>
-                  ) : null}
-                </CardHeader>
-                <CardContent className="p-1.5">
-                  {renderScopeRow(buildScope(stage, null, t("mapVetoAdmin.stageDefaultButton")))}
-                  {/* Headings only where they discriminate. A stage with no lower
-                      bracket keeps the single unheaded list it has always had. */}
-                  {renderRoundGroup(
-                    hasLower ? t("mapVetoAdmin.roundGroupUpper") : null,
-                    options.upper,
-                    stage
-                  )}
-                  {hasLower
-                    ? renderRoundGroup(t("mapVetoAdmin.roundGroupLower"), options.lower, stage)
-                    : null}
-                </CardContent>
-              </Card>
+              <Collapsible key={stage.id} defaultOpen asChild>
+                <Card role="group" aria-label={stage.name} className="overflow-hidden">
+                  <CardHeader className="border-b border-border/50 p-0">
+                    <h2 className="flex">
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="group flex flex-1 flex-wrap items-center gap-2 px-4 py-3 text-start transition-colors hover:bg-accent/40"
+                        >
+                          <span className="text-base font-semibold">{stage.name}</span>
+                          <span className={badgeVariants({ variant: "outline" })}>
+                            {formatBadge(format)}
+                          </span>
+                          {format.scope === "stage" && format.finalBestOf != null ? (
+                            <span className="text-xs font-normal text-muted-foreground">
+                              {t("mapVetoAdmin.formatFinalRound", {
+                                format: bestOfLabel(format.finalBestOf)
+                              })}
+                            </span>
+                          ) : null}
+                          <ChevronDown
+                            aria-hidden
+                            className="ms-auto size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                          />
+                        </button>
+                      </CollapsibleTrigger>
+                    </h2>
+                  </CardHeader>
+                  <CollapsibleContent>
+                    <CardContent className="p-1.5">
+                      {renderLevel(
+                        buildScope(stage, null, t("mapVetoAdmin.stageDefaultButton")),
+                        "text-sm font-semibold"
+                      )}
+                      {/* Headings only where they discriminate. A stage with no
+                          lower bracket keeps the single unheaded list it has
+                          always had. */}
+                      {renderRoundGroup(
+                        hasLower ? t("mapVetoAdmin.roundGroupUpper") : null,
+                        options.upper,
+                        stage
+                      )}
+                      {hasLower
+                        ? renderRoundGroup(t("mapVetoAdmin.roundGroupLower"), options.lower, stage)
+                        : null}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
             );
           })}
-        </Accordion>
+        </div>
       ) : (
         <div className="space-y-4">
           <Skeleton className="h-24 w-full rounded-xl" />

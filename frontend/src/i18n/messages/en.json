@@ -3991,7 +3991,13 @@
     "advancedTitle": "Advanced",
     "reset": "Discard changes",
     "unsaved": "Unsaved changes",
-    "slotReserveShort": "Reserve:"
+    "slotReserveShort": "Reserve:",
+    "densityLabel": "Map size",
+    "densityNormal": "Normal",
+    "densityCompact": "Compact",
+    "inheritedFrom": "Inherited from {level}. Matches here play this pool until this level gets its own.",
+    "forkLevel": "Give this level its own pool",
+    "poolInheritedTitle": "Inherited map pool"
   },
   "rosterShape": {
     "title": "Roster shape",
