@@ -544,6 +544,20 @@ export function ratesByMaxRank(config: BuiltInFieldConfig | null | undefined): b
  * effective rank against an unrelated role's OW rank and fire a spurious one. A
  * player carrying any issue is refused by the balance run (`runBalanceMutation`),
  * so getting this wrong does not just clutter the UI.
+ *
+ * `is_active` is unconditionally true, mirroring the `all_roles` branch of
+ * `_map_registration` in balancer-service, which bypasses the flag outright. The
+ * mode declares every role mandatory and playable, so nothing about the
+ * registrant's rows may take one away: a Google-Sheets row whose rank did not
+ * parse and a public-form submission (which carries no ranks at all) both arrive
+ * with roles that would otherwise render disabled and drop out of the pool.
+ * Deriving the flag from `effRank` did exactly that for every `all_roles`
+ * registration until an admin filled the ranks by hand — and the autofill that
+ * would have filled them only looks at active roles.
+ *
+ * Keeping the roles active does not sneak a rankless player into a balance run:
+ * `playerHasRankedRole` still requires a rank, so `missing_ranked_role` fires and
+ * `buildBalancerInput` drops the player.
  */
 export function flattenRolesToMaxRank(
   roles: AdminRegistrationRole[],
@@ -565,7 +579,7 @@ export function flattenRolesToMaxRank(
       priority: source?.priority ?? index,
       division_number: resolveDivisionFromRankHelper(effRank, grid),
       rank_value: effRank,
-      is_active: effRank !== null,
+      is_active: true,
       ow_rank_value: code === owSourceRole ? effOwRank : null
     };
   });

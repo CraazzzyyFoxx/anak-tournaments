@@ -70,11 +70,14 @@ describe("forced-flex effective rank parity (TS side)", () => {
       ]);
     });
 
-    it(`${testCase.name}: is_active tracks whether a rank exists`, () => {
+    it(`${testCase.name}: every role stays playable`, () => {
+      // The mode makes every role mandatory, so the flag never tracks the rank:
+      // deriving it from eff_rank disabled all three roles for every public-form
+      // registration, which submits no ranks. `_map_registration` bypasses the
+      // flag on the draft side for the same reason.
       const entries = flattenRolesToMaxRank(testCase.roles.map(toRegistrationRole), DEFAULT_DIVISION_GRID);
 
-      const expected = testCase.expected.eff_rank !== null;
-      expect(entries.every((entry) => entry.is_active === expected)).toBe(true);
+      expect(entries.every((entry) => entry.is_active)).toBe(true);
     });
 
     it(`${testCase.name}: eff_ow_rank is carried exactly once`, () => {

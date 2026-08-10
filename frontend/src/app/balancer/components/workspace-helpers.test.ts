@@ -528,11 +528,14 @@ describe("every-role effective ranks", () => {
     expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
   });
 
-  it("leaves a rankless registration out of the pool", () => {
+  it("leaves a rankless registration out of the pool without disabling its roles", () => {
     const player = flattened([role("dps", null)]);
 
     expect(player.role_entries_json.every((entry) => entry.rank_value === null)).toBe(true);
-    expect(player.role_entries_json.every((entry) => entry.is_active === false)).toBe(true);
+    // The roles stay playable — the mode says so, and the autofill that fills the
+    // ranks only looks at active roles. The missing rank is what keeps the player
+    // out of a balance run.
+    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
     expect(
       getPlayerValidationIssues(player, null).some((issue) => issue.code === "missing_ranked_role"),
     ).toBe(true);
