@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import Github from "@/components/icons/Github";
+import CookieSettingsButton from "@/components/CookieSettingsButton";
 import { SITE_NAME, SITE_ICON } from "@/config/site";
 
 const FOOTER_LINK_CLASS =
@@ -13,6 +14,11 @@ const FOOTER_LINK_CLASS =
 // project's own low-emphasis-but-readable role, already verified elsewhere.
 const COLUMN_HEADING_CLASS =
   "mb-4 text-[11px] font-semibold tracking-[0.14em] uppercase text-[color:var(--aqt-fg-faint)]";
+
+// The bottom meta bar's own emphasis (xs, faint), distinct from the section
+// links above it — shared so the three items stay pixel-identical.
+const FOOTER_META_CLASS =
+  "transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 export function Footer() {
   const t = useTranslations();
@@ -87,19 +93,14 @@ export function Footer() {
 
       <div className="mt-8 flex flex-col gap-3 text-xs text-[color:var(--aqt-fg-faint)] sm:flex-row sm:items-center sm:justify-between">
         <span>{t("common.footer.copyright", { year, siteName: SITE_NAME })}</span>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/terms"
-            className="transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
+        <div className="flex flex-wrap items-center gap-4">
+          <Link href="/terms" className={FOOTER_META_CLASS}>
             {t("legal.terms.title")}
           </Link>
-          <Link
-            href="/privacy"
-            className="transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
+          <Link href="/privacy" className={FOOTER_META_CLASS}>
             {t("legal.privacy.title")}
           </Link>
+          <CookieSettingsButton className={FOOTER_META_CLASS} />
         </div>
       </div>
     </footer>
