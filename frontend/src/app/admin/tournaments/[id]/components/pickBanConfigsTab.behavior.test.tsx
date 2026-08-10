@@ -208,20 +208,6 @@ function only(name: string): HTMLElement {
   return matches[0];
 }
 
-/**
- * One catalogue row of an open picker. A row reads "Tracer" then its role, so
- * it is addressed by its name cell rather than by the row's whole text.
- */
-function option(name: string): HTMLElement {
-  const found = [...document.querySelectorAll<HTMLElement>("[cmdk-item]")].find((item) =>
-    [...item.querySelectorAll("span")].some(
-      (cell) => (cell.textContent ?? "").trim() === name
-    )
-  );
-  if (!found) throw new Error(`no catalogue row named "${name}"`);
-  return found;
-}
-
 /** Which editor heading `editor()` looks for; create and edit differ. */
 let editorHeading = "New hero rules";
 
@@ -312,9 +298,9 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
     expect(editor().textContent).toContain("Add at least one candidate to the pool.");
 
     await click(only("Add heroes"));
-    await click(option("Tracer"));
-    await click(option("Genji"));
-    await click(option("Reinhardt"));
+    await click(only("Tracer"));
+    await click(only("Genji"));
+    await click(only("Reinhardt"));
 
     expect(editor().textContent).not.toContain("Add at least one candidate to the pool.");
     expect(only("Save rules").getAttribute("disabled")).toBeNull();
@@ -324,9 +310,9 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
     await mount();
     await click(only("Add hero rules"));
     await click(only("Add heroes"));
-    await click(option("Genji"));
-    await click(option("Tracer"));
-    await click(option("Ana"));
+    await click(only("Genji"));
+    await click(only("Tracer"));
+    await click(only("Ana"));
     await click(only("Save rules"));
 
     expect(upsertConfig).toHaveBeenCalledTimes(1);
@@ -345,8 +331,8 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
     await mount();
     await click(only("Add hero rules"));
     await click(only("Add heroes"));
-    await click(option("Tracer"));
-    await click(option("Genji"));
+    await click(only("Tracer"));
+    await click(only("Genji"));
     await type(editor().querySelector<HTMLInputElement>("input")!, "30");
     await click(only("Save rules"));
 
@@ -395,7 +381,7 @@ describe("PickBanConfigsTab renders Map and Hero as two independent cards", () =
     expect(getHeroes).not.toHaveBeenCalled();
 
     await click(only("Add maps"));
-    expect(option("Busan")).toBeTruthy();
+    expect(only("Busan")).toBeTruthy();
   });
 
   it("sends kind=map with map item ids on save", async () => {
@@ -403,8 +389,8 @@ describe("PickBanConfigsTab renders Map and Hero as two independent cards", () =
     editorHeading = "New map rules";
     await click(only("Add map rules"));
     await click(only("Add maps"));
-    await click(option("Ilios"));
-    await click(option("Busan"));
+    await click(only("Ilios"));
+    await click(only("Busan"));
     await click(only("Save rules"));
 
     expect(upsertConfig).toHaveBeenCalledTimes(1);
@@ -441,7 +427,7 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
     editorHeading = "New map rules";
     await click(only("Add map rules"));
     await click(only("Add maps"));
-    const search = document.querySelector<HTMLInputElement>("[cmdk-input]");
+    const search = document.querySelector<HTMLInputElement>('input[placeholder="Search maps…"]');
     if (!search) throw new Error("no search field in the open picker");
     return search;
   }
@@ -450,8 +436,8 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
     const search = await openMapPicker();
     await type(search, "Hollywoods");
 
-    expect(option("Hollywood")).toBeTruthy();
-    expect(() => option("Busan")).toThrow();
+    expect(only("Hollywood")).toBeTruthy();
+    expect(() => only("Busan")).toThrow();
   });
 
   it("shows the catalogue's empty state for a name nothing matches", async () => {
@@ -480,10 +466,11 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
 
   it("renders each selected map's art alongside its name, not the name alone", async () => {
     await openMapPicker();
-    await click(option("Busan"));
+    await click(only("Busan"));
 
+    // One chip for Busan, plus the trailing "Add maps" trigger in the same row.
     const chips = editor().querySelectorAll("ul li");
-    expect(chips).toHaveLength(1);
+    expect(chips).toHaveLength(2);
     expect(chips[0].textContent).toContain("Busan");
     expect(chips[0].querySelector("img")).toBeTruthy();
   });
@@ -491,8 +478,8 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
   it("never offers a map flagged out of competitive rotation", async () => {
     await openMapPicker([...MAPS, OFF_ROTATION_MAP]);
 
-    expect(option("Busan")).toBeTruthy();
-    expect(() => option("Junkenstein's Revenge")).toThrow();
+    expect(only("Busan")).toBeTruthy();
+    expect(() => only("Junkenstein's Revenge")).toThrow();
   });
 
   it("the group filter narrows the picker to one game mode", async () => {
@@ -500,12 +487,12 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
     // Busan / Ilios are Control, King's Row / Hollywood are Hybrid.
     await click(only("Control (2)"));
 
-    expect(option("Busan")).toBeTruthy();
-    expect(option("Ilios")).toBeTruthy();
-    expect(() => option("King's Row")).toThrow();
-    expect(() => option("Hollywood")).toThrow();
+    expect(only("Busan")).toBeTruthy();
+    expect(only("Ilios")).toBeTruthy();
+    expect(() => only("King's Row")).toThrow();
+    expect(() => only("Hollywood")).toThrow();
 
     await click(only("All (4)"));
-    expect(option("King's Row")).toBeTruthy();
+    expect(only("King's Row")).toBeTruthy();
   });
 });

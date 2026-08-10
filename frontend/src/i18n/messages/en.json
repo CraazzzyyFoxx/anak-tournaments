@@ -2324,6 +2324,7 @@
       "editorEditHero": "Edit hero rules",
       "catalogueLoading": "Loading the catalogue…",
       "catalogueEmpty": "Nothing matches that name.",
+      "pickerSearchLabel": "Name",
       "scopeSection": "1 · Where these rules apply",
       "scopeSectionHint": "Start tournament-wide, then add a narrower rule set only where a stage or a round needs to differ.",
       "scopeLabel": "Applies to",
@@ -3867,7 +3868,7 @@
         },
         "cookies": {
           "title": "Cookies",
-          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These functional cookies are required for the site to work. Google Analytics cookies, which measure how pages are used, are optional: they load only after you accept them in the cookie notice, and declining keeps them off. No advertising cookies are set."
+          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These functional cookies are required for the site to work. Google Analytics cookies, which measure how pages are used, are optional: they load only after you accept them in the cookie notice, and declining keeps them off. You can change that choice at any time from \"Cookie settings\" in the site footer; withdrawing it also deletes the analytics cookies already stored. No advertising cookies are set."
         },
         "sharing": {
           "title": "Who can see your information",
@@ -3903,7 +3904,10 @@
       "title": "Cookies",
       "body": "{siteName} needs functional cookies to keep you signed in and remember your language. Analytics cookies are optional and only measure how pages are used — see the <privacy>privacy policy</privacy>.",
       "accept": "Accept analytics",
-      "decline": "Decline analytics"
+      "decline": "Decline analytics",
+      "manage": "Cookie settings",
+      "statusOn": "Analytics cookies are on.",
+      "statusOff": "Analytics cookies are off."
     }
   },
   "errors": {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -21,7 +21,7 @@ import {
 
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -41,6 +41,8 @@ import {
   FieldSet,
   FieldTitle,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -215,6 +217,7 @@ function ItemChips({
   disabled,
   describeRemove,
   onRemove,
+  trailing,
 }: {
   itemIds: number[];
   catalogue: Map<number, ItemOption>;
@@ -222,9 +225,13 @@ function ItemChips({
   /** Accessible name of one chip's remove button, e.g. "Remove Busan". */
   describeRemove: (name: string) => string;
   onRemove: (itemId: number) => void;
+  /** Rendered as the row's last item, e.g. the "Add X" picker trigger --
+   * flows in the same wrapping row as the chips rather than sitting above
+   * or below them. */
+  trailing?: ReactNode;
 }) {
   return (
-    <ul className="flex flex-wrap gap-1.5">
+    <ul className="flex flex-wrap items-center gap-1.5">
       {itemIds.map((itemId, index) => {
         const item = catalogue.get(itemId);
         const name = item?.name ?? `#${itemId}`;
@@ -258,6 +265,7 @@ function ItemChips({
           </li>
         );
       })}
+      {trailing ? <li>{trailing}</li> : null}
     </ul>
   );
 }
@@ -293,9 +301,100 @@ function ItemOptionRow({ option, selected }: { option: ItemOption; selected: boo
   );
 }
 
-/** The catalogue, on demand: filter by group, search by name, toggle to add or remove. */
-function ItemMultiSelect({
+/** Item art behind a scrim, so a label stays legible whatever the image. */
+function ItemArt({ option }: { option: ItemOption }) {
+  return (
+    <>
+      {option.imageSrc ? (
+        <span
+          aria-hidden
+          className="absolute inset-0 bg-cover bg-center opacity-35 transition-opacity group-hover:opacity-55"
+          style={{ backgroundImage: `url("${option.imageSrc}")` }}
+        />
+      ) : (
+        <span aria-hidden className="absolute inset-0 bg-muted/40" />
+      )}
+      {/* Explicit scrim: art luminance varies wildly, so the label cannot rely
+          on the image staying dark enough behind it. */}
+      <span
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/30"
+      />
+    </>
+  );
+}
+
+/** One catalogue tile inside the grid picker: art, group badge, name, and a
+ * selection-order badge once chosen. */
+function ItemPoolTile({
+  option,
+  ariaLabel,
+  selectionIndex,
+  disabled,
+  onToggle,
+}: {
+  option: ItemOption;
+  ariaLabel: string;
+  /** Position in the persisted order, or -1 when unselected. */
+  selectionIndex: number;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const selected = selectionIndex >= 0;
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={onToggle}
+      className={cn(
+        "group relative flex h-20 flex-col justify-between overflow-hidden rounded-lg border p-2 text-left transition-colors",
+        selected
+          ? "border-primary bg-primary/10 ring-2 ring-primary/40"
+          : "border-border/70 bg-card hover:border-primary/50",
+        disabled && "cursor-not-allowed"
+      )}
+    >
+      <ItemArt option={option} />
+      {/* `span`, not `<Badge>`: this sits inside a `<button>`, which may only
+          contain phrasing content, and `Badge` renders a `div`. */}
+      <span className="relative z-10 flex items-start justify-between gap-1">
+        {option.group ? (
+          <span className={cn(badgeVariants({ variant: "outline" }), "bg-background/85")}>
+            {option.group}
+          </span>
+        ) : (
+          <span />
+        )}
+        {selected ? (
+          <span
+            aria-hidden
+            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold tabular-nums text-primary-foreground shadow-xs"
+          >
+            {selectionIndex + 1}
+          </span>
+        ) : null}
+      </span>
+      <span className="relative z-10 truncate text-xs font-semibold text-foreground">
+        {option.name}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The catalogue, on demand: filter by group, search by name, art tiles to add
+ * or remove, bulk actions scoped to what the filter and search show.
+ *
+ * A cmdk list read the catalogue as names alone; a match a captain would ban
+ * or pick sight-unseen deserves to be recognized by its art first, so this
+ * mirrors the grid the pre-cutover map veto editor offered instead.
+ */
+function ItemGridPicker({
   triggerLabel,
+  groupLabel,
+  searchLabel,
   searchPlaceholder,
   emptyLabel,
   selectAllLabel,
@@ -311,6 +410,9 @@ function ItemMultiSelect({
   onClearVisible,
 }: {
   triggerLabel: string;
+  /** Accessible name for the picker's own `role="group"`, e.g. "Add maps". */
+  groupLabel: string;
+  searchLabel: string;
   searchPlaceholder: string;
   emptyLabel: string;
   selectAllLabel: string;
@@ -326,10 +428,11 @@ function ItemMultiSelect({
   onSelectVisible: (itemIds: number[]) => void;
   onClearVisible: (itemIds: number[]) => void;
 }) {
+  const searchId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState(ALL_GROUPS);
-  const selected = new Set(selectedIds);
+  const selectionOrder = new Map(selectedIds.map((id, index) => [id, index]));
   const groups = useMemo(() => groupOptionsByGroup(options), [options]);
   const inGroup = useMemo(
     () =>
@@ -338,16 +441,16 @@ function ItemMultiSelect({
         : options.filter((option) => (option.group ?? UNGROUPED_GROUP) === groupFilter),
     [options, groupFilter]
   );
-  // Filtered here, not left to cmdk's default scorer: `matchesItemName` is the
-  // same fold the single-select and the veto room search use, so a query like
-  // a paper regulation's spelling lands the same map everywhere it is typed.
+  // Filtered here, not left to a component's default scorer: `matchesItemName`
+  // is the same fold the reserve picker and the veto room search use, so a
+  // query like a paper regulation's spelling lands the same map everywhere.
   const visibleOptions = useMemo(
     () => inGroup.filter((option) => matchesItemName(option.name, query)),
     [inGroup, query]
   );
   const visibleIds = useMemo(() => visibleOptions.map((option) => option.id), [visibleOptions]);
   const visibleSelectedCount = visibleIds.reduce(
-    (total, id) => (selected.has(id) ? total + 1 : total),
+    (total, id) => (selectionOrder.has(id) ? total + 1 : total),
     0
   );
 
@@ -369,16 +472,23 @@ function ItemMultiSelect({
           variant="outline"
           size="sm"
           disabled={disabled}
-          // The surrounding field stretches its children; a picker trigger that
-          // spans the whole row reads as a banner rather than a control.
-          className="self-start"
+          className="h-8 gap-1.5 border-dashed"
         >
-          <Plus aria-hidden className="me-2 size-4" />
+          <Plus aria-hidden className="size-4" />
           {triggerLabel}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-0">
-        <Command shouldFilter={false}>
+      <PopoverContent
+        align="start"
+        className="w-[min(40rem,calc(100vw-2rem))] p-3"
+        // Selecting candidates is the whole point of this surface, so it
+        // stays open across clicks; Escape and an outside click are the ways out.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          document.getElementById(searchId)?.focus();
+        }}
+      >
+        <div role="group" aria-label={groupLabel} className="space-y-3">
           <GroupFilterRow
             label={groupFilterLabel}
             allLabel={groupFilterAllLabel}
@@ -388,32 +498,44 @@ function ItemMultiSelect({
             value={groupFilter}
             onChange={setGroupFilter}
           />
-          <CommandInput value={query} onValueChange={setQuery} placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyLabel}</CommandEmpty>
-            <CommandGroup>
+
+          <div className="space-y-1.5">
+            <Label htmlFor={searchId} className="text-muted-foreground text-xs font-medium">
+              {searchLabel}
+            </Label>
+            <Input
+              id={searchId}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={searchPlaceholder}
+              className="h-8 text-base sm:text-xs"
+            />
+          </div>
+
+          {visibleOptions.length === 0 ? (
+            <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs">
+              {emptyLabel}
+            </p>
+          ) : (
+            <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-4">
               {visibleOptions.map((option) => (
-                <CommandItem
+                <ItemPoolTile
                   key={option.id}
-                  value={option.name}
-                  // Stays open: picking a pool is a batch of choices, and
-                  // reopening the popover per item makes it unusable.
-                  onSelect={() => onToggle(option.id)}
-                >
-                  <ItemOptionRow option={option} selected={selected.has(option.id)} />
-                </CommandItem>
+                  option={option}
+                  ariaLabel={option.name}
+                  selectionIndex={selectionOrder.get(option.id) ?? -1}
+                  disabled={disabled}
+                  onToggle={() => onToggle(option.id)}
+                />
               ))}
-            </CommandGroup>
-          </CommandList>
-          {/* Bulk actions scope to the filter and search: picking every hero
-              for a ban pool one click at a time doesn't scale to a
-              forty-hero catalogue. */}
-          <div className="flex items-center justify-end gap-1 border-t p-1">
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-2">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="h-7 px-2 text-xs"
               disabled={
                 disabled || visibleIds.length === 0 || visibleSelectedCount === visibleIds.length
               }
@@ -425,14 +547,13 @@ function ItemMultiSelect({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-xs"
               disabled={disabled || visibleSelectedCount === 0}
               onClick={() => onClearVisible(visibleIds)}
             >
               {clearLabel}
             </Button>
           </div>
-        </Command>
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -868,6 +989,7 @@ function ConfigEditor({
   const itemsLabel = isHero ? t("poolHeroLabel") : t("poolMapLabel");
   const addItemsLabel = isHero ? t("poolAddHeroes") : t("poolAddMaps");
   const searchPlaceholder = isHero ? t("searchHeroes") : t("searchMaps");
+  const searchLabel = t("pickerSearchLabel");
 
   return (
     <div className="mt-2 flex flex-col gap-6 rounded-xl border-2 border-dashed p-4 sm:p-5">
@@ -996,43 +1118,46 @@ function ConfigEditor({
                 <Badge variant="secondary">{t("poolCount", { count: draft.itemIds.length })}</Badge>
               </FieldTitle>
               <FieldDescription>{t("poolHint")}</FieldDescription>
-              <div className="flex flex-col gap-2">
-                <ItemMultiSelect
-                  triggerLabel={addItemsLabel}
-                  searchPlaceholder={searchPlaceholder}
-                  emptyLabel={t("catalogueEmpty")}
-                  selectAllLabel={t("poolSelectAllVisible")}
-                  clearLabel={t("poolClearVisible")}
-                  groupFilterLabel={t("groupFilterLabel")}
-                  groupFilterAllLabel={t("groupFilterAll")}
-                  groupFilterUngroupedLabel={t("groupFilterUngrouped")}
-                  options={catalogue}
-                  selectedIds={draft.itemIds}
-                  disabled={catalogueLoading}
-                  onToggle={toggleItem}
-                  onSelectVisible={(itemIds) =>
-                    onChange({
-                      ...draft,
-                      itemIds: [...draft.itemIds, ...itemIds.filter((id) => !draft.itemIds.includes(id))],
-                    })
-                  }
-                  onClearVisible={(itemIds) =>
-                    onChange({
-                      ...draft,
-                      itemIds: draft.itemIds.filter((id) => !itemIds.includes(id)),
-                    })
-                  }
-                />
-                {draft.itemIds.length > 0 ? (
-                  <ItemChips
-                    itemIds={draft.itemIds}
-                    catalogue={catalogueById}
-                    disabled={false}
-                    describeRemove={(name) => t("poolRemove", { item: name })}
-                    onRemove={toggleItem}
+              <ItemChips
+                itemIds={draft.itemIds}
+                catalogue={catalogueById}
+                disabled={false}
+                describeRemove={(name) => t("poolRemove", { item: name })}
+                onRemove={toggleItem}
+                trailing={
+                  <ItemGridPicker
+                    triggerLabel={addItemsLabel}
+                    groupLabel={addItemsLabel}
+                    searchLabel={searchLabel}
+                    searchPlaceholder={searchPlaceholder}
+                    emptyLabel={t("catalogueEmpty")}
+                    selectAllLabel={t("poolSelectAllVisible")}
+                    clearLabel={t("poolClearVisible")}
+                    groupFilterLabel={t("groupFilterLabel")}
+                    groupFilterAllLabel={t("groupFilterAll")}
+                    groupFilterUngroupedLabel={t("groupFilterUngrouped")}
+                    options={catalogue}
+                    selectedIds={draft.itemIds}
+                    disabled={catalogueLoading}
+                    onToggle={toggleItem}
+                    onSelectVisible={(itemIds) =>
+                      onChange({
+                        ...draft,
+                        itemIds: [
+                          ...draft.itemIds,
+                          ...itemIds.filter((id) => !draft.itemIds.includes(id)),
+                        ],
+                      })
+                    }
+                    onClearVisible={(itemIds) =>
+                      onChange({
+                        ...draft,
+                        itemIds: draft.itemIds.filter((id) => !itemIds.includes(id)),
+                      })
+                    }
                   />
-                ) : null}
-              </div>
+                }
+              />
             </Field>
           ) : (
             <div className="flex flex-col gap-3">
@@ -1047,108 +1172,109 @@ function ConfigEditor({
 
               {draft.slots.map((slot, index) => (
                 <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <FieldTitle className="text-sm">
                       {t("slotTitle", { n: index + 1 })}
                       <Badge variant="secondary">
                         {t("slotCandidates", { count: slot.candidates.length })}
                       </Badge>
                     </FieldTitle>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("slotRemove", { n: index + 1 })}
-                      onClick={() =>
-                        onChange({
-                          ...draft,
-                          slots: draft.slots.filter((_, at) => at !== index),
-                        })
-                      }
-                    >
-                      <Trash2 aria-hidden className="size-4" />
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <ItemSingleSelect
+                        label={t("slotReserveAria", { n: index + 1 })}
+                        prefix={t("slotReserve")}
+                        value={slot.reserveItemId}
+                        // The server rejects a reserve that is also a candidate,
+                        // so it is never offered here.
+                        options={catalogue.filter(
+                          (option) => !slot.candidates.includes(option.id)
+                        )}
+                        noneLabel={t("slotReserveNone")}
+                        searchPlaceholder={searchPlaceholder}
+                        emptyLabel={t("catalogueEmpty")}
+                        groupFilterLabel={t("groupFilterLabel")}
+                        groupFilterAllLabel={t("groupFilterAll")}
+                        groupFilterUngroupedLabel={t("groupFilterUngrouped")}
+                        disabled={catalogueLoading}
+                        onChange={(itemId) => patchSlot(index, { reserveItemId: itemId })}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("slotRemove", { n: index + 1 })}
+                        onClick={() =>
+                          onChange({
+                            ...draft,
+                            slots: draft.slots.filter((_, at) => at !== index),
+                          })
+                        }
+                      >
+                        <Trash2 aria-hidden className="size-4" />
+                      </Button>
+                    </div>
                   </div>
 
-                  <ItemMultiSelect
-                    triggerLabel={addItemsLabel}
-                    searchPlaceholder={searchPlaceholder}
-                    emptyLabel={t("catalogueEmpty")}
-                    selectAllLabel={t("poolSelectAllVisible")}
-                    clearLabel={t("poolClearVisible")}
-                    groupFilterLabel={t("groupFilterLabel")}
-                    groupFilterAllLabel={t("groupFilterAll")}
-                    groupFilterUngroupedLabel={t("groupFilterUngrouped")}
-                    options={catalogue}
-                    selectedIds={slot.candidates}
-                    disabled={catalogueLoading}
-                    onToggle={(itemId) =>
+                  <ItemChips
+                    itemIds={slot.candidates}
+                    catalogue={catalogueById}
+                    disabled={false}
+                    describeRemove={(name) => t("poolRemove", { item: name })}
+                    onRemove={(itemId) =>
                       patchSlot(index, {
-                        candidates: slot.candidates.includes(itemId)
-                          ? slot.candidates.filter((id) => id !== itemId)
-                          : [...slot.candidates, itemId],
-                        // A candidate can no longer be this slot's reserve.
-                        reserveItemId: slot.reserveItemId === itemId ? null : slot.reserveItemId,
+                        candidates: slot.candidates.filter((id) => id !== itemId),
                       })
                     }
-                    onSelectVisible={(itemIds) =>
-                      patchSlot(index, {
-                        candidates: [
-                          ...slot.candidates,
-                          ...itemIds.filter((id) => !slot.candidates.includes(id)),
-                        ],
-                        // The catalogue offered here isn't narrowed like the
-                        // reserve picker's is, so a bulk add can catch the
-                        // current reserve; drop it rather than leave a
-                        // candidate double-booked as its own slot's reserve.
-                        reserveItemId:
-                          slot.reserveItemId != null && itemIds.includes(slot.reserveItemId)
-                            ? null
-                            : slot.reserveItemId,
-                      })
-                    }
-                    onClearVisible={(itemIds) =>
-                      patchSlot(index, {
-                        candidates: slot.candidates.filter((id) => !itemIds.includes(id)),
-                      })
+                    trailing={
+                      <ItemGridPicker
+                        triggerLabel={addItemsLabel}
+                        groupLabel={t("slotTitle", { n: index + 1 })}
+                        searchLabel={searchLabel}
+                        searchPlaceholder={searchPlaceholder}
+                        emptyLabel={t("catalogueEmpty")}
+                        selectAllLabel={t("poolSelectAllVisible")}
+                        clearLabel={t("poolClearVisible")}
+                        groupFilterLabel={t("groupFilterLabel")}
+                        groupFilterAllLabel={t("groupFilterAll")}
+                        groupFilterUngroupedLabel={t("groupFilterUngrouped")}
+                        options={catalogue}
+                        selectedIds={slot.candidates}
+                        disabled={catalogueLoading}
+                        onToggle={(itemId) =>
+                          patchSlot(index, {
+                            candidates: slot.candidates.includes(itemId)
+                              ? slot.candidates.filter((id) => id !== itemId)
+                              : [...slot.candidates, itemId],
+                            // A candidate can no longer be this slot's reserve.
+                            reserveItemId:
+                              slot.reserveItemId === itemId ? null : slot.reserveItemId,
+                          })
+                        }
+                        onSelectVisible={(itemIds) =>
+                          patchSlot(index, {
+                            candidates: [
+                              ...slot.candidates,
+                              ...itemIds.filter((id) => !slot.candidates.includes(id)),
+                            ],
+                            // The catalogue offered here isn't narrowed like the
+                            // reserve picker's is, so a bulk add can catch the
+                            // current reserve; drop it rather than leave a
+                            // candidate double-booked as its own slot's reserve.
+                            reserveItemId:
+                              slot.reserveItemId != null && itemIds.includes(slot.reserveItemId)
+                                ? null
+                                : slot.reserveItemId,
+                          })
+                        }
+                        onClearVisible={(itemIds) =>
+                          patchSlot(index, {
+                            candidates: slot.candidates.filter((id) => !itemIds.includes(id)),
+                          })
+                        }
+                      />
                     }
                   />
-
-                  {slot.candidates.length > 0 ? (
-                    <ItemChips
-                      itemIds={slot.candidates}
-                      catalogue={catalogueById}
-                      disabled={false}
-                      describeRemove={(name) => t("poolRemove", { item: name })}
-                      onRemove={(itemId) =>
-                        patchSlot(index, {
-                          candidates: slot.candidates.filter((id) => id !== itemId),
-                        })
-                      }
-                    />
-                  ) : null}
-
-                  <div className="flex flex-col gap-1.5">
-                    <ItemSingleSelect
-                      label={t("slotReserveAria", { n: index + 1 })}
-                      prefix={t("slotReserve")}
-                      value={slot.reserveItemId}
-                      // The server rejects a reserve that is also a candidate,
-                      // so it is never offered here.
-                      options={catalogue.filter(
-                        (option) => !slot.candidates.includes(option.id)
-                      )}
-                      noneLabel={t("slotReserveNone")}
-                      searchPlaceholder={searchPlaceholder}
-                      emptyLabel={t("catalogueEmpty")}
-                      groupFilterLabel={t("groupFilterLabel")}
-                      groupFilterAllLabel={t("groupFilterAll")}
-                      groupFilterUngroupedLabel={t("groupFilterUngrouped")}
-                      disabled={catalogueLoading}
-                      onChange={(itemId) => patchSlot(index, { reserveItemId: itemId })}
-                    />
-                    <FieldDescription>{t("slotReserveHint")}</FieldDescription>
-                  </div>
+                  <FieldDescription>{t("slotReserveHint")}</FieldDescription>
                 </div>
               ))}
 
