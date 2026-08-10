@@ -12,6 +12,11 @@
 //   3. a stored custom order survives a round trip. `preset` and `sequence` used
 //      to drift apart silently, and a hand-authored order was discarded by the
 //      engine without the organizer ever being told.
+//
+// Hero-kind only: the tab dropped its "Map" section (2026-08-10) — map pool
+// rules stay owned by the Map Veto tab's own `MapVetoConfig`, so this
+// component's hero-only fixtures below exercise the one kind it can still
+// create.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -32,7 +37,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const listConfigs = vi.fn();
 const upsertConfig = vi.fn();
 const deleteConfig = vi.fn();
-const getMaps = vi.fn();
 const getHeroes = vi.fn();
 
 vi.mock("@/services/pickBan.service", () => ({
@@ -43,10 +47,6 @@ vi.mock("@/services/pickBan.service", () => ({
   },
 }));
 
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getMaps(...args) },
-}));
-
 vi.mock("@/services/hero.service", () => ({
   default: { getAll: (...args: unknown[]) => getHeroes(...args) },
 }));
@@ -55,15 +55,14 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() },
 }));
 
-const MAPS = ["Busan", "Ilios", "King's Row", "Numbani", "Route 66", "Colosseo"].map(
-  (name, index) => ({
-    id: index + 1,
-    name,
-    image_path: `/maps/${index + 1}.png`,
-    in_competitive: true,
-    gamemode: { id: 1, name: "Control" },
-  })
-);
+const HEROES = ["Tracer", "Genji", "Reinhardt", "Ana", "Lucio", "Sombra"].map((name, index) => ({
+  id: index + 1,
+  name,
+  slug: name.toLowerCase(),
+  image_path: `/heroes/${index + 1}.png`,
+  type: "Damage",
+  role: "damage",
+}));
 
 const STAGES = [
   {
@@ -107,10 +106,10 @@ const ENCOUNTERS: PickBanScopeEncounter[] = [
   { stage_id: 10, round: 2, best_of: 3 },
 ];
 
-const CUSTOM_MAP_CONFIG: PickBanConfig = {
+const CUSTOM_HERO_CONFIG: PickBanConfig = {
   id: 7,
   tournament_id: 84,
-  kind: "map",
+  kind: "hero",
   stage_id: 11,
   round: null,
   mode: "pool",
@@ -141,8 +140,7 @@ async function settle(times = 12) {
 
 async function mount(configs: PickBanConfig[] = []) {
   listConfigs.mockResolvedValue({ configs });
-  getMaps.mockResolvedValue({ results: MAPS });
-  getHeroes.mockResolvedValue({ results: [] });
+  getHeroes.mockResolvedValue({ results: HEROES });
 
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -188,8 +186,8 @@ function only(name: string): HTMLElement {
 }
 
 /**
- * One catalogue row of an open picker. A row reads "Busan" then its game mode,
- * so it is addressed by its name cell rather than by the row's whole text.
+ * One catalogue row of an open picker. A row reads "Tracer" then its role, so
+ * it is addressed by its name cell rather than by the row's whole text.
  */
 function option(name: string): HTMLElement {
   const found = [...document.querySelectorAll<HTMLElement>("[cmdk-item]")].find((item) =>
@@ -202,7 +200,7 @@ function option(name: string): HTMLElement {
 }
 
 /** Which editor heading `editor()` looks for; create and edit differ. */
-let editorHeading = "New map rules";
+let editorHeading = "New hero rules";
 
 /** The editor, addressed by its heading. */
 function editor(): HTMLElement {
@@ -235,14 +233,14 @@ beforeEach(() => {
     act(() => root.unmount());
     container.remove();
   }
-  editorHeading = "New map rules";
+  editorHeading = "New hero rules";
   upsertConfig.mockResolvedValue({});
 });
 
 describe("PickBanConfigsTab asks for nothing an organizer has to look up", () => {
   it("offers one text field, the turn timer, and says what leaving it empty does", async () => {
     await mount();
-    await click(only("Add map rules"));
+    await click(only("Add hero rules"));
 
     const inputs = [...editor().querySelectorAll<HTMLInputElement>("input")];
     expect(inputs).toHaveLength(1);
@@ -258,7 +256,7 @@ describe("PickBanConfigsTab asks for nothing an organizer has to look up", () =>
   });
 
   it("names every icon-only control, including the row it deletes", async () => {
-    await mount([CUSTOM_MAP_CONFIG]);
+    await mount([CUSTOM_HERO_CONFIG]);
 
     const unnamed = [...container.querySelectorAll("button")].filter(
       (button) =>
@@ -270,7 +268,7 @@ describe("PickBanConfigsTab asks for nothing an organizer has to look up", () =>
 
   it("scopes rules by name, starting at the whole tournament", async () => {
     await mount();
-    await click(only("Add map rules"));
+    await click(only("Add hero rules"));
 
     const scope = editor().querySelector<HTMLElement>('[id$="-scope"]');
     expect(scope?.textContent).toBe("Whole tournament");
@@ -284,16 +282,16 @@ describe("PickBanConfigsTab asks for nothing an organizer has to look up", () =>
 describe("PickBanConfigsTab will not send a config the server rejects", () => {
   it("keeps save inert with the reason on screen until the pool has candidates", async () => {
     await mount();
-    await click(only("Add map rules"));
+    await click(only("Add hero rules"));
 
     const save = only("Save rules");
     expect(save.getAttribute("disabled")).not.toBeNull();
     expect(editor().textContent).toContain("Add at least one candidate to the pool.");
 
-    await click(only("Add maps"));
-    await click(option("Busan"));
-    await click(option("Ilios"));
-    await click(option("King's Row"));
+    await click(only("Add heroes"));
+    await click(option("Tracer"));
+    await click(option("Genji"));
+    await click(option("Reinhardt"));
 
     expect(editor().textContent).not.toContain("Add at least one candidate to the pool.");
     expect(only("Save rules").getAttribute("disabled")).toBeNull();
@@ -301,17 +299,17 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
 
   it("sends the pool in pick order, with a generated order and no turn limit", async () => {
     await mount();
-    await click(only("Add map rules"));
-    await click(only("Add maps"));
-    await click(option("Ilios"));
-    await click(option("Busan"));
-    await click(option("Numbani"));
+    await click(only("Add hero rules"));
+    await click(only("Add heroes"));
+    await click(option("Genji"));
+    await click(option("Tracer"));
+    await click(option("Ana"));
     await click(only("Save rules"));
 
     expect(upsertConfig).toHaveBeenCalledTimes(1);
     const [tournamentId, body] = upsertConfig.mock.calls[0];
     expect(tournamentId).toBe(84);
-    expect(body.kind).toBe("map");
+    expect(body.kind).toBe("hero");
     expect(body.item_ids).toEqual([2, 1, 4]);
     expect(body.stage_id).toBeNull();
     expect(body.round).toBeNull();
@@ -322,10 +320,10 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
 
   it("sends the timer as a number once one is typed", async () => {
     await mount();
-    await click(only("Add map rules"));
-    await click(only("Add maps"));
-    await click(option("Busan"));
-    await click(option("Ilios"));
+    await click(only("Add hero rules"));
+    await click(only("Add heroes"));
+    await click(option("Tracer"));
+    await click(option("Genji"));
     await type(editor().querySelector<HTMLInputElement>("input")!, "30");
     await click(only("Save rules"));
 
@@ -335,10 +333,10 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
 
 describe("PickBanConfigsTab keeps a stored custom order", () => {
   it("reopens it as custom and saves the same steps back", async () => {
-    await mount([CUSTOM_MAP_CONFIG]);
+    await mount([CUSTOM_HERO_CONFIG]);
     await click(only("Edit"));
 
-    editorHeading = "Edit map rules";
+    editorHeading = "Edit hero rules";
     expect(editor().textContent).toContain("Custom");
 
     await click(only("Save rules"));

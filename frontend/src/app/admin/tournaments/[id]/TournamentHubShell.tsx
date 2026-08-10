@@ -41,7 +41,7 @@ const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
   { key: "matches", label: "Play & Results" },
   { key: "draft", label: "Draft" },
   { key: "veto", label: "Map Veto" },
-  { key: "pickBan", label: "Pick-Ban Configs" },
+  { key: "pickBan", label: "Hero Bans" },
   { key: "settings", label: "Settings" }
 ];
 

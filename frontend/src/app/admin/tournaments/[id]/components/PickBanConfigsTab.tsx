@@ -55,7 +55,6 @@ import { Switch } from "@/components/ui/switch";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import heroService from "@/services/hero.service";
-import mapService from "@/services/map.service";
 import pickBanService from "@/services/pickBan.service";
 import type {
   MapVetoMode,
@@ -96,7 +95,6 @@ import {
   type PickBanStepSide,
 } from "./pickBanConfig.helpers";
 
-const KINDS: PickBanKind[] = ["map", "hero"];
 
 interface PickBanConfigsTabProps {
   tournamentId: number;
@@ -1190,40 +1188,27 @@ export function PickBanConfigsTab({
   const [draft, setDraft] = useState<PickBanDraft | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PickBanConfig | null>(null);
 
-  // Both catalogues are only needed once an editor is open, and only for its
-  // kind. The maps key matches the veto tab's, so the two share one cache.
-  const mapsQuery = useQuery({
-    queryKey: ["maps", "all", "gamemode"],
-    queryFn: () =>
-      mapService.getAll({ perPage: -1, sort: "name", order: "asc", entities: ["gamemode"] }),
-    enabled: draft?.kind === "map",
-  });
+  // Only needed once an editor is open. Map pool configuration stays owned by
+  // the Map Veto tab (MapVetoConfig) -- this tab only ever creates kind=hero
+  // configs, so there is one catalogue to load, not two.
   const heroesQuery = useQuery({
     queryKey: ["heroes", "all"],
     queryFn: () => heroService.getAll({ perPage: -1, sort: "name", order: "asc" }),
-    enabled: draft?.kind === "hero",
+    enabled: draft != null,
   });
 
-  const catalogue = useMemo<ItemOption[]>(() => {
-    if (draft?.kind === "hero") {
-      return (heroesQuery.data?.results ?? []).map((hero) => ({
+  const catalogue = useMemo<ItemOption[]>(
+    () =>
+      (heroesQuery.data?.results ?? []).map((hero) => ({
         id: hero.id,
         name: hero.name,
         group: hero.type ?? hero.role ?? null,
         imageSrc: hero.image_path ?? null,
-      }));
-    }
-    return (mapsQuery.data?.results ?? [])
-      .filter((map) => map.in_competitive !== false)
-      .map((map) => ({
-        id: map.id,
-        name: map.name,
-        group: map.gamemode?.name ?? null,
-        imageSrc: map.image_path ?? null,
-      }));
-  }, [draft?.kind, heroesQuery.data, mapsQuery.data]);
+      })),
+    [heroesQuery.data],
+  );
 
-  const catalogueLoading = draft?.kind === "hero" ? heroesQuery.isPending : mapsQuery.isPending;
+  const catalogueLoading = heroesQuery.isPending;
 
   const configs = useMemo(() => configsQuery.data?.configs ?? [], [configsQuery.data]);
   const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
@@ -1284,77 +1269,61 @@ export function PickBanConfigsTab({
         </Alert>
       ) : null}
 
-      {KINDS.map((kind) => (
-        <Card key={kind}>
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base">
-              {kind === "map" ? t("kindMap") : t("kindHero")}
-            </CardTitle>
-            {canManage ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setDraft(emptyPickBanDraft(kind))}
-              >
-                <Plus aria-hidden className="me-2 size-4" />
-                {kind === "map" ? t("addMapConfig") : t("addHeroConfig")}
-              </Button>
-            ) : null}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {configsQuery.isPending ? (
-              <>
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </>
-            ) : configsByKind[kind].length === 0 ? (
-              <div className="flex flex-col gap-1 py-2">
-                <p className="font-medium">{t("noConfigs")}</p>
-                <p className="text-muted-foreground text-sm">
-                  {kind === "map" ? t("noConfigsMapHint") : t("noConfigsHeroHint")}
-                </p>
-              </div>
-            ) : (
-              configsByKind[kind].map((config) => (
-                <ConfigRow
-                  key={config.id}
-                  config={config}
-                  scopeLabel={describeScope(config)}
-                  canManage={canManage}
-                  onEdit={() => setDraft(pickBanDraftFromConfig(config))}
-                  onDelete={() => setDeleteTarget(config)}
-                />
-              ))
-            )}
-
-            {draft?.kind === kind ? (
-              <ConfigEditor
-                draft={draft}
-                configs={configs}
-                stages={stages}
-                encounters={encounters}
-                catalogue={catalogue}
-                catalogueLoading={catalogueLoading}
-                isSaving={upsertMutation.isPending}
-                onChange={setDraft}
-                onSave={() =>
-                  upsertMutation.mutate({
-                    draft,
-                    seriesLength: resolveSeriesLength(
-                      draft.stageId,
-                      draft.round,
-                      stages,
-                      encounters
-                    ).bestOf,
-                  })
-                }
-                onCancel={() => setDraft(null)}
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">{t("kindHero")}</CardTitle>
+          {canManage ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => setDraft(emptyPickBanDraft("hero"))}>
+              <Plus aria-hidden className="me-2 size-4" />
+              {t("addHeroConfig")}
+            </Button>
+          ) : null}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          {configsQuery.isPending ? (
+            <>
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </>
+          ) : configsByKind.hero.length === 0 ? (
+            <div className="flex flex-col gap-1 py-2">
+              <p className="font-medium">{t("noConfigs")}</p>
+              <p className="text-muted-foreground text-sm">{t("noConfigsHeroHint")}</p>
+            </div>
+          ) : (
+            configsByKind.hero.map((config) => (
+              <ConfigRow
+                key={config.id}
+                config={config}
+                scopeLabel={describeScope(config)}
+                canManage={canManage}
+                onEdit={() => setDraft(pickBanDraftFromConfig(config))}
+                onDelete={() => setDeleteTarget(config)}
               />
-            ) : null}
-          </CardContent>
-        </Card>
-      ))}
+            ))
+          )}
+
+          {draft != null ? (
+            <ConfigEditor
+              draft={draft}
+              configs={configs}
+              stages={stages}
+              encounters={encounters}
+              catalogue={catalogue}
+              catalogueLoading={catalogueLoading}
+              isSaving={upsertMutation.isPending}
+              onChange={setDraft}
+              onSave={() =>
+                upsertMutation.mutate({
+                  draft,
+                  seriesLength: resolveSeriesLength(draft.stageId, draft.round, stages, encounters).bestOf,
+                })
+              }
+              onCancel={() => setDraft(null)}
+            />
+          ) : null}
+        </CardContent>
+      </Card>
 
       <DeleteConfirmDialog
         open={deleteTarget != null}
