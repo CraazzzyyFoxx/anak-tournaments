@@ -729,9 +729,6 @@ type PlayerEditModalProps = {
     }
   ) => void;
   onRemove?: (playerId: number) => void;
-  /** Recomputes balancer_status from current role ranks (Ready if every active role has one, else
-   * Incomplete), escaping a "sticky" custom status. Omit to hide the "Move to Ready" action. */
-  onMoveToReady?: (playerId: number) => Promise<unknown>;
   saving?: boolean;
   rankHistory?: Partial<Record<BalancerRoleCode, number>> | null;
 };
@@ -744,7 +741,6 @@ export function PlayerEditModal({
   onOpenChange,
   onSave,
   onRemove,
-  onMoveToReady,
   saving = false,
   rankHistory = null
 }: PlayerEditModalProps) {
@@ -1008,15 +1004,20 @@ export function PlayerEditModal({
     });
   };
 
-  const [movingToReady, setMovingToReady] = useState(false);
-  const handleMoveToReady = async () => {
-    if (!onMoveToReady) return;
-    setMovingToReady(true);
-    try {
-      await onMoveToReady(player.id);
-    } finally {
-      setMovingToReady(false);
-    }
+  // Saves every pending edit (roles, notes, registration status) exactly like
+  // handleSave, then recomputes balancer_status from those roles via
+  // add_to_balancer (is_in_pool: true's server-side effect -- see
+  // updatePlayerMutation) instead of writing a literal override. That
+  // recompute always runs last and wins, so no explicit balancer-status
+  // override is sent here -- it would just be overwritten.
+  const handleMoveToReady = () => {
+    onSave(player.id, {
+      role_entries_json: normalizeRoleEntries(roleEntries),
+      is_flex: isFlex,
+      admin_notes: notes || null,
+      registration_status: registration && registrationStatus !== registration.status ? registrationStatus : null,
+      is_in_pool: true
+    });
   };
 
   return (
@@ -1315,18 +1316,18 @@ export function PlayerEditModal({
                   <p className="text-[10px] text-[color:var(--aqt-fg-dim)]">
                     Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
                   </p>
-                  {onMoveToReady && registrationBalancerStatus !== "ready" ? (
+                  {registrationBalancerStatus !== "ready" ? (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
-                      disabled={movingToReady}
+                      disabled={saving}
                       onClick={handleMoveToReady}
-                      title="Recompute this player's balancer status from their current role ranks"
+                      title="Saves your pending edits, then recomputes this player's balancer status from their current role ranks"
                     >
                       <CheckCircle2 className="h-3 w-3" />
-                      {movingToReady ? "Moving…" : "Move to Ready"}
+                      Move to Ready
                     </Button>
                   ) : null}
                 </div>
