@@ -1748,7 +1748,25 @@
   },
   "getWorkspace": {
     "title": "How to get your own workspace",
-    "description": "A workspace is an isolated tournament space with its own branding (a subdomain or a connected custom domain, its own color theme, and separate tournaments and stats) for your community. Workspaces are currently created manually by the platform administrator — there's no self-service signup. To get your own workspace, contact the platform administrator and describe the community you'd like to set up."
+    "lead": "A workspace is an isolated tournament space you can brand as your own community's home.",
+    "features": {
+      "domain": {
+        "title": "Your own address",
+        "description": "A subdomain, or a custom domain you connect yourself."
+      },
+      "theme": {
+        "title": "Your own look",
+        "description": "A dedicated color theme that matches your community's branding."
+      },
+      "content": {
+        "title": "Separate content",
+        "description": "Your tournaments and stats stay isolated from every other workspace."
+      }
+    },
+    "action": {
+      "title": "No self-service signup",
+      "description": "Workspaces are currently created manually by the platform administrator. Contact them and describe the community you'd like to set up."
+    }
   },
   "workspace": {
     "eyebrow": "Workspace",
