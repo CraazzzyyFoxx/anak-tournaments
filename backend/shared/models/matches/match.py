@@ -27,11 +27,14 @@ class Match(db.TimeStampIntegerMixin):
     away_team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
     home_score: Mapped[int] = mapped_column(Integer())
     away_score: Mapped[int] = mapped_column(Integer())
-    time: Mapped[float] = mapped_column(Float())
+    # NULL for a `source=captain_report` row: no log means no measured
+    # duration. Always present for `source=log_parser`.
+    time: Mapped[float | None] = mapped_column(Float(), nullable=True)
     # The bare log filename as the parser saw it. Kept because the S3 key is
     # built from it (logs/{tournament_id}/{log_name}); provenance itself lives on
-    # log_record_id below.
-    log_name: Mapped[str] = mapped_column()
+    # log_record_id below. NULL for a `source=captain_report` row — there is no
+    # file. `source` is the field to branch on, not this nullability.
+    log_name: Mapped[str | None] = mapped_column(nullable=True)
     code: Mapped[str | None] = mapped_column(nullable=True)
     # Which ingested log produced this match. Nullable: rows written before this
     # column existed cannot always be matched back, and the backfill leaves those
@@ -39,6 +42,22 @@ class Match(db.TimeStampIntegerMixin):
     # deletes a played map.
     log_record_id: Mapped[int | None] = mapped_column(
         ForeignKey("log_processing.record.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # `log_parser`: written by MatchLogFlow from an uploaded OW log — `time`/
+    # `log_name` populated, kill-feed/stats may follow. `captain_report`:
+    # written from the per-map dual captain confirmation with no log — `time`/
+    # `log_name` stay NULL, no kill-feed/stats exist. Every row written before
+    # this column existed is a real parsed log, hence the `log_parser` default —
+    # never re-guessed for the backfill (see the pick-ban engine's migration).
+    source: Mapped[enums.MatchSource] = mapped_column(
+        Enum(
+            enums.MatchSource,
+            values_callable=lambda e: [x.value for x in e],
+            name="matchsource",
+            schema="matches",
+        ),
+        default=enums.MatchSource.LOG_PARSER,
+        server_default=enums.MatchSource.LOG_PARSER.value,
     )
 
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)

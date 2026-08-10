@@ -7,6 +7,7 @@ __all__ = (
     "draft",
     "logs",
     "map_veto",
+    "pick_ban_hero",
     "realtime_channel",
     "subscriptions",
     "workspace_notifications",
@@ -31,6 +32,17 @@ def map_veto(encounter_id: int) -> str:
     bracket/draft spectator topics.
     """
     return f"encounter:{int(encounter_id)}:map-veto"
+
+
+def pick_ban_hero(encounter_id: int) -> str:
+    """Public topic for live hero-ban updates on a single encounter.
+
+    Sibling of :func:`map_veto`, kept as its own topic (rather than a
+    ``kind``-parametrized ``map_veto``) so the legacy map-veto room's
+    subscribers are never woken by a hero-only change and vice versa — see
+    docs/plans/2026-08-09-generic-pickban-engine.md Design Section 4.
+    """
+    return f"encounter:{int(encounter_id)}:pick-ban:hero"
 
 
 def balancer(tournament_id: int) -> str:

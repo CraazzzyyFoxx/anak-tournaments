@@ -95,14 +95,16 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
               <div className="flex flex-col text-right">
                 <p className="leading-7">{t("matches.playtime")}</p>
                 <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">
-                  {Math.floor(match.time / 60)}m {(match.time % 60).toFixed(0)}s
+                  {match.time != null
+                    ? `${Math.floor(match.time / 60)}m ${(match.time % 60).toFixed(0)}s`
+                    : "—"}
                 </h4>
               </div>
             </div>
 
             <div className="flex flex-col text-right">
               <p className="leading-7">{t("matches.logName")}</p>
-              <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{match.log_name}</h4>
+              <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{match.log_name ?? "—"}</h4>
             </div>
             <div className="flex flex-col">
               <p className="leading-7 ">{t("common.tournament")}</p>

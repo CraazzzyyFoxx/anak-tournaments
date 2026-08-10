@@ -37,7 +37,7 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
-from shared.core.enums import SubscriptionCollectionSource
+from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user
 from shared.services.profile_visibility import resolve_profiles_open
@@ -60,6 +60,9 @@ from src.rpc._helpers import (
 )
 from src.schemas.captain import (
     CaptainReportSubmission,
+    ElectOpenerInput,
+    MapReportInput,
+    PickBanActionInput,
     VetoAction,
     resolve_optional_viewer_side,
 )
@@ -77,7 +80,10 @@ from src.schemas.registration_build import (
 from src.services import visibility_resolvers
 from src.services.encounter import captain as captain_service
 from src.services.encounter import flows as encounter_flows
+from src.services.encounter import map_report as map_report_service
 from src.services.encounter import map_veto as map_veto_service
+from src.services.encounter import pick_ban_action as pick_ban_action_service
+from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter import report_form as report_form_service
 from src.services.registration import service as reg_service
 from src.services.registration import subscription_config
@@ -290,6 +296,88 @@ def register(broker: Any, logger: Any) -> None:
                 "status": entry.status,
                 "picked_by": entry.picked_by,
             }
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.captain_hero_pool_state")
+    async def _captain_hero_pool_state(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            encounter_id = _require_id(data)
+            user = _optional_identity(data)
+            tournament_id = await visibility_resolvers.tournament_id_for_encounter(session, encounter_id)
+            await assert_tournament_viewable(session, user, tournament_id)
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            viewer_side = await resolve_optional_viewer_side(session, user, encounter)
+            return await pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, PickBanKind.HERO, viewer_side=viewer_side
+            )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.captain_hero_veto")
+    async def _captain_hero_veto(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            body = PickBanActionInput.model_validate(_payload(data))
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            entry = await pick_ban_action_service.perform_pick_ban_action(
+                session, encounter_id, PickBanKind.HERO, captain_side, body.item_id, body.action
+            )
+            return pick_ban_action_service.serialize_pick_ban_entry(entry)
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.captain_elect_opener")
+    async def _captain_elect_opener(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            body = ElectOpenerInput.model_validate(_payload(data))
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, PickBanKind.HERO)
+            if pick_ban is None or not pick_ban.awaiting_choice:
+                raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
+            # Only the loser of the round that triggered the choice may elect —
+            # otherwise either captain could dictate who opens the next round.
+            if captain_side != pick_ban.pending_loser_side:
+                raise HTTPException(
+                    status_code=403, detail="Only the losing captain may choose who opens the next round"
+                )
+            pick_ban.first_side = body.first_side
+            actual_winner = "away" if pick_ban.pending_loser_side == "home" else "home"
+            await pick_ban_session_service.advance_to_next_round(
+                session,
+                pick_ban,
+                completed_round=await pick_ban_session_service.highest_round_of(session, pick_ban) or 0,
+                winner=actual_winner,
+                loser_choice=body.first_side,
+            )
+            return pick_ban_action_service.serialize_pick_ban_session(pick_ban)
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.captain_report_map")
+    async def _captain_report_map(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            map_id = _path_int(data, "map_id")
+            body = MapReportInput.model_validate(_payload(data))
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            team_id = encounter.home_team_id if captain_side == "home" else encounter.away_team_id
+            return await map_report_service.submit_map_report(
+                session,
+                encounter,
+                map_id=map_id,
+                team_id=team_id,
+                reporter_user_id=user.id,
+                home_score=body.home_score,
+                away_score=body.away_score,
+            )
 
         return await _run(logger, op)
 

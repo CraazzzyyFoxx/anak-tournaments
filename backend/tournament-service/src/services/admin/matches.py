@@ -23,8 +23,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
+from shared.core import enums, pagination
 from shared.core import http_status as status
-from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.ingestion.log_processing import LogProcessingRecord
 from src import models
@@ -71,7 +71,14 @@ class _Query:
     def scope_predicates(self) -> list[sa.ColumnElement[bool]]:
         """Which rows exist for this caller: workspace, then where they look."""
         params = self.params
-        where: list[sa.ColumnElement[bool]] = [models.Tournament.workspace_id == self.workspace_id]
+        where: list[sa.ColumnElement[bool]] = [
+            models.Tournament.workspace_id == self.workspace_id,
+            # This view's unit is "one played map the log parser produced"
+            # (module docstring) — a source=captain_report Match (no log,
+            # no stats) is scored/reconciled elsewhere and does not belong
+            # in a log-ingestion health view.
+            models.Match.source == enums.MatchSource.LOG_PARSER.value,
+        ]
         if params.tournament_id is not None:
             where.append(models.Encounter.tournament_id == params.tournament_id)
         if params.encounter_id is not None:
@@ -234,7 +241,11 @@ async def get_admin_match(
         sa.select(models.Match)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(models.Match.id == match_id, models.Tournament.workspace_id == workspace_id)
+        .where(
+            models.Match.id == match_id,
+            models.Tournament.workspace_id == workspace_id,
+            models.Match.source == enums.MatchSource.LOG_PARSER.value,
+        )
         .options(*_load_options())
     )
     match = (await session.execute(query)).unique().scalar_one_or_none()

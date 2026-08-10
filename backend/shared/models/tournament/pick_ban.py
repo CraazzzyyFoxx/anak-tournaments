@@ -1,0 +1,369 @@
+"""Generic pick-ban engine: config, session, pool entries, and the cross-round
+exclusion ledger shared by map veto and hero bans.
+
+Generalizes ``encounter_map.py``'s ``MapVetoConfig``/``EncounterVetoSession``/
+``EncounterMapPool`` to be pool-agnostic (``kind``: map or hero) and able to
+grow a running session's step sequence incrementally, round by round, instead
+of resolving it once at creation. See
+``docs/plans/2026-08-09-generic-pickban-engine.md`` for the full design and
+decision log.
+
+Table names are prefixed ``pick_ban_*`` and additive alongside the existing
+``map_veto_*``/``encounter_veto_session``/``encounter_map_pool`` tables during
+the migration window (Decision log #9 of the design doc: verify parity before
+dropping the old tables).
+"""
+
+from datetime import datetime
+
+from sqlalchemy import JSON, Boolean, CheckConstraint, Enum, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from shared.core import db, enums
+from shared.models.tournament.encounter import Encounter
+from shared.models.tournament.stage import Stage
+from shared.models.tournament.team import Team
+from shared.models.tournament.tournament import Tournament
+
+__all__ = (
+    "EncounterPickBanLedger",
+    "PickBanConfig",
+    "PickBanConfigItem",
+    "PickBanConfigSlot",
+    "PickBanConfigSlotItem",
+    "PickBanEntry",
+    "PickBanSession",
+)
+
+
+PICK_BAN_KIND_ENUM = Enum(
+    enums.PickBanKind,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbankind",
+    schema="tournament",
+)
+
+# Reused from the map-veto domain: side/status/rotation carry the same meaning
+# generalized over kind, so they get their own PG enum types here rather than
+# aliasing the ``map_*``-named ones, which stay owned by the legacy tables
+# until the migration drops them (Decision log #9).
+PICK_BAN_MODE_ENUM = Enum(
+    enums.MapVetoMode,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbanmode",
+    schema="tournament",
+)
+
+PICK_BAN_SIDE_ENUM = Enum(
+    enums.MapPickSide,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbanside",
+    schema="tournament",
+)
+
+PICK_BAN_ENTRY_STATUS_ENUM = Enum(
+    enums.MapPoolEntryStatus,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbanentrystatus",
+    schema="tournament",
+)
+
+PICK_BAN_SESSION_STATUS_ENUM = Enum(
+    enums.MapVetoSessionStatus,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbansessionstatus",
+    schema="tournament",
+)
+
+PICK_BAN_SEED_SOURCE_ENUM = Enum(
+    enums.VetoSeedSource,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbanseedsource",
+    schema="tournament",
+)
+
+PICK_BAN_ROTATION_ENUM = Enum(
+    enums.FirstBanRotation,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbanrotation",
+    schema="tournament",
+)
+
+PICK_BAN_NO_REPEAT_SCOPE_ENUM = Enum(
+    enums.PickBanNoRepeatScope,
+    values_callable=lambda e: [x.value for x in e],
+    name="pickbannorepeatscope",
+    schema="tournament",
+)
+
+
+class PickBanConfig(db.TimeStampIntegerMixin):
+    """Organizer config for one pick-ban flow (map veto or hero bans).
+
+    Same ``(tournament_id, stage_id, round)`` cascade as ``MapVetoConfig``, now
+    partitioned additionally by ``kind`` — a tournament may run a map config and
+    a hero config at the same cascade level side by side.
+    """
+
+    __tablename__ = "pick_ban_config"
+    __table_args__ = (
+        CheckConstraint("round IS NULL OR stage_id IS NOT NULL", name="ck_pick_ban_config_round_requires_stage"),
+        CheckConstraint("NOT (mode = 'slots' AND preset = 'custom')", name="ck_pick_ban_config_slots_not_custom"),
+        Index(
+            "uq_pick_ban_config_level",
+            "tournament_id",
+            "kind",
+            "stage_id",
+            "round",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+        ),
+        {"schema": "tournament"},
+    )
+
+    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
+    kind: Mapped[enums.PickBanKind] = mapped_column(PICK_BAN_KIND_ENUM)
+    stage_id: Mapped[int | None] = mapped_column(ForeignKey(Stage.id, ondelete="CASCADE"), nullable=True)
+    round: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    mode: Mapped[enums.MapVetoMode] = mapped_column(
+        PICK_BAN_MODE_ENUM,
+        default=enums.MapVetoMode.POOL,
+        server_default=enums.MapVetoMode.POOL.value,
+    )
+    first_pick_rule: Mapped[enums.FirstPickRule] = mapped_column(
+        Enum(
+            enums.FirstPickRule,
+            values_callable=lambda e: [x.value for x in e],
+            name="pickbanfirstpickrule",
+            schema="tournament",
+        ),
+        default=enums.FirstPickRule.HIGHER_SEED,
+        server_default=enums.FirstPickRule.HIGHER_SEED.value,
+    )
+    first_ban_rotation: Mapped[enums.FirstBanRotation] = mapped_column(
+        PICK_BAN_ROTATION_ENUM,
+        default=enums.FirstBanRotation.FIXED,
+        server_default=enums.FirstBanRotation.FIXED.value,
+    )
+    turn_timer_seconds: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    preset: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Side-agnostic step tokens: ban_first/ban_second/pick_first/pick_second/
+    # protect_first/protect_second/decider. Same shape as MapVetoConfig's
+    # ``veto_sequence_json``, plus the new ``protect_*`` tokens.
+    sequence_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    # How many rounds (maps of the series) this config's per-round bans repeat
+    # for. NULL means "resolve from the encounter's best_of at session time",
+    # matching today's flat-mode behavior; slot-mode/per-round configs set it
+    # implicitly via their slot count.
+    no_repeat_scope: Mapped[enums.PickBanNoRepeatScope] = mapped_column(
+        PICK_BAN_NO_REPEAT_SCOPE_ENUM,
+        default=enums.PickBanNoRepeatScope.NONE,
+        server_default=enums.PickBanNoRepeatScope.NONE.value,
+    )
+    # Generic attribute-uniqueness rule: reject a ban/protect that shares this
+    # attribute's value with another action already taken by the SAME side in
+    # the SAME round. NULL disables the check. Only "role" (hero catalog) is
+    # implemented today; the column stays a free string so a future kind can
+    # name its own attribute without a schema change.
+    unique_attribute_per_side_per_round: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Whether this config's rounds run through the "protect" step (see
+    # ``sequence_json``'s ``protect_*`` tokens) at all — kept separate from the
+    # sequence itself so the admin UI can offer the toggle before the organizer
+    # has authored a sequence with protect steps in it.
+    allow_protect: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
+
+    tournament: Mapped[Tournament] = relationship()
+    stage: Mapped["Stage | None"] = relationship()
+    items: Mapped[list["PickBanConfigItem"]] = relationship(
+        back_populates="config",
+        order_by="PickBanConfigItem.sort_order",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    slots: Mapped[list["PickBanConfigSlot"]] = relationship(
+        back_populates="config",
+        order_by="PickBanConfigSlot.position",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class PickBanConfigItem(db.TimeStampIntegerMixin):
+    """One catalog item (map or hero id) in a flat-mode :class:`PickBanConfig` pool."""
+
+    __tablename__ = "pick_ban_config_item"
+    __table_args__ = (
+        UniqueConstraint("pick_ban_config_id", "item_id", name="uq_pick_ban_config_item"),
+        {"schema": "tournament"},
+    )
+
+    pick_ban_config_id: Mapped[int] = mapped_column(ForeignKey(PickBanConfig.id, ondelete="CASCADE"), index=True)
+    # Soft reference: resolves against ``overwatch.map`` or ``overwatch.hero``
+    # depending on the owning config's ``kind`` — no FK, mirroring how
+    # ``EncounterMapPool``/entry rows already carry catalog ids without one per
+    # kind (a single FK column cannot target two different tables).
+    item_id: Mapped[int] = mapped_column(Integer(), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
+
+    config: Mapped[PickBanConfig] = relationship(back_populates="items")
+
+
+class PickBanConfigSlot(db.TimeStampIntegerMixin):
+    """One slot (one map's worth of candidates) of a slot-mode :class:`PickBanConfig`."""
+
+    __tablename__ = "pick_ban_config_slot"
+    __table_args__ = (
+        UniqueConstraint("pick_ban_config_id", "position", name="uq_pick_ban_config_slot_position"),
+        CheckConstraint("position >= 1", name="ck_pick_ban_config_slot_position_positive"),
+        {"schema": "tournament"},
+    )
+
+    pick_ban_config_id: Mapped[int] = mapped_column(ForeignKey(PickBanConfig.id, ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer(), nullable=False)
+    # Reserve item on a draw (map mode only; meaningless but harmless for hero
+    # configs, which never populate it).
+    reserve_item_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+
+    config: Mapped[PickBanConfig] = relationship(back_populates="slots")
+    items: Mapped[list["PickBanConfigSlotItem"]] = relationship(
+        back_populates="slot",
+        order_by="PickBanConfigSlotItem.sort_order",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class PickBanConfigSlotItem(db.TimeStampIntegerMixin):
+    """One candidate item of a :class:`PickBanConfigSlot`."""
+
+    __tablename__ = "pick_ban_config_slot_item"
+    __table_args__ = (
+        UniqueConstraint("pick_ban_config_slot_id", "item_id", name="uq_pick_ban_config_slot_item"),
+        {"schema": "tournament"},
+    )
+
+    pick_ban_config_slot_id: Mapped[int] = mapped_column(
+        ForeignKey(PickBanConfigSlot.id, ondelete="CASCADE"), index=True
+    )
+    item_id: Mapped[int] = mapped_column(Integer(), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
+
+    slot: Mapped[PickBanConfigSlot] = relationship(back_populates="items")
+
+
+class PickBanSession(db.TimeStampIntegerMixin):
+    """Lifecycle of one encounter's pick-ban room, for one ``kind``.
+
+    Generalizes ``EncounterVetoSession``. The key behavioral change:
+    ``resolved_sequence_json``/its matching :class:`PickBanEntry` rows are not
+    necessarily complete at creation. When ``first_ban_rotation`` is
+    result-dependent, each map's block is appended only once the *previous*
+    map's winner is known (via ``Match``, see the design doc §5.3/§5.5)."""
+
+    __tablename__ = "pick_ban_session"
+    __table_args__ = (
+        UniqueConstraint("encounter_id", "kind", name="uq_pick_ban_session_encounter_kind"),
+        CheckConstraint("first_side IS NULL OR first_side IN ('home', 'away')", name="ck_pick_ban_session_first_side"),
+        {"schema": "tournament"},
+    )
+
+    encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
+    kind: Mapped[enums.PickBanKind] = mapped_column(PICK_BAN_KIND_ENUM)
+    config_id: Mapped[int | None] = mapped_column(ForeignKey(PickBanConfig.id, ondelete="SET NULL"), nullable=True)
+    # Nullable: NULL exactly while a round is `awaiting_choice`
+    # (first_ban_rotation=result_loser_choice and nobody has called
+    # elect_opener yet for the round currently being appended).
+    first_side: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
+    seed_source: Mapped[enums.VetoSeedSource] = mapped_column(PICK_BAN_SEED_SOURCE_ENUM)
+    home_seed: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    away_seed: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    resolved_sequence_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    slot_reserves_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    turn_timer_seconds: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    status: Mapped[enums.MapVetoSessionStatus] = mapped_column(
+        PICK_BAN_SESSION_STATUS_ENUM,
+        default=enums.MapVetoSessionStatus.ACTIVE,
+        server_default=enums.MapVetoSessionStatus.ACTIVE.value,
+    )
+    # True exactly while the session is waiting on an `elect_opener` call for
+    # the round it is about to append (result_loser_choice rotation only).
+    awaiting_choice: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
+    # Who is entitled to call `elect_opener` while `awaiting_choice` is true —
+    # the loser of the round that just triggered `RotationNeedsChoice`
+    # (`result_loser_choice` is the only rotation that ever sets this). NULL
+    # whenever `awaiting_choice` is false. Without it `elect_opener` could not
+    # tell the loser's captain from the winner's, and either could dictate the
+    # next round's opener.
+    pending_loser_side: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
+    current_step_started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
+
+    encounter: Mapped[Encounter] = relationship()
+    config: Mapped[PickBanConfig | None] = relationship()
+
+
+class PickBanEntry(db.TimeStampIntegerMixin):
+    """One catalog item's state within a :class:`PickBanSession`.
+
+    Generalizes ``EncounterMapPool``. ``item_id`` resolves against the map or
+    hero catalog per the owning session's ``kind``.
+    """
+
+    __tablename__ = "pick_ban_entry"
+    __table_args__ = ({"schema": "tournament"},)
+
+    session_id: Mapped[int] = mapped_column(ForeignKey(PickBanSession.id, ondelete="CASCADE"), index=True)
+    item_id: Mapped[int] = mapped_column(Integer(), index=True)
+    order: Mapped[int] = mapped_column(Integer(), default=0)
+    action_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    # Which map-of-the-series this entry belongs to. For map-kind entries this
+    # IS the slot/round number (1-based); for hero-kind entries it is the same
+    # round number of the map whose hero-ban phase this entry is part of — the
+    # two kinds' sessions stay in lockstep by round number, which is how the
+    # ledger correlates "map N's hero bans" across a series.
+    round: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    picked_by: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
+    status: Mapped[enums.MapPoolEntryStatus] = mapped_column(
+        PICK_BAN_ENTRY_STATUS_ENUM,
+        default=enums.MapPoolEntryStatus.AVAILABLE,
+        server_default=enums.MapPoolEntryStatus.AVAILABLE.value,
+    )
+    team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="SET NULL"), nullable=True, index=True)
+    # Set together with status=PROTECTED: which side protected it, so the
+    # opponent's ban is rejected but the protecting side's own later actions
+    # are unaffected. Cleared (status back to AVAILABLE) at round close if the
+    # round's config does not carry the protection into the ledger.
+    protected_by: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
+
+    session: Mapped[PickBanSession] = relationship()
+    team: Mapped["Team | None"] = relationship()
+
+
+class EncounterPickBanLedger(db.TimeStampIntegerMixin):
+    """Cross-round memory: every item banned/protected anywhere in this
+    encounter's series, for a given ``kind``.
+
+    Read when a new round's candidate pool is built (excluded per the owning
+    config's ``no_repeat_scope``); written once when a round's bans/protects
+    commit. Never read or written mid-round.
+    """
+
+    __tablename__ = "encounter_pick_ban_ledger"
+    __table_args__ = (
+        UniqueConstraint(
+            "encounter_id", "kind", "item_id", "banned_by_side", name="uq_encounter_pick_ban_ledger_entry"
+        ),
+        {"schema": "tournament"},
+    )
+
+    encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
+    kind: Mapped[enums.PickBanKind] = mapped_column(PICK_BAN_KIND_ENUM)
+    item_id: Mapped[int] = mapped_column(Integer(), index=True)
+    # The side that banned/protected it. Required (not nullable) even for a
+    # ``no_repeat_scope=encounter`` (global) rule: the scope decides at READ
+    # time whether to filter by side or ignore it, so one ledger shape serves
+    # both scopes without a second nullable-vs-not column pair.
+    banned_by_side: Mapped[enums.MapPickSide] = mapped_column(PICK_BAN_SIDE_ENUM)
+    round: Mapped[int] = mapped_column(Integer())
+
+    encounter: Mapped[Encounter] = relationship()

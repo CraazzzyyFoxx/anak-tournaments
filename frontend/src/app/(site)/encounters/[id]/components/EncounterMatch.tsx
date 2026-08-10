@@ -92,14 +92,16 @@ const EncounterMatch = ({
               <Skeleton className="h-6 w-56" />
             )}
             <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[color:var(--aqt-fg-muted)]">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="text-[color:var(--aqt-fg-faint)]">
-                  {t("encounters.match.playtime")}
+              {match.time != null ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[color:var(--aqt-fg-faint)]">
+                    {t("encounters.match.playtime")}
+                  </span>
+                  <span className="aqt-tnum font-semibold text-[color:var(--aqt-fg)]">
+                    {Math.floor(match.time / 60)}m {(match.time % 60).toFixed(0)}s
+                  </span>
                 </span>
-                <span className="aqt-tnum font-semibold text-[color:var(--aqt-fg)]">
-                  {Math.floor(match.time / 60)}m {(match.time % 60).toFixed(0)}s
-                </span>
-              </span>
+              ) : null}
               {match.log_name ? (
                 <span className="inline-flex items-center gap-1.5">
                   <span className="aqt-tnum">{match.log_name}</span>

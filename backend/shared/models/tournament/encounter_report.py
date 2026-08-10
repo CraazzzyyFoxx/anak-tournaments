@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 __all__ = (
     "EncounterCaptainReport",
     "EncounterMapCode",
+    "EncounterMapReport",
     "EncounterReportForm",
 )
 
@@ -112,6 +113,42 @@ class EncounterMapCode(db.TimeStampIntegerMixin):
 
     report: Mapped[EncounterCaptainReport] = relationship(back_populates="map_codes")
     map: Mapped["Map | None"] = relationship()
+
+
+class EncounterMapReport(db.TimeStampIntegerMixin):
+    """One captain's independent claim of a single played map's winner.
+
+    Submitted immediately after that map concludes — unlike
+    ``EncounterCaptainReport``, which is one row per captain for the WHOLE
+    series, filed only once it has ended. Both sides' reports for the same map
+    agreeing resolves it (writes a ``Match`` row, ``source=captain_report``);
+    disagreeing leaves it disputed for an admin to settle. This is what lets
+    the pick-ban engine advance to the next map without waiting for the
+    series-level report. See
+    ``docs/plans/2026-08-09-generic-pickban-engine.md`` §5.5, §5.6, Decision 13.
+    """
+
+    __tablename__ = "encounter_map_report"
+    __table_args__ = (
+        UniqueConstraint(
+            "encounter_id", "map_id", "team_id", name="uq_encounter_map_report_encounter_map_team"
+        ),
+        CheckConstraint("home_score >= 0 AND away_score >= 0", name="ck_encounter_map_report_scores"),
+        {"schema": "tournament"},
+    )
+
+    encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
+    map_id: Mapped[int] = mapped_column(ForeignKey("overwatch.map.id", ondelete="CASCADE"), index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
+    reporter_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
+    # In the encounter's home/away orientation, same convention as
+    # ``EncounterCaptainReport``, so the two reports for a map compare directly.
+    home_score: Mapped[int] = mapped_column(Integer())
+    away_score: Mapped[int] = mapped_column(Integer())
+
+    encounter: Mapped[Encounter] = relationship()
+    team: Mapped[Team] = relationship()
+    reporter: Mapped["User | None"] = relationship()
 
 
 class EncounterReportForm(db.TimeStampIntegerMixin):

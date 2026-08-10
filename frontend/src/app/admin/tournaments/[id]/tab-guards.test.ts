@@ -38,6 +38,7 @@ describe("allowedTab", () => {
     ["logs", true],
     ["settings", false],
     ["veto", false],
+    ["pickBan", false],
     ["registration", false],
     ["draft", false]
   ])("without permissions: %s → %s", (tab, expected) => {
@@ -58,6 +59,11 @@ describe("allowedTab", () => {
   test("veto follows canUpdateEncounter alone", () => {
     expect(allowedTab("veto", { ...NO_PERMS, canUpdateEncounter: true })).toBe(true);
     expect(allowedTab("veto", { ...ALL_PERMS, canUpdateEncounter: false })).toBe(false);
+  });
+
+  test("pickBan follows canUpdateEncounter alone", () => {
+    expect(allowedTab("pickBan", { ...NO_PERMS, canUpdateEncounter: true })).toBe(true);
+    expect(allowedTab("pickBan", { ...ALL_PERMS, canUpdateEncounter: false })).toBe(false);
   });
 
   test("registration follows canTeamRead alone", () => {

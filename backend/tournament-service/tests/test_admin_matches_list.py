@@ -130,8 +130,15 @@ class PredicatePartitioning(TestCase):
     def test_workspace_is_always_scoped(self):
         """Without it the list spans every tenant in the installation."""
         builder = svc._Query(1, _params())
-        self.assertEqual(1, len(builder.scope_predicates()))
+        self.assertEqual(2, len(builder.scope_predicates()), "workspace + source=log_parser")
         self.assertIn("workspace_id", str(builder.scope_predicates()[0]))
+
+    def test_source_is_always_scoped_to_log_parser(self):
+        """A source=captain_report Match has no log/stats; this view's unit is
+        one played map the log parser produced (module docstring) — it must
+        never leak the other source in, scope or no scope."""
+        builder = svc._Query(1, _params())
+        self.assertIn("match.source", str(builder.scope_predicates()[1]).lower())
 
     def test_provenance_filters_are_not_scope(self):
         builder = svc._Query(
@@ -144,7 +151,9 @@ class PredicatePartitioning(TestCase):
                 unlinked_only=True,
             ),
         )
-        self.assertEqual(4, len(builder.scope_predicates()), "workspace + tournament + encounter + map")
+        self.assertEqual(
+            5, len(builder.scope_predicates()), "workspace + source + tournament + encounter + map"
+        )
         self.assertEqual(2, len(builder.provenance_predicates()))
 
     def test_no_filters_means_no_provenance_predicates(self):

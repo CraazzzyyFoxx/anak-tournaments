@@ -356,6 +356,7 @@ class MapPoolEntryStatus(StrEnum):
     PICKED = "picked"
     BANNED = "banned"
     PLAYED = "played"
+    PROTECTED = "protected"
 
 
 class MapPickSide(StrEnum):
@@ -390,6 +391,44 @@ class MapVetoMode(StrEnum):
 class FirstBanRotation(StrEnum):
     FIXED = "fixed"
     ALTERNATE = "alternate"
+    RESULT_WINNER_FIRST = "result_winner_first"
+    RESULT_LOSER_FIRST = "result_loser_first"
+    RESULT_LOSER_CHOICE = "result_loser_choice"
+
+
+class PickBanKind(StrEnum):
+    """Which catalog a :class:`PickBanConfig`/session pool draws from."""
+
+    MAP = "map"
+    HERO = "hero"
+
+
+class PickBanNoRepeatScope(StrEnum):
+    """Cross-round memory rule for :class:`EncounterPickBanLedger` exclusion.
+
+    ``NONE``: no cross-round memory (today's flat/slot veto behavior).
+    ``ENCOUNTER``: an item banned/protected by EITHER side, anywhere earlier in
+    this encounter's series, is excluded from every later round's pool.
+    ``ENCOUNTER_SAME_SIDE``: excluded only for the side that banned/protected
+    it; the opponent may still target it.
+    """
+
+    NONE = "none"
+    ENCOUNTER = "encounter"
+    ENCOUNTER_SAME_SIDE = "encounter_same_side"
+
+
+class MatchSource(StrEnum):
+    """Provenance of a :class:`~shared.models.matches.match.Match` row.
+
+    ``LOG_PARSER``: written by ``MatchLogFlow`` from an uploaded OW log —
+    ``time``/``log_name`` are populated, kill-feed/stats may follow.
+    ``CAPTAIN_REPORT``: written from a per-map dual captain confirmation with
+    no log — ``time``/``log_name`` stay NULL, there is no kill-feed/stats.
+    """
+
+    LOG_PARSER = "log_parser"
+    CAPTAIN_REPORT = "captain_report"
 
 
 class EncounterStatus(StrEnum):

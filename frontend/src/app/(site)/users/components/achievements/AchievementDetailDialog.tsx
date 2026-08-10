@@ -18,7 +18,7 @@ import { classifyRarity, localizedText, type Rarity } from "./rarity";
 // `locale` is required, matching `formatDateRange` in @/lib/utils: passing
 // `undefined` here formatted match dates in the *browser* locale, so a Russian
 // UI rendered "Jul 30, 2026" on an en-US machine.
-const formatMatchDate = (time: number, locale: string): string => {
+const formatMatchDate = (time: number | null, locale: string): string => {
   if (!time) return "";
   const ms = time > 1e12 ? time : time * 1000;
   const d = new Date(ms);

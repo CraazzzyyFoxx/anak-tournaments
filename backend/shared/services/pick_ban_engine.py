@@ -1,0 +1,291 @@
+"""Generic pick-ban step engine: pure functions shared by map veto and hero
+bans. Generalizes ``tournament-service/src/services/encounter/{veto_session,
+map_veto}.py`` to be pool-agnostic (``kind``) and able to run a session whose
+sequence grows round by round instead of being fully precomputed at creation.
+
+See ``docs/plans/2026-08-09-generic-pickban-engine.md`` for the design and
+decision log this module implements. Deliberately free of any AsyncSession/DB
+call — every function here takes plain data and returns plain data or raises
+``ValueError`` (the RPC layer translates to HTTP), so the whole engine is
+unit-testable without a database.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+from shared.core import enums
+
+# Side-agnostic step tokens. Adds `protect_*` to the existing map-veto
+# vocabulary (`ban_first`/`ban_second`/`pick_first`/`pick_second`/`decider`).
+PICK_BAN_SEQUENCE_TOKENS = frozenset(
+    {
+        "ban_first",
+        "ban_second",
+        "pick_first",
+        "pick_second",
+        "protect_first",
+        "protect_second",
+        "decider",
+    }
+)
+
+Side = Literal["home", "away"]
+Action = Literal["ban", "pick", "protect", "decider"]
+
+
+@dataclass(frozen=True)
+class ParsedStep:
+    token: str
+    action: Action
+    side: Side | None  # None only for "decider"
+
+
+def parse_step_token(token: str) -> ParsedStep:
+    """Resolved tokens are e.g. ``ban_home``/``protect_away``/``decider``."""
+    if token == "decider":
+        return ParsedStep(token, "decider", None)
+    action_part, side_part = token.split("_", 1)
+    action: Action = action_part if action_part in ("ban", "pick", "protect") else "ban"  # type: ignore[assignment]
+    side: Side = "away" if side_part == "away" else "home"
+    return ParsedStep(token, action, side)
+
+
+def resolve_sequence_tokens(sequence: list[str], first_side: enums.MapPickSide | str) -> list[str]:
+    """Map side-agnostic ``*_first``/``*_second`` tokens onto home/away.
+
+    Identical to ``veto_session.resolve_sequence_tokens``; kept here so both
+    map and hero configs share one implementation.
+    """
+    first = first_side.value if isinstance(first_side, enums.MapPickSide) else first_side
+    second = "away" if first == "home" else "home"
+    resolved: list[str] = []
+    for token in sequence:
+        if token == "decider":
+            resolved.append("decider")
+            continue
+        action, slot = token.split("_", 1)
+        resolved.append(f"{action}_{first if slot == 'first' else second}")
+    return resolved
+
+
+# ── entry-shaped protocol ────────────────────────────────────────────────────
+#
+# The engine works over any object exposing these attributes — both
+# `PickBanEntry` (new) and, during the migration window, `EncounterMapPool`
+# (legacy) satisfy it structurally, so the same functions serve both without a
+# DB-model import here (keeps this module DB-free).
+
+
+class EntryLike:
+    """Structural shape the engine reads/writes. Not instantiated directly —
+    documents the attributes `PickBanEntry`/`EncounterMapPool` must have."""
+
+    id: int
+    item_id: int
+    round: int | None
+    status: str  # enums.MapPoolEntryStatus value
+    action_index: int | None
+    order: int
+    picked_by: str | None
+    protected_by: str | None
+
+
+def get_current_step(sequence: list[str], pool: list) -> tuple[int, str] | None:
+    """Current step index + token, or None once the sequence is exhausted.
+
+    Identical arithmetic to today's engine: count everything not `available`.
+    Unchanged deliberately — see design §5.2 ("the smallest possible change to
+    a well-tested core").
+    """
+    completed = sum(1 for e in pool if e.status != enums.MapPoolEntryStatus.AVAILABLE.value)
+    if completed >= len(sequence):
+        return None
+    return completed, sequence[completed]
+
+
+def current_round(pool: list) -> int | None:
+    """The round (map-of-the-series) the engine is resolving, or None in flat
+    mode / once complete. Generalizes ``map_veto.current_slot`` — same
+    arithmetic, `slot` renamed `round` for a pool-agnostic reading."""
+    rounds = [e.round for e in pool if e.status == enums.MapPoolEntryStatus.AVAILABLE.value and e.round is not None]
+    return min(rounds) if rounds else None
+
+
+def in_current_round(entry, active_round: int | None) -> bool:
+    """Generalizes ``map_veto.in_current_slot``. `active_round is None` is an
+    identity match — a flat pool (no rounds) has no round to be outside of."""
+    return active_round is None or entry.round == active_round
+
+
+def is_entry_bannable(entry, *, active_round: int | None) -> bool:
+    """Whether `entry` may be targeted by a `ban` right now: available, in the
+    round in play, and not protected."""
+    if entry.status != enums.MapPoolEntryStatus.AVAILABLE.value:
+        return False
+    if entry.protected_by is not None:
+        return False
+    return in_current_round(entry, active_round)
+
+
+# ── ledger exclusion (no-repeat) ─────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class LedgerRow:
+    item_id: int
+    banned_by_side: str
+
+
+def excluded_item_ids(
+    ledger: list[LedgerRow],
+    *,
+    scope: enums.PickBanNoRepeatScope,
+    side: Side | None = None,
+) -> set[int]:
+    """Item ids a new round's candidate pool must NOT include, per `scope`.
+
+    ``NONE``: nothing excluded (today's behavior).
+    ``ENCOUNTER``: every item the ledger has anywhere, regardless of side —
+    Doc 1's "nobody may re-ban a hero for the whole match".
+    ``ENCOUNTER_SAME_SIDE``: only items THIS side banned/protected earlier —
+    Doc 2's "a team can't repeat its own ban; banning the opponent's earlier
+    ban is fine". Requires `side`.
+    """
+    if scope == enums.PickBanNoRepeatScope.NONE:
+        return set()
+    if scope == enums.PickBanNoRepeatScope.ENCOUNTER:
+        return {row.item_id for row in ledger}
+    if side is None:
+        raise ValueError("side is required for ENCOUNTER_SAME_SIDE exclusion")
+    return {row.item_id for row in ledger if row.banned_by_side == side}
+
+
+# ── role/attribute uniqueness within one side's actions this round ──────────
+
+
+def violates_unique_attribute(
+    *,
+    candidate_attribute,
+    acting_side: Side,
+    round_number: int | None,
+    committed_this_round: list[tuple[Side, int, object]],
+) -> bool:
+    """True if `acting_side` already has a committed ban/protect THIS round
+    whose target shares `candidate_attribute` (e.g. hero role).
+
+    `committed_this_round` is `(side, round, attribute_value)` for every
+    ban/protect already applied in the pool — the caller filters to the active
+    round and passes only ban/protect entries (not picks/deciders, which carry
+    no role restriction in either rulebook).
+    """
+    if candidate_attribute is None:
+        return False
+    return any(
+        side == acting_side and round_ == round_number and attr == candidate_attribute
+        for side, round_, attr in committed_this_round
+    )
+
+
+# ── result-dependent rotation: who opens round N+1 ──────────────────────────
+
+
+class RotationNeedsChoice(Exception):
+    """Raised by `resolve_round_opener` when the rotation is
+    `result_loser_choice` and no choice has been made yet — the caller must
+    create the round with `first_side=None`, `awaiting_choice=True` and wait
+    for an `elect_opener` action instead of resolving a side here."""
+
+
+def resolve_round_opener(
+    *,
+    rotation: enums.FirstBanRotation,
+    round_number: int,
+    session_first_side: Side,
+    previous_round_winner: Side | None,
+    previous_round_loser_choice: Side | None,
+) -> Side:
+    """Who opens `round_number`'s bans (the side `_first` maps onto).
+
+    Round 1 always uses `session_first_side` (seed resolution — unrelated to
+    any rotation setting, since there is no previous map). Round 2+ dispatches
+    on `rotation`:
+
+    - `fixed`: same side every round (`session_first_side`).
+    - `alternate`: flips each round from `session_first_side`.
+    - `result_winner_first` / `result_loser_first`: requires
+      `previous_round_winner` (raises `ValueError` if the caller invokes this
+      before that map's result is known — a caller bug, not a user error).
+    - `result_loser_choice`: requires `previous_round_loser_choice` — if it is
+      `None`, raises `RotationNeedsChoice` so the caller creates the round in
+      `awaiting_choice` state instead of resolving a side.
+    """
+    if round_number <= 1:
+        return session_first_side
+
+    if rotation == enums.FirstBanRotation.FIXED:
+        return session_first_side
+    if rotation == enums.FirstBanRotation.ALTERNATE:
+        flips = round_number - 1
+        return session_first_side if flips % 2 == 0 else _other(session_first_side)
+    if rotation in (enums.FirstBanRotation.RESULT_WINNER_FIRST, enums.FirstBanRotation.RESULT_LOSER_FIRST):
+        if previous_round_winner is None:
+            raise ValueError("previous_round_winner is required for a result-dependent rotation")
+        return (
+            previous_round_winner
+            if rotation == enums.FirstBanRotation.RESULT_WINNER_FIRST
+            else _other(previous_round_winner)
+        )
+    if rotation == enums.FirstBanRotation.RESULT_LOSER_CHOICE:
+        if previous_round_loser_choice is None:
+            raise RotationNeedsChoice()
+        return previous_round_loser_choice
+    raise ValueError(f"unhandled rotation {rotation!r}")
+
+
+def _other(side: Side) -> Side:
+    return "away" if side == "home" else "home"
+
+
+# ── per-map result reconciliation (EncounterMapReport -> Match) ─────────────
+
+
+@dataclass(frozen=True)
+class MapReportPair:
+    home_report: tuple[int, int] | None  # (home_score, away_score) as the HOME captain reported it
+    away_report: tuple[int, int] | None  # as the AWAY captain reported it
+
+
+@dataclass(frozen=True)
+class ReconciliationResult:
+    resolved: tuple[int, int] | None  # (home_score, away_score) if both agree
+    disputed: bool
+
+
+def reconcile_map_reports(pair: MapReportPair) -> ReconciliationResult:
+    """Agree -> resolved score. Present but disagree -> disputed. Either
+    missing -> neither (still waiting on a captain).
+
+    Mirrors `captain.set_encounter_result`'s series-level reconciliation
+    (Decision log #10): "both reports agreeing" is a resolution path there
+    too — this is the same rule applied to one map instead of the whole
+    series, not a new reconciliation concept.
+    """
+    if pair.home_report is None or pair.away_report is None:
+        return ReconciliationResult(resolved=None, disputed=False)
+    if pair.home_report == pair.away_report:
+        return ReconciliationResult(resolved=pair.home_report, disputed=False)
+    return ReconciliationResult(resolved=None, disputed=True)
+
+
+def winner_side(home_score: int, away_score: int) -> Side | None:
+    """None on a drawn map score (e.g. a hybrid 0-0 draw per both rulebooks'
+    §3.1) — callers must not create a result-dependent next round from a draw
+    without their own tiebreak handling; this function only reports what the
+    score says."""
+    if home_score > away_score:
+        return "home"
+    if away_score > home_score:
+        return "away"
+    return None

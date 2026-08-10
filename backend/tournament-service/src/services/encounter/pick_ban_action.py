@@ -1,0 +1,292 @@
+"""Generic pick-ban action engine: generalizes ``map_veto.py``'s
+``apply_veto_action``/``perform_veto_action``/``build_map_pool_state`` to run
+over a :class:`~shared.models.tournament.pick_ban.PickBanSession`, any
+``kind``, with the two rule additions neither rulebook could skip:
+``protect`` as a third action alongside ban/pick, and an optional
+role/attribute-uniqueness check within one side's actions in the active round.
+
+Design: docs/plans/2026-08-09-generic-pickban-engine.md §5.3-§5.4.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.core import http_status as status
+from shared.core.enums import MapPoolEntryStatus, MapVetoSessionStatus, PickBanKind
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.catalog.hero import Hero
+from shared.models.tournament.encounter import Encounter
+from shared.models.tournament.pick_ban import EncounterPickBanLedger, PickBanConfig, PickBanEntry, PickBanSession
+from shared.services import pick_ban_engine as engine
+from src.services.encounter import pick_ban_session as pick_ban_session_service
+from src.services.encounter.realtime_commit import register_map_veto_realtime_update
+
+
+async def _load_pool(session: AsyncSession, pick_ban_id: int) -> list[PickBanEntry]:
+    result = await session.execute(
+        select(PickBanEntry).where(PickBanEntry.session_id == pick_ban_id).order_by(PickBanEntry.order)
+    )
+    return list(result.scalars().all())
+
+
+async def _attribute_lookup(session: AsyncSession, kind: PickBanKind, item_ids: list[int]) -> dict[int, Any]:
+    """``{item_id: attribute_value}`` for the configured
+    ``unique_attribute_per_side_per_round`` (only ``"role"`` today, resolved
+    against the hero catalog — a ``kind=map`` config never sets this option,
+    so this is never called with `kind=map`)."""
+    if kind != PickBanKind.HERO or not item_ids:
+        return {}
+    result = await session.execute(select(Hero.id, Hero.type).where(Hero.id.in_(item_ids)))
+    return {row[0]: row[1].value for row in result.all()}
+
+
+def serialize_pick_ban_entry(entry: PickBanEntry) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "item_id": entry.item_id,
+        "round": entry.round,
+        "order": entry.order,
+        "action_index": entry.action_index,
+        "picked_by": entry.picked_by,
+        "protected_by": entry.protected_by,
+        "status": entry.status,
+        "team_id": entry.team_id,
+    }
+
+
+def serialize_pick_ban_session(pick_ban: PickBanSession) -> dict[str, Any]:
+    return {
+        "id": pick_ban.id,
+        "kind": pick_ban.kind,
+        "status": pick_ban.status,
+        "first_side": pick_ban.first_side,
+        "awaiting_choice": pick_ban.awaiting_choice,
+        "pending_loser_side": pick_ban.pending_loser_side,
+        "seed_source": pick_ban.seed_source,
+        "home_seed": pick_ban.home_seed,
+        "away_seed": pick_ban.away_seed,
+        "turn_timer_seconds": pick_ban.turn_timer_seconds,
+        "started_at": pick_ban.started_at.isoformat() if pick_ban.started_at else None,
+        "current_step_started_at": (
+            pick_ban.current_step_started_at.isoformat() if pick_ban.current_step_started_at else None
+        ),
+    }
+
+
+def build_unavailable_state(reason: str) -> dict[str, Any]:
+    return {
+        "session": None,
+        "reason": reason,
+        "sequence": [],
+        "pool": [],
+        "viewer_side": None,
+        "viewer_can_act": False,
+        "allowed_actions": [],
+        "current_step_index": None,
+        "current_step": None,
+        "expected_action": None,
+        "turn_side": None,
+        "current_round": None,
+        "is_complete": False,
+    }
+
+
+def build_pick_ban_state(
+    sequence: list[str],
+    pool: list[PickBanEntry],
+    *,
+    viewer_side: str | None,
+    pick_ban: PickBanSession | None,
+) -> dict[str, Any]:
+    """Pure state builder — same shape as ``map_veto.build_map_pool_state``,
+    generalized to pool-agnostic ``pick_ban`` sessions with `protect` steps."""
+    current_step = engine.get_current_step(sequence, pool)
+    current_step_value: str | None = None
+    expected_action: str | None = None
+    turn_side: str | None = None
+    allowed_actions: list[str] = []
+
+    if current_step is not None:
+        _, current_step_value = current_step
+        if current_step_value == "decider":
+            expected_action = "decider"
+        else:
+            parsed = engine.parse_step_token(current_step_value)
+            expected_action = parsed.action
+            turn_side = parsed.side
+
+        if viewer_side is not None and turn_side == viewer_side and expected_action in {"pick", "ban", "protect"}:
+            allowed_actions = [expected_action]
+
+    return {
+        "session": serialize_pick_ban_session(pick_ban) if pick_ban is not None else None,
+        "sequence": list(sequence),
+        "pool": [serialize_pick_ban_entry(entry) for entry in pool],
+        "viewer_side": viewer_side,
+        "viewer_can_act": bool(allowed_actions),
+        "allowed_actions": allowed_actions,
+        "current_step_index": current_step[0] if current_step is not None else None,
+        "current_step": current_step_value,
+        "expected_action": expected_action,
+        "turn_side": turn_side,
+        "current_round": engine.current_round(pool),
+        "is_complete": current_step is None,
+    }
+
+
+async def get_pick_ban_state(
+    session: AsyncSession,
+    encounter_id: int,
+    kind: PickBanKind,
+    *,
+    viewer_side: str | None = None,
+) -> dict[str, Any]:
+    enc_result = await session.execute(select(Encounter).where(Encounter.id == encounter_id))
+    encounter = enc_result.scalar_one_or_none()
+    if encounter is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
+
+    pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, encounter, kind)
+    if pick_ban is None:
+        # Mirrors veto_session.unavailable_reason's contract: names WHY, never
+        # a bare 400. Reused verbatim for kind=map; kind=hero gets the same
+        # reason set (its config cascade is identical in shape).
+        from src.services.encounter import veto_session as veto_session_service
+
+        reason = await veto_session_service.unavailable_reason(session, encounter)
+        return build_unavailable_state(reason)
+
+    pool = await _load_pool(session, pick_ban.id)
+    return build_pick_ban_state(pick_ban.resolved_sequence_json, pool, viewer_side=viewer_side, pick_ban=pick_ban)
+
+
+def apply_pick_ban_action(
+    pick_ban: PickBanSession,
+    pool: list[PickBanEntry],
+    *,
+    captain_side: str,
+    item_id: int,
+    action: str,
+    attribute_lookup: dict[int, Any],
+    unique_attribute: str | None,
+    now: datetime,
+) -> PickBanEntry:
+    """Pure step: validate and apply one ban/pick/protect. Generalizes
+    ``map_veto.apply_veto_action`` with the `protect` action and the optional
+    role/attribute-uniqueness check."""
+    step = engine.get_current_step(pick_ban.resolved_sequence_json, pool)
+    if step is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban sequence is already complete")
+
+    _, step_token = step
+    parsed = engine.parse_step_token(step_token)
+    if action != parsed.action:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Expected action '{parsed.action}', got '{action}'"
+        )
+    if parsed.side and captain_side != parsed.side:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"It's {parsed.side} team's turn, not {captain_side}"
+        )
+
+    active_round = engine.current_round(pool)
+    entry = next(
+        (e for e in pool if e.item_id == item_id and engine.in_current_round(e, active_round)),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Item is not a candidate this round")
+    if action == "ban" and not engine.is_entry_bannable(entry, active_round=active_round):
+        reason = "protected" if entry.protected_by is not None else entry.status
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Item is {reason}")
+    if action in ("pick", "protect") and entry.status != MapPoolEntryStatus.AVAILABLE.value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Item is already {entry.status}")
+
+    if action in ("ban", "protect") and unique_attribute is not None:
+        committed = [
+            (e.picked_by or e.protected_by, e.round, attribute_lookup.get(e.item_id))
+            for e in pool
+            if e.status in (MapPoolEntryStatus.BANNED.value, MapPoolEntryStatus.PROTECTED.value)
+        ]
+        if engine.violates_unique_attribute(
+            candidate_attribute=attribute_lookup.get(item_id),
+            acting_side=captain_side,
+            round_number=active_round,
+            committed_this_round=committed,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Your side already banned/protected an item with this attribute this round",
+            )
+
+    entry.action_index = sum(1 for e in pool if e.status != MapPoolEntryStatus.AVAILABLE.value)
+    if action == "ban":
+        entry.status = MapPoolEntryStatus.BANNED.value
+        entry.picked_by = captain_side
+    elif action == "protect":
+        entry.status = MapPoolEntryStatus.PROTECTED.value
+        entry.protected_by = captain_side
+    elif action == "pick":
+        entry.status = MapPoolEntryStatus.PICKED.value
+        entry.picked_by = captain_side
+        entry.order = sum(1 for e in pool if e.status == MapPoolEntryStatus.PICKED.value)
+
+    pick_ban.current_step_started_at = now
+    if engine.get_current_step(pick_ban.resolved_sequence_json, pool) is None:
+        pick_ban.status = MapVetoSessionStatus.COMPLETED.value
+    return entry
+
+
+async def perform_pick_ban_action(
+    session: AsyncSession,
+    encounter_id: int,
+    kind: PickBanKind,
+    captain_side: str,
+    item_id: int,
+    action: str,
+) -> PickBanEntry:
+    pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
+    if pick_ban is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban session is not initialized")
+    if pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Pick-ban session is {pick_ban.status}")
+
+    pool = await _load_pool(session, pick_ban.id)
+    config = await session.get(PickBanConfig, pick_ban.config_id) if pick_ban.config_id else None
+    attribute_lookup = (
+        await _attribute_lookup(session, kind, [e.item_id for e in pool])
+        if config is not None and config.unique_attribute_per_side_per_round
+        else {}
+    )
+
+    entry = apply_pick_ban_action(
+        pick_ban,
+        pool,
+        captain_side=captain_side,
+        item_id=item_id,
+        action=action,
+        attribute_lookup=attribute_lookup,
+        unique_attribute=config.unique_attribute_per_side_per_round if config else None,
+        now=datetime.now(UTC),
+    )
+
+    if action in ("ban", "protect") and config is not None and config.no_repeat_scope != "none":
+        session.add(
+            EncounterPickBanLedger(
+                encounter_id=encounter_id,
+                kind=kind,
+                item_id=item_id,
+                banned_by_side=captain_side,
+                round=entry.round or 0,
+            )
+        )
+
+    register_map_veto_realtime_update(session, encounter_id, kind=kind.value)
+    await session.commit()
+    await session.refresh(entry)
+    return entry

@@ -127,8 +127,8 @@ export interface MatchWithUserStats {
   home_team_id: number | null;
   away_team_id: number | null;
   score: Score;
-  time: number;
-  log_name: string;
+  time: number | null;
+  log_name: string | null;
   encounter_id: number;
   map_id: number;
   code: string | null;

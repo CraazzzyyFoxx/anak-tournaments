@@ -38,6 +38,12 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/admin/veto-configs/{config_id}", Queue: "rpc.tournament.admin_veto_config_delete", IDParam: "config_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/veto-session/reset", Queue: "rpc.tournament.admin_veto_session_reset", IDParam: "encounter_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/veto-act", Queue: "rpc.tournament.admin_veto_act", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
+	// generic pick-ban config CRUD (map + hero, docs/plans/2026-08-09-generic-pickban-engine.md).
+	// Same cascade key as the veto-configs routes above, additionally partitioned
+	// by `kind` in the body/response.
+	{Method: "GET", Pattern: "/api/v1/admin/tournaments/{tournament_id}/pick-ban-configs", Queue: "rpc.tournament.admin_pick_ban_config_list", IDParam: "tournament_id", Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/admin/tournaments/{tournament_id}/pick-ban-configs", Queue: "rpc.tournament.admin_pick_ban_config_upsert", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/v1/admin/pick-ban-configs/{config_id}", Queue: "rpc.tournament.admin_pick_ban_config_delete", IDParam: "config_id", Auth: edge.AuthRequired},
 	// match report form (docs/plans/2026-08-04-configurable-match-report-form.md) —
 	// the per-tournament captain-report field config. Worker enforces workspace
 	// "match"/"read" for the get and "match"/"update" for the upsert.

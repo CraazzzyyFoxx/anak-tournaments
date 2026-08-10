@@ -1,16 +1,19 @@
-"""After-commit realtime publishing for encounter map-veto updates.
+"""After-commit realtime publishing for encounter map-veto / hero-ban updates.
 
 Encounter-scoped sibling of ``src/services/tournament/realtime_commit.py``.
 Where the tournament module fans bracket/results/structure changes out to the
-``tournament:{id}:bracket`` topic, this module emits a thin ``map_veto.updated``
-signal on the public ``encounter:{id}:map-veto`` topic. The payload carries no
-per-viewer state (``viewer_side`` is presentation-only): subscribers refetch the
-map-pool state on receipt.
+``tournament:{id}:bracket`` topic, this module emits a thin ``updated`` signal
+per pick-ban ``kind`` — ``encounter:{id}:map-veto`` (unchanged, kind="map") or
+``encounter:{id}:pick-ban:hero`` (kind="hero"). The payload carries no
+per-viewer state (``viewer_side`` is presentation-only): subscribers refetch
+the relevant pool state on receipt. Two separate topics, not one parametrized
+by kind, so the legacy map-veto room's subscribers are never woken by a
+hero-only change and vice versa (design: docs/plans/2026-08-09-generic-pickban-engine.md).
 
 The flow mirrors the tournament module exactly:
-1. A write path calls ``register_map_veto_realtime_update(session, encounter_id)``
-   immediately before its commit, stashing the id under a DISTINCT ``session.info``
-   key (so it never collides with the tournament module's keys).
+1. A write path calls ``register_map_veto_realtime_update(session, encounter_id, kind=...)``
+   immediately before its commit, stashing the (id, kind) pair under a DISTINCT
+   ``session.info`` key (so it never collides with the tournament module's keys).
 2. A ``before_flush`` listener persists a ``WorkspaceEvent`` row for durability.
 3. An ``after_commit`` listener publishes the persisted event's envelope to Redis,
    from which the gateway events consumer relays it to WS subscribers.
@@ -33,7 +36,7 @@ from shared.services.realtime_publisher import event_to_envelope, publish_event_
 from src.core import config
 
 _MAP_VETO_REASON = "veto_changed"
-_MAP_VETO_EVENT_TYPE = "map_veto.updated"
+_EVENT_TYPE_BY_KIND = {"map": "map_veto.updated", "hero": "pick_ban.updated"}
 
 # Distinct from the tournament module's keys so the two listeners never clobber
 # each other's staged updates on a shared Session.
@@ -41,10 +44,12 @@ _SESSION_KEY = "encounter_map_veto_realtime_updates"
 _SESSION_EVENTS_KEY = "encounter_map_veto_realtime_event_objects"
 
 
-def register_map_veto_realtime_update(session: Any, encounter_id: int) -> None:
-    """Stage a map-veto realtime signal for the given encounter on this session.
+def register_map_veto_realtime_update(session: Any, encounter_id: int, *, kind: str = "map") -> None:
+    """Stage a pick-ban realtime signal for the given encounter+kind on this
+    session. ``kind`` is ``"map"`` (default, the legacy map-veto topic) or
+    ``"hero"`` (the generic hero-ban topic).
 
-    Call immediately before the commit that mutated the map pool. The staged ids
+    Call immediately before the commit that mutated the pool. The staged pairs
     are turned into persisted ``WorkspaceEvent`` rows on ``before_flush`` and
     published to Redis on ``after_commit``.
     """
@@ -53,24 +58,24 @@ def register_map_veto_realtime_update(session: Any, encounter_id: int) -> None:
     if info is None:
         return
 
-    updates: set[int] = info.setdefault(_SESSION_KEY, set())
-    updates.add(int(encounter_id))
+    updates: set[tuple[int, str]] = info.setdefault(_SESSION_KEY, set())
+    updates.add((int(encounter_id), kind))
 
 
-def pop_registered_map_veto_realtime_updates(session: Any) -> list[int]:
+def pop_registered_map_veto_realtime_updates(session: Any) -> list[tuple[int, str]]:
     sync_session = getattr(session, "sync_session", None)
     info = getattr(sync_session or session, "info", None)
     if info is None:
         return []
 
-    updates: set[int] = info.pop(_SESSION_KEY, set())
+    updates: set[tuple[int, str]] = info.pop(_SESSION_KEY, set())
     return sorted(updates)
 
-
-def _build_realtime_event(encounter_id: int) -> WorkspaceEvent:
+def _build_realtime_event(encounter_id: int, kind: str) -> WorkspaceEvent:
+    topic = realtime_topics.map_veto(encounter_id) if kind == "map" else realtime_topics.pick_ban_hero(encounter_id)
     return WorkspaceEvent(
-        topic=realtime_topics.map_veto(encounter_id),
-        event_type=_MAP_VETO_EVENT_TYPE,
+        topic=topic,
+        event_type=_EVENT_TYPE_BY_KIND.get(kind, "pick_ban.updated"),
         schema_version=1,
         payload={
             "encounter_id": int(encounter_id),
@@ -92,7 +97,7 @@ def _stage_registered_map_veto_updates_before_flush(session: Session, _flush_con
     if not updates:
         return
 
-    events = [_build_realtime_event(encounter_id) for encounter_id in updates]
+    events = [_build_realtime_event(encounter_id, kind) for encounter_id, kind in updates]
     session.add_all(events)
     session.info.setdefault(_SESSION_EVENTS_KEY, []).extend(events)
 

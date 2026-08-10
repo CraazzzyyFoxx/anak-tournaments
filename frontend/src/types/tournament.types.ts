@@ -414,3 +414,121 @@ export interface OwalStack {
   games: number;
   avg_position: number;
 }
+
+
+// ─── Generic pick-ban engine (map + hero) ───────────────────────────────────
+//
+// Mirrors backend `PickBanSession`/`PickBanEntry`/`build_pick_ban_state` (see
+// docs/plans/2026-08-09-generic-pickban-engine.md). Deliberately NOT reusing
+// the legacy `EncounterMapPoolState`/`EncounterMapPoolEntry` shapes above:
+// `item_id` replaces `map_id` (a hero-kind pool has no map), entries carry
+// `round` instead of `slot`, and a `protect` action + `team_id` have no
+// analogue there. The legacy map-veto room is unmigrated and keeps using its
+// own types until the cutover (Foundation phase, currently blocked).
+
+export type PickBanKind = "map" | "hero";
+export type PickBanAction = "ban" | "pick" | "protect";
+export type PickBanEntryStatus = "available" | "picked" | "banned" | "protected" | "played";
+
+export interface PickBanEntry {
+  id: number;
+  item_id: number;
+  round: number | null;
+  order: number;
+  action_index: number | null;
+  picked_by: "home" | "away" | "decider" | null;
+  protected_by: "home" | "away" | null;
+  status: PickBanEntryStatus;
+  team_id: number | null;
+}
+
+export interface PickBanSession {
+  id: number;
+  kind: PickBanKind;
+  status: MapVetoSessionStatus;
+  first_side: "home" | "away" | null;
+  /** True once a result-dependent rotation needs `elect_opener` to proceed. */
+  awaiting_choice: boolean;
+  /** Only the loser of the round that triggered `awaiting_choice` may `elect_opener`. */
+  pending_loser_side: "home" | "away" | null;
+  seed_source: VetoSeedSource;
+  home_seed: number | null;
+  away_seed: number | null;
+  turn_timer_seconds: number | null;
+  started_at: string | null;
+  current_step_started_at: string | null;
+}
+
+export interface PickBanState {
+  session: PickBanSession | null;
+  /** Set only when `session` is null — same contract as `EncounterMapPoolState.reason`. */
+  reason?: VetoUnavailableReason;
+  sequence: string[];
+  pool: PickBanEntry[];
+  viewer_side: "home" | "away" | null;
+  viewer_can_act: boolean;
+  allowed_actions: PickBanAction[];
+  current_step_index: number | null;
+  current_step: string | null;
+  expected_action: PickBanAction | "decider" | null;
+  turn_side: "home" | "away" | null;
+  current_round: number | null;
+  is_complete: boolean;
+}
+
+/** Side-agnostic step tokens, adds `protect_*` to the legacy veto vocabulary. */
+export type PickBanSequenceToken =
+  | "ban_first"
+  | "ban_second"
+  | "pick_first"
+  | "pick_second"
+  | "protect_first"
+  | "protect_second"
+  | "decider";
+
+export type PickBanFirstPickRule = "higher_seed" | "lower_seed" | "random" | "admin";
+export type PickBanNoRepeatScope = "none" | "encounter" | "tournament";
+
+/** One slot of a slot-mode `PickBanConfig`, as the admin CRUD serializer returns it. */
+export interface PickBanConfigSlot {
+  position: number;
+  reserve_item_id: number | null;
+  candidates: number[];
+}
+
+export interface PickBanConfig {
+  id: number;
+  tournament_id: number;
+  kind: PickBanKind;
+  stage_id: number | null;
+  round: number | null;
+  mode: MapVetoMode;
+  first_pick_rule: PickBanFirstPickRule;
+  first_ban_rotation: FirstBanRotation;
+  turn_timer_seconds: number | null;
+  preset: string | null;
+  sequence: PickBanSequenceToken[];
+  no_repeat_scope: PickBanNoRepeatScope;
+  /** Only `"role"` is implemented server-side today; null disables the check. */
+  unique_attribute_per_side_per_round: string | null;
+  allow_protect: boolean;
+  item_ids: number[];
+  slots: PickBanConfigSlot[];
+}
+
+export interface PickBanConfigUpsertInput {
+  kind: PickBanKind;
+  stage_id?: number | null;
+  round?: number | null;
+  mode: MapVetoMode;
+  first_pick_rule?: PickBanFirstPickRule;
+  first_ban_rotation?: FirstBanRotation;
+  preset?: string | null;
+  turn_timer_seconds?: number | null;
+  no_repeat_scope?: PickBanNoRepeatScope;
+  unique_attribute_per_side_per_round?: string | null;
+  allow_protect?: boolean;
+  sequence?: PickBanSequenceToken[];
+  item_ids?: number[];
+  slots?: { candidates: number[]; reserve_item_id?: number | null }[];
+}

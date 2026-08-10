@@ -145,6 +145,20 @@ func TestAllow_SpectateHiddenEncounterMapVeto(t *testing.T) {
 	}
 }
 
+func TestAllow_SpectateHiddenEncounterPickBanHero(t *testing.T) {
+	ctx := context.Background()
+	// encounter 5 -> tournament 42, hidden.
+	vis := fakeVis{hiddenFound: true, hidden: true, encTID: 42, encFound: true}
+	r := New(fakeResolver{workspaceID: 3, found: true}, &fakeMembers{member: false}, vis)
+	if ok, _ := r.Allow(ctx, nil, "encounter:5:pick-ban:hero"); ok {
+		t.Fatal("anon must be denied a hidden tournament's hero pick-ban topic")
+	}
+	su := &auth.User{ID: 9, IsSuperuser: true}
+	if ok, err := r.Allow(ctx, su, "encounter:5:pick-ban:hero"); err != nil || !ok {
+		t.Fatalf("superuser should be allowed hidden hero pick-ban topic: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestAllow_BalancerRequiresMembership(t *testing.T) {
 	ctx := context.Background()
 	user := &auth.User{ID: 7}

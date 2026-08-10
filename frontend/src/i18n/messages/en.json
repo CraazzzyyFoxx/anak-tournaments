@@ -2007,7 +2007,8 @@
       "tie": "Tie",
       "winner": "Winner",
       "loser": "Loser",
-      "vetoRoom": "Veto room"
+      "vetoRoom": "Veto room",
+      "heroBanRoom": "Hero ban room"
     },
     "match": {
       "roundTab": "Round {round}",
@@ -2099,6 +2100,10 @@
         "order": {
           "title": "Map order"
         },
+        "reportResults": {
+          "title": "Report map results",
+          "button": "Report {map}"
+        },
         "turn": "Turn: {side} — {action}",
         "action": {
           "ban": "ban",
@@ -2147,6 +2152,153 @@
       "pendingConfirmation": "Pending confirmation",
       "confirmed": "Confirmed",
       "disputed": "Disputed"
+    }
+  },
+  "pickBan": {
+    "room": {
+      "map": { "title": "Map Pool", "itemNumber": "Map #{id}" },
+      "hero": { "title": "Hero Pool", "itemNumber": "Hero #{id}" },
+      "back": "Back to match",
+      "loadError": "Failed to load pick-ban state",
+      "retry": "Retry",
+      "statusChip": {
+        "active": "In progress",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "firstBanner": "{team} goes first",
+      "seedBadge": "Seed #{seed}",
+      "seedUnknown": "Seed —",
+      "seedSource": {
+        "bracket_slot": "from bracket",
+        "standings": "from standings",
+        "fallback_home": "default (home)",
+        "admin": "set by admin"
+      },
+      "side": {
+        "home": "home",
+        "away": "away"
+      },
+      "notConfiguredTitle": "Not configured",
+      "notConfiguredHint": "The organizer has not set rules for this match yet. Check back later.",
+      "teamsUnknownTitle": "Teams are not decided yet",
+      "teamsUnknownHint": "This room opens once both teams of this match are known.",
+      "slotCountMismatchTitle": "The pool does not cover this series",
+      "slotCountMismatchHint": "This match plays more rounds than the configured pool has slots. The organizer has to add the missing slots — waiting will not fix it.",
+      "slotUnderfilledTitle": "A slot has too few candidates",
+      "slotUnderfilledHint": "One of this match's slots has fewer than two candidates, so there is nothing to ban there. The organizer has to fill it before this room can open.",
+      "steps": {
+        "title": "Steps",
+        "ban": "Ban",
+        "pick": "Pick",
+        "protect": "Protect",
+        "decider": "Decider",
+        "done": "done",
+        "current": "current step",
+        "pending": "pending"
+      },
+      "timer": {
+        "label": "Turn timer",
+        "expired": "Time expired"
+      },
+      "status": {
+        "available": "Available",
+        "banned": "Banned",
+        "picked": "Picked",
+        "protected": "Protected",
+        "played": "Played",
+        "remaining": "Remaining"
+      },
+      "by": {
+        "home": "home",
+        "away": "away",
+        "decider": "decider",
+        "admin": "admin"
+      },
+      "protectedBy": {
+        "home": "protected by home",
+        "away": "protected by away"
+      },
+      "order": {
+        "title": "Play order"
+      },
+      "turn": "Turn: {side} — {action}",
+      "action": {
+        "ban": "ban",
+        "pick": "pick",
+        "protect": "protect"
+      },
+      "deciderResolving": "Decider is being resolved",
+      "completedBanner": "Sequence completed",
+      "captain": {
+        "yourTurn": "Your turn",
+        "selectHint": "Select an item from the pool",
+        "confirmBan": "Ban {item}",
+        "confirmPick": "Pick {item}",
+        "confirmProtect": "Protect {item}",
+        "cancel": "Cancel",
+        "sending": "Sending...",
+        "actionFailed": "Action failed"
+      },
+      "round": {
+        "label": "Round {n}",
+        "current": "current round",
+        "resolved": "resolved",
+        "upcoming": "opens later",
+        "locked": "Round {n} opens once the earlier rounds are decided.",
+        "inPlayCount": "{count, plural, one {# round in play} other {# rounds in play}}"
+      },
+      "electOpener": {
+        "title": "Choose who opens the next round",
+        "hint": "Your side lost the previous map. Choose who bans first this round.",
+        "chooseHome": "Home opens",
+        "chooseAway": "Away opens",
+        "confirm": "Confirm",
+        "sending": "Sending...",
+        "failed": "Failed to submit the choice"
+      },
+      "mapReport": {
+        "title": "Report this map's result",
+        "yourScore": "Your team's score",
+        "opponentScore": "Opponent's score",
+        "submit": "Submit report",
+        "sending": "Sending...",
+        "failed": "Failed to submit the report",
+        "waitingOpponent": "Waiting for the other captain's report",
+        "disputed": "Reports disagree",
+        "disputedHint": "Your report does not match the opponent's. An admin will resolve it.",
+        "resolved": "Result confirmed — moving to the next map"
+      }
+    },
+    "admin": {
+      "title": "Pick-Ban Configs",
+      "kindLabel": "Kind",
+      "kindMap": "Map",
+      "kindHero": "Hero",
+      "modeLabel": "Mode",
+      "modePool": "Pool",
+      "modeSlots": "Slots",
+      "allowProtect": "Allow protect step",
+      "firstPickRule": "First pick rule",
+      "firstBanRotation": "First ban rotation",
+      "noRepeatScope": "No-repeat scope",
+      "turnTimer": "Turn timer (seconds)",
+      "sequence": "Sequence",
+      "itemIds": "Item ids",
+      "save": "Save",
+      "saving": "Saving...",
+      "saveFailed": "Failed to save",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this config?",
+      "deleted": "Config deleted",
+      "deleteFailed": "Failed to delete",
+      "addConfig": "Add config",
+      "noConfigs": "No configs yet",
+      "stageLabel": "Stage",
+      "roundLabel": "Round",
+      "tournamentLevel": "Tournament-wide",
+      "cancel": "Cancel",
+      "edit": "Edit"
     }
   },
   "users": {

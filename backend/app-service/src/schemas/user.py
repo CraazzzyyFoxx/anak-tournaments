@@ -177,8 +177,8 @@ class MatchReadWithUserStats(BaseModel):
     home_team_id: int | None = None
     away_team_id: int | None = None
     score: Score
-    time: float
-    log_name: str
+    time: float | None
+    log_name: str | None
     encounter_id: int
     map_id: int
     code: str | None = None

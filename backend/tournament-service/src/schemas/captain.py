@@ -21,6 +21,29 @@ class VetoAction(BaseModel):
     action: str  # "ban" or "pick"
 
 
+class PickBanActionInput(BaseModel):
+    """One ban/pick/protect against a hero- or map-kind pick-ban session."""
+
+    item_id: int
+    action: str  # "ban" | "pick" | "protect"
+
+
+class ElectOpenerInput(BaseModel):
+    """``result_loser_choice`` rotation only: the losing captain names who
+    opens the next round's bans."""
+
+    first_side: str  # "home" | "away"
+
+
+class MapReportInput(BaseModel):
+    """One captain's independent claim of a single played map's result —
+    submitted immediately after that map, not at series end (contrast
+    ``CaptainReportSubmission``). See ``services.encounter.map_report``."""
+
+    home_score: int = Field(ge=0)
+    away_score: int = Field(ge=0)
+
+
 class CaptainMapCodeInput(BaseModel):
     map_index: int = Field(ge=1)
     code: str = Field(min_length=1, max_length=32)

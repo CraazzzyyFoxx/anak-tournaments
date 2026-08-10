@@ -24,6 +24,8 @@ export default defineConfig({
       // veto room's behaviour test would never run and the suite would still
       // report green.
       "src/app/**/tournaments/**/veto/**/*.test.tsx",
+      "src/app/**/tournaments/**/hero-ban/**/*.test.ts",
+      "src/app/**/tournaments/**/hero-ban/**/*.test.tsx",
       "src/app/admin/tournaments/**/components/draft/**/*.test.ts",
       "src/app/admin/tournaments/**/overview/**/*.test.ts",
       "src/app/admin/tournaments/new/**/*.test.ts",
@@ -57,6 +59,8 @@ export default defineConfig({
       "src/components/tournaments/**/*.test.ts",
       "src/components/veto/**/*.test.ts",
       "src/components/veto/**/*.test.tsx",
+      "src/components/pick-ban/**/*.test.ts",
+      "src/components/pick-ban/**/*.test.tsx",
       // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
       // files, which fail on the import when vitest picks them up.
       "src/components/tournaments/MatchReportDialog.behavior.test.tsx",

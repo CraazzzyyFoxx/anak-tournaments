@@ -53,8 +53,8 @@ class AchievementMatchLink(BaseModel):
     encounter_id: int
     map_id: int
     score: Score
-    log_name: str
-    time: float
+    log_name: str | None
+    time: float | None
     home_team: AchievementMatchTeamRef | None = None
     away_team: AchievementMatchTeamRef | None = None
 

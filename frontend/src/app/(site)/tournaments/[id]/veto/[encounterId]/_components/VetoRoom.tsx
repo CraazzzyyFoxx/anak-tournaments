@@ -26,8 +26,10 @@ import mapService from "@/services/map.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapVetoAction } from "@/types/tournament.types";
 
+import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
 import {
   VETO_UNAVAILABLE_COPY,
+  pickedMapsInOrder,
   slotReserveMaps,
   type VetoSide,
   type VetoUnavailableIcon,
@@ -97,6 +99,11 @@ export function VetoRoom({ encounterId }: VetoRoomProps) {
     state?.pool.some((entry) => entry.map_id === pickedMapId && entry.status === "available")
       ? pickedMapId
       : null;
+
+  // Which picked map the captain is currently reporting a result for, or
+  // null when the dialog is closed. Independent of `selectedMapId` — that one
+  // tracks a ban/pick target, this one a completed map's score.
+  const [reportMapId, setReportMapId] = useState<number | null>(null);
 
   const vetoMutation = useMutation({
     mutationFn: (input: { map_id: number; action: MapVetoAction }) =>
@@ -253,8 +260,44 @@ export function VetoRoom({ encounterId }: VetoRoomProps) {
               }}
             />
           ) : null}
+
+          {state.viewer_side != null && pickedMapsInOrder(state.pool).length > 0 ? (
+            <section className="flex flex-col gap-2 rounded-xl border border-[color:var(--aqt-border)] p-3">
+              <span className="text-sm font-medium">{t("reportResults.title")}</span>
+              <div className="flex flex-wrap gap-2">
+                {pickedMapsInOrder(state.pool).map((entry) => {
+                  const mapName = mapsById[entry.map_id]?.name ?? t("maps.mapNumber", { id: entry.map_id });
+                  return (
+                    <Button
+                      key={entry.id}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setReportMapId(entry.map_id)}
+                    >
+                      {t("reportResults.button", { map: mapName })}
+                    </Button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
         </div>
       </div>
+
+      {reportMapId != null && state.viewer_side != null ? (
+        <MapReportDialog
+          encounterId={encounterId}
+          mapId={reportMapId}
+          mapName={mapsById[reportMapId]?.name ?? t("maps.mapNumber", { id: reportMapId })}
+          side={state.viewer_side}
+          open={reportMapId != null}
+          onOpenChange={(open) => setReportMapId(open ? reportMapId : null)}
+          invalidateKeys={[
+            ["encounter-veto-state", encounterId],
+            ["encounter-detail", encounterId],
+          ]}
+        />
+      ) : null}
     </div>
   );
 }

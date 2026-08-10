@@ -123,10 +123,11 @@ export interface Match {
   home_team_id: number;
   away_team_id: number;
   score: Score;
-  time: number;
+  time: number | null;
   encounter_id: number;
   map_id: number;
-  log_name: string;
+  log_name: string | null;
+  source: "log_parser" | "captain_report";
   code: string | null;
 
   map: MapRead | null;
