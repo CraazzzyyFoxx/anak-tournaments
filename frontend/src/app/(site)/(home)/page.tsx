@@ -420,17 +420,28 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
       className={`border border-border/60 bg-card/50 p-5 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150 ${CARD_LINK_FOCUS}`}
     >
       <div className="flex items-center gap-3">
-        <div
-          aria-hidden
-          className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-display font-extrabold text-[14px] tracking-[0.04em]"
-          style={{
-            background: accentTint(accent, 15),
-            border: `1px solid ${accentTint(accent, 30)}`,
-            color: accent,
-          }}
-        >
-          {abbr}
-        </div>
+        {workspace.icon_url ? (
+          // Plain <img> (not next/image) to avoid remote-domain config for
+          // arbitrary workspace icon hosts — same pattern as WorkspaceBrandIcon.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={workspace.icon_url}
+            alt=""
+            className="w-10 h-10 rounded-xl flex-shrink-0 object-cover border border-border/60"
+          />
+        ) : (
+          <div
+            aria-hidden
+            className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-display font-extrabold text-[14px] tracking-[0.04em]"
+            style={{
+              background: accentTint(accent, 15),
+              border: `1px solid ${accentTint(accent, 30)}`,
+              color: accent,
+            }}
+          >
+            {abbr}
+          </div>
+        )}
         <div className="min-w-0">
           <div className="font-semibold text-sm text-foreground truncate">
             {workspace.name}
