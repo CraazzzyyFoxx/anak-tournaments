@@ -304,6 +304,11 @@ async def _maybe_create_grand_final_reset(
         away_team_id=gf_encounter.away_team_id,
         home_score=0,
         away_score=0,
+        # The reset is the same series as the Grand Final it continues; without
+        # this it took the column default (Bo3) no matter what the stage's
+        # best-of config said, because it is materialised here rather than by
+        # the generator that resolves best-of.
+        best_of=gf_encounter.best_of,
         round=gf_encounter.round + 1,
         tournament_id=gf_encounter.tournament_id,
         stage_id=gf_encounter.stage_id,

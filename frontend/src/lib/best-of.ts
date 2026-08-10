@@ -15,7 +15,7 @@
  * captains will not be asked to take.
  */
 import type { StageBestOfConfig } from "@/types/admin.types";
-import type { VetoSequenceToken } from "@/types/tournament.types";
+import type { StageType, VetoSequenceToken } from "@/types/tournament.types";
 
 export const DEFAULT_BEST_OF = 3;
 
@@ -121,6 +121,149 @@ export function resolveBestOf(
 /** True when a stage's rounds do not all play the same series length. */
 export function hasPerRoundBestOf(config: StageBestOfConfig): boolean {
   return Object.keys(config.by_round ?? {}).length > 0 || config.final != null;
+}
+
+/** A round the best-of editor can target, identified by its `by_round` key. */
+export interface BestOfRoundOption {
+  /** Signed round number — negative is a lower-bracket round. */
+  round: number;
+  label: string;
+}
+
+/** A group of rounds in the editor; `label === null` renders as a flat list. */
+export interface BestOfRoundSection {
+  key: string;
+  label: string | null;
+  rounds: BestOfRoundOption[];
+}
+
+export interface StageBestOfShape {
+  stageType: StageType;
+  /** `Stage.max_rounds`. The only round count a stage carries before seeding. */
+  maxRounds: number;
+  /**
+   * Teams starting in the upper bracket. `0` when nothing is seeded yet, which
+   * falls back to `maxRounds`.
+   */
+  upperTeamCount?: number;
+  /** DE "split" seeding: half the teams start in the lower bracket. */
+  splitLowerBracket?: boolean;
+  /** Round keys already configured, so an override is never hidden. */
+  configuredRounds?: number[];
+}
+
+/**
+ * The rounds the best-of editor offers, grouped by bracket.
+ *
+ * Double elimination numbers its rounds by sign — upper bracket 1..U, grand
+ * final U+1, lower bracket -1..-L (`services/bracket/double_elimination.py`) —
+ * so a single flat `Round 1..max_rounds` list can neither reach a lower-bracket
+ * round nor say which bracket a positive round belongs to. Organizers who want
+ * "Bo5 in the upper bracket only" reached for `default` instead, which lengthens
+ * every match in both brackets.
+ *
+ * The grand final is NOT offered here: `final` already targets it (and takes
+ * precedence over `by_round`), so giving it a second key would let the two
+ * disagree with `final` silently winning.
+ *
+ * The depth is derived from the bracket's shape, which is exact for the
+ * power-of-two sizes the generator builds cleanly and may over-count a lower
+ * bracket shortened by first-round byes. Over-counting is the safe direction: a
+ * key no encounter carries is inert, while a missing row is a round the
+ * organizer cannot configure at all.
+ */
+export function stageBestOfRoundSections({
+  stageType,
+  maxRounds,
+  upperTeamCount = 0,
+  splitLowerBracket = false,
+  configuredRounds = []
+}: StageBestOfShape): BestOfRoundSection[] {
+  const flatRounds = Math.max(1, Math.floor(maxRounds) || 1);
+
+  if (stageType !== "double_elimination") {
+    return withUnlistedRounds(
+      [
+        {
+          key: "rounds",
+          label: null,
+          rounds: countUp(flatRounds).map((round) => ({ round, label: `Round ${round}` }))
+        }
+      ],
+      configuredRounds
+    );
+  }
+
+  // `maxRounds` counts the grand final, the bracket's rounds do not.
+  const upperRounds =
+    upperTeamCount >= 2 ? Math.ceil(Math.log2(upperTeamCount)) : Math.max(1, flatRounds - 1);
+  // Each upper round after the first drops losers into a lower round and the
+  // survivors play a reduction round; lower-bracket seeds add an opening round
+  // plus the reduction that merges them with the upper bracket's first losers.
+  const lowerRounds = Math.max(0, 2 * (upperRounds - 1) + (splitLowerBracket ? 2 : 0));
+
+  const sections: BestOfRoundSection[] = [
+    {
+      key: "upper",
+      label: "Upper bracket",
+      rounds: countUp(upperRounds).map((round) => ({
+        round,
+        label: upperBracketRoundLabel(round, upperRounds)
+      }))
+    }
+  ];
+  if (lowerRounds > 0) {
+    sections.push({
+      key: "lower",
+      label: "Lower bracket",
+      rounds: countUp(lowerRounds).map((depth) => ({
+        round: -depth,
+        label: depth === lowerRounds ? "LB Final" : `LB Round ${depth}`
+      }))
+    });
+  }
+  return withUnlistedRounds(sections, configuredRounds);
+}
+
+function countUp(count: number): number[] {
+  return Array.from({ length: Math.max(0, count) }, (_, index) => index + 1);
+}
+
+/** Mirrors `_ub_round_label`, minus the per-match index the editor has no use for. */
+function upperBracketRoundLabel(round: number, upperRounds: number): string {
+  if (round === upperRounds) return "UB Final";
+  if (round === upperRounds - 1) return "UB Semifinal";
+  return `UB Round ${round}`;
+}
+
+/**
+ * Append any configured round the sections above do not offer.
+ *
+ * The offered depth is derived, so a stage whose bracket is a different shape
+ * than the derivation assumed (or one configured before this editor grouped its
+ * rounds) can carry a `by_round` key with nowhere to render. Such a key still
+ * changes matches, so it gets a row rather than becoming an invisible override.
+ */
+function withUnlistedRounds(
+  sections: BestOfRoundSection[],
+  configuredRounds: number[]
+): BestOfRoundSection[] {
+  const offered = new Set(sections.flatMap((section) => section.rounds.map((row) => row.round)));
+  const unlisted = [...new Set(configuredRounds)]
+    .filter((round) => !offered.has(round))
+    .sort((left, right) => right - left);
+  if (unlisted.length === 0) return sections;
+  return [
+    ...sections,
+    {
+      key: "other",
+      label: "Other configured rounds",
+      rounds: unlisted.map((round) => ({
+        round,
+        label: round < 0 ? `LB Round ${-round}` : `Round ${round}`
+      }))
+    }
+  ];
 }
 
 /**

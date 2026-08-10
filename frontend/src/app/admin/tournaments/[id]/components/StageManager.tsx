@@ -56,7 +56,11 @@ import type { Team } from "@/types/team.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 import { notify } from "@/lib/notify";
 import type { StageBestOfConfig } from "@/types/admin.types";
-import { BEST_OF_OPTIONS, parseStageBestOf } from "@/lib/best-of";
+import {
+  BEST_OF_OPTIONS,
+  parseStageBestOf,
+  stageBestOfRoundSections
+} from "@/lib/best-of";
 
 const BRACKET_STAGE_TYPES: StageType[] = ["single_elimination", "double_elimination"];
 const GROUP_STAGE_TYPES: StageType[] = ["round_robin", "swiss"];
@@ -134,6 +138,34 @@ function getStageAssignedTeams(stage: Stage) {
     (acc, item) => acc + item.inputs.filter((input) => input.team_id != null).length,
     0
   );
+}
+
+/**
+ * Teams that start in the UPPER bracket, mirroring `generate_encounters`
+ * (services/admin/stage.py): split seeding sends the lower half of the seeds to
+ * the lower bracket, either from a dedicated Lower bracket item or — with a
+ * single bracket item — from the second half of its seed order.
+ *
+ * Falls back to the item's empty slots before seeding, so the best-of editor
+ * offers the bracket the organizer is building rather than nothing.
+ */
+function getStageUpperTeamCount(stage: Stage, splitLowerBracket: boolean) {
+  const countTeams = (items: StageItem[]) => {
+    const assigned = items.reduce(
+      (acc, item) => acc + item.inputs.filter((input) => input.team_id != null).length,
+      0
+    );
+    return assigned > 0 ? assigned : items.reduce((acc, item) => acc + item.inputs.length, 0);
+  };
+
+  if (stage.stage_type !== "double_elimination" || !splitLowerBracket) {
+    return countTeams(stage.items);
+  }
+  const lowerItems = stage.items.filter((item) => item.type === "bracket_lower");
+  if (lowerItems.length > 0) {
+    return countTeams(stage.items.filter((item) => item.type !== "bracket_lower"));
+  }
+  return Math.floor(countTeams(stage.items) / 2);
 }
 
 function getDefaultStageItemType(stageType: StageType): StageItemType {
@@ -715,6 +747,14 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       [selectedStage.id]: { ...selectedBestOfDraft, by_round: nextByRound }
     }));
   };
+  const bestOfRoundSections = stageBestOfRoundSections({
+    stageType: selectedStageTypeDraft,
+    maxRounds: maxRoundsDraftValue,
+    upperTeamCount: selectedStage ? getStageUpperTeamCount(selectedStage, selectedStageSplitLbDraft) : 0,
+    splitLowerBracket: selectedStageSplitLbDraft,
+    configuredRounds: Object.keys(selectedBestOfDraft.by_round ?? {}).map(Number)
+  });
+  const isDoubleElimination = selectedStageTypeDraft === "double_elimination";
 
   const selectedItemDraft = selectedStage
     ? stageItemDrafts[selectedStage.id] ?? {
@@ -1765,6 +1805,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               <p className="text-xs text-muted-foreground">
                                 Baked into matches on (re)generation. Use &quot;Apply to existing
                                 matches&quot; to backfill without regenerating.
+                                {isDoubleElimination
+                                  ? " Upper and lower bracket rounds are configured separately."
+                                  : ""}
                               </p>
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
@@ -1796,7 +1839,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                 </div>
                                 <div className="space-y-1">
                                   <Label htmlFor={bestOfFinalId} className="text-xs text-muted-foreground">
-                                    Final
+                                    {isDoubleElimination ? "Grand Final" : "Final"}
                                   </Label>
                                   <Select
                                     value={
@@ -1814,7 +1857,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="none">Same as rounds</SelectItem>
+                                      <SelectItem value="none">
+                                        {isDoubleElimination
+                                          ? "Same as upper bracket"
+                                          : "Same as rounds"}
+                                      </SelectItem>
                                       {BEST_OF_OPTIONS.map((n) => (
                                         <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
                                       ))}
@@ -1822,43 +1869,53 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                   </Select>
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                                {Array.from({ length: maxRoundsDraftValue }, (_, index) => index + 1).map(
-                                  (round) => {
-                                    const value = selectedBestOfDraft.by_round?.[String(round)];
-                                    const roundFieldId = `${fieldIdPrefix}-best-of-round-${round}`;
-                                    return (
-                                      <div key={round} className="space-y-1">
-                                        <Label
-                                          htmlFor={roundFieldId}
-                                          className="text-xs text-muted-foreground"
-                                        >
-                                          Round {round}
-                                        </Label>
-                                        <Select
-                                          value={value != null ? String(value) : "inherit"}
-                                          onValueChange={(next) =>
-                                            updateBestOfRound(
-                                              round,
-                                              next === "inherit" ? undefined : Number(next)
-                                            )
-                                          }
-                                        >
-                                          <SelectTrigger id={roundFieldId}>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="inherit">Default</SelectItem>
-                                            {BEST_OF_OPTIONS.map((n) => (
-                                              <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    );
-                                  }
-                                )}
-                              </div>
+                              {bestOfRoundSections.map((section) => (
+                                <div key={section.key} className="space-y-2">
+                                  {section.label ? (
+                                    <h5 className="text-xs font-medium text-muted-foreground">
+                                      {section.label}
+                                    </h5>
+                                  ) : null}
+                                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                    {section.rounds.map(({ round, label }) => {
+                                      const value = selectedBestOfDraft.by_round?.[String(round)];
+                                      const roundFieldId = `${fieldIdPrefix}-best-of-round-${round}`;
+                                      return (
+                                        <div key={round} className="space-y-1">
+                                          <Label
+                                            htmlFor={roundFieldId}
+                                            className="text-xs text-muted-foreground"
+                                          >
+                                            {label}
+                                          </Label>
+                                          <Select
+                                            value={value != null ? String(value) : "inherit"}
+                                            onValueChange={(next) =>
+                                              updateBestOfRound(
+                                                round,
+                                                next === "inherit" ? undefined : Number(next)
+                                              )
+                                            }
+                                          >
+                                            <SelectTrigger id={roundFieldId}>
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="inherit">Default</SelectItem>
+                                              {BEST_OF_OPTIONS.map((n) => (
+                                                <SelectItem
+                                                  key={n}
+                                                  value={String(n)}
+                                                >{`Bo${n}`}</SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
 
                             <div className="border-t border-border/40 pt-3 flex justify-end">
