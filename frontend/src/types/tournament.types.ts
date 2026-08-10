@@ -210,7 +210,8 @@ export type VetoUnavailableReason =
   | "not_configured"
   | "teams_unknown"
   | "slot_count_mismatch"
-  | "slot_underfilled";
+  | "slot_underfilled"
+  | "not_ready";
 
 export interface EncounterMapPoolState {
   session: EncounterVetoSession | null;
@@ -415,6 +416,13 @@ export interface PickBanSession {
   home_seed: number | null;
   away_seed: number | null;
   turn_timer_seconds: number | null;
+  /**
+   * The reserve item each in-play slot named, snapshotted when the session
+   * was created — same string-keyed-by-position contract as
+   * `EncounterVetoSession.slot_reserves`. Always null for `kind: "hero"`
+   * (no reserve concept there); read via `pickBanReserveMap`.
+   */
+  slot_reserves: Record<string, number> | null;
   started_at: string | null;
   current_step_started_at: string | null;
 }
@@ -423,6 +431,10 @@ export interface PickBanState {
   session: PickBanSession | null;
   /** Set only when `session` is null — same contract as `EncounterMapPoolState.reason`. */
   reason?: VetoUnavailableReason;
+  /** Whether each side's captain has confirmed readiness to begin the
+   * encounter's pre-game phase — set regardless of `session`, so the room
+   * can render "waiting for the other captain" even before a session exists. */
+  readiness: { home: boolean; away: boolean };
   sequence: string[];
   pool: PickBanEntry[];
   viewer_side: "home" | "away" | null;

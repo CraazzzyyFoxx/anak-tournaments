@@ -12,7 +12,7 @@ live-session operations (reset/act) that have no pick-ban equivalent.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel, Field
@@ -38,11 +38,37 @@ from shared.rpc.identity import ensure_workspace_permission
 from src import models
 from src.core import auth
 from src.rpc._helpers import _identity, _payload, _require_id, _run
+from src.services.encounter import pick_ban_action as pick_ban_action_service
 from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.veto_session import BRACKET_PRESET, CUSTOM_PRESET
 
 _CONFIG_LOAD = (selectinload(PickBanConfig.items), selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items))
 _serialize_config = pick_ban_session_service.serialize_pick_ban_config
+
+
+async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
+    encounter = await session.scalar(select(models.Encounter).where(models.Encounter.id == encounter_id))
+    if encounter is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
+    return encounter
+
+
+class PickBanAdminReset(BaseModel):
+    """Body for the admin session-reset route -- which kind's live session to
+    drop and re-create (map veto and hero bans reset independently)."""
+
+    kind: PickBanKind
+
+
+class PickBanAdminAct(BaseModel):
+    """Body for the admin act-for-a-side route: perform one step on behalf of
+    an absent captain. Generalizes ``veto_admin.AdminVetoAct`` with ``kind``
+    and the ``protect`` action the generic engine adds."""
+
+    kind: PickBanKind
+    side: Literal["home", "away"]
+    item_id: int
+    action: Literal["pick", "ban", "protect"]
 
 
 class PickBanConfigSlotUpsert(BaseModel):
@@ -234,5 +260,52 @@ def register(broker: Any, logger: Any) -> None:
             await session.delete(config)
             await session.commit()
             return {"deleted": True}
+
+        return await _run(logger, op)
+
+    # ── live-session admin overrides (map + hero) ───────────────────────────
+    # Generalizes veto_admin.py's two live-session operations (reset + act
+    # for an absent captain), which had no pick-ban equivalent before the
+    # room unification. Both kinds share these two routes via a ``kind``
+    # body field instead of two kind-hardcoded handlers.
+
+    @broker.subscriber("rpc.tournament.admin_pick_ban_session_reset")
+    async def _admin_pick_ban_session_reset(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
+            ensure_workspace_permission(user, ws_id, "match", "update")
+            body = PickBanAdminReset.model_validate(_payload(data))
+            encounter = await _load_encounter(session, encounter_id)
+            # reset_pick_ban_session commits internally; the response is the
+            # same state shape the room polls (viewer_side stays null for
+            # admins).
+            await pick_ban_session_service.reset_pick_ban_session(session, encounter, body.kind)
+            return await pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, body.kind, viewer_side=None
+            )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.admin_pick_ban_act")
+    async def _admin_pick_ban_act(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
+            ensure_workspace_permission(user, ws_id, "match", "update")
+            body = PickBanAdminAct.model_validate(_payload(data))
+            # Same engine as the captain act route, side supplied explicitly
+            # (bypasses captain-side resolution); commits internally.
+            entry = await pick_ban_action_service.perform_pick_ban_action(
+                session,
+                encounter_id,
+                body.kind,
+                body.side,
+                body.item_id,
+                body.action,
+            )
+            return pick_ban_action_service.serialize_pick_ban_entry(entry)
 
         return await _run(logger, op)

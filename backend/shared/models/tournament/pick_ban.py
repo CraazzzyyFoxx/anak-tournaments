@@ -20,6 +20,7 @@ from sqlalchemy import JSON, Boolean, CheckConstraint, Enum, ForeignKey, Index, 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
+from shared.models.identity.user import User
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.team import Team
@@ -27,6 +28,7 @@ from shared.models.tournament.tournament import Tournament
 
 __all__ = (
     "EncounterPickBanLedger",
+    "EncounterReadiness",
     "PickBanConfig",
     "PickBanConfigItem",
     "PickBanConfigSlot",
@@ -367,3 +369,30 @@ class EncounterPickBanLedger(db.TimeStampIntegerMixin):
     round: Mapped[int] = mapped_column(Integer())
 
     encounter: Mapped[Encounter] = relationship()
+
+
+class EncounterReadiness(db.TimeStampIntegerMixin):
+    """One captain side's confirmation that their team is ready to begin this
+    encounter's pre-game phase.
+
+    Shared across BOTH :class:`PickBanSession` kinds (map veto + hero bans):
+    the same captain confirms once for the whole match, not once per kind, so
+    ``ensure_pick_ban_session`` refuses to create a session of EITHER kind
+    until both sides have a row here. Cleared by
+    ``sync_all_pick_ban_sessions_after_team_change`` whenever either team
+    assignment changes -- a confirmation made against one opponent must not
+    carry over to a different one.
+    """
+
+    __tablename__ = "encounter_readiness"
+    __table_args__ = (
+        UniqueConstraint("encounter_id", "side", name="uq_encounter_readiness_encounter_side"),
+        {"schema": "tournament"},
+    )
+
+    encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
+    side: Mapped[str] = mapped_column(String(16))
+    ready_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
+
+    encounter: Mapped[Encounter] = relationship()
+    ready_user: Mapped["User | None"] = relationship()

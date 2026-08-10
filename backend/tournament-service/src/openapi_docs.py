@@ -325,15 +325,14 @@ DOCS: dict[str, dict] = {
         "summary": "Recalculate standings",
         "description": "Schedules a durable standings-recalculation job (202 Accepted) for the tournament; requires standing-update permission.",
     },
-    # ── bespoke: map veto (live-session admin overrides; config CRUD moved to
-    # the generic pick-ban-configs topics below, kind=map) ──────────────────
-    "rpc.tournament.admin_veto_session_reset": {
-        "summary": "Reset veto session",
-        "description": "Drops an encounter's map pick-ban session and its entries, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
+    # ── bespoke: pick-ban live-session admin overrides (map + hero) ────────
+    "rpc.tournament.admin_pick_ban_session_reset": {
+        "summary": "Reset pick-ban session",
+        "description": "Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
     },
-    "rpc.tournament.admin_veto_act": {
-        "summary": "Veto for a side",
-        "description": "Performs a ban or pick on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
+    "rpc.tournament.admin_pick_ban_act": {
+        "summary": "Act for a side",
+        "description": "Performs a ban, pick, or protect on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
     },
     # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
     "rpc.tournament.admin_pick_ban_config_list": {

@@ -111,6 +111,13 @@ export const VETO_UNAVAILABLE_COPY = {
     hintKey: "empty.slotUnderfilledHint",
     icon: "misconfigured",
   },
+  // Config + teams are fine; only the readiness gate is holding the room
+  // closed, so this borrows the "teams" icon rather than "misconfigured".
+  not_ready: {
+    titleKey: "empty.notReadyTitle",
+    hintKey: "empty.notReadyHint",
+    icon: "teams",
+  },
 } as const satisfies Record<VetoUnavailableReason, VetoUnavailableCopy>;
 
 export interface VetoPoolSlot {

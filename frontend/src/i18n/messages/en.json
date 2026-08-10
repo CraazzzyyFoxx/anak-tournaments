@@ -1848,6 +1848,7 @@
     "lowerRound": "Lower R{n}",
     "viewMatch": "View match",
     "viewMapPool": "View map pool",
+    "pregameRoom": "Open pre-game room",
     "mapPool": {
       "title": "Map Pool",
       "description": "{home} vs {away}"
@@ -2038,8 +2039,7 @@
       "tie": "Tie",
       "winner": "Winner",
       "loser": "Loser",
-      "vetoRoom": "Veto room",
-      "heroBanRoom": "Hero ban room"
+      "pregameRoom": "Pre-game room"
     },
     "match": {
       "roundTab": "Round {round}",
@@ -2096,7 +2096,9 @@
           "slotCountMismatchTitle": "The map pool does not cover this series",
           "slotCountMismatchHint": "This match plays more maps than the configured pool has slots, so the veto cannot open. The organizer has to add the missing slots — waiting will not fix it.",
           "slotUnderfilledTitle": "A slot has too few maps",
-          "slotUnderfilledHint": "One of this match's slots has fewer than two candidate maps, so there is nothing to ban there. The organizer has to fill it before the veto can open."
+          "slotUnderfilledHint": "One of this match's slots has fewer than two candidate maps, so there is nothing to ban there. The organizer has to fill it before the veto can open.",
+          "notReadyTitle": "Waiting for both captains",
+          "notReadyHint": "The veto room opens once both captains confirm they are ready."
         },
         "steps": {
           "title": "Veto steps",
@@ -2189,6 +2191,13 @@
     "room": {
       "map": { "title": "Map Pool", "itemNumber": "Map #{id}" },
       "hero": { "title": "Hero Pool", "itemNumber": "Hero #{id}" },
+      "title": "Pre-game Room",
+      "phase": {
+        "map": "Map veto",
+        "hero": "Hero bans",
+        "current": "current phase",
+        "done": "done"
+      },
       "back": "Back to match",
       "loadError": "Failed to load pick-ban state",
       "retry": "Retry",
@@ -2218,6 +2227,15 @@
       "slotCountMismatchHint": "This match plays more rounds than the configured pool has slots. The organizer has to add the missing slots — waiting will not fix it.",
       "slotUnderfilledTitle": "A slot has too few candidates",
       "slotUnderfilledHint": "One of this match's slots has fewer than two candidates, so there is nothing to ban there. The organizer has to fill it before this room can open.",
+      "notReadyTitle": "Waiting for both captains",
+      "notReadyHint": "This room opens once both captains confirm they are ready.",
+      "ready": {
+        "button": "I'm ready",
+        "sending": "Confirming...",
+        "confirmed": "You're ready",
+        "waitingOpponent": "Waiting for the other captain to confirm",
+        "failed": "Failed to confirm readiness"
+      },
       "steps": {
         "title": "Steps",
         "ban": "Ban",
@@ -2277,7 +2295,8 @@
         "resolved": "resolved",
         "upcoming": "opens later",
         "locked": "Round {n} opens once the earlier rounds are decided.",
-        "inPlayCount": "{count, plural, one {# round in play} other {# rounds in play}}"
+        "inPlayCount": "{count, plural, one {# round in play} other {# rounds in play}}",
+        "reserve": "Regulation reserve on a draw: {item}"
       },
       "electOpener": {
         "title": "Choose who opens the next round",
@@ -2299,6 +2318,24 @@
         "disputed": "Reports disagree",
         "disputedHint": "Your report does not match the opponent's. An admin will resolve it.",
         "resolved": "Result confirmed — moving to the next map"
+      },
+      "reportResults": {
+        "title": "Report map results",
+        "button": "Report {map}"
+      },
+      "admin": {
+        "title": "Pick-ban controls (admin)",
+        "sideLabel": "Side",
+        "actionLabel": "Action",
+        "confirm": "Perform action",
+        "selectItemFirst": "Select an item in the pool first",
+        "actFailed": "Failed to act for side",
+        "reset": "Reset session",
+        "resetConfirmTitle": "Reset this pick-ban session?",
+        "resetConfirmHint": "The session and pool will be dropped and re-created with seeds re-resolved. All performed actions will be lost.",
+        "resetConfirmAction": "Reset",
+        "resetSuccess": "Session reset",
+        "resetFailed": "Failed to reset the session"
       }
     },
     "admin": {

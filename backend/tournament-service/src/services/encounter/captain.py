@@ -124,6 +124,17 @@ async def resolve_captain_side(
     return side
 
 
+async def resolve_captain_identity(
+    session: AsyncSession,
+    auth_user: models.AuthUser,
+    encounter: models.Encounter,
+) -> tuple[str, int, int]:
+    """Public wrapper for callers (outside this module) that need the
+    domain ``players.user`` id and team id alongside the side, not just the
+    side ``resolve_captain_side`` returns."""
+    return await _resolve_captain_identity(session, auth_user, encounter)
+
+
 async def _load_encounter(session: AsyncSession, encounter_id: int) -> models.Encounter:
     result = await session.execute(
         select(models.Encounter)

@@ -9,6 +9,7 @@ import {
   isEntrySelectable,
   isSessionActive,
   parseStepToken,
+  pickBanReserveMap,
   pickedItemsInOrder,
   poolRoundGroups,
   roundState,
@@ -44,6 +45,7 @@ function session(overrides: Partial<PickBanSession>): PickBanSession {
     home_seed: 1,
     away_seed: 2,
     turn_timer_seconds: 60,
+    slot_reserves: null,
     started_at: "2026-07-18T10:00:00Z",
     current_step_started_at: "2026-07-18T10:00:00Z",
     ...overrides,
@@ -53,6 +55,7 @@ function session(overrides: Partial<PickBanSession>): PickBanSession {
 function state(overrides: Partial<PickBanState>): PickBanState {
   return {
     session: session({}),
+    readiness: { home: true, away: true },
     sequence: [],
     pool: [],
     viewer_side: null,
@@ -147,6 +150,7 @@ describe("PICK_BAN_UNAVAILABLE_COPY", () => {
     "teams_unknown",
     "slot_count_mismatch",
     "slot_underfilled",
+    "not_ready",
   ];
 
   it("covers exactly the reasons the union carries", () => {
@@ -296,5 +300,20 @@ describe("statusLabelKey", () => {
     expect(statusLabelKey(entry({ status: "banned" }))).toBe("status.banned");
     expect(statusLabelKey(entry({ status: "protected" }))).toBe("status.protected");
     expect(statusLabelKey(entry({ status: "played" }))).toBe("status.played");
+  });
+});
+
+describe("pickBanReserveMap", () => {
+  it("is empty for no session, a null snapshot, and an empty snapshot", () => {
+    expect(pickBanReserveMap(null).size).toBe(0);
+    expect(pickBanReserveMap(session({ slot_reserves: null })).size).toBe(0);
+    expect(pickBanReserveMap(session({ slot_reserves: {} })).size).toBe(0);
+  });
+
+  it("converts string-keyed positions to a number-keyed Map", () => {
+    const map = pickBanReserveMap(session({ slot_reserves: { "1": 41, "3": 43 } }));
+    expect(map.get(1)).toBe(41);
+    expect(map.get(3)).toBe(43);
+    expect(map.get(2)).toBeUndefined();
   });
 });

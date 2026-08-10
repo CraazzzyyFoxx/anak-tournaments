@@ -16,9 +16,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { notify } from "@/lib/notify";
 import pickBanService from "@/services/pickBan.service";
+import type { PickBanKind } from "@/types/tournament.types";
 import type { PickBanSide } from "./pick-ban-model";
 
 interface ElectOpenerDialogProps {
+  kind: PickBanKind;
   encounterId: number;
   open: boolean;
   homeName: string;
@@ -31,13 +33,13 @@ interface ElectOpenerDialogProps {
  * true (`first_ban_rotation: result_loser_choice`). The backend enforces who
  * may submit this — `open` alone gates VISIBILITY, not authorization.
  */
-export function ElectOpenerDialog({ encounterId, open, homeName, awayName, queryKey }: ElectOpenerDialogProps) {
+export function ElectOpenerDialog({ kind, encounterId, open, homeName, awayName, queryKey }: ElectOpenerDialogProps) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
   const [choice, setChoice] = useState<PickBanSide | null>(null);
 
   const mutation = useMutation({
-    mutationFn: (first_side: PickBanSide) => pickBanService.electOpener(encounterId, { first_side }),
+    mutationFn: (first_side: PickBanSide) => pickBanService.electOpener(kind, encounterId, { first_side }),
     onError: (error) => notify.apiError(error, { title: t("electOpener.failed") }),
     onSettled: () => {
       setChoice(null);

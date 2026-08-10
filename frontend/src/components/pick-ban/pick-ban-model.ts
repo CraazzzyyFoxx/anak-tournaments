@@ -99,7 +99,22 @@ export const PICK_BAN_UNAVAILABLE_COPY = {
     hintKey: "slotUnderfilledHint",
     icon: "misconfigured",
   },
+  not_ready: {
+    titleKey: "notReadyTitle",
+    hintKey: "notReadyHint",
+    icon: "teams",
+  },
 } as const satisfies Record<VetoUnavailableReason, PickBanUnavailableCopy>;
+
+/**
+ * A session's reserve snapshot as a lookup by slot position. Mirrors
+ * `@/components/veto/veto-model.ts`'s `slotReserveMaps` exactly (see its
+ * docstring for the string-key rationale) — `PickBanSession.slot_reserves`
+ * is null for `kind: "hero"`, so this is always empty there.
+ */
+export function pickBanReserveMap(session: PickBanSession | null): Map<number, number> {
+  return new Map(Object.entries(session?.slot_reserves ?? {}).map(([position, itemId]) => [Number(position), itemId]));
+}
 
 export interface PickBanRoundGroup {
   /** The round (map-of-the-series) this group resolves; 1-based. */

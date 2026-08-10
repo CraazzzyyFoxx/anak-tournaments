@@ -28,7 +28,7 @@ from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
 from src.core.redis import close_realtime_redis
-from src.rpc import admin_misc, integrations, pick_ban_admin, public_rpc, registration_admin, stage_admin, veto_admin
+from src.rpc import admin_misc, integrations, pick_ban_admin, public_rpc, registration_admin, stage_admin
 from src.rpc import reads as rpc_reads
 from src.services.admin import registry as admin_registry
 from src.services.challonge import sync as challonge_sync
@@ -76,7 +76,6 @@ admin_misc.register(broker, logger)
 registration_admin.register(broker, logger)
 integrations.register(broker, logger)
 stage_admin.register(broker, logger)
-veto_admin.register(broker, logger)
 pick_ban_admin.register(broker, logger)
 public_rpc.register(broker, logger)
 # Recalculation-event consumers (tournament.changed / standings.invalidated).

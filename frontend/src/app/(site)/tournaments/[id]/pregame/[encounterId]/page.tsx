@@ -2,11 +2,11 @@
 
 import { useParams } from "next/navigation";
 
-import { VetoRoom } from "./_components/VetoRoom";
+import { PregameRoom } from "./_components/PregameRoom";
 
-export default function VetoRoomPage() {
+export default function PregameRoomPage() {
   const params = useParams<{ id: string; encounterId: string }>();
   const encounterId = Number(params.encounterId);
 
-  return <VetoRoom encounterId={encounterId} />;
+  return <PregameRoom encounterId={encounterId} />;
 }

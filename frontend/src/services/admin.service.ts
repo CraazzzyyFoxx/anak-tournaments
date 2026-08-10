@@ -7,7 +7,8 @@ import {
   StageItem,
   StageItemInput,
   StageItemType,
-  EncounterMapPoolState
+  PickBanKind,
+  PickBanState
 } from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
@@ -1545,23 +1546,25 @@ class AdminService {
     return response.json();
   }
 
-  // ─── Map Veto Sessions (live-session admin overrides only; config CRUD moved
-  // to PickBanConfig -- see pickBanService.upsertConfig) ─────────────────────
+  // ─── Pick-Ban Sessions (live-session admin overrides only; config CRUD
+  // moved to PickBanConfig -- see pickBanService.upsertConfig) ────────────────
 
-  /** Drop the encounter's veto session + pool and re-create them (re-resolves seeds). */
-  async resetVetoSession(encounterId: number): Promise<EncounterMapPoolState> {
-    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/veto-session/reset`, {
-      method: "POST"
+  /** Drop the encounter's pick-ban session + pool for `kind` and re-create
+   * them (re-resolves seeds). */
+  async resetPickBanSession(encounterId: number, kind: PickBanKind): Promise<PickBanState> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-session/reset`, {
+      method: "POST",
+      body: { kind }
     });
     return response.json();
   }
 
-  /** Perform a veto step on behalf of a side (admin override). */
-  async adminVetoAct(
+  /** Perform a ban/pick/protect on behalf of a side (admin override). */
+  async adminPickBanAct(
     encounterId: number,
-    data: { side: "home" | "away"; map_id: number; action: "pick" | "ban" }
-  ): Promise<{ id: number; map_id: number; status: string; picked_by: string | null }> {
-    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/veto-act`, {
+    data: { kind: PickBanKind; side: "home" | "away"; item_id: number; action: "pick" | "ban" | "protect" }
+  ): Promise<{ id: number; item_id: number; status: string; picked_by: string | null }> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-act`, {
       method: "POST",
       body: data
     });

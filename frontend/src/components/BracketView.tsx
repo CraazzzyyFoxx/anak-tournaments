@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Pencil, FileEdit, Maximize2, Search } from "lucide-react";
+import { Pencil, FileEdit, ListChecks, Maximize2, Search } from "lucide-react";
 import Link from "next/link";
 
 import { useTranslations } from "next-intl";
@@ -597,6 +597,16 @@ function MatchCard({
             homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
             awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
           />
+          <Link
+            href={`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`}
+            className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+            aria-label={t("bracket.pregameRoom")}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <ListChecks className="size-3.5" aria-hidden />
+          </Link>
         </div>
         {meta.timeLabel && (
           <span

@@ -246,8 +246,8 @@ def register(broker: Any, logger: Any) -> None:
     # veto's RPC paths/shapes stay exactly as-is; only the storage underneath
     # moves onto PickBanConfig/PickBanSession/PickBanEntry. The three adapters
     # below translate the generic engine's item_id/round vocabulary back to
-    # the legacy map_id/slot one so VetoRoom.tsx, VetoAdminControls.tsx,
-    # EncounterMapPoolModal and MatchReportDialog need zero frontend changes.
+    # the legacy map_id/slot one so EncounterMapPoolModal and MatchReportDialog
+    # (the two remaining consumers of this translated shape) need zero changes.
 
     def _map_entry_from_pick_ban(entry: dict) -> dict:
         return {
@@ -352,45 +352,52 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-    @broker.subscriber("rpc.tournament.captain_hero_pool_state")
-    async def _captain_hero_pool_state(data: dict, msg: RabbitMessage) -> dict:
+    def _parse_kind(data: dict) -> PickBanKind:
+        raw = data.get("kind")
+        if raw not in ("map", "hero"):
+            raise HTTPException(status_code=422, detail="kind must be 'map' or 'hero'")
+        return PickBanKind(raw)
+
+    @broker.subscriber("rpc.tournament.captain_pick_ban_state")
+    async def _captain_pick_ban_state(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            kind = _parse_kind(data)
             encounter_id = _require_id(data)
             user = _optional_identity(data)
             tournament_id = await visibility_resolvers.tournament_id_for_encounter(session, encounter_id)
             await assert_tournament_viewable(session, user, tournament_id)
             encounter = await captain_service._load_encounter(session, encounter_id)
             viewer_side = await resolve_optional_viewer_side(session, user, encounter)
-            return await pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, PickBanKind.HERO, viewer_side=viewer_side
-            )
+            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer_side=viewer_side)
 
         return await _run(logger, op)
 
-    @broker.subscriber("rpc.tournament.captain_hero_veto")
-    async def _captain_hero_veto(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.tournament.captain_pick_ban_act")
+    async def _captain_pick_ban_act(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            kind = _parse_kind(data)
             user = _identity(data)
             encounter_id = _require_id(data)
             body = PickBanActionInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
             captain_side = await captain_service.resolve_captain_side(session, user, encounter)
             entry = await pick_ban_action_service.perform_pick_ban_action(
-                session, encounter_id, PickBanKind.HERO, captain_side, body.item_id, body.action
+                session, encounter_id, kind, captain_side, body.item_id, body.action
             )
             return pick_ban_action_service.serialize_pick_ban_entry(entry)
 
         return await _run(logger, op)
 
-    @broker.subscriber("rpc.tournament.captain_elect_opener")
-    async def _captain_elect_opener(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.tournament.captain_pick_ban_elect_opener")
+    async def _captain_pick_ban_elect_opener(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            kind = _parse_kind(data)
             user = _identity(data)
             encounter_id = _require_id(data)
             body = ElectOpenerInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
             captain_side = await captain_service.resolve_captain_side(session, user, encounter)
-            pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, PickBanKind.HERO)
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
             if pick_ban is None or not pick_ban.awaiting_choice:
                 raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
             # Only the loser of the round that triggered the choice may elect —
@@ -431,6 +438,21 @@ def register(broker: Any, logger: Any) -> None:
                 home_score=body.home_score,
                 away_score=body.away_score,
             )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.captain_ready")
+    async def _captain_ready(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            captain_side, captain_user_id, _team_id = await captain_service.resolve_captain_identity(
+                session, user, encounter
+            )
+            # mark_ready commits internally.
+            readiness = await pick_ban_session_service.mark_ready(session, encounter, captain_side, captain_user_id)
+            return {"readiness": readiness}
 
         return await _run(logger, op)
 

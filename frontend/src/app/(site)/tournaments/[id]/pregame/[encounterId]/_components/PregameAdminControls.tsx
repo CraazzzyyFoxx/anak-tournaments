@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
@@ -20,50 +20,54 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
-import type { EncounterMapPoolState, MapVetoAction } from "@/types/tournament.types";
+import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournament.types";
 
-import type { VetoSide } from "@/components/veto/veto-model";
+import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
 
-interface VetoAdminControlsProps {
+interface PregameAdminControlsProps {
+  kind: PickBanKind;
   encounterId: number;
-  state: EncounterMapPoolState;
-  selectedMapId: number | null;
-  selectedMapName: string | null;
+  state: PickBanState;
+  allowProtect: boolean;
+  selectedItemId: number | null;
+  selectedItemName: string | null;
   onMutated: () => void;
 }
 
 /**
- * Workspace-admin overrides: reset the whole session (drop + re-create with
- * seeds re-resolved) and perform a veto step on behalf of either side.
+ * Workspace-admin overrides: reset the whole pick-ban session (drop +
+ * re-create with seeds re-resolved) and perform a step on behalf of either
+ * side. Generalizes the retired `VetoAdminControls` with `kind` and the
+ * `protect` action the generic engine adds.
  */
-export function VetoAdminControls({
+export function PregameAdminControls({
+  kind,
   encounterId,
   state,
-  selectedMapId,
-  selectedMapName,
+  allowProtect,
+  selectedItemId,
+  selectedItemName,
   onMutated,
-}: VetoAdminControlsProps) {
-  const t = useTranslations("encounters.veto.room");
-  const defaultSide: VetoSide = state.turn_side ?? "home";
-  const defaultAction: MapVetoAction = state.expected_action === "pick" ? "pick" : "ban";
+}: PregameAdminControlsProps) {
+  const t = useTranslations("pickBan.room");
+  const defaultSide: PickBanSide = state.turn_side ?? "home";
+  const defaultAction: PickBanAction = state.expected_action === "pick" ? "pick" : state.expected_action === "protect" ? "protect" : "ban";
   // The override is stored WITH the step it was made for, so a new step
-  // automatically falls back to what the sequence expects. This used to be two
-  // `useState`s resynced from an effect — a cascading render for a value that is
-  // pure derivation.
+  // automatically falls back to what the sequence expects.
   const step = state.current_step_index;
   const [override, setOverride] = useState<{
     step: number | null;
-    side: VetoSide;
-    action: MapVetoAction;
+    side: PickBanSide;
+    action: PickBanAction;
   } | null>(null);
   const isOverridden = override?.step === step;
   const side = isOverridden ? override.side : defaultSide;
   const action = isOverridden ? override.action : defaultAction;
-  const setSide = (next: VetoSide) => setOverride({ step, side: next, action });
-  const setAction = (next: MapVetoAction) => setOverride({ step, side, action: next });
+  const setSide = (next: PickBanSide) => setOverride({ step, side: next, action });
+  const setAction = (next: PickBanAction) => setOverride({ step, side, action: next });
 
   const resetMutation = useMutation({
-    mutationFn: () => adminService.resetVetoSession(encounterId),
+    mutationFn: () => adminService.resetPickBanSession(encounterId, kind),
     onSuccess: () => {
       notify.success(t("admin.resetSuccess"));
       onMutated();
@@ -72,15 +76,20 @@ export function VetoAdminControls({
   });
 
   const actMutation = useMutation({
-    mutationFn: (input: { side: VetoSide; map_id: number; action: MapVetoAction }) =>
-      adminService.adminVetoAct(encounterId, input),
+    mutationFn: (input: { side: PickBanSide; item_id: number; action: PickBanAction }) =>
+      adminService.adminPickBanAct(encounterId, { kind, ...input }),
     onSuccess: onMutated,
     onError: (error) => notify.apiError(error, { title: t("admin.actFailed") }),
   });
 
-  const canAct =
-    state.session?.status === "active" && !state.is_complete && selectedMapId != null;
+  const canAct = state.session?.status === "active" && !state.is_complete && selectedItemId != null;
   const pending = resetMutation.isPending || actMutation.isPending;
+
+  const actionOptions: { value: PickBanAction; label: string }[] = [
+    { value: "ban", label: t("action.ban") },
+    { value: "pick", label: t("action.pick") },
+    ...(allowProtect ? [{ value: "protect" as const, label: t("action.protect") }] : []),
+  ];
 
   return (
     <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
@@ -101,33 +110,21 @@ export function VetoAdminControls({
               value={side}
               onChange={setSide}
             />
-            <ChoiceGroup
-              label={t("admin.actionLabel")}
-              options={[
-                { value: "ban", label: t("action.ban") },
-                { value: "pick", label: t("action.pick") },
-              ]}
-              value={action}
-              onChange={setAction}
-            />
+            <ChoiceGroup label={t("admin.actionLabel")} options={actionOptions} value={action} onChange={setAction} />
             <Button
               size="sm"
               disabled={!canAct || pending}
               onClick={() => {
-                if (selectedMapId == null) return;
-                actMutation.mutate({ side, map_id: selectedMapId, action });
+                if (selectedItemId == null) return;
+                actMutation.mutate({ side, item_id: selectedItemId, action });
               }}
             >
-              {actMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-              ) : null}
+              {actMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
               {t("admin.confirm")}
-              {selectedMapName ? `: ${selectedMapName}` : ""}
+              {selectedItemName ? `: ${selectedItemName}` : ""}
             </Button>
-            {selectedMapId == null ? (
-              <span className="text-xs text-[color:var(--aqt-fg-muted)]">
-                {t("admin.selectMapFirst")}
-              </span>
+            {selectedItemId == null ? (
+              <span className="text-xs text-[color:var(--aqt-fg-muted)]">{t("admin.selectItemFirst")}</span>
             ) : null}
           </>
         ) : null}
@@ -150,9 +147,7 @@ export function VetoAdminControls({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>{t("captain.cancel")}</AlertDialogCancel>
-              <AlertDialogAction onClick={() => resetMutation.mutate()}>
-                {t("admin.resetConfirmAction")}
-              </AlertDialogAction>
+              <AlertDialogAction onClick={() => resetMutation.mutate()}>{t("admin.resetConfirmAction")}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -174,9 +169,7 @@ function ChoiceGroup<TValue extends string>({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
-        {label}
-      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">{label}</span>
       <div className="flex gap-1">
         {options.map((option) => (
           <Button

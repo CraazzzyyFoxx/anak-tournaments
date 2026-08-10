@@ -29,11 +29,12 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	// bare /matches can never be swallowed as an id.
 	{Method: "GET", Pattern: "/api/v1/admin/matches", Queue: "rpc.tournament.admin_matches_list", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/matches/{match_id}", Queue: "rpc.tournament.admin_match_get", IDParam: "match_id", AllQuery: true, Auth: edge.AuthRequired},
-	// map veto (docs/plans/2026-08-09-generic-pickban-engine.md) — live-session
-	// admin overrides only. Config CRUD moved to the generic pick-ban-configs
-	// routes below (kind=map). Worker enforces workspace "match"/"update".
-	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/veto-session/reset", Queue: "rpc.tournament.admin_veto_session_reset", IDParam: "encounter_id", Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/veto-act", Queue: "rpc.tournament.admin_veto_act", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
+	// pick-ban live-session admin overrides (docs/plans/2026-08-09-generic-pickban-engine.md).
+	// Config CRUD moved to the generic pick-ban-configs routes below. `kind`
+	// (map|hero) travels in the body, one route pair for both. Worker enforces
+	// workspace "match"/"update".
+	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/pick-ban-session/reset", Queue: "rpc.tournament.admin_pick_ban_session_reset", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/pick-ban-act", Queue: "rpc.tournament.admin_pick_ban_act", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
 	// generic pick-ban config CRUD (map + hero, docs/plans/2026-08-09-generic-pickban-engine.md).
 	// Same cascade key as the veto-configs routes above, additionally partitioned
 	// by `kind` in the body/response.

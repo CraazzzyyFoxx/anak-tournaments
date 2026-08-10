@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
-import type { PickBanConfig, PickBanConfigUpsertInput, PickBanEntry, PickBanState } from "@/types/tournament.types";
+import type { PickBanConfig, PickBanConfigUpsertInput, PickBanEntry, PickBanKind, PickBanState } from "@/types/tournament.types";
 
 export interface PickBanActionInput {
   item_id: number;
@@ -21,28 +21,35 @@ export interface MapReportResult {
   match_id: number | null;
 }
 
+export interface ReadinessMap {
+  home: boolean;
+  away: boolean;
+}
+
 class PickBanService {
   /**
-   * Fetch the hero-pool state. Same 200-with-`reason` contract as
-   * `captainService.getMapPoolState`: `null` is reserved for hard failures
-   * (404 encounter), never for "not configured yet".
+   * Fetch one kind's pick-ban room state. 200-with-`reason` contract: `null`
+   * is reserved for hard failures (404 encounter), never for "not configured
+   * yet" / "not ready yet" — those come back as `reason` on a normal 200.
    */
-  async getHeroPoolState(encounterId: number): Promise<PickBanState | null> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/hero-pool/state`, { throwOnError: false });
+  async getPickBanState(kind: PickBanKind, encounterId: number): Promise<PickBanState | null> {
+    const response = await apiFetch(`/api/v1/encounters/${encounterId}/pick-ban/${kind}/state`, {
+      throwOnError: false,
+    });
     if (!response.ok) return null;
     return response.json();
   }
 
-  async performHeroVeto(encounterId: number, data: PickBanActionInput): Promise<PickBanEntry> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/hero-pool/veto`, {
+  async performPickBanAction(kind: PickBanKind, encounterId: number, data: PickBanActionInput): Promise<PickBanEntry> {
+    const response = await apiFetch(`/api/v1/encounters/${encounterId}/pick-ban/${kind}/act`, {
       method: "POST",
       body: data,
     });
     return response.json();
   }
 
-  async electOpener(encounterId: number, data: ElectOpenerInput): Promise<unknown> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/hero-pool/elect-opener`, {
+  async electOpener(kind: PickBanKind, encounterId: number, data: ElectOpenerInput): Promise<unknown> {
+    const response = await apiFetch(`/api/v1/encounters/${encounterId}/pick-ban/${kind}/elect-opener`, {
       method: "POST",
       body: data,
     });
@@ -54,6 +61,13 @@ class PickBanService {
       method: "POST",
       body: data,
     });
+    return response.json();
+  }
+
+  /** Confirms the calling captain's side is ready to begin the encounter's
+   * pre-game phase (shared gate across both pick-ban kinds). */
+  async markReady(encounterId: number): Promise<{ readiness: ReadinessMap }> {
+    const response = await apiFetch(`/api/v1/encounters/${encounterId}/ready`, { method: "POST" });
     return response.json();
   }
 

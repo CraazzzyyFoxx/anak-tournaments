@@ -150,6 +150,7 @@ describe("VETO_UNAVAILABLE_COPY", () => {
     "teams_unknown",
     "slot_count_mismatch",
     "slot_underfilled",
+    "not_ready",
   ];
 
   it("covers exactly the reasons the union carries", () => {

@@ -152,8 +152,8 @@ def serialize_pick_ban_session(pick_ban: PickBanSession) -> dict[str, Any]:
         # Passthrough of the session's reserve snapshot, string-keyed by slot
         # position, gaps and reserve-less slots omitted -- see
         # pick_ban_session.ensure_pick_ban_session's slot_reserves comment.
-        # Always None for kind=hero (no reserve concept there); harmless extra
-        # key for HeroBanRoom.tsx, which never reads it.
+        # Always None for kind=hero (no reserve concept there); read by
+        # `PickBanGrid`'s reserve caption via `pickBanReserveMap` for kind=map.
         "slot_reserves": pick_ban.slot_reserves_json,
         "started_at": pick_ban.started_at.isoformat() if pick_ban.started_at else None,
         "current_step_started_at": (
@@ -162,10 +162,11 @@ def serialize_pick_ban_session(pick_ban: PickBanSession) -> dict[str, Any]:
     }
 
 
-def build_unavailable_state(reason: str) -> dict[str, Any]:
+def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[str, Any]:
     return {
         "session": None,
         "reason": reason,
+        "readiness": readiness,
         "sequence": [],
         "pool": [],
         "viewer_side": None,
@@ -186,6 +187,7 @@ def build_pick_ban_state(
     *,
     viewer_side: str | None,
     pick_ban: PickBanSession | None,
+    readiness: dict[str, bool],
 ) -> dict[str, Any]:
     """Pure state builder — same shape as ``map_veto.build_map_pool_state``,
     generalized to pool-agnostic ``pick_ban`` sessions with `protect` steps."""
@@ -209,6 +211,7 @@ def build_pick_ban_state(
 
     return {
         "session": serialize_pick_ban_session(pick_ban) if pick_ban is not None else None,
+        "readiness": readiness,
         "sequence": list(sequence),
         "pool": [serialize_pick_ban_entry(entry) for entry in pool],
         "viewer_side": viewer_side,
@@ -235,16 +238,19 @@ async def get_pick_ban_state(
     if encounter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 
+    readiness = await pick_ban_session_service.get_readiness(session, encounter_id)
     pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, encounter, kind)
     if pick_ban is None:
         # Mirrors veto_session.unavailable_reason's contract: names WHY, never
         # a bare 400 -- see pick_ban_session.unavailable_reason for why this
         # re-derives against PickBanConfig instead of being handed the cause.
         reason = await pick_ban_session_service.unavailable_reason(session, encounter, kind)
-        return build_unavailable_state(reason)
+        return build_unavailable_state(reason, readiness=readiness)
 
     pool = await get_pick_ban_pool(session, pick_ban.id, encounter_id, kind)
-    return build_pick_ban_state(pick_ban.resolved_sequence_json, pool, viewer_side=viewer_side, pick_ban=pick_ban)
+    return build_pick_ban_state(
+        pick_ban.resolved_sequence_json, pool, viewer_side=viewer_side, pick_ban=pick_ban, readiness=readiness
+    )
 
 
 def apply_pick_ban_action(

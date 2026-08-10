@@ -26,12 +26,17 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/map-pool/state", Queue: "rpc.tournament.captain_map_pool_state", IDParam: "encounter_id", Auth: edge.AuthOptional},
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/map-pool/veto", Queue: "rpc.tournament.captain_veto", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/map-pool/{map_id}/report", Queue: "rpc.tournament.captain_report_map", IDParam: "encounter_id", Path: []string{"map_id"}, Body: true, Auth: edge.AuthRequired},
+	// pick_ban_session.py — captain ready-up gate, shared by BOTH pick-ban kinds
+	// (one confirmation per side covers map veto and hero bans together).
+	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/ready", Queue: "rpc.tournament.captain_ready", IDParam: "encounter_id", Auth: edge.AuthRequired},
 
-	// pick_ban_action.py / pick_ban_session.py — generic hero-ban room, mirrors
-	// the map-pool routes above (design: docs/plans/2026-08-09-generic-pickban-engine.md).
-	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/hero-pool/state", Queue: "rpc.tournament.captain_hero_pool_state", IDParam: "encounter_id", Auth: edge.AuthOptional},
-	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/hero-pool/veto", Queue: "rpc.tournament.captain_hero_veto", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/hero-pool/elect-opener", Queue: "rpc.tournament.captain_elect_opener", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
+	// pick_ban_action.py / pick_ban_session.py — generic pregame room (map +
+	// hero), used by the unified pick-ban room (design:
+	// docs/plans/2026-08-09-generic-pickban-engine.md). `kind` (map|hero)
+	// travels as a literal path segment, one route triple for both.
+	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/pick-ban/{kind}/state", Queue: "rpc.tournament.captain_pick_ban_state", IDParam: "encounter_id", Path: []string{"kind"}, Auth: edge.AuthOptional},
+	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/pick-ban/{kind}/act", Queue: "rpc.tournament.captain_pick_ban_act", IDParam: "encounter_id", Path: []string{"kind"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/pick-ban/{kind}/elect-opener", Queue: "rpc.tournament.captain_pick_ban_elect_opener", IDParam: "encounter_id", Path: []string{"kind"}, Body: true, Auth: edge.AuthRequired},
 
 	// encounter.py — saved-view writes (the GET /views read is already migrated).
 	{Method: "POST", Pattern: "/api/v1/encounters/views", Queue: "rpc.tournament.saved_view_create", Query: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 200},

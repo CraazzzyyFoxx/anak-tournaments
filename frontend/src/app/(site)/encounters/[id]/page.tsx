@@ -9,8 +9,7 @@ import { Swords, ArrowLeft } from "lucide-react";
 import { SITE_NAME, SITE_URL } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { VetoRoomLink } from "@/app/(site)/encounters/[id]/components/VetoRoomLink";
-import { HeroBanRoomLink } from "@/app/(site)/encounters/[id]/components/HeroBanRoomLink";
+import { PregameRoomLink } from "@/app/(site)/encounters/[id]/components/PregameRoomLink";
 
 export const dynamic = 'force-dynamic';
 
@@ -93,8 +92,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <VetoRoomLink encounterId={encounter.id} tournamentId={encounter.tournament_id} />
-            <HeroBanRoomLink encounterId={encounter.id} tournamentId={encounter.tournament_id} />
+            <PregameRoomLink encounterId={encounter.id} tournamentId={encounter.tournament_id} />
           </div>
         </CardContent>
       </Card>

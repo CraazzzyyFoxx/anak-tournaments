@@ -34,6 +34,11 @@ interface PickBanGridProps {
    * completion signal; round mode comes from `pool[].round` via `poolRoundGroups`.
    */
   currentRound: number | null;
+  /**
+   * Reserve item per round position, from the session's snapshot (map kind
+   * only — always empty for hero). See `pickBanReserveMap`.
+   */
+  slotReserves: Map<number, number>;
   onSelect: (itemId: number) => void;
 }
 
@@ -48,7 +53,16 @@ const STATUS_BADGE_VARIANT: Record<PickBanEntryStatus, "secondary" | "destructiv
 /** Ties a locked round's tiles to the paragraph that explains why they are inert. */
 const lockedHintId = (round: number) => `pick-ban-round-${round}-locked`;
 
-export function PickBanGrid({ kind, pool, itemsById, selectedItemId, canSelect, currentRound, onSelect }: PickBanGridProps) {
+export function PickBanGrid({
+  kind,
+  pool,
+  itemsById,
+  selectedItemId,
+  canSelect,
+  currentRound,
+  slotReserves,
+  onSelect,
+}: PickBanGridProps) {
   const t = useTranslations("pickBan.room");
   const orderedPicks = pickedItemsInOrder(pool);
   const roundGroups = poolRoundGroups(pool);
@@ -178,6 +192,10 @@ export function PickBanGrid({ kind, pool, itemsById, selectedItemId, canSelect, 
           roundGroups.map((group) => {
             const state = roundState(group, currentRound);
             const locked = state === "upcoming";
+            // Absent, not null, for a round that named no reserve — so this is
+            // undefined for most rounds and the caption is skipped entirely
+            // rather than rendered with nothing after it.
+            const reserveItemId = slotReserves.get(group.round);
             return (
               <div
                 key={group.round}
@@ -202,6 +220,11 @@ export function PickBanGrid({ kind, pool, itemsById, selectedItemId, canSelect, 
                 {locked ? (
                   <p id={lockedHintId(group.round)} className="text-xs text-[color:var(--aqt-fg-muted)]">
                     {t("round.locked", { n: group.round })}
+                  </p>
+                ) : null}
+                {reserveItemId != null ? (
+                  <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {t("round.reserve", { item: itemName(reserveItemId) })}
                   </p>
                 ) : null}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">

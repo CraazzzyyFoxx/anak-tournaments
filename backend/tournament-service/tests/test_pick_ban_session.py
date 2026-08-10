@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,15 +27,22 @@ import sqlalchemy as sa  # noqa: E402
 from shared.core.enums import FirstBanRotation, MapVetoMode, PickBanKind  # noqa: E402
 from shared.models.tournament.pick_ban import (  # noqa: E402
     EncounterPickBanLedger,
+    EncounterReadiness,
     PickBanConfig,
     PickBanEntry,
     PickBanSession,
 )
 from shared.models.tournament.stage import Stage  # noqa: E402
 from src.services.encounter.pick_ban_session import (  # noqa: E402
+    REASON_NOT_READY,
+    both_sides_ready,
     ensure_pick_ban_session,
     get_pick_ban_session,
+    get_readiness,
+    mark_ready,
     reset_pick_ban_session,
+    reset_readiness,
+    sync_all_pick_ban_sessions_after_team_change,
     sync_pick_ban_session_after_team_change,
     unavailable_reason,
 )
@@ -119,10 +127,16 @@ class _FakeSession:
         config: Any = None,
         existing: Any = None,
         pool_count: int = 0,
+        readiness: frozenset[str] = frozenset({"home", "away"}),
     ) -> None:
         self.config = config
         self.existing = existing
         self.pool_count = pool_count
+        # Defaults to "both ready" so every pre-existing test (all written
+        # before the readiness gate existed) keeps exercising config/team
+        # logic unchanged; only tests that care about the gate pass a
+        # narrower set.
+        self.readiness = readiness
         self.added: list[Any] = []
         self.deletes: list[Any] = []
         self.commits = 0
@@ -133,12 +147,26 @@ class _FakeSession:
             self.deletes.append(statement)
             if statement.table.name == PickBanSession.__tablename__:
                 self.existing = None
+            elif statement.table.name == EncounterReadiness.__tablename__:
+                self.readiness = frozenset()
             return _Result([])
         entity = statement.column_descriptions[0]["entity"]
         if entity is PickBanSession:
             return _Result([] if self.existing is None else [self.existing])
         if entity is PickBanConfig:
             return _Result([] if self.config is None else [self.config])
+        if entity is EncounterReadiness:
+            # ``mark_ready`` queries a specific side (``select(EncounterReadiness)
+            # .where(..., side == X)``); ``get_readiness`` queries all sides for
+            # the encounter (no side filter). Distinguish by sniffing the
+            # compiled WHERE clause -- there's no ORM-level "which side" the
+            # fake can otherwise read off an opaque ``Select``.
+            compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+            side_match = re.search(r"side = '(\w+)'", compiled)
+            if side_match:
+                side = side_match.group(1)
+                return _Result([side] if side in self.readiness else [])
+            return _Result(sorted(self.readiness))
         raise AssertionError(f"unexpected execute() entity: {entity}")
 
     async def scalar(self, statement: Any) -> Any:
@@ -151,6 +179,8 @@ class _FakeSession:
 
     def add(self, instance: Any) -> None:
         self.added.append(instance)
+        if isinstance(instance, EncounterReadiness):
+            self.readiness = self.readiness | {instance.side}
 
     async def flush(self) -> None:
         self.flushes += 1
@@ -369,3 +399,113 @@ class SyncPickBanSessionAfterTeamChangeTests(IsolatedAsyncioTestCase):
         await sync_pick_ban_session_after_team_change(session, _encounter(best_of=3), PickBanKind.MAP)
 
         self.assertIn(PickBanSession.__tablename__, session.deleted_tables())
+
+
+class ReadinessGateTests(IsolatedAsyncioTestCase):
+    """``ensure_pick_ban_session``/``unavailable_reason`` refuse to create or
+    explain a session as available until ``EncounterReadiness`` has both
+    sides -- checked only once teams/config/slots are otherwise fine, so it
+    never masks a more specific reason."""
+
+    async def test_ensure_returns_none_when_readiness_incomplete(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(config=config, readiness=frozenset({"home"}))
+
+        pick_ban = await ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertIsNone(pick_ban)
+        self.assertEqual([], session.pool_rows)
+
+    async def test_ensure_returns_none_when_no_side_ready(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(config=config, readiness=frozenset())
+
+        pick_ban = await ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertIsNone(pick_ban)
+
+    async def test_ensure_creates_once_both_sides_ready(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(config=config, readiness=frozenset({"home", "away"}))
+
+        pick_ban = await ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertIsNotNone(pick_ban)
+        self.assertEqual(3, len(session.pool_rows))
+
+    async def test_unavailable_reason_is_not_ready_when_config_valid_but_unready(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(config=config, readiness=frozenset({"home"}))
+
+        reason = await unavailable_reason(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertEqual(REASON_NOT_READY, reason)
+
+    async def test_unavailable_reason_prefers_teams_unknown_over_not_ready(self) -> None:
+        session = _FakeSession(config=None, readiness=frozenset())
+
+        reason = await unavailable_reason(session, _encounter(best_of=3, home=None), PickBanKind.MAP)
+
+        self.assertEqual(REASON_TEAMS_UNKNOWN, reason)
+
+    async def test_unavailable_reason_prefers_not_configured_over_not_ready(self) -> None:
+        session = _FakeSession(config=None, readiness=frozenset())
+
+        reason = await unavailable_reason(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertEqual(REASON_NOT_CONFIGURED, reason)
+
+
+class ReadinessHelperTests(IsolatedAsyncioTestCase):
+    """``get_readiness``/``both_sides_ready``/``mark_ready``/``reset_readiness``
+    in isolation from the session-creation gate above."""
+
+    async def test_get_readiness_reports_each_side_independently(self) -> None:
+        session = _FakeSession(readiness=frozenset({"home"}))
+
+        readiness = await get_readiness(session, 500)
+
+        self.assertEqual({"home": True, "away": False}, readiness)
+
+    async def test_both_sides_ready_requires_both(self) -> None:
+        self.assertFalse(await both_sides_ready(_FakeSession(readiness=frozenset({"home"})), 500))
+        self.assertTrue(await both_sides_ready(_FakeSession(readiness=frozenset({"home", "away"})), 500))
+
+    async def test_mark_ready_is_idempotent_and_returns_full_map(self) -> None:
+        session = _FakeSession(readiness=frozenset())
+
+        first = await mark_ready(session, _encounter(best_of=3), "home", 42)
+        self.assertEqual({"home": True, "away": False}, first)
+        self.assertEqual(1, session.commits)
+
+        # Re-confirming the same side does not add a second row or re-commit
+        # needlessly -- it just reflects the (unchanged) state back.
+        second = await mark_ready(session, _encounter(best_of=3), "home", 42)
+        self.assertEqual({"home": True, "away": False}, second)
+        self.assertEqual(1, session.commits)
+
+        third = await mark_ready(session, _encounter(best_of=3), "away", 99)
+        self.assertEqual({"home": True, "away": True}, third)
+        self.assertEqual(2, session.commits)
+
+    async def test_reset_readiness_clears_both_sides(self) -> None:
+        session = _FakeSession(readiness=frozenset({"home", "away"}))
+
+        await reset_readiness(session, 500)
+
+        self.assertEqual({"home": False, "away": False}, await get_readiness(session, 500))
+        self.assertIn(EncounterReadiness.__tablename__, session.deleted_tables())
+
+
+class SyncAllPickBanSessionsAfterTeamChangeTests(IsolatedAsyncioTestCase):
+    """The two-kind, legacy-shape wrapper additionally clears readiness --
+    a confirmation made against one opponent must not carry over once the
+    team assignment changes."""
+
+    async def test_clears_readiness_alongside_both_kinds(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(existing=None, config=config, readiness=frozenset({"home", "away"}))
+
+        await sync_all_pick_ban_sessions_after_team_change(session, _encounter(best_of=3))
+
+        self.assertEqual({"home": False, "away": False}, await get_readiness(session, 500))

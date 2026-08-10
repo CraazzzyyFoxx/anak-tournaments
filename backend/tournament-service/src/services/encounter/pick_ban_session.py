@@ -37,6 +37,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.pick_ban import (
     EncounterPickBanLedger,
+    EncounterReadiness,
     PickBanConfig,
     PickBanConfigSlot,
     PickBanEntry,
@@ -123,6 +124,51 @@ async def _resolve_config(
     return best
 
 
+# Session-creation blocker distinct from the ``veto_session``-derived
+# REASON_* set above: neither side's captain has confirmed readiness yet.
+# Not a config/team problem, so checked only once those are known-good --
+# see ``both_sides_ready``/``mark_ready`` below.
+REASON_NOT_READY = "not_ready"
+
+
+async def get_readiness(session: AsyncSession, encounter_id: int) -> dict[str, bool]:
+    """``{"home": bool, "away": bool}`` -- whether each side's captain has
+    confirmed readiness to begin this encounter's pre-game phase."""
+    result = await session.execute(
+        select(EncounterReadiness.side).where(EncounterReadiness.encounter_id == encounter_id)
+    )
+    ready_sides = set(result.scalars().all())
+    return {"home": "home" in ready_sides, "away": "away" in ready_sides}
+
+
+async def both_sides_ready(session: AsyncSession, encounter_id: int) -> bool:
+    readiness = await get_readiness(session, encounter_id)
+    return readiness["home"] and readiness["away"]
+
+
+async def mark_ready(
+    session: AsyncSession, encounter: Encounter, side: str, user_id: int | None
+) -> dict[str, bool]:
+    """Idempotently record ``side``'s captain confirming readiness. Returns
+    the resulting ``{"home", "away"}`` readiness map."""
+    existing = await session.execute(
+        select(EncounterReadiness).where(
+            EncounterReadiness.encounter_id == encounter.id, EncounterReadiness.side == side
+        )
+    )
+    if existing.scalar_one_or_none() is None:
+        session.add(EncounterReadiness(encounter_id=encounter.id, side=side, ready_user_id=user_id))
+        await session.commit()
+    return await get_readiness(session, encounter.id)
+
+
+async def reset_readiness(session: AsyncSession, encounter_id: int) -> None:
+    """Clear both sides' readiness -- called whenever either team assignment
+    changes (a confirmation made against one opponent must not carry over to
+    a different one)."""
+    await session.execute(sa.delete(EncounterReadiness).where(EncounterReadiness.encounter_id == encounter_id))
+
+
 async def unavailable_reason(session: AsyncSession, encounter: Encounter, kind: PickBanKind) -> str:
     """Why ``ensure_pick_ban_session`` returned ``None`` for this
     encounter/kind. Mirrors ``veto_session.unavailable_reason``'s contract
@@ -142,6 +188,8 @@ async def unavailable_reason(session: AsyncSession, encounter: Encounter, kind: 
         for slot in ordered:
             if len(slot.items) < SLOT_CANDIDATE_FLOOR:
                 return REASON_SLOT_UNDERFILLED
+    if not await both_sides_ready(session, encounter.id):
+        return REASON_NOT_READY
     return REASON_NOT_CONFIGURED
 
 
@@ -184,6 +232,9 @@ async def ensure_pick_ban_session(
         # reads this snapshot off the session, never the config, so a later
         # config edit cannot move a running session's reserve labels).
         slot_reserves = {str(slot.position): slot.reserve_item_id for slot in ordered if slot.reserve_item_id is not None}
+
+    if not await both_sides_ready(session, encounter.id):
+        return None
 
     pool_size = sum(len(s) for s in slots) if slots is not None else len(config.items)
     seeds = await resolve_seeds(session, encounter)
@@ -325,7 +376,10 @@ async def sync_all_pick_ban_sessions_after_team_change(session: AsyncSession, en
     ``PickBanEntry``, so the legacy hook would now create/reset the wrong
     (dead) tables. Also gives hero bans the SAME team-change resilience map
     veto always had -- a pre-existing gap, since nothing called the legacy
-    hook for kind=hero before the generic engine existed."""
+    hook for kind=hero before the generic engine existed. Also clears
+    ``EncounterReadiness`` -- a confirmation made against one opponent must
+    not carry over once the assignment changes."""
+    await reset_readiness(session, encounter.id)
     for kind in (PickBanKind.MAP, PickBanKind.HERO):
         await sync_pick_ban_session_after_team_change(session, encounter, kind)
 
