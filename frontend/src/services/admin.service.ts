@@ -702,6 +702,13 @@ class AdminService {
     return response.json();
   }
 
+  async verifySocialAccount(userId: number, accountId: number): Promise<User> {
+    const response = await apiFetch(`/api/v1/admin/users/${userId}/social/${accountId}/verify`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async setSocialAccountVisibility(
     userId: number,
     accountId: number,

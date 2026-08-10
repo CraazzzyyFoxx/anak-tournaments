@@ -19,6 +19,9 @@ export interface SocialProviderConfig {
   placeholder: string;
   /** Build a public profile URL from the handle, when the provider has one. */
   profileUrl?: (username: string) => string;
+  /** Whether this provider can be OAuth-verified (mirrors backend `OAUTH_PROVIDERS`) —
+   *  gates the admin "manually verify" action. */
+  oauthEligible?: boolean;
 }
 
 /** Display/selection order. */
@@ -32,15 +35,30 @@ export const SOCIAL_PROVIDER_ORDER: SocialProvider[] = [
 ];
 
 export const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
-  battlenet: { value: "battlenet", label: "Battle.net", icon: "/battlenet.svg", color: "#148EFF", placeholder: "Name#1234" },
-  discord: { value: "discord", label: "Discord", icon: "/discord.png", color: "#5865F2", placeholder: "username" },
+  battlenet: {
+    value: "battlenet",
+    label: "Battle.net",
+    icon: "/battlenet.svg",
+    color: "#148EFF",
+    placeholder: "Name#1234",
+    oauthEligible: true
+  },
+  discord: {
+    value: "discord",
+    label: "Discord",
+    icon: "/discord.png",
+    color: "#5865F2",
+    placeholder: "username",
+    oauthEligible: true
+  },
   twitch: {
     value: "twitch",
     label: "Twitch",
     icon: "/twitch.png",
     color: "#9146FF",
     placeholder: "username",
-    profileUrl: (u) => `https://twitch.tv/${encodeURIComponent(u)}`
+    profileUrl: (u) => `https://twitch.tv/${encodeURIComponent(u)}`,
+    oauthEligible: true
   },
   boosty: {
     value: "boosty",
@@ -97,3 +115,4 @@ export function socialProfileUrl(account: SocialAccount): string | null {
 export function hasVerifiedSocial(accounts: readonly SocialAccount[]): boolean {
   return accounts.some((account) => account.is_verified);
 }
+

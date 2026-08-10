@@ -3,10 +3,13 @@ relocated from parser-service. Reads of users already live in app-service.
 
 Permission model: user CRUD requires the global ``user.<action>`` permission;
 merge is superuser-only. Social identities are managed by **superusers only**
-(add/update/delete/set_primary); their per-workspace/global display **visibility**
-is a lighter capability gated on ``user.read``. CSV import requires the global
-``admin`` role. Avatar + CSV are binary/multipart (base64 via the gateway binary
-handler).
+(add/update/verify/delete/set_primary); their per-workspace/global display
+**visibility** is a lighter capability gated on ``user.read``. ``verify``
+manually marks an OAuth-eligible account verified when the automatic sync
+missed a real OAuth connection that proves it (see
+``shared.services.social_identity.verify_social_account``); it never
+fabricates verification. CSV import requires the global ``admin`` role.
+Avatar + CSV are binary/multipart (base64 via the gateway binary handler).
 
 Self-service (``me_social_*``, capability ``account.social``) lets users manage
 their own player's identities, but is **hide-only**: they can set-primary
@@ -257,6 +260,24 @@ def register(broker: Any, logger: Any) -> None:
             return await _refresh_user(session, user_id)
 
         return await _envelope_and_invalidate(logger, "users.social_update", op, data)
+
+    @broker.subscriber("rpc.app.users.social_verify")
+    async def _social_verify(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            c.require_superuser(c.actor(data))
+            user_id = c.require_id(data)
+            try:
+                account = await social_svc.verify_social_account(
+                    session, account_id=int(data["account_id"]), user_id=user_id
+                )
+            except social_svc.SocialAccountNotOAuthLinked as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if account is None:
+                raise HTTPException(status_code=404, detail="Social account not found")
+            await session.commit()
+            return await _refresh_user(session, user_id)
+
+        return await _envelope_and_invalidate(logger, "users.social_verify", op, data)
 
     @broker.subscriber("rpc.app.users.social_delete")
     async def _social_delete(data: dict, msg: RabbitMessage) -> dict:

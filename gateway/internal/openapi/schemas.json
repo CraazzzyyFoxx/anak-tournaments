@@ -2878,6 +2878,12 @@
         "ref": "app.UserRead"
       }
     },
+    "rpc.app.users.social_verify": {
+      "response": {
+        "array": false,
+        "ref": "app.UserRead"
+      }
+    },
     "rpc.app.users.teammates": {
       "description": "Returns a player's paginated, sortable best teammates by winrate and shared tournaments, optionally workspace-scoped (public).",
       "query_params": [

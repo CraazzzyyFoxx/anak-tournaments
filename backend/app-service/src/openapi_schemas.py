@@ -197,6 +197,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.merge_execute": Op(request=UserMergeExecuteRequest, response=UserMergeExecuteResponse),
     "rpc.app.users.social_add": Op(request=SocialAccountCreate, response=schemas.UserRead),
     "rpc.app.users.social_update": Op(request=SocialAccountUpdate, response=schemas.UserRead),
+    "rpc.app.users.social_verify": Op(response=schemas.UserRead),
     "rpc.app.users.social_delete": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_primary": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_visibility": Op(request=SocialVisibilityUpdate, response=schemas.UserRead),

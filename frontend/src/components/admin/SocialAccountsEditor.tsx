@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Eye, EyeOff, Loader2, Pencil, Plus, Star, Trash2, X } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, Plus, ShieldCheck, Star, Trash2, X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getSocialProviderConfig, SOCIAL_PROVIDER_ORDER, socialAccountsForProvider } from "@/lib/social-providers";
 import adminService from "@/services/admin.service";
+import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { SocialAccount, SocialProvider, User } from "@/types/user.types";
 
@@ -131,6 +132,15 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
       onUserUpdated(user);
     },
   });
+  const verifyMutation = useMutation({
+    mutationFn: () => adminService.verifySocialAccount(userId, account.id),
+    onSuccess: (user) => {
+      invalidate();
+      onUserUpdated(user);
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: `Couldn't verify ${account.username}` }),
+  });
 
   const handleSave = () => {
     const trimmed = editValue.trim();
@@ -188,11 +198,30 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
             <SocialIcon provider={account.provider} size={14} />
           </span>
           <span className="flex-1 truncate text-sm font-medium">{account.username}</span>
-          {account.is_verified && (
+          {account.is_verified ? (
             <Check
               className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-teal)]"
               aria-label="Verified via OAuth"
             />
+          ) : (
+            canManage &&
+            config.oauthEligible && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
+                onClick={() => verifyMutation.mutate()}
+                disabled={verifyMutation.isPending}
+                aria-label={`Verify ${account.username}`}
+                title="Manually verify (requires a matching OAuth connection)"
+              >
+                {verifyMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            )
           )}
           {account.is_primary ? (
             <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" aria-label="Primary" />
