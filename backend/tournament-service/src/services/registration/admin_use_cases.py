@@ -123,7 +123,6 @@ class UpdateRegistration:
             status_value=payload.status,
             balancer_status_value=payload.balancer_status,
             roles=[role.model_dump() for role in payload.roles] if payload.roles is not None else None,
-            exclude_from_balancer=payload.exclude_from_balancer,
             exclude_reason=payload.exclude_reason,
         )
 
@@ -152,17 +151,12 @@ class RejectRegistration:
         )
 
 
-class SetRegistrationExclusion:
+class IncludeInBalancer:
     def __init__(self, *, registration_service) -> None:
         self._registration_service = registration_service
 
-    async def execute(self, *, session, registration_id: int, payload):
-        return await self._registration_service.set_registration_exclusion(
-            session,
-            registration_id,
-            exclude_from_balancer=payload.exclude_from_balancer,
-            exclude_reason=payload.exclude_reason,
-        )
+    async def execute(self, *, session, registration_id: int):
+        return await self._registration_service.add_to_balancer(session, registration_id)
 
 
 class WithdrawRegistration:
@@ -210,11 +204,12 @@ class SetBalancerStatus:
     def __init__(self, *, registration_service) -> None:
         self._registration_service = registration_service
 
-    async def execute(self, *, session, registration_id: int, balancer_status: str):
+    async def execute(self, *, session, registration_id: int, balancer_status: str, exclude_reason: str | None = None):
         return await self._registration_service.set_balancer_status(
             session,
             registration_id,
             balancer_status=balancer_status,
+            exclude_reason=exclude_reason,
         )
 
 
@@ -222,12 +217,33 @@ class BulkAddToBalancer:
     def __init__(self, *, registration_service) -> None:
         self._registration_service = registration_service
 
-    async def execute(self, *, session, tournament_id: int, registration_ids: list[int], balancer_status: str):
+    async def execute(self, *, session, tournament_id: int, registration_ids: list[int]):
         return await self._registration_service.bulk_add_to_balancer(
             session,
             tournament_id,
             registration_ids,
+        )
+
+
+class BulkSetBalancerStatus:
+    def __init__(self, *, registration_service) -> None:
+        self._registration_service = registration_service
+
+    async def execute(
+        self,
+        *,
+        session,
+        tournament_id: int,
+        registration_ids: list[int],
+        balancer_status: str,
+        exclude_reason: str | None = None,
+    ):
+        return await self._registration_service.bulk_set_balancer_status(
+            session,
+            tournament_id,
+            registration_ids,
             balancer_status=balancer_status,
+            exclude_reason=exclude_reason,
         )
 
 

@@ -487,12 +487,7 @@ function isRegistrationFlex(registration: AdminRegistration): boolean {
 }
 
 export function isRegistrationIncludedInBalancer(registration: AdminRegistration): boolean {
-  return (
-    registration.status === "approved" &&
-    !registration.deleted_at &&
-    !registration.exclude_from_balancer &&
-    registration.balancer_status !== "not_in_balancer"
-  );
+  return !registration.deleted_at && !registration.balancer_status_meta.excludes_from_balancer;
 }
 
 export function isRegistrationAvailableForBalancer(registration: AdminRegistration): boolean {

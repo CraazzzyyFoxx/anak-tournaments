@@ -56,7 +56,6 @@ __all__ = (
     "MappingValueCategoryRead",
     "BalancerPlayerExportResponse",
     "BalancerRegistrationCreateRequest",
-    "BalancerRegistrationExclusionRequest",
     "BalancerRegistrationRead",
     "BalancerRankAutofillStage",
     "BalancerRegistrationRankAutofillRequest",
@@ -74,8 +73,7 @@ __all__ = (
     "BalancerRegistrationUpdateRequest",
     "BulkApproveResponse",
     "BulkBalancerStatusResponse",
-    "BulkExclusionRequest",
-    "BulkExclusionResponse",
+    "BulkSetBalancerStatusRequest",
     "CheckInRequest",
     "SetBalancerStatusRequest",
 )
@@ -326,6 +324,9 @@ class StatusMetaRead(BaseModel):
     icon_color: str | None = None
     name: str
     description: str | None = None
+    # Whether a registration currently holding this status counts as part of
+    # the balancer pool -- see shared.balancer_registration_statuses.StatusMeta.
+    excludes_from_balancer: bool = False
 
 
 class BalancerRegistrationStatusRead(BaseRead):
@@ -340,6 +341,7 @@ class BalancerRegistrationStatusRead(BaseRead):
     icon_color: str | None = None
     name: str
     description: str | None = None
+    excludes_from_balancer: bool = False
 
 
 class BalancerRegistrationStatusCreate(BaseModel):
@@ -348,6 +350,9 @@ class BalancerRegistrationStatusCreate(BaseModel):
     icon_color: str | None = None
     name: str
     description: str | None = None
+    # Only meaningful for scope == "balancer": whether a registration holding
+    # this custom status counts as part of the balancer pool.
+    excludes_from_balancer: bool = False
 
 
 class BalancerRegistrationStatusUpdate(BaseModel):
@@ -355,6 +360,7 @@ class BalancerRegistrationStatusUpdate(BaseModel):
     icon_color: str | None = None
     name: str | None = None
     description: str | None = None
+    excludes_from_balancer: bool | None = None
 
 
 class BalancerRegistrationRead(BaseRead):
@@ -379,7 +385,9 @@ class BalancerRegistrationRead(BaseRead):
     balancer_status: BalancerStatus = "not_in_balancer"
     status_meta: StatusMetaRead
     balancer_status_meta: StatusMetaRead
-    exclude_from_balancer: bool = False
+    # Reason note for the current status, populated when balancer_status ==
+    # "excluded". Whether the registration is *actually* excluded is read from
+    # balancer_status_meta.excludes_from_balancer, not a separate flag.
     exclude_reason: str | None = None
     checked_in: bool = False
     checked_in_at: datetime | None = None
@@ -429,24 +437,20 @@ class BalancerRegistrationUpdateRequest(BaseModel):
     # on the form), left untouched when omitted.
     custom_fields_json: dict[str, Any] | None = None
     status: RegistrationStatus | None = None
+    # `ready`/`incomplete` are rejected (computed from role ranks only); use
+    # `not_in_balancer`, `excluded`, or a custom slug.
     balancer_status: BalancerStatus | None = None
     roles: list[BalancerRegistrationRoleInput] | None = None
     # When set, (re)anchor the registration on this site account's player.
     auth_user_id: int | None = None
-    # When set, apply the same semantics as the dedicated exclusion endpoint
-    # (set_registration_exclusion); exclude_reason only applies together with
-    # exclude_from_balancer.
-    exclude_from_balancer: bool | None = None
-    exclude_reason: str | None = None
-
-
-class BalancerRegistrationExclusionRequest(BaseModel):
-    exclude_from_balancer: bool
+    # Only meaningful together with balancer_status == "excluded".
     exclude_reason: str | None = None
 
 
 class SetBalancerStatusRequest(BaseModel):
     balancer_status: BalancerStatus
+    # Only meaningful together with balancer_status == "excluded".
+    exclude_reason: str | None = None
 
 
 class CheckInRequest(BaseModel):
@@ -458,15 +462,11 @@ class BulkBalancerStatusResponse(BaseModel):
     skipped: int
 
 
-class BulkExclusionRequest(BaseModel):
+class BulkSetBalancerStatusRequest(BaseModel):
     registration_ids: list[int] = Field(..., max_length=500)
-    exclude_from_balancer: bool
+    balancer_status: BalancerStatus
+    # Only meaningful together with balancer_status == "excluded".
     exclude_reason: str | None = None
-
-
-class BulkExclusionResponse(BaseModel):
-    updated: int
-    skipped: int
 
 
 class BulkApproveResponse(BaseModel):

@@ -81,7 +81,12 @@ function createApplication(overrides: Partial<BalancerApplication>): BalancerApp
   };
 }
 
-function createStatusMeta(value: string, scope: StatusScope, name: string): StatusMeta {
+function createStatusMeta(
+  value: string,
+  scope: StatusScope,
+  name: string,
+  excludesFromBalancer = false
+): StatusMeta {
   return {
     value,
     scope,
@@ -95,6 +100,7 @@ function createStatusMeta(value: string, scope: StatusScope, name: string): Stat
     icon_color: null,
     name,
     description: null,
+    excludes_from_balancer: excludesFromBalancer,
   };
 }
 
@@ -139,7 +145,6 @@ function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRe
     status_meta: createStatusMeta("approved", "registration", "Approved"),
     balancer_status: "ready",
     balancer_status_meta: createStatusMeta("ready", "balancer", "Ready"),
-    exclude_from_balancer: false,
     exclude_reason: null,
     checked_in: false,
     checked_in_at: null,
@@ -375,7 +380,7 @@ describe("synthetic registration helpers", () => {
   it("keeps incomplete approved non-excluded registrations in the pool", () => {
     const registration = createRegistration({
       balancer_status: "incomplete",
-      exclude_from_balancer: false,
+      balancer_status_meta: createStatusMeta("incomplete", "balancer", "Incomplete"),
     });
 
     expect(isRegistrationIncludedInBalancer(registration)).toBe(true);
@@ -385,10 +390,10 @@ describe("synthetic registration helpers", () => {
     expect(player.is_in_pool).toBe(true);
   });
 
-  it("excludes registrations marked out of balancer even if status is ready", () => {
+  it("excludes registrations whose current status excludes them from the pool", () => {
     const registration = createRegistration({
-      balancer_status: "ready",
-      exclude_from_balancer: true,
+      balancer_status: "excluded",
+      balancer_status_meta: createStatusMeta("excluded", "balancer", "Excluded", true),
     });
 
     expect(isRegistrationIncludedInBalancer(registration)).toBe(false);
@@ -396,6 +401,15 @@ describe("synthetic registration helpers", () => {
     const player = createSyntheticPlayerFromRegistration(registration);
 
     expect(player.is_in_pool).toBe(false);
+  });
+
+  it("excludes registrations held by a custom status configured to exclude from the pool", () => {
+    const registration = createRegistration({
+      balancer_status: "injured",
+      balancer_status_meta: createStatusMeta("injured", "balancer", "Injured", true),
+    });
+
+    expect(isRegistrationIncludedInBalancer(registration)).toBe(false);
   });
 
   it("derives flex only when all roles are primary", () => {

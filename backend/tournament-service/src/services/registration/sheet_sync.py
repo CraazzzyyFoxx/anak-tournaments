@@ -581,7 +581,6 @@ async def sync_google_sheet_feed(
                     admin_notes=parsed_fields.get("admin_notes"),
                     custom_fields_json=parsed_fields.get("custom_fields") or None,
                     status="approved",
-                    exclude_from_balancer=False,
                     submitted_at=parsed_fields.get("submitted_at") or now,
                 )
                 replace_registration_roles(

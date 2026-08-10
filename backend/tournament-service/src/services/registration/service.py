@@ -498,7 +498,6 @@ async def create_registration(
         notes=notes,
         custom_fields_json=custom_fields,
         status="approved" if auto_approve else "pending",
-        exclude_from_balancer=False,
         submitted_at=datetime.now(UTC),
         reviewed_at=datetime.now(UTC) if auto_approve else None,
     )

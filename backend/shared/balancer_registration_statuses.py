@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 import sqlalchemy as sa
 from cashews import cache
@@ -38,6 +38,13 @@ class StatusMeta(TypedDict):
     icon_color: str | None
     name: str
     description: str | None
+    # Whether a registration currently holding this status counts as part of
+    # the balancer pool. Hardcoded for every builtin status (not_in_balancer /
+    # excluded = True, incomplete / ready = True... wait no) and
+    # workspace-configurable for custom balancer-scope statuses (see
+    # BalancerRegistrationStatus.excludes_from_balancer). Meaningless for
+    # registration-scope statuses -- always False there.
+    excludes_from_balancer: bool
 
 
 BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
@@ -55,6 +62,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#f59e0b",
             "name": "Pending",
             "description": "Waiting for moderator review.",
+            "excludes_from_balancer": False,
         },
         "approved": {
             "value": "approved",
@@ -69,6 +77,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#10b981",
             "name": "Approved",
             "description": "Registration approved.",
+            "excludes_from_balancer": False,
         },
         "rejected": {
             "value": "rejected",
@@ -83,6 +92,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#ef4444",
             "name": "Rejected",
             "description": "Registration rejected.",
+            "excludes_from_balancer": False,
         },
         "withdrawn": {
             "value": "withdrawn",
@@ -97,6 +107,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#94a3b8",
             "name": "Withdrawn",
             "description": "Registration withdrawn by participant or admin.",
+            "excludes_from_balancer": False,
         },
         "banned": {
             "value": "banned",
@@ -111,6 +122,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#ef4444",
             "name": "Banned",
             "description": "Registration blocked.",
+            "excludes_from_balancer": False,
         },
         "insufficient_data": {
             "value": "insufficient_data",
@@ -125,6 +137,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#f97316",
             "name": "Incomplete",
             "description": "Registration data is incomplete.",
+            "excludes_from_balancer": False,
         },
     },
     "balancer": {
@@ -140,7 +153,23 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_slug": "MinusCircle",
             "icon_color": "#94a3b8",
             "name": "Not Added",
-            "description": "Registration is excluded from the balancer pool.",
+            "description": "Registration has not been added to the balancer pool yet.",
+            "excludes_from_balancer": True,
+        },
+        "excluded": {
+            "value": "excluded",
+            "scope": "balancer",
+            "is_builtin": True,
+            "kind": "builtin",
+            "is_override": False,
+            "can_edit": True,
+            "can_delete": False,
+            "can_reset": False,
+            "icon_slug": "ShieldOff",
+            "icon_color": "#ef4444",
+            "name": "Excluded",
+            "description": "Manually removed from the balancer pool after being added.",
+            "excludes_from_balancer": True,
         },
         "incomplete": {
             "value": "incomplete",
@@ -155,6 +184,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#f97316",
             "name": "Incomplete",
             "description": "Registration needs role or rank fixes before balancing.",
+            "excludes_from_balancer": False,
         },
         "ready": {
             "value": "ready",
@@ -169,6 +199,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "icon_color": "#10b981",
             "name": "Ready",
             "description": "Registration is ready for the balancer pool.",
+            "excludes_from_balancer": False,
         },
     },
 }
@@ -187,6 +218,7 @@ UNKNOWN_STATUS_META: dict[StatusScope, StatusMeta] = {
         "icon_color": "#94a3b8",
         "name": "Unknown",
         "description": "Unknown registration status.",
+        "excludes_from_balancer": False,
     },
     "balancer": {
         "value": "unknown",
@@ -201,6 +233,7 @@ UNKNOWN_STATUS_META: dict[StatusScope, StatusMeta] = {
         "icon_color": "#94a3b8",
         "name": "Unknown",
         "description": "Unknown balancer status.",
+        "excludes_from_balancer": False,
     },
 }
 
@@ -211,6 +244,53 @@ def get_builtin_status_values(scope: StatusScope) -> set[str]:
 
 def get_builtin_status_meta(scope: StatusScope, value: str) -> StatusMeta | None:
     return BUILTIN_STATUS_META[scope].get(value)
+
+
+def is_balancer_status_excluded(value: str) -> bool:
+    """Pure Python check for a *builtin* balancer status slug (no DB access).
+
+    Custom statuses aren't decidable this way -- callers with a resolved
+    ``StatusMeta`` (already merged with workspace overrides) should read
+    ``meta["excludes_from_balancer"]`` directly instead of calling this.
+    """
+    meta = BUILTIN_STATUS_META["balancer"].get(value)
+    return meta["excludes_from_balancer"] if meta is not None else False
+
+
+def balancer_pool_excluded_clause(
+    balancer_status_col: Any,
+    workspace_id_col: Any,
+) -> Any:
+    """SQL predicate: true when the status a registration currently holds
+    excludes it from the balancer pool -- a builtin exclusion status
+    (``not_in_balancer`` / ``excluded``) or a workspace-configured excluding
+    *custom* balancer status. Builtin overrides never carry their own
+    exclusion semantics (see ``build_status_meta_from_model``), so only
+    ``kind == "custom"`` rows are considered here.
+
+    ``workspace_id_col`` must resolve to the tournament's workspace id in the
+    enclosing query (custom statuses are workspace-scoped).
+    """
+    builtin_excluded_slugs = {
+        slug for slug, meta in BUILTIN_STATUS_META["balancer"].items() if meta["excludes_from_balancer"]
+    }
+    custom_excluded_exists = (
+        sa.select(sa.literal(1))
+        .where(
+            models.BalancerRegistrationStatus.scope == "balancer",
+            models.BalancerRegistrationStatus.kind == "custom",
+            models.BalancerRegistrationStatus.workspace_id == workspace_id_col,
+            models.BalancerRegistrationStatus.slug == balancer_status_col,
+            models.BalancerRegistrationStatus.excludes_from_balancer.is_(True),
+        )
+        .exists()
+    )
+    return sa.or_(balancer_status_col.in_(builtin_excluded_slugs), custom_excluded_exists)
+
+
+def balancer_pool_included_clause(balancer_status_col: Any, workspace_id_col: Any) -> Any:
+    """Negation of :func:`balancer_pool_excluded_clause` -- reads better at call sites."""
+    return sa.not_(balancer_pool_excluded_clause(balancer_status_col, workspace_id_col))
 
 
 def build_status_meta_from_model(
@@ -231,6 +311,13 @@ def build_status_meta_from_model(
         "icon_color": status.icon_color,
         "name": status.name,
         "description": status.description,
+        # Builtin rows never carry their own `excludes_from_balancer` -- that
+        # semantic is fixed in BUILTIN_STATUS_META and not editable via
+        # override (upsert_builtin_override never touches the column). Only a
+        # true custom balancer status (`kind == "custom"`) configures it.
+        "excludes_from_balancer": bool(getattr(status, "excludes_from_balancer", False))
+        if status.kind == "custom"
+        else (BUILTIN_STATUS_META.get(status.scope, {}).get(status.slug, {}).get("excludes_from_balancer", False)),
     }
 
 

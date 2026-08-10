@@ -17,6 +17,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.division_grid import DivisionGrid
 from src import models
 from src.services.registration._common import (
@@ -229,10 +230,7 @@ def _rank_autofill_balancer_addition(
         return False, None
     if getattr(registration, "status", None) != "approved":
         return False, "Registration must be approved before it can be added to balancer."
-    if not (
-        getattr(registration, "exclude_from_balancer", False)
-        or getattr(registration, "balancer_status", None) == "not_in_balancer"
-    ):
+    if not is_balancer_status_excluded(getattr(registration, "balancer_status", None)):
         return False, "Registration is already in balancer."
     if not _active_roles_ranked_after_updates(registration, updates):
         return False, "Registration will still be missing active role ranks."
@@ -437,7 +435,6 @@ async def autofill_registration_ranks_from_parsed(
             role_updates += len(updates)
 
         if apply and will_add_to_balancer:
-            registration.exclude_from_balancer = False
             registration.exclude_reason = None
             registration.balancer_status = included_balancer_status(registration)
             balancer_additions += 1

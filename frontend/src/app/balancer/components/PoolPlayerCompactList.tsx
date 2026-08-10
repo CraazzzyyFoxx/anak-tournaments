@@ -8,28 +8,17 @@ import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
-import type { StatusMeta } from "@/types/registration.types";
 import { getRegistrationBattleTags } from "./balancer-page-helpers";
+import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
 import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import { IssueChip, issueChipKey } from "./IssueChip";
 import {
@@ -37,11 +26,6 @@ import {
   isRoleEntryActive,
   type PlayerValidationIssue,
 } from "@/app/balancer/components/workspace-helpers";
-
-type StatusOptionGroups = {
-  system: StatusMeta[];
-  custom: StatusMeta[];
-};
 
 type PoolPlayerCompactListProps = {
   playerStates: Array<{
@@ -87,103 +71,6 @@ function splitBattleTag(battleTag: string): { name: string; suffix: string | nul
   };
 }
 
-function flattenStatusOptions(statusOptions?: StatusOptionGroups): StatusMeta[] {
-  return statusOptions ? [...statusOptions.system, ...statusOptions.custom] : [];
-}
-
-function getStatusName(statusOptions: StatusOptionGroups | undefined, value: string | null | undefined): string {
-  if (!value) {
-    return "No status";
-  }
-
-  return flattenStatusOptions(statusOptions).find((option) => option.value === value)?.name ?? value;
-}
-
-function StatusMenu({
-  value,
-  statusOptions,
-  disabled,
-  onChange,
-}: {
-  value: string | null | undefined;
-  statusOptions?: StatusOptionGroups;
-  disabled?: boolean;
-  onChange?: (status: string) => void;
-}) {
-  if (!statusOptions || !onChange) {
-    return null;
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={disabled}
-          className="h-7 max-w-[110px] justify-start rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
-          title={`Balancer status: ${getStatusName(statusOptions, value)}`}
-        >
-          <span className="truncate">{getStatusName(statusOptions, value)}</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Balancer status</DropdownMenuLabel>
-        {statusOptions.system.map((option) => (
-          <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </DropdownMenuItem>
-        ))}
-        {statusOptions.custom.length > 0 ? <DropdownMenuSeparator /> : null}
-        {statusOptions.custom.map((option) => (
-          <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function StatusContextMenuItems({
-  value,
-  statusOptions,
-  disabled,
-  onChange,
-}: {
-  value: string | null | undefined;
-  statusOptions?: StatusOptionGroups;
-  disabled?: boolean;
-  onChange?: (status: string) => void;
-}) {
-  if (!statusOptions || !onChange) {
-    return null;
-  }
-
-  return (
-    <ContextMenuSub>
-      <ContextMenuSubTrigger disabled={disabled}>Set balancer status</ContextMenuSubTrigger>
-      <ContextMenuSubContent className="w-52">
-        {statusOptions.system.map((option) => (
-          <ContextMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </ContextMenuItem>
-        ))}
-        {statusOptions.custom.length > 0 ? <ContextMenuSeparator /> : null}
-        {statusOptions.custom.map((option) => (
-          <ContextMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </ContextMenuItem>
-        ))}
-      </ContextMenuSubContent>
-    </ContextMenuSub>
-  );
-}
 
 type PoolPlayerRowProps = {
   player: BalancerPlayerRecord;
@@ -313,7 +200,8 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                   )}
                 </div>
 
-                <StatusMenu
+                <BalancerStatusMenu
+                  size="compact"
                   value={registration?.balancer_status}
                   statusOptions={statusOptions}
                   disabled={actionsDisabled}
@@ -376,7 +264,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
             </ContextMenuItem>
           </>
         ) : null}
-        <StatusContextMenuItems
+        <BalancerStatusContextMenuItems
           value={registration?.balancer_status}
           statusOptions={statusOptions}
           disabled={actionsDisabled}

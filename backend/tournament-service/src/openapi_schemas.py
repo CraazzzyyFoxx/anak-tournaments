@@ -200,9 +200,7 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.tournament.reg_approve": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_reject": Op(response=admin_balancer.BalancerRegistrationRead),
-    "rpc.tournament.reg_exclusion": Op(
-        request=admin_balancer.BalancerRegistrationExclusionRequest, response=admin_balancer.BalancerRegistrationRead
-    ),
+    "rpc.tournament.reg_include_balancer": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_withdraw": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_restore": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_bulk_approve": Op(response=admin_balancer.BulkApproveResponse),
@@ -210,8 +208,8 @@ OPERATIONS: dict[str, Op] = {
         request=admin_balancer.SetBalancerStatusRequest, response=admin_balancer.BalancerRegistrationRead
     ),
     "rpc.tournament.reg_bulk_add_balancer": Op(response=admin_balancer.BulkBalancerStatusResponse),
-    "rpc.tournament.reg_bulk_exclusion": Op(
-        request=admin_balancer.BulkExclusionRequest, response=admin_balancer.BulkExclusionResponse
+    "rpc.tournament.reg_bulk_set_balancer_status": Op(
+        request=admin_balancer.BulkSetBalancerStatusRequest, response=admin_balancer.BulkBalancerStatusResponse
     ),
     "rpc.tournament.reg_rank_autofill_preview": Op(
         request=admin_balancer.BalancerRegistrationRankAutofillRequest,

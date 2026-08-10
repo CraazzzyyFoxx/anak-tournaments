@@ -5,7 +5,11 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm.attributes import NO_VALUE
 
-from shared.balancer_registration_statuses import StatusMeta, build_unknown_status_meta
+from shared.balancer_registration_statuses import (
+    StatusMeta,
+    build_status_meta_from_model,
+    build_unknown_status_meta,
+)
 from src import models
 from src.schemas.admin import balancer as admin_schemas
 from src.schemas.registration import RegistrationFormRead
@@ -91,7 +95,6 @@ def serialize_registration(
         balancer_status=registration.balancer_status,
         status_meta=admin_schemas.StatusMetaRead(**resolved_status_meta),
         balancer_status_meta=admin_schemas.StatusMetaRead(**resolved_balancer_status_meta),
-        exclude_from_balancer=registration.exclude_from_balancer,
         exclude_reason=registration.exclude_reason,
         checked_in=registration.checked_in,
         checked_in_at=registration.checked_in_at,
@@ -150,6 +153,11 @@ def serialize_status(
         icon_color=status_row.icon_color,
         name=status_row.name,
         description=status_row.description,
+        # Builtin rows never carry their own inclusion semantics on the raw
+        # column -- read it through the same builtin-aware helper the
+        # resolved StatusMeta uses, so a builtin-override row (e.g. a
+        # workspace's re-skinned "excluded") still reports the true fixed value.
+        excludes_from_balancer=build_status_meta_from_model(status_row)["excludes_from_balancer"],
         created_at=status_row.created_at,
         updated_at=status_row.updated_at,
     )

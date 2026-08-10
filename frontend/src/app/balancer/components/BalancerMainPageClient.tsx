@@ -65,6 +65,7 @@ import { PRESET_LABELS } from "./balancer-page-helpers";
 import {
   buildTeamNamesText,
   buildVariantFromSavedBalance,
+  createSyntheticPlayerFromRegistration,
   downloadPlayersExport,
   getPlayerValidationIssues,
   ratesByMaxRank,
@@ -274,7 +275,6 @@ export function BalancerMainPageClient() {
     applicationsById,
     addableApplications,
     allPlayerValidationStates,
-    players,
     readyPlayers,
     poolPlayers,
     invalidPlayerStates,
@@ -308,13 +308,21 @@ export function BalancerMainPageClient() {
   // is new work, so Save/Export become available again.
   const isBalanceSaved = activeVariant?.source === "saved" && !activeVariant.dirty;
   const isBalanceExported = isBalanceSaved && savedBalanceQuery.data?.exported_at != null;
-  const quickEditPlayer = useMemo(
-    () => players.find((player) => player.id === editingPlayerId) ?? null,
-    [editingPlayerId, players]
-  );
   const quickEditRegistration = useMemo(
     () => (editingPlayerId !== null ? (registrationsById.get(editingPlayerId) ?? null) : null),
     [editingPlayerId, registrationsById]
+  );
+  // Edited on the registration's real per-role ranks, never the `allRoles`-flattened
+  // view `players` carries for the pool table/validation/solver (see
+  // `buildBalancerPageCollections`) — that max-rank flattening is a read-only
+  // computation aid for flex tournaments, not ground truth to save back over
+  // the player's actual ranks.
+  const quickEditPlayer = useMemo(
+    () =>
+      quickEditRegistration
+        ? createSyntheticPlayerFromRegistration(quickEditRegistration, divisionGrid)
+        : null,
+    [quickEditRegistration, divisionGrid]
   );
   const playerStatusOptions = useMemo(
     () => ({

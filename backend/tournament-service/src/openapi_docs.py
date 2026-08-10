@@ -565,9 +565,9 @@ DOCS: dict[str, dict] = {
         "summary": "Reject registration",
         "description": "Rejects a registration (recording the reviewer) and broadcasts a realtime change; requires team-create permission on its workspace.",
     },
-    "rpc.tournament.reg_exclusion": {
-        "summary": "Set registration exclusion",
-        "description": "Sets a registration's exclude-from-balancer flag and reason and broadcasts a realtime change; requires team-update permission on its workspace.",
+    "rpc.tournament.reg_include_balancer": {
+        "summary": "Include registration in balancer",
+        "description": "Adds an approved registration to the balancer pool, rated ready/incomplete from its role ranks, and broadcasts a realtime change; requires team-update permission on its workspace.",
     },
     "rpc.tournament.reg_withdraw": {
         "summary": "Withdraw registration (admin)",
@@ -593,9 +593,9 @@ DOCS: dict[str, dict] = {
         "summary": "Bulk add to balancer",
         "description": "Adds multiple registrations to the balancer with a given status, returning updated/skipped counts and broadcasting a realtime change; requires team-create permission on the tournament.",
     },
-    "rpc.tournament.reg_bulk_exclusion": {
-        "summary": "Bulk set registration exclusion",
-        "description": "Sets the exclude-from-balancer flag and reason on multiple registrations, returning updated/skipped counts and broadcasting a realtime change; requires team-update permission on the tournament.",
+    "rpc.tournament.reg_bulk_set_balancer_status": {
+        "summary": "Bulk set balancer status",
+        "description": "Explicitly pins the balancer status (not_in_balancer / excluded / a custom slug) on multiple registrations, returning updated/skipped counts and broadcasting a realtime change; requires team-update permission on the tournament.",
     },
     "rpc.tournament.reg_rank_autofill_preview": {
         "summary": "Preview rank autofill",

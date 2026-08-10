@@ -4,7 +4,12 @@ import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { StatusMeta } from "@/types/registration.types";
 import { groupRegistrations } from "./registrationGrouping";
 
-const createStatusMeta = (value: string, scope: StatusMeta["scope"], name: string): StatusMeta => ({
+const createStatusMeta = (
+  value: string,
+  scope: StatusMeta["scope"],
+  name: string,
+  excludesFromBalancer = false
+): StatusMeta => ({
   value,
   scope,
   is_builtin: true,
@@ -16,7 +21,8 @@ const createStatusMeta = (value: string, scope: StatusMeta["scope"], name: strin
   icon_slug: null,
   icon_color: null,
   name,
-  description: null
+  description: null,
+  excludes_from_balancer: excludesFromBalancer
 });
 
 const createRegistration = (
@@ -45,8 +51,7 @@ const createRegistration = (
     status: "pending",
     status_meta: createStatusMeta("pending", "registration", "Pending"),
     balancer_status: "not_in_balancer",
-    balancer_status_meta: createStatusMeta("not_in_balancer", "balancer", "Not Added"),
-    exclude_from_balancer: false,
+    balancer_status_meta: createStatusMeta("not_in_balancer", "balancer", "Not Added", true),
     exclude_reason: null,
     checked_in: false,
     checked_in_at: null,

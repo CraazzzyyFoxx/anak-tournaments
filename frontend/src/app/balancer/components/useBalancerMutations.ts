@@ -161,10 +161,7 @@ export function useBalancerMutations({
   const addPlayerMutation = useMutation({
     mutationFn: async (application: BalancerApplication) => {
       if (!tournamentId) throw new Error("Select a tournament first");
-      return balancerAdminService.setRegistrationExclusion(application.id, {
-        exclude_from_balancer: false,
-        exclude_reason: null
-      });
+      return balancerAdminService.includeInBalancer(application.id);
     },
     onSuccess: async (registration) => {
       setSelectedPlayerId(registration.id);
@@ -236,14 +233,20 @@ export function useBalancerMutations({
         registrationPatch.balancer_status = payload.registration_balancer_status;
       }
 
-      if (payload.is_in_pool !== undefined) {
-        registrationPatch.exclude_from_balancer = !(payload.is_in_pool ?? true);
-        registrationPatch.exclude_reason = payload.is_in_pool ? null : "manual_exclusion";
+      // "Include" can't be expressed as a literal balancer_status in this
+      // combined PATCH (ready/incomplete are computed-only); fold "exclude"
+      // in here, but issue "include" as its own follow-up call below.
+      if (payload.is_in_pool === false) {
+        registrationPatch.balancer_status = "excluded";
+        registrationPatch.exclude_reason = "manual_exclusion";
       }
 
       let updated: AdminRegistration | null = null;
       if (Object.keys(registrationPatch).length > 0) {
         updated = await balancerAdminService.updateRegistration(playerId, registrationPatch);
+      }
+      if (payload.is_in_pool === true) {
+        updated = await balancerAdminService.includeInBalancer(playerId);
       }
       return updated;
     },
@@ -260,10 +263,7 @@ export function useBalancerMutations({
 
   const removePlayerMutation = useMutation({
     mutationFn: (playerId: number) =>
-      balancerAdminService.setRegistrationExclusion(playerId, {
-        exclude_from_balancer: true,
-        exclude_reason: "manual_exclusion"
-      }),
+      balancerAdminService.setBalancerStatus(playerId, "excluded", "manual_exclusion"),
     onSuccess: (registration) => {
       patchRegistrationInCache(registration);
       setEditingPlayerId(null);
@@ -273,10 +273,9 @@ export function useBalancerMutations({
 
   const setPlayerPoolMembershipMutation = useMutation({
     mutationFn: ({ playerId, isInPool }: { playerId: number; isInPool: boolean }) =>
-      balancerAdminService.setRegistrationExclusion(playerId, {
-        exclude_from_balancer: !isInPool,
-        exclude_reason: isInPool ? null : "manual_exclusion"
-      }),
+      isInPool
+        ? balancerAdminService.includeInBalancer(playerId)
+        : balancerAdminService.setBalancerStatus(playerId, "excluded", "manual_exclusion"),
     onSuccess: (registration, variables) => {
       patchRegistrationInCache(registration);
       notify.success(
@@ -299,11 +298,13 @@ export function useBalancerMutations({
   const bulkPoolMembershipMutation = useMutation({
     mutationFn: async ({ playerIds, isInPool }: { playerIds: number[]; isInPool: boolean }) => {
       if (!tournamentId) throw new Error("Select a tournament first");
-      const result = await balancerAdminService.bulkSetExclusion(tournamentId, {
-        registration_ids: playerIds,
-        exclude_from_balancer: !isInPool,
-        exclude_reason: isInPool ? null : "manual_exclusion"
-      });
+      const result = isInPool
+        ? await balancerAdminService.bulkAddToBalancer(tournamentId, playerIds)
+        : await balancerAdminService.bulkSetBalancerStatus(tournamentId, {
+            registration_ids: playerIds,
+            balancer_status: "excluded",
+            exclude_reason: "manual_exclusion"
+          });
       return { ...result, isInPool };
     },
     onSuccess: (result) => {

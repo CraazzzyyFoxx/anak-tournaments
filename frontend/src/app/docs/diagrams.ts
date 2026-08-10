@@ -916,8 +916,8 @@ export const domains: DiagramDomain[] = [
         string battle_tag_normalized "UK(tournament, tag) активные"
         string status
         string balancer_status
+        string exclude_reason "nullable; заполняется когда balancer_status = excluded"
         bool checked_in
-        bool exclude_from_balancer
         timestamp submitted_at
         timestamp deleted_at "soft-delete"
     }
@@ -942,6 +942,7 @@ export const domains: DiagramDomain[] = [
         string scope
         string slug
         string name
+        bool excludes_from_balancer "только scope=balancer; кастомный статус исключает из пула"
     }
     BAL_SHEET_FEED {
         int id PK

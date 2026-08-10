@@ -16,6 +16,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#f59e0b",
       name: "Pending",
       description: "Waiting for moderator review.",
+      excludes_from_balancer: false,
     },
     {
       value: "approved",
@@ -30,6 +31,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#10b981",
       name: "Approved",
       description: "Registration approved.",
+      excludes_from_balancer: false,
     },
     {
       value: "rejected",
@@ -44,6 +46,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#ef4444",
       name: "Rejected",
       description: "Registration rejected.",
+      excludes_from_balancer: false,
     },
     {
       value: "withdrawn",
@@ -58,6 +61,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#94a3b8",
       name: "Withdrawn",
       description: "Registration withdrawn.",
+      excludes_from_balancer: false,
     },
     {
       value: "banned",
@@ -72,6 +76,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#ef4444",
       name: "Banned",
       description: "Registration blocked.",
+      excludes_from_balancer: false,
     },
     {
       value: "insufficient_data",
@@ -86,6 +91,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#f97316",
       name: "Incomplete",
       description: "Registration data is incomplete.",
+      excludes_from_balancer: false,
     },
   ],
   balancer: [
@@ -101,7 +107,23 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_slug: "MinusCircle",
       icon_color: "#94a3b8",
       name: "Not Added",
-      description: "Registration is excluded from balancer.",
+      description: "Registration has not been added to the balancer pool yet.",
+      excludes_from_balancer: true,
+    },
+    {
+      value: "excluded",
+      scope: "balancer",
+      is_builtin: true,
+      kind: "builtin",
+      is_override: false,
+      can_edit: true,
+      can_delete: false,
+      can_reset: false,
+      icon_slug: "ShieldOff",
+      icon_color: "#ef4444",
+      name: "Excluded",
+      description: "Manually removed from the balancer pool after being added.",
+      excludes_from_balancer: true,
     },
     {
       value: "incomplete",
@@ -116,6 +138,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#f97316",
       name: "Incomplete",
       description: "Registration needs rank or role fixes.",
+      excludes_from_balancer: false,
     },
     {
       value: "ready",
@@ -130,6 +153,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       icon_color: "#10b981",
       name: "Ready",
       description: "Registration is ready for balancer.",
+      excludes_from_balancer: false,
     },
   ],
 };
@@ -158,6 +182,11 @@ export function mergeStatusOptions(
       icon_color: status.icon_color,
       name: status.name,
       description: status.description,
+      // Builtin overrides never carry their own pool-inclusion semantics --
+      // that's fixed by BUILTIN_STATUS_META, not admin-editable. Fall back to
+      // false only if the builtin slug is somehow unknown (defensive).
+      excludes_from_balancer:
+        BUILTIN_STATUS_META[scope].find((builtin) => builtin.value === status.slug)?.excludes_from_balancer ?? false,
     }));
   const mergedSystem = BUILTIN_STATUS_META[scope].map((builtin) => {
     const override = systemOverrides.find((status) => status.value === builtin.value);
@@ -181,6 +210,7 @@ export function mergeStatusOptions(
         icon_color: status.icon_color,
         name: status.name,
         description: status.description,
+        excludes_from_balancer: status.excludes_from_balancer,
       })),
   };
 }

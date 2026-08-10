@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core import draft_state
 from shared.core.enums import (
     DraftCaptainOrder,
@@ -549,8 +550,12 @@ async def load_pool(session: AsyncSession, tournament_id: int) -> list[BalancerR
     """Load the balancer pool = registrations included in the balancer.
 
     Mirrors the panel's ``isRegistrationIncludedInBalancer``: approved, not
-    deleted, not excluded, and not flagged not_in_balancer.
+    deleted, and the current balancer_status doesn't exclude it (not_in_balancer
+    / excluded / a workspace custom status configured to exclude).
     """
+    workspace_id_expr = (
+        sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id).scalar_subquery()
+    )
     return list(
         await session.scalars(
             sa.select(BalancerRegistration)
@@ -558,8 +563,7 @@ async def load_pool(session: AsyncSession, tournament_id: int) -> list[BalancerR
                 BalancerRegistration.tournament_id == tournament_id,
                 BalancerRegistration.status == "approved",
                 BalancerRegistration.deleted_at.is_(None),
-                BalancerRegistration.exclude_from_balancer.is_(False),
-                BalancerRegistration.balancer_status != "not_in_balancer",
+                balancer_pool_included_clause(BalancerRegistration.balancer_status, workspace_id_expr),
             )
             .options(
                 selectinload(BalancerRegistration.roles)

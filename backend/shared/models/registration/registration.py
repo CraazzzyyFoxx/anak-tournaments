@@ -106,6 +106,15 @@ class BalancerRegistrationStatus(db.TimeStampIntegerMixin):
     icon_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    # Only meaningful for scope == "balancer" and kind == "custom": whether a
+    # registration currently holding this status counts as part of the
+    # balancer pool (mirrors the hardcoded semantics of the builtin
+    # not_in_balancer/excluded statuses). Ignored for registration-scope rows
+    # and for builtin overrides -- builtin inclusion semantics are fixed in
+    # BUILTIN_STATUS_META, not admin-editable.
+    excludes_from_balancer: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, server_default="false", default=False
+    )
 
     workspace: Mapped[Workspace] = relationship()
 
@@ -128,13 +137,6 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
             "battle_tag_normalized",
             unique=True,
             postgresql_where="battle_tag_normalized IS NOT NULL AND deleted_at IS NULL",
-        ),
-        Index(
-            "ix_balancer_registration_tournament_active",
-            "tournament_id",
-            "status",
-            "exclude_from_balancer",
-            postgresql_where="deleted_at IS NULL",
         ),
         Index(
             "ix_balancer_registration_tournament_balancer_status",
@@ -164,9 +166,8 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     boosty_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stream_pov: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    exclude_from_balancer: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default="false", default=False
-    )
+    # Reason note for the current status, populated when balancer_status ==
+    # "excluded" (why the registration was manually pulled from the pool).
     exclude_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     admin_notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     custom_fields_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)

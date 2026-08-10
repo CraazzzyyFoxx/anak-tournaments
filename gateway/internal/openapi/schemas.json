@@ -2960,6 +2960,14 @@
       },
       "summary": "User tournament stats"
     },
+    "rpc.app.users.tournament_encounters": {
+      "description": "Returns a player's encounters (with per-match stats) within one tournament \u2014 the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI (public).",
+      "response": {
+        "array": true,
+        "ref": "app.EncounterReadWithUserStats"
+      },
+      "summary": "User tournament encounters"
+    },
     "rpc.app.users.tournament_leaderboard": {
       "description": "Returns every player in a tournament ranked by a single stat \u2014 the full ranked list behind a user's per-stat rank/total on the tournament-stats page. Inverse stats like Deaths rank ascending. The `stat` must be one of the ranked tournament stats (public).",
       "query_params": [
@@ -5953,7 +5961,7 @@
       "summary": "Get encounter map pool"
     },
     "rpc.tournament.captain_map_pool_state": {
-      "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
+      "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown, or slot_count_mismatch/slot_underfilled when a slot-mode config disagrees with the bracket) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
       "summary": "Get map veto state"
     },
     "rpc.tournament.captain_my_role": {
@@ -7316,17 +7324,17 @@
       },
       "summary": "Bulk approve registrations"
     },
-    "rpc.tournament.reg_bulk_exclusion": {
-      "description": "Sets the exclude-from-balancer flag and reason on multiple registrations, returning updated/skipped counts and broadcasting a realtime change; requires team-update permission on the tournament.",
+    "rpc.tournament.reg_bulk_set_balancer_status": {
+      "description": "Explicitly pins the balancer status (not_in_balancer / excluded / a custom slug) on multiple registrations, returning updated/skipped counts and broadcasting a realtime change; requires team-update permission on the tournament.",
       "request": {
         "array": false,
-        "ref": "tournament.BulkExclusionRequest"
+        "ref": "tournament.BulkSetBalancerStatusRequest"
       },
       "response": {
         "array": false,
-        "ref": "tournament.BulkExclusionResponse"
+        "ref": "tournament.BulkBalancerStatusResponse"
       },
-      "summary": "Bulk set registration exclusion"
+      "summary": "Bulk set balancer status"
     },
     "rpc.tournament.reg_check_in": {
       "description": "Checks a registration in or out (per the body flag) and broadcasts a realtime change; requires team-update permission on its workspace.",
@@ -7356,18 +7364,6 @@
       "description": "Soft-deletes a registration (204 no body) and broadcasts a realtime change; requires team-create permission on its workspace.",
       "summary": "Delete registration"
     },
-    "rpc.tournament.reg_exclusion": {
-      "description": "Sets a registration's exclude-from-balancer flag and reason and broadcasts a realtime change; requires team-update permission on its workspace.",
-      "request": {
-        "array": false,
-        "ref": "tournament.BalancerRegistrationExclusionRequest"
-      },
-      "response": {
-        "array": false,
-        "ref": "tournament.BalancerRegistrationRead"
-      },
-      "summary": "Set registration exclusion"
-    },
     "rpc.tournament.reg_export_users": {
       "description": "Exports a tournament's approved registrations into user records and returns the result summary; requires team-create permission on its workspace.",
       "response": {
@@ -7395,6 +7391,14 @@
         "ref": "tournament.RegistrationFormRead"
       },
       "summary": "Upsert registration form"
+    },
+    "rpc.tournament.reg_include_balancer": {
+      "description": "Adds an approved registration to the balancer pool, rated ready/incomplete from its role ranks, and broadcasts a realtime change; requires team-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.BalancerRegistrationRead"
+      },
+      "summary": "Include registration in balancer"
     },
     "rpc.tournament.reg_list": {
       "description": "Lists a tournament's registrations with status metadata and per-registration OW-rank snapshots, filtered by status/inclusion/source and optionally including deleted; requires team-read permission.",
@@ -9897,8 +9901,15 @@
           "type": "integer"
         },
         "log_name": {
-          "title": "Log Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Log Name"
         },
         "map_id": {
           "title": "Map Id",
@@ -9908,8 +9919,15 @@
           "$ref": "#/components/schemas/app.Score"
         },
         "time": {
-          "title": "Time",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
         }
       },
       "required": [
@@ -11759,8 +11777,15 @@
           "title": "Impact Rank"
         },
         "log_name": {
-          "title": "Log Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Log Name"
         },
         "map": {
           "anyOf": [
@@ -11810,8 +11835,15 @@
           "$ref": "#/components/schemas/app.Score"
         },
         "time": {
-          "title": "Time",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
         }
       },
       "required": [
@@ -15406,8 +15438,7 @@
         "lost",
         "draw",
         "maps_won",
-        "maps_lost",
-        "encounters"
+        "maps_lost"
       ],
       "title": "UserTournament",
       "type": "object"
@@ -26029,31 +26060,6 @@
       "title": "BalancerRegistrationCreateRequest",
       "type": "object"
     },
-    "tournament.BalancerRegistrationExclusionRequest": {
-      "properties": {
-        "exclude_from_balancer": {
-          "title": "Exclude From Balancer",
-          "type": "boolean"
-        },
-        "exclude_reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Exclude Reason"
-        }
-      },
-      "required": [
-        "exclude_from_balancer"
-      ],
-      "title": "BalancerRegistrationExclusionRequest",
-      "type": "object"
-    },
     "tournament.BalancerRegistrationRankAutofillPlayer": {
       "properties": {
         "balancer_reason": {
@@ -26675,11 +26681,6 @@
           "default": null,
           "title": "Display Name"
         },
-        "exclude_from_balancer": {
-          "default": false,
-          "title": "Exclude From Balancer",
-          "type": "boolean"
-        },
         "exclude_reason": {
           "anyOf": [
             {
@@ -27004,6 +27005,11 @@
           "default": null,
           "title": "Description"
         },
+        "excludes_from_balancer": {
+          "default": false,
+          "title": "Excludes From Balancer",
+          "type": "boolean"
+        },
         "icon_color": {
           "anyOf": [
             {
@@ -27071,6 +27077,11 @@
           ],
           "default": null,
           "title": "Description"
+        },
+        "excludes_from_balancer": {
+          "default": false,
+          "title": "Excludes From Balancer",
+          "type": "boolean"
         },
         "icon_color": {
           "anyOf": [
@@ -27165,6 +27176,18 @@
           ],
           "default": null,
           "title": "Description"
+        },
+        "excludes_from_balancer": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Excludes From Balancer"
         },
         "icon_color": {
           "anyOf": [
@@ -27304,18 +27327,6 @@
           ],
           "default": null,
           "title": "Display Name"
-        },
-        "exclude_from_balancer": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Exclude From Balancer"
         },
         "exclude_reason": {
           "anyOf": [
@@ -27526,11 +27537,11 @@
       "title": "BulkBalancerStatusResponse",
       "type": "object"
     },
-    "tournament.BulkExclusionRequest": {
+    "tournament.BulkSetBalancerStatusRequest": {
       "properties": {
-        "exclude_from_balancer": {
-          "title": "Exclude From Balancer",
-          "type": "boolean"
+        "balancer_status": {
+          "title": "Balancer Status",
+          "type": "string"
         },
         "exclude_reason": {
           "anyOf": [
@@ -27555,27 +27566,9 @@
       },
       "required": [
         "registration_ids",
-        "exclude_from_balancer"
+        "balancer_status"
       ],
-      "title": "BulkExclusionRequest",
-      "type": "object"
-    },
-    "tournament.BulkExclusionResponse": {
-      "properties": {
-        "skipped": {
-          "title": "Skipped",
-          "type": "integer"
-        },
-        "updated": {
-          "title": "Updated",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "updated",
-        "skipped"
-      ],
-      "title": "BulkExclusionResponse",
+      "title": "BulkSetBalancerStatusRequest",
       "type": "object"
     },
     "tournament.CaptainReportRead": {
@@ -32531,8 +32524,15 @@
           "type": "integer"
         },
         "log_name": {
-          "title": "Log Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Log Name"
         },
         "map": {
           "anyOf": [
@@ -32551,9 +32551,20 @@
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
         },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
         "time": {
-          "title": "Time",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
         }
       },
       "required": [
@@ -32561,6 +32572,7 @@
         "score",
         "time",
         "log_name",
+        "source",
         "encounter_id",
         "map_id",
         "home_team",
@@ -32634,8 +32646,15 @@
           "type": "integer"
         },
         "log_name": {
-          "title": "Log Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Log Name"
         },
         "map": {
           "anyOf": [
@@ -32658,9 +32677,20 @@
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
         },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
         "time": {
-          "title": "Time",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
         }
       },
       "required": [
@@ -32668,6 +32698,7 @@
         "score",
         "time",
         "log_name",
+        "source",
         "encounter_id",
         "map_id",
         "home_team",
@@ -34809,6 +34840,18 @@
         "balancer_status": {
           "title": "Balancer Status",
           "type": "string"
+        },
+        "exclude_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exclude Reason"
         }
       },
       "required": [
@@ -36036,6 +36079,11 @@
           ],
           "default": null,
           "title": "Description"
+        },
+        "excludes_from_balancer": {
+          "default": false,
+          "title": "Excludes From Balancer",
+          "type": "boolean"
         },
         "icon_color": {
           "anyOf": [

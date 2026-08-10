@@ -488,14 +488,11 @@ export default function RegistrationsTable({
     }
   });
 
-  const balancerStatusMutation = useMutation({
-    mutationFn: ({
-      registrationId,
-      balancerStatus
-    }: {
-      registrationId: number;
-      balancerStatus: string;
-    }) => balancerAdminService.setBalancerStatus(registrationId, balancerStatus),
+  const balancerInclusionMutation = useMutation({
+    mutationFn: ({ registrationId, include }: { registrationId: number; include: boolean }) =>
+      include
+        ? balancerAdminService.includeInBalancer(registrationId)
+        : balancerAdminService.setBalancerStatus(registrationId, "excluded", "manual_exclusion"),
     onSuccess: (updated) => {
       patchRegistrationInCache(updated);
       notify.success("Balancer status updated");
@@ -625,8 +622,8 @@ export default function RegistrationsTable({
           valB = b.reviewed_at ? new Date(b.reviewed_at).getTime() : 0;
           break;
         case "excluded":
-          valA = a.exclude_from_balancer ? 1 : 0;
-          valB = b.exclude_from_balancer ? 1 : 0;
+          valA = a.balancer_status === "excluded" ? 1 : 0;
+          valB = b.balancer_status === "excluded" ? 1 : 0;
           break;
         default:
           return 0;
@@ -978,7 +975,7 @@ export default function RegistrationsTable({
                         const statusConfig =
                           STATUS_CONFIG[registration.status] ?? STATUS_CONFIG.pending;
                         const StatusIcon = statusConfig.icon;
-                        const inBalancer = registration.balancer_status === "ready";
+                        const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
                         const isExpanded = expandedIds.has(registration.id);
                         return (
                           <Fragment key={registration.id}>
@@ -1043,12 +1040,9 @@ export default function RegistrationsTable({
                                     rejectMutation.mutate(registrationId)
                                   }
                                   onToggleBalancer={(selectedRegistration) =>
-                                    balancerStatusMutation.mutate({
+                                    balancerInclusionMutation.mutate({
                                       registrationId: selectedRegistration.id,
-                                      balancerStatus:
-                                        selectedRegistration.balancer_status === "ready"
-                                          ? "not_in_balancer"
-                                          : "ready"
+                                      include: selectedRegistration.balancer_status_meta.excludes_from_balancer
                                     })
                                   }
                                   onToggleCheckIn={(selectedRegistration) =>
@@ -1149,11 +1143,9 @@ export default function RegistrationsTable({
                                           size="sm"
                                           variant="outline"
                                           onClick={() =>
-                                            balancerStatusMutation.mutate({
+                                            balancerInclusionMutation.mutate({
                                               registrationId: registration.id,
-                                              balancerStatus: inBalancer
-                                                ? "not_in_balancer"
-                                                : "ready"
+                                              include: !inBalancer
                                             })
                                           }
                                         >

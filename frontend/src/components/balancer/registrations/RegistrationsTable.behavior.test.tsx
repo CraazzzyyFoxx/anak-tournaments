@@ -50,12 +50,12 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-function statusMeta(value: string, scope: "registration" | "balancer") {
+function statusMeta(value: string, scope: "registration" | "balancer", excludesFromBalancer = false) {
   return {
     value,
     scope,
     is_builtin: true,
-    kind: "builtin" as const,
+    kind: "builtin",
     is_override: false,
     can_edit: false,
     can_delete: false,
@@ -63,7 +63,8 @@ function statusMeta(value: string, scope: "registration" | "balancer") {
     icon_slug: null,
     icon_color: null,
     name: value,
-    description: null
+    description: null,
+    excludes_from_balancer: excludesFromBalancer
   };
 }
 
@@ -88,10 +89,13 @@ function registration(id: number, overrides: Partial<AdminRegistration> = {}): A
     status,
     status_meta: statusMeta(status, "registration"),
     balancer_status: balancerStatus,
-    balancer_status_meta: statusMeta(balancerStatus, "balancer"),
+    balancer_status_meta: statusMeta(
+      balancerStatus,
+      "balancer",
+      balancerStatus === "not_in_balancer" || balancerStatus === "excluded"
+    ),
     checked_in: false,
     profiles_open: true,
-    exclude_from_balancer: false,
     source: "manual",
     submitted_at: "2026-07-30T17:00:00Z",
     reviewed_at: null,

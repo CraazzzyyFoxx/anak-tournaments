@@ -6,7 +6,6 @@ import {
   BalancerCustomStatus,
   BalancerCustomStatusCreateInput,
   BalancerCustomStatusUpdateInput,
-  AdminRegistrationExclusionInput,
   AdminRegistrationForm,
   AdminRegistrationFormUpsert,
   AdminRegistrationUpdateInput,
@@ -442,28 +441,24 @@ export default class balancerAdminService {
     return response.json();
   }
 
-  static async setRegistrationExclusion(
-    registrationId: number,
-    data: AdminRegistrationExclusionInput
-  ): Promise<AdminRegistration> {
-    const response = await apiFetch(`/api/v1/admin/balancer/registrations/${registrationId}/exclusion`,
+  static async includeInBalancer(registrationId: number): Promise<AdminRegistration> {
+    const response = await apiFetch(`/api/v1/admin/balancer/registrations/${registrationId}/include`,
       {
-        method: "PATCH",
-        body: data
+        method: "POST"
       }
     );
     return response.json();
   }
 
-  static async bulkSetExclusion(
+  static async bulkSetBalancerStatus(
     tournamentId: number,
     data: {
       registration_ids: number[];
-      exclude_from_balancer: boolean;
+      balancer_status: BalancerStatus;
       exclude_reason?: string | null;
     }
   ): Promise<{ updated: number; skipped: number }> {
-    const response = await apiFetch(`/api/v1/admin/balancer/tournaments/${tournamentId}/registrations/bulk-exclusion`,
+    const response = await apiFetch(`/api/v1/admin/balancer/tournaments/${tournamentId}/registrations/bulk-set-balancer-status`,
       {
         method: "POST",
         body: data
@@ -513,12 +508,13 @@ export default class balancerAdminService {
 
   static async setBalancerStatus(
     registrationId: number,
-    balancerStatus: BalancerStatus
+    balancerStatus: BalancerStatus,
+    excludeReason?: string | null
   ): Promise<AdminRegistration> {
     const response = await apiFetch(`/api/v1/admin/balancer/registrations/${registrationId}/balancer-status`,
       {
         method: "PATCH",
-        body: { balancer_status: balancerStatus }
+        body: { balancer_status: balancerStatus, exclude_reason: excludeReason ?? null }
       }
     );
     return response.json();
@@ -526,13 +522,12 @@ export default class balancerAdminService {
 
   static async bulkAddToBalancer(
     tournamentId: number,
-    registrationIds: number[],
-    balancerStatus: BalancerStatus = "ready"
+    registrationIds: number[]
   ): Promise<{ updated: number; skipped: number }> {
     const response = await apiFetch(`/api/v1/admin/balancer/tournaments/${tournamentId}/registrations/bulk-add-to-balancer`,
       {
         method: "POST",
-        body: { registration_ids: registrationIds, balancer_status: balancerStatus }
+        body: { registration_ids: registrationIds }
       }
     );
     return response.json();

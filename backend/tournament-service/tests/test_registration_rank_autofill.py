@@ -50,7 +50,6 @@ def _registration(*roles: SimpleNamespace, battle_tag: str | None = "Main#123") 
         battle_tag=battle_tag,
         status="approved",
         balancer_status="not_in_balancer",
-        exclude_from_balancer=True,
         roles=list(roles),
     )
 

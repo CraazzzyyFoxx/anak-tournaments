@@ -238,13 +238,21 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
 
         assert events == []
 
-    async def test_the_chosen_balancer_status_is_used(self) -> None:
+    async def test_ready_is_a_sentinel_computed_from_the_attached_roles(self) -> None:
+        # No active roles were passed -> "ready" is impossible; the create
+        # path resolves the ready/incomplete sentinel from the roles just
+        # attached rather than accepting it literally (an admin-forced
+        # "ready" with no ranks would violate the rest of the system's
+        # "ready implies rank-complete" invariant).
         registration, _ = await self._create(balancer_status_value="ready")
 
-        assert registration.balancer_status == "ready"
-        # Unlike the PATCH path, "not_in_balancer" on a fresh manual row means
-        # "nothing has balanced yet", so nothing here may set an exclusion.
-        assert registration.exclude_from_balancer is False
+        assert registration.balancer_status == "incomplete"
+        assert registration.exclude_reason is None
+
+    async def test_a_literal_non_auto_status_is_used_as_is(self) -> None:
+        registration, _ = await self._create(balancer_status_value="excluded")
+
+        assert registration.balancer_status == "excluded"
 
     async def test_custom_field_answers_are_written(self) -> None:
         registration, _ = await self._create(custom_fields_json={"vk": "vk.com/player"})

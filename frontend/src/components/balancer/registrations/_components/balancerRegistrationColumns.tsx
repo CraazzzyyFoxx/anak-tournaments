@@ -247,7 +247,7 @@ function ReviewedCell({ registration }: { registration: AdminRegistration }) {
 }
 
 function ExclusionCell({ registration }: { registration: AdminRegistration }) {
-  if (!registration.exclude_from_balancer) {
+  if (registration.balancer_status !== "excluded") {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
 
@@ -471,7 +471,7 @@ export function buildBalancerRegistrationColumns(
       widthClass: "min-w-[180px]",
       render: (registration) => <ExclusionCell registration={registration} />,
       searchValue: (registration) =>
-        registration.exclude_from_balancer
+        registration.balancer_status === "excluded"
           ? [registration.exclude_reason, "excluded from balancer"].filter(Boolean).join(" ")
           : null,
     },

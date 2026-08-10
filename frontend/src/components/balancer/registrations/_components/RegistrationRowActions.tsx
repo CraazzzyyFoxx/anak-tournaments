@@ -51,7 +51,7 @@ function PrimaryAction({
   }
 
   if (status === "approved") {
-    const inBalancer = registration.balancer_status === "ready";
+    const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
     return (
       <Button
         size="sm"
@@ -84,7 +84,7 @@ function PrimaryAction({
   }
 
   if (status_meta.kind === "custom") {
-    const inBalancer = registration.balancer_status === "ready";
+    const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
     return (
       <Button
         size="sm"
@@ -116,7 +116,7 @@ export default function RegistrationRowActions({
   onRestore,
   onDelete
 }: RegistrationRowActionsProps) {
-  const inBalancer = registration.balancer_status === "ready";
+  const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
 
   return (
     <div className="flex items-center justify-end gap-1">

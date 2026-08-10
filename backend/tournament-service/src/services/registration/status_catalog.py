@@ -177,6 +177,7 @@ async def create_custom_status(
     icon_color: str | None,
     name: str,
     description: str | None,
+    excludes_from_balancer: bool = False,
 ) -> models.BalancerRegistrationStatus:
     await ensure_workspace_exists(session, workspace_id)
     slug = _normalize_name_to_slug(name)
@@ -195,6 +196,8 @@ async def create_custom_status(
         icon_color=icon_color,
         name=name.strip(),
         description=description.strip() if description else None,
+        # Only meaningful for scope == "balancer"; harmless (unused) otherwise.
+        excludes_from_balancer=excludes_from_balancer,
     )
     session.add(status_row)
     await session.commit()
@@ -212,6 +215,7 @@ async def update_custom_status(
     icon_color: str | None,
     name: str | None,
     description: str | None,
+    excludes_from_balancer: bool | None = None,
 ) -> models.BalancerRegistrationStatus:
     status_row = await get_custom_status_by_id(session, workspace_id, status_id)
 
@@ -229,6 +233,8 @@ async def update_custom_status(
         status_row.icon_color = icon_color or None
     if description is not None:
         status_row.description = description.strip() or None
+    if excludes_from_balancer is not None:
+        status_row.excludes_from_balancer = excludes_from_balancer
 
     await session.commit()
     await invalidate_status_metas_cache(workspace_id)

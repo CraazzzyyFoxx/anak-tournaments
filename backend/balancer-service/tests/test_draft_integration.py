@@ -666,7 +666,6 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 display_name=tag,
                 status="approved",
                 balancer_status="ready",
-                exclude_from_balancer=False,
             )
             s.add(reg)
             await s.flush()

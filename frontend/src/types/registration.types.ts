@@ -308,4 +308,6 @@ export interface StatusMeta {
   icon_color: string | null;
   name: string;
   description: string | null;
+  /** Whether a registration currently holding this status counts as part of the balancer pool. */
+  excludes_from_balancer: boolean;
 }

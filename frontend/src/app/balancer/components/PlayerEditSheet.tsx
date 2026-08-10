@@ -54,6 +54,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import Cookies from "js-cookie";
 import DivisionIcon from "@/components/DivisionIcon";
+import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useCurrentWorkspaceId, useDivisionGrid, useDivisionGridVersion } from "@/hooks/useCurrentWorkspace";
 import { useQuery } from "@tanstack/react-query";
@@ -815,7 +816,6 @@ export function PlayerEditModal({
   const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
     normalizeRoleEntries(player.role_entries_json)
   );
-  const [isInPool, setIsInPool] = useState(player.is_in_pool);
   const [isFlex, setIsFlex] = useState(player.is_flex);
   const [notes, setNotes] = useState(player.admin_notes ?? "");
   const [registrationStatus, setRegistrationStatus] = useState(registration?.status ?? "approved");
@@ -841,7 +841,6 @@ export function PlayerEditModal({
 
   useEffect(() => {
     const normalized = normalizeRoleEntries(player.role_entries_json);
-    setIsInPool(player.is_in_pool);
     setIsFlex(player.is_flex);
     setNotes(player.admin_notes ?? "");
     setRegistrationStatus(registration?.status ?? "approved");
@@ -860,30 +859,14 @@ export function PlayerEditModal({
   const primaryBattleTag = battleTags[0] ?? player.battle_tag;
   const smurfTags = battleTags.slice(1);
 
-  const checkRanksAndAutoUpdateStatus = (nextEntries: BalancerPlayerRoleEntry[]) => {
-    const activeRoles = nextEntries.filter((e) => e.is_active);
-    const allRanked =
-      activeRoles.length > 0 &&
-      activeRoles.every((e) => e.rank_value !== null && e.rank_value !== undefined && String(e.rank_value).trim() !== "");
-
-    if (allRanked) {
-      setRegistrationBalancerStatus((current) => {
-        if (current === "not_in_balancer" || current === "incomplete") {
-          setIsInPool(true);
-          return "ready";
-        }
-        return current;
-      });
-    } else {
-      setRegistrationBalancerStatus((current) => {
-        if (current === "ready") {
-          setIsInPool(false);
-          return "incomplete";
-        }
-        return current;
-      });
-    }
-  };
+  // `ready`/`incomplete` are computed server-side from role ranks the moment
+  // roles are saved (see sync_included_balancer_status) -- nothing here needs
+  // to mirror that locally. This only drives the read-only "computed" preview
+  // badge below the Roles header.
+  const activeRoles = roleEntries.filter((e) => e.is_active);
+  const isComputedReady =
+    activeRoles.length > 0 &&
+    activeRoles.every((e) => e.rank_value !== null && e.rank_value !== undefined && String(e.rank_value).trim() !== "");
 
   const handleLoadFromHistory = async () => {
     setLoadingHistory(true);
@@ -945,7 +928,6 @@ export function PlayerEditModal({
   const handleApplyHistoryPreview = () => {
     const next = applyHistoryPreviewToRoleEntries(roleEntries, historyPreview, resolveRankFromDivision);
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
     handleDismissHistoryPreview();
   };
 
@@ -991,7 +973,6 @@ export function PlayerEditModal({
       }
     ];
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
   };
 
   const updateEntry = (index: number, nextEntry: BalancerPlayerRoleEntry) => {
@@ -999,23 +980,26 @@ export function PlayerEditModal({
       roleEntries.map((entry, currentIndex) => (currentIndex === index ? nextEntry : entry))
     );
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
   };
 
   const removeEntry = (index: number) => {
     const next = normalizeRoleEntries(roleEntries.filter((_, currentIndex) => currentIndex !== index));
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
   };
 
   const handleSave = () => {
     onSave(player.id, {
       role_entries_json: normalizeRoleEntries(roleEntries),
-      is_in_pool: isInPool === player.is_in_pool ? undefined : isInPool,
       is_flex: isFlex,
       admin_notes: notes || null,
-      registration_status: registration ? registrationStatus : null,
-      registration_balancer_status: registration ? registrationBalancerStatus : null
+      registration_status: registration && registrationStatus !== registration.status ? registrationStatus : null,
+      // Only send an explicit override when it actually changed -- the current
+      // value may be a server-computed "ready"/"incomplete" the backend
+      // rejects as a literal write (see AUTO_MANAGED_BALANCER_STATUSES).
+      registration_balancer_status:
+        registration && registrationBalancerStatus !== registration.balancer_status
+          ? registrationBalancerStatus
+          : null
     });
   };
 
@@ -1050,30 +1034,25 @@ export function PlayerEditModal({
 
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
           <div className="grid gap-2.5 lg:grid-cols-2">
-            <div
-              className={cn(
-                "rounded-lg border px-3 py-2",
-                isInPool
-                  ? "border-primary/20 bg-primary/[0.08]"
-                  : "border-[color:var(--aqt-border-2)] bg-white/[0.03]"
-              )}
-            >
+            <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.03] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
-                <Label
-                  htmlFor="is-in-pool"
-                  className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
-                >
-                  Include in balancer
-                </Label>
-                <Switch
-                  id="is-in-pool"
-                  checked={isInPool}
-                  onCheckedChange={setIsInPool}
-                  aria-label="Include in balancer"
-                />
+                <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Balancer status</span>
+                {registration ? (
+                  <StatusMetaBadge meta={registration.balancer_status_meta} className="h-5 text-[10px]" />
+                ) : (
+                  <Badge
+                    className={cn(
+                      "h-5 px-2 text-[10px]",
+                      isComputedReady
+                        ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
+                        : "border-orange-400/25 bg-orange-400/10 text-orange-200"
+                    )}
+                  >
+                    {isComputedReady ? "Ready" : "Incomplete"}
+                  </Badge>
+                )}
               </div>
             </div>
-
             <div
               className={cn(
                 "rounded-lg border px-3 py-2",
@@ -1297,11 +1276,18 @@ export function PlayerEditModal({
                     <SelectValue placeholder="Select balancer status" />
                   </SelectTrigger>
                   <SelectContent>
-                    {statusOptions.balancer.system.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.name} · System
+                    {registrationBalancerStatus === "ready" || registrationBalancerStatus === "incomplete" ? (
+                      <SelectItem value={registrationBalancerStatus} disabled>
+                        {registrationBalancerStatus === "ready" ? "Ready" : "Incomplete"} · Computed
                       </SelectItem>
-                    ))}
+                    ) : null}
+                    {statusOptions.balancer.system
+                      .filter((option) => option.value !== "ready" && option.value !== "incomplete")
+                      .map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.name} · System
+                        </SelectItem>
+                      ))}
                     {statusOptions.balancer.custom.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.name} · Custom
@@ -1309,6 +1295,9 @@ export function PlayerEditModal({
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-[10px] text-[color:var(--aqt-fg-dim)]">
+                  Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
+                </p>
               </div>
             </div>
           ) : null}

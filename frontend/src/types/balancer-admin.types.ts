@@ -409,6 +409,8 @@ export interface BalancerCustomStatus {
   icon_color: string | null;
   name: string;
   description: string | null;
+  /** Only meaningful for scope === "balancer": whether a registration holding this status counts as part of the balancer pool. */
+  excludes_from_balancer: boolean;
   created_at: string;
   updated_at: string | null;
 }
@@ -419,6 +421,7 @@ export interface BalancerCustomStatusCreateInput {
   icon_color?: string | null;
   name: string;
   description?: string | null;
+  excludes_from_balancer?: boolean;
 }
 
 export interface BalancerCustomStatusUpdateInput {
@@ -426,6 +429,7 @@ export interface BalancerCustomStatusUpdateInput {
   icon_color?: string | null;
   name?: string | null;
   description?: string | null;
+  excludes_from_balancer?: boolean | null;
 }
 
 export interface AdminRegistration {
@@ -452,7 +456,9 @@ export interface AdminRegistration {
   status_meta: StatusMeta;
   balancer_status: BalancerStatus;
   balancer_status_meta: StatusMeta;
-  exclude_from_balancer: boolean;
+  /** Reason note for the current status, populated when balancer_status === "excluded".
+   *  Whether the registration is actually excluded is read from
+   *  balancer_status_meta.excludes_from_balancer, not a separate flag. */
   exclude_reason: string | null;
   checked_in: boolean;
   checked_in_at: string | null;
@@ -501,18 +507,13 @@ export interface AdminRegistrationUpdateInput {
   custom_fields_json?: Record<string, string> | null;
   is_flex?: boolean | null;
   status?: string | null;
+  /** `ready`/`incomplete` are rejected server-side (computed from role ranks
+   *  only); use `not_in_balancer`, `excluded`, or a custom slug. */
   balancer_status?: string | null;
   roles?: AdminRegistrationRole[] | null;
   /** When set, (re)anchor the registration on this site account's player. */
   auth_user_id?: number | null;
-  /** When set, mirrors the exclusion endpoint semantics in a single PATCH. */
-  exclude_from_balancer?: boolean | null;
-  /** Applied only together with exclude_from_balancer. */
-  exclude_reason?: string | null;
-}
-
-export interface AdminRegistrationExclusionInput {
-  exclude_from_balancer: boolean;
+  /** Only meaningful together with balancer_status === "excluded". */
   exclude_reason?: string | null;
 }
 

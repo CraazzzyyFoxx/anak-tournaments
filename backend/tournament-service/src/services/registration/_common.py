@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import get_builtin_status_values
+from shared.balancer_registration_statuses import get_builtin_status_values, is_balancer_status_excluded
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
@@ -29,6 +29,14 @@ from src.services.tournament.realtime_commit import register_tournament_realtime
 
 VALID_REGISTRATION_STATUSES = get_builtin_status_values("registration")
 VALID_BALANCER_STATUSES = get_builtin_status_values("balancer")
+
+# The only two balancer statuses the system derives from role/rank
+# completeness -- every other status (not_in_balancer, excluded, any custom
+# slug) is exclusively admin-managed and must never be touched by
+# `sync_included_balancer_status`.
+AUTO_MANAGED_BALANCER_STATUSES = frozenset({"incomplete", "ready"})
+NOT_ADDED_BALANCER_STATUS = "not_in_balancer"
+EXCLUDED_BALANCER_STATUS = "excluded"
 
 
 def _register_registration_changed(
@@ -277,10 +285,38 @@ def included_balancer_status(registration: models.BalancerRegistration | Any) ->
 
 
 def sync_included_balancer_status(registration: models.BalancerRegistration | Any) -> None:
+    """Recompute `ready`/`incomplete` from role ranks -- the only two
+    balancer statuses a role edit is allowed to change. `not_in_balancer`,
+    `excluded` and any custom status are exclusively admin-managed: they can
+    no longer be picked FOR ready/incomplete (see `set_balancer_status`), so
+    there is nothing left for a role-driven resync to fight over.
+    """
     current_balancer_status = getattr(registration, "balancer_status", None)
     if (
         getattr(registration, "status", None) == "approved"
-        and current_balancer_status in VALID_BALANCER_STATUSES
-        and current_balancer_status != "not_in_balancer"
+        and current_balancer_status in AUTO_MANAGED_BALANCER_STATUSES
     ):
         registration.balancer_status = included_balancer_status(registration)
+
+
+def is_included_in_balancer(
+    registration: models.BalancerRegistration | Any,
+    status_meta_map: dict[str, dict[str, Any]] | None = None,
+) -> bool:
+    """Whether `registration` currently counts as part of the balancer pool.
+
+    Single source of truth: the *current status's* `excludes_from_balancer`
+    flag -- true for the builtin `not_in_balancer`/`excluded` statuses, false
+    for `ready`/`incomplete`, and workspace-configurable for a custom status.
+    Pass the resolved `status_meta_map` (see `get_status_metas_map`) when one
+    is already in hand -- callers without it (no custom-status catalog
+    loaded) still get the correct answer for every builtin status.
+    """
+    if getattr(registration, "deleted_at", None) is not None:
+        return False
+    balancer_status = getattr(registration, "balancer_status", None)
+    if status_meta_map is not None:
+        meta = status_meta_map.get("balancer", {}).get(balancer_status)
+        if meta is not None:
+            return not meta["excludes_from_balancer"]
+    return not is_balancer_status_excluded(balancer_status)

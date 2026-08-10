@@ -45,6 +45,7 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
@@ -65,6 +66,7 @@ type StatusFormState = {
   icon_color: string;
   name: string;
   description: string;
+  excludes_from_balancer: boolean;
 };
 
 const EMPTY_FORM: StatusFormState = {
@@ -72,7 +74,8 @@ const EMPTY_FORM: StatusFormState = {
   icon_slug: "",
   icon_color: "",
   name: "",
-  description: ""
+  description: "",
+  excludes_from_balancer: false
 };
 
 const STATUS_COLOR_PRESETS = [
@@ -203,11 +206,14 @@ function StatusColorPicker({
 function StatusForm({
   value,
   onChange,
-  disableScope = false
+  disableScope = false,
+  isBuiltin = false
 }: {
   value: StatusFormState;
   onChange: (next: StatusFormState) => void;
   disableScope?: boolean;
+  /** True when editing a builtin-status override: pool-inclusion is fixed by the system, not admin-editable. */
+  isBuiltin?: boolean;
 }) {
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   // Two dialogs mount this form, so the field ids have to be per-instance.
@@ -225,7 +231,8 @@ function StatusForm({
       icon_slug: value.icon_slug || "BadgeHelp",
       icon_color: value.icon_color || null,
       name: value.name || "Preview",
-      description: value.description || null
+      description: value.description || null,
+      excludes_from_balancer: value.excludes_from_balancer
     }),
     [value]
   );
@@ -345,6 +352,22 @@ function StatusForm({
           placeholder="Used when a player is waiting for a captain confirmation."
         />
       </div>
+      {value.scope === "balancer" && !isBuiltin ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+          <div className="space-y-0.5">
+            <Label htmlFor={`${fieldId}-excludes`}>Excludes from balancer pool</Label>
+            <p className="text-xs text-muted-foreground">
+              A registration holding this status is treated as removed from the balancer pool,
+              the same way the builtin &quot;Excluded&quot; status works.
+            </p>
+          </div>
+          <Switch
+            id={`${fieldId}-excludes`}
+            checked={value.excludes_from_balancer}
+            onCheckedChange={(checked) => onChange({ ...value, excludes_from_balancer: checked })}
+          />
+        </div>
+      ) : null}
       <div className="space-y-2">
         <p className="text-sm font-medium">Preview</p>
         <div className="rounded-lg border p-3">
@@ -481,7 +504,8 @@ export default function AdminBalancerPage() {
       icon_slug: statusRow.icon_slug ?? "",
       icon_color: statusRow.icon_color ?? "",
       name: statusRow.name,
-      description: statusRow.description ?? ""
+      description: statusRow.description ?? "",
+      excludes_from_balancer: statusRow.excludes_from_balancer
     });
   };
 
@@ -496,7 +520,8 @@ export default function AdminBalancerPage() {
       icon_slug: form.icon_slug || null,
       icon_color: form.icon_color || null,
       name: form.name,
-      description: form.description || null
+      description: form.description || null,
+      excludes_from_balancer: form.scope === "balancer" ? form.excludes_from_balancer : false
     });
   };
 
@@ -507,21 +532,29 @@ export default function AdminBalancerPage() {
       return;
     }
     setFormError(null);
-    const data = {
-      icon_slug: form.icon_slug || null,
-      icon_color: form.icon_color || null,
-      name: form.name,
-      description: form.description || null
-    };
     if (editingStatus.kind === "builtin") {
       updateBuiltinMutation.mutate({
         scope: editingStatus.scope,
         slug: editingStatus.slug,
-        data
+        data: {
+          icon_slug: form.icon_slug || null,
+          icon_color: form.icon_color || null,
+          name: form.name,
+          description: form.description || null
+        }
       });
       return;
     }
-    updateMutation.mutate({ statusId: editingStatus.id, data });
+    updateMutation.mutate({
+      statusId: editingStatus.id,
+      data: {
+        icon_slug: form.icon_slug || null,
+        icon_color: form.icon_color || null,
+        name: form.name,
+        description: form.description || null,
+        excludes_from_balancer: editingStatus.scope === "balancer" ? form.excludes_from_balancer : false
+      }
+    });
   };
 
   if (workspaceId === null) {
@@ -599,7 +632,8 @@ export default function AdminBalancerPage() {
                                     icon_slug: statusRow.icon_slug,
                                     icon_color: statusRow.icon_color,
                                     name: statusRow.name,
-                                    description: statusRow.description
+                                    description: statusRow.description,
+                                    excludes_from_balancer: statusRow.excludes_from_balancer
                                   }}
                                   fallbackValue={statusRow.slug}
                                 />
@@ -676,14 +710,22 @@ export default function AdminBalancerPage() {
                                       icon_slug: statusRow.icon_slug,
                                       icon_color: statusRow.icon_color,
                                       name: statusRow.name,
-                                      description: statusRow.description
+                                      description: statusRow.description,
+                                      excludes_from_balancer: statusRow.excludes_from_balancer
                                     }}
                                     fallbackValue={statusRow.slug}
                                   />
                                 </TableCell>
                                 <TableCell className="font-mono text-xs">{statusRow.slug}</TableCell>
                                 <TableCell className="text-sm text-muted-foreground">
-                                  {statusRow.description ?? "—"}
+                                  <div className="flex items-center gap-2">
+                                    <span>{statusRow.description ?? "—"}</span>
+                                    {statusRow.excludes_from_balancer ? (
+                                      <span className="whitespace-nowrap rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-300">
+                                        Excludes pool
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex justify-end gap-2">
@@ -775,7 +817,12 @@ export default function AdminBalancerPage() {
                 : "Update visual metadata without changing the stored slug."}
             </DialogDescription>
           </DialogHeader>
-          <StatusForm value={form} onChange={setForm} disableScope />
+          <StatusForm
+            value={form}
+            onChange={setForm}
+            disableScope
+            isBuiltin={editingStatus?.kind === "builtin"}
+          />
           {formError && <p className="text-sm text-danger">{formError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingStatus(null)}>

@@ -41,7 +41,6 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
             status="pending",
             reviewed_at=None,
             reviewed_by=None,
-            exclude_from_balancer=True,
             exclude_reason="manual",
         )
         session = SimpleNamespace(commit=AsyncMock(side_effect=lambda: calls.append("commit")))
