@@ -251,7 +251,10 @@
     "skipToContent": "Перейти к содержимому",
     "footer": {
       "disclaimer": "{siteName} не связан с Blizzard Entertainment, Inc. и не одобрен ею.",
-      "getWorkspace": "Получить свой воркспейс"
+      "getWorkspace": "Получить свой воркспейс",
+      "sectionsHeading": "Разделы",
+      "resourcesHeading": "Ресурсы",
+      "apiDocs": "API документация"
     },
     "placementSpark": {
       "label": "Места: {summary}"

@@ -251,7 +251,10 @@
     "skipToContent": "Skip to content",
     "footer": {
       "disclaimer": "{siteName} is not affiliated with or endorsed by Blizzard Entertainment, Inc.",
-      "getWorkspace": "Get your own workspace"
+      "getWorkspace": "Get your own workspace",
+      "sectionsHeading": "Sections",
+      "resourcesHeading": "Resources",
+      "apiDocs": "API Docs"
     },
     "placementSpark": {
       "label": "Placements: {summary}"
