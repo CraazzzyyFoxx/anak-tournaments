@@ -23,6 +23,7 @@ os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 import sqlalchemy as sa  # noqa: E402
+from sqlalchemy.exc import MissingGreenlet  # noqa: E402
 
 from shared.core.enums import FirstBanRotation, MapVetoMode, PickBanKind  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
@@ -119,6 +120,32 @@ def _encounter(*, best_of: int, home: int | None = 10, away: int | None = 20) ->
     )
 
 
+def _loads_config_pool(statement: Any) -> bool:
+    """Whether a ``PickBanConfig`` query eagerly loads the config's pool."""
+    paths = " ".join(str(getattr(option, "path", "")) for option in statement._with_options)
+    return "PickBanConfig.items" in paths and "PickBanConfigSlot.items" in paths
+
+
+class _PoolUnloadedConfig:
+    """A ``PickBanConfig`` fetched WITHOUT its pool loader options.
+
+    Reading ``items``/``slots`` off one is a lazy load from a plain attribute
+    access, which under async SQLAlchemy raises ``MissingGreenlet`` instead of
+    emitting a SELECT -- how ``advance_to_next_round`` broke a whole series in
+    production (Sentry OWT-TOURNAMENTS-22Y). The fake raises the same way, so a
+    config load that drops the eager options fails here too instead of
+    silently handing back a loaded pool.
+    """
+
+    def __init__(self, config: Any) -> None:
+        self._config = config
+
+    def __getattr__(self, name: str) -> Any:
+        if name in ("items", "slots"):
+            raise MissingGreenlet(f"lazy load of PickBanConfig.{name} outside a greenlet")
+        return getattr(self._config, name)
+
+
 class _Result:
     def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
@@ -186,9 +213,18 @@ class _FakeSession:
         self.commits = 0
         self.flushes = 0
 
+    def _config_answer(self, statement: Any) -> Any:
+        """The config a query gets back: the real one only when it asked for
+        the pool, a pool-less proxy otherwise."""
+        if self.config is None:
+            return None
+        return self.config if _loads_config_pool(statement) else _PoolUnloadedConfig(self.config)
+
     async def get(self, model: Any, pk: Any) -> Any:
         if model is PickBanConfig:
-            return self.config
+            # `session.get` takes no loader options at any call site here, so
+            # the pool is never loaded -- see `_PoolUnloadedConfig`.
+            return None if self.config is None else _PoolUnloadedConfig(self.config)
         if model is Encounter:
             return self.encounter
         raise AssertionError(f"unexpected get() model: {model}")
@@ -215,7 +251,8 @@ class _FakeSession:
                 return _Result([] if self.map_session is None else [self.map_session])
             return _Result([] if self.existing is None else [self.existing])
         if entity is PickBanConfig:
-            return _Result([] if self.config is None else [self.config])
+            answer = self._config_answer(statement)
+            return _Result([] if answer is None else [answer])
         if entity is EncounterReadiness:
             # ``mark_ready`` queries a specific side (``select(EncounterReadiness)
             # .where(..., side == X)``); ``get_readiness`` queries all sides for
@@ -240,6 +277,8 @@ class _FakeSession:
             return self.pool_count
         if entity is Stage:
             return None
+        if entity is PickBanConfig:
+            return self._config_answer(statement)
         raise AssertionError(f"unexpected scalar() entity: {entity}")
 
     def add(self, instance: Any) -> None:
@@ -822,3 +861,21 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
         await advance_to_next_round(session, pick_ban, completed_round=1, winner=None)
 
         self.assertEqual(["ban_home", "decider", "ban_home", "ban_away", "decider"], pick_ban.resolved_sequence_json)
+
+    async def test_the_next_round_loads_the_config_with_its_pool(self) -> None:
+        # Regression, Sentry OWT-TOURNAMENTS-22Y: the config was fetched with
+        # `session.get`, which carries no loader options, so reading its slots
+        # to build the next round was a lazy load -- `MissingGreenlet` under
+        # async SQLAlchemy, 500ing every map report that closed a round and
+        # stalling the series mid-way.
+        config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
+        session = _FakeSession(config=config, entries=RESOLVED_ROUND_ONE, encounter=_encounter(best_of=2))
+        pick_ban = self._pick_ban(config)
+
+        unloaded = await session.get(PickBanConfig, config.id)
+        with self.assertRaises(MissingGreenlet):
+            _ = unloaded.slots
+
+        await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
+
+        self.assertEqual([21, 22], [row.item_id for row in session.pool_rows])

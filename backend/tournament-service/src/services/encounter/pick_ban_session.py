@@ -92,6 +92,28 @@ async def get_pick_ban_session(
     return result.scalar_one_or_none()
 
 
+# A config is only ever useful with its pool in hand (`items` in flat mode,
+# `slots.items` in slot mode), and both are plain lazy relationships: touching
+# either on a config that was loaded without them raises `MissingGreenlet`
+# under async SQLAlchemy. Every load of a config that will be read goes
+# through here.
+_CONFIG_POOL_LOAD = (
+    selectinload(PickBanConfig.items),
+    selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items),
+)
+
+
+async def _load_config(session: AsyncSession, config_id: int) -> PickBanConfig | None:
+    """One config by id, pool eagerly loaded.
+
+    A `select` rather than `session.get`: loader options are ignored when the
+    row is already in the identity map (which it can be, e.g. after
+    `pick_ban_action` fetched it for a scalar flag), and the pool would still
+    come back unloaded.
+    """
+    return await session.scalar(select(PickBanConfig).where(PickBanConfig.id == config_id).options(*_CONFIG_POOL_LOAD))
+
+
 async def _resolve_config(
     session: AsyncSession, encounter: Encounter, kind: PickBanKind
 ) -> PickBanConfig | None:
@@ -106,7 +128,7 @@ async def _resolve_config(
                 PickBanConfig.stage_id == encounter.stage_id,
             ),
         )
-        .options(selectinload(PickBanConfig.items), selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items))
+        .options(*_CONFIG_POOL_LOAD)
     )
     configs = list(result.scalars().all())
     best = None
@@ -508,7 +530,7 @@ async def advance_to_next_round(
     must catch this, set ``awaiting_choice=True`` and wait for an explicit
     ``elect_opener`` call instead of resolving a side here.
     """
-    config = await session.get(PickBanConfig, pick_ban.config_id) if pick_ban.config_id else None
+    config = await _load_config(session, pick_ban.config_id) if pick_ban.config_id else None
     if config is None or not rounds_are_progressive(config, pick_ban.kind):
         return pick_ban
 
