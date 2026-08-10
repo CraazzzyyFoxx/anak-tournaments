@@ -353,6 +353,10 @@ DOCS: dict[str, dict] = {
         "summary": "Get stage progress",
         "description": "Returns per-stage progress for a tournament; requires stage-read permission on its workspace.",
     },
+    "rpc.tournament.stage_planned_rounds": {
+        "summary": "Get stage planned rounds",
+        "description": "Returns the round numbers a stage's bracket has (once generated) or will have, predicted from its planned team inputs; requires stage-read permission on its workspace.",
+    },
     "rpc.tournament.stage_merge": {
         "summary": "Merge group stages",
         "description": "Merges source group stages into a target stage; requires stage-update permission on its workspace.",

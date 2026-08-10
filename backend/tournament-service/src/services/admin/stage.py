@@ -13,7 +13,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
 from shared.schemas.events import TournamentChangedReason
 from shared.services.bracket.advancement import persist_advancement_edges
-from shared.services.bracket.engine import generate_bracket
+from shared.services.bracket.engine import generate_bracket, predict_rounds
 from shared.services.bracket.swiss import SwissPairingImpossibleError, SwissStanding
 from shared.services.bracket.swiss_settings import (
     clear_swiss_byes,
@@ -55,6 +55,52 @@ async def get_stage(session: AsyncSession, stage_id: int) -> models.Stage:
     if not stage:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
     return stage
+
+
+async def get_planned_rounds(session: AsyncSession, stage_id: int) -> list[int]:
+    """The round numbers this stage's bracket has, or will have.
+
+    Elimination round numbering is not the plain ``1..max_rounds`` sequence
+    ``max_rounds`` (an independently admin-set planning field) would suggest:
+    double elimination's lower bracket uses negative numbers, and even single
+    elimination's actual round count depends on team count, which may not
+    match ``max_rounds`` at all. This lets a caller scope a cascade config
+    (e.g. a pick-ban rule) to a round correctly before the bracket exists,
+    rather than guessing and silently missing every lower-bracket round or
+    landing a rule on a round number the eventual bracket will never have.
+
+    Once encounters exist they are the ground truth. Before that, this
+    predicts the same numbers the real generator will produce off the
+    stage's planned team inputs (including still-TENTATIVE ones) -- empty
+    when the stage type isn't a bracket, or fewer than two teams are wired in
+    yet, in which case only the tournament-/stage-wide scopes are meaningful.
+    """
+    stage = await get_stage(session, stage_id)
+
+    generated = await session.execute(
+        select(models.Encounter.round).where(models.Encounter.stage_id == stage_id).distinct()
+    )
+    existing_rounds = sorted({row[0] for row in generated.all()})
+    if existing_rounds:
+        return existing_rounds
+
+    if stage.stage_type not in (enums.StageType.SINGLE_ELIMINATION, enums.StageType.DOUBLE_ELIMINATION):
+        return []
+
+    team_ids: list[int] = []
+    for item in sorted(stage.items, key=lambda it: (it.order, it.id)):
+        team_ids.extend(_collect_item_team_ids(item))
+    if len(team_ids) < 2:
+        return []
+
+    return predict_rounds(
+        stage.stage_type,
+        len(team_ids),
+        split_lower_bracket=(
+            stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
+            and getattr(stage, "split_lower_bracket", False)
+        ),
+    )
 
 
 async def get_stage_item(session: AsyncSession, stage_item_id: int) -> models.StageItem:

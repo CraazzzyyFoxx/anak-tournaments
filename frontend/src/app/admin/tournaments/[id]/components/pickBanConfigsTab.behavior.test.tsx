@@ -40,6 +40,11 @@ const upsertConfig = vi.fn();
 const deleteConfig = vi.fn();
 const getHeroes = vi.fn();
 const getMaps = vi.fn();
+const getStagePlannedRounds = vi.fn();
+
+vi.mock("@/services/admin.service", () => ({
+  default: { getStagePlannedRounds: (...args: unknown[]) => getStagePlannedRounds(...args) },
+}));
 
 vi.mock("@/services/pickBan.service", () => ({
   default: {
@@ -193,6 +198,28 @@ async function click(element: Element) {
   await settle(4);
 }
 
+// Radix's Select reaches for pointer-capture and scroll APIs happy-dom does
+// not implement. Without these the trigger throws before the listbox opens.
+for (const [name, value] of Object.entries({
+  hasPointerCapture: () => false,
+  setPointerCapture: () => undefined,
+  releasePointerCapture: () => undefined,
+  scrollIntoView: () => undefined,
+})) {
+  if (!(name in Element.prototype)) {
+    Object.defineProperty(Element.prototype, name, { value, writable: true });
+  }
+}
+
+/** Pick `option` from the currently open Select listbox. */
+async function choose(option: string) {
+  const items = [...document.querySelectorAll<HTMLElement>('[role="option"]')].filter(
+    (element) => (element.textContent ?? "").trim() === option
+  );
+  if (items.length === 0) throw new Error(`no option named "${option}" is offered`);
+  await click(items[0]);
+}
+
 /** Every button in the document, portalled popovers included. */
 function byName(name: string): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("button")].filter(
@@ -244,6 +271,7 @@ beforeEach(() => {
   }
   editorHeading = "New hero rules";
   upsertConfig.mockResolvedValue({});
+  getStagePlannedRounds.mockResolvedValue([]);
 });
 
 describe("PickBanConfigsTab asks for nothing an organizer has to look up", () => {
@@ -494,5 +522,72 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
 
     await click(only("All (4)"));
     expect(only("King's Row")).toBeTruthy();
+  });
+});
+
+// 2026-08-10: an organizer could not scope a config to a Playoff round
+// before its bracket was built -- the round picker guessed `1..max_rounds`
+// locally, which is wrong for elimination brackets (double elimination's
+// lower bracket uses negative round numbers `max_rounds` says nothing
+// about, and single elimination's round count depends on team count, not
+// `max_rounds`). The round list now comes from the server, which predicts
+// it from the stage's planned team inputs using the real bracket generator.
+describe("PickBanConfigsTab predicts a round scope before the bracket is built", () => {
+  async function openHeroEditorScopedToPlayoffs() {
+    await mount();
+    await click(only("Add hero rules"));
+    await click(editor().querySelector<HTMLElement>('[id$="-scope"]')!);
+    await choose("Playoffs");
+  }
+
+  it("asks the server for stage 11's planned rounds -- it has no generated encounters", async () => {
+    getStagePlannedRounds.mockResolvedValue([1, 2]);
+    await openHeroEditorScopedToPlayoffs();
+
+    expect(getStagePlannedRounds).toHaveBeenCalledWith(11);
+  });
+
+  it("shows a loading hint while the prediction is in flight, then the normal hint once it resolves", async () => {
+    let resolvePrediction: (rounds: number[]) => void = () => {
+      throw new Error("prediction resolved before the picker awaited it");
+    };
+    getStagePlannedRounds.mockImplementation(
+      () => new Promise<number[]>((resolve) => (resolvePrediction = resolve))
+    );
+
+    await openHeroEditorScopedToPlayoffs();
+
+    expect(editor().textContent).toContain("Checking the stage's planned bracket");
+
+    resolvePrediction([1, 2]);
+    await settle();
+
+    expect(editor().textContent).toContain("Narrow these rules to one round of the stage.");
+  });
+
+  it("labels a lower-bracket round distinctly from an upper-bracket one", async () => {
+    getStagePlannedRounds.mockResolvedValue([-2, -1, 1, 2]);
+    await openHeroEditorScopedToPlayoffs();
+    await settle();
+
+    await click(editor().querySelector<HTMLElement>('[id$="-round"]')!);
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')].map((element) =>
+      (element.textContent ?? "").trim()
+    );
+
+    expect(options).toContain("Lower bracket round 1");
+    expect(options).toContain("Lower bracket round 2");
+    expect(options).toContain("Round 1");
+    expect(options).toContain("Round 2");
+  });
+
+  it("explains an unresolved scope when neither encounters nor team inputs exist yet", async () => {
+    getStagePlannedRounds.mockResolvedValue([]);
+    await openHeroEditorScopedToPlayoffs();
+    await settle();
+
+    expect(editor().textContent).toContain(
+      "isn't built yet, and no teams are wired into it either"
+    );
   });
 });

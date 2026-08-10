@@ -7767,6 +7767,10 @@
       },
       "summary": "Merge group stages"
     },
+    "rpc.tournament.stage_planned_rounds": {
+      "description": "Returns the round numbers a stage's bracket has (once generated) or will have, predicted from its planned team inputs; requires stage-read permission on its workspace.",
+      "summary": "Get stage planned rounds"
+    },
     "rpc.tournament.stage_progress": {
       "description": "Returns per-stage progress for a tournament; requires stage-read permission on its workspace.",
       "summary": "Get stage progress"

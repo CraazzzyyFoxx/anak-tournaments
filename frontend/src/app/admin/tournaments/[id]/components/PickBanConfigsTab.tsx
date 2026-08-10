@@ -56,6 +56,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
+import adminService from "@/services/admin.service";
 import heroService from "@/services/hero.service";
 import mapService from "@/services/map.service";
 import pickBanService from "@/services/pickBan.service";
@@ -960,10 +961,21 @@ function ConfigEditor({
     () => [...stages].sort((left, right) => left.order - right.order),
     [stages]
   );
-  const rounds = useMemo(
-    () => (draft.stageId == null ? [] : stageRoundOptions(draft.stageId, stages, encounters)),
-    [draft.stageId, stages, encounters]
+  const generatedRounds = useMemo(
+    () => (draft.stageId == null ? [] : stageRoundOptions(draft.stageId, encounters)),
+    [draft.stageId, encounters]
   );
+  // Elimination round numbering isn't simple enough to guess client-side
+  // before the bracket exists (see `stageRoundOptions`), so the server
+  // predicts it from the stage's planned team inputs; skipped once the real
+  // encounters have arrived, which are always the more authoritative answer.
+  const plannedRoundsQuery = useQuery({
+    queryKey: ["admin", "stage", draft.stageId, "planned-rounds"],
+    queryFn: () => adminService.getStagePlannedRounds(draft.stageId as number),
+    enabled: draft.stageId != null && generatedRounds.length === 0,
+  });
+  const rounds = generatedRounds.length > 0 ? generatedRounds : (plannedRoundsQuery.data ?? []);
+  const roundsLoading = draft.stageId != null && generatedRounds.length === 0 && plannedRoundsQuery.isPending;
 
   const series = resolveSeriesLength(draft.stageId, draft.round, stages, encounters);
   const sequence = effectiveSequence(draft, series.bestOf);
@@ -1042,7 +1054,7 @@ function ConfigEditor({
               <FieldLabel htmlFor={`${ids}-round`}>{t("roundLabel")}</FieldLabel>
               <Select
                 value={draft.round == null ? ALL_ROUNDS_SCOPE : String(draft.round)}
-                disabled={draft.stageId == null}
+                disabled={draft.stageId == null || roundsLoading}
                 onValueChange={(value) =>
                   onChange({
                     ...draft,
@@ -1057,13 +1069,21 @@ function ConfigEditor({
                   <SelectItem value={ALL_ROUNDS_SCOPE}>{t("roundAll")}</SelectItem>
                   {rounds.map((round) => (
                     <SelectItem key={round} value={String(round)}>
-                      {t("roundNumber", { n: round })}
+                      {round < 0
+                        ? t("roundNumberLower", { n: Math.abs(round) })
+                        : t("roundNumber", { n: round })}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <FieldDescription id={`${ids}-round-hint`}>
-                {draft.stageId == null ? t("roundHintDisabled") : t("roundHint")}
+                {draft.stageId == null
+                  ? t("roundHintDisabled")
+                  : roundsLoading
+                    ? t("roundHintLoading")
+                    : rounds.length === 0
+                      ? t("roundHintUnknown")
+                      : t("roundHint")}
               </FieldDescription>
             </Field>
           </div>

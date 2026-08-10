@@ -248,29 +248,30 @@ export interface PickBanScopeEncounter {
 }
 
 /**
- * The rounds an organizer can scope a config to, ascending.
+ * The rounds an organizer can scope a config to, ascending; empty until the
+ * bracket is generated.
  *
- * Generated encounters are the truth when they have arrived; a stage with none
- * yet falls back to its planned `max_rounds` so the control is never empty on a
- * freshly created bracket.
+ * Deliberately does not guess before that: elimination round numbering isn't
+ * simple enough for a local fallback to get right (double elimination's
+ * lower bracket uses negative round numbers, and single elimination's round
+ * count depends on team count, not a stage's independently-set
+ * `max_rounds`), and a wrong guess would let an organizer scope a config to
+ * a round the eventual bracket never has. `PickBanConfigsTab` asks the
+ * server to predict the real numbers before generation instead
+ * (`adminService.getStagePlannedRounds`), which runs the actual bracket
+ * generator against the stage's planned team inputs.
  */
 export function stageRoundOptions(
   stageId: number,
-  stages: Stage[],
   encounters: PickBanScopeEncounter[] | undefined
 ): number[] {
-  const generated = [
+  return [
     ...new Set(
       (encounters ?? [])
         .filter((encounter) => encounter.stage_id === stageId)
         .map((encounter) => encounter.round)
     ),
   ].sort((left, right) => left - right);
-  if (generated.length > 0) return generated;
-
-  const stage = stages.find((candidate) => candidate.id === stageId);
-  const planned = stage?.max_rounds ?? 0;
-  return Array.from({ length: Math.max(0, planned) }, (_, index) => index + 1);
 }
 
 /** How confident the editor is about the series length it is previewing. */

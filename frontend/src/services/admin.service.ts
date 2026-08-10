@@ -1390,6 +1390,22 @@ class AdminService {
     await apiFetch(`/api/v1/admin/stages/${stageId}`, { method: "DELETE" });
   }
 
+  /**
+   * The round numbers `stageId`'s bracket has, or will have. Elimination
+   * rounds are not a plain `1..max_rounds` sequence -- double elimination's
+   * lower bracket uses negative numbers, and single elimination's round
+   * count depends on team count, not the stage's independently-set
+   * `max_rounds`. Before the bracket exists this predicts the same numbers
+   * the real generator will produce from the stage's planned team inputs;
+   * empty when the stage type has no bracket shape or fewer than two teams
+   * are wired in yet.
+   */
+  async getStagePlannedRounds(stageId: number): Promise<number[]> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/planned-rounds`);
+    const data: { rounds: number[] } = await response.json();
+    return data.rounds;
+  }
+
   async mergeGroupStages(stageId: number, data: StageMergeGroupStagesInput): Promise<Stage> {
     const response = await apiFetch(`/api/v1/admin/stages/${stageId}/merge-group-stages`, {
       method: "POST",

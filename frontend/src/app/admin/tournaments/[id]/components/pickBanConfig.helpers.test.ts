@@ -230,7 +230,7 @@ describe("scope resolution", () => {
   const stages = [stage({ id: 10, max_rounds: 3, settings_json: { best_of: { default: 5 } } })];
 
   it("takes a stage's rounds from the generated encounters when they exist", () => {
-    const rounds = stageRoundOptions(10, stages, [
+    const rounds = stageRoundOptions(10, [
       { stage_id: 10, round: 2, best_of: 3 },
       { stage_id: 10, round: 1, best_of: 3 },
       { stage_id: 11, round: 9, best_of: 3 },
@@ -240,9 +240,9 @@ describe("scope resolution", () => {
     expect(rounds).toEqual([1, 2]);
   });
 
-  it("falls back to the planned rounds before a bracket is generated", () => {
-    expect(stageRoundOptions(10, stages, undefined)).toEqual([1, 2, 3]);
-    expect(stageRoundOptions(10, stages, [])).toEqual([1, 2, 3]);
+  it("is empty before a bracket is generated -- the caller predicts instead of guessing here", () => {
+    expect(stageRoundOptions(10, undefined)).toEqual([]);
+    expect(stageRoundOptions(10, [])).toEqual([]);
   });
 
   it("prefers a generated encounter's series length over the stage default", () => {
