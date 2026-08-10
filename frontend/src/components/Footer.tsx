@@ -85,7 +85,7 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="mt-10 flex flex-col gap-3 border-t border-border/60 pt-6 text-xs text-[color:var(--aqt-fg-faint)] sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-8 flex flex-col gap-3 text-xs text-[color:var(--aqt-fg-faint)] sm:flex-row sm:items-center sm:justify-between">
         <span>{t("common.footer.copyright", { year, siteName: SITE_NAME })}</span>
         <div className="flex items-center gap-4">
           <Link
