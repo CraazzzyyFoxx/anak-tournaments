@@ -35,7 +35,7 @@ import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
 import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
 import { PregameAdminControls } from "./PregameAdminControls";
-import { PregameHero } from "./PregameHero";
+import { PregameHeader } from "./PregameHeader";
 import { ReadinessModal } from "./ReadinessModal";
 
 interface PregameRoomProps {
@@ -149,12 +149,9 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
 
   if (mapQuery.isPending || heroQuery.isPending || encounterQuery.isPending) {
     return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-40 w-full rounded-xl" />
-        <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]">
-          <Skeleton className="h-72 w-full rounded-xl" />
-          <Skeleton className="h-72 w-full rounded-xl" />
-        </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]">
+        <Skeleton className="h-72 w-full rounded-xl" />
+        <Skeleton className="h-96 w-full rounded-xl" />
       </div>
     );
   }
@@ -231,10 +228,14 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   if (waitingOnReadiness) {
     return (
       <div className="flex flex-col gap-4">
-        <PregameHero encounter={encounter} session={activeState.session} activeKind={activeKind} phases={phases} />
-        <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]" aria-hidden>
-          <Skeleton className="h-72 w-full rounded-xl" />
-          <Skeleton className="h-72 w-full rounded-xl" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]">
+          <Skeleton className="h-72 w-full rounded-xl" aria-hidden />
+          <Card>
+            <CardContent className="flex flex-col gap-4 p-5">
+              <PregameHeader encounter={encounter} session={activeState.session} activeKind={activeKind} phases={phases} />
+              <Skeleton className="h-56 w-full rounded-lg" aria-hidden />
+            </CardContent>
+          </Card>
         </div>
         <ReadinessModal
           readiness={readiness}
@@ -260,7 +261,6 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
 
   return (
     <div className="flex flex-col gap-4 pb-32 sm:pb-28">
-      <PregameHero encounter={encounter} session={activeState.session} activeKind={activeKind} phases={phases} />
       <PickBanPanel
         key={activeKind}
         kind={activeKind}
@@ -271,6 +271,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
         queryKey={activeKind === "map" ? mapKey : heroKey}
         itemsById={itemsByKind[activeKind]}
         isAdmin={isAdmin}
+        phases={phases}
       />
     </div>
   );
@@ -285,6 +286,7 @@ function PickBanPanel({
   queryKey,
   itemsById,
   isAdmin,
+  phases,
 }: {
   kind: PickBanKind;
   encounterId: number;
@@ -294,6 +296,7 @@ function PickBanPanel({
   queryKey: unknown[];
   itemsById: Record<number, PickBanItemLike | undefined>;
   isAdmin: boolean;
+  phases: { kind: PickBanKind; applicable: boolean; done: boolean }[];
 }) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
@@ -338,6 +341,7 @@ function PickBanPanel({
           currentRound={state.current_round}
           itemsById={itemsById}
           sideName={sideName}
+          session={session}
         />
         <div className="flex flex-col gap-4">
           <PickBanGrid
@@ -349,6 +353,7 @@ function PickBanPanel({
             currentRound={state.current_round}
             slotReserves={pickBanReserveMap(session)}
             onSelect={(itemId) => setSelectedItemId((current) => (current === itemId ? null : itemId))}
+            header={<PregameHeader encounter={encounter} session={session} activeKind={kind} phases={phases} />}
           />
 
           {isAdmin ? (

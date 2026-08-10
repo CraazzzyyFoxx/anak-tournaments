@@ -319,6 +319,37 @@ describe("phase selection", () => {
   });
 });
 
+describe("merged header layout", () => {
+  it("keeps the room header inside the Map Pool card, with the first-pick note moved into Steps", async () => {
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        sequence: ["ban_home", "ban_away"],
+        pool: [entry({ id: 1, item_id: 21 }), entry({ id: 2, item_id: 22 })],
+      }),
+      readyState({ session: session({ kind: "hero" }) }),
+    );
+    await render();
+
+    const cards = Array.from(document.body.querySelectorAll('[data-ui="card"]'));
+    const poolCard = cards.find((card) => card.textContent?.includes(ROOM.map.title));
+    const stepsCard = cards.find((card) => card.textContent?.includes(ROOM.steps.title));
+    expect(poolCard).toBeTruthy();
+    expect(stepsCard).toBeTruthy();
+    expect(stepsCard).not.toBe(poolCard);
+
+    // The former standalone header (back/title, team matchup) now lives inside the Map Pool card.
+    expect(poolCard?.textContent).toContain(ROOM.title);
+    expect(poolCard?.textContent).toContain("Bright Wolves");
+    expect(poolCard?.textContent).toContain("Quiet Foxes");
+
+    // "{team} goes first" moved out of the header and into the Steps card.
+    const firstBanner = ROOM.firstBanner.replace("{team}", "Bright Wolves");
+    expect(stepsCard?.textContent).toContain(firstBanner);
+    expect(poolCard?.textContent).not.toContain(firstBanner);
+  });
+});
+
 describe("captain actions", () => {
   it("sends a ban for the active phase's kind on confirm", async () => {
     mockStates(

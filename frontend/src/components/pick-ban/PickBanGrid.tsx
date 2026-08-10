@@ -40,6 +40,8 @@ interface PickBanGridProps {
    */
   slotReserves: Map<number, number>;
   onSelect: (itemId: number) => void;
+  /** Room-level header (back link, status, team matchup) merged into this card's top. */
+  header: React.ReactNode;
 }
 
 const STATUS_BADGE_VARIANT: Record<PickBanEntryStatus, "secondary" | "destructive" | "default" | "outline"> = {
@@ -62,6 +64,7 @@ export function PickBanGrid({
   currentRound,
   slotReserves,
   onSelect,
+  header,
 }: PickBanGridProps) {
   const t = useTranslations("pickBan.room");
   const orderedPicks = pickedItemsInOrder(pool);
@@ -111,12 +114,12 @@ export function PickBanGrid({
           lockedRound != null ? "border-dashed opacity-55" : null,
         )}
       >
-        <div className="relative h-20 w-full bg-[color:var(--aqt-card-2)] sm:h-24">
+        <div className={cn("relative w-full bg-[color:var(--aqt-card-2)]", kind === "hero" ? "h-14 sm:h-16" : "h-20 sm:h-24")}>
           {kind === "hero" ? (
             <div className="absolute inset-0 grid place-items-center">
               <HeroImage
                 hero={{ name: itemName(entry.item_id), image_path: item?.image_path ?? "", role: item?.role ?? "" }}
-                size="lg"
+                size={44}
                 className={cn(
                   "transition-opacity",
                   dimmed ? "opacity-30 grayscale" : null,
@@ -175,13 +178,16 @@ export function PickBanGrid({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-3">
-        <CardTitle className="text-base">{t(`${kind}.title`)}</CardTitle>
-        {roundGroups ? (
-          <Badge variant="outline" className="font-normal text-[color:var(--aqt-fg-muted)]">
-            {t("round.inPlayCount", { count: roundGroups.length })}
-          </Badge>
-        ) : null}
+      <CardHeader className="flex flex-col gap-4 pb-3">
+        {header}
+        <div className="flex flex-row items-center justify-between gap-2 border-t border-[color:var(--aqt-border)] pt-4">
+          <CardTitle className="text-base">{t(`${kind}.title`)}</CardTitle>
+          {roundGroups ? (
+            <Badge variant="outline" className="font-normal text-[color:var(--aqt-fg-muted)]">
+              {t("round.inPlayCount", { count: roundGroups.length })}
+            </Badge>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         {roundGroups === null ? (

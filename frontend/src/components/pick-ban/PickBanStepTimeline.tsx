@@ -1,12 +1,12 @@
 "use client";
 
-import { Ban, Check, CircleDashed, MapPin, Shield, Shuffle } from "lucide-react";
+import { Ban, Check, CircleDashed, Flag, MapPin, Shield, Shuffle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { PickBanEntry, PickBanKind } from "@/types/tournament.types";
+import type { PickBanEntry, PickBanKind, PickBanSession } from "@/types/tournament.types";
 
 import { parseStepToken, roundState, stepRoundGroups, type PickBanSide } from "./pick-ban-model";
 import type { PickBanItemLike } from "./PickBanGrid";
@@ -25,6 +25,8 @@ interface PickBanStepTimelineProps {
   currentRound: number | null;
   itemsById: Record<number, PickBanItemLike | undefined>;
   sideName: (side: PickBanSide) => string;
+  /** Drives the "who goes first" line under the Steps title -- moved here from the room header, next to the sequence it explains. */
+  session: PickBanSession;
 }
 
 export function PickBanStepTimeline({
@@ -36,6 +38,7 @@ export function PickBanStepTimeline({
   currentRound,
   itemsById,
   sideName,
+  session,
 }: PickBanStepTimelineProps) {
   const t = useTranslations("pickBan.room");
   // Done-ness derives from committed pool actions, not from the step pointer:
@@ -122,6 +125,15 @@ export function PickBanStepTimeline({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{t("steps.title")}</CardTitle>
+        {session.first_side ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--aqt-fg-muted)]">
+            <Flag className="h-4 w-4 text-[color:var(--aqt-teal)]" aria-hidden />
+            <span>{t("firstBanner", { team: sideName(session.first_side) })}</span>
+            <Badge variant="outline" className="font-normal text-[color:var(--aqt-fg-muted)]">
+              {t(`seedSource.${session.seed_source}`)}
+            </Badge>
+          </div>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-1.5">
         {stepGroups === null
