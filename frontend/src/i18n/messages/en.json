@@ -3785,6 +3785,116 @@
       "generic": "Sign-in failed. Please try again."
     }
   },
+  "legal": {
+    "terms": {
+      "metaTitle": "Terms of Service",
+      "metaDescription": "The terms governing use of {siteName}.",
+      "title": "Terms of Service",
+      "intro": "These Terms of Service (\"Terms\") govern your access to and use of {siteName}. By creating an account or using the site, you agree to these Terms.",
+      "sections": {
+        "acceptance": {
+          "title": "Acceptance of these Terms",
+          "body": "By signing in or otherwise using {siteName}, you agree to be bound by these Terms and by our Privacy Policy. If you don't agree, don't use the site."
+        },
+        "service": {
+          "title": "About the service",
+          "body": "{siteName} is a fan-run platform for organizing and tracking Overwatch tournaments: brackets, match reporting, drafts, and player statistics. It is not affiliated with, endorsed by, or sponsored by Blizzard Entertainment, Inc."
+        },
+        "eligibility": {
+          "title": "Eligibility",
+          "body": "You must be at least 13 years old to use {siteName}, and old enough to hold an account with whichever OAuth provider you sign in with. If local law sets a higher minimum age for online services, that age applies instead."
+        },
+        "accounts": {
+          "title": "Accounts and sign-in",
+          "body": "There is no separate password: you sign in through Discord, Twitch, or Battle.net OAuth, and {siteName} stores the profile information that provider returns (username, avatar, and a stable identifier) together with any tournament data tied to your account. You're responsible for keeping that OAuth account secure — anyone who can sign in to it can sign in as you here."
+        },
+        "workspaces": {
+          "title": "Workspaces",
+          "body": "Some communities run their own branded workspace on {siteName} — a self-contained set of tournaments, teams, and stats with its own administrators. Workspace administrators can see the membership, roles, and tournament activity within their own workspace only. New workspaces are created by the platform administrator on request, not through self-service signup."
+        },
+        "conduct": {
+          "title": "Tournament conduct",
+          "body": "When you register for or play in a tournament, you agree to report match results accurately, follow that tournament's rules, and accept the ruling of its organizers on disputes. Falsifying a match report, colluding on results, or evading a suspension by registering under another identity is a breach of these Terms."
+        },
+        "content": {
+          "title": "Your content",
+          "body": "Anything you submit — match reports, screenshots, logs, an avatar, a workspace's branding — stays yours, but you grant {siteName} a license to store, display, and process it for the purpose of running the tournaments and stats you submitted it for. Don't upload anything you don't have the right to share."
+        },
+        "prohibited": {
+          "title": "Prohibited conduct",
+          "body": "Don't attempt to bypass access controls, scrape or overload the API outside documented use, impersonate another player or organizer, or use the platform to harass other users. We may remove content, void tournament results, or suspend an account that violates this section."
+        },
+        "suspension": {
+          "title": "Suspension and termination",
+          "body": "We can suspend or terminate access for violating these Terms, at a platform level or, for workspace-specific misconduct, at a workspace level by that workspace's administrators. You can stop using the service at any time; ask a platform administrator to close your account and its associated data."
+        },
+        "thirdParty": {
+          "title": "Third-party services",
+          "body": "Sign-in and some profile data depend on Discord, Twitch, and Battle.net; your use of those providers is governed by their own terms, separately from ours. {siteName} isn't responsible for their availability or behavior."
+        },
+        "liability": {
+          "title": "No warranty, limited liability",
+          "body": "{siteName} is provided \"as is\", built and maintained as an open-source community project, with no guarantee of uptime, accuracy of statistics, or fitness for a particular purpose. To the extent permitted by law, {siteName} and its maintainers aren't liable for damages arising from your use of the site."
+        },
+        "changes": {
+          "title": "Changes to these Terms",
+          "body": "We may update these Terms as the platform evolves. Continuing to use {siteName} after a change takes effect means you accept the revised Terms."
+        },
+        "contact": {
+          "title": "Contact",
+          "body": "{siteName} is developed in the open. Questions, requests, or reports about these Terms can be filed as an issue on the project's GitHub repository."
+        }
+      }
+    },
+    "privacy": {
+      "metaTitle": "Privacy Policy",
+      "metaDescription": "How {siteName} collects, uses, and protects your data.",
+      "title": "Privacy Policy",
+      "intro": "This Privacy Policy explains what {siteName} collects when you use the site, why, and who can see it. It covers the platform itself; each workspace sets its own community rules separately.",
+      "sections": {
+        "collection": {
+          "title": "Information we collect",
+          "body": "When you sign in, your OAuth provider (Discord, Twitch, or Battle.net) gives us a stable account identifier, your username or display name, and your avatar; some providers also share an email address. As you use the site we also store what you generate directly: tournament registrations, match and map reports, draft picks, and any roles assigned to you. Standard web infrastructure logs (IP address, user agent) are kept briefly for security and abuse prevention."
+        },
+        "use": {
+          "title": "How we use it",
+          "body": "We use this information to run tournaments and drafts, attribute match results and statistics to the right player, enforce the roles and permissions you've been granted, and keep the site secure. We don't use it for advertising, and we don't sell it."
+        },
+        "cookies": {
+          "title": "Cookies",
+          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These are functional cookies required for the site to work, not tracking or advertising cookies."
+        },
+        "sharing": {
+          "title": "Who can see your information",
+          "body": "Your public profile (name, avatar, tournament history, and stats) is visible to anyone who can view the workspace it belongs to. Workspace administrators can see the membership and roles within their own workspace. We share account data with OAuth providers only to the extent needed to authenticate you, and we don't otherwise share it with third parties."
+        },
+        "retention": {
+          "title": "Retention",
+          "body": "Account and tournament data is kept for as long as your account exists, since match history and statistics remain part of the historical record of a tournament even after it ends. Infrastructure logs are rotated on a much shorter schedule."
+        },
+        "rights": {
+          "title": "Your rights",
+          "body": "You can review the profile information tied to your account from your account settings. To request a correction or deletion of your account and its data, contact a platform administrator through the project's GitHub repository; deleting an account may anonymize rather than remove historical match records where full removal would corrupt another player's tournament history."
+        },
+        "children": {
+          "title": "Children's privacy",
+          "body": "{siteName} is not directed at children under 13, and we don't knowingly collect data from them beyond what their OAuth provider already restricts by its own age requirements."
+        },
+        "security": {
+          "title": "Security",
+          "body": "We rely on your OAuth provider for authentication rather than storing a password ourselves, and access to administrative data is restricted by the same role-based permissions that govern the rest of the platform. No online service can guarantee absolute security."
+        },
+        "changes": {
+          "title": "Changes to this Policy",
+          "body": "We may update this Privacy Policy as the platform changes. Continuing to use {siteName} after a change takes effect means you accept the revised Policy."
+        },
+        "contact": {
+          "title": "Contact",
+          "body": "Questions about this Privacy Policy can be filed as an issue on the project's GitHub repository."
+        }
+      }
+    }
+  },
   "errors": {
     "boundary": {
       "title": "Something went wrong",

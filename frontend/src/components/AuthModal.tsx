@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import {
@@ -143,19 +144,28 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
           )}
         </div>
 
-        {/* Footer. The terms/privacy chunks are plain emphasis, not links: this
-            app ships no /terms or /privacy route, and the previous
-            <span className="cursor-pointer"> pair looked and felt like links
-            while doing nothing at all. */}
+        {/* Footer */}
         <div className="h-px bg-border/70" />
         <div className="flex justify-center px-8 py-4">
           <p className="text-center text-[11px] leading-relaxed text-[color:var(--aqt-fg-faint)]">
             {t.rich("auth.agreement", {
               terms: (chunks) => (
-                <span className="font-medium text-[color:var(--aqt-fg-dim)]">{chunks}</span>
+                <Link
+                  href="/terms"
+                  onClick={close}
+                  className="font-medium text-[color:var(--aqt-fg-dim)] underline-offset-2 hover:underline"
+                >
+                  {chunks}
+                </Link>
               ),
               privacy: (chunks) => (
-                <span className="font-medium text-[color:var(--aqt-fg-dim)]">{chunks}</span>
+                <Link
+                  href="/privacy"
+                  onClick={close}
+                  className="font-medium text-[color:var(--aqt-fg-dim)] underline-offset-2 hover:underline"
+                >
+                  {chunks}
+                </Link>
               )
             })}
           </p>
