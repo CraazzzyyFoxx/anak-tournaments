@@ -75,7 +75,16 @@ const MAPS = ["Busan", "King's Row", "Ilios", "Hollywood"].map((name, index) => 
   name,
   image_path: `/maps/${index + 1}.png`,
   gamemode: { name: index % 2 === 0 ? "Control" : "Hybrid" },
+  in_competitive: true,
 }));
+// A brawl-only map, never offered in a ranked pool.
+const OFF_ROTATION_MAP = {
+  id: 99,
+  name: "Junkenstein's Revenge",
+  image_path: "/maps/99.png",
+  gamemode: { name: "Elimination" },
+  in_competitive: false,
+};
 
 const STAGES = [
   {
@@ -151,10 +160,10 @@ async function settle(times = 12) {
   }
 }
 
-async function mount(configs: PickBanConfig[] = []) {
+async function mount(configs: PickBanConfig[] = [], maps: unknown[] = MAPS) {
   listConfigs.mockResolvedValue({ configs });
   getHeroes.mockResolvedValue({ results: HEROES });
-  getMaps.mockResolvedValue({ results: MAPS });
+  getMaps.mockResolvedValue({ results: maps });
 
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -427,8 +436,8 @@ describe("PickBanConfigsTab renders Map and Hero as two independent cards", () =
 // catalogues; MAPS exercises them since its four fixtures cover the fold's
 // two documented cases without new fixtures.
 describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", () => {
-  async function openMapPicker() {
-    await mount();
+  async function openMapPicker(maps: unknown[] = MAPS) {
+    await mount([], maps);
     editorHeading = "New map rules";
     await click(only("Add map rules"));
     await click(only("Add maps"));
@@ -477,5 +486,26 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
     expect(chips).toHaveLength(1);
     expect(chips[0].textContent).toContain("Busan");
     expect(chips[0].querySelector("img")).toBeTruthy();
+  });
+
+  it("never offers a map flagged out of competitive rotation", async () => {
+    await openMapPicker([...MAPS, OFF_ROTATION_MAP]);
+
+    expect(option("Busan")).toBeTruthy();
+    expect(() => option("Junkenstein's Revenge")).toThrow();
+  });
+
+  it("the group filter narrows the picker to one game mode", async () => {
+    await openMapPicker();
+    // Busan / Ilios are Control, King's Row / Hollywood are Hybrid.
+    await click(only("Control (2)"));
+
+    expect(option("Busan")).toBeTruthy();
+    expect(option("Ilios")).toBeTruthy();
+    expect(() => option("King's Row")).toThrow();
+    expect(() => option("Hollywood")).toThrow();
+
+    await click(only("All (4)"));
+    expect(option("King's Row")).toBeTruthy();
   });
 });

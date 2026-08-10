@@ -121,6 +121,91 @@ interface ItemOption {
   imageSrc: string | null;
 }
 
+/** Filter value showing every catalogue row regardless of its group. */
+const ALL_GROUPS = "__all__";
+/** Bucket for rows with no group, e.g. a map missing its gamemode relation. */
+const UNGROUPED_GROUP = "__ungrouped__";
+
+/** One group filter pill: its catalogue value, display label, and row count. */
+interface CatalogueGroup {
+  key: string;
+  /** Null only for the ungrouped bucket; the caller supplies its own label. */
+  label: string | null;
+  count: number;
+}
+
+/** Every group present in `options`, sorted by name with the ungrouped bucket last. */
+function groupOptionsByGroup(options: ItemOption[]): CatalogueGroup[] {
+  const byKey = new Map<string, CatalogueGroup>();
+  for (const option of options) {
+    const key = option.group ?? UNGROUPED_GROUP;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      byKey.set(key, { key, label: option.group, count: 1 });
+    }
+  }
+  return [...byKey.values()].sort((left, right) => {
+    if (left.label === null) return 1;
+    if (right.label === null) return -1;
+    return left.label.localeCompare(right.label);
+  });
+}
+
+/**
+ * The group filter row above a picker's search field: game mode for a map,
+ * role for a hero. Hidden with nothing to narrow -- a single-group catalogue
+ * (or one still loading) has no use for a row of one redundant "All" pill.
+ */
+function GroupFilterRow({
+  label,
+  allLabel,
+  ungroupedLabel,
+  groups,
+  total,
+  value,
+  onChange,
+}: {
+  /** Accessible name for the filter row, e.g. "Filter by game mode". */
+  label: string;
+  allLabel: string;
+  ungroupedLabel: string;
+  groups: CatalogueGroup[];
+  total: number;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (groups.length <= 1) return null;
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1 border-b p-1.5">
+      <Button
+        type="button"
+        size="sm"
+        variant={value === ALL_GROUPS ? "default" : "outline"}
+        aria-pressed={value === ALL_GROUPS}
+        onClick={() => onChange(ALL_GROUPS)}
+        className="h-6 px-2 text-[0.6875rem]"
+      >
+        {allLabel} ({total})
+      </Button>
+      {groups.map((group) => (
+        <Button
+          key={group.key}
+          type="button"
+          size="sm"
+          variant={value === group.key ? "default" : "outline"}
+          aria-pressed={value === group.key}
+          onClick={() => onChange(group.key)}
+          className="h-6 px-2 text-[0.6875rem]"
+        >
+          {group.label ?? ungroupedLabel} ({group.count})
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 // ── item pickers ─────────────────────────────────────────────────────────────
 
 /** Selected items, each with the control that removes it. */
@@ -208,13 +293,16 @@ function ItemOptionRow({ option, selected }: { option: ItemOption; selected: boo
   );
 }
 
-/** The catalogue, on demand: search by name, toggle to add or remove. */
+/** The catalogue, on demand: filter by group, search by name, toggle to add or remove. */
 function ItemMultiSelect({
   triggerLabel,
   searchPlaceholder,
   emptyLabel,
   selectAllLabel,
   clearLabel,
+  groupFilterLabel,
+  groupFilterAllLabel,
+  groupFilterUngroupedLabel,
   options,
   selectedIds,
   disabled,
@@ -227,23 +315,35 @@ function ItemMultiSelect({
   emptyLabel: string;
   selectAllLabel: string;
   clearLabel: string;
+  groupFilterLabel: string;
+  groupFilterAllLabel: string;
+  groupFilterUngroupedLabel: string;
   options: ItemOption[];
   selectedIds: number[];
   disabled: boolean;
   onToggle: (itemId: number) => void;
-  /** Every item the search currently shows; the caller adds or removes them all. */
+  /** Every item the filter and search currently show; the caller adds or removes them all. */
   onSelectVisible: (itemIds: number[]) => void;
   onClearVisible: (itemIds: number[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState(ALL_GROUPS);
   const selected = new Set(selectedIds);
+  const groups = useMemo(() => groupOptionsByGroup(options), [options]);
+  const inGroup = useMemo(
+    () =>
+      groupFilter === ALL_GROUPS
+        ? options
+        : options.filter((option) => (option.group ?? UNGROUPED_GROUP) === groupFilter),
+    [options, groupFilter]
+  );
   // Filtered here, not left to cmdk's default scorer: `matchesItemName` is the
   // same fold the single-select and the veto room search use, so a query like
   // a paper regulation's spelling lands the same map everywhere it is typed.
   const visibleOptions = useMemo(
-    () => options.filter((option) => matchesItemName(option.name, query)),
-    [options, query]
+    () => inGroup.filter((option) => matchesItemName(option.name, query)),
+    [inGroup, query]
   );
   const visibleIds = useMemo(() => visibleOptions.map((option) => option.id), [visibleOptions]);
   const visibleSelectedCount = visibleIds.reduce(
@@ -257,7 +357,10 @@ function ItemMultiSelect({
       onOpenChange={(next) => {
         setOpen(next);
         // Reopening should start from the full catalogue, not the last search.
-        if (!next) setQuery("");
+        if (!next) {
+          setQuery("");
+          setGroupFilter(ALL_GROUPS);
+        }
       }}
     >
       <PopoverTrigger asChild>
@@ -274,8 +377,17 @@ function ItemMultiSelect({
           {triggerLabel}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-0">
+      <PopoverContent align="start" className="w-80 p-0">
         <Command shouldFilter={false}>
+          <GroupFilterRow
+            label={groupFilterLabel}
+            allLabel={groupFilterAllLabel}
+            ungroupedLabel={groupFilterUngroupedLabel}
+            groups={groups}
+            total={options.length}
+            value={groupFilter}
+            onChange={setGroupFilter}
+          />
           <CommandInput value={query} onValueChange={setQuery} placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyLabel}</CommandEmpty>
@@ -293,8 +405,9 @@ function ItemMultiSelect({
               ))}
             </CommandGroup>
           </CommandList>
-          {/* Bulk actions scope to the search: picking every hero for a ban
-              pool one click at a time doesn't scale to a forty-hero catalogue. */}
+          {/* Bulk actions scope to the filter and search: picking every hero
+              for a ban pool one click at a time doesn't scale to a
+              forty-hero catalogue. */}
           <div className="flex items-center justify-end gap-1 border-t p-1">
             <Button
               type="button"
@@ -334,6 +447,9 @@ function ItemSingleSelect({
   noneLabel,
   searchPlaceholder,
   emptyLabel,
+  groupFilterLabel,
+  groupFilterAllLabel,
+  groupFilterUngroupedLabel,
   disabled,
   onChange,
 }: {
@@ -345,15 +461,27 @@ function ItemSingleSelect({
   noneLabel: string;
   searchPlaceholder: string;
   emptyLabel: string;
+  groupFilterLabel: string;
+  groupFilterAllLabel: string;
+  groupFilterUngroupedLabel: string;
   disabled: boolean;
   onChange: (itemId: number | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState(ALL_GROUPS);
   const selected = options.find((option) => option.id === value) ?? null;
+  const groups = useMemo(() => groupOptionsByGroup(options), [options]);
+  const inGroup = useMemo(
+    () =>
+      groupFilter === ALL_GROUPS
+        ? options
+        : options.filter((option) => (option.group ?? UNGROUPED_GROUP) === groupFilter),
+    [options, groupFilter]
+  );
   const visibleOptions = useMemo(
-    () => options.filter((option) => matchesItemName(option.name, query)),
-    [options, query]
+    () => inGroup.filter((option) => matchesItemName(option.name, query)),
+    [inGroup, query]
   );
 
   const choose = (itemId: number | null) => {
@@ -366,7 +494,10 @@ function ItemSingleSelect({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setQuery("");
+        if (!next) {
+          setQuery("");
+          setGroupFilter(ALL_GROUPS);
+        }
       }}
     >
       <PopoverTrigger asChild>
@@ -387,8 +518,17 @@ function ItemSingleSelect({
           <ChevronsUpDown aria-hidden className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0">
+      <PopoverContent align="start" className="w-72 p-0">
         <Command shouldFilter={false}>
+          <GroupFilterRow
+            label={groupFilterLabel}
+            allLabel={groupFilterAllLabel}
+            ungroupedLabel={groupFilterUngroupedLabel}
+            groups={groups}
+            total={options.length}
+            value={groupFilter}
+            onChange={setGroupFilter}
+          />
           <CommandInput value={query} onValueChange={setQuery} placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyLabel}</CommandEmpty>
@@ -863,6 +1003,9 @@ function ConfigEditor({
                   emptyLabel={t("catalogueEmpty")}
                   selectAllLabel={t("poolSelectAllVisible")}
                   clearLabel={t("poolClearVisible")}
+                  groupFilterLabel={t("groupFilterLabel")}
+                  groupFilterAllLabel={t("groupFilterAll")}
+                  groupFilterUngroupedLabel={t("groupFilterUngrouped")}
                   options={catalogue}
                   selectedIds={draft.itemIds}
                   disabled={catalogueLoading}
@@ -933,6 +1076,9 @@ function ConfigEditor({
                     emptyLabel={t("catalogueEmpty")}
                     selectAllLabel={t("poolSelectAllVisible")}
                     clearLabel={t("poolClearVisible")}
+                    groupFilterLabel={t("groupFilterLabel")}
+                    groupFilterAllLabel={t("groupFilterAll")}
+                    groupFilterUngroupedLabel={t("groupFilterUngrouped")}
                     options={catalogue}
                     selectedIds={slot.candidates}
                     disabled={catalogueLoading}
@@ -995,6 +1141,9 @@ function ConfigEditor({
                       noneLabel={t("slotReserveNone")}
                       searchPlaceholder={searchPlaceholder}
                       emptyLabel={t("catalogueEmpty")}
+                      groupFilterLabel={t("groupFilterLabel")}
+                      groupFilterAllLabel={t("groupFilterAll")}
+                      groupFilterUngroupedLabel={t("groupFilterUngrouped")}
                       disabled={catalogueLoading}
                       onChange={(itemId) => patchSlot(index, { reserveItemId: itemId })}
                     />
@@ -1390,12 +1539,17 @@ export function PickBanConfigsTab({
 
   const catalogue = useMemo<ItemOption[]>(() => {
     if (draft?.kind === "map") {
-      return (mapsQuery.data?.results ?? []).map((map) => ({
-        id: map.id,
-        name: map.name,
-        group: map.gamemode?.name ?? null,
-        imageSrc: map.image_path ?? null,
-      }));
+      // Off-rotation maps (e.g. a retired brawl-only map) are not something
+      // an organizer bans or picks in a ranked series; the old veto editor
+      // held the same line.
+      return (mapsQuery.data?.results ?? [])
+        .filter((map) => map.in_competitive !== false)
+        .map((map) => ({
+          id: map.id,
+          name: map.name,
+          group: map.gamemode?.name ?? null,
+          imageSrc: map.image_path ?? null,
+        }));
     }
     return (heroesQuery.data?.results ?? []).map((hero) => ({
       id: hero.id,

@@ -2352,6 +2352,9 @@
       "poolRemove": "Remove {item}",
       "poolSelectAllVisible": "Select all",
       "poolClearVisible": "Clear",
+      "groupFilterLabel": "Filter by group",
+      "groupFilterAll": "All",
+      "groupFilterUngrouped": "Ungrouped",
       "slotCountMismatch": "There are {slots, plural, one {# group} other {# groups}} but this scope plays {maps, plural, one {# map} other {# maps}}. Extra groups are ignored; missing ones keep the room closed.",
       "slotTitle": "Round {n}",
       "slotCandidates": "{count, plural, =0 {no candidates} one {# candidate} other {# candidates}}",
@@ -3864,7 +3867,7 @@
         },
         "cookies": {
           "title": "Cookies",
-          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These are functional cookies required for the site to work, not tracking or advertising cookies."
+          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These functional cookies are required for the site to work. Google Analytics cookies, which measure how pages are used, are optional: they load only after you accept them in the cookie notice, and declining keeps them off. No advertising cookies are set."
         },
         "sharing": {
           "title": "Who can see your information",
@@ -3895,6 +3898,12 @@
           "body": "Questions about this Privacy Policy can be filed as an issue on the project's GitHub repository."
         }
       }
+    },
+    "cookieConsent": {
+      "title": "Cookies",
+      "body": "{siteName} needs functional cookies to keep you signed in and remember your language. Analytics cookies are optional and only measure how pages are used — see the <privacy>privacy policy</privacy>.",
+      "accept": "Accept analytics",
+      "decline": "Decline analytics"
     }
   },
   "errors": {
