@@ -118,6 +118,14 @@ export const VETO_UNAVAILABLE_COPY = {
     hintKey: "empty.notReadyHint",
     icon: "teams",
   },
+  // Hero bans only in practice (a map session never reports it), but the reason
+  // set is shared with the generic pick-ban room, so the map-pool modal needs
+  // copy for it rather than an `any` index.
+  waiting_map: {
+    titleKey: "empty.waitingMapTitle",
+    hintKey: "empty.waitingMapHint",
+    icon: "teams",
+  },
 } as const satisfies Record<VetoUnavailableReason, VetoUnavailableCopy>;
 
 export interface VetoPoolSlot {

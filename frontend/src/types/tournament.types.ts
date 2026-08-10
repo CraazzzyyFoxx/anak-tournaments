@@ -211,7 +211,10 @@ export type VetoUnavailableReason =
   | "teams_unknown"
   | "slot_count_mismatch"
   | "slot_underfilled"
-  | "not_ready";
+  | "not_ready"
+  /** Hero bans only: this round's map has not been picked yet, and heroes are
+   * banned for a known map. Resolves on its own as the map phase progresses. */
+  | "waiting_map";
 
 export interface EncounterMapPoolState {
   session: EncounterVetoSession | null;
@@ -427,6 +430,14 @@ export interface PickBanSession {
   current_step_started_at: string | null;
 }
 
+/** One captain's independent claim of ONE map's score (`EncounterMapReport`). */
+export interface PickBanMapReport {
+  map_id: number;
+  side: "home" | "away";
+  home_score: number;
+  away_score: number;
+}
+
 export interface PickBanState {
   session: PickBanSession | null;
   /** Set only when `session` is null — same contract as `EncounterMapPoolState.reason`. */
@@ -446,6 +457,13 @@ export interface PickBanState {
   turn_side: "home" | "away" | null;
   current_round: number | null;
   is_complete: boolean;
+  /**
+   * Per-map result claims filed for this encounter, `kind: "map"` only (a hero
+   * session has no results of its own). Drives the loop's third phase: a map is
+   * picked, its heroes are banned, then it is played and BOTH captains report
+   * it — and that confirmation is what opens the next map's bans.
+   */
+  map_reports?: PickBanMapReport[];
 }
 
 /** Side-agnostic step tokens, adds `protect_*` to the legacy veto vocabulary. */

@@ -283,3 +283,24 @@ def test_winner_side_away():
 
 def test_winner_side_none_on_draw():
     assert engine.winner_side(0, 0) is None
+
+
+# ── series_decided ───────────────────────────────────────────────────────────
+
+
+def test_series_decided_is_false_mid_series():
+    assert engine.series_decided(1, 0, 3) is False
+
+
+def test_series_decided_when_one_side_is_past_half():
+    # Bo3 at 2-0: the third map is never played, so no round opens for it.
+    assert engine.series_decided(2, 0, 3) is True
+
+
+def test_series_decided_when_every_map_has_been_played():
+    # Bo2 at 1-1: nobody is past half, but there is no third map either.
+    assert engine.series_decided(1, 1, 2) is True
+
+
+def test_series_decided_keeps_a_bo2_open_at_one_nil():
+    assert engine.series_decided(1, 0, 2) is False

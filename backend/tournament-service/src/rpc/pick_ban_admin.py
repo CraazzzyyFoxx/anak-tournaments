@@ -162,7 +162,7 @@ def register(broker: Any, logger: Any) -> None:
                 )
             else:
                 _reject_other_modes_field(body.slots, "slots", mode=body.mode)
-                pick_ban_session_service.validate_pick_ban_config(body.sequence, body.item_ids)
+                pick_ban_session_service.validate_pick_ban_config(body.sequence, body.item_ids, kind=body.kind)
             if body.round is not None and body.stage_id is None:
                 raise HTTPException(status_code=422, detail="round requires stage_id")
             if body.stage_id is not None:

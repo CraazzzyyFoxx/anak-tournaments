@@ -288,24 +288,98 @@ describe("phase selection", () => {
 
     expect(document.body.textContent).toContain(ROOM.map.title);
     expect(document.body.textContent).toContain(`Map 21`);
-    // Phase strip names both, current on map.
+    // Phase strip names all three steps of the round, current on map.
     expect(document.body.textContent).toContain(ROOM.phase.map);
     expect(document.body.textContent).toContain(ROOM.phase.hero);
+    expect(document.body.textContent).toContain(ROOM.phase.report);
   });
 
-  it("advances to the hero phase once the map session is complete", async () => {
+  it("advances to the hero phase once this round's map is picked", async () => {
     mockStates(
-      readyState({ session: session({ kind: "map" }), is_complete: true }),
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })],
+      }),
       readyState({
         session: session({ kind: "hero" }),
         sequence: ["ban_home"],
-        pool: [entry({ id: 3, item_id: 101 })],
+        pool: [entry({ id: 3, item_id: 101, round: 1 })],
       }),
     );
     await render();
 
     expect(document.body.textContent).toContain(ROOM.hero.title);
-    expect(document.body.textContent).toContain(`Hero 101`);
+    // Hero Pool tiles are icon-only now -- the name surfaces as the button's
+    // accessible name/tooltip, not as visible text content.
+    expect(document.body.querySelector('button[title="Hero 101"]')).toBeTruthy();
+  });
+
+  it("asks for the map's result once its heroes are banned", async () => {
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })],
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })],
+      }),
+    );
+    await render();
+
+    expect(document.body.textContent).toContain("Map 21");
+    expect(document.body.textContent).toContain(ROOM.mapResult.report);
+    // Neither side has filed yet, and no score is on screen to copy.
+    expect(document.body.textContent).toContain(ROOM.mapResult.pending.replace("{team}", "Bright Wolves"));
+  });
+
+  it("stays on the hero phase while the hero round for the pending map is still catching up", async () => {
+    // Map 2 was just picked; the hero session still only holds round 1, whose
+    // steps are all taken. Jumping to "report" here would skip map 2's bans.
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "picked", action_index: 5 }),
+        ],
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })],
+      }),
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.hero.title);
+    expect(document.body.textContent).not.toContain(ROOM.mapResult.report);
+  });
+
+  it("reports the series as settled once nothing is left to pick, ban or report", async () => {
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 })],
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })],
+      }),
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.seriesDone.title);
   });
 
   it("goes straight to hero when the encounter has no map rule set at all", async () => {
@@ -316,6 +390,21 @@ describe("phase selection", () => {
     await render();
 
     expect(document.body.textContent).toContain(ROOM.hero.title);
+  });
+
+  it("holds the hero phase closed until the map it bans for is known", async () => {
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        sequence: ["ban_home"],
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 1 })],
+      }),
+      unavailableState("waiting_map", { home: true, away: true }),
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.waitingMapTitle);
   });
 });
 
@@ -347,6 +436,61 @@ describe("merged header layout", () => {
     const firstBanner = ROOM.firstBanner.replace("{team}", "Bright Wolves");
     expect(stepsCard?.textContent).toContain(firstBanner);
     expect(poolCard?.textContent).not.toContain(firstBanner);
+  });
+});
+
+describe("Hero Pool tile redesign", () => {
+  it("filters icon-only hero tiles by role via the Filters chip group", async () => {
+    getAllHeroes.mockResolvedValue({
+      results: [
+        { id: 101, name: "Ana", slug: "ana", image_path: "", type: "Support", role: "support" },
+        { id: 102, name: "Reinhardt", slug: "reinhardt", image_path: "", type: "Tank", role: "tank" },
+      ],
+    });
+    mockStates(
+      unavailableState("not_configured"),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["ban_home", "ban_away"],
+        pool: [entry({ id: 1, item_id: 101 }), entry({ id: 2, item_id: 102 })],
+      }),
+    );
+    await render();
+
+    expect(document.body.querySelector('button[title="Ana"]')).toBeTruthy();
+    expect(document.body.querySelector('button[title="Reinhardt"]')).toBeTruthy();
+
+    const filterGroup = document.body.querySelector('[role="group"][aria-label="Filters"]');
+    expect(filterGroup).toBeTruthy();
+    const tankChip = Array.from(filterGroup!.querySelectorAll("button")).find((b) => b.textContent?.includes("Tank"));
+    expect(tankChip).toBeTruthy();
+
+    await act(async () => {
+      tankChip!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(document.body.querySelector('button[title="Reinhardt"]')).toBeTruthy();
+    expect(document.body.querySelector('button[title="Ana"]')).toBeFalsy();
+  });
+
+  it("crosses out an unavailable hero tile instead of a status badge", async () => {
+    mockStates(
+      unavailableState("not_configured"),
+      readyState({
+        session: session({ kind: "hero" }),
+        pool: [entry({ id: 1, item_id: 101, status: "available" }), entry({ id: 2, item_id: 102, status: "banned" })],
+      }),
+    );
+    await render();
+
+    const availableTile = document.body.querySelector('button[title="Hero 101"]');
+    const bannedTile = document.body.querySelector('button[title="Hero 102"]');
+    expect(availableTile?.querySelector("svg.lucide-ban")).toBeFalsy();
+    expect(bannedTile?.querySelector("svg.lucide-ban")).toBeTruthy();
+    // Icon-only tile: no visible status badge/name text (unlike the old badge
+    // footer) -- only the fallback-avatar initials can legitimately show.
+    expect(bannedTile?.textContent).not.toContain("Banned");
   });
 });
 

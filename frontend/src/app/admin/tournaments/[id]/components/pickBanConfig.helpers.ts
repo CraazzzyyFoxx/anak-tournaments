@@ -114,7 +114,7 @@ export function emptyPickBanDraft(kind: PickBanKind): PickBanDraft {
     stageId: null,
     round: null,
     mode: "pool",
-    orderMode: "bracket",
+    orderMode: kind === "hero" ? "custom" : "bracket",
     firstBanRotation: "fixed",
     noRepeatScope: "none",
     turnTimerSeconds: null,
@@ -133,7 +133,9 @@ export function pickBanDraftFromConfig(config: PickBanConfig): PickBanDraft {
     stageId: config.stage_id,
     round: config.round,
     mode: config.mode,
-    orderMode: config.preset === CUSTOM_PRESET ? "custom" : "bracket",
+    // A hero config's steps are always hand-authored (see `effectiveSequence`),
+    // whatever preset an older row happens to carry.
+    orderMode: config.kind === "hero" || config.preset === CUSTOM_PRESET ? "custom" : "bracket",
     firstBanRotation: config.first_ban_rotation,
     noRepeatScope: config.no_repeat_scope,
     turnTimerSeconds: config.turn_timer_seconds,
@@ -154,13 +156,18 @@ export function pickBanDraftFromConfig(config: PickBanConfig): PickBanDraft {
  * Bracket order keeps a generated placeholder rather than an empty list: the
  * server validates `sequence` on every pool-mode upsert, and the engine
  * regenerates it per match anyway.
+ *
+ * A hero sequence is never generated: it is ONE round's steps, replayed for
+ * every map of the series, while the generator answers a different question
+ * ("how do we ban a pool of N down to `bestOf` maps") and emits picks and a
+ * decider — steps a hero round cannot resolve, since its pool stays playable.
  */
 export function effectiveSequence(
   draft: PickBanDraft,
   seriesLength: number
 ): PickBanSequenceToken[] {
   if (draft.mode === "slots") return [];
-  if (draft.orderMode === "custom") return draft.sequence;
+  if (draft.kind === "hero" || draft.orderMode === "custom") return draft.sequence;
   return buildSequenceForBestOf(seriesLength, draft.itemIds.length);
 }
 
@@ -177,7 +184,7 @@ export function pickBanDraftToInput(
     first_ban_rotation: draft.firstBanRotation,
     // `ck_pick_ban_config_slots_not_custom` forbids the custom preset in slot
     // mode, where there is no hand-authored order to protect anyway.
-    preset: slotsMode || draft.orderMode === "bracket" ? BRACKET_PRESET : CUSTOM_PRESET,
+    preset: slotsMode || (draft.kind !== "hero" && draft.orderMode === "bracket") ? BRACKET_PRESET : CUSTOM_PRESET,
     turn_timer_seconds: draft.turnTimerSeconds,
     no_repeat_scope: draft.noRepeatScope,
     unique_attribute_per_side_per_round:
@@ -332,6 +339,7 @@ export type PickBanValidationIssue =
   | { key: "multipleDeciders"; values?: undefined }
   | { key: "deciderNotLast"; values?: undefined }
   | { key: "noPickOrDecider"; values?: undefined }
+  | { key: "heroDecider"; values?: undefined }
   | { key: "sequenceLongerThanPool"; values: { steps: number; items: number } }
   | { key: "emptySlots"; values?: undefined }
   | { key: "slotTooFewCandidates"; values: { slot: number } };
@@ -357,6 +365,11 @@ export function validatePickBanDraft(
     // Reachable in custom order only: bracket order generates from the pool,
     // and an empty pool is already reported above.
     if (draft.itemIds.length > 0) issues.push({ key: "emptySequence" });
+  } else if (draft.kind === "hero") {
+    // A hero round bans out of a pool that stays playable, so there is no
+    // survivor for a decider to resolve to, and no "must end in a pick" rule
+    // to satisfy either (mirrors `validate_pick_ban_config`'s hero branch).
+    if (sequence.includes("decider")) issues.push({ key: "heroDecider" });
   } else {
     const deciders = sequence.filter((token) => token === "decider").length;
     if (deciders > 1) {

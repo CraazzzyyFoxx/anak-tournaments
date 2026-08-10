@@ -12,7 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
-import adminService from "@/services/admin.service";
 import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
 import heroService from "@/services/hero.service";
@@ -23,6 +22,7 @@ import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournamen
 
 import {
   PICK_BAN_UNAVAILABLE_COPY,
+  highestPoolRound,
   isSessionActive,
   pickBanReserveMap,
   pickedItemsInOrder,
@@ -33,9 +33,9 @@ import { PickBanCommandBar } from "@/components/pick-ban/PickBanCommandBar";
 import { PickBanGrid, type PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
-import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
 import { PregameAdminControls } from "./PregameAdminControls";
-import { PregameHeader } from "./PregameHeader";
+import { PregameHeader, type PregamePhase, type PregamePhaseStatus } from "./PregameHeader";
+import { PregameMapResult } from "./PregameMapResult";
 import { ReadinessModal } from "./ReadinessModal";
 
 interface PregameRoomProps {
@@ -49,14 +49,19 @@ const UNAVAILABLE_ICON: Record<PickBanUnavailableIcon, React.ReactNode> = {
   misconfigured: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
 };
 
-const PHASE_ORDER: PickBanKind[] = ["map", "hero"];
-
 /**
- * Unified pre-game room: map veto and hero bans as one screen, sequential
- * steps (map decides the series' maps first; hero bans on the chosen maps
- * follow). Replaces the retired `VetoRoom`/`HeroBanRoom` pair — both kinds
- * run on the same generic `PickBanSession` engine, so one room renders
- * either with the same `PickBanGrid`/`PickBanStepTimeline`.
+ * Unified pre-game room: one screen for the whole pre-game loop, which runs
+ * once per map of the series —
+ *
+ *   map veto (this round's map) -> hero bans (for that map) -> the map is
+ *   played and both captains report it -> that result opens the next map
+ *
+ * — until the series is decided. Both pick-ban kinds run on the same generic
+ * `PickBanSession` engine, so one room renders either with the same
+ * `PickBanGrid`/`PickBanStepTimeline`, and the backend keeps the loop honest:
+ * a map round is only appended once the previous map's result is confirmed
+ * (`pick_ban_session.advance_to_next_round`), and a hero round only once its
+ * map is picked (`pick_ban_session.sync_hero_rounds`).
  *
  * Gated by `EncounterReadiness`: neither kind's session is created (backend:
  * `pick_ban_session.ensure_pick_ban_session`) until both captains confirm
@@ -116,12 +121,15 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   // The hub only delivers a thin "changed" signal on every mutation — the
   // authoritative state is always refetched. Map keeps the legacy topic name
   // (`encounter:{id}:map-veto`); hero uses the generic kind-suffixed one.
-  useRealtimeTopic(`encounter:${encounterId}:map-veto`, () => {
+  // Either signal refetches BOTH: the two sessions are two phases of one loop,
+  // so a map pick opens a hero round and a confirmed result opens a map round
+  // — the state that changed is rarely only the one that was acted on.
+  const invalidateRoom = () => {
     void queryClient.invalidateQueries({ queryKey: mapKey });
-  });
-  useRealtimeTopic(`encounter:${encounterId}:pick-ban:hero`, () => {
     void queryClient.invalidateQueries({ queryKey: heroKey });
-  });
+  };
+  useRealtimeTopic(`encounter:${encounterId}:map-veto`, invalidateRoom);
+  useRealtimeTopic(`encounter:${encounterId}:pick-ban:hero`, invalidateRoom);
 
   const readyMutation = useMutation({
     mutationFn: () => pickBanService.markReady(encounterId),
@@ -209,21 +217,61 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   // waiting on captains, never a per-kind state.
   const readiness = mapState.readiness;
   const waitingOnReadiness =
-    !(readiness.home && readiness.away) && PHASE_ORDER.some((kind) => applicable(kind) && statesByKind[kind].reason === "not_ready");
+    !(readiness.home && readiness.away) &&
+    (["map", "hero"] as PickBanKind[]).some((kind) => applicable(kind) && statesByKind[kind].reason === "not_ready");
 
-  // Map resolves first: stays the active phase until its session completes,
-  // or it never applied to this encounter to begin with. Computed
-  // unconditionally -- the readiness-wait branch below renders this same
-  // header and phase list (with a null session) before any session exists,
-  // so the room opens immediately instead of waiting behind a full-page gate.
-  const mapDone = !mapApplies || (mapState.session != null && mapState.is_complete);
-  const activeKind: PickBanKind = mapApplies && !mapDone ? "map" : "hero";
-  const activeState = statesByKind[activeKind];
-  const phases = PHASE_ORDER.filter((kind) => applicable(kind)).map((kind) => ({
-    kind,
-    applicable: true,
-    done: kind === "map" ? mapDone : statesByKind[kind].session != null && statesByKind[kind].is_complete,
-  }));
+  // ── where the loop stands ────────────────────────────────────────────────
+  //
+  // The maps this series has settled so far, in play order: index + 1 is the
+  // round. The FIRST one still merely `picked` (not `played`) is the map whose
+  // result the loop is waiting on -- `map_report.submit_map_report` flips it to
+  // `played` the moment both captains agree, and that is what opens the next
+  // map's bans.
+  const seriesMaps = pickedItemsInOrder(mapState.pool);
+  const pendingIndex = seriesMaps.findIndex((entry) => entry.status === "picked");
+  const pendingMap = pendingIndex === -1 ? null : seriesMaps[pendingIndex];
+  const pendingRound = pendingIndex === -1 ? null : pendingIndex + 1;
+  const mapPhaseOpen = mapApplies && !(mapState.session != null && mapState.is_complete);
+  // A hero round counts as settled only when it is the round of the map now
+  // awaiting its result: a stale `is_complete` from the PREVIOUS round would
+  // otherwise skip this map's bans in the window between its pick and the
+  // server appending the round (`pick_ban_session.sync_hero_rounds`, on the
+  // next read). With no map phase at all there is no round to align with, so
+  // plain completeness is the whole answer.
+  const heroRound = highestPoolRound(heroState.pool);
+  const heroPhaseOpen =
+    heroApplies &&
+    !(
+      heroState.session != null &&
+      heroState.is_complete &&
+      (pendingRound == null || (heroRound ?? 0) >= pendingRound)
+    );
+
+  const phase: PregamePhase = mapPhaseOpen
+    ? "map"
+    : heroPhaseOpen
+      ? "hero"
+      : pendingMap != null
+        ? "report"
+        : "done";
+  // Which map of the series the room is on. During the map phase that is the
+  // round being vetoed (one past the settled ones); afterwards it is the round
+  // whose map is waiting to be played.
+  const round = pendingRound ?? (mapApplies ? seriesMaps.length + 1 : null);
+  const phases: PregamePhaseStatus[] = [
+    ...(mapApplies ? [{ phase: "map" as const, done: !mapPhaseOpen }] : []),
+    ...(heroApplies ? [{ phase: "hero" as const, done: !mapPhaseOpen && !heroPhaseOpen }] : []),
+    ...(mapApplies ? [{ phase: "report" as const, done: phase === "done" }] : []),
+  ];
+  const header = (
+    <PregameHeader
+      encounter={encounter}
+      session={statesByKind[phase === "hero" ? "hero" : "map"].session}
+      activePhase={phase}
+      phases={phases}
+      round={round}
+    />
+  );
 
   if (waitingOnReadiness) {
     return (
@@ -232,7 +280,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
           <Skeleton className="h-72 w-full rounded-xl" aria-hidden />
           <Card>
             <CardContent className="flex flex-col gap-4 p-5">
-              <PregameHeader encounter={encounter} session={activeState.session} activeKind={activeKind} phases={phases} />
+              {header}
               <Skeleton className="h-56 w-full rounded-lg" aria-hidden />
             </CardContent>
           </Card>
@@ -246,6 +294,52 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
       </div>
     );
   }
+
+  if (phase === "report" && pendingMap != null && pendingRound != null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <PregameMapResult
+          encounterId={encounterId}
+          mapId={pendingMap.item_id}
+          mapName={mapsById[pendingMap.item_id]?.name ?? t("map.itemNumber", { id: pendingMap.item_id })}
+          round={pendingRound}
+          viewerSide={mapState.viewer_side}
+          homeName={encounter.home_team?.name ?? t("side.home")}
+          awayName={encounter.away_team?.name ?? t("side.away")}
+          reports={(mapState.map_reports ?? []).filter((report) => report.map_id === pendingMap.item_id)}
+          header={header}
+          invalidateKeys={[mapKey, heroKey, ["encounter-detail", encounterId]]}
+        />
+      </div>
+    );
+  }
+
+  if (phase === "done") {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card>
+          <CardContent className="flex flex-col gap-5 p-5">
+            {header}
+            <section className="flex flex-col gap-2 rounded-xl border border-[color:var(--aqt-border)] p-4">
+              <h2 className="font-onest text-lg font-semibold">{t("seriesDone.title")}</h2>
+              <p className="text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">{t("seriesDone.hint")}</p>
+              <div className="mt-1">
+                <Button variant="outline" asChild>
+                  <Link href={`/encounters/${encounterId}`}>
+                    <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+                    {t("back")}
+                  </Link>
+                </Button>
+              </div>
+            </section>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const activeKind: PickBanKind = phase === "hero" ? "hero" : "map";
+  const activeState = statesByKind[activeKind];
 
   if (activeState.session == null) {
     const copy = PICK_BAN_UNAVAILABLE_COPY[activeState.reason ?? "not_configured"];
@@ -271,7 +365,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
         queryKey={activeKind === "map" ? mapKey : heroKey}
         itemsById={itemsByKind[activeKind]}
         isAdmin={isAdmin}
-        phases={phases}
+        header={header}
       />
     </div>
   );
@@ -286,7 +380,7 @@ function PickBanPanel({
   queryKey,
   itemsById,
   isAdmin,
-  phases,
+  header,
 }: {
   kind: PickBanKind;
   encounterId: number;
@@ -296,13 +390,13 @@ function PickBanPanel({
   queryKey: unknown[];
   itemsById: Record<number, PickBanItemLike | undefined>;
   isAdmin: boolean;
-  phases: { kind: PickBanKind; applicable: boolean; done: boolean }[];
+  header: React.ReactNode;
 }) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
 
   const [pickedItemId, setSelectedItemId] = useState<number | null>(null);
-  const [reportMapId, setReportMapId] = useState<number | null>(null);
+
   const selectedItemId =
     pickedItemId != null && state.pool.some((entry) => entry.item_id === pickedItemId && entry.status === "available")
       ? pickedItemId
@@ -353,7 +447,7 @@ function PickBanPanel({
             currentRound={state.current_round}
             slotReserves={pickBanReserveMap(session)}
             onSelect={(itemId) => setSelectedItemId((current) => (current === itemId ? null : itemId))}
-            header={<PregameHeader encounter={encounter} session={session} activeKind={kind} phases={phases} />}
+            header={header}
           />
 
           {isAdmin ? (
@@ -371,21 +465,6 @@ function PickBanPanel({
             />
           ) : null}
 
-          {kind === "map" && state.viewer_side != null && pickedItemsInOrder(state.pool).length > 0 ? (
-            <section className="flex flex-col gap-2 rounded-xl border border-[color:var(--aqt-border)] p-3">
-              <span className="text-sm font-medium">{t("reportResults.title")}</span>
-              <div className="flex flex-wrap gap-2">
-                {pickedItemsInOrder(state.pool).map((entry) => {
-                  const mapName = itemsById[entry.item_id]?.name ?? t("map.itemNumber", { id: entry.item_id });
-                  return (
-                    <Button key={entry.id} size="sm" variant="outline" onClick={() => setReportMapId(entry.item_id)}>
-                      {t("reportResults.button", { map: mapName })}
-                    </Button>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
         </div>
       </div>
 
@@ -405,17 +484,6 @@ function PickBanPanel({
         />
       ) : null}
 
-      {kind === "map" && reportMapId != null && state.viewer_side != null ? (
-        <MapReportDialog
-          encounterId={encounterId}
-          mapId={reportMapId}
-          mapName={itemsById[reportMapId]?.name ?? t("map.itemNumber", { id: reportMapId })}
-          side={state.viewer_side}
-          open={reportMapId != null}
-          onOpenChange={(open) => setReportMapId(open ? reportMapId : null)}
-          invalidateKeys={[queryKey, ["encounter-detail", encounterId]]}
-        />
-      ) : null}
 
       <ElectOpenerDialog
         kind={kind}

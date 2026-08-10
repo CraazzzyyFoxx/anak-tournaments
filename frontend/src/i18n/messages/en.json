@@ -2098,7 +2098,9 @@
           "slotUnderfilledTitle": "A slot has too few maps",
           "slotUnderfilledHint": "One of this match's slots has fewer than two candidate maps, so there is nothing to ban there. The organizer has to fill it before the veto can open.",
           "notReadyTitle": "Waiting for both captains",
-          "notReadyHint": "The veto room opens once both captains confirm they are ready."
+          "notReadyHint": "The veto room opens once both captains confirm they are ready.",
+          "waitingMapTitle": "Waiting for this round's map",
+          "waitingMapHint": "This phase opens once the map for this round of the series is picked."
         },
         "steps": {
           "title": "Veto steps",
@@ -2132,10 +2134,6 @@
         },
         "order": {
           "title": "Map order"
-        },
-        "reportResults": {
-          "title": "Report map results",
-          "button": "Report {map}"
         },
         "turn": "Turn: {side} — {action}",
         "action": {
@@ -2189,14 +2187,21 @@
   },
   "pickBan": {
     "room": {
-      "map": { "title": "Map Pool", "itemNumber": "Map #{id}" },
-      "hero": { "title": "Hero Pool", "itemNumber": "Hero #{id}" },
+      "map": {
+        "title": "Map Pool",
+        "itemNumber": "Map #{id}"
+      },
+      "hero": {
+        "title": "Hero Pool",
+        "itemNumber": "Hero #{id}"
+      },
       "title": "Pre-game Room",
       "phase": {
         "map": "Map veto",
         "hero": "Hero bans",
         "current": "current phase",
-        "done": "done"
+        "done": "done",
+        "report": "Map result"
       },
       "back": "Back to match",
       "loadError": "Failed to load pick-ban state",
@@ -2320,10 +2325,6 @@
         "disputedHint": "Your report does not match the opponent's. An admin will resolve it.",
         "resolved": "Result confirmed — moving to the next map"
       },
-      "reportResults": {
-        "title": "Report map results",
-        "button": "Report {map}"
-      },
       "admin": {
         "title": "Pick-ban controls (admin)",
         "sideLabel": "Side",
@@ -2337,6 +2338,21 @@
         "resetConfirmAction": "Reset",
         "resetSuccess": "Session reset",
         "resetFailed": "Failed to reset the session"
+      },
+      "waitingMapTitle": "Waiting for this round's map",
+      "waitingMapHint": "Hero bans open once the map for this round of the series is picked — they are banned for a known map.",
+      "mapResult": {
+        "title": "{map} is up next — report its result",
+        "hint": "Both captains report this map's score independently. Once the two agree, the map is locked in and the next map's bans open. If they disagree, an admin resolves it.",
+        "pending": "{team} has not reported yet",
+        "filed": "{team} has reported",
+        "filedScore": "{team} reported {home}–{away}",
+        "report": "Report the result",
+        "amend": "Change my report"
+      },
+      "seriesDone": {
+        "title": "Nothing left to decide",
+        "hint": "Every map of this series has been picked, banned and reported. The result is with the organizers now."
       }
     },
     "admin": {
@@ -2495,7 +2511,8 @@
         "noPickOrDecider": "The order needs at least one pick or a decider.",
         "sequenceLongerThanPool": "The order has {steps} steps but the pool only has {items} candidates.",
         "emptySlots": "Add at least one round group.",
-        "slotTooFewCandidates": "Round {slot} needs at least two candidates."
+        "slotTooFewCandidates": "Round {slot} needs at least two candidates.",
+        "heroDecider": "A hero order has no decider: nothing is left to decide once the bans are in."
       },
       "save": "Save rules",
       "saving": "Saving…",
@@ -2514,7 +2531,8 @@
       "summaryOrderBracket": "Order from the bracket",
       "summaryOrderCustom": "Custom order",
       "summaryTimerOff": "No turn limit",
-      "summaryTimerOn": "{seconds}s per turn"
+      "summaryTimerOn": "{seconds}s per turn",
+      "orderHeroHint": "One round's worth of steps — hero bans repeat for every map of the series, so this list is replayed per map, not spread across it."
     }
   },
   "users": {

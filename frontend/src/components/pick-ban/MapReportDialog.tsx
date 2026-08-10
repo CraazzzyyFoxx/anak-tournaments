@@ -27,6 +27,8 @@ interface MapReportDialogProps {
   side: "home" | "away";
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The captain's own report, when they already filed one — this is an edit. */
+  filed?: { home_score: number; away_score: number } | null;
   /** Query keys to invalidate once the report lands (encounter + pick-ban state). */
   invalidateKeys: unknown[][];
 }
@@ -44,12 +46,17 @@ export function MapReportDialog({
   side,
   open,
   onOpenChange,
+  filed = null,
   invalidateKeys,
 }: MapReportDialogProps) {
   const t = useTranslations("pickBan.room.mapReport");
   const queryClient = useQueryClient();
-  const [yourScore, setYourScore] = useState(0);
-  const [opponentScore, setOpponentScore] = useState(0);
+  // The dialog is mounted on demand, so seeding state is enough to reopen an
+  // already-filed report as an edit rather than a blank form.
+  const [yourScore, setYourScore] = useState(filed == null ? 0 : side === "home" ? filed.home_score : filed.away_score);
+  const [opponentScore, setOpponentScore] = useState(
+    filed == null ? 0 : side === "home" ? filed.away_score : filed.home_score,
+  );
 
   const mutation = useMutation({
     mutationFn: () =>

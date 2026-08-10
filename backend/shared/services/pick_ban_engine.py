@@ -289,3 +289,19 @@ def winner_side(home_score: int, away_score: int) -> Side | None:
     if away_score > home_score:
         return "away"
     return None
+
+
+def series_decided(home_score: int, away_score: int, best_of: int) -> bool:
+    """Whether a series standing at ``home_score``-``away_score`` still has a
+    map left to play.
+
+    Two independent stop conditions, because neither covers the other: every
+    map of the series has been played (``Bo2`` ends 1-1 with nobody past
+    half), or one side is past half and the rest cannot change the outcome
+    (``Bo3`` ends 2-0 with a map unplayed). Read by the round-progression
+    trigger so a decided series stops opening pick-ban rounds for maps that
+    will never be played.
+    """
+    if best_of < 1:
+        return False
+    return home_score + away_score >= best_of or max(home_score, away_score) * 2 > best_of

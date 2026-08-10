@@ -10,18 +10,25 @@ Design: docs/plans/2026-08-09-generic-pickban-engine.md §5.3-§5.4.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import random
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
-from shared.core.enums import MapPickSide, MapPoolEntryStatus, MapVetoSessionStatus, PickBanKind
+from shared.core.enums import (
+    MapPickSide,
+    MapPoolEntryStatus,
+    MapVetoSessionStatus,
+    PickBanKind,
+    PickBanNoRepeatScope,
+)
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.catalog.hero import Hero
 from shared.models.tournament.encounter import Encounter
+from shared.models.tournament.encounter_report import EncounterMapReport
 from shared.models.tournament.pick_ban import EncounterPickBanLedger, PickBanConfig, PickBanEntry, PickBanSession
 from shared.services import pick_ban_engine as engine
 from src.services.encounter import pick_ban_session as pick_ban_session_service
@@ -171,6 +178,11 @@ async def auto_resolve_timeout(
     attribute_lookup = (
         await _attribute_lookup(session, kind, [e.item_id for e in pool]) if unique_attribute is not None else {}
     )
+    excluded_for_side = (
+        await _ledger_exclusions_for_side(session, encounter_id, kind, parsed.side)
+        if config is not None and config.no_repeat_scope == PickBanNoRepeatScope.ENCOUNTER_SAME_SIDE
+        else frozenset()
+    )
     committed = [
         (e.picked_by or e.protected_by, e.round, attribute_lookup.get(e.item_id))
         for e in pool
@@ -179,6 +191,8 @@ async def auto_resolve_timeout(
 
     def eligible(entry: PickBanEntry) -> bool:
         if not engine.in_current_round(entry, active_round):
+            return False
+        if parsed.action in ("ban", "protect") and entry.item_id in excluded_for_side:
             return False
         if parsed.action == "ban":
             if not engine.is_entry_bannable(entry, active_round=active_round):
@@ -216,6 +230,7 @@ async def auto_resolve_timeout(
         attribute_lookup=attribute_lookup,
         unique_attribute=unique_attribute,
         now=now,
+        excluded_for_side=excluded_for_side,
     )
     if parsed.action in ("ban", "protect") and config is not None and config.no_repeat_scope != "none":
         session.add(
@@ -244,6 +259,55 @@ async def _attribute_lookup(session: AsyncSession, kind: PickBanKind, item_ids: 
         return {}
     result = await session.execute(select(Hero.id, Hero.type).where(Hero.id.in_(item_ids)))
     return {row[0]: row[1].value for row in result.all()}
+
+
+async def _ledger_exclusions_for_side(
+    session: AsyncSession, encounter_id: int, kind: PickBanKind, side: str
+) -> frozenset[int]:
+    """Items ``side`` may not ban/protect again, under
+    ``no_repeat_scope=encounter_same_side``: the ones it already banned or
+    protected earlier in this series (the opponent's earlier bans stay fair
+    game — Doc 2's rule, design §5.4)."""
+    result = await session.execute(
+        select(EncounterPickBanLedger.item_id).where(
+            EncounterPickBanLedger.encounter_id == encounter_id,
+            EncounterPickBanLedger.kind == kind,
+            EncounterPickBanLedger.banned_by_side == side,
+        )
+    )
+    return frozenset(result.scalars().all())
+
+
+async def _map_reports(session: AsyncSession, encounter: Encounter) -> list[dict[str, Any]]:
+    """Every per-map result claim filed for this encounter, as
+    ``{map_id, side, home_score, away_score}``.
+
+    Read by the room's per-map result step, which is the loop's third phase
+    (map picked -> heroes banned -> map played and reported -> next map): it
+    needs to tell "waiting on the opponent" from "both agreed" from "the two
+    disagree", and ``submit_map_report``'s own return value only ever reaches
+    the captain who filed it, only until they reload.
+    """
+    result = await session.execute(
+        select(EncounterMapReport).where(EncounterMapReport.encounter_id == encounter.id)
+    )
+    reports: list[dict[str, Any]] = []
+    for row in result.scalars().all():
+        if row.team_id == encounter.home_team_id:
+            side = MapPickSide.HOME.value
+        elif row.team_id == encounter.away_team_id:
+            side = MapPickSide.AWAY.value
+        else:
+            continue  # filed by a team this encounter no longer has assigned
+        reports.append(
+            {
+                "map_id": row.map_id,
+                "side": side,
+                "home_score": row.home_score,
+                "away_score": row.away_score,
+            }
+        )
+    return reports
 
 
 def serialize_pick_ban_entry(entry: PickBanEntry) -> dict[str, Any]:
@@ -301,6 +365,7 @@ def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[
         "turn_side": None,
         "current_round": None,
         "is_complete": False,
+        "map_reports": [],
     }
 
 
@@ -346,6 +411,9 @@ def build_pick_ban_state(
         "turn_side": turn_side,
         "current_round": engine.current_round(pool),
         "is_complete": current_step is None,
+        # Filled in by `get_pick_ban_state` for kind=map only; a hero session
+        # has no per-map results of its own to report.
+        "map_reports": [],
     }
 
 
@@ -363,6 +431,11 @@ async def get_pick_ban_state(
 
     readiness = await pick_ban_session_service.get_readiness(session, encounter_id)
     pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, encounter, kind)
+    if kind == PickBanKind.HERO and pick_ban is not None:
+        # Heroes are banned per map, one round at a time, and nothing pushes
+        # "a map just got picked" -- so the hero session catches up with the
+        # map phase here, on the read that is about to render it.
+        await pick_ban_session_service.sync_hero_rounds(session, encounter)
     if pick_ban is None:
         # Mirrors veto_session.unavailable_reason's contract: names WHY, never
         # a bare 400 -- see pick_ban_session.unavailable_reason for why this
@@ -371,9 +444,12 @@ async def get_pick_ban_state(
         return build_unavailable_state(reason, readiness=readiness)
 
     pool = await get_pick_ban_pool(session, pick_ban, encounter_id, kind)
-    return build_pick_ban_state(
+    state = build_pick_ban_state(
         pick_ban.resolved_sequence_json, pool, viewer_side=viewer_side, pick_ban=pick_ban, readiness=readiness
     )
+    if kind == PickBanKind.MAP:
+        state["map_reports"] = await _map_reports(session, encounter)
+    return state
 
 
 def apply_pick_ban_action(
@@ -385,11 +461,17 @@ def apply_pick_ban_action(
     action: str,
     attribute_lookup: dict[int, Any],
     unique_attribute: str | None,
+    excluded_for_side: frozenset[int] = frozenset(),
     now: datetime,
 ) -> PickBanEntry:
     """Pure step: validate and apply one ban/pick/protect. Generalizes
-    ``map_veto.apply_veto_action`` with the `protect` action and the optional
-    role/attribute-uniqueness check."""
+    ``map_veto.apply_veto_action`` with the `protect` action, the optional
+    role/attribute-uniqueness check, and ``excluded_for_side``: items this side
+    may not target again because it already banned/protected them earlier in
+    the series (``no_repeat_scope=encounter_same_side``). That scope cannot be
+    applied when a round's candidate pool is built — one pool, two sides, and
+    only one of them is barred — so unlike the side-blind ``encounter`` scope
+    it is enforced here, per action."""
     step = engine.get_current_step(pick_ban.resolved_sequence_json, pool)
     if step is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban sequence is already complete")
@@ -417,6 +499,11 @@ def apply_pick_ban_action(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Item is {reason}")
     if action in ("pick", "protect") and entry.status != MapPoolEntryStatus.AVAILABLE.value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Item is already {entry.status}")
+    if action in ("ban", "protect") and item_id in excluded_for_side:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your side already banned this item earlier in the series",
+        )
 
     if action in ("ban", "protect") and unique_attribute is not None:
         committed = [
@@ -474,6 +561,11 @@ async def perform_pick_ban_action(
         if config is not None and config.unique_attribute_per_side_per_round
         else {}
     )
+    excluded_for_side = (
+        await _ledger_exclusions_for_side(session, encounter_id, kind, captain_side)
+        if config is not None and config.no_repeat_scope == PickBanNoRepeatScope.ENCOUNTER_SAME_SIDE
+        else frozenset()
+    )
 
     entry = apply_pick_ban_action(
         pick_ban,
@@ -483,6 +575,7 @@ async def perform_pick_ban_action(
         action=action,
         attribute_lookup=attribute_lookup,
         unique_attribute=config.unique_attribute_per_side_per_round if config else None,
+        excluded_for_side=excluded_for_side,
         now=datetime.now(UTC),
     )
 

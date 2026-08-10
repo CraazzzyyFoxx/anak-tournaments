@@ -7,12 +7,13 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
-import type { PickBanKind, PickBanSession } from "@/types/tournament.types";
+import type { PickBanSession } from "@/types/tournament.types";
 
-interface PregamePhaseStatus {
-  kind: PickBanKind;
-  /** Whether this kind applies at all to this encounter (a config resolves for it). */
-  applicable: boolean;
+/** One step of the round the room is on. `map`/`hero` mirror `PickBanKind`. */
+export type PregamePhase = "map" | "hero" | "report" | "done";
+
+export interface PregamePhaseStatus {
+  phase: PregamePhase;
   done: boolean;
 }
 
@@ -20,9 +21,15 @@ interface PregameHeaderProps {
   encounter: Encounter;
   /** Null before both captains are ready -- no session exists yet (see `ReadinessModal`). */
   session: PickBanSession | null;
-  activeKind: PickBanKind;
-  /** Only rendered when both map and hero apply to this encounter. */
+  activePhase: PregamePhase;
+  /**
+   * The steps of ONE round of the series, in loop order: the map is picked, its
+   * heroes are banned, it is played and reported, and that result opens the
+   * next map. Only the steps that apply to this encounter are listed.
+   */
   phases: PregamePhaseStatus[];
+  /** Which map of the series the room is on, 1-based; null before the first. */
+  round: number | null;
 }
 
 const STATUS_CHIP_CLASSES: Record<PickBanSession["status"], string> = {
@@ -44,7 +51,7 @@ const STATUS_CHIP_CLASSES: Record<PickBanSession["status"], string> = {
  * only ever renders once a session exists. The "who goes first" banner lives
  * in `PickBanStepTimeline` instead, next to the steps it explains.
  */
-export function PregameHeader({ encounter, session, activeKind, phases }: PregameHeaderProps) {
+export function PregameHeader({ encounter, session, activePhase, phases, round }: PregameHeaderProps) {
   const t = useTranslations("pickBan.room");
   const teamName = (side: "home" | "away") =>
     side === "home" ? (encounter.home_team?.name ?? t("side.home")) : (encounter.away_team?.name ?? t("side.away"));
@@ -81,18 +88,17 @@ export function PregameHeader({ encounter, session, activeKind, phases }: Pregam
 
       {phases.length > 1 ? (
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("phase.current")}>
-          {phases
-            .filter((phase) => phase.applicable)
-            .map((phase) => (
-              <Badge
-                key={phase.kind}
-                variant={phase.kind === activeKind ? "default" : phase.done ? "secondary" : "outline"}
-                className="font-normal"
-              >
-                {t(`phase.${phase.kind}`)}
-                {phase.kind === activeKind ? ` · ${t("phase.current")}` : phase.done ? ` · ${t("phase.done")}` : ""}
-              </Badge>
-            ))}
+          {round != null ? <Badge variant="outline">{t("round.label", { n: round })}</Badge> : null}
+          {phases.map((phase) => (
+            <Badge
+              key={phase.phase}
+              variant={phase.phase === activePhase ? "default" : phase.done ? "secondary" : "outline"}
+              className="font-normal"
+            >
+              {t(`phase.${phase.phase}`)}
+              {phase.phase === activePhase ? ` · ${t("phase.current")}` : phase.done ? ` · ${t("phase.done")}` : ""}
+            </Badge>
+          ))}
         </div>
       ) : null}
 

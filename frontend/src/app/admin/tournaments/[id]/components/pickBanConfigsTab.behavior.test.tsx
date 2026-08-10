@@ -144,7 +144,7 @@ const CUSTOM_HERO_CONFIG: PickBanConfig = {
   first_ban_rotation: "alternate",
   turn_timer_seconds: 45,
   preset: "custom",
-  sequence: ["ban_first", "ban_second", "pick_first", "decider"],
+  sequence: ["ban_first", "ban_second", "ban_second", "ban_first"],
   no_repeat_scope: "encounter",
   unique_attribute_per_side_per_round: null,
   allow_protect: false,
@@ -317,7 +317,7 @@ describe("PickBanConfigsTab asks for nothing an organizer has to look up", () =>
 });
 
 describe("PickBanConfigsTab will not send a config the server rejects", () => {
-  it("keeps save inert with the reason on screen until the pool has candidates", async () => {
+  it("keeps save inert with the reason on screen until the pool and the steps are both there", async () => {
     await mount();
     await click(only("Add hero rules"));
 
@@ -331,16 +331,25 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
     await click(only("Reinhardt"));
 
     expect(editor().textContent).not.toContain("Add at least one candidate to the pool.");
+    // A hero order is never generated — it is one round's steps, hand-authored —
+    // so an empty one is still a config the server would reject.
+    expect(editor().textContent).toContain("Add at least one step to the order.");
+    expect(only("Save rules").getAttribute("disabled")).not.toBeNull();
+
+    await click(only("Add step"));
+
+    expect(editor().textContent).not.toContain("Add at least one step to the order.");
     expect(only("Save rules").getAttribute("disabled")).toBeNull();
   });
 
-  it("sends the pool in pick order, with a generated order and no turn limit", async () => {
+  it("sends the pool in pick order, with the round's own steps and no turn limit", async () => {
     await mount();
     await click(only("Add hero rules"));
     await click(only("Add heroes"));
     await click(only("Genji"));
     await click(only("Tracer"));
     await click(only("Ana"));
+    await click(only("Add step"));
     await click(only("Save rules"));
 
     expect(upsertConfig).toHaveBeenCalledTimes(1);
@@ -351,8 +360,10 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
     expect(body.stage_id).toBeNull();
     expect(body.round).toBeNull();
     expect(body.turn_timer_seconds).toBeNull();
-    expect(body.preset).not.toBe("custom");
-    expect(body.sequence.length).toBeGreaterThan(0);
+    // Hero steps are always the organizer's own: `custom` is what stops the
+    // engine from regenerating a map-shaped order over them.
+    expect(body.preset).toBe("custom");
+    expect(body.sequence).toEqual(["ban_first"]);
   });
 
   it("sends the timer as a number once one is typed", async () => {
@@ -361,6 +372,7 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
     await click(only("Add heroes"));
     await click(only("Tracer"));
     await click(only("Genji"));
+    await click(only("Add step"));
     await type(editor().querySelector<HTMLInputElement>("input")!, "30");
     await click(only("Save rules"));
 
@@ -369,12 +381,15 @@ describe("PickBanConfigsTab will not send a config the server rejects", () => {
 });
 
 describe("PickBanConfigsTab keeps a stored custom order", () => {
-  it("reopens it as custom and saves the same steps back", async () => {
+  it("reopens the authored steps and saves them back", async () => {
     await mount([CUSTOM_HERO_CONFIG]);
     await click(only("Edit"));
 
     editorHeading = "Edit hero rules";
-    expect(editor().textContent).toContain("Custom");
+    // No bracket/custom choice is offered for a hero config: its sequence is one
+    // round's steps either way, so the steps themselves are the whole control.
+    expect(editor().textContent).not.toContain("Custom");
+    expect(editor().textContent).toContain(en.pickBan.admin.orderSteps);
 
     await click(only("Save rules"));
 
@@ -382,7 +397,7 @@ describe("PickBanConfigsTab keeps a stored custom order", () => {
     // The regression that made the old editor lie: a custom sequence saved
     // without `preset: "custom"` is regenerated from `best_of` and discarded.
     expect(body.preset).toBe("custom");
-    expect(body.sequence).toEqual(["ban_first", "ban_second", "pick_first", "decider"]);
+    expect(body.sequence).toEqual(["ban_first", "ban_second", "ban_second", "ban_first"]);
     expect(body.stage_id).toBe(11);
     expect(body.turn_timer_seconds).toBe(45);
     expect(body.no_repeat_scope).toBe("encounter");

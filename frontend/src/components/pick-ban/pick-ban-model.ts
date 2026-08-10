@@ -40,11 +40,36 @@ export function parseStepToken(token: string): ParsedPickBanStep {
   };
 }
 
-/** Picked/played items in their final play order (action_index, legacy `order` fallback). */
+/**
+ * Picked/played items in their final play order (action_index, legacy `order`
+ * fallback).
+ *
+ * For a map pool this IS the series' map order, and index + 1 is the round:
+ * rounds resolve in order, in slot mode (one pick per round) and in the legacy
+ * flat one (the whole order picked up front) alike.
+ */
 export function pickedItemsInOrder(pool: PickBanEntry[]): PickBanEntry[] {
   return pool
     .filter((entry) => entry.status === "picked" || entry.status === "played")
     .sort((left, right) => (left.action_index ?? left.order) - (right.action_index ?? right.order));
+}
+
+/**
+ * The highest round `pool` holds entries for, or null for a flat pool.
+ *
+ * Read instead of `PickBanState.current_round` when the question is "which
+ * round is this session ON", including once that round's steps are all taken:
+ * `current_round` is the lowest round with something still available, so a
+ * round whose pool is fully consumed (a slot-mode map round always is) reports
+ * null the moment it finishes.
+ */
+export function highestPoolRound(pool: PickBanEntry[]): number | null {
+  let highest: number | null = null;
+  for (const entry of pool) {
+    if (entry.round == null) continue;
+    if (highest == null || entry.round > highest) highest = entry.round;
+  }
+  return highest;
 }
 
 /**
@@ -102,6 +127,11 @@ export const PICK_BAN_UNAVAILABLE_COPY = {
   not_ready: {
     titleKey: "notReadyTitle",
     hintKey: "notReadyHint",
+    icon: "teams",
+  },
+  waiting_map: {
+    titleKey: "waitingMapTitle",
+    hintKey: "waitingMapHint",
     icon: "teams",
   },
 } as const satisfies Record<VetoUnavailableReason, PickBanUnavailableCopy>;

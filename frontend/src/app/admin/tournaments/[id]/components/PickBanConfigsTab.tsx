@@ -709,12 +709,15 @@ function SequencePreview({ sequence }: { sequence: PickBanSequenceToken[] }) {
 function StepList({
   sequence,
   allowProtect,
+  allowDecider,
   disabled,
   onChange,
 }: {
   sequence: PickBanSequenceToken[];
   /** Gates the protect action: the engine ignores it without the toggle. */
   allowProtect: boolean;
+  /** False for a hero sequence, whose pool has no survivor to decide on. */
+  allowDecider: boolean;
   disabled: boolean;
   onChange: (next: PickBanSequenceToken[]) => void;
 }) {
@@ -736,7 +739,7 @@ function StepList({
 
   const actions: (PickBanStepAction | "decider")[] = [
     ...PICK_BAN_STEP_ACTIONS.filter((action) => action !== "protect" || allowProtect),
-    "decider",
+    ...(allowDecider ? (["decider"] as const) : []),
   ];
 
   return (
@@ -1319,46 +1322,52 @@ function ConfigEditor({
       </FieldSet>
 
       {/* 3 — step order. Slot mode resolves each round on its own; there is no
-          series-wide order to author, and the custom preset is unstorable. */}
+          series-wide order to author, and the custom preset is unstorable.
+          A hero config has no bracket-generated option: its sequence is ONE
+          round's steps, replayed per map of the series, while the generator
+          answers the map question (ban a pool down to `bestOf` maps) and emits
+          picks and a decider a hero round cannot resolve. */}
       {draft.mode === "pool" ? (
         <FieldSet>
           <FieldGroup>
             <div>
               <FieldTitle className="text-sm">{t("orderSection")}</FieldTitle>
-              <FieldDescription>{t("orderSectionHint")}</FieldDescription>
+              <FieldDescription>{isHero ? t("orderHeroHint") : t("orderSectionHint")}</FieldDescription>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor={`${ids}-order`}>{t("orderLabel")}</FieldLabel>
-                <Select
-                  value={draft.orderMode}
-                  onValueChange={(value) =>
-                    onChange({
-                      ...draft,
-                      orderMode: value as PickBanOrderMode,
-                      // Authoring starts from the generated order rather than an
-                      // empty list, so "custom" is an edit, not a blank page.
-                      sequence:
-                        value === "custom" && draft.sequence.length === 0
-                          ? sequence
-                          : draft.sequence,
-                    })
-                  }
-                >
-                  <SelectTrigger id={`${ids}-order`} aria-describedby={`${ids}-order-hint`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bracket">{t("orderBracket")}</SelectItem>
-                    <SelectItem value="custom">{t("orderCustom")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FieldDescription id={`${ids}-order-hint`}>
-                  {draft.orderMode === "bracket" ? t("orderBracketHint") : t("orderCustomHint")}
-                </FieldDescription>
-              </Field>
-            </div>
+            {isHero ? null : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor={`${ids}-order`}>{t("orderLabel")}</FieldLabel>
+                  <Select
+                    value={draft.orderMode}
+                    onValueChange={(value) =>
+                      onChange({
+                        ...draft,
+                        orderMode: value as PickBanOrderMode,
+                        // Authoring starts from the generated order rather than an
+                        // empty list, so "custom" is an edit, not a blank page.
+                        sequence:
+                          value === "custom" && draft.sequence.length === 0
+                            ? sequence
+                            : draft.sequence,
+                      })
+                    }
+                  >
+                    <SelectTrigger id={`${ids}-order`} aria-describedby={`${ids}-order-hint`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bracket">{t("orderBracket")}</SelectItem>
+                      <SelectItem value="custom">{t("orderCustom")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription id={`${ids}-order-hint`}>
+                    {draft.orderMode === "bracket" ? t("orderBracketHint") : t("orderCustomHint")}
+                  </FieldDescription>
+                </Field>
+              </div>
+            )}
 
             {/* The generated order is a function of the pool, so it says
                 nothing until there is one — "0 rounds played" would read as a
@@ -1369,9 +1378,13 @@ function ConfigEditor({
               <div className="flex flex-col gap-2">
                 <FieldTitle className="text-sm">
                   {draft.orderMode === "bracket" ? t("orderPreview") : t("orderSteps")}
-                  <Badge variant="secondary">
-                    {t("orderRoundsPlayed", { count: roundsPlayed(sequence) })}
-                  </Badge>
+                  {/* "Rounds played" counts picks and deciders — the maps a map
+                      sequence settles. A hero round plays no map of its own. */}
+                  {isHero ? null : (
+                    <Badge variant="secondary">
+                      {t("orderRoundsPlayed", { count: roundsPlayed(sequence) })}
+                    </Badge>
+                  )}
                 </FieldTitle>
                 {draft.orderMode === "bracket" ? (
                   <>
@@ -1385,7 +1398,7 @@ function ConfigEditor({
                     {/* A custom order runs as written, so the scope's series
                         length is only worth raising when the two disagree — and
                         only where the length is exact rather than a preview. */}
-                    {series.source === "round" && roundsPlayed(sequence) !== series.bestOf ? (
+                    {!isHero && series.source === "round" && roundsPlayed(sequence) !== series.bestOf ? (
                       <Alert>
                         <AlertTriangle aria-hidden className="size-4" />
                         <AlertDescription>
@@ -1399,6 +1412,7 @@ function ConfigEditor({
                     <StepList
                       sequence={draft.sequence}
                       allowProtect={draft.allowProtect}
+                      allowDecider={!isHero}
                       disabled={false}
                       onChange={(next) => onChange({ ...draft, sequence: next })}
                     />

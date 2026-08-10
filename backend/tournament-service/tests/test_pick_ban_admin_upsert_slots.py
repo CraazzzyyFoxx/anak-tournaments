@@ -649,6 +649,31 @@ class FlatModeIsUnchanged(_UpsertCase):
                 self.assert_unprocessable(envelope, f"{missing} must not be empty")
                 self.assertEqual(0, session.commits)
 
+    async def test_a_hero_sequence_may_be_bans_only(self) -> None:
+        # A hero sequence is ONE round's steps, replayed per map of the series,
+        # and it bans out of a pool that stays playable — the map rule "must end
+        # in a pick or a decider" would make a hero config unauthorable.
+        envelope, session = await self.invoke(
+            flat_body(kind="hero", sequence=["ban_first", "ban_second"], preset="custom")
+        )
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(1, session.commits)
+
+    async def test_a_hero_sequence_may_not_carry_a_decider(self) -> None:
+        envelope, session = await self.invoke(
+            flat_body(kind="hero", sequence=["ban_first", "decider"], preset="custom")
+        )
+
+        self.assert_unprocessable(envelope, "a hero sequence must not contain a decider step")
+        self.assertEqual(0, session.commits)
+
+    async def test_a_map_sequence_still_needs_a_pick_or_a_decider(self) -> None:
+        envelope, session = await self.invoke(flat_body(sequence=["ban_first", "ban_second"]))
+
+        self.assert_unprocessable(envelope, "sequence must contain at least one pick or a decider")
+        self.assertEqual(0, session.commits)
+
 
 # ── converting between the modes ─────────────────────────────────────────────
 

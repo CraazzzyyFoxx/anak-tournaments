@@ -93,6 +93,22 @@ async def submit_map_report(
         return {"disputed": reconciliation.disputed, "resolved": False, "match_id": None}
 
     resolved_home, resolved_away = reconciliation.resolved
+    map_pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter.id, PickBanKind.MAP)
+    entry = None
+    if map_pick_ban is not None:
+        map_entries = await session.execute(
+            select(PickBanEntry).where(
+                PickBanEntry.session_id == map_pick_ban.id,
+                PickBanEntry.item_id == map_id,
+                PickBanEntry.status != MapPoolEntryStatus.AVAILABLE.value,
+            )
+        )
+        entry = map_entries.scalars().first()
+    # `played` is the once-per-map transition, and the series score rides it:
+    # a captain amending an already-agreed report (or any other re-entry) must
+    # correct the map, never count it twice.
+    already_played = entry is not None and entry.status == MapPoolEntryStatus.PLAYED.value
+
     match = await _get_match(session, encounter.id, map_id)
     if match is None:
         match = Match(
@@ -115,44 +131,33 @@ async def submit_map_report(
             match.home_score = resolved_home
             match.away_score = resolved_away
 
-    encounter.home_score = (encounter.home_score or 0) + (1 if resolved_home > resolved_away else 0)
-    encounter.away_score = (encounter.away_score or 0) + (1 if resolved_away > resolved_home else 0)
-
-    map_pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter.id, PickBanKind.MAP)
     played_round: int | None = None
-    if map_pick_ban is not None:
-        map_entries = await session.execute(
-            select(PickBanEntry).where(
-                PickBanEntry.session_id == map_pick_ban.id,
-                PickBanEntry.item_id == map_id,
-                PickBanEntry.status != MapPoolEntryStatus.AVAILABLE.value,
-            )
-        )
-        entry = map_entries.scalars().first()
-        if entry is not None:
-            entry.status = MapPoolEntryStatus.PLAYED.value
-            played_round = entry.round
+    if entry is not None:
+        entry.status = MapPoolEntryStatus.PLAYED.value
+        played_round = entry.round
 
-    if played_round is not None:
+    if not already_played:
+        encounter.home_score = (encounter.home_score or 0) + (1 if resolved_home > resolved_away else 0)
+        encounter.away_score = (encounter.away_score or 0) + (1 if resolved_away > resolved_home else 0)
+
+    if played_round is not None and map_pick_ban is not None:
+        # Only the MAP session advances here, and only while the series still
+        # has a map to play: the next map's bans open on this result. That
+        # map's HERO round opens later, once the map itself is picked --
+        # `pick_ban_session.sync_hero_rounds`, because heroes are banned for a
+        # known map, not for a map that is still being vetoed.
         winner = engine.winner_side(resolved_home, resolved_away)
-        if winner is not None:
-            for kind in (PickBanKind.MAP, PickBanKind.HERO):
-                pick_ban = (
-                    map_pick_ban
-                    if kind == PickBanKind.MAP
-                    else await pick_ban_session_service.get_pick_ban_session(session, encounter.id, kind)
+        if not engine.series_decided(encounter.home_score or 0, encounter.away_score or 0, encounter.best_of):
+            try:
+                await pick_ban_session_service.advance_to_next_round(
+                    session, map_pick_ban, completed_round=played_round, winner=winner, commit=False
                 )
-                if pick_ban is None:
-                    continue
-                try:
-                    await pick_ban_session_service.advance_to_next_round(
-                        session, pick_ban, completed_round=played_round, winner=winner, commit=False
-                    )
-                except engine.RotationNeedsChoice:
-                    pick_ban.awaiting_choice = True
-                    pick_ban.pending_loser_side = "away" if winner == "home" else "home"
-                    await session.flush()
+            except engine.RotationNeedsChoice:
+                map_pick_ban.awaiting_choice = True
+                map_pick_ban.pending_loser_side = "away" if winner == "home" else "home"
+                await session.flush()
 
     register_map_veto_realtime_update(session, encounter.id)
+    register_map_veto_realtime_update(session, encounter.id, kind=PickBanKind.HERO.value)
     await session.commit()
     return {"disputed": False, "resolved": True, "match_id": match.id}
