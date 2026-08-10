@@ -664,6 +664,8 @@ def register(broker: Any, logger: Any) -> None:
                 icon_color=body.icon_color,
                 name=body.name,
                 description=body.description,
+                excludes_from_balancer=body.excludes_from_balancer,
+                excludes_from_ready=body.excludes_from_ready,
             )
             return _dump(serialize_status(status_row))
 
@@ -687,6 +689,8 @@ def register(broker: Any, logger: Any) -> None:
                 icon_color=body.icon_color,
                 name=body.name,
                 description=body.description,
+                excludes_from_balancer=body.excludes_from_balancer,
+                excludes_from_ready=body.excludes_from_ready,
             )
             return _dump(serialize_status(status_row))
 
