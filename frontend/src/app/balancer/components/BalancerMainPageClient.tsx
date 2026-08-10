@@ -802,6 +802,7 @@ export function BalancerMainPageClient() {
           saving={updatePlayerMutation.isPending}
           onSave={(playerId, payload) => updatePlayerMutation.mutate({ playerId, payload })}
           onRemove={(playerId) => removePlayerMutation.mutate(playerId)}
+          onMoveToReady={(playerId) => handleSetPoolMembership(playerId, true)}
           rankHistory={pendingRankHistory}
         />
       ) : null}

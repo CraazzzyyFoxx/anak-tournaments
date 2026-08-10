@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  CheckCircle2,
   GripVertical,
   History,
   Loader2,
@@ -728,6 +729,9 @@ type PlayerEditModalProps = {
     }
   ) => void;
   onRemove?: (playerId: number) => void;
+  /** Recomputes balancer_status from current role ranks (Ready if every active role has one, else
+   * Incomplete), escaping a "sticky" custom status. Omit to hide the "Move to Ready" action. */
+  onMoveToReady?: (playerId: number) => Promise<unknown>;
   saving?: boolean;
   rankHistory?: Partial<Record<BalancerRoleCode, number>> | null;
 };
@@ -740,6 +744,7 @@ export function PlayerEditModal({
   onOpenChange,
   onSave,
   onRemove,
+  onMoveToReady,
   saving = false,
   rankHistory = null
 }: PlayerEditModalProps) {
@@ -1001,6 +1006,17 @@ export function PlayerEditModal({
           ? registrationBalancerStatus
           : null
     });
+  };
+
+  const [movingToReady, setMovingToReady] = useState(false);
+  const handleMoveToReady = async () => {
+    if (!onMoveToReady) return;
+    setMovingToReady(true);
+    try {
+      await onMoveToReady(player.id);
+    } finally {
+      setMovingToReady(false);
+    }
   };
 
   return (
@@ -1295,9 +1311,25 @@ export function PlayerEditModal({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[10px] text-[color:var(--aqt-fg-dim)]">
-                  Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
-                </p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px] text-[color:var(--aqt-fg-dim)]">
+                    Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
+                  </p>
+                  {onMoveToReady && registrationBalancerStatus !== "ready" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
+                      disabled={movingToReady}
+                      onClick={handleMoveToReady}
+                      title="Recompute this player's balancer status from their current role ranks"
+                    >
+                      <CheckCircle2 className="h-3 w-3" />
+                      {movingToReady ? "Moving…" : "Move to Ready"}
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : null}

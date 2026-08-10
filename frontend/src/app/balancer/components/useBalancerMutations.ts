@@ -278,11 +278,15 @@ export function useBalancerMutations({
         : balancerAdminService.setBalancerStatus(playerId, "excluded", "manual_exclusion"),
     onSuccess: (registration, variables) => {
       patchRegistrationInCache(registration);
-      notify.success(
-        variables.isInPool
-          ? "Registration included in balancer"
-          : "Registration excluded from balancer"
-      );
+      if (variables.isInPool) {
+        notify.success(
+          registration.balancer_status === "ready"
+            ? "Registration moved to Ready"
+            : "Registration included in balancer, but marked Incomplete -- not every active role has a rank yet"
+        );
+      } else {
+        notify.success("Registration excluded from balancer");
+      }
     }
   });
 
