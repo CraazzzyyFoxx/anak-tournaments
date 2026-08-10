@@ -85,6 +85,13 @@ ENV PYTHONPATH=/app/${APP_PATH}-service:/app
 # Copy scripts and configuration
 COPY ./scripts /app/scripts
 
+# Copy alembic config + migrations so `alembic upgrade head` works inside the
+# container regardless of which service's WORKDIR is active (see alembic.ini's
+# %(here)s-anchored script_location plus ALEMBIC_CONFIG below).
+COPY alembic.ini /app/alembic.ini
+COPY ./migrations /app/migrations
+ENV ALEMBIC_CONFIG=/app/alembic.ini
+
 # Copy the specific service code
 COPY ./${APP_PATH}-service /app/${APP_PATH}-service
 
