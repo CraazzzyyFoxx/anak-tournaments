@@ -35,7 +35,7 @@ def upgrade() -> None:
         sa.Column("ready_user_id", sa.BigInteger(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["encounter_id"], ["tournament.encounter.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["ready_user_id"], ["identity.user.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["ready_user_id"], ["players.user.id"], ondelete="SET NULL"),
         sa.UniqueConstraint("encounter_id", "side", name="uq_encounter_readiness_encounter_side"),
         schema="tournament",
     )
