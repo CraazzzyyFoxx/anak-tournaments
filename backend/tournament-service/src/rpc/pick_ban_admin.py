@@ -1,12 +1,13 @@
 """Generic pick-ban admin methods over typed RPC (``PickBanConfig`` CRUD for
 both ``map`` and ``hero`` kinds).
 
-Mirrors ``veto_admin.py``'s upsert/list/delete shape exactly — same cascade
-key ``(tournament_id, stage_id, round)``, now additionally partitioned by
-``kind`` (design: docs/plans/2026-08-09-generic-pickban-engine.md) — plus a
-``kind`` field on every route so one admin surface configures both map veto
-and hero bans. ``veto_admin.py`` itself is untouched: it keeps serving the
-legacy ``MapVetoConfig`` table until the migration cutover (Decision log #9).
+Mirrors ``veto_admin.py``'s FORMER upsert/list/delete shape exactly — same
+cascade key ``(tournament_id, stage_id, round)``, now additionally
+partitioned by ``kind`` (design: docs/plans/2026-08-09-generic-pickban-engine.md)
+— plus a ``kind`` field on every route so one admin surface configures both
+map veto and hero bans. Since the map-veto cutover, this IS the sole config
+CRUD surface for both kinds; ``veto_admin.py`` keeps only the two
+live-session operations (reset/act) that have no pick-ban equivalent.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from src import models
 from src.core import auth
 from src.rpc._helpers import _identity, _payload, _require_id, _run
 from src.services.encounter import pick_ban_session as pick_ban_session_service
+from src.services.encounter.veto_session import BRACKET_PRESET, CUSTOM_PRESET
 
 _CONFIG_LOAD = (selectinload(PickBanConfig.items), selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items))
 _serialize_config = pick_ban_session_service.serialize_pick_ban_config
@@ -115,6 +117,19 @@ def register(broker: Any, logger: Any) -> None:
             if body.mode == MapVetoMode.SLOTS:
                 _reject_other_modes_field(body.item_ids, "item_ids", mode=body.mode)
                 _reject_other_modes_field(body.sequence, "sequence", mode=body.mode)
+                if body.preset == CUSTOM_PRESET:
+                    # ``ck_pick_ban_config_slots_not_custom`` would refuse this
+                    # row, and an IntegrityError surfaces as an opaque 500 (same
+                    # reasoning veto_admin.py's legacy upsert had). A slot
+                    # config's sequence is derived from its slots, so there is
+                    # no hand-authored order for ``custom`` to name.
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            "preset 'custom' is not valid in slots mode; the slots derive the sequence, "
+                            f"so send preset: '{BRACKET_PRESET}' or null"
+                        ),
+                    )
                 pick_ban_session_service.validate_pick_ban_slot_config(
                     [slot.candidates for slot in body.slots],
                     reserves=[slot.reserve_item_id for slot in body.slots],

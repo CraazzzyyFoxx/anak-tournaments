@@ -391,8 +391,9 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
         session.commit.assert_awaited_once_with()
 
 
-class MapVetoSignatureTests(IsolatedAsyncioTestCase):
-    """This service carries a verbatim copy of ``_map_veto_signature`` (dbarch05).
+class PickBanConfigSignatureTests(IsolatedAsyncioTestCase):
+    """This service carries a verbatim copy of ``_pick_ban_config_signature``
+    (dbarch05 convention, generalized off the legacy ``_map_veto_signature``).
 
     tournament-service owns the exhaustive suite and a check that the two copies
     are textually identical; what only this side can prove is that the copy runs
@@ -400,12 +401,12 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
     """
 
     @staticmethod
-    def _slot(position: int, candidates: list[tuple[int, int]], reserve_map_id: int | None = None) -> SimpleNamespace:
-        """``candidates`` are ``(sort_order, map_id)`` pairs in row arrival order."""
+    def _slot(position: int, candidates: list[tuple[int, int]], reserve_item_id: int | None = None) -> SimpleNamespace:
+        """``candidates`` are ``(sort_order, item_id)`` pairs in row arrival order."""
         return SimpleNamespace(
             position=position,
-            reserve_map_id=reserve_map_id,
-            maps=[SimpleNamespace(sort_order=order, map_id=map_id) for order, map_id in candidates],
+            reserve_item_id=reserve_item_id,
+            items=[SimpleNamespace(sort_order=order, item_id=item_id) for order, item_id in candidates],
         )
 
     @staticmethod
@@ -417,9 +418,10 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
         rotation=enums.FirstBanRotation.FIXED,
     ) -> SimpleNamespace:
         return SimpleNamespace(
+            kind=enums.PickBanKind.MAP,
             mode=mode,
-            veto_sequence_json=sequence,
-            map_pool=[SimpleNamespace(map_id=map_id) for map_id in pool],
+            sequence_json=sequence,
+            items=[SimpleNamespace(item_id=item_id) for item_id in pool],
             slots=list(slots or []),
             stage_id=None,
             first_ban_rotation=rotation,
@@ -428,7 +430,7 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
     def test_flat_signature_keeps_the_pre_slot_pair_as_its_prefix(self) -> None:
         config = self._config(enums.MapVetoMode.POOL, ["ban_home", "pick_away", "decider"], pool=(7, 3, 11))
         self.assertEqual(
-            stage_service._map_veto_signature(config),
+            stage_service._pick_ban_config_signature(config),
             (("ban_home", "pick_away", "decider"), (7, 3, 11), enums.MapVetoMode.POOL, None, ()),
         )
 
@@ -437,18 +439,18 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
         fixed = enums.FirstBanRotation.FIXED
         alternate = enums.FirstBanRotation.ALTERNATE
         self.assertNotEqual(
-            stage_service._map_veto_signature(
+            stage_service._pick_ban_config_signature(
                 self._config(enums.MapVetoMode.SLOTS, ["ban_first"], slots=slots, rotation=fixed)
             ),
-            stage_service._map_veto_signature(
+            stage_service._pick_ban_config_signature(
                 self._config(enums.MapVetoMode.SLOTS, ["ban_first"], slots=slots, rotation=alternate)
             ),
         )
         self.assertEqual(
-            stage_service._map_veto_signature(
+            stage_service._pick_ban_config_signature(
                 self._config(enums.MapVetoMode.POOL, ["ban_home"], pool=(7, 3), rotation=fixed)
             ),
-            stage_service._map_veto_signature(
+            stage_service._pick_ban_config_signature(
                 self._config(enums.MapVetoMode.POOL, ["ban_home"], pool=(7, 3), rotation=alternate)
             ),
         )
@@ -459,17 +461,19 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
             enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9)]), self._slot(2, [(0, 6), (1, 2)])]
         )
         right = self._config(
-            enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9), (2, 6)]), self._slot(2, [(0, 2)])]
+            enums.MapVetoMode.SLOTS,
+            sequence,
+            slots=[self._slot(1, [(0, 4), (1, 9), (2, 6)]), self._slot(2, [(0, 2)])],
         )
         # Same flat union in the same order, so a union-based signature would
         # merge these two and drop one partition without a word.
         self.assertEqual(
-            [entry.map_id for slot in left.slots for entry in slot.maps],
-            [entry.map_id for slot in right.slots for entry in slot.maps],
+            [entry.item_id for slot in left.slots for entry in slot.items],
+            [entry.item_id for slot in right.slots for entry in slot.items],
         )
         self.assertNotEqual(
-            stage_service._map_veto_signature(left),
-            stage_service._map_veto_signature(right),
+            stage_service._pick_ban_config_signature(left),
+            stage_service._pick_ban_config_signature(right),
         )
 
     async def test_merge_refuses_differing_partitions_and_eager_loads_the_slot_chain(self) -> None:
@@ -478,7 +482,9 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
             enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9)]), self._slot(2, [(0, 6), (1, 2)])]
         )
         right = self._config(
-            enums.MapVetoMode.SLOTS, sequence, slots=[self._slot(1, [(0, 4), (1, 9), (2, 6)]), self._slot(2, [(0, 2)])]
+            enums.MapVetoMode.SLOTS,
+            sequence,
+            slots=[self._slot(1, [(0, 4), (1, 9), (2, 6)]), self._slot(2, [(0, 2)])],
         )
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=[_scalars_result([]), _scalars_result([left, right])]),
@@ -486,49 +492,51 @@ class MapVetoSignatureTests(IsolatedAsyncioTestCase):
         )
 
         with self.assertRaises(stage_service.HTTPException) as caught:
-            await stage_service._merge_map_veto_configs(
+            await stage_service._merge_pick_ban_configs(
                 session,
                 target_stage=SimpleNamespace(id=10, tournament_id=99),
                 source_stage_ids=[11, 12],
+                kind=enums.PickBanKind.MAP,
             )
 
         self.assertEqual(caught.exception.status_code, stage_service.status.HTTP_409_CONFLICT)
         session.delete.assert_not_awaited()
-        # Resolves this service's ``models.MapVetoConfigSlot`` for real: without
+        # Resolves this service's ``models.PickBanConfigSlot`` for real: without
         # the eager load the signature would lazy-load ``slots`` after an await.
         eager_loading.assert_eager_loads(
             self,
             session.execute.await_args_list[1].args[0],
-            "MapVetoConfig.slots",
-            "MapVetoConfigSlot.maps",
+            "PickBanConfig.slots",
+            "PickBanConfigSlot.items",
         )
 
     async def test_the_target_query_loads_nothing_because_nothing_is_read_off_it(self) -> None:
         # Mirror of tournament-service's pin, for the same reason the signature
-        # copies are compared: this service's ``_merge_map_veto_configs`` is a
+        # copies are compared: this service's ``_merge_pick_ban_configs`` is a
         # separate deployment, so a one-sided edit has to fail here too.
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=[_scalars_result([]), _scalars_result([])]),
             delete=AsyncMock(),
         )
 
-        await stage_service._merge_map_veto_configs(
+        await stage_service._merge_pick_ban_configs(
             session,
             target_stage=SimpleNamespace(id=10, tournament_id=99),
             source_stage_ids=[11, 12],
+            kind=enums.PickBanKind.MAP,
         )
 
         target_statement = session.execute.await_args_list[0].args[0]
         self.assertEqual([], eager_loading.eager_loaded_chains(target_statement))
 
 
-class MapVetoSignatureCopyTests(TestCase):
+class PickBanConfigSignatureCopyTests(TestCase):
     """Mirror of tournament-service's drift guard, so a parser-only CI job also
-    fails on a one-sided edit to this service's verbatim copy (dbarch05)."""
+    fails on a one-sided edit to this service's verbatim copy."""
 
     def test_both_service_copies_are_identical(self) -> None:
-        opening = "def _map_veto_signature"
-        closing = "async def _merge_map_veto_configs"
+        opening = "def _pick_ban_config_signature"
+        closing = "async def _retarget_stage_rows"
 
         def extract(relative: str) -> str:
             source = (backend_root / relative).read_text(encoding="utf-8")

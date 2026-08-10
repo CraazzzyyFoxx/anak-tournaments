@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
-from shared.core.enums import MapPoolEntryStatus, MapVetoSessionStatus, PickBanKind
+from shared.core.enums import MapPickSide, MapPoolEntryStatus, MapVetoSessionStatus, PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.catalog.hero import Hero
 from shared.models.tournament.encounter import Encounter
@@ -33,6 +33,84 @@ async def _load_pool(session: AsyncSession, pick_ban_id: int) -> list[PickBanEnt
     )
     return list(result.scalars().all())
 
+
+async def get_pick_ban_pool(session: AsyncSession, pick_ban_id: int, encounter_id: int, kind: PickBanKind) -> list[PickBanEntry]:
+    """Load the pool, resolving any pending decider step first — mirrors
+    ``map_veto.get_map_pool``'s side effect so every state read self-heals a
+    decider the same way ``perform_pick_ban_action`` does after an action."""
+    pool = await _load_pool(session, pick_ban_id)
+    await auto_complete_decider(session, encounter_id, kind, pool=pool)
+    return pool
+
+
+def auto_complete_decider_entry(sequence: list[str], pool: list[PickBanEntry]) -> PickBanEntry | None:
+    """Generalizes ``map_veto.auto_complete_decider_entry``: ``slot``/
+    ``current_slot`` -> ``round``/``current_round``, ``map_id`` -> ``item_id``.
+    Returns ``None`` when there is no pending decider step to resolve; raises
+    if a decider step is current but the round does not hold exactly one
+    available candidate (a config/data invariant violation, not a normal
+    state)."""
+    step = engine.get_current_step(sequence, pool)
+    if step is None:
+        return None
+
+    _, step_action = step
+    if step_action != "decider":
+        return None
+
+    active_round = engine.current_round(pool)
+    available = [
+        entry
+        for entry in pool
+        if entry.status == MapPoolEntryStatus.AVAILABLE.value and engine.in_current_round(entry, active_round)
+    ]
+    if len(available) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Decider step requires exactly one available item",
+        )
+
+    entry = available[0]
+    entry.action_index = sum(1 for pool_entry in pool if pool_entry.status != MapPoolEntryStatus.AVAILABLE.value)
+    entry.status = MapPoolEntryStatus.PICKED.value
+    entry.picked_by = MapPickSide.DECIDER.value
+    # The PICKED assignment above must precede this count (mirrors
+    # map_veto.py's own ordering comment): counting includes this entry, so
+    # ``order`` comes out 1-based.
+    entry.order = sum(1 for pool_entry in pool if pool_entry.status == MapPoolEntryStatus.PICKED.value)
+    return entry
+
+
+async def auto_complete_decider(
+    session: AsyncSession,
+    encounter_id: int,
+    kind: PickBanKind,
+    *,
+    pick_ban: PickBanSession | None = None,
+    pool: list[PickBanEntry] | None = None,
+) -> PickBanEntry | None:
+    """Resolve a pending decider step from the session snapshot, if any.
+    Generalizes ``map_veto.auto_complete_decider``."""
+    if pick_ban is None:
+        pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
+    if pick_ban is None or pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
+        return None
+
+    if pool is None:
+        pool = await _load_pool(session, pick_ban.id)
+
+    entry = auto_complete_decider_entry(pick_ban.resolved_sequence_json, pool)
+    if entry is None:
+        return None
+
+    pick_ban.current_step_started_at = datetime.now(UTC)
+    if engine.get_current_step(pick_ban.resolved_sequence_json, pool) is None:
+        pick_ban.status = MapVetoSessionStatus.COMPLETED.value
+
+    register_map_veto_realtime_update(session, encounter_id, kind=kind.value)
+    await session.commit()
+    await session.refresh(entry)
+    return entry
 
 async def _attribute_lookup(session: AsyncSession, kind: PickBanKind, item_ids: list[int]) -> dict[int, Any]:
     """``{item_id: attribute_value}`` for the configured
@@ -71,6 +149,12 @@ def serialize_pick_ban_session(pick_ban: PickBanSession) -> dict[str, Any]:
         "home_seed": pick_ban.home_seed,
         "away_seed": pick_ban.away_seed,
         "turn_timer_seconds": pick_ban.turn_timer_seconds,
+        # Passthrough of the session's reserve snapshot, string-keyed by slot
+        # position, gaps and reserve-less slots omitted -- see
+        # pick_ban_session.ensure_pick_ban_session's slot_reserves comment.
+        # Always None for kind=hero (no reserve concept there); harmless extra
+        # key for HeroBanRoom.tsx, which never reads it.
+        "slot_reserves": pick_ban.slot_reserves_json,
         "started_at": pick_ban.started_at.isoformat() if pick_ban.started_at else None,
         "current_step_started_at": (
             pick_ban.current_step_started_at.isoformat() if pick_ban.current_step_started_at else None
@@ -154,14 +238,12 @@ async def get_pick_ban_state(
     pick_ban = await pick_ban_session_service.ensure_pick_ban_session(session, encounter, kind)
     if pick_ban is None:
         # Mirrors veto_session.unavailable_reason's contract: names WHY, never
-        # a bare 400. Reused verbatim for kind=map; kind=hero gets the same
-        # reason set (its config cascade is identical in shape).
-        from src.services.encounter import veto_session as veto_session_service
-
-        reason = await veto_session_service.unavailable_reason(session, encounter)
+        # a bare 400 -- see pick_ban_session.unavailable_reason for why this
+        # re-derives against PickBanConfig instead of being handed the cause.
+        reason = await pick_ban_session_service.unavailable_reason(session, encounter, kind)
         return build_unavailable_state(reason)
 
-    pool = await _load_pool(session, pick_ban.id)
+    pool = await get_pick_ban_pool(session, pick_ban.id, encounter_id, kind)
     return build_pick_ban_state(pick_ban.resolved_sequence_json, pool, viewer_side=viewer_side, pick_ban=pick_ban)
 
 
@@ -289,4 +371,8 @@ async def perform_pick_ban_action(
     register_map_veto_realtime_update(session, encounter_id, kind=kind.value)
     await session.commit()
     await session.refresh(entry)
+    # Resolve a decider step that becomes current as a DIRECT RESULT of this
+    # action (e.g. the last ban of a Bo1 round leaving exactly one item)
+    # without a second client round-trip. Mirrors map_veto.perform_veto_action.
+    await auto_complete_decider(session, encounter_id, kind, pick_ban=pick_ban, pool=pool)
     return entry

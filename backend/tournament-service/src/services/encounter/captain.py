@@ -23,12 +23,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
-from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus, EncounterStatus, MapPoolEntryStatus
+from shared.core.enums import (
+    EncounterResultAuditAction,
+    EncounterResultStatus,
+    EncounterStatus,
+    MapPoolEntryStatus,
+    PickBanKind,
+)
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.messaging.config import (
     TOURNAMENT_EVENTS_EXCHANGE,
 )
 from shared.messaging.outbox import enqueue_outbox_event
+from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from shared.schemas.events import EncounterCompletedEvent
 from shared.services.bracket import advancement
 from shared.services.challonge_refs import resolve_encounter_challonge
@@ -160,21 +167,27 @@ async def _load_encounter_with_reports(session: AsyncSession, encounter_id: int)
 
 
 async def _picked_map_ids(session: AsyncSession, encounter_id: int) -> dict[int, int]:
-    """Map ``map_index`` (== 1-based pick order) -> ``map_id`` for a completed pool.
+    """Map ``map_index`` (== 1-based pick order) -> ``map_id`` for a completed
+    pool. Reads ``PickBanEntry(kind=map)`` via its session's ``encounter_id``
+    (generalizes the legacy direct ``EncounterMapPool.encounter_id`` query --
+    entries are keyed by ``session_id``, not the encounter, since the map
+    veto cutover).
 
     Returns an empty dict when there is no veto pool (map codes then keep
     ``map_id = NULL``). Soft binding: callers never fail on an index beyond the
     picked count — it simply is not in the dict.
     """
     rows = await session.execute(
-        select(models.EncounterMapPool.order, models.EncounterMapPool.map_id)
+        select(PickBanEntry.order, PickBanEntry.item_id)
+        .join(PickBanSession, PickBanSession.id == PickBanEntry.session_id)
         .where(
-            models.EncounterMapPool.encounter_id == encounter_id,
-            models.EncounterMapPool.status == MapPoolEntryStatus.PICKED,
+            PickBanSession.encounter_id == encounter_id,
+            PickBanSession.kind == PickBanKind.MAP,
+            PickBanEntry.status == MapPoolEntryStatus.PICKED,
         )
-        .order_by(models.EncounterMapPool.order)
+        .order_by(PickBanEntry.order)
     )
-    return {int(order): int(map_id) for order, map_id in rows.all() if order is not None}
+    return {int(order): int(item_id) for order, item_id in rows.all() if order is not None}
 
 
 def serialize_map_code(code: models.EncounterMapCode) -> EncounterMapCodeRead:

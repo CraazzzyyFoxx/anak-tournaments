@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import enums
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
 from shared.schemas.events import TournamentChangedReason
 from shared.services.bracket.advancement import persist_advancement_edges
 from shared.services.bracket.engine import generate_bracket
@@ -210,109 +211,64 @@ async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     await session.commit()
 
 
-def _map_veto_signature(
-    config: models.MapVetoConfig,
+
+def _pick_ban_config_signature(
+    config: PickBanConfig,
 ) -> tuple[tuple, tuple, enums.MapVetoMode, enums.FirstBanRotation | None, tuple]:
-    """Structural identity of ``config`` for stage-merge dedup.
-
-    ``_merge_map_veto_configs`` refuses ONLY when two source signatures differ,
-    so whatever this leaves out is merged away in silence: one config survives
-    and the other's structure is dropped without a word. Hence the slot
-    PARTITION rather than its flat union — ``[[4, 9], [6, 2]]`` and
-    ``[[4, 9, 6], [2]]`` union to the same map list and would merge. Hence also
-    ``first_ban_rotation``: it decides which side opens each slot's bans
-    (``build_slot_sequence``), so two configs that differ only there run
-    different vetos.
-
-    ``mode``, the rotation and the slots are APPENDED to the pre-slot
-    ``(sequence, pool)`` pair. Appending only REFINES the equivalence, so it can
-    add a 409 but can never introduce a silent merge. A genuine flat config
-    carries no slot rows and has its rotation gated to None, so every pair of
-    them agrees on all three appended components and keeps its verdict exactly.
-    Nothing forbids a ``pool``-mode row from also holding slot rows — no writer
-    produces that today — and two such rows that used to merge now raise
-    instead; that is the safe direction.
-
-    The rotation is gated on ``mode`` rather than appended unconditionally
-    because it is slot-mode-only: in ``pool`` mode it changes nothing, and
-    signing it there would refuse two flat configs over an inert field.
-
-    Significant: the slot ``position`` values (unique per config but not
-    necessarily contiguous, and part of what a slot IS — the same candidate lists
-    at positions 1/2 and at 1/3 are different configs), each slot's candidates in
-    ``sort_order`` order, and each slot's reserve. NOT significant: the order the
-    slot and candidate rows arrive in. Both relationships declare an
-    ``order_by``, but only ``(slot, map)`` is unique — ``sort_order`` defaults to
-    0 and may tie — so tied candidates are ordered by ``map_id`` here rather than
-    left to the query, which would let two separately loaded copies of one
-    structure hash apart into a spurious 409.
-
-    ``map_pool`` carries that same tie risk (``map_veto_config_map`` has the
-    identical ``UNIQUE(config, map)`` + ``sort_order`` default 0 shape) and is
-    still deliberately NOT sorted: its relationship order is the order of the old
-    ``map_pool_ids`` JSON array it was normalized out of (dbarch05), which this
-    signature has always treated as significant, and re-ordering it here would
-    change what flat configs hash to — the one thing slot mode must not do.
-    """
-    # Slot-mode-only, so it must not enter a flat config's signature at all.
+    """Structural identity of ``config`` for stage-merge dedup. Generalizes
+    ``_map_veto_signature`` onto ``PickBanConfig`` -- ``map_id``/``map_pool``
+    become ``item_id``/``items``, everything else (including every ordering
+    and tie-breaking rule the legacy docstring explains) is unchanged."""
     rotation = config.first_ban_rotation if config.mode == enums.MapVetoMode.SLOTS else None
     return (
-        tuple(config.veto_sequence_json or []),
-        tuple(entry.map_id for entry in config.map_pool),
+        tuple(config.sequence_json or []),
+        tuple(entry.item_id for entry in config.items),
         config.mode,
         rotation,
         tuple(
             (
                 slot.position,
-                slot.reserve_map_id,
-                tuple(entry.map_id for entry in sorted(slot.maps, key=lambda row: (row.sort_order, row.map_id))),
+                slot.reserve_item_id,
+                tuple(entry.item_id for entry in sorted(slot.items, key=lambda row: (row.sort_order, row.item_id))),
             )
             for slot in sorted(config.slots, key=lambda row: row.position)
         ),
     )
 
 
-async def _merge_map_veto_configs(
+async def _merge_pick_ban_configs(
     session: AsyncSession,
     *,
     target_stage: models.Stage,
     source_stage_ids: list[int],
+    kind: enums.PickBanKind,
 ) -> None:
-    # No loader options on purpose: the target configs are only counted (just
-    # below) and truthiness-tested (further down), so no relationship on them is
-    # ever read. A ``map_pool`` eager load here bought an extra SELECT whenever a
-    # target config existed, and sitting beside the source query's chain it read
-    # as a slot chain someone had forgotten rather than one never needed.
+    """Generalizes ``_merge_map_veto_configs`` onto ``PickBanConfig``, scoped
+    by ``kind`` -- called once per kind so a tournament's map and hero configs
+    are deduped independently."""
     target_result = await session.execute(
-        select(models.MapVetoConfig).where(
-            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
-            models.MapVetoConfig.stage_id == target_stage.id,
+        select(PickBanConfig).where(
+            PickBanConfig.tournament_id == target_stage.tournament_id,
+            PickBanConfig.kind == kind,
+            PickBanConfig.stage_id == target_stage.id,
         )
     )
     target_configs = list(target_result.scalars().all())
     if len(target_configs) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Target stage has multiple map veto configs; resolve them before merging",
+            detail=f"Target stage has multiple {kind.value} pick-ban configs; resolve them before merging",
         )
 
     source_result = await session.execute(
-        select(models.MapVetoConfig)
+        select(PickBanConfig)
         .where(
-            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
-            models.MapVetoConfig.stage_id.in_(source_stage_ids),
+            PickBanConfig.tournament_id == target_stage.tournament_id,
+            PickBanConfig.kind == kind,
+            PickBanConfig.stage_id.in_(source_stage_ids),
         )
-        # Only the SOURCE configs get signed, so the slot chain is eager-loaded
-        # only here. ``MapVetoConfig.slots`` is deliberately lazy, so reaching it
-        # after this await would raise ``MissingGreenlet``.
-        #
-        # Unconditional, even though the ``if target_configs`` branch below
-        # deletes these without signing them and both relationships are
-        # ``passive_deletes=True`` (so the delete needs neither loaded): making a
-        # load whose absence is a 500 depend on a branch is not worth three small
-        # SELECTs on an organizer-triggered merge.
-        .options(selectinload(models.MapVetoConfig.map_pool))
-        .options(selectinload(models.MapVetoConfig.slots).selectinload(models.MapVetoConfigSlot.maps))
+        .options(selectinload(PickBanConfig.items))
+        .options(selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items))
     )
     source_configs = list(source_result.scalars().all())
     if not source_configs:
@@ -323,11 +279,14 @@ async def _merge_map_veto_configs(
             await session.delete(config)
         return
 
-    signatures = {_map_veto_signature(config) for config in source_configs}
+    signatures = {_pick_ban_config_signature(config) for config in source_configs}
     if len(signatures) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=("Source stages have different map veto configs; keep one target config before merging"),
+            detail=(
+                f"Source stages have different {kind.value} pick-ban configs; "
+                "keep one target config before merging"
+            ),
         )
 
     keeper = source_configs[0]
@@ -458,11 +417,13 @@ async def merge_group_stages(
             )
         seen_names.add(normalized_name)
 
-    await _merge_map_veto_configs(
-        session,
-        target_stage=target_stage,
-        source_stage_ids=unique_source_stage_ids,
-    )
+    for kind in (enums.PickBanKind.MAP, enums.PickBanKind.HERO):
+        await _merge_pick_ban_configs(
+            session,
+            target_stage=target_stage,
+            source_stage_ids=unique_source_stage_ids,
+            kind=kind,
+        )
 
     for model in (
         models.TournamentGroup,

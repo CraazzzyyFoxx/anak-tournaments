@@ -12,8 +12,11 @@ from typing import Any
 
 import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
+from sqlalchemy.orm import selectinload
 
+from shared.core.enums import PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
 from shared.rpc.identity import rehydrate_user_optional
 from shared.rpc.query import build_query_model
 from shared.services.division_grid_access import build_workspace_division_grid_normalizer
@@ -24,7 +27,7 @@ from src.core.workspace import get_division_grid
 from src.rpc._helpers import _bool, _q, _q1, _read, _require_id
 from src.services import visibility_resolvers
 from src.services.encounter import flows as encounter_flows
-from src.services.encounter import map_veto as map_veto_service
+from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.standings import flows as standings_flows
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
@@ -37,6 +40,33 @@ def _identity_user_id(data: dict[str, Any]) -> int | None:
         return int(raw)
     except (TypeError, ValueError):
         return None
+
+
+def _map_config_from_pick_ban(config: dict) -> dict:
+    """Adapts a serialized ``PickBanConfig(kind=map)`` back to the legacy
+    ``MapVetoConfig`` wire shape (Decision #12: map-veto API shapes stay
+    as-is), for ``TournamentMapsPage.tsx``'s public read."""
+    return {
+        "id": config["id"],
+        "tournament_id": config["tournament_id"],
+        "stage_id": config["stage_id"],
+        "round": config["round"],
+        "mode": config["mode"],
+        "preset": config["preset"],
+        "first_pick_rule": config["first_pick_rule"],
+        "first_ban_rotation": config["first_ban_rotation"],
+        "turn_timer_seconds": config["turn_timer_seconds"],
+        "sequence": config["sequence"],
+        "map_ids": config["item_ids"],
+        "slots": [
+            {
+                "position": slot["position"],
+                "candidates": slot["candidates"],
+                "reserve_map_id": slot["reserve_item_id"],
+            }
+            for slot in config["slots"]
+        ],
+    }
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -289,17 +319,25 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _require_id(data)
             await assert_tournament_viewable(session, viewer, tournament_id)
             stmt = (
-                sa.select(models.MapVetoConfig)
-                .where(models.MapVetoConfig.tournament_id == tournament_id)
-                .options(*map_veto_service.SERIALIZE_LOAD_OPTIONS)
+                sa.select(PickBanConfig)
+                .where(PickBanConfig.tournament_id == tournament_id, PickBanConfig.kind == PickBanKind.MAP)
+                .options(
+                    selectinload(PickBanConfig.items),
+                    selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items),
+                )
                 .order_by(
-                    models.MapVetoConfig.stage_id.asc().nulls_first(),
-                    models.MapVetoConfig.round.asc().nulls_first(),
-                    models.MapVetoConfig.id.asc(),
+                    PickBanConfig.stage_id.asc().nulls_first(),
+                    PickBanConfig.round.asc().nulls_first(),
+                    PickBanConfig.id.asc(),
                 )
             )
             result = await session.scalars(stmt)
             configs = result.unique().all()
-            return {"configs": [map_veto_service.serialize_veto_config(config) for config in configs]}
+            return {
+                "configs": [
+                    _map_config_from_pick_ban(pick_ban_session_service.serialize_pick_ban_config(config))
+                    for config in configs
+                ]
+            }
 
         return await _read(logger, op)

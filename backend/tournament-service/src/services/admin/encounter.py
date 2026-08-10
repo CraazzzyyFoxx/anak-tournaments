@@ -12,7 +12,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from src import models
 from src.core import enums
 from src.schemas.admin import encounter as admin_schemas
-from src.services.encounter import veto_session as veto_session_service
+from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
 from src.services.tournament.events import (
     enqueue_tournament_recalculation,
@@ -298,9 +298,9 @@ async def update_encounter(
         setattr(encounter, field, value)
 
     if (encounter.home_team_id, encounter.away_team_id) != previous_teams:
-        # Admin re-assigned a team slot: sync the veto session (ensure when
-        # both teams are now known, reset a stale existing session).
-        await veto_session_service.sync_veto_session_after_team_change(session, encounter)
+        # Admin re-assigned a team slot: sync map/hero pick-ban sessions
+        # (ensure when both teams are now known, reset a stale existing one).
+        await pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change(session, encounter)
 
     await enqueue_tournament_recalculation(session, tournament_id)
     await session.commit()

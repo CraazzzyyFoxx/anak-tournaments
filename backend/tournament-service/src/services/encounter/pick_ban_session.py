@@ -45,6 +45,10 @@ from shared.models.tournament.pick_ban import (
 from shared.services import pick_ban_engine as engine
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 from src.services.encounter.veto_session import (
+    REASON_NOT_CONFIGURED,
+    REASON_SLOT_COUNT_MISMATCH,
+    REASON_SLOT_UNDERFILLED,
+    REASON_TEAMS_UNKNOWN,
     SLOT_CANDIDATE_FLOOR,
     build_sequence_for_best_of,
     build_slot_sequence,
@@ -119,6 +123,28 @@ async def _resolve_config(
     return best
 
 
+async def unavailable_reason(session: AsyncSession, encounter: Encounter, kind: PickBanKind) -> str:
+    """Why ``ensure_pick_ban_session`` returned ``None`` for this
+    encounter/kind. Mirrors ``veto_session.unavailable_reason``'s contract
+    (same REASON_* string set, re-derived rather than handed over -- see that
+    function's docstring for the rationale) against ``PickBanConfig`` instead
+    of the legacy ``MapVetoConfig``, and the same slot-floor check
+    ``ensure_pick_ban_session`` itself applies, so the two cannot diverge."""
+    if encounter.home_team_id is None or encounter.away_team_id is None:
+        return REASON_TEAMS_UNKNOWN
+    config = await _resolve_config(session, encounter, kind)
+    if config is None:
+        return REASON_NOT_CONFIGURED
+    if config.mode == MapVetoMode.SLOTS:
+        if not config.slots or encounter.best_of > len(config.slots):
+            return REASON_SLOT_COUNT_MISMATCH
+        ordered = sorted(config.slots, key=lambda s: s.position)[: encounter.best_of]
+        for slot in ordered:
+            if len(slot.items) < SLOT_CANDIDATE_FLOOR:
+                return REASON_SLOT_UNDERFILLED
+    return REASON_NOT_CONFIGURED
+
+
 async def ensure_pick_ban_session(
     session: AsyncSession,
     encounter: Encounter,
@@ -144,14 +170,20 @@ async def ensure_pick_ban_session(
         return None
 
     slots: list[list[int]] | None = None
+    slot_reserves: dict[str, int] | None = None
     if config.mode == MapVetoMode.SLOTS:
-        ordered = sorted(config.slots, key=lambda s: s.position)[: encounter.best_of]
-        if len(ordered) < min(len(config.slots), encounter.best_of):
+        if not config.slots or encounter.best_of > len(config.slots):
             return None
+        ordered = sorted(config.slots, key=lambda s: s.position)[: encounter.best_of]
         for slot in ordered:
-            if len(slot.items) < 2:
+            if len(slot.items) < SLOT_CANDIDATE_FLOOR:
                 return None
         slots = [[item.item_id for item in slot.items] for slot in ordered]
+        # String-keyed by 1-based slot position, reserve-less slots omitted --
+        # mirrors veto_session.slot_reserves exactly (Decision 18: the room
+        # reads this snapshot off the session, never the config, so a later
+        # config edit cannot move a running session's reserve labels).
+        slot_reserves = {str(slot.position): slot.reserve_item_id for slot in ordered if slot.reserve_item_id is not None}
 
     pool_size = sum(len(s) for s in slots) if slots is not None else len(config.items)
     seeds = await resolve_seeds(session, encounter)
@@ -174,6 +206,7 @@ async def ensure_pick_ban_session(
             seeds.first_side,
         ),
         turn_timer_seconds=config.turn_timer_seconds,
+        slot_reserves_json=slot_reserves,
         status=MapVetoSessionStatus.ACTIVE,
         awaiting_choice=False,
         started_at=now,
@@ -219,6 +252,82 @@ async def ensure_pick_ban_session(
     else:
         await session.flush()
     return pick_ban
+
+
+async def reset_pick_ban_session(
+    session: AsyncSession,
+    encounter: Encounter,
+    kind: PickBanKind,
+    *,
+    commit: bool = True,
+) -> PickBanSession | None:
+    """Hard reset: delete this encounter's `kind`-scoped pick-ban session (its
+    entries cascade via the DB FK) and its exclusion ledger, then recreate
+    round 1 from scratch. Mirrors ``veto_session.reset_veto_session`` exactly,
+    generalized: the ledger clear has no legacy equivalent because
+    ``EncounterVetoSession`` never had cross-round memory -- a genuine
+    from-scratch reset must also forget what an earlier, scrapped session
+    banned/protected, or a later round would wrongly still exclude it."""
+    existing = await get_pick_ban_session(session, encounter.id, kind)
+    if existing is not None:
+        await session.execute(sa.delete(PickBanSession).where(PickBanSession.id == existing.id))
+    await session.execute(
+        sa.delete(EncounterPickBanLedger).where(
+            EncounterPickBanLedger.encounter_id == encounter.id, EncounterPickBanLedger.kind == kind
+        )
+    )
+    await session.flush()
+    # Unconditional even if the re-ensure below no-ops: the room just lost its
+    # session (same reasoning as veto_session.reset_veto_session).
+    register_map_veto_realtime_update(session, encounter.id, kind=kind.value)
+    pick_ban = await ensure_pick_ban_session(session, encounter, kind, commit=False)
+    if commit:
+        await session.commit()
+    return pick_ban
+
+
+async def sync_pick_ban_session_after_team_change(
+    session: AsyncSession,
+    encounter: Encounter,
+    kind: PickBanKind,
+) -> None:
+    """Team-assignment hook (bracket propagation / admin encounter edits).
+    Generalizes ``veto_session.sync_veto_session_after_team_change``.
+
+    Called after an encounter's home/away team ids changed. Both teams now
+    set with no session -> ensure one. Session already exists -> the snapshot
+    is stale, reset it -- UNLESS an entry is already ``played`` (the map is
+    underway; an admin resets manually). Runs inside the caller's
+    transaction (no commit).
+    """
+    pick_ban = await get_pick_ban_session(session, encounter.id, kind)
+    if pick_ban is None:
+        if encounter.home_team_id is not None and encounter.away_team_id is not None:
+            await ensure_pick_ban_session(session, encounter, kind, commit=False)
+        return
+    played_count = await session.scalar(
+        select(sa.func.count())
+        .select_from(PickBanEntry)
+        .where(PickBanEntry.session_id == pick_ban.id, PickBanEntry.status == MapPoolEntryStatus.PLAYED)
+    )
+    if played_count:
+        return
+    await reset_pick_ban_session(session, encounter, kind, commit=False)
+
+
+async def sync_all_pick_ban_sessions_after_team_change(session: AsyncSession, encounter: Encounter) -> None:
+    """``sync_pick_ban_session_after_team_change`` for every kind, in the
+    legacy two-arg shape (``session``, ``encounter``) that
+    ``admin/encounter.py``, ``challonge/sync.py`` and
+    ``encounter/finalize.py``'s ``post_advance`` callback all call. Replaces
+    ``veto_session.sync_veto_session_after_team_change`` at all three call
+    sites: map's session/entry storage moved to ``PickBanSession``/
+    ``PickBanEntry``, so the legacy hook would now create/reset the wrong
+    (dead) tables. Also gives hero bans the SAME team-change resilience map
+    veto always had -- a pre-existing gap, since nothing called the legacy
+    hook for kind=hero before the generic engine existed."""
+    for kind in (PickBanKind.MAP, PickBanKind.HERO):
+        await sync_pick_ban_session_after_team_change(session, encounter, kind)
 
 
 async def advance_to_next_round(
@@ -384,6 +493,11 @@ def serialize_pick_ban_config(config: PickBanConfig) -> dict:
                 "reserve_item_id": slot.reserve_item_id,
                 "candidates": [item.item_id for item in slot.items],
             }
-            for slot in config.slots
+            # Play order, not row order -- the relationship's own order_by
+            # already sorts a DB-loaded config, but this must not depend on
+            # that: a transient/in-memory config (stage-merge copier, tests)
+            # is not guaranteed sorted (mirrors map_veto.serialize_veto_config's
+            # ordered_slots() guard).
+            for slot in sorted(config.slots, key=lambda s: s.position)
         ],
     }

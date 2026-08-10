@@ -81,7 +81,6 @@ from src.services import visibility_resolvers
 from src.services.encounter import captain as captain_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_report as map_report_service
-from src.services.encounter import map_veto as map_veto_service
 from src.services.encounter import pick_ban_action as pick_ban_action_service
 from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter import report_form as report_form_service
@@ -241,7 +240,58 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-    # ── captain: map veto ─────────────────────────────────────────────────
+    # ── captain: map veto (generic pick-ban engine, kind=map) ───────────────
+    #
+    # Decision #12 (docs/plans/2026-08-09-generic-pickban-engine.md): map
+    # veto's RPC paths/shapes stay exactly as-is; only the storage underneath
+    # moves onto PickBanConfig/PickBanSession/PickBanEntry. The three adapters
+    # below translate the generic engine's item_id/round vocabulary back to
+    # the legacy map_id/slot one so VetoRoom.tsx, VetoAdminControls.tsx,
+    # EncounterMapPoolModal and MatchReportDialog need zero frontend changes.
+
+    def _map_entry_from_pick_ban(entry: dict) -> dict:
+        return {
+            "id": entry["id"],
+            "map_id": entry["item_id"],
+            "slot": entry["round"],
+            "order": entry["order"],
+            "action_index": entry["action_index"],
+            "picked_by": entry["picked_by"],
+            "team_id": entry["team_id"],
+            "status": entry["status"],
+        }
+
+    def _map_session_from_pick_ban(pb_session: dict) -> dict:
+        return {
+            "id": pb_session["id"],
+            "status": pb_session["status"],
+            "first_side": pb_session["first_side"],
+            "seed_source": pb_session["seed_source"],
+            "home_seed": pb_session["home_seed"],
+            "away_seed": pb_session["away_seed"],
+            "turn_timer_seconds": pb_session["turn_timer_seconds"],
+            "slot_reserves": pb_session["slot_reserves"],
+            "started_at": pb_session["started_at"],
+            "current_step_started_at": pb_session["current_step_started_at"],
+        }
+
+    def _map_state_from_pick_ban(state: dict) -> dict:
+        pb_session = state["session"]
+        return {
+            "session": _map_session_from_pick_ban(pb_session) if pb_session is not None else None,
+            "reason": state.get("reason"),
+            "sequence": state["sequence"],
+            "pool": [_map_entry_from_pick_ban(entry) for entry in state["pool"]],
+            "viewer_side": state["viewer_side"],
+            "viewer_can_act": state["viewer_can_act"],
+            "allowed_actions": state["allowed_actions"],
+            "current_step_index": state["current_step_index"],
+            "current_step": state["current_step"],
+            "expected_action": state["expected_action"],
+            "turn_side": state["turn_side"],
+            "current_slot": state["current_round"],
+            "is_complete": state["is_complete"],
+        }
 
     @broker.subscriber("rpc.tournament.captain_map_pool")
     async def _captain_map_pool(data: dict, msg: RabbitMessage) -> dict:
@@ -250,8 +300,11 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             tournament_id = await visibility_resolvers.tournament_id_for_encounter(session, encounter_id)
             await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
-            pool = await map_veto_service.get_map_pool(session, encounter_id)
-            return [map_veto_service.serialize_map_pool_entry(entry) for entry in pool]
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, PickBanKind.MAP)
+            if pick_ban is None:
+                return []
+            pool = await pick_ban_action_service.get_pick_ban_pool(session, pick_ban.id, encounter_id, PickBanKind.MAP)
+            return [_map_entry_from_pick_ban(pick_ban_action_service.serialize_pick_ban_entry(e)) for e in pool]
 
         return await _run(logger, op)
 
@@ -266,11 +319,10 @@ def register(broker: Any, logger: Any) -> None:
             await assert_tournament_viewable(session, user, tournament_id)
             encounter = await captain_service._load_encounter(session, encounter_id)
             viewer_side = await resolve_optional_viewer_side(session, user, encounter)
-            return await map_veto_service.get_map_pool_state(
-                session,
-                encounter_id,
-                viewer_side=viewer_side,
+            state = await pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, PickBanKind.MAP, viewer_side=viewer_side
             )
+            return _map_state_from_pick_ban(state)
 
         return await _run(logger, op)
 
@@ -282,17 +334,18 @@ def register(broker: Any, logger: Any) -> None:
             body = VetoAction.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
             captain_side = await captain_service.resolve_captain_side(session, user, encounter)
-            # perform_veto_action commits internally; route returns a custom dict.
-            entry = await map_veto_service.perform_veto_action(
+            # perform_pick_ban_action commits internally; route returns a custom dict.
+            entry = await pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
+                PickBanKind.MAP,
                 captain_side,
                 body.map_id,
                 body.action,
             )
             return {
                 "id": entry.id,
-                "map_id": entry.map_id,
+                "map_id": entry.item_id,
                 "status": entry.status,
                 "picked_by": entry.picked_by,
             }

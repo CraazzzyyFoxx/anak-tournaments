@@ -25,6 +25,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 stage_service = importlib.import_module("src.services.admin.stage")
 enums = importlib.import_module("shared.core.enums")
 eager_loading = importlib.import_module("shared.tests.eager_loading")
+pick_ban_models = importlib.import_module("shared.models.tournament.pick_ban")
 
 
 def _scalars_result(values: list):
@@ -109,6 +110,10 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
                 side_effect=[
                     _scalars_result([source_stage_b, source_stage_c]),
                     _scalars_result([source_item_b, source_item_c]),
+                    # _merge_pick_ban_configs(kind=MAP): target, then source.
+                    _scalars_result([]),
+                    _scalars_result([]),
+                    # _merge_pick_ban_configs(kind=HERO): target, then source.
                     _scalars_result([]),
                     _scalars_result([]),
                     _scalars_result([group_row]),
@@ -177,26 +182,27 @@ POOL_MODE = enums.MapVetoMode.POOL
 SLOTS_MODE = enums.MapVetoMode.SLOTS
 FIXED = enums.FirstBanRotation.FIXED
 ALTERNATE = enums.FirstBanRotation.ALTERNATE
+MAP_KIND = enums.PickBanKind.MAP
 
 
 def _slot_row(
     position: int,
     candidates: list[tuple[int, int]],
-    reserve_map_id: int | None = None,
+    reserve_item_id: int | None = None,
 ) -> SimpleNamespace:
-    """One ``map_veto_config_slot`` row.
+    """One ``pick_ban_config_slot`` row.
 
-    ``candidates`` are ``(sort_order, map_id)`` pairs listed in ROW ARRIVAL
+    ``candidates`` are ``(sort_order, item_id)`` pairs listed in ROW ARRIVAL
     order, which is deliberately not the same thing as their sort order.
     """
     return SimpleNamespace(
         position=position,
-        reserve_map_id=reserve_map_id,
-        maps=[SimpleNamespace(sort_order=sort_order, map_id=map_id) for sort_order, map_id in candidates],
+        reserve_item_id=reserve_item_id,
+        items=[SimpleNamespace(sort_order=sort_order, item_id=item_id) for sort_order, item_id in candidates],
     )
 
 
-def _veto_config(
+def _pick_ban_config(
     *,
     mode: enums.MapVetoMode,
     sequence: list[str] | None = None,
@@ -206,9 +212,10 @@ def _veto_config(
     rotation: enums.FirstBanRotation = FIXED,
 ) -> SimpleNamespace:
     return SimpleNamespace(
+        kind=MAP_KIND,
         mode=mode,
-        veto_sequence_json=sequence,
-        map_pool=[SimpleNamespace(map_id=map_id) for map_id in pool],
+        sequence_json=sequence,
+        items=[SimpleNamespace(item_id=item_id) for item_id in pool],
         slots=list(slots or []),
         stage_id=stage_id,
         first_ban_rotation=rotation,
@@ -216,10 +223,10 @@ def _veto_config(
 
 
 def _pre_slot_signature(config: SimpleNamespace) -> tuple[tuple, tuple]:
-    """``_map_veto_signature`` exactly as it read before slot mode existed."""
+    """``_pick_ban_config_signature`` exactly as it read before slot mode existed."""
     return (
-        tuple(config.veto_sequence_json or []),
-        tuple(entry.map_id for entry in config.map_pool),
+        tuple(config.sequence_json or []),
+        tuple(entry.item_id for entry in config.items),
     )
 
 
@@ -229,75 +236,78 @@ def _slot_union(config: SimpleNamespace) -> tuple[int, ...]:
     What a union-based signature would compare, and what two configs with
     different partitions can share.
     """
-    return tuple(entry.map_id for slot in sorted(config.slots, key=lambda row: row.position) for entry in slot.maps)
+    return tuple(entry.item_id for slot in sorted(config.slots, key=lambda row: row.position) for entry in slot.items)
 
 
-class MapVetoSignatureTests(TestCase):
-    """``_map_veto_signature`` decides whether ``_merge_map_veto_configs``
-    refuses, so anything it leaves out is merged away in silence."""
+class PickBanConfigSignatureTests(TestCase):
+    """``_pick_ban_config_signature`` decides whether ``_merge_pick_ban_configs``
+    refuses, so anything it leaves out is merged away in silence. Generalizes
+    the legacy ``_map_veto_signature`` test suite onto ``PickBanConfig``."""
 
     def test_flat_signature_keeps_the_pre_slot_pair_as_its_prefix(self) -> None:
-        config = _veto_config(
+        config = _pick_ban_config(
             mode=POOL_MODE,
             sequence=["ban_home", "pick_away", "decider"],
-            # map_pool is ordered by sort_order at the ORM layer (dbarch05
-            # backfilled the old JSON array's position into it).
+            # items is ordered by sort_order at the ORM layer.
             pool=(7, 3, 11),
         )
         self.assertEqual(
-            stage_service._map_veto_signature(config),
+            stage_service._pick_ban_config_signature(config),
             (("ban_home", "pick_away", "decider"), (7, 3, 11), POOL_MODE, None, ()),
         )
 
     def test_flat_pairs_keep_their_pre_slot_merge_verdicts(self) -> None:
         flats = [
-            _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2)),
-            _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2)),
-            _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(2, 1)),
-            _veto_config(mode=POOL_MODE, sequence=["ban_home", "decider"], pool=(1, 2)),
+            _pick_ban_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2)),
+            _pick_ban_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2)),
+            _pick_ban_config(mode=POOL_MODE, sequence=["ban_home"], pool=(2, 1)),
+            _pick_ban_config(mode=POOL_MODE, sequence=["ban_home", "decider"], pool=(1, 2)),
             # A flat config's rotation is inert, so this one must stay verdict-equal
             # to the two identical FIXED ones above.
-            _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2), rotation=ALTERNATE),
-            _veto_config(mode=POOL_MODE, sequence=None, pool=()),
+            _pick_ban_config(mode=POOL_MODE, sequence=["ban_home"], pool=(1, 2), rotation=ALTERNATE),
+            _pick_ban_config(mode=POOL_MODE, sequence=None, pool=()),
         ]
         for index, config in enumerate(flats):
             with self.subTest(prefix=index):
-                self.assertEqual(stage_service._map_veto_signature(config)[:2], _pre_slot_signature(config))
+                self.assertEqual(stage_service._pick_ban_config_signature(config)[:2], _pre_slot_signature(config))
         for left_index, left in enumerate(flats):
             for right_index, right in enumerate(flats):
                 with self.subTest(left=left_index, right=right_index):
                     self.assertEqual(
-                        stage_service._map_veto_signature(left) == stage_service._map_veto_signature(right),
+                        stage_service._pick_ban_config_signature(left)
+                        == stage_service._pick_ban_config_signature(right),
                         _pre_slot_signature(left) == _pre_slot_signature(right),
                     )
 
     def test_signature_handles_empty_pool_and_sequence(self) -> None:
-        config = _veto_config(mode=POOL_MODE)
-        self.assertEqual(stage_service._map_veto_signature(config), ((), (), POOL_MODE, None, ()))
+        config = _pick_ban_config(mode=POOL_MODE)
+        self.assertEqual(stage_service._pick_ban_config_signature(config), ((), (), POOL_MODE, None, ()))
 
     def test_slot_partition_is_significant_where_the_union_is_not(self) -> None:
-        left = _veto_config(
+        left = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first", "ban_second"],
             slots=[_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])],
         )
-        right = _veto_config(
+        right = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first", "ban_second"],
             slots=[_slot_row(1, [(0, 4), (1, 9), (2, 6)]), _slot_row(2, [(0, 2)])],
         )
         self.assertEqual(_slot_union(left), _slot_union(right))
         self.assertNotEqual(
-            stage_service._map_veto_signature(left),
-            stage_service._map_veto_signature(right),
+            stage_service._pick_ban_config_signature(left),
+            stage_service._pick_ban_config_signature(right),
         )
 
     def test_slot_row_arrival_order_is_not_significant(self) -> None:
-        rows = [_slot_row(1, [(0, 4), (1, 9)], reserve_map_id=13), _slot_row(2, [(0, 6), (1, 2)])]
+        rows = [_slot_row(1, [(0, 4), (1, 9)], reserve_item_id=13), _slot_row(2, [(0, 6), (1, 2)])]
         self.assertEqual(
-            stage_service._map_veto_signature(_veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=rows)),
-            stage_service._map_veto_signature(
-                _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=list(reversed(rows)))
+            stage_service._pick_ban_config_signature(
+                _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=rows)
+            ),
+            stage_service._pick_ban_config_signature(
+                _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=list(reversed(rows)))
             ),
         )
 
@@ -306,55 +316,58 @@ class MapVetoSignatureTests(TestCase):
         # reserves keyed by position, so the same two candidate lists at 1/2 and
         # at 1/3 are different configs and must not merge into each other.
         candidates = [[(0, 4), (1, 9)], [(0, 6), (1, 2)]]
-        adjacent = _veto_config(
+        adjacent = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first"],
             slots=[_slot_row(1, candidates[0]), _slot_row(2, candidates[1])],
         )
-        gapped = _veto_config(
+        gapped = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first"],
             slots=[_slot_row(1, candidates[0]), _slot_row(3, candidates[1])],
         )
         self.assertNotEqual(
-            stage_service._map_veto_signature(adjacent),
-            stage_service._map_veto_signature(gapped),
+            stage_service._pick_ban_config_signature(adjacent),
+            stage_service._pick_ban_config_signature(gapped),
         )
 
     def test_candidates_are_read_in_sort_order_not_arrival_order(self) -> None:
         def config(candidates: list[tuple[int, int]]) -> SimpleNamespace:
-            return _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=[_slot_row(2, candidates)])
+            return _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=[_slot_row(2, candidates)])
 
         self.assertEqual(
-            stage_service._map_veto_signature(config([(0, 4), (1, 9)])),
-            stage_service._map_veto_signature(config([(1, 9), (0, 4)])),
+            stage_service._pick_ban_config_signature(config([(0, 4), (1, 9)])),
+            stage_service._pick_ban_config_signature(config([(1, 9), (0, 4)])),
         )
         self.assertNotEqual(
-            stage_service._map_veto_signature(config([(0, 4), (1, 9)])),
-            stage_service._map_veto_signature(config([(0, 9), (1, 4)])),
+            stage_service._pick_ban_config_signature(config([(0, 4), (1, 9)])),
+            stage_service._pick_ban_config_signature(config([(0, 9), (1, 4)])),
         )
 
     def test_tied_candidate_sort_orders_do_not_leave_the_order_to_the_query(self) -> None:
-        # sort_order is only UNIQUE(slot, map); it defaults to 0, so a slot can
+        # sort_order is only UNIQUE(slot, item); it defaults to 0, so a slot can
         # hold ties and Postgres may hand two copies of one structure back in
         # different orders. That must not read as a difference.
         def config(candidates: list[tuple[int, int]]) -> SimpleNamespace:
-            return _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=[_slot_row(1, candidates)])
+            return _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=[_slot_row(1, candidates)])
 
         self.assertEqual(
-            stage_service._map_veto_signature(config([(0, 4), (0, 9)])),
-            stage_service._map_veto_signature(config([(0, 9), (0, 4)])),
+            stage_service._pick_ban_config_signature(config([(0, 4), (0, 9)])),
+            stage_service._pick_ban_config_signature(config([(0, 9), (0, 4)])),
         )
 
     def test_slot_reserves_are_significant(self) -> None:
-        def config(reserve_map_id: int | None) -> SimpleNamespace:
-            return _veto_config(
+        def config(reserve_item_id: int | None) -> SimpleNamespace:
+            return _pick_ban_config(
                 mode=SLOTS_MODE,
                 sequence=["ban_first"],
-                slots=[_slot_row(1, [(0, 4), (1, 9)], reserve_map_id=reserve_map_id), _slot_row(2, [(0, 6), (1, 2)])],
+                slots=[
+                    _slot_row(1, [(0, 4), (1, 9)], reserve_item_id=reserve_item_id),
+                    _slot_row(2, [(0, 6), (1, 2)]),
+                ],
             )
 
-        signatures = [stage_service._map_veto_signature(config(reserve)) for reserve in (None, 13, 21)]
+        signatures = [stage_service._pick_ban_config_signature(config(reserve)) for reserve in (None, 13, 21)]
         self.assertEqual(len(set(signatures)), 3, signatures)
 
     def test_mode_is_carried_and_separates_otherwise_identical_configs(self) -> None:
@@ -363,29 +376,29 @@ class MapVetoSignatureTests(TestCase):
         # PRESENT as well as that the two differ: with the rotation gated on mode,
         # inequality alone would still hold if mode itself were dropped.
         slots = [_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])]
-        flat = stage_service._map_veto_signature(
-            _veto_config(mode=POOL_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
+        flat = stage_service._pick_ban_config_signature(
+            _pick_ban_config(mode=POOL_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
         )
-        slotted = stage_service._map_veto_signature(
-            _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
+        slotted = stage_service._pick_ban_config_signature(
+            _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], pool=(7, 3), slots=slots)
         )
         self.assertIn(POOL_MODE, flat)
         self.assertIn(SLOTS_MODE, slotted)
         self.assertNotEqual(flat, slotted)
 
     def test_slot_signature_shape_is_pinned(self) -> None:
-        config = _veto_config(
+        config = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first", "decider"],
             slots=[
                 # Arrival order reversed on both levels; the pin is the sorted result.
                 _slot_row(2, [(1, 2), (0, 6)]),
-                _slot_row(1, [(1, 9), (0, 4)], reserve_map_id=13),
+                _slot_row(1, [(1, 9), (0, 4)], reserve_item_id=13),
             ],
             rotation=ALTERNATE,
         )
         self.assertEqual(
-            stage_service._map_veto_signature(config),
+            stage_service._pick_ban_config_signature(config),
             (
                 ("ban_first", "decider"),
                 (),
@@ -400,11 +413,11 @@ class MapVetoSignatureTests(TestCase):
         # (build_slot_sequence), so these two run different vetos.
         slots = [_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])]
         self.assertNotEqual(
-            stage_service._map_veto_signature(
-                _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=FIXED)
+            stage_service._pick_ban_config_signature(
+                _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=FIXED)
             ),
-            stage_service._map_veto_signature(
-                _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=ALTERNATE)
+            stage_service._pick_ban_config_signature(
+                _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=ALTERNATE)
             ),
         )
 
@@ -412,17 +425,17 @@ class MapVetoSignatureTests(TestCase):
         # The field is slot-mode-only, so signing it unconditionally would refuse
         # two flat configs over something that changes nothing for them.
         self.assertEqual(
-            stage_service._map_veto_signature(
-                _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(7, 3), rotation=FIXED)
+            stage_service._pick_ban_config_signature(
+                _pick_ban_config(mode=POOL_MODE, sequence=["ban_home"], pool=(7, 3), rotation=FIXED)
             ),
-            stage_service._map_veto_signature(
-                _veto_config(mode=POOL_MODE, sequence=["ban_home"], pool=(7, 3), rotation=ALTERNATE)
+            stage_service._pick_ban_config_signature(
+                _pick_ban_config(mode=POOL_MODE, sequence=["ban_home"], pool=(7, 3), rotation=ALTERNATE)
             ),
         )
 
 
-class MapVetoMergeDedupTests(IsolatedAsyncioTestCase):
-    """``_merge_map_veto_configs`` refuses ONLY on differing signatures, so the
+class PickBanConfigMergeDedupTests(IsolatedAsyncioTestCase):
+    """``_merge_pick_ban_configs`` refuses ONLY on differing signatures, so the
     failure mode of a weak signature is a silent merge, not an error."""
 
     @staticmethod
@@ -433,20 +446,21 @@ class MapVetoMergeDedupTests(IsolatedAsyncioTestCase):
         )
 
     async def _merge(self, session: SimpleNamespace) -> None:
-        await stage_service._merge_map_veto_configs(
+        await stage_service._merge_pick_ban_configs(
             session,
             target_stage=SimpleNamespace(id=10, tournament_id=99),
             source_stage_ids=[11, 12],
+            kind=MAP_KIND,
         )
 
     async def test_merge_refuses_sources_that_differ_only_in_slot_partition(self) -> None:
-        left = _veto_config(
+        left = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first", "ban_second"],
             slots=[_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])],
             stage_id=11,
         )
-        right = _veto_config(
+        right = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first", "ban_second"],
             slots=[_slot_row(1, [(0, 4), (1, 9), (2, 6)]), _slot_row(2, [(0, 2)])],
@@ -462,16 +476,16 @@ class MapVetoMergeDedupTests(IsolatedAsyncioTestCase):
     async def test_merge_keeps_one_of_two_identical_slot_configs(self) -> None:
         # Same structure, rows handed back in a different order: this must not
         # read as a conflict either.
-        left = _veto_config(
+        left = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first", "ban_second"],
-            slots=[_slot_row(1, [(0, 4), (1, 9)], reserve_map_id=13), _slot_row(2, [(0, 6), (1, 2)])],
+            slots=[_slot_row(1, [(0, 4), (1, 9)], reserve_item_id=13), _slot_row(2, [(0, 6), (1, 2)])],
             stage_id=11,
         )
-        right = _veto_config(
+        right = _pick_ban_config(
             mode=SLOTS_MODE,
             sequence=["ban_first", "ban_second"],
-            slots=[_slot_row(2, [(1, 2), (0, 6)]), _slot_row(1, [(1, 9), (0, 4)], reserve_map_id=13)],
+            slots=[_slot_row(2, [(1, 2), (0, 6)]), _slot_row(1, [(1, 9), (0, 4)], reserve_item_id=13)],
             stage_id=12,
         )
         session = self._session([left, right])
@@ -481,8 +495,8 @@ class MapVetoMergeDedupTests(IsolatedAsyncioTestCase):
 
     async def test_merge_refuses_sources_that_differ_only_in_ban_rotation(self) -> None:
         slots = [_slot_row(1, [(0, 4), (1, 9)]), _slot_row(2, [(0, 6), (1, 2)])]
-        left = _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=FIXED, stage_id=11)
-        right = _veto_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=ALTERNATE, stage_id=12)
+        left = _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=FIXED, stage_id=11)
+        right = _pick_ban_config(mode=SLOTS_MODE, sequence=["ban_first"], slots=slots, rotation=ALTERNATE, stage_id=12)
         session = self._session([left, right])
         with self.assertRaises(stage_service.HTTPException) as caught:
             await self._merge(session)
@@ -494,34 +508,42 @@ class MapVetoMergeDedupTests(IsolatedAsyncioTestCase):
         session = self._session([])
         await self._merge(session)
         source_statement = session.execute.await_args_list[1].args[0]
-        eager_loading.assert_eager_loads(self, source_statement, "MapVetoConfig.slots", "MapVetoConfigSlot.maps")
+        eager_loading.assert_eager_loads(self, source_statement, "PickBanConfig.slots", "PickBanConfigSlot.items")
 
     async def test_the_target_query_loads_nothing_because_nothing_is_read_off_it(self) -> None:
         # ``target_configs`` is only counted and truthiness-tested, so any loader
         # option here is dead. It is pinned rather than merely deleted because a
-        # dead ``map_pool`` sitting beside the source query's chain reads as a
-        # slot chain someone forgot, which is how a sweep grows a cargo-culted
-        # option that costs a SELECT and proves nothing.
+        # dead ``items`` eager load sitting beside the source query's chain reads
+        # as a slot chain someone forgot, which is how a sweep grows a
+        # cargo-culted option that costs a SELECT and proves nothing.
         session = self._session([])
         await self._merge(session)
         target_statement = session.execute.await_args_list[0].args[0]
         self.assertEqual([], eager_loading.eager_loaded_chains(target_statement))
 
+    async def test_merge_scopes_both_queries_by_kind(self) -> None:
+        session = self._session([])
+        await self._merge(session)
+        for statement in (call.args[0] for call in session.execute.await_args_list):
+            self.assertIn(
+                f"pick_ban_config.kind = {MAP_KIND.value!r}".replace("'", ""),
+                str(statement.compile(compile_kwargs={"literal_binds": True})).replace("'", ""),
+            )
 
-class MapVetoSignatureCopyTests(TestCase):
-    """dbarch05 records that ``_map_veto_signature`` exists verbatim in BOTH
-    tournament-service and parser-service. Nothing else makes a one-sided edit
-    fail, so compare the two copies mechanically. parser-service's suite carries
-    the mirror of this test, so a one-sided CI job fails too."""
+
+class PickBanConfigSignatureAnchorTests(TestCase):
+    """``_pick_ban_config_signature``/``_merge_pick_ban_configs`` exist
+    verbatim in BOTH tournament-service and parser-service (the merge route is
+    only ever exposed from tournament-service's RPC layer; parser-service's
+    copy is dead code kept in sync by this mechanical diff, same convention
+    dbarch05 established for the legacy ``_map_veto_signature`` pair)."""
 
     def test_both_service_copies_are_identical(self) -> None:
-        opening = "def _map_veto_signature"
-        closing = "async def _merge_map_veto_configs"
+        opening = "def _pick_ban_config_signature"
+        closing = "async def _retarget_stage_rows"
 
         def extract(relative: str) -> str:
             source = (backend_root / relative).read_text(encoding="utf-8")
-            # Named assertions rather than an opaque ValueError out of str.index
-            # if either anchor is ever renamed.
             self.assertIn(opening, source, relative)
             self.assertIn(closing, source, relative)
             start = source.index(opening)

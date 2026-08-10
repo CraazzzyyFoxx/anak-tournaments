@@ -29,7 +29,7 @@ from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.core import config
 from src.services.challonge import service as challonge_service
-from src.services.encounter import veto_session as veto_session_service
+from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.finalize import finalize_encounter_score
 from src.services.tournament.events import (
     enqueue_encounter_completed,
@@ -1201,9 +1201,9 @@ async def _upsert_encounter_from_challonge(
     encounter.status = status
     await session.flush()
     if teams_changed:
-        # Challonge corrected a team slot: sync the veto session (ensure when
-        # both teams are now known, reset a stale existing session).
-        await veto_session_service.sync_veto_session_after_team_change(session, encounter)
+        # Challonge corrected a team slot: sync map/hero pick-ban sessions
+        # (ensure when both teams are now known, reset a stale existing one).
+        await pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change(session, encounter)
     await _ensure_match_mapping(session, source, match.id, encounter, match_lookup)
 
     newly_completed = not was_completed and status == enums.EncounterStatus.COMPLETED

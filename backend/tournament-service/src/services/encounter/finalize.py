@@ -21,7 +21,7 @@ from shared.services.encounter.finalize import (
     finalize_encounter_score as _finalize_encounter_score,
 )
 from src import models
-from src.services.encounter import veto_session as veto_session_service
+from src.services.encounter import pick_ban_session as pick_ban_session_service
 
 __all__ = (
     "FinalizeSource",
@@ -42,7 +42,8 @@ async def finalize_encounter_score(
     result_status: EncounterResultStatus | None = None,
     confirmed_at: datetime | None = None,
 ) -> FinalizedEncounterScore:
-    """Finalize an encounter score, keeping affected veto sessions in sync.
+    """Finalize an encounter score, keeping affected map/hero pick-ban
+    sessions in sync.
 
     See :func:`shared.services.encounter.finalize.finalize_encounter_score` for
     the semantics; the caller still owns commit/publish.
@@ -57,5 +58,5 @@ async def finalize_encounter_score(
         status=status,
         result_status=result_status,
         confirmed_at=confirmed_at,
-        post_advance=veto_session_service.sync_veto_session_after_team_change,
+        post_advance=pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change,
     )
