@@ -146,19 +146,19 @@ func TestWS_OriginAllowlist_VerifiedCustomDomain(t *testing.T) {
 		{
 			name:      "verified custom domain is accepted",
 			resolver:  &stubCustomDomainResolver{verified: true},
-			origin:    "https://anakq.gg",
+			origin:    "https://tenant.example.com",
 			wantAllow: true,
 		},
 		{
 			name:      "unverified custom domain is rejected",
 			resolver:  &stubCustomDomainResolver{verified: false},
-			origin:    "https://anakq.gg",
+			origin:    "https://tenant.example.com",
 			wantAllow: false,
 		},
 		{
 			name:      "lookup error fails closed, not open",
 			resolver:  &stubCustomDomainResolver{verified: true, err: errors.New("db unavailable")},
-			origin:    "https://anakq.gg",
+			origin:    "https://tenant.example.com",
 			wantAllow: false,
 		},
 		{
@@ -208,10 +208,10 @@ func TestWS_OriginAllowlist_VerifiedCustomDomainPinsHTTPS(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	if err := dialWithOrigin(t, srv.URL, "http://anakq.gg"); err == nil {
+	if err := dialWithOrigin(t, srv.URL, "http://tenant.example.com"); err == nil {
 		t.Fatal("expected an http:// origin for a verified custom domain to be rejected (https-pinned), but it was accepted")
 	}
-	if err := dialWithOrigin(t, srv.URL, "https://anakq.gg"); err != nil {
+	if err := dialWithOrigin(t, srv.URL, "https://tenant.example.com"); err != nil {
 		t.Fatalf("expected an https:// origin for a verified custom domain to be accepted, got: %v", err)
 	}
 }
@@ -343,8 +343,8 @@ func TestAcceptOptionsFor_SameHostSkipsLookup(t *testing.T) {
 	resolver := &stubCustomDomainResolver{verified: false, err: errors.New("must not be called for a same-host origin")}
 	h := newAcceptTestHandler(resolver, nil)
 
-	r := newUpgradeRequest("https://anakq.gg")
-	r.Host = "anakq.gg" // Origin host == request Host
+	r := newUpgradeRequest("https://tenant.example.com")
+	r.Host = "tenant.example.com" // Origin host == request Host
 
 	if opts := h.acceptOptionsFor(r); opts != h.accept {
 		t.Fatal("a same-host origin must fall through to the static accept options")
@@ -367,23 +367,23 @@ func TestAcceptOptionsFor_TrailingDotOriginNormalized(t *testing.T) {
 	resolver := &stubCustomDomainResolver{verified: true}
 	h := newAcceptTestHandler(resolver, nil)
 
-	r := newUpgradeRequest("https://anakq.gg.") // trailing dot
+	r := newUpgradeRequest("https://tenant.example.com.") // trailing dot
 	opts := h.acceptOptionsFor(r)
 
-	if resolver.lastHost != "anakq.gg" {
-		t.Fatalf("resolver queried with %q, want the trailing dot stripped (\"anakq.gg\")", resolver.lastHost)
+	if resolver.lastHost != "tenant.example.com" {
+		t.Fatalf("resolver queried with %q, want the trailing dot stripped (\"tenant.example.com\")", resolver.lastHost)
 	}
 	if opts == h.accept {
 		t.Fatal("expected the trailing-dot origin to be dynamically accepted, got the static (rejecting) options")
 	}
 	found := false
 	for _, p := range opts.OriginPatterns {
-		if p == "https://anakq.gg" {
+		if p == "https://tenant.example.com" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected an appended pattern of exactly %q (dot-stripped, https-pinned), got %v", "https://anakq.gg", opts.OriginPatterns)
+		t.Fatalf("expected an appended pattern of exactly %q (dot-stripped, https-pinned), got %v", "https://tenant.example.com", opts.OriginPatterns)
 	}
 }
 

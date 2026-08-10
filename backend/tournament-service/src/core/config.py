@@ -4,7 +4,7 @@ from shared.core.config import BaseServiceSettings
 
 
 class Settings(BaseServiceSettings):
-    project_name: str = "Anak Tournament Service"
+    project_name: str = "OWT Tournament Service"
     port: int = 8004
     api_v1_str: str = "/api/v1"
 

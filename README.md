@@ -168,10 +168,7 @@ Frontend docs: [frontend/README.md](./frontend/README.md).
 
 ## 🙏 Credits
 
-All data provided by the API is owned by Anakq and their community.
-
 - Overwatch API : [Overfast API](https://github.com/TeKrop/overfast-api)
-- Anakq : [Anakq Twitch](https://www.twitch.tv/anakq)
 - Special thanks for the idea and historical data [dashabreeze](https://aqt.vercel.app/players)
 
 ## 📝 License

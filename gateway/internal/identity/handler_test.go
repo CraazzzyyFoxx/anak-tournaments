@@ -174,7 +174,7 @@ func TestLogout_ForwardsAccessToken(t *testing.T) {
 func TestOAuthURL_ForwardsGuardHash(t *testing.T) {
 	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":{"provider":"discord","url":"https://discord.example/authorize","state":"s"}}`)}
 	r := httptest.NewRequest(http.MethodGet,
-		"/api/auth/oauth/discord/url?origin=https://anakq.gg&redirect=/account&action=login&csrf=raw-csrf&guard_hash=abc123",
+		"/api/auth/oauth/discord/url?origin=https://tenant.example.com&redirect=/account&action=login&csrf=raw-csrf&guard_hash=abc123",
 		nil)
 	w := httptest.NewRecorder()
 	newHandler(caller).OAuthURL(w, r)
@@ -213,7 +213,7 @@ func TestOAuthURL_OmittedGuardHashForwardsEmptyString(t *testing.T) {
 // longer rejects a missing bearer at the gateway -- identity-svc decides
 // (branching on the signed OAuth state's origin) whether one is required.
 func TestOAuthLink_NoBearer_StillCallsIdentity(t *testing.T) {
-	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":{"mode":"link_ticket","ticket":"tic-1","origin":"https://anakq.gg","redirect":"/account"}}`)}
+	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":{"mode":"link_ticket","ticket":"tic-1","origin":"https://tenant.example.com","redirect":"/account"}}`)}
 	r := httptest.NewRequest(http.MethodPost, "/api/auth/oauth/discord/link", strings.NewReader(`{"code":"c","state":"s","csrf":"x"}`))
 	w := httptest.NewRecorder()
 	newHandler(caller).OAuthLink(w, r)
@@ -232,7 +232,7 @@ func TestOAuthLink_NoBearer_StillCallsIdentity(t *testing.T) {
 // real bearer is present. With no bearer, the forwarded access_token must be
 // the empty string, never the attacker-supplied value.
 func TestOAuthLink_NoBearer_BodyAccessTokenNeverReachesIdentity(t *testing.T) {
-	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":{"mode":"link_ticket","ticket":"tic-1","origin":"https://anakq.gg","redirect":"/account"}}`)}
+	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":{"mode":"link_ticket","ticket":"tic-1","origin":"https://tenant.example.com","redirect":"/account"}}`)}
 	r := httptest.NewRequest(http.MethodPost, "/api/auth/oauth/discord/link",
 		strings.NewReader(`{"code":"c","state":"s","csrf":"x","access_token":"attacker-supplied"}`))
 	w := httptest.NewRecorder()

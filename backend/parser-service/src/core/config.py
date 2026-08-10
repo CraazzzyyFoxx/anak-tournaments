@@ -4,7 +4,7 @@ from shared.core.config import BaseServiceSettings
 
 
 class AppConfig(BaseServiceSettings):
-    project_name: str = "Anak Tournaments"
+    project_name: str = "OWT"
     debug: bool = False
     project_url: str
     battle_tag_regex: str = r"([\w0-9]{2,12}#[0-9]{4,})"

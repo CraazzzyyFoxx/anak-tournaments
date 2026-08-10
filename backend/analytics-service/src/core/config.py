@@ -6,7 +6,7 @@ from shared.core.config import BaseServiceSettings
 
 
 class AppConfig(BaseServiceSettings):
-    project_name: str = "Anak Tournaments — Analytics"
+    project_name: str = "OWT — Analytics"
     debug: bool = False
     port: int = 8006
 
@@ -16,7 +16,7 @@ class AppConfig(BaseServiceSettings):
     rabbitmq_url: str | None = None
 
     # ML artifact storage root (filesystem path or s3:// URI). Used by v2 model registry.
-    analytics_models_dir: str = "/opt/anak/models"
+    analytics_models_dir: str = "/opt/owt/models"
 
     # File-backed feature cache for expensive ML frame builders. This is not a
     # source of truth; bump the namespace or clear the directory after changing

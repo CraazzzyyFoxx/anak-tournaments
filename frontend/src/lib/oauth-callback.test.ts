@@ -64,8 +64,8 @@ describe("isVerifiedTenantOrigin", () => {
 
   it("verifies a custom domain that by-host resolves to a workspace", async () => {
     byHostWorkspaceId = 42;
-    expect(await isVerifiedTenantOrigin("https://anakq.gg")).toBe(true);
-    expect(lastRequestedUrl).toBe("http://gateway:8080/api/v1/workspaces/by-host?host=anakq.gg");
+    expect(await isVerifiedTenantOrigin("https://tenant.example.com")).toBe(true);
+    expect(lastRequestedUrl).toBe("http://gateway:8080/api/v1/workspaces/by-host?host=tenant.example.com");
   });
 
   it("verifies a registered platform-zone subdomain that by-host resolves", async () => {
@@ -80,12 +80,12 @@ describe("isVerifiedTenantOrigin", () => {
 
   it("fails closed on a non-OK by-host response (transient backend failure)", async () => {
     byHostStatus = 500;
-    expect(await isVerifiedTenantOrigin("https://anakq.gg")).toBe(false);
+    expect(await isVerifiedTenantOrigin("https://tenant.example.com")).toBe(false);
   });
 
   it("fails closed when the by-host fetch throws (network error)", async () => {
     byHostThrows = true;
-    expect(await isVerifiedTenantOrigin("https://anakq.gg")).toBe(false);
+    expect(await isVerifiedTenantOrigin("https://tenant.example.com")).toBe(false);
   });
 
   it("rejects the platform apex itself (not a tenant host, and by-host would not resolve it)", async () => {
@@ -111,40 +111,40 @@ describe("buildLinkTicketRedirect", () => {
 
   it("returns null when the by-host fetch throws (network error)", async () => {
     byHostThrows = true;
-    expect(await buildLinkTicketRedirect("https://anakq.gg", "tic-1", "/account")).toBeNull();
+    expect(await buildLinkTicketRedirect("https://tenant.example.com", "tic-1", "/account")).toBeNull();
   });
 
   it("builds the /auth/link/complete URL only after by-host verification succeeds", async () => {
     byHostWorkspaceId = 42;
-    const url = await buildLinkTicketRedirect("https://anakq.gg", "tic-1", "/account");
-    expect(url?.toString()).toBe("https://anakq.gg/auth/link/complete?ticket=tic-1&next=%2Faccount");
+    const url = await buildLinkTicketRedirect("https://tenant.example.com", "tic-1", "/account");
+    expect(url?.toString()).toBe("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount");
   });
 
   it("defaults the redirect to /account when redirect is empty", async () => {
     byHostWorkspaceId = 42;
-    const url = await buildLinkTicketRedirect("https://anakq.gg", "tic-1", "");
+    const url = await buildLinkTicketRedirect("https://tenant.example.com", "tic-1", "");
     expect(url?.searchParams.get("next")).toBe("/account");
   });
 });
 
 describe("safeRedirectTarget", () => {
   it("keeps a same-origin relative redirect", () => {
-    const target = safeRedirectTarget("/account", "https://anakq.gg");
-    expect(target.toString()).toBe("https://anakq.gg/account");
+    const target = safeRedirectTarget("/account", "https://tenant.example.com");
+    expect(target.toString()).toBe("https://tenant.example.com/account");
   });
 
   it("falls back to the origin's root on an absolute cross-origin redirect", () => {
-    const target = safeRedirectTarget("https://evil.com/steal", "https://anakq.gg");
-    expect(target.toString()).toBe("https://anakq.gg/");
+    const target = safeRedirectTarget("https://evil.com/steal", "https://tenant.example.com");
+    expect(target.toString()).toBe("https://tenant.example.com/");
   });
 
   it("falls back to the origin's root on a protocol-relative escape", () => {
-    const target = safeRedirectTarget("//evil.com/steal", "https://anakq.gg");
-    expect(target.toString()).toBe("https://anakq.gg/");
+    const target = safeRedirectTarget("//evil.com/steal", "https://tenant.example.com");
+    expect(target.toString()).toBe("https://tenant.example.com/");
   });
 
   it("falls back to the origin's root on an empty redirect", () => {
-    const target = safeRedirectTarget("", "https://anakq.gg");
-    expect(target.toString()).toBe("https://anakq.gg/");
+    const target = safeRedirectTarget("", "https://tenant.example.com");
+    expect(target.toString()).toBe("https://tenant.example.com/");
   });
 });

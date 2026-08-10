@@ -1,4 +1,4 @@
-export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Anakq Tournaments";
+export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "OWT";
 
 // Public base URL for the frontend (used in metadata like Open Graph).
 // Must be an absolute URL including protocol, e.g. "https://example.com".

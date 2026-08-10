@@ -48,7 +48,8 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     metadataBase: new URL(origin),
     icons: {
-      icon
+      icon,
+      apple: "/apple-touch-icon.png"
     },
     openGraph: {
       title: name,

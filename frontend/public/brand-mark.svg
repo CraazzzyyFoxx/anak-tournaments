@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="OWT">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0a0c0f" />
+  <path
+    d="M 14 44 L 14 30 L 32 30 L 32 18"
+    fill="none"
+    stroke="#25d4bd"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.55"
+  />
+  <path
+    d="M 50 44 L 50 30 L 32 30"
+    fill="none"
+    stroke="#25d4bd"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

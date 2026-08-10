@@ -35,7 +35,7 @@ class BaseServiceSettings(BaseSettings):
     proxy_http_port: int = 8080
 
     # Application
-    project_name: str = "Anak Service"
+    project_name: str = "OWT Service"
     version: str = "0.0.1"
     # Build identity, injected by CI/the image build (GIT_SHA). ``version`` is a
     # hand-maintained constant that has not moved from 0.0.1, so on its own it

@@ -34,7 +34,7 @@ mock.module("@/services/auth.service", () => ({
 const { POST } = await import("./route");
 
 function req(): Request {
-  return new Request("https://anakq.gg/auth/refresh", { method: "POST" });
+  return new Request("https://tenant.example.com/auth/refresh", { method: "POST" });
 }
 
 function clearedCookieNames(res: Response): string[] {

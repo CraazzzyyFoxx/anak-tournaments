@@ -68,10 +68,10 @@ describe("GET /auth/sso", () => {
   });
 
   it("rejects a missing ticket without calling ssoExchange", async () => {
-    const res = await GET(req("https://anakq.gg/auth/sso"));
+    const res = await GET(req("https://tenant.example.com/auth/sso"));
 
     const location = new URL(res.headers.get("location")!);
-    expect(location.origin).toBe("https://anakq.gg");
+    expect(location.origin).toBe("https://tenant.example.com");
     expect(location.searchParams.get("auth_error")).toBe("invalid_state");
     expect(ssoExchangeCalls.length).toBe(0);
   });
@@ -83,10 +83,10 @@ describe("GET /auth/sso", () => {
   // calling ssoExchange, never establishing a session from the ticket alone.
   it("error-redirects and never calls ssoExchange when the guard cookie is absent (fail closed, even with a valid ticket)", async () => {
     // Deliberately no owt_xdomain_guard cookie.
-    const res = await GET(req("https://anakq.gg/auth/sso?ticket=tic-1&next=%2Fdashboard"));
+    const res = await GET(req("https://tenant.example.com/auth/sso?ticket=tic-1&next=%2Fdashboard"));
 
     const location = new URL(res.headers.get("location")!);
-    expect(location.origin).toBe("https://anakq.gg");
+    expect(location.origin).toBe("https://tenant.example.com");
     expect(location.searchParams.get("auth_error")).toBe("invalid_state");
     expect(ssoExchangeCalls.length).toBe(0);
   });
@@ -94,7 +94,7 @@ describe("GET /auth/sso", () => {
   it("forwards the raw guard cookie value to ssoExchange alongside the ticket", async () => {
     withGuardCookie("raw-guard-value-1");
 
-    await GET(req("https://anakq.gg/auth/sso?ticket=tic-1&next=%2Fdashboard"));
+    await GET(req("https://tenant.example.com/auth/sso?ticket=tic-1&next=%2Fdashboard"));
 
     expect(ssoExchangeCalls).toEqual([{ ticket: "tic-1", guard: "raw-guard-value-1" }]);
   });
@@ -102,10 +102,10 @@ describe("GET /auth/sso", () => {
   it("establishes the session and clears the single-use guard cookie on success", async () => {
     withGuardCookie();
 
-    const res = await GET(req("https://anakq.gg/auth/sso?ticket=tic-1&next=%2Fdashboard"));
+    const res = await GET(req("https://tenant.example.com/auth/sso?ticket=tic-1&next=%2Fdashboard"));
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://anakq.gg/dashboard");
+    expect(res.headers.get("location")).toBe("https://tenant.example.com/dashboard");
 
     const cookies = setCookieHeaders(res);
     expect(cookies.some((c) => c.startsWith("owt_access_token=access-token-1;"))).toBe(true);
@@ -116,19 +116,19 @@ describe("GET /auth/sso", () => {
   it("clamps an absolute cross-origin next to this origin's root (safeRedirectTarget)", async () => {
     withGuardCookie();
 
-    const res = await GET(req("https://anakq.gg/auth/sso?ticket=tic-1&next=https%3A%2F%2Fevil.com%2Fsteal"));
+    const res = await GET(req("https://tenant.example.com/auth/sso?ticket=tic-1&next=https%3A%2F%2Fevil.com%2Fsteal"));
 
-    expect(res.headers.get("location")).toBe("https://anakq.gg/");
+    expect(res.headers.get("location")).toBe("https://tenant.example.com/");
   });
 
   it("error-redirects (without leaking the error) when the ticket exchange fails, and still clears the guard cookie", async () => {
     withGuardCookie();
     ssoExchangeShouldThrow = true;
 
-    const res = await GET(req("https://anakq.gg/auth/sso?ticket=tic-1&next=%2Fdashboard"));
+    const res = await GET(req("https://tenant.example.com/auth/sso?ticket=tic-1&next=%2Fdashboard"));
 
     const location = new URL(res.headers.get("location")!);
-    expect(location.origin).toBe("https://anakq.gg");
+    expect(location.origin).toBe("https://tenant.example.com");
     expect(location.searchParams.get("auth_error")).toBe("exchange_failed");
 
     const cookies = setCookieHeaders(res);

@@ -407,7 +407,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/.cache/analytics:/cache/analytics
-      - analytics-models:/opt/anak/models
+      - analytics-models:/opt/owt/models
       - ./logs/analytics-worker:/logs
     networks:
       - app-network
