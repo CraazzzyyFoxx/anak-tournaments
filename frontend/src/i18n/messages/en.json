@@ -2275,16 +2275,52 @@
       "kindLabel": "Kind",
       "kindMap": "Map",
       "kindHero": "Hero",
+      "kindHint": "Which catalog this config draws its candidates from — maps for the map veto, heroes for the hero-ban room. Map and Hero each get their own independent configs.",
       "modeLabel": "Mode",
       "modePool": "Pool",
       "modeSlots": "Slots",
+      "modePoolHint": "One shared candidate pool and one fixed sequence of steps for the whole series (e.g. ban 2, then alternate picks). Set Sequence + Item ids below.",
+      "modeSlotsHint": "One separate candidate group per map of the series (\"round 1\", \"round 2\", ...), each resolved down to one survivor independently. Configure each round's slot below.",
       "allowProtect": "Allow protect step",
+      "allowProtectHint": "Adds a third action next to ban/pick: a side may shield one candidate for the round, making it un-bannable by the opponent. Only takes effect if Sequence/slots actually include a protect_first/protect_second step.",
       "firstPickRule": "First pick rule",
+      "firstPickRuleHint": "How round 1's opening side is seeded (before any result exists to react to). Round 2+ is instead governed by First ban rotation.",
+      "firstPickRuleValue": {
+        "higher_seed": "Higher seed opens"
+      },
       "firstBanRotation": "First ban rotation",
+      "firstBanRotationHint": {
+        "fixed": "The side that opened round 1 opens every round.",
+        "alternate": "Opening side flips every round, regardless of results.",
+        "result_winner_first": "The side that WON the previous round's map opens the next round's bans.",
+        "result_loser_first": "The side that LOST the previous round's map opens the next round's bans.",
+        "result_loser_choice": "The side that LOST the previous round's map is prompted to choose who opens next — the hero-ban room pauses and shows them the choice."
+      },
+      "firstBanRotationValue": {
+        "fixed": "Fixed",
+        "alternate": "Alternate",
+        "result_winner_first": "Previous winner opens",
+        "result_loser_first": "Previous loser opens",
+        "result_loser_choice": "Previous loser chooses"
+      },
       "noRepeatScope": "No-repeat scope",
+      "noRepeatScopeHint": {
+        "none": "No memory across rounds — the same map/hero may be banned again in a later round.",
+        "encounter": "Once EITHER side bans or protects an item, it is excluded from every later round of this series for BOTH sides.",
+        "encounter_same_side": "Once a side bans or protects an item, only THAT side is blocked from targeting it again — the opponent still can."
+      },
+      "noRepeatScopeValue": {
+        "none": "None",
+        "encounter": "Whole series, both sides",
+        "encounter_same_side": "Whole series, same side only"
+      },
       "turnTimer": "Turn timer (seconds)",
       "sequence": "Sequence",
+      "sequenceHint": "Pool mode only — the literal script of steps, comma-separated. Tokens: ban_first, ban_second, pick_first, pick_second, protect_first, protect_second, decider. \"_first\"/\"_second\" resolve to home/away based on who opens.",
       "itemIds": "Item ids",
+      "itemIdsHint": "Pool mode only — the flat candidate pool (map or hero catalog ids), comma-separated. Must have at least as many items as Sequence has steps.",
+      "stageHint": "Leave blank to apply to the whole tournament. Set to scope this config to one bracket stage (optionally narrowed further by Round).",
+      "roundHint": "Only used when Stage is set — narrows this config to one specific round of that stage.",
       "save": "Save",
       "saving": "Saving...",
       "saveFailed": "Failed to save",

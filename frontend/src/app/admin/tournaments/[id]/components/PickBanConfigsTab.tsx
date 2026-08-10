@@ -17,9 +17,9 @@ import { Switch } from "@/components/ui/switch";
 import { notify } from "@/lib/notify";
 import pickBanService from "@/services/pickBan.service";
 import type {
-  FirstBanRotation,
   MapVetoMode,
   PickBanConfig,
+  PickBanFirstBanRotation,
   PickBanFirstPickRule,
   PickBanKind,
   PickBanNoRepeatScope,
@@ -33,9 +33,15 @@ interface PickBanConfigsTabProps {
 
 const KIND_VALUES: PickBanKind[] = ["map", "hero"];
 const MODE_VALUES: MapVetoMode[] = ["pool", "slots"];
-const FIRST_PICK_RULE_VALUES: PickBanFirstPickRule[] = ["higher_seed", "lower_seed", "random", "admin"];
-const FIRST_BAN_ROTATION_VALUES: FirstBanRotation[] = ["fixed", "alternate"];
-const NO_REPEAT_SCOPE_VALUES: PickBanNoRepeatScope[] = ["none", "encounter", "tournament"];
+const FIRST_PICK_RULE_VALUES: PickBanFirstPickRule[] = ["higher_seed"];
+const FIRST_BAN_ROTATION_VALUES: PickBanFirstBanRotation[] = [
+  "fixed",
+  "alternate",
+  "result_winner_first",
+  "result_loser_first",
+  "result_loser_choice",
+];
+const NO_REPEAT_SCOPE_VALUES: PickBanNoRepeatScope[] = ["none", "encounter", "encounter_same_side"];
 
 interface DraftSlot {
   candidates: string;
@@ -49,7 +55,7 @@ interface Draft {
   round: string;
   mode: MapVetoMode;
   firstPickRule: PickBanFirstPickRule;
-  firstBanRotation: FirstBanRotation;
+  firstBanRotation: PickBanFirstBanRotation;
   turnTimerSeconds: string;
   preset: string;
   noRepeatScope: PickBanNoRepeatScope;
@@ -259,6 +265,7 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                     <SelectItem value="hero">{t("kindHero")}</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">{t("kindHint")}</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t("modeLabel")}</Label>
@@ -274,6 +281,9 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {draft.mode === "pool" ? t("modePoolHint") : t("modeSlotsHint")}
+                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t("stageLabel")}</Label>
@@ -282,10 +292,12 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                   onChange={(e) => setDraft({ ...draft, stageId: e.target.value })}
                   placeholder={t("tournamentLevel")}
                 />
+                <p className="text-xs text-muted-foreground">{t("stageHint")}</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t("roundLabel")}</Label>
                 <Input value={draft.round} onChange={(e) => setDraft({ ...draft, round: e.target.value })} />
+                <p className="text-xs text-muted-foreground">{t("roundHint")}</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t("firstPickRule")}</Label>
@@ -299,17 +311,18 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                   <SelectContent>
                     {FIRST_PICK_RULE_VALUES.map((rule) => (
                       <SelectItem key={rule} value={rule}>
-                        {rule}
+                        {t(`firstPickRuleValue.${rule}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">{t("firstPickRuleHint")}</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t("firstBanRotation")}</Label>
                 <Select
                   value={draft.firstBanRotation}
-                  onValueChange={(v) => setDraft({ ...draft, firstBanRotation: v as FirstBanRotation })}
+                  onValueChange={(v) => setDraft({ ...draft, firstBanRotation: v as PickBanFirstBanRotation })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -317,11 +330,12 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                   <SelectContent>
                     {FIRST_BAN_ROTATION_VALUES.map((rotation) => (
                       <SelectItem key={rotation} value={rotation}>
-                        {rotation}
+                        {t(`firstBanRotationValue.${rotation}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">{t(`firstBanRotationHint.${draft.firstBanRotation}`)}</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t("noRepeatScope")}</Label>
@@ -335,11 +349,12 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                   <SelectContent>
                     {NO_REPEAT_SCOPE_VALUES.map((scope) => (
                       <SelectItem key={scope} value={scope}>
-                        {scope}
+                        {t(`noRepeatScopeValue.${scope}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">{t(`noRepeatScopeHint.${draft.noRepeatScope}`)}</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t("turnTimer")}</Label>
@@ -352,12 +367,15 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={draft.allowProtect}
-                onCheckedChange={(checked) => setDraft({ ...draft, allowProtect: checked })}
-              />
-              <Label>{t("allowProtect")}</Label>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={draft.allowProtect}
+                  onCheckedChange={(checked) => setDraft({ ...draft, allowProtect: checked })}
+                />
+                <Label>{t("allowProtect")}</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("allowProtectHint")}</p>
             </div>
 
             {draft.mode === "pool" ? (
@@ -369,6 +387,7 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                     onChange={(e) => setDraft({ ...draft, sequence: e.target.value })}
                     placeholder="ban_first,ban_second,pick_first,pick_second,decider"
                   />
+                  <p className="text-xs text-muted-foreground">{t("sequenceHint")}</p>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>{t("itemIds")}</Label>
@@ -377,6 +396,7 @@ export function PickBanConfigsTab({ tournamentId, canManage }: PickBanConfigsTab
                     onChange={(e) => setDraft({ ...draft, itemIds: e.target.value })}
                     placeholder="1,2,3,4,5,6,7"
                   />
+                  <p className="text-xs text-muted-foreground">{t("itemIdsHint")}</p>
                 </div>
               </>
             ) : (

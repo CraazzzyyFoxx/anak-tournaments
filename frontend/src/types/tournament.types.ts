@@ -486,8 +486,26 @@ export type PickBanSequenceToken =
   | "protect_second"
   | "decider";
 
-export type PickBanFirstPickRule = "higher_seed" | "lower_seed" | "random" | "admin";
-export type PickBanNoRepeatScope = "none" | "encounter" | "tournament";
+/** Only `"higher_seed"` exists today; kept as a union (not a literal) since
+ * the backend models it as an extensible enum. */
+export type PickBanFirstPickRule = "higher_seed";
+/** `encounter_same_side` excludes an item only for the side that
+ * banned/protected it — the opponent may still target it. `encounter`
+ * excludes it for BOTH sides once anyone has. */
+export type PickBanNoRepeatScope = "none" | "encounter" | "encounter_same_side";
+/**
+ * Wider than the legacy veto config's `FirstBanRotation` (`fixed`|`alternate`
+ * only, backed by its own narrower `tournament.firstbanrotation` PG enum) —
+ * `PickBanConfig.first_ban_rotation` is backed by a separate
+ * `tournament.pickbanrotation` PG enum that also carries the
+ * result-dependent rotations the elect_opener flow needs.
+ */
+export type PickBanFirstBanRotation =
+  | "fixed"
+  | "alternate"
+  | "result_winner_first"
+  | "result_loser_first"
+  | "result_loser_choice";
 
 /** One slot of a slot-mode `PickBanConfig`, as the admin CRUD serializer returns it. */
 export interface PickBanConfigSlot {
@@ -504,7 +522,7 @@ export interface PickBanConfig {
   round: number | null;
   mode: MapVetoMode;
   first_pick_rule: PickBanFirstPickRule;
-  first_ban_rotation: FirstBanRotation;
+  first_ban_rotation: PickBanFirstBanRotation;
   turn_timer_seconds: number | null;
   preset: string | null;
   sequence: PickBanSequenceToken[];
@@ -522,7 +540,7 @@ export interface PickBanConfigUpsertInput {
   round?: number | null;
   mode: MapVetoMode;
   first_pick_rule?: PickBanFirstPickRule;
-  first_ban_rotation?: FirstBanRotation;
+  first_ban_rotation?: PickBanFirstBanRotation;
   preset?: string | null;
   turn_timer_seconds?: number | null;
   no_repeat_scope?: PickBanNoRepeatScope;
