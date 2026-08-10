@@ -26,7 +26,6 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 import { Providers } from "@/app/providers";
-import { GoogleAnalytics } from "@next/third-parties/google";
 import { cn } from "@/lib/utils";
 import AuthModal from "@/components/AuthModal";
 import AccountSettingsModal from "@/components/AccountSettingsModal";
@@ -35,8 +34,11 @@ import { Toaster } from "@/components/ui/sonner";
 import { Suspense } from "react";
 import { resolveSiteMetadata } from "@/lib/site-metadata";
 import { resolveTenantWorkspace } from "@/lib/tenant-host";
+import { COOKIE_CONSENT_COOKIE } from "@/lib/cookie-consent";
+import CookieConsent from "@/components/CookieConsent";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
+import { cookies } from "next/headers";
 
 export async function generateMetadata(): Promise<Metadata> {
   const [{ name, description, origin, icon }, locale] = await Promise.all([
@@ -67,10 +69,16 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [locale, tenantWorkspace] = await Promise.all([
+  const [locale, tenantWorkspace, cookieStore] = await Promise.all([
     getLocale(),
-    resolveTenantWorkspace()
+    resolveTenantWorkspace(),
+    cookies()
   ]);
+  // Analytics only loads for a visitor who accepted it; anything other than an
+  // explicit decision leaves the notice to ask.
+  const rawConsent = cookieStore.get(COOKIE_CONSENT_COOKIE)?.value;
+  const cookieConsent =
+    rawConsent === "accepted" || rawConsent === "declined" ? rawConsent : null;
   return (
     <html lang={locale}>
       <body
@@ -82,7 +90,6 @@ export default async function RootLayout({
           "dark"
         )}
       >
-        <GoogleAnalytics gaId="G-6TYE0K6SQM" />
         <NextIntlClientProvider>
           <Providers>
             <Suspense fallback={null}>
@@ -92,6 +99,7 @@ export default async function RootLayout({
             <Suspense fallback={null}>
               <AccountSettingsModal />
             </Suspense>
+            <CookieConsent initial={cookieConsent} gaId="G-6TYE0K6SQM" />
             <Toaster />
             {children}
           </Providers>
