@@ -15,15 +15,23 @@ export function Footer() {
             {t("common.footer.disclaimer", { siteName: SITE_NAME })}
           </p>
         </div>
-        {/* The icon is `aria-hidden` and inherits `currentColor`, so the link is
-            the only place the accessible name can live. */}
-        <Link
-          href="https://github.com/CraazzzyyFoxx/anak-tournaments"
-          aria-label={t("common.sourceOnGithub")}
-          className="shrink-0 self-start rounded-md text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          <Github />
-        </Link>
+        <div className="flex shrink-0 items-center gap-4 self-start">
+          <Link
+            href="/get-workspace"
+            className="text-sm text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            {t("common.footer.getWorkspace")}
+          </Link>
+          {/* The icon is `aria-hidden` and inherits `currentColor`, so the link is
+              the only place the accessible name can live. */}
+          <Link
+            href="https://github.com/CraazzzyyFoxx/anak-tournaments"
+            aria-label={t("common.sourceOnGithub")}
+            className="rounded-md text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <Github />
+          </Link>
+        </div>
       </div>
     </footer>
   );

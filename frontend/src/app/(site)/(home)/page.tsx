@@ -1,7 +1,7 @@
 import React, { Suspense, cache } from "react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { BarChart3, Calendar, Trophy, Users } from "lucide-react";
+import { BarChart3, Calendar, Plus, Trophy, Users } from "lucide-react";
 
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -400,13 +400,12 @@ async function CommunitiesSection() {
     return null;
   }
 
-  if (workspaces.length === 0) return null;
-
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {workspaces.map((workspace) => (
         <WorkspaceCard key={workspace.id} workspace={workspace} />
       ))}
+      <GetWorkspaceCard />
     </div>
   );
 }
@@ -441,6 +440,34 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
               {workspace.description}
             </div>
           )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+async function GetWorkspaceCard() {
+  const t = await getTranslations();
+
+  return (
+    <Link
+      href="/get-workspace"
+      className={`border border-dashed border-border/60 bg-transparent p-5 flex flex-col gap-3 hover:bg-card/50 hover:border-border transition-all duration-150 ${CARD_LINK_FOCUS}`}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          aria-hidden
+          className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center border border-dashed border-muted-foreground/30 text-muted-foreground/60"
+        >
+          <Plus className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-semibold text-sm text-foreground truncate">
+            {t("home.getWorkspaceCard.title")}
+          </div>
+          <div className="text-[11px] text-muted-foreground/60 mt-0.5 line-clamp-1">
+            {t("home.getWorkspaceCard.description")}
+          </div>
         </div>
       </div>
     </Link>

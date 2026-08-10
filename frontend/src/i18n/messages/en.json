@@ -250,7 +250,8 @@
     "sourceOnGithub": "View the source on GitHub",
     "skipToContent": "Skip to content",
     "footer": {
-      "disclaimer": "{siteName} is not affiliated with or endorsed by Blizzard Entertainment, Inc."
+      "disclaimer": "{siteName} is not affiliated with or endorsed by Blizzard Entertainment, Inc.",
+      "getWorkspace": "Get your own workspace"
     },
     "placementSpark": {
       "label": "Placements: {summary}"
@@ -1721,6 +1722,10 @@
     "byTheNumbers": "By the numbers",
     "workspaces": "Workspaces",
     "communitiesOnPlatform": "Communities on this platform",
+    "getWorkspaceCard": {
+      "title": "Get your own",
+      "description": "Learn how to add your community as a workspace"
+    },
     "seasonOverview": "Season overview",
     "communityDashboard": "Community Dashboard",
     "avgDivisionDesc": "Average division rank per role across all tournaments.",
@@ -1736,6 +1741,10 @@
     "standingsSnapshot": "Standings snapshot",
     "viewStandings": "View standings",
     "colDiff": "Diff"
+  },
+  "getWorkspace": {
+    "title": "How to get your own workspace",
+    "description": "A workspace is an isolated tournament space with its own branding (a subdomain or a connected custom domain, its own color theme, and separate tournaments and stats) for your community. Workspaces are currently created manually by the platform administrator — there's no self-service signup. To get your own workspace, contact the platform administrator and describe the community you'd like to set up."
   },
   "workspace": {
     "eyebrow": "Workspace",
