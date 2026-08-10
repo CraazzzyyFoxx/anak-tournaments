@@ -2350,6 +2350,8 @@
       "searchMaps": "Поиск карт…",
       "searchHeroes": "Поиск героев…",
       "poolRemove": "Убрать {item}",
+      "poolSelectAllVisible": "Выбрать все",
+      "poolClearVisible": "Снять все",
       "slotCountMismatch": "Настроено {slots, plural, one {# группа} few {# группы} many {# групп} other {# группы}}, а в этой области играется {maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}}. Лишние группы игнорируются, из-за недостающих комната не откроется.",
       "slotTitle": "Раунд {n}",
       "slotCandidates": "{count, plural, =0 {нет кандидатов} one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",

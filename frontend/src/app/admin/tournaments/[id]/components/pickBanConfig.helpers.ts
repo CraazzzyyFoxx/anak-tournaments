@@ -407,3 +407,33 @@ export function findScopeCollision(
     ) ?? null
   );
 }
+
+// ── catalogue search ─────────────────────────────────────────────────────────
+
+/** Diacritic- and curly-quote-insensitive, case-folded form of a catalogue name. */
+function normalizeItemName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\u2019/g, "'")
+    .toLowerCase();
+}
+
+/**
+ * Does `query` name `name`? Used by the map and hero pickers, where an
+ * organizer types what a paper regulation or cast calls a map/hero rather
+ * than the catalogue's exact spelling. A plain substring test alone misses
+ * two common mismatches; an empty query matches everything.
+ */
+export function matchesItemName(name: string, query: string): boolean {
+  const needle = normalizeItemName(query).trim();
+  if (needle === "") return true;
+  const haystack = normalizeItemName(name);
+  // "Shambali" for "Shambali Monastery": the query drops a trailing word.
+  if (haystack.includes(needle)) return true;
+  // "Peninsular" for "Antarctic Peninsula": the query adds letters to a word
+  // the catalogue carries, which no substring test reaches from either side.
+  // Accept a query one of the name's words is a prefix of, from three
+  // characters up so a short word cannot drag in unrelated entries.
+  return haystack.split(/\s+/).some((word) => word.length >= 3 && needle.startsWith(word));
+}

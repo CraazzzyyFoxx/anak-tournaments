@@ -418,3 +418,64 @@ describe("PickBanConfigsTab renders Map and Hero as two independent cards", () =
     expect(byName("Save rules")).toHaveLength(1);
   });
 });
+
+// 2026-08-10: the map/hero picker's search regressed to cmdk's default
+// scorer during the map-veto cutover, dropping the paper-regulation-spelling
+// fold the old map picker had, and lost its "add every candidate the search
+// currently shows" bulk actions along with it -- a forty-hero ban pool had to
+// be built one click per hero. Both are restored here, generically, for both
+// catalogues; MAPS exercises them since its four fixtures cover the fold's
+// two documented cases without new fixtures.
+describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", () => {
+  async function openMapPicker() {
+    await mount();
+    editorHeading = "New map rules";
+    await click(only("Add map rules"));
+    await click(only("Add maps"));
+    const search = document.querySelector<HTMLInputElement>("[cmdk-input]");
+    if (!search) throw new Error("no search field in the open picker");
+    return search;
+  }
+
+  it("matches a query that extends a catalogue word, the way a regulation's spelling might", async () => {
+    const search = await openMapPicker();
+    await type(search, "Hollywoods");
+
+    expect(option("Hollywood")).toBeTruthy();
+    expect(() => option("Busan")).toThrow();
+  });
+
+  it("shows the catalogue's empty state for a name nothing matches", async () => {
+    const search = await openMapPicker();
+    await type(search, "Nepal");
+
+    expect(document.body.textContent).toContain("Nothing matches that name.");
+  });
+
+  it("select all adds only what the search currently shows; clear removes only that", async () => {
+    const search = await openMapPicker();
+    // Narrows Busan / King's Row / Ilios / Hollywood to the three with an "o".
+    await type(search, "o");
+
+    await click(only("Select all"));
+    expect(editor().textContent).toContain("King's Row");
+    expect(editor().textContent).toContain("Ilios");
+    expect(editor().textContent).toContain("Hollywood");
+    expect(editor().textContent).not.toContain("Busan");
+
+    await click(only("Clear"));
+    expect(editor().textContent).not.toContain("King's Row");
+    expect(editor().textContent).not.toContain("Ilios");
+    expect(editor().textContent).not.toContain("Hollywood");
+  });
+
+  it("renders each selected map's art alongside its name, not the name alone", async () => {
+    await openMapPicker();
+    await click(option("Busan"));
+
+    const chips = editor().querySelectorAll("ul li");
+    expect(chips).toHaveLength(1);
+    expect(chips[0].textContent).toContain("Busan");
+    expect(chips[0].querySelector("img")).toBeTruthy();
+  });
+});

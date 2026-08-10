@@ -81,6 +81,7 @@ import {
   emptyPickBanDraft,
   encodeScope,
   findScopeCollision,
+  matchesItemName,
   parseStepToken,
   pickBanDraftFromConfig,
   pickBanDraftToInput,
@@ -144,7 +145,18 @@ function ItemChips({
         const name = item?.name ?? `#${itemId}`;
         return (
           <li key={itemId}>
-            <span className="flex items-center gap-1.5 rounded-md border bg-card py-1 pe-1 ps-2 text-xs">
+            <span className="flex items-center gap-1.5 rounded-md border bg-card py-1 pe-1 ps-1.5 text-xs">
+              {item?.imageSrc ? (
+                <Image
+                  src={item.imageSrc}
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="size-4 shrink-0 rounded-sm object-cover outline outline-black/10 dark:outline-white/10"
+                />
+              ) : (
+                <span aria-hidden className="bg-muted size-4 shrink-0 rounded-sm" />
+              )}
               <span className="text-muted-foreground tabular-nums">{index + 1}</span>
               <span className="max-w-40 truncate font-medium">{name}</span>
               {disabled ? null : (
@@ -201,24 +213,53 @@ function ItemMultiSelect({
   triggerLabel,
   searchPlaceholder,
   emptyLabel,
+  selectAllLabel,
+  clearLabel,
   options,
   selectedIds,
   disabled,
   onToggle,
+  onSelectVisible,
+  onClearVisible,
 }: {
   triggerLabel: string;
   searchPlaceholder: string;
   emptyLabel: string;
+  selectAllLabel: string;
+  clearLabel: string;
   options: ItemOption[];
   selectedIds: number[];
   disabled: boolean;
   onToggle: (itemId: number) => void;
+  /** Every item the search currently shows; the caller adds or removes them all. */
+  onSelectVisible: (itemIds: number[]) => void;
+  onClearVisible: (itemIds: number[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const selected = new Set(selectedIds);
+  // Filtered here, not left to cmdk's default scorer: `matchesItemName` is the
+  // same fold the single-select and the veto room search use, so a query like
+  // a paper regulation's spelling lands the same map everywhere it is typed.
+  const visibleOptions = useMemo(
+    () => options.filter((option) => matchesItemName(option.name, query)),
+    [options, query]
+  );
+  const visibleIds = useMemo(() => visibleOptions.map((option) => option.id), [visibleOptions]);
+  const visibleSelectedCount = visibleIds.reduce(
+    (total, id) => (selected.has(id) ? total + 1 : total),
+    0
+  );
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // Reopening should start from the full catalogue, not the last search.
+        if (!next) setQuery("");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -234,12 +275,12 @@ function ItemMultiSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={false}>
+          <CommandInput value={query} onValueChange={setQuery} placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
-              {options.map((option) => (
+              {visibleOptions.map((option) => (
                 <CommandItem
                   key={option.id}
                   value={option.name}
@@ -252,6 +293,32 @@ function ItemMultiSelect({
               ))}
             </CommandGroup>
           </CommandList>
+          {/* Bulk actions scope to the search: picking every hero for a ban
+              pool one click at a time doesn't scale to a forty-hero catalogue. */}
+          <div className="flex items-center justify-end gap-1 border-t p-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={
+                disabled || visibleIds.length === 0 || visibleSelectedCount === visibleIds.length
+              }
+              onClick={() => onSelectVisible(visibleIds)}
+            >
+              {selectAllLabel}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={disabled || visibleSelectedCount === 0}
+              onClick={() => onClearVisible(visibleIds)}
+            >
+              {clearLabel}
+            </Button>
+          </div>
         </Command>
       </PopoverContent>
     </Popover>
@@ -282,7 +349,12 @@ function ItemSingleSelect({
   onChange: (itemId: number | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const selected = options.find((option) => option.id === value) ?? null;
+  const visibleOptions = useMemo(
+    () => options.filter((option) => matchesItemName(option.name, query)),
+    [options, query]
+  );
 
   const choose = (itemId: number | null) => {
     onChange(itemId);
@@ -290,7 +362,13 @@ function ItemSingleSelect({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setQuery("");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -310,8 +388,8 @@ function ItemSingleSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={false}>
+          <CommandInput value={query} onValueChange={setQuery} placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
@@ -322,7 +400,7 @@ function ItemSingleSelect({
                   className={cn("ms-auto size-4", value == null ? "opacity-100" : "opacity-0")}
                 />
               </CommandItem>
-              {options.map((option) => (
+              {visibleOptions.map((option) => (
                 <CommandItem key={option.id} value={option.name} onSelect={() => choose(option.id)}>
                   <ItemOptionRow option={option} selected={value === option.id} />
                 </CommandItem>
@@ -783,10 +861,24 @@ function ConfigEditor({
                   triggerLabel={addItemsLabel}
                   searchPlaceholder={searchPlaceholder}
                   emptyLabel={t("catalogueEmpty")}
+                  selectAllLabel={t("poolSelectAllVisible")}
+                  clearLabel={t("poolClearVisible")}
                   options={catalogue}
                   selectedIds={draft.itemIds}
                   disabled={catalogueLoading}
                   onToggle={toggleItem}
+                  onSelectVisible={(itemIds) =>
+                    onChange({
+                      ...draft,
+                      itemIds: [...draft.itemIds, ...itemIds.filter((id) => !draft.itemIds.includes(id))],
+                    })
+                  }
+                  onClearVisible={(itemIds) =>
+                    onChange({
+                      ...draft,
+                      itemIds: draft.itemIds.filter((id) => !itemIds.includes(id)),
+                    })
+                  }
                 />
                 {draft.itemIds.length > 0 ? (
                   <ItemChips
@@ -839,6 +931,8 @@ function ConfigEditor({
                     triggerLabel={addItemsLabel}
                     searchPlaceholder={searchPlaceholder}
                     emptyLabel={t("catalogueEmpty")}
+                    selectAllLabel={t("poolSelectAllVisible")}
+                    clearLabel={t("poolClearVisible")}
                     options={catalogue}
                     selectedIds={slot.candidates}
                     disabled={catalogueLoading}
@@ -849,6 +943,27 @@ function ConfigEditor({
                           : [...slot.candidates, itemId],
                         // A candidate can no longer be this slot's reserve.
                         reserveItemId: slot.reserveItemId === itemId ? null : slot.reserveItemId,
+                      })
+                    }
+                    onSelectVisible={(itemIds) =>
+                      patchSlot(index, {
+                        candidates: [
+                          ...slot.candidates,
+                          ...itemIds.filter((id) => !slot.candidates.includes(id)),
+                        ],
+                        // The catalogue offered here isn't narrowed like the
+                        // reserve picker's is, so a bulk add can catch the
+                        // current reserve; drop it rather than leave a
+                        // candidate double-booked as its own slot's reserve.
+                        reserveItemId:
+                          slot.reserveItemId != null && itemIds.includes(slot.reserveItemId)
+                            ? null
+                            : slot.reserveItemId,
+                      })
+                    }
+                    onClearVisible={(itemIds) =>
+                      patchSlot(index, {
+                        candidates: slot.candidates.filter((id) => !itemIds.includes(id)),
                       })
                     }
                   />
