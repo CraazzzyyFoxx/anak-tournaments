@@ -443,6 +443,23 @@ async def advance_to_next_round(
     ]
     excluded = engine.excluded_item_ids(ledger_rows, scope=config.no_repeat_scope)
     candidates = [item.item_id for item in slot.items if item.item_id not in excluded]
+    if config.mode == MapVetoMode.SLOTS and len(candidates) < SLOT_CANDIDATE_FLOOR:
+        # `ensure_pick_ban_session` re-checks this floor against the raw slot
+        # size before round 1 starts; nothing re-checked it here once
+        # no-repeat exclusion (`no_repeat_scope != none`) has eaten into a
+        # later round's pool. Left unguarded, `build_slot_sequence` still
+        # emits a bare `decider` for < 2 candidates and the round's entries
+        # come up short, so `auto_complete_decider_entry` failed later with
+        # an opaque "requires exactly one available item" instead of naming
+        # the actual cause here, at round-creation time.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Round {next_round} of the {pick_ban.kind.value} pick-ban has only {len(candidates)} "
+                f"candidate(s) left after no-repeat exclusion (needs >= {SLOT_CANDIDATE_FLOOR}) -- fix "
+                "this tournament's pick-ban config (slot candidates or no_repeat_scope)."
+            ),
+        )
 
     new_tokens = engine.resolve_sequence_tokens(
         build_slot_sequence([len(candidates)], rotation=FirstBanRotation.FIXED.value)

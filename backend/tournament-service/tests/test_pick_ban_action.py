@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
@@ -25,6 +26,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from src.services.encounter.pick_ban_action import (  # noqa: E402
     auto_complete_decider,
     auto_complete_decider_entry,
+    auto_resolve_timeout,
     serialize_pick_ban_session,
 )
 
@@ -217,6 +219,122 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
+
+
+class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
+    """``auto_resolve_timeout`` stands in for a captain who let their turn
+    timer run out: it picks uniformly at random among every candidate the
+    step's action would otherwise accept, then chains into
+    ``auto_complete_decider`` the same way ``perform_pick_ban_action`` does."""
+
+    def _expired_pick_ban(self, sequence: list[str], *, timer: int | None = 30) -> SimpleNamespace:
+        return SimpleNamespace(
+            resolved_sequence_json=sequence,
+            status=MapVetoSessionStatus.ACTIVE.value,
+            turn_timer_seconds=timer,
+            current_step_started_at=datetime.now(UTC) - timedelta(seconds=(timer or 0) + 1),
+            config_id=None,
+        )
+
+    async def test_auto_bans_a_random_available_item_once_expired(self) -> None:
+        pick_ban = self._expired_pick_ban(["ban_home", "decider"])
+        pool = [make_entry(1), make_entry(2)]
+        session = _FakeAutoCompleteSession()
+
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(MapPoolEntryStatus.BANNED.value, entry.status)
+        self.assertEqual("home", entry.picked_by)
+        self.assertIn(entry.item_id, (1, 2))
+        # The ban leaves exactly one candidate, so the chained
+        # `auto_complete_decider` call resolves the round in the same pass.
+        survivor = next(e for e in pool if e.item_id != entry.item_id)
+        self.assertEqual(MapPoolEntryStatus.PICKED.value, survivor.status)
+        self.assertEqual(MapPickSide.DECIDER.value, survivor.picked_by)
+        self.assertEqual(MapVetoSessionStatus.COMPLETED.value, pick_ban.status)
+
+    async def test_not_yet_expired_is_a_no_op(self) -> None:
+        pick_ban = SimpleNamespace(
+            resolved_sequence_json=["ban_home", "decider"],
+            status=MapVetoSessionStatus.ACTIVE.value,
+            turn_timer_seconds=30,
+            current_step_started_at=datetime.now(UTC),
+            config_id=None,
+        )
+        pool = [make_entry(1), make_entry(2)]
+        session = _FakeAutoCompleteSession()
+
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+
+        self.assertIsNone(entry)
+        self.assertEqual(0, session.commits)
+        self.assertTrue(all(e.status == MapPoolEntryStatus.AVAILABLE.value for e in pool))
+
+    async def test_no_timer_configured_is_a_no_op(self) -> None:
+        pick_ban = SimpleNamespace(
+            resolved_sequence_json=["ban_home", "decider"],
+            status=MapVetoSessionStatus.ACTIVE.value,
+            turn_timer_seconds=None,
+            current_step_started_at=datetime.now(UTC) - timedelta(days=1),
+            config_id=None,
+        )
+        pool = [make_entry(1), make_entry(2)]
+        session = _FakeAutoCompleteSession()
+
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+
+        self.assertIsNone(entry)
+        self.assertEqual(0, session.commits)
+
+    async def test_inactive_session_is_a_no_op(self) -> None:
+        pick_ban = self._expired_pick_ban(["ban_home", "decider"])
+        pick_ban.status = MapVetoSessionStatus.COMPLETED.value
+        session = _FakeAutoCompleteSession()
+
+        entry = await auto_resolve_timeout(
+            session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=[make_entry(1), make_entry(2)]
+        )
+
+        self.assertIsNone(entry)
+        self.assertEqual(0, session.commits)
+
+    async def test_decider_step_is_out_of_scope(self) -> None:
+        """A decider has no captain to time out -- `auto_complete_decider`
+        owns it, unconditionally, not this function."""
+        pick_ban = self._expired_pick_ban(["decider"])
+        pool = [make_entry(1)]
+        session = _FakeAutoCompleteSession()
+
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+
+        self.assertIsNone(entry)
+        self.assertEqual(0, session.commits)
+        self.assertEqual(MapPoolEntryStatus.AVAILABLE.value, pool[0].status)
+
+    async def test_only_the_side_on_the_clock_is_picked(self) -> None:
+        pick_ban = self._expired_pick_ban(["ban_away", "ban_home", "decider"])
+        pool = [make_entry(1), make_entry(2), make_entry(3)]
+        session = _FakeAutoCompleteSession()
+
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+
+        self.assertIsNotNone(entry)
+        self.assertEqual("away", entry.picked_by)
+
+    async def test_skips_a_protected_candidate_when_banning(self) -> None:
+        pick_ban = self._expired_pick_ban(["protect_away", "ban_home", "decider"])
+        pool = [
+            make_entry(1, status=MapPoolEntryStatus.PROTECTED, protected_by=MapPickSide.AWAY),
+            make_entry(2),
+            make_entry(3),
+        ]
+        session = _FakeAutoCompleteSession()
+
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+
+        self.assertIsNotNone(entry)
+        self.assertIn(entry.item_id, (2, 3))
 
 
 class SerializePickBanSessionSlotReservesTests(TestCase):

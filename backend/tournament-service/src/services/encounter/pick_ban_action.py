@@ -10,7 +10,8 @@ Design: docs/plans/2026-08-09-generic-pickban-engine.md §5.3-§5.4.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+import random
 from typing import Any
 
 from sqlalchemy import select
@@ -34,12 +35,18 @@ async def _load_pool(session: AsyncSession, pick_ban_id: int) -> list[PickBanEnt
     return list(result.scalars().all())
 
 
-async def get_pick_ban_pool(session: AsyncSession, pick_ban_id: int, encounter_id: int, kind: PickBanKind) -> list[PickBanEntry]:
-    """Load the pool, resolving any pending decider step first — mirrors
-    ``map_veto.get_map_pool``'s side effect so every state read self-heals a
-    decider the same way ``perform_pick_ban_action`` does after an action."""
-    pool = await _load_pool(session, pick_ban_id)
-    await auto_complete_decider(session, encounter_id, kind, pool=pool)
+async def get_pick_ban_pool(
+    session: AsyncSession, pick_ban: PickBanSession, encounter_id: int, kind: PickBanKind
+) -> list[PickBanEntry]:
+    """Load the pool, resolving any pending timeout/decider step first —
+    mirrors ``map_veto.get_map_pool``'s side effect so every state read
+    self-heals a stalled turn the same way ``perform_pick_ban_action`` does
+    after an action. Timeout resolution runs first: the random pick it
+    applies can itself leave a decider current, which the following call
+    then resolves in the same read."""
+    pool = await _load_pool(session, pick_ban.id)
+    await auto_resolve_timeout(session, encounter_id, kind, pick_ban=pick_ban, pool=pool)
+    await auto_complete_decider(session, encounter_id, kind, pick_ban=pick_ban, pool=pool)
     return pool
 
 
@@ -111,6 +118,122 @@ async def auto_complete_decider(
     await session.commit()
     await session.refresh(entry)
     return entry
+
+
+async def auto_resolve_timeout(
+    session: AsyncSession,
+    encounter_id: int,
+    kind: PickBanKind,
+    *,
+    pick_ban: PickBanSession | None = None,
+    pool: list[PickBanEntry] | None = None,
+) -> PickBanEntry | None:
+    """Auto-resolve a captain step (ban/pick/protect) whose turn timer has
+    elapsed, standing in for a captain who never acted: picks uniformly at
+    random among every candidate that action would legally accept right now
+    (same eligibility ``apply_pick_ban_action`` enforces, attribute
+    uniqueness included) and applies it as if that side had chosen it.
+
+    Lazy and read-triggered, like ``auto_complete_decider`` — there is no
+    background scheduler, so a timed-out step only resolves the next time
+    someone reads this session's state or acts on it. A session with
+    ``turn_timer_seconds=None`` (no timer configured) or a fresh step
+    (``current_step_started_at=None``) never times out. A ``decider`` step
+    has no captain and is out of scope here; it already auto-resolves via
+    ``auto_complete_decider``, called right after this in
+    ``get_pick_ban_pool``/``perform_pick_ban_action``."""
+    if pick_ban is None:
+        pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
+    if pick_ban is None or pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
+        return None
+    if pick_ban.turn_timer_seconds is None or pick_ban.current_step_started_at is None:
+        return None
+
+    now = datetime.now(UTC)
+    deadline = pick_ban.current_step_started_at + timedelta(seconds=pick_ban.turn_timer_seconds)
+    if now < deadline:
+        return None
+
+    if pool is None:
+        pool = await _load_pool(session, pick_ban.id)
+
+    step = engine.get_current_step(pick_ban.resolved_sequence_json, pool)
+    if step is None:
+        return None
+    _, step_token = step
+    parsed = engine.parse_step_token(step_token)
+    if parsed.side is None:  # "decider" — no captain to time out
+        return None
+
+    active_round = engine.current_round(pool)
+    config = await session.get(PickBanConfig, pick_ban.config_id) if pick_ban.config_id else None
+    unique_attribute = config.unique_attribute_per_side_per_round if config is not None else None
+    attribute_lookup = (
+        await _attribute_lookup(session, kind, [e.item_id for e in pool]) if unique_attribute is not None else {}
+    )
+    committed = [
+        (e.picked_by or e.protected_by, e.round, attribute_lookup.get(e.item_id))
+        for e in pool
+        if e.status in (MapPoolEntryStatus.BANNED.value, MapPoolEntryStatus.PROTECTED.value)
+    ]
+
+    def eligible(entry: PickBanEntry) -> bool:
+        if not engine.in_current_round(entry, active_round):
+            return False
+        if parsed.action == "ban":
+            if not engine.is_entry_bannable(entry, active_round=active_round):
+                return False
+        elif entry.status != MapPoolEntryStatus.AVAILABLE.value:
+            return False
+        if (
+            parsed.action in ("ban", "protect")
+            and unique_attribute is not None
+            and engine.violates_unique_attribute(
+                candidate_attribute=attribute_lookup.get(entry.item_id),
+                acting_side=parsed.side,
+                round_number=active_round,
+                committed_this_round=committed,
+            )
+        ):
+            return False
+        return True
+
+    candidates = [entry for entry in pool if eligible(entry)]
+    if not candidates:
+        # No legal candidate for this side right now — a config/data
+        # invariant violation elsewhere (mirrors auto_complete_decider_entry's
+        # own floor check), not something a random pick can paper over. Leave
+        # the step as-is; it surfaces the same way it already would.
+        return None
+
+    chosen = random.choice(candidates)
+    entry = apply_pick_ban_action(
+        pick_ban,
+        pool,
+        captain_side=parsed.side,
+        item_id=chosen.item_id,
+        action=parsed.action,
+        attribute_lookup=attribute_lookup,
+        unique_attribute=unique_attribute,
+        now=now,
+    )
+    if parsed.action in ("ban", "protect") and config is not None and config.no_repeat_scope != "none":
+        session.add(
+            EncounterPickBanLedger(
+                encounter_id=encounter_id,
+                kind=kind,
+                item_id=chosen.item_id,
+                banned_by_side=parsed.side,
+                round=entry.round or 0,
+            )
+        )
+
+    register_map_veto_realtime_update(session, encounter_id, kind=kind.value)
+    await session.commit()
+    await session.refresh(entry)
+    await auto_complete_decider(session, encounter_id, kind, pick_ban=pick_ban, pool=pool)
+    return entry
+
 
 async def _attribute_lookup(session: AsyncSession, kind: PickBanKind, item_ids: list[int]) -> dict[int, Any]:
     """``{item_id: attribute_value}`` for the configured
@@ -247,7 +370,7 @@ async def get_pick_ban_state(
         reason = await pick_ban_session_service.unavailable_reason(session, encounter, kind)
         return build_unavailable_state(reason, readiness=readiness)
 
-    pool = await get_pick_ban_pool(session, pick_ban.id, encounter_id, kind)
+    pool = await get_pick_ban_pool(session, pick_ban, encounter_id, kind)
     return build_pick_ban_state(
         pick_ban.resolved_sequence_json, pool, viewer_side=viewer_side, pick_ban=pick_ban, readiness=readiness
     )

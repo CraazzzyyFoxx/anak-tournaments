@@ -25,6 +25,7 @@ os.environ.setdefault("CHALLONGE_API_KEY", "test")
 import sqlalchemy as sa  # noqa: E402
 
 from shared.core.enums import FirstBanRotation, MapVetoMode, PickBanKind  # noqa: E402
+from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.models.tournament.pick_ban import (  # noqa: E402
     EncounterPickBanLedger,
     EncounterReadiness,
@@ -35,6 +36,7 @@ from shared.models.tournament.pick_ban import (  # noqa: E402
 from shared.models.tournament.stage import Stage  # noqa: E402
 from src.services.encounter.pick_ban_session import (  # noqa: E402
     REASON_NOT_READY,
+    advance_to_next_round,
     both_sides_ready,
     ensure_pick_ban_session,
     get_pick_ban_session,
@@ -51,6 +53,7 @@ from src.services.encounter.veto_session import (  # noqa: E402
     REASON_SLOT_COUNT_MISMATCH,
     REASON_SLOT_UNDERFILLED,
     REASON_TEAMS_UNKNOWN,
+    SLOT_CANDIDATE_FLOOR,
 )
 
 
@@ -112,6 +115,9 @@ class _Result:
     def scalar_one_or_none(self) -> Any:
         return self._rows[0] if self._rows else None
 
+    def first(self) -> Any:
+        return self._rows[0] if self._rows else None
+
 
 class _FakeSession:
     """Just enough ``AsyncSession`` for ``ensure_pick_ban_session``,
@@ -128,6 +134,7 @@ class _FakeSession:
         existing: Any = None,
         pool_count: int = 0,
         readiness: frozenset[str] = frozenset({"home", "away"}),
+        ledger: list[Any] | None = None,
     ) -> None:
         self.config = config
         self.existing = existing
@@ -137,10 +144,19 @@ class _FakeSession:
         # logic unchanged; only tests that care about the gate pass a
         # narrower set.
         self.readiness = readiness
+        # `EncounterPickBanLedger` rows `advance_to_next_round` reads back to
+        # build a later round's candidate pool -- empty for every test that
+        # predates that call (round 1 never reads the ledger).
+        self.ledger = ledger or []
         self.added: list[Any] = []
         self.deletes: list[Any] = []
         self.commits = 0
         self.flushes = 0
+
+    async def get(self, model: Any, pk: Any) -> Any:
+        if model is PickBanConfig:
+            return self.config
+        raise AssertionError(f"unexpected get() model: {model}")
 
     async def execute(self, statement: Any) -> _Result:
         if isinstance(statement, sa.sql.dml.Delete):
@@ -167,6 +183,12 @@ class _FakeSession:
                 side = side_match.group(1)
                 return _Result([side] if side in self.readiness else [])
             return _Result(sorted(self.readiness))
+        if entity is PickBanEntry:
+            # `advance_to_next_round`'s idempotent-re-entry check -- every
+            # test predating that call expects "nothing appended yet".
+            return _Result([])
+        if entity is EncounterPickBanLedger:
+            return _Result(list(self.ledger))
         raise AssertionError(f"unexpected execute() entity: {entity}")
 
     async def scalar(self, statement: Any) -> Any:
@@ -509,3 +531,65 @@ class SyncAllPickBanSessionsAfterTeamChangeTests(IsolatedAsyncioTestCase):
         await sync_all_pick_ban_sessions_after_team_change(session, _encounter(best_of=3))
 
         self.assertEqual({"home": False, "away": False}, await get_readiness(session, 500))
+
+
+
+class AdvanceToNextRoundCandidateFloorTests(IsolatedAsyncioTestCase):
+    """``advance_to_next_round`` must not build a round whose no-repeat
+    -filtered candidate pool falls below ``SLOT_CANDIDATE_FLOOR``. Left
+    unguarded, that round's ``PickBanEntry`` rows come up short of what
+    ``build_slot_sequence`` assumed, and it crashes far later and far less
+    clearly, inside ``auto_complete_decider_entry`` on the room's very next
+    state read."""
+
+    def _pick_ban(self, config: SimpleNamespace) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=900,
+            encounter_id=500,
+            kind=PickBanKind.MAP,
+            config_id=config.id,
+            first_side="home",
+            resolved_sequence_json=["ban_home", "decider"],
+            awaiting_choice=False,
+            pending_loser_side=None,
+            status="active",
+            current_step_started_at=None,
+        )
+
+    async def test_raises_when_no_repeat_exclusion_depletes_the_next_round(self) -> None:
+        # Slot 2 offers the same two maps slot 1 did; round 1 banned one of
+        # them, and `no_repeat_scope=encounter` excludes that ban globally --
+        # leaving slot 2 only one candidate, below the floor of two.
+        config = _config(
+            mode=MapVetoMode.SLOTS,
+            rotation=FirstBanRotation.RESULT_WINNER_FIRST,
+            slots=[_slot(1, [11, 12]), _slot(2, [11, 12])],
+        )
+        config.no_repeat_scope = "encounter"
+        session = _FakeSession(config=config, ledger=[SimpleNamespace(item_id=11, banned_by_side="home")])
+        pick_ban = self._pick_ban(config)
+
+        with self.assertRaises(HTTPException) as ctx:
+            await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
+
+        self.assertEqual(422, ctx.exception.status_code)
+        self.assertIn(f"1 candidate(s) left after no-repeat exclusion (needs >= {SLOT_CANDIDATE_FLOOR})", ctx.exception.detail)
+        self.assertEqual(0, session.commits)
+
+    async def test_does_not_raise_once_the_pool_stays_at_the_floor(self) -> None:
+        # Same shape, but nothing has been banned yet -- both slot-2 maps are
+        # still candidates, so the round builds normally.
+        config = _config(
+            mode=MapVetoMode.SLOTS,
+            rotation=FirstBanRotation.RESULT_WINNER_FIRST,
+            slots=[_slot(1, [11, 12]), _slot(2, [21, 22])],
+        )
+        config.no_repeat_scope = "encounter"
+        session = _FakeSession(config=config, ledger=[SimpleNamespace(item_id=11, banned_by_side="home")])
+        pick_ban = self._pick_ban(config)
+
+        result = await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
+
+        self.assertIs(pick_ban, result)
+        self.assertEqual(2, len(session.pool_rows))
+        self.assertEqual(1, session.commits)

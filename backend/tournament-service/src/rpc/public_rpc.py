@@ -303,7 +303,7 @@ def register(broker: Any, logger: Any) -> None:
             pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, PickBanKind.MAP)
             if pick_ban is None:
                 return []
-            pool = await pick_ban_action_service.get_pick_ban_pool(session, pick_ban.id, encounter_id, PickBanKind.MAP)
+            pool = await pick_ban_action_service.get_pick_ban_pool(session, pick_ban, encounter_id, PickBanKind.MAP)
             return [_map_entry_from_pick_ban(pick_ban_action_service.serialize_pick_ban_entry(e)) for e in pool]
 
         return await _run(logger, op)
