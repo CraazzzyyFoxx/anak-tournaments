@@ -222,7 +222,7 @@ describe("readiness gate", () => {
     );
     await render();
 
-    const button = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.trim() === ROOM.ready.button);
+    const button = Array.from(document.body.querySelectorAll("button")).find((b) => b.textContent?.trim() === ROOM.ready.button);
     expect(button).toBeTruthy();
 
     await act(async () => {
@@ -243,7 +243,7 @@ describe("readiness gate", () => {
 
     expect(document.body.textContent).toContain(ROOM.ready.confirmed);
     expect(document.body.textContent).toContain(ROOM.ready.waitingOpponent);
-    const button = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.trim() === ROOM.ready.button);
+    const button = Array.from(document.body.querySelectorAll("button")).find((b) => b.textContent?.trim() === ROOM.ready.button);
     expect(button).toBeUndefined();
   });
 
@@ -252,7 +252,7 @@ describe("readiness gate", () => {
     mockStates(unavailableState("not_ready"), unavailableState("not_configured"));
     await render();
 
-    const button = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.trim() === ROOM.ready.button);
+    const button = Array.from(document.body.querySelectorAll("button")).find((b) => b.textContent?.trim() === ROOM.ready.button);
     expect(button).toBeUndefined();
   });
 });

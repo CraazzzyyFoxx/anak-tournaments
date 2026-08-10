@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Ban, Loader2, Shield, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -29,12 +29,14 @@ import {
   type PickBanSide,
   type PickBanUnavailableIcon,
 } from "@/components/pick-ban/pick-ban-model";
+import { PickBanCommandBar } from "@/components/pick-ban/PickBanCommandBar";
 import { PickBanGrid, type PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
 import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
 import { PregameAdminControls } from "./PregameAdminControls";
 import { PregameHero } from "./PregameHero";
+import { ReadinessModal } from "./ReadinessModal";
 
 interface PregameRoomProps {
   encounterId: number;
@@ -68,15 +70,23 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
 
   const mapKey = ["pregame-state", encounterId, "map"];
   const heroKey = ["pregame-state", encounterId, "hero"];
+  // Turn timeouts auto-resolve lazily server-side, the next time anyone
+  // reads this session's state (backend: `pick_ban_action.auto_resolve_timeout`)
+  // -- there's no push event for time simply elapsing on its own, so an
+  // active, unresolved session polls itself close to real time instead of
+  // waiting for the next manual action or page load to notice the clock
+  // ran out.
   const mapQuery = useQuery({
     queryKey: mapKey,
     queryFn: () => pickBanService.getPickBanState("map", encounterId),
     enabled,
+    refetchInterval: (query) => (query.state.data?.session != null && !query.state.data.is_complete ? 4000 : false),
   });
   const heroQuery = useQuery({
     queryKey: heroKey,
     queryFn: () => pickBanService.getPickBanState("hero", encounterId),
     enabled,
+    refetchInterval: (query) => (query.state.data?.session != null && !query.state.data.is_complete ? 4000 : false),
   });
   const encounterQuery = useQuery({
     queryKey: ["encounter-detail", encounterId],
@@ -204,20 +214,11 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   const waitingOnReadiness =
     !(readiness.home && readiness.away) && PHASE_ORDER.some((kind) => applicable(kind) && statesByKind[kind].reason === "not_ready");
 
-  if (waitingOnReadiness) {
-    return (
-      <ReadinessGate
-        encounterId={encounterId}
-        readiness={readiness}
-        viewerSide={viewerSide}
-        pending={readyMutation.isPending}
-        onReady={() => readyMutation.mutate()}
-      />
-    );
-  }
-
   // Map resolves first: stays the active phase until its session completes,
-  // or it never applied to this encounter to begin with.
+  // or it never applied to this encounter to begin with. Computed
+  // unconditionally -- the readiness-wait branch below renders this same
+  // header and phase list (with a null session) before any session exists,
+  // so the room opens immediately instead of waiting behind a full-page gate.
   const mapDone = !mapApplies || (mapState.session != null && mapState.is_complete);
   const activeKind: PickBanKind = mapApplies && !mapDone ? "map" : "hero";
   const activeState = statesByKind[activeKind];
@@ -226,6 +227,24 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
     applicable: true,
     done: kind === "map" ? mapDone : statesByKind[kind].session != null && statesByKind[kind].is_complete,
   }));
+
+  if (waitingOnReadiness) {
+    return (
+      <div className="flex flex-col gap-4">
+        <PregameHero encounter={encounter} session={activeState.session} activeKind={activeKind} phases={phases} />
+        <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]" aria-hidden>
+          <Skeleton className="h-72 w-full rounded-xl" />
+          <Skeleton className="h-72 w-full rounded-xl" />
+        </div>
+        <ReadinessModal
+          readiness={readiness}
+          viewerSide={viewerSide}
+          pending={readyMutation.isPending}
+          onReady={() => readyMutation.mutate()}
+        />
+      </div>
+    );
+  }
 
   if (activeState.session == null) {
     const copy = PICK_BAN_UNAVAILABLE_COPY[activeState.reason ?? "not_configured"];
@@ -240,8 +259,8 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <PregameHero encounter={encounter} state={activeState} session={activeState.session} activeKind={activeKind} phases={phases} />
+    <div className="flex flex-col gap-4 pb-32 sm:pb-28">
+      <PregameHero encounter={encounter} session={activeState.session} activeKind={activeKind} phases={phases} />
       <PickBanPanel
         key={activeKind}
         kind={activeKind}
@@ -296,14 +315,6 @@ function PickBanPanel({
   const sideName = (side: PickBanSide) =>
     side === "home" ? (encounter.home_team?.name ?? t("side.home")) : (encounter.away_team?.name ?? t("side.away"));
 
-  const turnBanner = state.is_complete
-    ? t("completedBanner")
-    : state.expected_action === "decider"
-      ? t("deciderResolving")
-      : state.turn_side && state.expected_action
-        ? t("turn", { side: sideName(state.turn_side), action: t(`action.${state.expected_action}`) })
-        : null;
-
   const captainAction: PickBanAction | null =
     state.viewer_can_act && state.allowed_actions.length > 0 ? state.allowed_actions[0] : null;
   const canSelect = isSessionActive(session) && !state.is_complete && (captainAction !== null || isAdmin);
@@ -317,16 +328,6 @@ function PickBanPanel({
 
   return (
     <>
-      {turnBanner ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/50 px-4 py-2.5 text-sm font-medium"
-        >
-          {turnBanner}
-        </div>
-      ) : null}
-
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]">
         <PickBanStepTimeline
           kind={kind}
@@ -349,17 +350,6 @@ function PickBanPanel({
             slotReserves={pickBanReserveMap(session)}
             onSelect={(itemId) => setSelectedItemId((current) => (current === itemId ? null : itemId))}
           />
-
-          {captainAction !== null && isSessionActive(session) && !state.is_complete ? (
-            <CaptainActionBar
-              action={captainAction}
-              selectedItemId={selectedItemId}
-              selectedItemName={selectedItemName}
-              pending={actionMutation.isPending}
-              onConfirm={(itemId) => actionMutation.mutate({ item_id: itemId, action: captainAction })}
-              onCancel={() => setSelectedItemId(null)}
-            />
-          ) : null}
 
           {isAdmin ? (
             <PregameAdminControls
@@ -394,6 +384,22 @@ function PickBanPanel({
         </div>
       </div>
 
+      {isSessionActive(session) ? (
+        <PickBanCommandBar
+          state={state}
+          session={session}
+          sideName={sideName}
+          captainAction={state.is_complete ? null : captainAction}
+          selectedItemId={selectedItemId}
+          selectedItemName={selectedItemName}
+          pending={actionMutation.isPending}
+          onConfirm={(itemId) => {
+            if (captainAction != null) actionMutation.mutate({ item_id: itemId, action: captainAction });
+          }}
+          onCancel={() => setSelectedItemId(null)}
+        />
+      ) : null}
+
       {kind === "map" && reportMapId != null && state.viewer_side != null ? (
         <MapReportDialog
           encounterId={encounterId}
@@ -415,104 +421,6 @@ function PickBanPanel({
         queryKey={queryKey}
       />
     </>
-  );
-}
-
-/** Two-step confirmation: select an item in the grid, then confirm the action here. */
-function CaptainActionBar({
-  action,
-  selectedItemId,
-  selectedItemName,
-  pending,
-  onConfirm,
-  onCancel,
-}: {
-  action: PickBanAction;
-  selectedItemId: number | null;
-  selectedItemName: string | null;
-  pending: boolean;
-  onConfirm: (itemId: number) => void;
-  onCancel: () => void;
-}) {
-  const t = useTranslations("pickBan.room");
-
-  const confirmLabel =
-    action === "ban"
-      ? t("captain.confirmBan", { item: selectedItemName ?? "—" })
-      : action === "protect"
-        ? t("captain.confirmProtect", { item: selectedItemName ?? "—" })
-        : t("captain.confirmPick", { item: selectedItemName ?? "—" });
-
-  return (
-    <section
-      aria-label={t("captain.yourTurn")}
-      className="flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--aqt-teal)]/45 bg-[color:var(--aqt-teal)]/8 px-4 py-3"
-    >
-      <span className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--aqt-teal)]">
-        {action === "ban" ? <Ban className="h-4 w-4" aria-hidden /> : null}
-        {action === "protect" ? <Shield className="h-4 w-4" aria-hidden /> : null}
-        {t("captain.yourTurn")}
-      </span>
-      <span className="text-sm text-[color:var(--aqt-fg-muted)]">{selectedItemName ?? t("captain.selectHint")}</span>
-      <div className="ml-auto flex items-center gap-2">
-        {selectedItemId != null ? (
-          <Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
-            {t("captain.cancel")}
-          </Button>
-        ) : null}
-        <Button
-          size="sm"
-          variant={action === "ban" ? "destructive" : "default"}
-          disabled={selectedItemId == null || pending}
-          onClick={() => {
-            if (selectedItemId != null) onConfirm(selectedItemId);
-          }}
-        >
-          {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
-          {pending ? t("captain.sending") : confirmLabel}
-        </Button>
-      </div>
-    </section>
-  );
-}
-
-function ReadinessGate({
-  encounterId,
-  readiness,
-  viewerSide,
-  pending,
-  onReady,
-}: {
-  encounterId: number;
-  readiness: { home: boolean; away: boolean };
-  viewerSide: "home" | "away" | null;
-  pending: boolean;
-  onReady: () => void;
-}) {
-  const t = useTranslations("pickBan.room");
-  const viewerReady = viewerSide != null && readiness[viewerSide];
-
-  return (
-    <EmptyRoomCard
-      icon={<ShieldAlert className="h-6 w-6 text-[color:var(--aqt-teal)]" aria-hidden />}
-      title={t("notReadyTitle")}
-      hint={t("notReadyHint")}
-      encounterId={encounterId}
-      action={
-        viewerSide != null ? (
-          viewerReady ? (
-            <span className="text-sm font-medium text-[color:var(--aqt-support)]">
-              {t("ready.confirmed")} · {t("ready.waitingOpponent")}
-            </span>
-          ) : (
-            <Button onClick={onReady} disabled={pending}>
-              {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
-              {pending ? t("ready.sending") : t("ready.button")}
-            </Button>
-          )
-        ) : null
-      }
-    />
   );
 }
 

@@ -8,10 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
-import type { PickBanKind, PickBanSession, PickBanState } from "@/types/tournament.types";
-
-import { turnDeadlineMs, type PickBanSide } from "@/components/pick-ban/pick-ban-model";
-import { PickBanCountdown } from "@/components/pick-ban/PickBanCountdown";
+import type { PickBanKind, PickBanSession } from "@/types/tournament.types";
 
 interface PregamePhaseStatus {
   kind: PickBanKind;
@@ -22,8 +19,8 @@ interface PregamePhaseStatus {
 
 interface PregameHeroProps {
   encounter: Encounter;
-  state: PickBanState;
-  session: PickBanSession;
+  /** Null before both captains are ready -- no session exists yet (see `ReadinessModal`). */
+  session: PickBanSession | null;
   activeKind: PickBanKind;
   /** Only rendered when both map and hero apply to this encounter. */
   phases: PregamePhaseStatus[];
@@ -37,14 +34,17 @@ const STATUS_CHIP_CLASSES: Record<PickBanSession["status"], string> = {
 
 /**
  * Shared header for the unified pre-game room. Sibling of the retired
- * `VetoHero`/`HeroBanHero` — one header for whichever phase (`activeKind`) is
- * currently open, plus a phase strip when the encounter configures BOTH
- * kinds (map veto normally resolves first; hero bans follow once it does).
+ * `VetoRoom`/`HeroBanRoom` headers, generalized to either kind.
+ *
+ * Renders with `session=null` while the room is open but waiting on captain
+ * readiness (`ReadinessModal` overlays this, rather than replacing it) --
+ * every session-derived piece (status chip, seeds, first-pick banner) is
+ * skipped in that state; the turn timer moved to `PickBanCommandBar`, which
+ * only ever renders once a session exists.
  */
-export function PregameHero({ encounter, state, session, activeKind, phases }: PregameHeroProps) {
+export function PregameHero({ encounter, session, activeKind, phases }: PregameHeroProps) {
   const t = useTranslations("pickBan.room");
-  const deadline = turnDeadlineMs(state);
-  const teamName = (side: PickBanSide) =>
+  const teamName = (side: "home" | "away") =>
     side === "home" ? (encounter.home_team?.name ?? t("side.home")) : (encounter.away_team?.name ?? t("side.away"));
 
   return (
@@ -59,25 +59,22 @@ export function PregameHero({ encounter, state, session, activeKind, phases }: P
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <h1 className="font-onest text-xl font-semibold tracking-[-0.01em]">{t("title")}</h1>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]",
-              STATUS_CHIP_CLASSES[session.status],
-            )}
-          >
-            {session.status === "active" ? (
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-teal)] animate-pulse motion-reduce:animate-none"
-                style={{ boxShadow: "0 0 8px var(--aqt-teal)" }}
-              />
-            ) : null}
-            {t(`statusChip.${session.status}`)}
-          </span>
-          {deadline != null && session.turn_timer_seconds != null ? (
-            <div className="ml-auto">
-              <PickBanCountdown deadline={deadline} totalSeconds={session.turn_timer_seconds} />
-            </div>
+          {session != null ? (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]",
+                STATUS_CHIP_CLASSES[session.status],
+              )}
+            >
+              {session.status === "active" ? (
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-teal)] animate-pulse motion-reduce:animate-none"
+                  style={{ boxShadow: "0 0 8px var(--aqt-teal)" }}
+                />
+              ) : null}
+              {t(`statusChip.${session.status}`)}
+            </span>
           ) : null}
         </div>
 
@@ -101,20 +98,20 @@ export function PregameHero({ encounter, state, session, activeKind, phases }: P
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <TeamBlock
             name={teamName("home")}
-            seed={session.home_seed}
+            seed={session?.home_seed ?? null}
             accentVar="--aqt-teal"
-            first={session.first_side === "home"}
+            first={session?.first_side === "home"}
           />
           <span className="font-onest text-lg font-semibold text-[color:var(--aqt-fg-faint)]">vs</span>
           <TeamBlock
             name={teamName("away")}
-            seed={session.away_seed}
+            seed={session?.away_seed ?? null}
             accentVar="--aqt-rose"
-            first={session.first_side === "away"}
+            first={session?.first_side === "away"}
           />
         </div>
 
-        {session.first_side ? (
+        {session?.first_side ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--aqt-fg-muted)]">
             <Flag className="h-4 w-4 text-[color:var(--aqt-teal)]" aria-hidden />
             <span>{t("firstBanner", { team: teamName(session.first_side) })}</span>

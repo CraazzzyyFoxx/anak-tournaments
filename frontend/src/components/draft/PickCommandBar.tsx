@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { OverlayBar } from "@/components/ui/overlay-bar";
 import { Button } from "@/components/ui/button";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -93,16 +94,9 @@ export function PickCommandBar({
 
   return (
     <>
-      <section
-        className={cn(
-          "fixed bottom-2 left-1/2 z-40 w-[min(1320px,94vw)] -translate-x-1/2 rounded-xl border bg-[color:var(--aqt-card)]/95 p-3 shadow-xl backdrop-blur transition-colors supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))]",
-          !isConnected
-            ? "border-[color:var(--aqt-warm)]/60"
-            : ready
-              ? "border-[color:var(--aqt-teal)]/60"
-              : "border-[color:var(--aqt-border-2)]"
-        )}
-        aria-label={t("pickCommand")}
+      <OverlayBar
+        tone={!isConnected ? "warn" : ready ? "active" : "neutral"}
+        ariaLabel={t("pickCommand")}
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           {/* `sm:contents` dissolves this mobile-only row so the wide layout keeps
@@ -163,7 +157,7 @@ export function PickCommandBar({
           </Button>
         </div>
         <p className="sr-only" aria-live="polite">{announcement}</p>
-      </section>
+      </OverlayBar>
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent>
           <DialogHeader>
