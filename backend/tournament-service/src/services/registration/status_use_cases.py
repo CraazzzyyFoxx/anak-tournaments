@@ -31,6 +31,7 @@ class CreateCustomStatus:
             name=payload.name,
             description=payload.description,
             excludes_from_balancer=payload.excludes_from_balancer,
+            excludes_from_ready=payload.excludes_from_ready,
         )
 
 
@@ -48,6 +49,7 @@ class UpdateCustomStatus:
             name=payload.name,
             description=payload.description,
             excludes_from_balancer=payload.excludes_from_balancer,
+            excludes_from_ready=payload.excludes_from_ready,
         )
 
 

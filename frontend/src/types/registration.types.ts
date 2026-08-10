@@ -310,4 +310,6 @@ export interface StatusMeta {
   description: string | null;
   /** Whether a registration currently holding this status counts as part of the balancer pool. */
   excludes_from_balancer: boolean;
+  /** Whether a registration currently holding this status is blocked from counting as "ready", independent of excludes_from_balancer. */
+  excludes_from_ready: boolean;
 }

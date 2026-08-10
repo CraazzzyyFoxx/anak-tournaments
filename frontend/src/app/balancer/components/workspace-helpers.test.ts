@@ -53,6 +53,7 @@ function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerR
     role_entries_json: [],
     is_flex: false,
     is_in_pool: true,
+    ready_blocked: false,
     admin_notes: null,
     ...overrides,
   };
@@ -85,7 +86,8 @@ function createStatusMeta(
   value: string,
   scope: StatusScope,
   name: string,
-  excludesFromBalancer = false
+  excludesFromBalancer = false,
+  excludesFromReady = false
 ): StatusMeta {
   return {
     value,
@@ -101,6 +103,7 @@ function createStatusMeta(
     name,
     description: null,
     excludes_from_balancer: excludesFromBalancer,
+    excludes_from_ready: excludesFromReady,
   };
 }
 
@@ -263,6 +266,31 @@ describe("getPlayerValidationIssues", () => {
     // Worst delta first: dps (Δ1200) before support (Δ1100).
     expect(deltaIssues.map((issue) => issue.role).join(",")).toBe("dps,support");
   });
+
+  it("flags a player blocked by a status-level ready gate even with fully ranked roles", () => {
+    const player = createPlayer({
+      role_entries_json: [
+        { role: "support", subtype: null, priority: 0, division_number: 12, rank_value: 900, is_active: true },
+      ],
+      ready_blocked: true,
+    });
+
+    const issues = getPlayerValidationIssues(player, null);
+
+    expect(issues.find((issue) => issue.code === "status_blocks_ready")).toBeDefined();
+  });
+
+  it("does not flag a player as ready-blocked by default", () => {
+    const player = createPlayer({
+      role_entries_json: [
+        { role: "support", subtype: null, priority: 0, division_number: 12, rank_value: 900, is_active: true },
+      ],
+    });
+
+    const issues = getPlayerValidationIssues(player, null);
+
+    expect(issues.find((issue) => issue.code === "status_blocks_ready")).toBeUndefined();
+  });
 });
 
 describe("pool lane helpers", () => {
@@ -410,6 +438,31 @@ describe("synthetic registration helpers", () => {
     });
 
     expect(isRegistrationIncludedInBalancer(registration)).toBe(false);
+  });
+
+  it("blocks Ready when the current custom status has excludes_from_ready set, without excluding the pool", () => {
+    const registration = createRegistration({
+      balancer_status: "injured",
+      balancer_status_meta: createStatusMeta("injured", "balancer", "Injured", false, true),
+      roles: [
+        {
+          role: "support",
+          subrole: null,
+          is_primary: true,
+          priority: 0,
+          rank_value: 900,
+          is_active: true,
+        },
+      ],
+    });
+
+    const player = createSyntheticPlayerFromRegistration(registration);
+
+    expect(player.is_in_pool).toBe(true);
+    expect(player.ready_blocked).toBe(true);
+    expect(
+      derivePoolLane({ player, issues: getPlayerValidationIssues(player, null) }),
+    ).toBe("needs_fix");
   });
 
   it("derives flex only when all roles are primary", () => {

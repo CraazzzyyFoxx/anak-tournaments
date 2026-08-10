@@ -327,6 +327,9 @@ class StatusMetaRead(BaseModel):
     # Whether a registration currently holding this status counts as part of
     # the balancer pool -- see shared.balancer_registration_statuses.StatusMeta.
     excludes_from_balancer: bool = False
+    # Whether a registration currently holding this status is blocked from
+    # counting as "ready", independent of excludes_from_balancer.
+    excludes_from_ready: bool = False
 
 
 class BalancerRegistrationStatusRead(BaseRead):
@@ -342,6 +345,7 @@ class BalancerRegistrationStatusRead(BaseRead):
     name: str
     description: str | None = None
     excludes_from_balancer: bool = False
+    excludes_from_ready: bool = False
 
 
 class BalancerRegistrationStatusCreate(BaseModel):
@@ -353,6 +357,9 @@ class BalancerRegistrationStatusCreate(BaseModel):
     # Only meaningful for scope == "balancer": whether a registration holding
     # this custom status counts as part of the balancer pool.
     excludes_from_balancer: bool = False
+    # Only meaningful for scope == "balancer": whether a registration holding
+    # this custom status is blocked from counting as "ready".
+    excludes_from_ready: bool = False
 
 
 class BalancerRegistrationStatusUpdate(BaseModel):
@@ -361,6 +368,7 @@ class BalancerRegistrationStatusUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     excludes_from_balancer: bool | None = None
+    excludes_from_ready: bool | None = None
 
 
 class BalancerRegistrationRead(BaseRead):

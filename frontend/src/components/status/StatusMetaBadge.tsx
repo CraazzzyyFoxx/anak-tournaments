@@ -47,6 +47,7 @@ export default function StatusMetaBadge({
     name: fallbackValue.replace(/_/g, " "),
     description: null,
     excludes_from_balancer: false,
+    excludes_from_ready: false,
   };
   const iconElement = createElement(getStatusIcon(resolvedMeta.icon_slug), {
     className: "size-3",

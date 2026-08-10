@@ -39,12 +39,17 @@ class StatusMeta(TypedDict):
     name: str
     description: str | None
     # Whether a registration currently holding this status counts as part of
-    # the balancer pool. Hardcoded for every builtin status (not_in_balancer /
-    # excluded = True, incomplete / ready = True... wait no) and
-    # workspace-configurable for custom balancer-scope statuses (see
-    # BalancerRegistrationStatus.excludes_from_balancer). Meaningless for
-    # registration-scope statuses -- always False there.
+    # the balancer pool. Hardcoded for every builtin status (True only for
+    # not_in_balancer/excluded) and workspace-configurable for custom
+    # balancer-scope statuses (see BalancerRegistrationStatus.excludes_from_balancer).
+    # Meaningless for registration-scope statuses -- always False there.
     excludes_from_balancer: bool
+    # Whether a registration currently holding this status is blocked from
+    # counting as "ready" (Ready lane/tab, run-balance eligibility),
+    # independent of excludes_from_balancer. Always False for builtins;
+    # workspace-configurable for custom balancer-scope statuses (see
+    # BalancerRegistrationStatus.excludes_from_ready).
+    excludes_from_ready: bool
 
 
 BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
@@ -63,6 +68,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Pending",
             "description": "Waiting for moderator review.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
         "approved": {
             "value": "approved",
@@ -78,6 +84,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Approved",
             "description": "Registration approved.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
         "rejected": {
             "value": "rejected",
@@ -93,6 +100,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Rejected",
             "description": "Registration rejected.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
         "withdrawn": {
             "value": "withdrawn",
@@ -108,6 +116,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Withdrawn",
             "description": "Registration withdrawn by participant or admin.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
         "banned": {
             "value": "banned",
@@ -123,6 +132,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Banned",
             "description": "Registration blocked.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
         "insufficient_data": {
             "value": "insufficient_data",
@@ -138,6 +148,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Incomplete",
             "description": "Registration data is incomplete.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
     },
     "balancer": {
@@ -155,6 +166,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Not Added",
             "description": "Registration has not been added to the balancer pool yet.",
             "excludes_from_balancer": True,
+            "excludes_from_ready": False,
         },
         "excluded": {
             "value": "excluded",
@@ -170,6 +182,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Excluded",
             "description": "Manually removed from the balancer pool after being added.",
             "excludes_from_balancer": True,
+            "excludes_from_ready": False,
         },
         "incomplete": {
             "value": "incomplete",
@@ -185,6 +198,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Incomplete",
             "description": "Registration needs role or rank fixes before balancing.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
         "ready": {
             "value": "ready",
@@ -200,6 +214,7 @@ BUILTIN_STATUS_META: dict[StatusScope, dict[str, StatusMeta]] = {
             "name": "Ready",
             "description": "Registration is ready for the balancer pool.",
             "excludes_from_balancer": False,
+            "excludes_from_ready": False,
         },
     },
 }
@@ -219,6 +234,7 @@ UNKNOWN_STATUS_META: dict[StatusScope, StatusMeta] = {
         "name": "Unknown",
         "description": "Unknown registration status.",
         "excludes_from_balancer": False,
+        "excludes_from_ready": False,
     },
     "balancer": {
         "value": "unknown",
@@ -234,6 +250,7 @@ UNKNOWN_STATUS_META: dict[StatusScope, StatusMeta] = {
         "name": "Unknown",
         "description": "Unknown balancer status.",
         "excludes_from_balancer": False,
+        "excludes_from_ready": False,
     },
 }
 
@@ -298,6 +315,8 @@ def build_status_meta_from_model(
 ) -> StatusMeta:
     is_builtin = status.kind == "builtin"
     is_override = is_builtin and status.workspace_id is not None
+    is_custom = status.kind == "custom"
+    builtin_meta = BUILTIN_STATUS_META.get(status.scope, {}).get(status.slug, {})
     return {
         "value": status.slug,
         "scope": status.scope,  # type: ignore[typeddict-item]
@@ -311,13 +330,16 @@ def build_status_meta_from_model(
         "icon_color": status.icon_color,
         "name": status.name,
         "description": status.description,
-        # Builtin rows never carry their own `excludes_from_balancer` -- that
-        # semantic is fixed in BUILTIN_STATUS_META and not editable via
-        # override (upsert_builtin_override never touches the column). Only a
-        # true custom balancer status (`kind == "custom"`) configures it.
+        # Builtin rows never carry their own exclusion semantics on the raw
+        # column -- both are fixed in BUILTIN_STATUS_META and not editable via
+        # override (upsert_builtin_override never touches either column).
+        # Only a true custom status (`kind == "custom"`) configures them.
         "excludes_from_balancer": bool(getattr(status, "excludes_from_balancer", False))
-        if status.kind == "custom"
-        else (BUILTIN_STATUS_META.get(status.scope, {}).get(status.slug, {}).get("excludes_from_balancer", False)),
+        if is_custom
+        else builtin_meta.get("excludes_from_balancer", False),
+        "excludes_from_ready": bool(getattr(status, "excludes_from_ready", False))
+        if is_custom
+        else builtin_meta.get("excludes_from_ready", False),
     }
 
 

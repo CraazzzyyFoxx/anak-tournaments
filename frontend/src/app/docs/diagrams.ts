@@ -943,6 +943,7 @@ export const domains: DiagramDomain[] = [
         string slug
         string name
         bool excludes_from_balancer "только scope=balancer; кастомный статус исключает из пула"
+        bool excludes_from_ready "только scope=balancer; кастомный статус блокирует Ready"
     }
     BAL_SHEET_FEED {
         int id PK

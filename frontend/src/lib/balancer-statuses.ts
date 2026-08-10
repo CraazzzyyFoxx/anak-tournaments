@@ -17,6 +17,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Pending",
       description: "Waiting for moderator review.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
     {
       value: "approved",
@@ -32,6 +33,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Approved",
       description: "Registration approved.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
     {
       value: "rejected",
@@ -47,6 +49,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Rejected",
       description: "Registration rejected.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
     {
       value: "withdrawn",
@@ -62,6 +65,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Withdrawn",
       description: "Registration withdrawn.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
     {
       value: "banned",
@@ -77,6 +81,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Banned",
       description: "Registration blocked.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
     {
       value: "insufficient_data",
@@ -92,6 +97,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Incomplete",
       description: "Registration data is incomplete.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
   ],
   balancer: [
@@ -109,6 +115,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Not Added",
       description: "Registration has not been added to the balancer pool yet.",
       excludes_from_balancer: true,
+      excludes_from_ready: false,
     },
     {
       value: "excluded",
@@ -124,6 +131,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Excluded",
       description: "Manually removed from the balancer pool after being added.",
       excludes_from_balancer: true,
+      excludes_from_ready: false,
     },
     {
       value: "incomplete",
@@ -139,6 +147,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Incomplete",
       description: "Registration needs rank or role fixes.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
     {
       value: "ready",
@@ -154,6 +163,7 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
       name: "Ready",
       description: "Registration is ready for balancer.",
       excludes_from_balancer: false,
+      excludes_from_ready: false,
     },
   ],
 };
@@ -182,11 +192,13 @@ export function mergeStatusOptions(
       icon_color: status.icon_color,
       name: status.name,
       description: status.description,
-      // Builtin overrides never carry their own pool-inclusion semantics --
-      // that's fixed by BUILTIN_STATUS_META, not admin-editable. Fall back to
+      // Builtin overrides never carry their own exclusion semantics -- both
+      // are fixed by BUILTIN_STATUS_META, not admin-editable. Fall back to
       // false only if the builtin slug is somehow unknown (defensive).
       excludes_from_balancer:
         BUILTIN_STATUS_META[scope].find((builtin) => builtin.value === status.slug)?.excludes_from_balancer ?? false,
+      excludes_from_ready:
+        BUILTIN_STATUS_META[scope].find((builtin) => builtin.value === status.slug)?.excludes_from_ready ?? false,
     }));
   const mergedSystem = BUILTIN_STATUS_META[scope].map((builtin) => {
     const override = systemOverrides.find((status) => status.value === builtin.value);
@@ -211,6 +223,7 @@ export function mergeStatusOptions(
         name: status.name,
         description: status.description,
         excludes_from_balancer: status.excludes_from_balancer,
+        excludes_from_ready: status.excludes_from_ready,
       })),
   };
 }

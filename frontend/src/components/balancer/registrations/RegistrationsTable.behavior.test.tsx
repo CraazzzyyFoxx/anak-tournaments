@@ -50,7 +50,12 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-function statusMeta(value: string, scope: "registration" | "balancer", excludesFromBalancer = false) {
+function statusMeta(
+  value: string,
+  scope: "registration" | "balancer",
+  excludesFromBalancer = false,
+  excludesFromReady = false
+) {
   return {
     value,
     scope,
@@ -64,7 +69,8 @@ function statusMeta(value: string, scope: "registration" | "balancer", excludesF
     icon_color: null,
     name: value,
     description: null,
-    excludes_from_balancer: excludesFromBalancer
+    excludes_from_balancer: excludesFromBalancer,
+    excludes_from_ready: excludesFromReady
   };
 }
 

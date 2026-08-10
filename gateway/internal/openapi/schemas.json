@@ -27016,6 +27016,11 @@
           "title": "Excludes From Balancer",
           "type": "boolean"
         },
+        "excludes_from_ready": {
+          "default": false,
+          "title": "Excludes From Ready",
+          "type": "boolean"
+        },
         "icon_color": {
           "anyOf": [
             {
@@ -27087,6 +27092,11 @@
         "excludes_from_balancer": {
           "default": false,
           "title": "Excludes From Balancer",
+          "type": "boolean"
+        },
+        "excludes_from_ready": {
+          "default": false,
+          "title": "Excludes From Ready",
           "type": "boolean"
         },
         "icon_color": {
@@ -27194,6 +27204,18 @@
           ],
           "default": null,
           "title": "Excludes From Balancer"
+        },
+        "excludes_from_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Excludes From Ready"
         },
         "icon_color": {
           "anyOf": [
@@ -36089,6 +36111,11 @@
         "excludes_from_balancer": {
           "default": false,
           "title": "Excludes From Balancer",
+          "type": "boolean"
+        },
+        "excludes_from_ready": {
+          "default": false,
+          "title": "Excludes From Ready",
           "type": "boolean"
         },
         "icon_color": {

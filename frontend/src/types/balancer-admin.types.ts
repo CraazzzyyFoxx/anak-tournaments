@@ -38,6 +38,8 @@ export interface BalancerPlayerRecord {
   role_entries_json: BalancerPlayerRoleEntry[];
   is_flex: boolean;
   is_in_pool: boolean;
+  /** True when the registration's current custom status has excludes_from_ready set -- blocks the "ready" lane regardless of role-rank completeness. */
+  ready_blocked: boolean;
   admin_notes: string | null;
 }
 
@@ -411,6 +413,8 @@ export interface BalancerCustomStatus {
   description: string | null;
   /** Only meaningful for scope === "balancer": whether a registration holding this status counts as part of the balancer pool. */
   excludes_from_balancer: boolean;
+  /** Only meaningful for scope === "balancer": whether a registration holding this status is blocked from counting as "ready", independent of excludes_from_balancer. */
+  excludes_from_ready: boolean;
   created_at: string;
   updated_at: string | null;
 }
@@ -422,6 +426,7 @@ export interface BalancerCustomStatusCreateInput {
   name: string;
   description?: string | null;
   excludes_from_balancer?: boolean;
+  excludes_from_ready?: boolean;
 }
 
 export interface BalancerCustomStatusUpdateInput {
@@ -430,6 +435,7 @@ export interface BalancerCustomStatusUpdateInput {
   name?: string | null;
   description?: string | null;
   excludes_from_balancer?: boolean | null;
+  excludes_from_ready?: boolean | null;
 }
 
 export interface AdminRegistration {

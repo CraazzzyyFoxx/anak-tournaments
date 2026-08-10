@@ -158,6 +158,7 @@ def serialize_status(
         # resolved StatusMeta uses, so a builtin-override row (e.g. a
         # workspace's re-skinned "excluded") still reports the true fixed value.
         excludes_from_balancer=build_status_meta_from_model(status_row)["excludes_from_balancer"],
+        excludes_from_ready=build_status_meta_from_model(status_row)["excludes_from_ready"],
         created_at=status_row.created_at,
         updated_at=status_row.updated_at,
     )

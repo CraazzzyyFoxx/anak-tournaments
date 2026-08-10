@@ -115,6 +115,15 @@ class BalancerRegistrationStatus(db.TimeStampIntegerMixin):
     excludes_from_balancer: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, server_default="false", default=False
     )
+    # Only meaningful for scope == "balancer" and kind == "custom": whether a
+    # registration currently holding this status is treated as blocked from
+    # the balancer pool's "ready" state, regardless of role-rank
+    # completeness -- forces the "Need Fix" lane and the frontend's
+    # exclude-from-run gate. Same non-editable-for-builtins rule as
+    # excludes_from_balancer.
+    excludes_from_ready: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, server_default="false", default=False
+    )
 
     workspace: Mapped[Workspace] = relationship()
 

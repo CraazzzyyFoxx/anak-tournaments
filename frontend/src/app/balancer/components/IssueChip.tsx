@@ -13,6 +13,9 @@ function staticLabel(issue: PlayerValidationIssue): string {
   if (issue.code === "missing_ranked_role") {
     return "No ranked roles";
   }
+  if (issue.code === "status_blocks_ready") {
+    return "Blocks Ready";
+  }
   return "Role mismatch";
 }
 

@@ -8,7 +8,8 @@ const createStatusMeta = (
   value: string,
   scope: StatusMeta["scope"],
   name: string,
-  excludesFromBalancer = false
+  excludesFromBalancer = false,
+  excludesFromReady = false
 ): StatusMeta => ({
   value,
   scope,
@@ -22,7 +23,8 @@ const createStatusMeta = (
   icon_color: null,
   name,
   description: null,
-  excludes_from_balancer: excludesFromBalancer
+  excludes_from_balancer: excludesFromBalancer,
+  excludes_from_ready: excludesFromReady
 });
 
 const createRegistration = (

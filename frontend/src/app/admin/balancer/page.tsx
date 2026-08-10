@@ -67,6 +67,7 @@ type StatusFormState = {
   name: string;
   description: string;
   excludes_from_balancer: boolean;
+  excludes_from_ready: boolean;
 };
 
 const EMPTY_FORM: StatusFormState = {
@@ -75,7 +76,8 @@ const EMPTY_FORM: StatusFormState = {
   icon_color: "",
   name: "",
   description: "",
-  excludes_from_balancer: false
+  excludes_from_balancer: false,
+  excludes_from_ready: false
 };
 
 const STATUS_COLOR_PRESETS = [
@@ -232,7 +234,8 @@ function StatusForm({
       icon_color: value.icon_color || null,
       name: value.name || "Preview",
       description: value.description || null,
-      excludes_from_balancer: value.excludes_from_balancer
+      excludes_from_balancer: value.excludes_from_balancer,
+      excludes_from_ready: value.excludes_from_ready
     }),
     [value]
   );
@@ -365,6 +368,23 @@ function StatusForm({
             id={`${fieldId}-excludes`}
             checked={value.excludes_from_balancer}
             onCheckedChange={(checked) => onChange({ ...value, excludes_from_balancer: checked })}
+          />
+        </div>
+      ) : null}
+      {value.scope === "balancer" && !isBuiltin ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+          <div className="space-y-0.5">
+            <Label htmlFor={`${fieldId}-blocks-ready`}>Blocks Ready</Label>
+            <p className="text-xs text-muted-foreground">
+              A registration holding this status never counts as ready for the balancer, even
+              once every role has a rank -- the same way the builtin &quot;Ready&quot; status is
+              always excluded from this.
+            </p>
+          </div>
+          <Switch
+            id={`${fieldId}-blocks-ready`}
+            checked={value.excludes_from_ready}
+            onCheckedChange={(checked) => onChange({ ...value, excludes_from_ready: checked })}
           />
         </div>
       ) : null}
@@ -505,7 +525,8 @@ export default function AdminBalancerPage() {
       icon_color: statusRow.icon_color ?? "",
       name: statusRow.name,
       description: statusRow.description ?? "",
-      excludes_from_balancer: statusRow.excludes_from_balancer
+      excludes_from_balancer: statusRow.excludes_from_balancer,
+      excludes_from_ready: statusRow.excludes_from_ready
     });
   };
 
@@ -521,7 +542,8 @@ export default function AdminBalancerPage() {
       icon_color: form.icon_color || null,
       name: form.name,
       description: form.description || null,
-      excludes_from_balancer: form.scope === "balancer" ? form.excludes_from_balancer : false
+      excludes_from_balancer: form.scope === "balancer" ? form.excludes_from_balancer : false,
+      excludes_from_ready: form.scope === "balancer" ? form.excludes_from_ready : false
     });
   };
 
@@ -552,7 +574,8 @@ export default function AdminBalancerPage() {
         icon_color: form.icon_color || null,
         name: form.name,
         description: form.description || null,
-        excludes_from_balancer: editingStatus.scope === "balancer" ? form.excludes_from_balancer : false
+        excludes_from_balancer: editingStatus.scope === "balancer" ? form.excludes_from_balancer : false,
+        excludes_from_ready: editingStatus.scope === "balancer" ? form.excludes_from_ready : false
       }
     });
   };
@@ -633,7 +656,8 @@ export default function AdminBalancerPage() {
                                     icon_color: statusRow.icon_color,
                                     name: statusRow.name,
                                     description: statusRow.description,
-                                    excludes_from_balancer: statusRow.excludes_from_balancer
+                                    excludes_from_balancer: statusRow.excludes_from_balancer,
+                                    excludes_from_ready: statusRow.excludes_from_ready
                                   }}
                                   fallbackValue={statusRow.slug}
                                 />
@@ -711,7 +735,8 @@ export default function AdminBalancerPage() {
                                       icon_color: statusRow.icon_color,
                                       name: statusRow.name,
                                       description: statusRow.description,
-                                      excludes_from_balancer: statusRow.excludes_from_balancer
+                                      excludes_from_balancer: statusRow.excludes_from_balancer,
+                                      excludes_from_ready: statusRow.excludes_from_ready
                                     }}
                                     fallbackValue={statusRow.slug}
                                   />
@@ -723,6 +748,11 @@ export default function AdminBalancerPage() {
                                     {statusRow.excludes_from_balancer ? (
                                       <span className="whitespace-nowrap rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-300">
                                         Excludes pool
+                                      </span>
+                                    ) : null}
+                                    {statusRow.excludes_from_ready ? (
+                                      <span className="whitespace-nowrap rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                                        Blocks ready
                                       </span>
                                     ) : null}
                                   </div>

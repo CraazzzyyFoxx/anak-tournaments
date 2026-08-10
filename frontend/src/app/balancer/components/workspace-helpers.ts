@@ -65,6 +65,10 @@ export type PlayerValidationIssue =
       owDivision: number | null;
       /** Absolute rank-point delta between the two. */
       delta: number;
+    }
+  | {
+      code: "status_blocks_ready";
+      message: string;
     };
 
 export type PlayerRankHistoryPreviewEntry = {
@@ -301,6 +305,13 @@ export function getPlayerValidationIssues(
     });
   }
 
+  if (player.ready_blocked) {
+    issues.push({
+      code: "status_blocks_ready",
+      message: "Current status blocks Ready"
+    });
+  }
+
   if (application) {
     const playerRoleCodes = getPlayerRoleCodes(player);
     const applicationRoleCodes = getApplicationRoleCodes(application);
@@ -490,6 +501,11 @@ export function isRegistrationIncludedInBalancer(registration: AdminRegistration
   return !registration.deleted_at && !registration.balancer_status_meta.excludes_from_balancer;
 }
 
+/** Whether the registration's current custom status blocks it from counting as "ready", independent of pool inclusion. */
+export function isRegistrationReadyBlocked(registration: AdminRegistration): boolean {
+  return registration.balancer_status_meta.excludes_from_ready;
+}
+
 export function isRegistrationAvailableForBalancer(registration: AdminRegistration): boolean {
   return registration.status === "approved" && !registration.deleted_at;
 }
@@ -607,6 +623,7 @@ export function createSyntheticPlayerFromRegistration(
         })),
     is_flex: isFlex,
     is_in_pool: isRegistrationIncludedInBalancer(registration),
+    ready_blocked: isRegistrationReadyBlocked(registration),
     admin_notes: registration.admin_notes
   };
 }
