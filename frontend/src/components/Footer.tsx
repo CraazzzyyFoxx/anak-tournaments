@@ -85,8 +85,22 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="mt-10 border-t border-border/60 pt-6 text-xs text-[color:var(--aqt-fg-faint)]">
-        {t("common.footer.copyright", { year, siteName: SITE_NAME })}
+      <div className="mt-10 flex flex-col gap-3 border-t border-border/60 pt-6 text-xs text-[color:var(--aqt-fg-faint)] sm:flex-row sm:items-center sm:justify-between">
+        <span>{t("common.footer.copyright", { year, siteName: SITE_NAME })}</span>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/terms"
+            className="transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            {t("legal.terms.title")}
+          </Link>
+          <Link
+            href="/privacy"
+            className="transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            {t("legal.privacy.title")}
+          </Link>
+        </div>
       </div>
     </footer>
   );
