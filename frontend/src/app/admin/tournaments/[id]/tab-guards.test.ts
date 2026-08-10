@@ -28,7 +28,7 @@ const ALL_PERMS = {
 
 describe("allowedTab", () => {
   // Table derived from the pre-T5 conditional tab render of [id]/page.tsx:
-  // settings ← canUpdateTournament, veto ← canUpdateEncounter,
+  // settings ← canUpdateTournament, pickBan ← canUpdateEncounter,
   // draft ← team_formation === "draft"; registration ← team.read (D16).
   test.each<[TabKey, boolean]>([
     ["overview", true],
@@ -37,7 +37,6 @@ describe("allowedTab", () => {
     ["matches", true],
     ["logs", true],
     ["settings", false],
-    ["veto", false],
     ["pickBan", false],
     ["registration", false],
     ["draft", false]
@@ -54,11 +53,6 @@ describe("allowedTab", () => {
   test("settings follows canUpdateTournament alone", () => {
     expect(allowedTab("settings", { ...NO_PERMS, canUpdateTournament: true })).toBe(true);
     expect(allowedTab("settings", { ...ALL_PERMS, canUpdateTournament: false })).toBe(false);
-  });
-
-  test("veto follows canUpdateEncounter alone", () => {
-    expect(allowedTab("veto", { ...NO_PERMS, canUpdateEncounter: true })).toBe(true);
-    expect(allowedTab("veto", { ...ALL_PERMS, canUpdateEncounter: false })).toBe(false);
   });
 
   test("pickBan follows canUpdateEncounter alone", () => {

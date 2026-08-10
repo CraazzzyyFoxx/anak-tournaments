@@ -25,7 +25,6 @@ from typing import Any
 
 import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
-from pydantic import BaseModel
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException

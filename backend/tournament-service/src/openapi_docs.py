@@ -325,26 +325,28 @@ DOCS: dict[str, dict] = {
         "summary": "Recalculate standings",
         "description": "Schedules a durable standings-recalculation job (202 Accepted) for the tournament; requires standing-update permission.",
     },
-    # ── bespoke: map veto ──────────────────────────────────────────────────
-    "rpc.tournament.admin_veto_config_list": {
-        "summary": "List veto configs",
-        "description": "Returns all map-veto configs of a tournament (cascade levels ordered tournament, stage, round); requires match-update permission on its workspace.",
-    },
-    "rpc.tournament.admin_veto_config_upsert": {
-        "summary": "Upsert veto config",
-        "description": "Creates or replaces the map-veto config for one cascade level (tournament, stage or stage+round) after validating the step sequence and map pool; requires match-update permission on its workspace.",
-    },
-    "rpc.tournament.admin_veto_config_delete": {
-        "summary": "Delete veto config",
-        "description": "Deletes a map-veto config by id (running sessions keep their snapshot); requires match-update permission on its workspace.",
-    },
+    # ── bespoke: map veto (live-session admin overrides; config CRUD moved to
+    # the generic pick-ban-configs topics below, kind=map) ──────────────────
     "rpc.tournament.admin_veto_session_reset": {
         "summary": "Reset veto session",
-        "description": "Drops an encounter's veto session and map pool, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
+        "description": "Drops an encounter's map pick-ban session and its entries, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
     },
     "rpc.tournament.admin_veto_act": {
         "summary": "Veto for a side",
         "description": "Performs a ban or pick on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
+    },
+    # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
+    "rpc.tournament.admin_pick_ban_config_list": {
+        "summary": "List pick-ban configs",
+        "description": "Returns all pick-ban configs of a tournament for both kinds (map, hero), cascade levels ordered kind, stage, round; requires match-update permission on its workspace.",
+    },
+    "rpc.tournament.admin_pick_ban_config_upsert": {
+        "summary": "Upsert pick-ban config",
+        "description": "Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the step sequence and item pool; requires match-update permission on its workspace.",
+    },
+    "rpc.tournament.admin_pick_ban_config_delete": {
+        "summary": "Delete pick-ban config",
+        "description": "Deletes a pick-ban config by id (running sessions keep their snapshot); requires match-update permission on its workspace.",
     },
     # ── bespoke: stage workflow ────────────────────────────────────────────
     "rpc.tournament.stage_progress": {

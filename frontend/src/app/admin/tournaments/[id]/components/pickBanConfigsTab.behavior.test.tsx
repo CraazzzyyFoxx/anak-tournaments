@@ -13,10 +13,11 @@
 //      to drift apart silently, and a hand-authored order was discarded by the
 //      engine without the organizer ever being told.
 //
-// Hero-kind only: the tab dropped its "Map" section (2026-08-10) — map pool
-// rules stay owned by the Map Veto tab's own `MapVetoConfig`, so this
-// component's hero-only fixtures below exercise the one kind it can still
-// create.
+// Map and hero kinds render as independent cards, sharing one editor and one
+// mutation pair: the map-kind coverage lives in its own describe block below
+// (2026-08-10, the map veto cutover onto this same PickBanConfig table) --
+// everything above it still exercises hero-kind fixtures, unaffected by the
+// second card's existence.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -38,6 +39,7 @@ const listConfigs = vi.fn();
 const upsertConfig = vi.fn();
 const deleteConfig = vi.fn();
 const getHeroes = vi.fn();
+const getMaps = vi.fn();
 
 vi.mock("@/services/pickBan.service", () => ({
   default: {
@@ -51,6 +53,10 @@ vi.mock("@/services/hero.service", () => ({
   default: { getAll: (...args: unknown[]) => getHeroes(...args) },
 }));
 
+vi.mock("@/services/map.service", () => ({
+  default: { getAll: (...args: unknown[]) => getMaps(...args) },
+}));
+
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() },
 }));
@@ -62,6 +68,13 @@ const HEROES = ["Tracer", "Genji", "Reinhardt", "Ana", "Lucio", "Sombra"].map((n
   image_path: `/heroes/${index + 1}.png`,
   type: "Damage",
   role: "damage",
+}));
+
+const MAPS = ["Busan", "King's Row", "Ilios", "Hollywood"].map((name, index) => ({
+  id: index + 1,
+  name,
+  image_path: `/maps/${index + 1}.png`,
+  gamemode: { name: index % 2 === 0 ? "Control" : "Hybrid" },
 }));
 
 const STAGES = [
@@ -141,6 +154,7 @@ async function settle(times = 12) {
 async function mount(configs: PickBanConfig[] = []) {
   listConfigs.mockResolvedValue({ configs });
   getHeroes.mockResolvedValue({ results: HEROES });
+  getMaps.mockResolvedValue({ results: MAPS });
 
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -350,5 +364,57 @@ describe("PickBanConfigsTab keeps a stored custom order", () => {
     expect(body.turn_timer_seconds).toBe(45);
     expect(body.no_repeat_scope).toBe("encounter");
     expect(body.first_ban_rotation).toBe("alternate");
+  });
+});
+
+describe("PickBanConfigsTab renders Map and Hero as two independent cards", () => {
+  it("offers both add-config buttons and an empty-state hint per kind", async () => {
+    await mount();
+
+    expect(only("Add map rules")).toBeTruthy();
+    expect(only("Add hero rules")).toBeTruthy();
+    expect(container.textContent).toContain("Without one, the map veto room stays closed");
+    expect(container.textContent).toContain("Without one, the hero ban room stays closed");
+  });
+
+  it("opening the map editor loads the map catalogue, not the hero one", async () => {
+    await mount();
+    editorHeading = "New map rules";
+    await click(only("Add map rules"));
+
+    expect(getMaps).toHaveBeenCalledTimes(1);
+    expect(getHeroes).not.toHaveBeenCalled();
+
+    await click(only("Add maps"));
+    expect(option("Busan")).toBeTruthy();
+  });
+
+  it("sends kind=map with map item ids on save", async () => {
+    await mount();
+    editorHeading = "New map rules";
+    await click(only("Add map rules"));
+    await click(only("Add maps"));
+    await click(option("Ilios"));
+    await click(option("Busan"));
+    await click(only("Save rules"));
+
+    expect(upsertConfig).toHaveBeenCalledTimes(1);
+    const [tournamentId, body] = upsertConfig.mock.calls[0];
+    expect(tournamentId).toBe(84);
+    expect(body.kind).toBe("map");
+    expect(body.item_ids).toEqual([3, 1]);
+  });
+
+  it("only one editor is open at a time, closing the other kind's when a new one opens", async () => {
+    await mount();
+    editorHeading = "New map rules";
+    await click(only("Add map rules"));
+    expect(editor()).toBeTruthy();
+
+    editorHeading = "New hero rules";
+    await click(only("Add hero rules"));
+    expect(editor()).toBeTruthy();
+    // The map editor is gone -- there is exactly one "Save rules" button, not two.
+    expect(byName("Save rules")).toHaveLength(1);
   });
 });

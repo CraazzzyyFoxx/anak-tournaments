@@ -55,6 +55,7 @@ import { Switch } from "@/components/ui/switch";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import heroService from "@/services/hero.service";
+import mapService from "@/services/map.service";
 import pickBanService from "@/services/pickBan.service";
 import type {
   MapVetoMode,
@@ -1170,6 +1171,77 @@ function ConfigEditor({
  * for the three wire fields it deliberately does not expose raw. Design:
  * docs/plans/2026-08-09-generic-pickban-engine.md.
  */
+function KindSection({
+  kind,
+  configs,
+  canManage,
+  describeScope,
+  isPending,
+  addLabel,
+  noConfigsHint,
+  draft,
+  editorProps,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  kind: PickBanKind;
+  configs: PickBanConfig[];
+  canManage: boolean;
+  describeScope: (config: Pick<PickBanConfig, "stage_id" | "round">) => string;
+  isPending: boolean;
+  addLabel: string;
+  noConfigsHint: string;
+  draft: PickBanDraft | null;
+  editorProps: Omit<Parameters<typeof ConfigEditor>[0], "draft"> | null;
+  onAdd: () => void;
+  onEdit: (config: PickBanConfig) => void;
+  onDelete: (config: PickBanConfig) => void;
+}) {
+  const t = useTranslations("pickBan.admin");
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+        <CardTitle className="text-base">{t(kind === "map" ? "kindMap" : "kindHero")}</CardTitle>
+        {canManage ? (
+          <Button type="button" size="sm" variant="outline" onClick={onAdd}>
+            <Plus aria-hidden className="me-2 size-4" />
+            {addLabel}
+          </Button>
+        ) : null}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {isPending ? (
+          <>
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </>
+        ) : configs.length === 0 ? (
+          <div className="flex flex-col gap-1 py-2">
+            <p className="font-medium">{t("noConfigs")}</p>
+            <p className="text-muted-foreground text-sm">{noConfigsHint}</p>
+          </div>
+        ) : (
+          configs.map((config) => (
+            <ConfigRow
+              key={config.id}
+              config={config}
+              scopeLabel={describeScope(config)}
+              canManage={canManage}
+              onEdit={() => onEdit(config)}
+              onDelete={() => onDelete(config)}
+            />
+          ))
+        )}
+
+        {draft != null && draft.kind === kind && editorProps != null ? (
+          <ConfigEditor draft={draft} {...editorProps} />
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function PickBanConfigsTab({
   tournamentId,
   stages,
@@ -1188,27 +1260,37 @@ export function PickBanConfigsTab({
   const [draft, setDraft] = useState<PickBanDraft | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PickBanConfig | null>(null);
 
-  // Only needed once an editor is open. Map pool configuration stays owned by
-  // the Map Veto tab (MapVetoConfig) -- this tab only ever creates kind=hero
-  // configs, so there is one catalogue to load, not two.
+  // Only needed once an editor is open for that kind: one catalogue query per
+  // kind, both gated on the currently open draft so an idle tab loads neither.
+  const mapsQuery = useQuery({
+    queryKey: ["maps", "all", "gamemode"],
+    queryFn: () => mapService.getAll({ perPage: -1, sort: "name", order: "asc", entities: ["gamemode"] }),
+    enabled: draft?.kind === "map",
+  });
   const heroesQuery = useQuery({
     queryKey: ["heroes", "all"],
     queryFn: () => heroService.getAll({ perPage: -1, sort: "name", order: "asc" }),
-    enabled: draft != null,
+    enabled: draft?.kind === "hero",
   });
 
-  const catalogue = useMemo<ItemOption[]>(
-    () =>
-      (heroesQuery.data?.results ?? []).map((hero) => ({
-        id: hero.id,
-        name: hero.name,
-        group: hero.type ?? hero.role ?? null,
-        imageSrc: hero.image_path ?? null,
-      })),
-    [heroesQuery.data],
-  );
+  const catalogue = useMemo<ItemOption[]>(() => {
+    if (draft?.kind === "map") {
+      return (mapsQuery.data?.results ?? []).map((map) => ({
+        id: map.id,
+        name: map.name,
+        group: map.gamemode?.name ?? null,
+        imageSrc: map.image_path ?? null,
+      }));
+    }
+    return (heroesQuery.data?.results ?? []).map((hero) => ({
+      id: hero.id,
+      name: hero.name,
+      group: hero.type ?? hero.role ?? null,
+      imageSrc: hero.image_path ?? null,
+    }));
+  }, [draft?.kind, mapsQuery.data, heroesQuery.data]);
 
-  const catalogueLoading = heroesQuery.isPending;
+  const catalogueLoading = draft?.kind === "map" ? mapsQuery.isPending : heroesQuery.isPending;
 
   const configs = useMemo(() => configsQuery.data?.configs ?? [], [configsQuery.data]);
   const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
@@ -1249,6 +1331,23 @@ export function PickBanConfigsTab({
     return byKind;
   }, [configs]);
 
+  const editorProps = {
+    configs,
+    stages,
+    encounters,
+    catalogue,
+    catalogueLoading,
+    isSaving: upsertMutation.isPending,
+    onChange: setDraft,
+    onSave: () =>
+      draft != null &&
+      upsertMutation.mutate({
+        draft,
+        seriesLength: resolveSeriesLength(draft.stageId, draft.round, stages, encounters).bestOf,
+      }),
+    onCancel: () => setDraft(null),
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1.5">
@@ -1269,61 +1368,35 @@ export function PickBanConfigsTab({
         </Alert>
       ) : null}
 
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-base">{t("kindHero")}</CardTitle>
-          {canManage ? (
-            <Button type="button" size="sm" variant="outline" onClick={() => setDraft(emptyPickBanDraft("hero"))}>
-              <Plus aria-hidden className="me-2 size-4" />
-              {t("addHeroConfig")}
-            </Button>
-          ) : null}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {configsQuery.isPending ? (
-            <>
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </>
-          ) : configsByKind.hero.length === 0 ? (
-            <div className="flex flex-col gap-1 py-2">
-              <p className="font-medium">{t("noConfigs")}</p>
-              <p className="text-muted-foreground text-sm">{t("noConfigsHeroHint")}</p>
-            </div>
-          ) : (
-            configsByKind.hero.map((config) => (
-              <ConfigRow
-                key={config.id}
-                config={config}
-                scopeLabel={describeScope(config)}
-                canManage={canManage}
-                onEdit={() => setDraft(pickBanDraftFromConfig(config))}
-                onDelete={() => setDeleteTarget(config)}
-              />
-            ))
-          )}
+      <KindSection
+        kind="map"
+        configs={configsByKind.map}
+        canManage={canManage}
+        describeScope={describeScope}
+        isPending={configsQuery.isPending}
+        addLabel={t("addMapConfig")}
+        noConfigsHint={t("noConfigsMapHint")}
+        draft={draft}
+        editorProps={editorProps}
+        onAdd={() => setDraft(emptyPickBanDraft("map"))}
+        onEdit={(config) => setDraft(pickBanDraftFromConfig(config))}
+        onDelete={setDeleteTarget}
+      />
 
-          {draft != null ? (
-            <ConfigEditor
-              draft={draft}
-              configs={configs}
-              stages={stages}
-              encounters={encounters}
-              catalogue={catalogue}
-              catalogueLoading={catalogueLoading}
-              isSaving={upsertMutation.isPending}
-              onChange={setDraft}
-              onSave={() =>
-                upsertMutation.mutate({
-                  draft,
-                  seriesLength: resolveSeriesLength(draft.stageId, draft.round, stages, encounters).bestOf,
-                })
-              }
-              onCancel={() => setDraft(null)}
-            />
-          ) : null}
-        </CardContent>
-      </Card>
+      <KindSection
+        kind="hero"
+        configs={configsByKind.hero}
+        canManage={canManage}
+        describeScope={describeScope}
+        isPending={configsQuery.isPending}
+        addLabel={t("addHeroConfig")}
+        noConfigsHint={t("noConfigsHeroHint")}
+        draft={draft}
+        editorProps={editorProps}
+        onAdd={() => setDraft(emptyPickBanDraft("hero"))}
+        onEdit={(config) => setDraft(pickBanDraftFromConfig(config))}
+        onDelete={setDeleteTarget}
+      />
 
       <DeleteConfirmDialog
         open={deleteTarget != null}

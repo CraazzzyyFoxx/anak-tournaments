@@ -446,8 +446,7 @@ async def resolve_config(session: AsyncSession, encounter: models.Encounter) -> 
 
     Loads ``map_pool`` and deliberately NOT the slot chain, which is why it is
     the one ``selectinload(MapVetoConfig.map_pool)`` site in the codebase with no
-    ``slots`` beside it. Every consumer -- ``ensure_veto_session``,
-    ``unavailable_reason`` and ``admin_misc._require_flat_veto`` -- reads
+    ``slots`` beside it. Every consumer -- ``ensure_veto_session`` and ``unavailable_reason`` -- reads
     only columns off the config (``id``, ``mode``, ``preset``,
     ``first_ban_rotation``, ``turn_timer_seconds``, ``veto_sequence_json``) plus
     this ``map_pool``; the slot rows they need arrive from ``load_slot_rows``,

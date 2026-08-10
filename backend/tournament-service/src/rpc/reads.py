@@ -22,7 +22,7 @@ from shared.rpc.query import build_query_model
 from shared.services.division_grid_access import build_workspace_division_grid_normalizer
 from shared.services.division_grid_normalization import DivisionGridNormalizationError
 from shared.services.tournament_visibility import assert_tournament_viewable
-from src import models, schemas
+from src import schemas
 from src.core.workspace import get_division_grid
 from src.rpc._helpers import _bool, _q, _q1, _read, _require_id
 from src.services import visibility_resolvers

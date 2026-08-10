@@ -13,7 +13,6 @@ export const TAB_KEYS = [
   "matches",
   "settings",
   "draft",
-  "veto",
   "pickBan",
   "logs"
 ] as const;
@@ -36,7 +35,6 @@ export function allowedTab(
   switch (tab) {
     case "settings":
       return p.canUpdateTournament;
-    case "veto":
     case "pickBan":
       return p.canUpdateEncounter;
     case "registration":

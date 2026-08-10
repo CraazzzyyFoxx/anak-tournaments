@@ -1043,8 +1043,8 @@ class EnsureVetoSessionFlatModeTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(veto)
 
     async def test_an_existing_pool_is_never_overwritten_by_the_config(self) -> None:
-        # The admin pool escape hatch's whole point, and the mechanism both halves
-        # of ``admin_misc._require_flat_veto``'s docstring rest on: a pool that
+        # The admin pool escape hatch's whole point, and the mechanism its
+        # docstring rested on: a pool that
         # already exists is left alone, so a slot-mode config would size a
         # sequence for slots while the pool stayed the admin's. Slot mode can no
         # longer reach this state (that route 409s), which is why the coverage

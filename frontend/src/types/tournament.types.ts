@@ -306,46 +306,6 @@ export interface MapVetoConfig {
   slots: MapVetoConfigSlot[];
 }
 
-/**
- * One slot of a slot-mode upsert. Deliberately carries no `position`, unlike
- * `MapVetoConfigSlot`: the list order IS the play order and the server derives
- * the positions from it.
- */
-export interface MapVetoConfigSlotUpsertInput {
-  candidates: number[];
-  reserve_map_id?: number | null;
-}
-
-export interface MapVetoConfigUpsertInput {
-  stage_id?: number | null;
-  round?: number | null;
-  /**
-   * Required by the server with no default: the upsert replaces the pool
-   * wholesale, so a default would let a stale tab convert a slot config to flat
-   * and orphan its slot rows.
-   */
-  mode: MapVetoMode;
-  preset?: VetoPreset | null;
-  /**
-   * Slot mode only. Optional because the server defaults it to `"fixed"`, which
-   * is exactly the trap: omitting it on an edit rewrites an `"alternate"`
-   * config back to `"fixed"` with no error. Any editor that renders slot mode
-   * must send it on every save.
-   */
-  first_ban_rotation?: FirstBanRotation;
-  turn_timer_seconds?: number | null;
-  /** Must be `[]` in `"slots"` mode; the server 422s a non-empty list. */
-  sequence: VetoSequenceToken[];
-  /** Must be `[]` in `"slots"` mode; the server 422s a non-empty list. */
-  map_ids: number[];
-  /**
-   * Slot mode only; the server 422s a non-empty list in `"pool"` mode. Optional
-   * where `sequence` and `map_ids` are required, so that a pool-only caller
-   * that predates slot mode still compiles; all three default to `[]`
-   * server-side.
-   */
-  slots?: MapVetoConfigSlotUpsertInput[];
-}
 
 export interface OwalStandingDay {
   tournament: Tournament;
