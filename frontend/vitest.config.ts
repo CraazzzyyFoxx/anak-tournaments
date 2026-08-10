@@ -5,7 +5,21 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url))
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // `react-resizable-panels` conditionally exports a stripped-down
+      // "edge-light" build under the `node` condition (no layout effects — it
+      // targets edge runtimes without a DOM). Node's own module resolution
+      // picks that condition once the package is externalized/required by
+      // Vitest, even under `@vitest-environment happy-dom`, so every
+      // imperative call (`collapse()`/`resize()`) throws "Panel size not
+      // found". Alias straight to the real browser build, matching what
+      // Next.js's client bundler resolves in production.
+      "react-resizable-panels": fileURLToPath(
+        new URL(
+          "./node_modules/react-resizable-panels/dist/react-resizable-panels.browser.development.js",
+          import.meta.url
+        )
+      )
     },
     dedupe: ["react", "react-dom"]
   },
@@ -76,6 +90,7 @@ export default defineConfig({
       "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",
       "src/components/ui/toggle-group.test.tsx",
+      "src/components/ui/resizable.test.tsx",
       "src/components/status/**/*.test.tsx",
       // File-level, not a directory glob: this folder holds BOTH runners'
       // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
