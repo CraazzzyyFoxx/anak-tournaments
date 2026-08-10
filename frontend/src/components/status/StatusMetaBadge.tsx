@@ -67,13 +67,13 @@ export default function StatusMetaBadge({
       title={resolvedMeta.description ?? resolvedMeta.name}
       style={tintedStyle}
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-none",
         STATUS_TONE_PILL[getFallbackTone(resolvedMeta.scope, resolvedMeta.value)],
         compact && "px-1.5",
         className,
       )}
     >
-      {iconElement}
+      <span className="inline-flex shrink-0 items-center justify-center">{iconElement}</span>
       {resolvedMeta.name}
     </span>
   );
