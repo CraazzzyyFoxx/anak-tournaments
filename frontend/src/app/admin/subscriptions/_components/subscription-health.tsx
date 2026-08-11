@@ -11,6 +11,7 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { SubscriptionCollectionStats } from "@/types/admin.types";
 
 import {
@@ -65,9 +66,12 @@ export function SubscriptionHealthDashboard() {
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
   const isSuperuser = user?.isSuperuser ?? false;
+  // The stats are scoped to the workspace `apiFetch` injects, so it belongs in
+  // the key — otherwise switching workspace serves the previous tenant's cache.
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const statsQuery = useQuery({
-    queryKey: ["admin", "subscriptions", "stats"],
+    queryKey: ["admin", "subscriptions", "stats", workspaceId],
     queryFn: () => adminService.getSubscriptionCollectionStats(),
     refetchInterval: 10000
   });

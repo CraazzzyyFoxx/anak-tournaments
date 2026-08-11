@@ -430,14 +430,11 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _envelope_and_invalidate(logger, "users.avatar_delete", op, data)
 
-    # ── CSV / Google-Sheets bulk import (admin role) ──────────────────────────
+    # ── CSV / Google-Sheets bulk import (user.create) ─────────────────────────
     @broker.subscriber("rpc.app.users.csv_import")
     async def _csv_import(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            user = c.actor(data)
-            c.require_active(user)
-            if not user.has_role("admin"):
-                raise HTTPException(status_code=403, detail="Role required: admin")
+            _gate(data, "create")
 
             content_b64 = data.get("content_b64")
             sheet_url = c.q1(data, "sheet_url") or data.get("sheet_url")

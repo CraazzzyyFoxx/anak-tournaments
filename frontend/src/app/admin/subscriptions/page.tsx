@@ -36,7 +36,9 @@ const REALTIME_REFRESH_DEBOUNCE_MS = 500;
 
 export default function SubscriptionCollectionAdminPage() {
   // Mirrors /admin/rank: the collector's global config stays superuser-only, while
-  // health, history and per-player inspection are open to admins.
+  // health, history and per-player inspection are gated on `subscription.read` and
+  // scoped to the active workspace (see `admin.service.ts`) — which is what lets a
+  // workspace owner/admin open the tab at all instead of 403ing on a global role.
   const { isSuperuser, canAccessPermission } = usePermissions();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   // The provider-config RPCs behind this tab are gated on team.read/team.update
@@ -88,7 +90,7 @@ export default function SubscriptionCollectionAdminPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Subscription collection"
-        description="Boosty and Twitch subscription check health, live check history and per-player inspection."
+        description="Boosty and Twitch subscription check health, live check history and per-player inspection, scoped to the active workspace."
         actions={<SubscriptionPlayerSearch onSelect={openPlayer} />}
       />
 

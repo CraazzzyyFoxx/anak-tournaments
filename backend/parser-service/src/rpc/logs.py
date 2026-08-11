@@ -324,14 +324,15 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.parser.logs.process_tournament")
     async def _process_tournament(data: dict, msg: RabbitMessage) -> dict:
-        # POST /logs/{tournament_id} — router dep require_role_or_service_scope("admin","parser:logs");
-        # the gateway path is the admin user (role "admin"); the bot path moves to RabbitMQ.
+        # POST /logs/{tournament_id} — tournament-scoped log.update (the HTTP route
+        # gated on the admin role); the bot path moves to RabbitMQ.
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            if not user.has_role("admin"):
-                raise HTTPException(status_code=403, detail="Role required: admin")
             tournament_id = c.require_id(data)
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="log", action="update"
+            )
             tournament = await tournament_flows.get(session, tournament_id, [])
             event = ProcessTournamentLogsEvent(tournament_id=tournament.id)
             await publish_message(broker, event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE, logger=logger)

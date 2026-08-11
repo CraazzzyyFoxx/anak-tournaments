@@ -14,6 +14,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import {
   PROVIDER_LABELS,
@@ -45,9 +46,12 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
   const [state, setState] = useState("all");
   const [source, setSource] = useState("all");
   const [provider, setProvider] = useState("all");
+  // Rows come back scoped to the workspace `apiFetch` injects — key on it so a
+  // workspace switch refetches instead of showing the previous tenant's history.
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const query = useQuery({
-    queryKey: ["admin", "subscriptions", "check-log", state, source, provider],
+    queryKey: ["admin", "subscriptions", "check-log", workspaceId, state, source, provider],
     queryFn: () =>
       adminService.getSubscriptionCheckLog({
         state: state === "all" ? undefined : state,

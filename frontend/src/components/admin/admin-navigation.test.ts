@@ -128,9 +128,21 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
     expect(aliases).toEqual([...new Set(aliases)]);
   });
 
-  it("gates /admin/rank by user.read instead of the broad admin entry", () => {
-    expect(getMatchingAdminRoute("/admin/rank")?.permissions).toEqual(["user.read"]);
-    expect(getMatchingAdminRoute("/admin/rank/anything")?.permissions).toEqual(["user.read"]);
+  it("gates /admin/rank by rank.read instead of the broad admin entry", () => {
+    expect(getMatchingAdminRoute("/admin/rank")?.permissions).toEqual(["rank.read"]);
+    expect(getMatchingAdminRoute("/admin/rank/anything")?.permissions).toEqual(["rank.read"]);
+  });
+
+  it("keeps /admin/users global-only — players are not workspace-scoped", () => {
+    // The backend gate demands a GLOBAL `user.<action>` grant, which a workspace
+    // owner never holds, so the page must stay out of their navigation.
+    expect(getMatchingAdminRoute("/admin/users")?.globalOnly).toBe(true);
+
+    const groups = getVisibleAdminNavigationGroups((item) => item.globalOnly !== true);
+    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
+
+    expect(hrefs).not.toContain("/admin/users");
+    expect(hrefs).toContain("/admin/rank");
   });
 
   it("gates /admin/match-reports by match.read, not by a neighbouring prefix", () => {

@@ -29,18 +29,23 @@ var Routes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/users/{id}/current-ranks", Queue: "rpc.parser.rank.user_current", IDParam: "id", Query: []string{"platform"}, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/battle-tags/{id}/rank-history", Queue: "rpc.parser.rank.battle_tag_history", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
 
-	// OverFast rank collection admin (src/routes/admin/rank_collection.py); admin role.
-	{Method: "GET", Pattern: "/api/v1/admin/rank/stats", Queue: "rpc.parser.rank.stats", Auth: edge.AuthRequired},
+	// OverFast rank collection admin (src/rpc/rank.py); rank.read / rank.update,
+	// where `workspace_id` is both the authorization scope and the data filter
+	// (rank rows reach a workspace through the tag's player) — so it must reach
+	// the handler on every one of these.
+	{Method: "GET", Pattern: "/api/v1/admin/rank/stats", Queue: "rpc.parser.rank.stats", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/rank/fetch-log", Queue: "rpc.parser.rank.fetch_log", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/admin/rank/users/{id}/collection", Queue: "rpc.parser.rank.user_collection", IDParam: "id", Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/rank/collect", Queue: "rpc.parser.rank.collect", Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/rank/reenable-disabled", Queue: "rpc.parser.rank.reenable_disabled", Body: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/rank/users/{id}/collection", Queue: "rpc.parser.rank.user_collection", IDParam: "id", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/rank/collect", Queue: "rpc.parser.rank.collect", Body: true, Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/rank/reenable-disabled", Queue: "rpc.parser.rank.reenable_disabled", Body: true, Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
 
-	// Subscription collection admin (src/rpc/subscription.py); admin role.
-	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/stats", Queue: "rpc.parser.subscription.stats", Auth: edge.AuthRequired},
+	// Subscription collection admin (src/rpc/subscription.py); subscription.read /
+	// subscription.update, where `workspace_id` is both the authorization scope and
+	// the data filter — so it must reach the handler on every one of these.
+	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/stats", Queue: "rpc.parser.subscription.stats", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/check-log", Queue: "rpc.parser.subscription.check_log", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/users/{id}/collection", Queue: "rpc.parser.subscription.user_collection", IDParam: "id", Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/subscriptions/collect", Queue: "rpc.parser.subscription.collect", Body: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/users/{id}/collection", Queue: "rpc.parser.subscription.user_collection", IDParam: "id", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/subscriptions/collect", Queue: "rpc.parser.subscription.collect", Body: true, Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
 
 	// Achievement calculate (src/routes/achievement.py); global admin role in the handler.
 	{Method: "POST", Pattern: "/api/v1/achievement/calculate", Queue: "rpc.parser.ach.calculate", Body: true, Auth: edge.AuthRequired},

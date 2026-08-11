@@ -35,41 +35,62 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def get_collection_stats(session: AsyncSession) -> dict[str, Any]:
+async def get_collection_stats(session: AsyncSession, *, workspace_id: int | None = None) -> dict[str, Any]:
     """Assemble the admin health dashboard: DB aggregates + current config echo.
 
     Aggregates deliberately parallel the rank dashboard: population size and its
     state mix, distinct-user coverage over 24h/7d, the last successful check, and
     the last-24h outcome mix with an error rate.
+
+    ``workspace_id`` narrows every aggregate to one tenant — the caller's
+    authorization scope (see ``rpc/subscription.py``). The config echo stays
+    global because the collector itself is: interval, batch size and the on/off
+    switch are one setting for the whole deployment.
     """
     ent = models.SubscriptionEntitlement
     log = models.SubscriptionCheckLog
     now = _now()
 
+    def _scoped(stmt: Any, column: Any) -> Any:
+        return stmt if workspace_id is None else stmt.where(column == workspace_id)
+
     by_state = {
         str(state): int(count)
-        for state, count in (await session.execute(sa.select(ent.state, sa.func.count()).group_by(ent.state))).all()
+        for state, count in (
+            await session.execute(_scoped(sa.select(ent.state, sa.func.count()), ent.workspace_id).group_by(ent.state))
+        ).all()
     }
     by_provider = {
         str(provider): int(count)
         for provider, count in (
-            await session.execute(sa.select(ent.provider, sa.func.count()).group_by(ent.provider))
+            await session.execute(
+                _scoped(sa.select(ent.provider, sa.func.count()), ent.workspace_id).group_by(ent.provider)
+            )
         ).all()
     }
-    total = int(await session.scalar(sa.select(sa.func.count()).select_from(ent)) or 0)
-    tracked_users = int(await session.scalar(sa.select(sa.func.count(sa.distinct(ent.auth_user_id)))) or 0)
+    total = int(await session.scalar(_scoped(sa.select(sa.func.count()).select_from(ent), ent.workspace_id)) or 0)
+    tracked_users = int(
+        await session.scalar(_scoped(sa.select(sa.func.count(sa.distinct(ent.auth_user_id))), ent.workspace_id)) or 0
+    )
     never_checked = int(
-        await session.scalar(sa.select(sa.func.count()).select_from(ent).where(ent.checked_at.is_(None))) or 0
+        await session.scalar(
+            _scoped(sa.select(sa.func.count()).select_from(ent), ent.workspace_id).where(ent.checked_at.is_(None))
+        )
+        or 0
     )
     last_success_at = await session.scalar(
-        sa.select(sa.func.max(ent.checked_at)).where(ent.state == SubscriptionCheckState.active.value)
+        _scoped(sa.select(sa.func.max(ent.checked_at)), ent.workspace_id).where(
+            ent.state == SubscriptionCheckState.active.value
+        )
     )
-    last_check_at = await session.scalar(sa.select(sa.func.max(log.created_at)))
+    last_check_at = await session.scalar(_scoped(sa.select(sa.func.max(log.created_at)), log.workspace_id))
 
     async def _coverage(delta: timedelta) -> int:
         return int(
             await session.scalar(
-                sa.select(sa.func.count(sa.distinct(log.auth_user_id))).where(log.created_at > now - delta)
+                _scoped(sa.select(sa.func.count(sa.distinct(log.auth_user_id))), log.workspace_id).where(
+                    log.created_at > now - delta
+                )
             )
             or 0
         )
@@ -78,7 +99,7 @@ async def get_collection_stats(session: AsyncSession) -> dict[str, Any]:
         str(state): int(count)
         for state, count in (
             await session.execute(
-                sa.select(log.state, sa.func.count())
+                _scoped(sa.select(log.state, sa.func.count()), log.workspace_id)
                 .where(log.created_at > now - timedelta(hours=24))
                 .group_by(log.state)
             )
@@ -88,7 +109,7 @@ async def get_collection_stats(session: AsyncSession) -> dict[str, Any]:
     failures = sum(checks_24h.get(state, 0) for state in _FAILURE_STATES)
 
     cfg = await settings_provider.get_subscription_collection_config(session)
-    targets = await service.find_tournaments_requiring_subscriptions(session)
+    targets = await service.find_tournaments_requiring_subscriptions(session, workspace_id=workspace_id)
 
     return {
         "total": total,
@@ -113,6 +134,7 @@ async def get_collection_stats(session: AsyncSession) -> dict[str, Any]:
 async def list_check_log(
     session: AsyncSession,
     *,
+    workspace_id: int | None = None,
     state: str | None = None,
     source: str | None = None,
     provider: str | None = None,
@@ -129,6 +151,10 @@ async def list_check_log(
     ``user_id`` filters by that same domain player id rather than by
     ``auth_user_id``: it is the id every admin surface already holds, and scoping
     through the join keeps one identifier in play across the whole tab.
+
+    ``workspace_id`` is the caller's authorization scope, not a user-supplied
+    filter: a workspace-scoped admin must never page into another tenant's
+    history.
     """
     log = models.SubscriptionCheckLog
     player = models.User
@@ -137,6 +163,8 @@ async def list_check_log(
         .outerjoin(player, player.auth_user_id == log.auth_user_id)
         .order_by(log.id.desc())
     )
+    if workspace_id is not None:
+        query = query.where(log.workspace_id == workspace_id)
     if state:
         query = query.where(log.state == state)
     if source:
@@ -174,13 +202,19 @@ async def _auth_user_id_for_player(session: AsyncSession, user_id: int) -> int |
     return await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == user_id))
 
 
-async def get_user_collection_status(session: AsyncSession, user_id: int) -> list[dict[str, Any]]:
+async def get_user_collection_status(
+    session: AsyncSession, user_id: int, *, workspace_id: int | None = None
+) -> list[dict[str, Any]]:
     """Per-(workspace, provider) entitlement state for one player.
 
     Keyed by the domain ``players.user`` id — the same id the admin player search
     and the rank tab use — and resolved to ``auth_user_id`` here, because that is
     what the subscription tables key on. Returns ``[]`` for a player with no linked
     auth account, which the caller renders as "nothing to collect".
+
+    ``workspace_id`` is the caller's authorization scope: a workspace-scoped admin
+    sees this player's entitlement in their own workspace only, never the full
+    cross-tenant list of workspaces the player belongs to.
     """
     auth_user_id = await _auth_user_id_for_player(session, user_id)
     if auth_user_id is None:
@@ -188,14 +222,14 @@ async def get_user_collection_status(session: AsyncSession, user_id: int) -> lis
 
     ent = models.SubscriptionEntitlement
     ws = models.Workspace
-    rows = (
-        await session.execute(
-            sa.select(ent, ws.name.label("workspace_name"))
-            .outerjoin(ws, ws.id == ent.workspace_id)
-            .where(ent.auth_user_id == auth_user_id)
-            .order_by(ent.workspace_id.asc(), ent.provider.asc())
-        )
-    ).all()
+    query = (
+        sa.select(ent, ws.name.label("workspace_name"))
+        .outerjoin(ws, ws.id == ent.workspace_id)
+        .where(ent.auth_user_id == auth_user_id)
+    )
+    if workspace_id is not None:
+        query = query.where(ent.workspace_id == workspace_id)
+    rows = (await session.execute(query.order_by(ent.workspace_id.asc(), ent.provider.asc()))).all()
 
     return [
         {
@@ -267,6 +301,7 @@ async def trigger_collection(
     *,
     user_id: int | None = None,
     providers: Sequence[str] | None = None,
+    workspace_id: int | None = None,
     discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
     broker: Any | None = None,
@@ -280,6 +315,10 @@ async def trigger_collection(
     is bounded work, and the admin expects the table to be fresh when the dialog
     stops spinning.
 
+    ``workspace_id`` is the caller's authorization scope: the sweep is limited to
+    that workspace's tournaments, and a single-player re-check only touches the
+    rules that workspace holds them to.
+
     Returns the number of (user, provider) checks performed.
     """
     active_broker = optional_broker(broker)
@@ -288,6 +327,7 @@ async def trigger_collection(
         cfg = await settings_provider.get_subscription_collection_config(session)
         return await service.collect_subscriptions_for_active_tournaments(
             session,
+            workspace_id=workspace_id,
             discord_bot_token=discord_bot_token,
             twitch_client_id=twitch_client_id,
             broker=active_broker,
@@ -301,7 +341,11 @@ async def trigger_collection(
     if auth_user_id is None:
         return 0
 
-    scopes = await _requirements_for_user(session, auth_user_id)
+    scopes = [
+        scope
+        for scope in await _requirements_for_user(session, auth_user_id)
+        if workspace_id is None or scope[0] == workspace_id
+    ]
     if not scopes:
         return 0
 
@@ -315,12 +359,12 @@ async def trigger_collection(
         redis=redis,
     )
     checked = 0
-    for workspace_id, scope_providers in scopes:
+    for scope_workspace_id, scope_providers in scopes:
         targets = [p for p in scope_providers if wanted is None or p in wanted]
         if not targets:
             continue
         verdicts = await resolver.resolve(
-            workspace_id=workspace_id,
+            workspace_id=scope_workspace_id,
             auth_user_ids=[auth_user_id],
             providers=targets,
             force_refresh=True,

@@ -217,6 +217,11 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: UserCircle,
         description: "Resolve Discord, BattleTag, and Twitch identities.",
         permissions: ["user.read"],
+        // Players are global entities, so the backend gate (`users_admin.py`
+        // `_gate`) demands a GLOBAL `user.<action>` grant. A workspace owner
+        // holds none, so without `globalOnly` they would see the link and then
+        // get a 403 from every request behind it.
+        globalOnly: true,
         aliases: ["identities", "discord", "battletag", "twitch"],
       },
       {
@@ -224,7 +229,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         href: "/admin/rank",
         icon: Activity,
         description: "OverFast rank collection status and manual re-fetch per player.",
-        permissions: ["user.read"],
+        permissions: ["rank.read"],
         aliases: ["settings"],
       },
       {
@@ -232,7 +237,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         href: "/admin/subscriptions",
         icon: BadgeCheck,
         description: "Boosty/Twitch subscription check health, history and per-player re-check.",
-        permissions: ["user.read"],
+        permissions: ["subscription.read"],
         // `twitch` deliberately omitted: /admin/users already claims it, and the
         // palette requires every alias to resolve to exactly one entry.
         aliases: ["subscriptions", "boosty", "entitlements"],
@@ -273,9 +278,9 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/match-reports", permissions: ["match.read"] },
   { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/standings", permissions: ["standing.read"] },
-  { prefix: "/admin/users", permissions: ["user.read"] },
-  { prefix: "/admin/rank", permissions: ["user.read"] },
-  { prefix: "/admin/subscriptions", permissions: ["user.read"] },
+  { prefix: "/admin/users", permissions: ["user.read"], globalOnly: true },
+  { prefix: "/admin/rank", permissions: ["rank.read"] },
+  { prefix: "/admin/subscriptions", permissions: ["subscription.read"] },
   { prefix: "/admin/heroes", permissions: [], superuserOnly: true },
   { prefix: "/admin/gamemodes", permissions: [], superuserOnly: true },
   { prefix: "/admin/maps", permissions: [], superuserOnly: true },

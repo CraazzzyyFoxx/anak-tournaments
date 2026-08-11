@@ -22,7 +22,7 @@ from faststream.rabbit import RabbitMessage
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from src import schemas
-from src.core import db
+from src.core import auth, db
 from src.services.encounter import flows as encounter_flows
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
@@ -30,14 +30,6 @@ from src.services.tournament import flows as tournament_flows
 from . import _common as c
 
 _SF = db.async_session_maker
-
-
-def _require_role_admin(data: dict) -> Any:
-    user = c.actor(data)
-    c.require_active(user)
-    if not user.has_role("admin"):
-        raise HTTPException(status_code=403, detail="Role required: admin")
-    return user
 
 
 def _date(data: dict, key: str) -> date:
@@ -74,13 +66,17 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.parser.teams.create_balancer")
     async def _teams_balancer(data: dict, msg: RabbitMessage) -> dict:
-        # POST /teams/create/balancer (multipart JSON file -> base64) — admin role.
+        # POST /teams/create/balancer (multipart JSON file -> base64) — team.create.
         async def op(session: Any) -> Any:
-            _require_role_admin(data)
+            user = c.actor(data)
+            c.require_active(user)
             try:
                 tournament_id = int(data["tournament_id"])
             except (KeyError, TypeError, ValueError) as exc:
                 raise HTTPException(status_code=422, detail="tournament_id is required") from exc
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="team", action="create"
+            )
             payload_format = c.q1(data, "payload_format", str, "auto")
             payload = json.loads(base64.b64decode(data.get("content_b64", "")))
             use_atravkovs = payload_format == "atravkovs" or (
@@ -100,33 +96,46 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.parser.teams.challonge_preview")
     async def _challonge_preview(data: dict, msg: RabbitMessage) -> dict:
-        # GET /teams/challonge/preview — admin role.
+        # GET /teams/challonge/preview — challonge.read.
         async def op(session: Any) -> Any:
-            _require_role_admin(data)
-            return await team_flows.preview_challonge_team_sync(session, c.require_query_int(data, "tournament_id"))
+            user = c.actor(data)
+            c.require_active(user)
+            tournament_id = c.require_query_int(data, "tournament_id")
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="challonge", action="read"
+            )
+            return await team_flows.preview_challonge_team_sync(session, tournament_id)
 
         return await c.envelope(logger, "teams.challonge_preview", op, session_factory=_SF)
 
     @broker.subscriber("rpc.parser.teams.create_challonge")
     async def _create_challonge(data: dict, msg: RabbitMessage) -> dict:
-        # POST /teams/create/challonge — admin role.
+        # POST /teams/create/challonge — challonge.update.
         async def op(session: Any) -> Any:
-            _require_role_admin(data)
-            payload = schemas.ChallongeTeamSyncRequest.model_validate(c.payload(data))
-            return await team_flows.sync_challonge_team_mappings(
-                session, c.require_query_int(data, "tournament_id"), payload
+            user = c.actor(data)
+            c.require_active(user)
+            tournament_id = c.require_query_int(data, "tournament_id")
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
+            payload = schemas.ChallongeTeamSyncRequest.model_validate(c.payload(data))
+            return await team_flows.sync_challonge_team_mappings(session, tournament_id, payload)
 
         return await c.envelope(logger, "teams.create_challonge", op, session_factory=_SF)
 
     @broker.subscriber("rpc.parser.encounter.create_challonge")
     async def _encounter_challonge(data: dict, msg: RabbitMessage) -> dict:
-        # POST /encounter/challonge — admin role.
+        # POST /encounter/challonge — match.create.
         async def op(session: Any) -> Any:
-            _require_role_admin(data)
+            user = c.actor(data)
+            c.require_active(user)
+            tournament_id = c.require_query_int(data, "tournament_id")
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="match", action="create"
+            )
             return await encounter_flows.bulk_create_for_tournament_from_challonge(
                 session,
-                c.require_query_int(data, "tournament_id"),
+                tournament_id,
                 skip_finals=c.q1(data, "skip_finals", c.qbool, False),
             )
 

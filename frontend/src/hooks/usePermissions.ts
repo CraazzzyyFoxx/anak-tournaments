@@ -44,6 +44,10 @@ type SpecialPermission =
   | "registration.approve"
   | "registration.reject"
   | "registration.check_in"
+  | "rank.read"
+  | "rank.update"
+  | "subscription.read"
+  | "subscription.update"
   | "account.avatar"
   | "account.social"
   | "registration.self_register";

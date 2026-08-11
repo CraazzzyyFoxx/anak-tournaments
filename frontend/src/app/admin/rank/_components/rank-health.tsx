@@ -11,6 +11,7 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { RankCollectionStats } from "@/types/admin.types";
 
 import { STATUS_BAR, STATUS_ORDER, formatRelative } from "./rank-shared";
@@ -68,9 +69,12 @@ export function RankHealthDashboard() {
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
   const isSuperuser = user?.isSuperuser ?? false;
+  // The stats are scoped to the workspace `apiFetch` injects, so it belongs in
+  // the key — otherwise switching workspace serves the previous tenant's cache.
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const statsQuery = useQuery({
-    queryKey: ["admin", "rank", "stats"],
+    queryKey: ["admin", "rank", "stats", workspaceId],
     queryFn: () => adminService.getRankCollectionStats(),
     refetchInterval: 10000
   });

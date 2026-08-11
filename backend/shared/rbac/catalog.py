@@ -63,6 +63,10 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     *_crud("discord_channel"),
     *_crud("challonge"),
     *_crud("asset"),
+    _permission("rank", "read", "Read rank-collection health and fetch history"),
+    _permission("rank", "update", "Trigger a rank re-fetch"),
+    _permission("subscription", "read", "Read subscription-collection health and check history"),
+    _permission("subscription", "update", "Trigger a subscription re-check"),
     # Self-service capabilities: allowed by default for every authenticated user;
     # exist only so an admin can DENY them per user (negative RBAC).
     _permission("account", "avatar", "Change one's own avatar"),

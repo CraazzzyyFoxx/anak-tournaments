@@ -14,6 +14,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import { StatusBadge, formatDate } from "./rank-shared";
 
@@ -29,9 +30,12 @@ interface RankTaskHistoryProps {
 export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
   const [status, setStatus] = useState("all");
   const [source, setSource] = useState("all");
+  // Rows come back scoped to the workspace `apiFetch` injects — key on it so a
+  // workspace switch refetches instead of showing the previous tenant's history.
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const query = useQuery({
-    queryKey: ["admin", "rank", "fetch-log", status, source],
+    queryKey: ["admin", "rank", "fetch-log", workspaceId, status, source],
     queryFn: () =>
       adminService.getRankFetchLog({
         status: status === "all" ? undefined : status,

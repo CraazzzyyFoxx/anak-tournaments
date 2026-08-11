@@ -1,9 +1,8 @@
 """Typed-RPC handlers for the achievement engine + rules admin.
 
-Mirrors ``src/routes/achievement.py`` (global ``admin``-role calculate) and the
-workspace-scoped rule/library/override admin in
-``src/routes/admin/achievement_rule.py`` (gated by
-``require_workspace_permission("achievement", <action>)``).
+Mirrors ``src/routes/achievement.py`` (calculate) and the workspace-scoped
+rule/library/override admin in ``src/routes/admin/achievement_rule.py``; both are
+gated by ``require_workspace_permission("achievement", <action>)``.
 
 Achievement *reads* (a user's earned achievements) are owned by app-service; only
 the rules engine + admin live here.
@@ -122,19 +121,20 @@ async def _run_calculate(session: Any, *, workspace_id: int, tournament_id: int 
 
 
 def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber per route, mechanical
-    # ── achievement/calculate (global admin role) ──────────────────────────────
+    # ── achievement/calculate (workspace-scoped achievement.update) ───────────
+    # ``_require_ws`` resolves the scope from ``data`` (the path/query slot); these
+    # two carry it in the payload / on the tournament, so they gate inline instead.
     @broker.subscriber("rpc.parser.ach.calculate")
     async def _calculate(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            if not user.has_role("admin"):
-                raise HTTPException(status_code=403, detail="Role required: admin")
             payload = schemas.AchievementCalculateRequest.model_validate(c.payload(data) or {})
             if payload.workspace_id is None:
                 raise HTTPException(
                     status_code=400, detail="workspace_id is required for global achievement calculation"
                 )
+            ensure_workspace_permission(user, payload.workspace_id, "achievement", "update")
             executed = await _run_calculate(
                 session, workspace_id=payload.workspace_id, tournament_id=None, payload=payload
             )
@@ -149,8 +149,6 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            if not user.has_role("admin"):
-                raise HTTPException(status_code=403, detail="Role required: admin")
             tournament_id = _path_int(data, "tournament_id")
             payload = schemas.AchievementCalculateRequest.model_validate(c.payload(data) or {})
             tournament = await session.get(models.Tournament, tournament_id)
@@ -159,6 +157,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             workspace_id = payload.workspace_id or tournament.workspace_id
             if payload.workspace_id is not None and payload.workspace_id != tournament.workspace_id:
                 raise HTTPException(status_code=400, detail="workspace_id does not match tournament workspace")
+            ensure_workspace_permission(user, workspace_id, "achievement", "update")
             executed = await _run_calculate(
                 session, workspace_id=workspace_id, tournament_id=tournament_id, payload=payload
             )

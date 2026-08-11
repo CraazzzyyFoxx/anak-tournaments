@@ -20,7 +20,10 @@ type TabValue = "status" | "settings";
 
 export default function RankCollectionAdminPage() {
   // D10: the former /admin/settings content (global rank config) lives in the
-  // Settings tab and stays superuser-only, matching the old page's gate.
+  // Settings tab and stays superuser-only, matching the old page's gate. Health,
+  // history and per-player inspection are gated on `rank.read` and scoped to the
+  // active workspace (see `admin.service.ts`) — which is what lets a workspace
+  // owner/admin open them at all instead of 403ing on a global role.
   const { isSuperuser } = usePermissions();
   const [activeTab, setActiveTab] = useState<TabValue>("status");
   const [selected, setSelected] = useState<SelectedPlayer | null>(null);

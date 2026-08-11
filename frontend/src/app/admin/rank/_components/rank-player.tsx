@@ -14,6 +14,7 @@ import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import rankService from "@/services/rank.service";
 import userService from "@/services/user.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { CurrentRank } from "@/types/rank.types";
 
 import { StatusBadge, formatDate } from "./rank-shared";
@@ -154,10 +155,12 @@ interface RankPlayerDetailProps {
 
 export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailProps) {
   const queryClient = useQueryClient();
+  // Scoped server-side to the injected workspace; see `admin.service.ts`.
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
 
   const statusQuery = useQuery({
-    queryKey: ["admin", "rank", "collection", userId],
+    queryKey: ["admin", "rank", "collection", workspaceId, userId],
     queryFn: () => adminService.getRankCollectionStatus(userId)
   });
   const rows = statusQuery.data ?? [];
@@ -168,7 +171,7 @@ export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailPro
     onSuccess: (result) => {
       notify.success(`Queued ${result.enqueued} rank fetch(es)`);
       setSelectedTagIds(new Set());
-      queryClient.invalidateQueries({ queryKey: ["admin", "rank", "collection", userId] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "rank"] });
     },
     onError: (error) =>
       notify.apiError(error, { title: "Could not queue the rank fetch — try again" })

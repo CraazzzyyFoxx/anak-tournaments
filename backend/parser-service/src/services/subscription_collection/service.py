@@ -51,7 +51,9 @@ def _chunked(items: list[int], size: int) -> list[list[int]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-async def find_tournaments_requiring_subscriptions(session: AsyncSession) -> list[TournamentTarget]:
+async def find_tournaments_requiring_subscriptions(
+    session: AsyncSession, *, workspace_id: int | None = None
+) -> list[TournamentTarget]:
     """Active, open tournaments whose registration form enforces a subscription.
 
     ``require_subscription`` is the per-tournament toggle; the rule itself belongs to
@@ -60,6 +62,10 @@ async def find_tournaments_requiring_subscriptions(session: AsyncSession) -> lis
     per-form code dropped afterwards via ``if not requirement.requirements``. A rule
     that parses to nothing enforceable, or fails to parse at all, is still dropped
     below -- an empty blob is reachable through the workspace editor too.
+
+    ``workspace_id`` narrows the sweep to one tenant, which is how a
+    workspace-scoped admin triggers a re-check without touching anybody else's
+    tournaments.
     """
     stmt = (
         sa.select(
@@ -84,8 +90,10 @@ async def find_tournaments_requiring_subscriptions(session: AsyncSession) -> lis
             models.BalancerRegistrationForm.is_open.is_(True),
         )
     )
+    if workspace_id is not None:
+        stmt = stmt.where(models.Tournament.workspace_id == workspace_id)
     targets: list[TournamentTarget] = []
-    for tournament_id, workspace_id, blob in (await session.execute(stmt)).all():
+    for tournament_id, target_workspace_id, blob in (await session.execute(stmt)).all():
         try:
             requirement = parse_requirement(blob)
         except ValueError:
@@ -99,7 +107,7 @@ async def find_tournaments_requiring_subscriptions(session: AsyncSession) -> lis
         targets.append(
             TournamentTarget(
                 tournament_id=tournament_id,
-                workspace_id=workspace_id,
+                workspace_id=target_workspace_id,
                 providers=tuple(requirement.providers),
             )
         )
@@ -131,6 +139,7 @@ async def load_auth_user_ids_for_tournament(session: AsyncSession, tournament_id
 async def collect_subscriptions_for_active_tournaments(
     session: AsyncSession,
     *,
+    workspace_id: int | None = None,
     discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
     broker: Any | None = None,
@@ -147,9 +156,13 @@ async def collect_subscriptions_for_active_tournaments(
     sweep. Committing per batch also means a provider outage halfway through keeps
     the work already done.
 
+    ``workspace_id`` limits the sweep to one workspace's tournaments (the manual
+    admin trigger passes the caller's authorization scope); the scheduled tick
+    omits it and sweeps everything.
+
     Returns the total number of users processed.
     """
-    targets = await find_tournaments_requiring_subscriptions(session)
+    targets = await find_tournaments_requiring_subscriptions(session, workspace_id=workspace_id)
     if not targets:
         return 0
 

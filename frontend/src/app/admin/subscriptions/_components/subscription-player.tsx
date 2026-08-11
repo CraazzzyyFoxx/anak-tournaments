@@ -12,6 +12,7 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import userService from "@/services/user.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import {
   PROVIDER_LABELS,
@@ -186,8 +187,10 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
  * inactive on Friday, active again after a re-subscribe") is visible at all.
  */
 function PlayerCheckTimeline({ userId }: { userId: number }) {
+  // Scoped server-side to the injected workspace; see `admin.service.ts`.
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const query = useQuery({
-    queryKey: ["admin", "subscriptions", "user-history", userId],
+    queryKey: ["admin", "subscriptions", "user-history", workspaceId, userId],
     queryFn: () => adminService.getSubscriptionCheckLog({ user_id: userId, limit: 100 })
   });
   const rows = query.data ?? [];
@@ -246,9 +249,10 @@ interface SubscriptionPlayerDetailProps {
 
 export function SubscriptionPlayerDetail({ userId, label, onClose }: SubscriptionPlayerDetailProps) {
   const queryClient = useQueryClient();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const statusQuery = useQuery({
-    queryKey: ["admin", "subscriptions", "collection", userId],
+    queryKey: ["admin", "subscriptions", "collection", workspaceId, userId],
     queryFn: () => adminService.getSubscriptionCollectionStatus(userId)
   });
   const rows = statusQuery.data ?? [];

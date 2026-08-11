@@ -395,6 +395,6 @@ DOCS: dict[str, dict] = {
     # ── user bulk import (binary CSV / Google Sheets) ──────────────────────────────────────────────────
     "rpc.app.users.csv_import": {
         "summary": "Bulk import users",
-        "description": "Bulk-creates players from an uploaded CSV file or a Google Sheets URL using the given row/delimiter/flag params; requires the global admin role.",
+        "description": "Bulk-creates players from an uploaded CSV file or a Google Sheets URL using the given row/delimiter/flag params; requires the global user.create permission.",
     },
 }

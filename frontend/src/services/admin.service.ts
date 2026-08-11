@@ -1623,26 +1623,27 @@ class AdminService {
     return response.json();
   }
 
-  // ─── OverFast rank collection (superuser/admin) ───────────────────────────
+  // ─── OverFast rank collection ─────────────────────────────────────────────
+  // `workspace_id` is injected (no `skipWorkspace`): it is the RBAC scope these
+  // endpoints authorize against, so dropping it demands the GLOBAL
+  // `rank.read`/`update` and locks out a workspace owner/admin holding it only
+  // in their own workspace. It also scopes the rows to that workspace.
 
   async getRankCollectionStatus(userId: number): Promise<RankCollectionStatusRow[]> {
-    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`, {
-      skipWorkspace: true
-    });
+    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`);
     return response.json();
   }
 
   async triggerRankCollection(data: CollectTriggerInput): Promise<CollectTriggerResult> {
     const response = await apiFetch("/api/v1/admin/rank/collect", {
       method: "POST",
-      body: data,
-      skipWorkspace: true
+      body: data
     });
     return response.json();
   }
 
   async getRankCollectionStats(): Promise<RankCollectionStats> {
-    const response = await apiFetch("/api/v1/admin/rank/stats", { skipWorkspace: true });
+    const response = await apiFetch("/api/v1/admin/rank/stats");
     return response.json();
   }
 
@@ -1653,8 +1654,7 @@ class AdminService {
         source: params.source,
         before_id: params.before_id,
         limit: params.limit ?? 50
-      },
-      skipWorkspace: true
+      }
     });
     return response.json();
   }
@@ -1664,16 +1664,19 @@ class AdminService {
   ): Promise<{ reenabled: number }> {
     const response = await apiFetch("/api/v1/admin/rank/reenable-disabled", {
       method: "POST",
-      body: { only_previously_succeeded: onlyPreviouslySucceeded },
-      skipWorkspace: true
+      body: { only_previously_succeeded: onlyPreviouslySucceeded }
     });
     return response.json();
   }
 
-  // ─── Subscription collection (superuser/admin) ─────────────────────────────
+  // ─── Subscription collection ───────────────────────────────────────────────
+  // `workspace_id` is injected (no `skipWorkspace`): it is the RBAC scope these
+  // endpoints authorize against, so dropping it demands the GLOBAL
+  // `subscription.read`/`update` and locks out a workspace owner/admin holding
+  // it only in their own workspace. It also scopes the rows to that workspace.
 
   async getSubscriptionCollectionStats(): Promise<SubscriptionCollectionStats> {
-    const response = await apiFetch("/api/v1/admin/subscriptions/stats", { skipWorkspace: true });
+    const response = await apiFetch("/api/v1/admin/subscriptions/stats");
     return response.json();
   }
 
@@ -1688,16 +1691,13 @@ class AdminService {
         user_id: params.user_id,
         before_id: params.before_id,
         limit: params.limit ?? 50
-      },
-      skipWorkspace: true
+      }
     });
     return response.json();
   }
 
   async getSubscriptionCollectionStatus(userId: number): Promise<SubscriptionUserCollectionRow[]> {
-    const response = await apiFetch(`/api/v1/admin/subscriptions/users/${userId}/collection`, {
-      skipWorkspace: true
-    });
+    const response = await apiFetch(`/api/v1/admin/subscriptions/users/${userId}/collection`);
     return response.json();
   }
 
@@ -1706,8 +1706,7 @@ class AdminService {
   ): Promise<SubscriptionCollectTriggerResult> {
     const response = await apiFetch("/api/v1/admin/subscriptions/collect", {
       method: "POST",
-      body: data,
-      skipWorkspace: true
+      body: data
     });
     return response.json();
   }
