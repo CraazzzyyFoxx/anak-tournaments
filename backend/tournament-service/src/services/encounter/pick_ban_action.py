@@ -365,6 +365,7 @@ def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[
         "current_round": None,
         "is_complete": False,
         "map_reports": [],
+        "unique_attribute": None,
         "undo": pick_ban_undo.undo_state(None, []),
     }
 
@@ -376,6 +377,7 @@ def build_pick_ban_state(
     viewer_side: str | None,
     pick_ban: PickBanSession | None,
     readiness: dict[str, bool],
+    unique_attribute: str | None = None,
 ) -> dict[str, Any]:
     """Pure state builder — same shape as ``map_veto.build_map_pool_state``,
     generalized to pool-agnostic ``pick_ban`` sessions with `protect` steps."""
@@ -417,6 +419,10 @@ def build_pick_ban_state(
         # What both captains could agree to take back right now, and whether one
         # of them already has.
         "undo": pick_ban_undo.undo_state(pick_ban, pool),
+        # The configured attribute-uniqueness rule (``role`` or nothing), so the
+        # room can grey out what the side on the clock may no longer take —
+        # without it the only feedback is the 400 that arrives after the click.
+        "unique_attribute": unique_attribute,
     }
 
 
@@ -446,9 +452,15 @@ async def get_pick_ban_state(
         reason = await pick_ban_session_service.unavailable_reason(session, encounter, kind)
         return build_unavailable_state(reason, readiness=readiness)
 
+    config = await session.get(PickBanConfig, pick_ban.config_id) if pick_ban.config_id else None
     pool = await get_pick_ban_pool(session, pick_ban, encounter_id, kind)
     state = build_pick_ban_state(
-        pick_ban.resolved_sequence_json, pool, viewer_side=viewer_side, pick_ban=pick_ban, readiness=readiness
+        pick_ban.resolved_sequence_json,
+        pool,
+        viewer_side=viewer_side,
+        pick_ban=pick_ban,
+        readiness=readiness,
+        unique_attribute=config.unique_attribute_per_side_per_round if config is not None else None,
     )
     if kind == PickBanKind.MAP:
         state["map_reports"] = await _map_reports(session, encounter)

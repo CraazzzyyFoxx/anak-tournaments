@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Ban } from "lucide-react";
+import { Ban, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,8 @@ import {
   pickedItemsInOrder,
   poolRoundGroups,
   roundState,
-  statusLabelKey
+  statusLabelKey,
+  type PickBanAttributeLocks
 } from "./pick-ban-model";
 import { PickBanItemThumb } from "./PickBanItemThumb";
 
@@ -49,6 +50,11 @@ interface PickBanGridProps {
    * only — always empty for hero). See `pickBanReserveMap`.
    */
   slotReserves: Map<number, number>;
+  /**
+   * What the attribute-uniqueness rule forbids (disabled) and what it makes
+   * moot (greyed only) for the side on the clock — see `attributeLocks`.
+   */
+  locks: PickBanAttributeLocks;
   onSelect: (itemId: number) => void;
   /** Room-level header (back link, status, team matchup) merged into this card's top. */
   header: React.ReactNode;
@@ -84,6 +90,7 @@ export function PickBanGrid({
   canSelect,
   currentRound,
   slotReserves,
+  locks,
   onSelect,
   header
 }: PickBanGridProps) {
@@ -96,6 +103,20 @@ export function PickBanGrid({
     itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
   const roleOf = (itemId: number): AqtRoleKey | null =>
     normalizeRole(itemsById[itemId]?.type ?? itemsById[itemId]?.role);
+  /**
+   * How the uniqueness rule treats this tile: `blocked` is a click the server
+   * would reject, `pointless` a legal one that achieves nothing. Only
+   * `available` entries can be either — anything already taken is out of play
+   * for its own reasons.
+   */
+  const lockOf = (entry: PickBanEntry): "blocked" | "pointless" | null => {
+    if (entry.status !== "available") return null;
+    const attribute = roleOf(entry.item_id);
+    if (attribute == null) return null;
+    if (locks.blocked.has(attribute)) return "blocked";
+    if (locks.pointless.has(attribute)) return "pointless";
+    return null;
+  };
 
   const currentRoundRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -132,7 +153,8 @@ export function PickBanGrid({
   /** `lockedRound` is the group's round when that round has not opened yet, else null. */
   const tile = (entry: PickBanEntry, lockedRound: number | null) => {
     const item = itemsById[entry.item_id];
-    const selectable = isEntrySelectable(entry, { canSelect, currentRound });
+    const lock = lockOf(entry);
+    const selectable = isEntrySelectable(entry, { canSelect, currentRound }) && lock !== "blocked";
     const selected = selectedItemId === entry.item_id;
     const dimmed = entry.status === "banned";
     const initials = itemName(entry.item_id)
@@ -148,7 +170,13 @@ export function PickBanGrid({
         type="button"
         disabled={!selectable}
         aria-pressed={selected}
-        title={lockedRound != null ? t("round.locked", { n: lockedRound }) : undefined}
+        title={
+          lockedRound != null
+            ? t("round.locked", { n: lockedRound })
+            : lock != null
+              ? t(`rule.${lock}`)
+              : undefined
+        }
         aria-describedby={lockedRound != null ? lockedHintId(lockedRound) : undefined}
         onClick={() => onSelect(entry.item_id)}
         className={cn(
@@ -159,7 +187,8 @@ export function PickBanGrid({
           selectable
             ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
             : "cursor-default",
-          lockedRound != null ? "border-dashed opacity-55" : null
+          lockedRound != null ? "border-dashed opacity-55" : null,
+          lock != null ? "opacity-55 grayscale" : null
         )}
       >
         <div className="relative h-20 w-full bg-[color:var(--aqt-card-2)] sm:h-24">
@@ -223,19 +252,30 @@ export function PickBanGrid({
   };
 
   /**
-   * Icon-only Hero Pool tile: a bare round portrait, no name/status text on
-   * the card. The hero name lives in `title`/`aria-label` instead of visible
-   * copy, and any non-"available" status collapses to one crossed-out glyph
-   * rather than a distinct treatment per status -- this tile optimizes for
-   * density, not a status legend (the pick-order list below still spells out
-   * who took what).
+   * Icon-only Hero Pool tile: a bare round portrait, no name/status text on the
+   * card. The hero name lives in `title`/`aria-label` instead of visible copy —
+   * this tile optimizes for density, not for a status legend (the pick-order
+   * list below still spells out who took what).
+   *
+   * A `protected` hero is NOT drawn as a taken one. It used to collapse into the
+   * same crossed-out glyph every non-`available` status got, which read as
+   * "banned" — the opposite of what a protect means: the hero is safe from the
+   * opponent's ban and stays perfectly playable. It keeps its colour and wears
+   * an amber shield instead, so the two never look alike.
    */
   const heroTile = (entry: PickBanEntry, lockedRound: number | null) => {
     const item = itemsById[entry.item_id];
-    const selectable = isEntrySelectable(entry, { canSelect, currentRound });
+    const lock = lockOf(entry);
+    const selectable = isEntrySelectable(entry, { canSelect, currentRound }) && lock !== "blocked";
     const selected = selectedItemId === entry.item_id;
-    const unavailable = entry.status !== "available";
+    const shielded = entry.status === "protected";
+    // Out of play for the rest of the round, whoever took it and however.
+    const taken = entry.status !== "available" && !shielded;
     const name = itemName(entry.item_id);
+    // Only the RULE gets to replace the name in the tooltip: a not-yet-open
+    // round already explains itself through `aria-describedby` and the visible
+    // hint under the group, and the name is this tile's only label.
+    const ruleReason = lock != null ? t(`rule.${lock}`) : null;
 
     return (
       <button
@@ -243,19 +283,22 @@ export function PickBanGrid({
         type="button"
         disabled={!selectable}
         aria-pressed={selected}
-        aria-label={`${name} — ${t(statusLabelKey(entry))}`}
-        title={name}
+        aria-label={`${name} — ${t(statusLabelKey(entry))}${ruleReason != null ? ` — ${ruleReason}` : ""}`}
+        title={ruleReason ?? name}
         aria-describedby={lockedRound != null ? lockedHintId(lockedRound) : undefined}
         onClick={() => onSelect(entry.item_id)}
         className={cn(
           "group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border p-0.5 outline-none transition-shadow",
           selected
             ? "border-[color:var(--aqt-teal)] ring-2 ring-[color:var(--aqt-teal)]/45"
-            : "border-[color:var(--aqt-border)]",
+            : shielded
+              ? "border-[color:var(--aqt-amber)]/70"
+              : "border-[color:var(--aqt-border)]",
           selectable
             ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
             : "cursor-default",
-          lockedRound != null ? "border-dashed opacity-55" : null
+          lockedRound != null ? "border-dashed opacity-55" : null,
+          lock != null ? "opacity-55 grayscale" : null
         )}
       >
         <HeroImage
@@ -263,13 +306,23 @@ export function PickBanGrid({
           size={38}
           className={cn(
             "transition-opacity",
-            unavailable ? "opacity-40 grayscale" : null,
+            taken ? "opacity-40 grayscale" : null,
             lockedRound != null ? "opacity-45 saturate-50" : null
           )}
         />
-        {unavailable ? (
+        {taken ? (
           <span className="absolute inset-0 grid place-items-center" aria-hidden>
             <Ban className="h-[70%] w-[70%] text-[color:var(--aqt-rose)]" strokeWidth={1.25} />
+          </span>
+        ) : null}
+        {shielded ? (
+          // Corner badge, not an overlay: the portrait has to stay readable,
+          // because this hero is still in the game.
+          <span
+            aria-hidden
+            className="absolute -bottom-0.5 -left-0.5 grid h-4 w-4 place-items-center rounded-full bg-[color:var(--aqt-card)] ring-1 ring-[color:var(--aqt-amber)]/70"
+          >
+            <Shield className="h-2.5 w-2.5 text-[color:var(--aqt-amber)]" />
           </span>
         ) : null}
         {entry.action_index != null ? (

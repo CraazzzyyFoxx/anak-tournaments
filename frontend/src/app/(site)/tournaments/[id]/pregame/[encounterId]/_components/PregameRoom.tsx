@@ -26,6 +26,7 @@ import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournamen
 
 import {
   PICK_BAN_UNAVAILABLE_COPY,
+  attributeLocks,
   highestPoolRound,
   isSessionActive,
   pickBanReserveMap,
@@ -523,6 +524,18 @@ function PickBanPanel({
       : null;
   const allowProtect = state.sequence.some((token) => token.startsWith("protect_"));
 
+  // Read off the SIDE ON THE CLOCK, not the viewer: the rule constrains whoever
+  // is acting, so a captain, their opponent and a spectator all see the same
+  // greyed-out tiles instead of three different pools.
+  const locks = attributeLocks({
+    pool: state.pool,
+    uniqueAttribute: state.unique_attribute,
+    action: state.expected_action,
+    side: state.turn_side,
+    currentRound: state.current_round,
+    attributeOf: (itemId) => normalizeRole(itemsById[itemId]?.type ?? itemsById[itemId]?.role)
+  });
+
   // The backend enforces who may elect (pending_loser_side); this only gates
   // whether the losing captain's own client shows the modal at all.
   const showElectOpener =
@@ -551,6 +564,7 @@ function PickBanPanel({
             canSelect={canSelect}
             currentRound={state.current_round}
             slotReserves={pickBanReserveMap(session)}
+            locks={locks}
             onSelect={(itemId) =>
               setSelectedItemId((current) => (current === itemId ? null : itemId))
             }

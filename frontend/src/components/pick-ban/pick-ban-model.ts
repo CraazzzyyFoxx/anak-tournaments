@@ -230,6 +230,82 @@ export function isEntrySelectable(
   return entry.round == null || entry.round === currentRound;
 }
 
+/**
+ * How the configured attribute-uniqueness rule
+ * (`PickBanConfig.unique_attribute_per_side_per_round`, exposed as
+ * `PickBanState.unique_attribute`) constrains the step in play.
+ *
+ * Two very different things, deliberately kept apart:
+ *
+ * - `blocked` — the rule REJECTS it. The side on the clock already took an
+ *   action of this kind on that attribute value this round, so the server
+ *   answers a 400. The grid disables those tiles rather than letting a captain
+ *   discover it by clicking.
+ * - `pointless` — perfectly legal, but it buys nothing: on a `protect` step,
+ *   an attribute the OPPONENT has already banned this round is one they can no
+ *   longer ban again, so protecting it defends against nothing. Greyed as a
+ *   hint, never disabled — a captain may still have their own reasons.
+ */
+export interface PickBanAttributeLocks {
+  blocked: Set<string>;
+  pointless: Set<string>;
+}
+
+export const NO_ATTRIBUTE_LOCKS: PickBanAttributeLocks = {
+  blocked: new Set(),
+  pointless: new Set()
+};
+
+/**
+ * Resolve the locks for the current step. Empty for every kind/config without
+ * the rule, and for a `pick`/`decider` step — neither rulebook restricts those
+ * by attribute.
+ *
+ * Bans and protects never constrain each other (backend:
+ * `pick_ban_engine.committed_attributes`), so `blocked` reads only the acting
+ * side's OWN actions of the SAME kind.
+ */
+export function attributeLocks({
+  pool,
+  uniqueAttribute,
+  action,
+  side,
+  currentRound,
+  attributeOf
+}: {
+  pool: PickBanEntry[];
+  uniqueAttribute: string | null | undefined;
+  /** The step's expected action — `state.expected_action`. */
+  action: PickBanAction | "decider" | null;
+  /** The side on the clock — `state.turn_side`, not the viewer's. */
+  side: PickBanSide | null;
+  currentRound: number | null;
+  /** The item's attribute value (hero role today), or null when unknown. */
+  attributeOf: (itemId: number) => string | null;
+}): PickBanAttributeLocks {
+  if (!uniqueAttribute || side == null || (action !== "ban" && action !== "protect")) {
+    return NO_ATTRIBUTE_LOCKS;
+  }
+  const opponent: PickBanSide = side === "home" ? "away" : "home";
+  const blocked = new Set<string>();
+  const pointless = new Set<string>();
+
+  for (const entry of pool) {
+    if (entry.round != null && entry.round !== currentRound) continue;
+    const attribute = attributeOf(entry.item_id);
+    if (attribute == null) continue;
+    if (action === "ban") {
+      if (entry.status === "banned" && entry.picked_by === side) blocked.add(attribute);
+      continue;
+    }
+    if (entry.status === "protected" && entry.protected_by === side) blocked.add(attribute);
+    // The opponent's ban is what makes a protect moot: they cannot spend a
+    // second one on this attribute, so there is nothing left to protect from.
+    if (entry.status === "banned" && entry.picked_by === opponent) pointless.add(attribute);
+  }
+  return { blocked, pointless };
+}
+
 export type PickBanStatusLabelKey = `status.${PickBanEntryStatus | "remaining"}`;
 
 /**

@@ -413,6 +413,138 @@ describe("phase selection", () => {
     expect(undoLastAction).toHaveBeenCalledWith("hero", 4242, true);
   });
 
+  it("greys out and disables the roles the ban rule has spent, but never the protect", async () => {
+    // `unique_attribute: "role"` = one action per role per side per round. Home
+    // has banned a tank, so its second tank ban is a click the server would
+    // reject -- the tile says so instead of letting the captain find out.
+    getAllHeroes.mockResolvedValue({
+      results: [
+        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
+        { id: 202, name: "Tank B", type: "Tank", role: "tank", image_path: "" },
+        { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+      ]
+    });
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["ban_home", "ban_home"],
+        viewer_side: "home",
+        viewer_can_act: true,
+        allowed_actions: ["ban"],
+        expected_action: "ban",
+        turn_side: "home",
+        current_round: 1,
+        unique_attribute: "role",
+        pool: [
+          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "home", action_index: 0 }),
+          entry({ id: 4, item_id: 202, round: 1 }),
+          entry({ id: 5, item_id: 203, round: 1 })
+        ]
+      })
+    );
+    await render();
+
+    const tile = (name: string) =>
+      document.body.querySelector<HTMLButtonElement>(`button[aria-label^="${name}"]`);
+    // The second tank is inert and greyed; the support is untouched.
+    expect(tile("Tank B")?.disabled).toBe(true);
+    expect(tile("Tank B")?.className).toContain("grayscale");
+    expect(tile("Tank B")?.title).toBe(ROOM.rule.blocked);
+    expect(tile("Support A")?.disabled).toBe(false);
+    expect(tile("Support A")?.className).not.toContain("grayscale");
+  });
+
+  it("greys a pointless protect without taking the click away", async () => {
+    // Away banned a tank, so they cannot ban a second one: home protecting a
+    // tank defends against nothing. A hint, not a rule -- still clickable.
+    getAllHeroes.mockResolvedValue({
+      results: [
+        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
+        { id: 202, name: "Tank B", type: "Tank", role: "tank", image_path: "" },
+        { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+      ]
+    });
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["ban_away", "protect_home"],
+        viewer_side: "home",
+        viewer_can_act: true,
+        allowed_actions: ["protect"],
+        expected_action: "protect",
+        turn_side: "home",
+        current_round: 1,
+        unique_attribute: "role",
+        pool: [
+          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "away", action_index: 0 }),
+          entry({ id: 4, item_id: 202, round: 1 }),
+          entry({ id: 5, item_id: 203, round: 1 })
+        ]
+      })
+    );
+    await render();
+
+    const tank = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank B"]');
+    expect(tank?.disabled).toBe(false);
+    expect(tank?.className).toContain("grayscale");
+    expect(tank?.title).toBe(ROOM.rule.pointless);
+  });
+
+  it("draws a protected hero as protected, never as banned", async () => {
+    getAllHeroes.mockResolvedValue({
+      results: [
+        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
+        { id: 202, name: "Tank B", type: "Tank", role: "tank", image_path: "" }
+      ]
+    });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["protect_home", "ban_away"],
+        current_round: 1,
+        pool: [
+          entry({
+            id: 3,
+            item_id: 201,
+            round: 1,
+            status: "protected",
+            protected_by: "home",
+            action_index: 0
+          }),
+          entry({ id: 4, item_id: 202, round: 1, status: "banned", picked_by: "away", action_index: 1 })
+        ]
+      })
+    );
+    await render();
+
+    const protectedTile = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank A"]');
+    const bannedTile = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank B"]');
+    // The banned one is crossed out and drained of colour; the protected one is
+    // neither -- it is still in the game, and it wears a shield instead.
+    expect(bannedTile?.querySelector(".lucide-ban")).toBeTruthy();
+    expect(bannedTile?.innerHTML).toContain("grayscale");
+    expect(protectedTile?.querySelector(".lucide-ban")).toBeNull();
+    expect(protectedTile?.querySelector(".lucide-shield")).toBeTruthy();
+    expect(protectedTile?.innerHTML).not.toContain("grayscale");
+  });
+
   it("asks for the map's result once its heroes are banned", async () => {
     mockStates(
       readyState({

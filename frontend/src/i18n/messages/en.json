@@ -2483,6 +2483,10 @@
         "decline": "Decline",
         "failed": "Could not undo the last action"
       },
+      "rule": {
+        "blocked": "This side has already used its one action on this role this round",
+        "pointless": "The opponent has already banned this role — protecting it changes nothing"
+      },
       "seriesDone": {
         "title": "Nothing left to decide",
         "hint": "Every map of this series has been picked, banned and reported. The result is with the organizers now."

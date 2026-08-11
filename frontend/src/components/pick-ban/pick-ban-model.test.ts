@@ -6,6 +6,7 @@ import type { PickBanEntry, PickBanSession, PickBanState, VetoUnavailableReason 
 
 import {
   PICK_BAN_UNAVAILABLE_COPY,
+  attributeLocks,
   isEntrySelectable,
   isSessionActive,
   parseStepToken,
@@ -32,6 +33,86 @@ function entry(overrides: Partial<PickBanEntry>): PickBanEntry {
     ...overrides,
   };
 }
+
+/** 1-2 are tanks, 3 a support: enough to tell a role lock from an item lock. */
+const ROLE_OF: Record<number, string> = { 1: "tank", 2: "tank", 3: "support" };
+const roleOf = (itemId: number) => ROLE_OF[itemId] ?? null;
+
+describe("attributeLocks", () => {
+  const base = {
+    uniqueAttribute: "role",
+    currentRound: 1 as number | null,
+    attributeOf: roleOf,
+  };
+
+  it("blocks nothing without the rule configured", () => {
+    const pool = [entry({ item_id: 1, round: 1, status: "banned", picked_by: "home" }), entry({ item_id: 2, round: 1 })];
+    const locks = attributeLocks({ ...base, uniqueAttribute: null, pool, action: "ban", side: "home" });
+
+    expect(locks.blocked.size).toBe(0);
+    expect(locks.pointless.size).toBe(0);
+  });
+
+  it("blocks a second ban on a role the acting side already banned", () => {
+    const pool = [entry({ item_id: 1, round: 1, status: "banned", picked_by: "home" }), entry({ item_id: 2, round: 1 })];
+    const locks = attributeLocks({ ...base, pool, action: "ban", side: "home" });
+
+    expect([...locks.blocked]).toEqual(["tank"]);
+    expect(locks.pointless.size).toBe(0);
+  });
+
+  it("leaves the opponent's own bans out of it", () => {
+    // Doc 1's example: both sides may ban the same role, one each.
+    const pool = [entry({ item_id: 1, round: 1, status: "banned", picked_by: "away" }), entry({ item_id: 2, round: 1 })];
+    const locks = attributeLocks({ ...base, pool, action: "ban", side: "home" });
+
+    expect(locks.blocked.size).toBe(0);
+  });
+
+  it("does not let a ban block a protect of the same role", () => {
+    // The two histories are separate (backend: `committed_attributes`) — the
+    // acting side's own tank ban must not bar its tank protect.
+    const pool = [entry({ item_id: 1, round: 1, status: "banned", picked_by: "home" }), entry({ item_id: 2, round: 1 })];
+    const locks = attributeLocks({ ...base, pool, action: "protect", side: "home" });
+
+    expect(locks.blocked.size).toBe(0);
+  });
+
+  it("blocks a second protect on a role the acting side already protected", () => {
+    const pool = [
+      entry({ item_id: 1, round: 1, status: "protected", protected_by: "home" }),
+      entry({ item_id: 2, round: 1 }),
+    ];
+    const locks = attributeLocks({ ...base, pool, action: "protect", side: "home" });
+
+    expect([...locks.blocked]).toEqual(["tank"]);
+  });
+
+  it("marks a protect moot once the opponent has banned that role", () => {
+    // They cannot spend a second ban on it, so there is nothing to protect from.
+    const pool = [entry({ item_id: 1, round: 1, status: "banned", picked_by: "away" }), entry({ item_id: 2, round: 1 })];
+    const locks = attributeLocks({ ...base, pool, action: "protect", side: "home" });
+
+    expect([...locks.pointless]).toEqual(["tank"]);
+    expect(locks.blocked.size).toBe(0);
+  });
+
+  it("ignores other rounds and non-restricted steps", () => {
+    const pool = [entry({ item_id: 1, round: 2, status: "banned", picked_by: "home" })];
+
+    expect(attributeLocks({ ...base, pool, action: "ban", side: "home" }).blocked.size).toBe(0);
+    const sameRound = [entry({ item_id: 1, round: 1, status: "banned", picked_by: "home" })];
+    expect(attributeLocks({ ...base, pool: sameRound, action: "pick", side: "home" }).blocked.size).toBe(0);
+    expect(attributeLocks({ ...base, pool: sameRound, action: "decider", side: null }).blocked.size).toBe(0);
+  });
+
+  it("treats a flat pool as one round", () => {
+    const pool = [entry({ item_id: 1, round: null, status: "banned", picked_by: "home" })];
+    const locks = attributeLocks({ ...base, currentRound: null, pool, action: "ban", side: "home" });
+
+    expect([...locks.blocked]).toEqual(["tank"]);
+  });
+});
 
 function session(overrides: Partial<PickBanSession>): PickBanSession {
   return {

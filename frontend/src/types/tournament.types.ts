@@ -458,6 +458,12 @@ export interface PickBanState {
    * it — and that confirmation is what opens the next map's bans.
    */
   map_reports?: PickBanMapReport[];
+  /**
+   * The configured attribute-uniqueness rule (`"role"` or null), from
+   * `PickBanConfig.unique_attribute_per_side_per_round`. The room greys out what
+   * it forbids the side on the clock — see `attributeLocks`.
+   */
+  unique_attribute?: string | null;
   /** Never absent in practice; optional for the same reason `map_reports` is —
    * a client reading an older payload must not crash on its absence. */
   undo?: PickBanUndo;
