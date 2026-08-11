@@ -405,6 +405,15 @@ class BalancerRegistrationRead(BaseRead):
     reviewed_at: datetime | None = None
     reviewed_by_username: str | None = None
     balancer_profile_overridden_at: datetime | None = None
+    # Admission signals resolved by the LIST read only, and only when the
+    # tournament's form turns the matching requirement on. Single-registration
+    # mutation responses leave them None -- the table invalidates and refetches
+    # the list, so nothing renders a stale verdict.
+    # True = public, False = closed, None = unknown / not required.
+    profiles_open: bool | None = None
+    # Composed subscription verdict ("satisfied"/"refused"/"undetermined");
+    # only "refused" blocks admission, mirroring ``profiles_open is False``.
+    subscription_outcome: str | None = None
     roles: list[BalancerRegistrationRoleRead] = Field(default_factory=list)
 
 

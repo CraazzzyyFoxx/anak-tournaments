@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -42,6 +43,7 @@ from src.schemas.registration_build import (
 )
 from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
 from src.services.registration.subscription_reads import (
+    RegistrationSubscription,
     build_subscription_reads,
     load_auth_user_ids_by_registration,
     serialize_verdicts,
@@ -778,6 +780,43 @@ async def submit_public_registration(
     )
 
 
+async def resolve_admission_signals(
+    session: AsyncSession,
+    registrations: Sequence[Any],
+    *,
+    form: models.BalancerRegistrationForm | None,
+) -> tuple[dict[int, bool | None], dict[int, RegistrationSubscription]]:
+    """Profile-open verdicts + subscription reads for a whole registration list.
+
+    Shared by the public participants list and the admin registrations table so
+    both surfaces answer "is this player admitted" from the same resolution.
+    Each half is gated on the form flag that turns the requirement on and costs
+    nothing when it is off. Batched deliberately: resolving per registration
+    would fan out behind Discord's per-guild rate-limit bucket. ``force_refresh``
+    stays False here -- only check-in forces a fresh look.
+    """
+    profiles_open: dict[int, bool | None] = (
+        await resolve_profiles_open(session, registrations, scope=form.open_profile_scope)
+        if form is not None and form.require_open_profile
+        else {}
+    )
+    subscriptions = await build_subscription_reads(
+        form=form,
+        auth_user_id_by_registration=await load_auth_user_ids_by_registration(session, registrations)
+        if form is not None and form.require_subscription
+        else {},
+        resolver=build_resolver(
+            session,
+            discord_bot_token=settings.discord_token,
+            twitch_client_id=settings.twitch_client_id,
+            broker=optional_broker(),
+            proxy=settings.proxy_url,
+            redis=get_realtime_redis(),
+        ),
+    )
+    return profiles_open, subscriptions
+
+
 async def build_public_registration_list(
     session: AsyncSession,
     *,
@@ -820,30 +859,8 @@ async def build_public_registration_list(
     status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
 
     form = await get_registration_form(session, tournament_id)
-    profiles_open_map: dict[int, bool | None] = (
-        await resolve_profiles_open(session, registrations, scope=form.open_profile_scope)
-        if form is not None and form.require_open_profile
-        else {}
-    )
+    profiles_open_map, subscription_reads = await resolve_admission_signals(session, registrations, form=form)
     show_ranks = form.show_ranks if form is not None else False
-
-    # Subscription verdicts for the whole batch in a single pass; `force_refresh`
-    # stays False here (only check-in forces a fresh look). Returns {} and costs
-    # nothing when the tournament does not require a subscription.
-    subscription_reads = await build_subscription_reads(
-        form=form,
-        auth_user_id_by_registration=await load_auth_user_ids_by_registration(session, registrations)
-        if form is not None and form.require_subscription
-        else {},
-        resolver=build_resolver(
-            session,
-            discord_bot_token=settings.discord_token,
-            twitch_client_id=settings.twitch_client_id,
-            broker=optional_broker(),
-            proxy=settings.proxy_url,
-            redis=get_realtime_redis(),
-        ),
-    )
 
     history_map, history_count_map, division_grids = await _build_tournament_history(
         session,

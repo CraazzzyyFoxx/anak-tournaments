@@ -4,7 +4,6 @@ import type {
   StatusMeta,
   StatusScope,
   SubscriptionOutcome,
-  SubscriptionProviderVerdict,
   SubscriptionRequirement,
 } from "@/types/registration.types";
 
@@ -474,9 +473,10 @@ export interface AdminRegistration {
   reviewed_at: string | null;
   reviewed_by_username: string | null;
   balancer_profile_overridden_at: string | null;
+  /** Admission signals: sent by the registrations LIST read only, and only when
+   *  the tournament's form requires them. Mutation responses omit them. */
   profiles_open?: boolean | null;
   subscription_outcome?: SubscriptionOutcome | null;
-  subscription_verdicts?: Record<string, SubscriptionProviderVerdict> | null;
 }
 
 export interface AdminRegistrationCreateInput {

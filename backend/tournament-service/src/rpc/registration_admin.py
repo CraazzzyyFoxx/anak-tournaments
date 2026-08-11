@@ -182,6 +182,12 @@ def register(broker: Any, logger: Any) -> None:
                 if registration.workspace_member is not None
             }
             ow_ranks = normalize_ow_ranks_to_grid(raw_ow_ranks_by_registration, grid)
+            # Same resolution the public participants list uses, so the admin
+            # Subscription / Profile columns agree with what the player sees.
+            form = await reg_svc.get_registration_form(session, tournament_id)
+            profiles_open_map, subscription_reads = await reg_svc.resolve_admission_signals(
+                session, registrations, form=form
+            )
             return [
                 _dump(
                     serialize_registration(
@@ -189,6 +195,12 @@ def register(broker: Any, logger: Any) -> None:
                         workspace_id=ws_id,
                         status_meta_map=status_meta_map,
                         ow_ranks_for_user=ow_ranks.get(registration.id),
+                        profiles_open=profiles_open_map.get(registration.id),
+                        subscription_outcome=(
+                            subscription_reads[registration.id].outcome.value
+                            if registration.id in subscription_reads
+                            else None
+                        ),
                     )
                 )
                 for registration in registrations

@@ -56,6 +56,8 @@ def serialize_registration(
     workspace_id: int,
     status_meta_map: dict[str, dict[str, StatusMeta]] | None = None,
     ow_ranks_for_user: dict[str, int] | None = None,
+    profiles_open: bool | None = None,
+    subscription_outcome: str | None = None,
 ) -> admin_schemas.BalancerRegistrationRead:
     binding = loaded_relationship_or_none(registration, "google_sheet_binding")
     roles = loaded_relationship_or_none(registration, "roles") or []
@@ -104,6 +106,8 @@ def serialize_registration(
         reviewed_at=registration.reviewed_at,
         reviewed_by_username=reviewer.username if reviewer is not None else None,
         balancer_profile_overridden_at=registration.balancer_profile_overridden_at,
+        profiles_open=profiles_open,
+        subscription_outcome=subscription_outcome,
         roles=[serialize_registration_role(role, (ow_ranks_for_user or {}).get(role.role)) for role in sorted_roles],
     )
 
