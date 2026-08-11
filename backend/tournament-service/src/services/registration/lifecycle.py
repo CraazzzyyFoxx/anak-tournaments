@@ -358,20 +358,30 @@ async def update_registration_profile(
         )
         registration.status = status_value
     if balancer_status_value is not None:
-        _reject_auto_managed_status(balancer_status_value)
-        await validate_registration_status_value(
-            session,
-            workspace_id=registration.tournament.workspace_id,
-            scope="balancer",
-            value=balancer_status_value,
-        )
-        if balancer_status_value != NOT_ADDED_BALANCER_STATUS and registration.status != "approved":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Registration must be approved before adding to balancer",
+        if balancer_status_value in AUTO_MANAGED_BALANCER_STATUSES:
+            # ready/incomplete are derived from role ranks and are never a
+            # real override -- the admin edit form always round-trips the
+            # registration's current balancer_status, so a resave of a row
+            # that already reads ready/incomplete must not 400. Recompute
+            # instead of rejecting, mirroring create_manual_registration's
+            # identical tolerance for this sentinel.
+            sync_included_balancer_status(registration)
+        else:
+            await validate_registration_status_value(
+                session,
+                workspace_id=registration.tournament.workspace_id,
+                scope="balancer",
+                value=balancer_status_value,
             )
-        registration.balancer_status = balancer_status_value
-        registration.exclude_reason = exclude_reason if balancer_status_value == EXCLUDED_BALANCER_STATUS else None
+            if balancer_status_value != NOT_ADDED_BALANCER_STATUS and registration.status != "approved":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Registration must be approved before adding to balancer",
+                )
+            registration.balancer_status = balancer_status_value
+            registration.exclude_reason = (
+                exclude_reason if balancer_status_value == EXCLUDED_BALANCER_STATUS else None
+            )
 
     override_changed = False
     if status_value is not None or balancer_status_value is not None:

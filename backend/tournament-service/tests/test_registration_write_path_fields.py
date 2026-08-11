@@ -321,3 +321,62 @@ class TestAdminProfileUpdateCustomFields(IsolatedAsyncioTestCase):
         } - parameters
 
         assert missing == set(), f"update request fields no writer accepts: {sorted(missing)}"
+
+
+
+class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
+    """``ready``/``incomplete`` are derived from role ranks. The admin edit
+    form always round-trips the registration's current ``balancer_status``,
+    so resaving a row that already reads one of these two must recompute --
+    not 400, the way an explicit ``set_balancer_status`` pin correctly does.
+    """
+
+    async def _update(self, registration: models.BalancerRegistration, **overrides: Any) -> None:
+        payload: dict[str, Any] = {
+            "display_name": None,
+            "battle_tag": None,
+            "smurf_tags_json": None,
+            "discord_nick": None,
+            "twitch_nick": None,
+            "notes": None,
+            "admin_notes": None,
+            "status_value": None,
+            "balancer_status_value": None,
+            "roles": None,
+            **overrides,
+        }
+        with (
+            mock.patch.object(reg_lifecycle, "get_registration_by_id", mock.AsyncMock(return_value=registration)),
+            mock.patch.object(reg_lifecycle, "_register_registration_changed", lambda *_a, **_k: None),
+        ):
+            await reg_lifecycle.update_registration_profile(_RecordingSession(), registration.id, **payload)
+
+    async def test_resaving_a_ready_registration_recomputes_instead_of_rejecting(self) -> None:
+        registration = models.BalancerRegistration(
+            id=1, tournament_id=7, status="approved", balancer_status="ready"
+        )
+        registration.roles = [
+            models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=2500)
+        ]
+
+        # Must not raise -- the old behaviour 400ed on this exact resend.
+        await self._update(registration, balancer_status_value="ready")
+
+        assert registration.balancer_status == "ready"
+
+    async def test_resaving_an_incomplete_registration_stays_incomplete(self) -> None:
+        registration = models.BalancerRegistration(
+            id=1, tournament_id=7, status="approved", balancer_status="incomplete"
+        )
+        registration.roles = [models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=None)]
+
+        await self._update(registration, balancer_status_value="incomplete")
+
+        assert registration.balancer_status == "incomplete"
+
+    async def test_admin_managed_values_are_still_rejected_by_the_helper(self) -> None:
+        """The dedicated pin action (`set_balancer_status`) must keep rejecting
+        an explicit ready/incomplete request outright -- only the profile
+        resave path gained tolerance."""
+        with self.assertRaises(Exception):
+            reg_lifecycle._reject_auto_managed_status("ready")
