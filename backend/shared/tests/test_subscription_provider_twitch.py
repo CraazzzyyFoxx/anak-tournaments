@@ -168,3 +168,73 @@ class TestVerdictShape(IsolatedAsyncioTestCase):
         verdict = await _resolve(_Harness(payload=_sub("1000")))
         assert verdict.expires_at is not None
         assert verdict.expires_at > verdict.checked_at
+
+
+class TestSeveralLinkedTwitchAccounts(IsolatedAsyncioTestCase):
+    """A patron may subscribe from any of their linked Twitch accounts.
+
+    Helix is reached through ``_checker``, which is stubbed here: the point is the
+    fan-out over accounts and the merge, not the HTTP.
+    """
+
+    async def _resolve(self, connections, outcomes):
+        from unittest.mock import AsyncMock, patch
+
+        from shared.services.subscription_strategies import TwitchSubscriptionStrategy
+
+        asked: list[tuple[str, str | None]] = []
+
+        def fake_checker(_self, _client, token):
+            async def check(*, broadcaster_id: str, user_id: str) -> dict:
+                asked.append((user_id, token))
+                outcome = outcomes[token]
+                if isinstance(outcome, Exception):
+                    raise outcome
+                return outcome
+
+            return check
+
+        strategy = TwitchSubscriptionStrategy(AsyncMock(), client_id="client-id")
+        with (
+            patch.object(TwitchSubscriptionStrategy, "_load_connections", AsyncMock(return_value={1: connections})),
+            patch.object(TwitchSubscriptionStrategy, "_checker", fake_checker),
+        ):
+            verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1])
+        return verdicts[1], asked
+
+    async def test_the_subscribed_account_wins_over_the_first_linked_one(self):
+        verdict, asked = await self._resolve(
+            [("acc-a", "tok-a"), ("acc-b", "tok-b")],
+            {"tok-a": {"data": []}, "tok-b": _sub("2000")},
+        )
+        assert (verdict.state, verdict.tier_rank) == (SubscriptionState.ACTIVE, 2)
+        assert verdict.evidence["resolved_account_id"] == "acc-b"
+        assert verdict.evidence["accounts_checked"] == 2
+        # Each account is checked with ITS OWN token, not the first one's.
+        assert asked == [("acc-a", "tok-a"), ("acc-b", "tok-b")]
+
+    async def test_the_highest_tier_held_across_accounts_wins(self):
+        verdict, _ = await self._resolve(
+            [("acc-a", "tok-a"), ("acc-b", "tok-b")],
+            {"tok-a": _sub("3000"), "tok-b": _sub("1000")},
+        )
+        assert verdict.tier_rank == 3
+
+    async def test_an_uncheckable_account_is_not_overruled_by_a_non_subscribed_sibling(self):
+        """``unknown`` fails open, so a stale token must outrank a confirmed ``inactive``.
+
+        The patron may well be paying from the account whose token we cannot use; the
+        UI's job is then to ask for a reconnect, not to refuse them.
+        """
+        verdict, _ = await self._resolve(
+            [("acc-a", "tok-a"), ("acc-b", "tok-b")],
+            {"tok-a": {"data": []}, "tok-b": HelixMissingScope("expired")},
+        )
+        assert verdict.state == SubscriptionState.UNKNOWN
+        assert verdict.evidence["reason"] == "missing_scope"
+
+    async def test_no_linked_account_still_reports_why(self):
+        verdict, asked = await self._resolve([], {})
+        assert verdict.state == SubscriptionState.UNKNOWN
+        assert verdict.evidence["reason"] == "no_linked_twitch_account"
+        assert asked == []

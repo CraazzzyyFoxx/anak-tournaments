@@ -11,6 +11,7 @@ configuration.
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -23,7 +24,7 @@ from shared import models
 from shared.core.social import SocialProvider
 from shared.messaging.config import DISCORD_MEMBER_ROLES_QUEUE
 from shared.messaging.rpc import request_dict
-from shared.subscriptions import SubscriptionVerdict
+from shared.subscriptions import SubscriptionState, SubscriptionVerdict
 from shared.subscriptions.providers.discord_role import (
     DiscordForbidden,
     DiscordNotConfigured,
@@ -54,6 +55,41 @@ DISCORD_API_BASE: Final = "https://discord.com/api/v10"
 TWITCH_HELIX_BASE: Final = "https://api.twitch.tv/helix"
 
 _TIMEOUT: Final = httpx.Timeout(10.0, connect=5.0)
+
+# Which of one user's per-account verdicts wins. ``unknown`` outranks
+# ``inactive`` because it fails open by contract (``meets_min_tier``): an account
+# we could not check must not be overruled by a sibling account that is merely
+# not subscribed, or one account's outage locks a paying patron out.
+_STATE_PRECEDENCE: Final[dict[str, int]] = {
+    SubscriptionState.ACTIVE: 2,
+    SubscriptionState.UNKNOWN: 1,
+    SubscriptionState.INACTIVE: 0,
+}
+
+
+def _merge_account_verdicts(pairs: Sequence[tuple[str | None, SubscriptionVerdict]]) -> SubscriptionVerdict:
+    """Collapse one user's per-account verdicts into the entitlement they hold.
+
+    A user may link SEVERAL accounts of the same provider (the schema allows it
+    deliberately) and the subscription sits on whichever one they happened to pay
+    with, so every linked account is resolved and the strongest verdict wins.
+    Resolving only the first-linked account made a patron who paid with their
+    second Discord or Twitch read as "not subscribed".
+
+    Ties keep the earliest-linked account (``max`` is stable and the loader orders
+    by connection id), so the answer does not flap between equal accounts.
+
+    The winning account is stamped into the evidence only when there was a choice
+    to make: the audit trail otherwise carries no hint of WHICH account answered,
+    and the single-account case must keep the evidence the resolver produced.
+    """
+    account_id, verdict = max(pairs, key=lambda pair: (_STATE_PRECEDENCE.get(pair[1].state, 0), pair[1].tier_rank or 1))
+    if len(pairs) == 1:
+        return verdict
+    return replace(
+        verdict,
+        evidence={**verdict.evidence, "resolved_account_id": account_id, "accounts_checked": len(pairs)},
+    )
 
 
 async def _gather_verdicts(
@@ -99,12 +135,14 @@ async def load_provider_user_ids(
     *,
     auth_user_ids: Sequence[int],
     oauth_provider: str,
-) -> dict[int, str]:
-    """Map ``auth_user_id`` -> external account id for one OAuth provider.
+) -> dict[int, list[str]]:
+    """Map ``auth_user_id`` -> EVERY external account id for one OAuth provider.
 
-    A user may have several connections of the same provider (the schema allows
-    it deliberately); the lowest id wins so the answer is stable across calls
-    rather than flapping between accounts.
+    A user may have several connections of the same provider (the schema allows it
+    deliberately) and the subscription can sit on any of them, so all are returned,
+    earliest-linked first. Returning only the lowest id silently ignored every
+    account but the first: a patron who paid with their second Discord resolved as
+    "not subscribed".
     """
     if not auth_user_ids:
         return {}
@@ -116,9 +154,15 @@ async def load_provider_user_ids(
         )
         .order_by(models.OAuthConnection.id)
     )
-    out: dict[int, str] = {}
+    out: dict[int, list[str]] = {}
     for auth_user_id, provider_user_id in rows.all():
-        out.setdefault(auth_user_id, provider_user_id)
+        if not provider_user_id:
+            continue
+        account_ids = out.setdefault(auth_user_id, [])
+        # The same external account can be connected twice (re-link after a
+        # revoke); resolving it twice would just burn a rate-limit slot.
+        if provider_user_id not in account_ids:
+            account_ids.append(provider_user_id)
     return out
 
 
@@ -162,7 +206,7 @@ class BoostyDiscordStrategy:
                     self._broker,
                     {
                         "guild_id": guild_id,
-                        "user_ids": sorted({uid for uid in discord_ids.values() if uid}),
+                        "user_ids": sorted({uid for ids in discord_ids.values() for uid in ids}),
                     },
                     DISCORD_MEMBER_ROLES_QUEUE,
                     timeout=5.0,
@@ -191,9 +235,8 @@ class BoostyDiscordStrategy:
 
             async def _resolve_one(auth_user_id: int) -> tuple[int, SubscriptionVerdict]:
                 async with semaphore:
-                    verdict = await resolver.resolve(
-                        config=config,
-                        discord_user_id=discord_ids.get(auth_user_id),
+                    verdict = await self._resolve_accounts(
+                        resolver, config=config, account_ids=discord_ids.get(auth_user_id) or []
                     )
                     return auth_user_id, verdict
 
@@ -208,7 +251,7 @@ class BoostyDiscordStrategy:
         *,
         config: dict[str, Any],
         auth_user_ids: Sequence[int],
-        discord_ids: dict[int, str],
+        discord_ids: dict[int, list[str]],
         rpc_res: dict[str, Any],
     ) -> dict[int, SubscriptionVerdict]:
         """Replay the normal decision table over an already-fetched role snapshot.
@@ -237,9 +280,26 @@ class BoostyDiscordStrategy:
             fetch_guild_role_ids=fetch_guild_roles,
         )
         return {
-            auth_user_id: await resolver.resolve(config=config, discord_user_id=discord_ids.get(auth_user_id))
+            auth_user_id: await self._resolve_accounts(
+                resolver, config=config, account_ids=discord_ids.get(auth_user_id) or []
+            )
             for auth_user_id in auth_user_ids
         }
+
+    @staticmethod
+    async def _resolve_accounts(
+        resolver: DiscordRoleResolver, *, config: dict[str, Any], account_ids: Sequence[str]
+    ) -> SubscriptionVerdict:
+        """Resolve every Discord account this user linked and keep the best verdict."""
+        # `[None]` when nothing is linked: the resolver owns the
+        # `no_linked_discord_account` verdict, so there is exactly one code path.
+        candidates: list[str | None] = list(account_ids) or [None]
+        return _merge_account_verdicts(
+            [
+                (account_id, await resolver.resolve(config=config, discord_user_id=account_id))
+                for account_id in candidates
+            ]
+        )
 
     def _member_roles_fetcher(self, client: httpx.AsyncClient) -> MemberRolesFetcher:
         async def fetch(guild_id: str, user_id: str) -> list[str]:
@@ -312,13 +372,16 @@ class TwitchSubscriptionStrategy:
 
             async def _resolve_one(auth_user_id: int) -> tuple[int, SubscriptionVerdict]:
                 async with semaphore:
-                    connection = connections.get(auth_user_id)
-                    resolver = TwitchHelixResolver(check_subscription=self._checker(client, connection))
-                    verdict = await resolver.resolve(
-                        config=config,
-                        twitch_user_id=connection[0] if connection else None,
-                    )
-                    return auth_user_id, verdict
+                    # `[(None, None)]` when nothing is linked: the resolver owns the
+                    # `no_linked_twitch_account` verdict, so one code path serves both.
+                    accounts: list[tuple[str | None, str | None]] = list(connections.get(auth_user_id) or [])
+                    pairs: list[tuple[str | None, SubscriptionVerdict]] = []
+                    for twitch_user_id, token in accounts or [(None, None)]:
+                        # One resolver per account: the access token is per account.
+                        resolver = TwitchHelixResolver(check_subscription=self._checker(client, token))
+                        verdict = await resolver.resolve(config=config, twitch_user_id=twitch_user_id)
+                        pairs.append((twitch_user_id, verdict))
+                    return auth_user_id, _merge_account_verdicts(pairs)
 
             return await _gather_verdicts(
                 [_resolve_one(uid) for uid in auth_user_ids],
@@ -326,7 +389,12 @@ class TwitchSubscriptionStrategy:
                 source=TwitchHelixResolver.source,
             )
 
-    async def _load_connections(self, auth_user_ids: Sequence[int]) -> dict[int, tuple[str, str | None]]:
+    async def _load_connections(self, auth_user_ids: Sequence[int]) -> dict[int, list[tuple[str, str | None]]]:
+        """Map ``auth_user_id`` -> every Twitch connection, earliest-linked first.
+
+        All of them, not just the first: the subscription can sit on any account the
+        patron linked, and each one carries its own access token.
+        """
         if not auth_user_ids:
             return {}
         rows = await self._session.execute(
@@ -341,16 +409,17 @@ class TwitchSubscriptionStrategy:
             )
             .order_by(models.OAuthConnection.id)
         )
-        out: dict[int, tuple[str, str | None]] = {}
+        out: dict[int, list[tuple[str, str | None]]] = {}
         for auth_user_id, provider_user_id, access_token in rows.all():
-            out.setdefault(auth_user_id, (provider_user_id, access_token))
+            if not provider_user_id:
+                continue
+            connections = out.setdefault(auth_user_id, [])
+            if all(existing != provider_user_id for existing, _ in connections):
+                connections.append((provider_user_id, access_token))
         return out
 
-    def _checker(
-        self, client: httpx.AsyncClient, connection: tuple[str, str | None] | None
-    ) -> Callable[..., Awaitable[dict[str, Any]]]:
+    def _checker(self, client: httpx.AsyncClient, token: str | None) -> Callable[..., Awaitable[dict[str, Any]]]:
         async def check(*, broadcaster_id: str, user_id: str) -> dict[str, Any]:
-            token = connection[1] if connection else None
             if not self._client_id:
                 raise HelixNotConfigured("twitch client id is not configured")
             if not token:

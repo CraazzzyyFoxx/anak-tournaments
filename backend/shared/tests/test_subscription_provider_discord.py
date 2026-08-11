@@ -276,7 +276,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
 
         with patch(
             "shared.services.subscription_strategies.load_provider_user_ids",
-            AsyncMock(return_value={1: "discord-id-1", 2: "discord-id-2"}),
+            AsyncMock(return_value={1: ["discord-id-1"], 2: ["discord-id-2"]}),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1, 2])
 
@@ -299,7 +299,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
         with patch(
             "shared.services.subscription_strategies.load_provider_user_ids",
-            AsyncMock(return_value={1: "discord-id-1"}),
+            AsyncMock(return_value={1: ["discord-id-1"]}),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1, 7])
 
@@ -326,7 +326,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         with (
             patch(
                 "shared.services.subscription_strategies.load_provider_user_ids",
-                AsyncMock(return_value={1: "discord-id-1"}),
+                AsyncMock(return_value={1: ["discord-id-1"]}),
             ),
             patch(
                 "shared.services.subscription_strategies.DiscordRoleResolver",
@@ -354,7 +354,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         with (
             patch(
                 "shared.services.subscription_strategies.load_provider_user_ids",
-                AsyncMock(return_value={1: "discord-id-1"}),
+                AsyncMock(return_value={1: ["discord-id-1"]}),
             ),
             patch(
                 "shared.services.subscription_strategies.DiscordRoleResolver",
@@ -365,3 +365,58 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
 
         dummy_resolver.resolve.assert_awaited()
         assert 1 in verdicts
+
+
+class TestSeveralLinkedDiscordAccounts(IsolatedAsyncioTestCase):
+    """A patron may pay from any of their linked Discord accounts."""
+
+    async def _resolve(self, members: dict, account_ids: list[str], guild_role_ids=("100", "200")):
+        from unittest.mock import AsyncMock, patch
+
+        from shared.services.subscription_strategies import BoostyDiscordStrategy
+
+        fake_broker = AsyncMock()
+        fake_broker.request.return_value = _rpc_reply({"guild_role_ids": list(guild_role_ids), "members": members})
+        strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
+        with patch(
+            "shared.services.subscription_strategies.load_provider_user_ids",
+            AsyncMock(return_value={1: account_ids}),
+        ):
+            verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1])
+        return verdicts[1], fake_broker.request.await_args.args[0]
+
+    async def test_the_subscribed_account_wins_over_the_first_linked_one(self):
+        verdict, sent = await self._resolve(
+            {"first": {"found": False, "roles": []}, "second": {"found": True, "roles": ["200"]}},
+            ["first", "second"],
+        )
+        assert verdict.state == SubscriptionState.ACTIVE
+        assert verdict.tier_rank == 2
+        # The audit trail has to name the account that answered, now that several could.
+        assert verdict.evidence["resolved_account_id"] == "second"
+        assert verdict.evidence["accounts_checked"] == 2
+        # Every linked account is asked about in the one batch RPC.
+        assert sent["user_ids"] == ["first", "second"]
+
+    async def test_the_highest_tier_held_across_accounts_wins(self):
+        verdict, _ = await self._resolve(
+            {"first": {"found": True, "roles": ["100"]}, "second": {"found": True, "roles": ["200"]}},
+            ["first", "second"],
+        )
+        assert (verdict.state, verdict.tier_rank) == (SubscriptionState.ACTIVE, 2)
+
+    async def test_an_unresolvable_account_is_not_overruled_by_a_non_member_sibling(self):
+        """``unknown`` fails open, so it must outrank a sibling's confirmed ``inactive``.
+
+        Otherwise one account dropping out of the guild would lock out a patron whose
+        other account we simply could not read.
+        """
+        verdict, _ = await self._resolve(
+            {"first": {"found": False, "roles": []}, "second": {"found": True, "roles": ["555"]}},
+            ["first", "second"],
+            # Tier role "200" vanished from the guild, so the member account cannot be
+            # judged -> unknown, while the other account is a confirmed non-member.
+            guild_role_ids=("100",),
+        )
+        assert verdict.state == SubscriptionState.UNKNOWN
+        assert verdict.evidence["reason"] == "role_mapping_drift"

@@ -74,9 +74,9 @@ class TestBuildEventSink:
 class TestCredentialsAreReportedHonestly(IsolatedAsyncioTestCase):
     async def _resolve(self, provider: str, config: dict) -> str:
         strategy = build_strategies(None, discord_bot_token=None, twitch_client_id=None)[provider]  # type: ignore[arg-type]
-        with patch.object(strategies_module, "load_provider_user_ids", AsyncMock(return_value={1: "external-id"})):
+        with patch.object(strategies_module, "load_provider_user_ids", AsyncMock(return_value={1: ["external-id"]})):
             with patch.object(
-                TwitchSubscriptionStrategy, "_load_connections", AsyncMock(return_value={1: ("777", "token")})
+                TwitchSubscriptionStrategy, "_load_connections", AsyncMock(return_value={1: [("777", "token")]})
             ):
                 verdicts = await strategy.resolve_many(config=config, auth_user_ids=[1])
         assert verdicts[1].state == SubscriptionState.UNKNOWN
