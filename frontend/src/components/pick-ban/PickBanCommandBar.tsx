@@ -5,10 +5,17 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { OverlayBar } from "@/components/ui/overlay-bar";
-import type { PickBanAction, PickBanSession, PickBanState } from "@/types/tournament.types";
+import type {
+  PickBanAction,
+  PickBanKind,
+  PickBanSession,
+  PickBanState
+} from "@/types/tournament.types";
 
 import { turnDeadlineMs, type PickBanSide } from "./pick-ban-model";
 import { PickBanCountdown } from "./PickBanCountdown";
+import type { PickBanItemLike } from "./PickBanGrid";
+import { PickBanItemThumb } from "./PickBanItemThumb";
 
 interface PickBanCommandBarProps {
   state: PickBanState;
@@ -16,8 +23,11 @@ interface PickBanCommandBarProps {
   sideName: (side: PickBanSide) => string;
   /** The viewer's own pending action this turn, or null when it's not their turn (or they aren't a captain). */
   captainAction: PickBanAction | null;
+  kind: PickBanKind;
   selectedItemId: number | null;
   selectedItemName: string | null;
+  /** Catalog entry behind `selectedItemId` — the confirmation shows its art, not just its name. */
+  selectedItem: PickBanItemLike | undefined;
   pending: boolean;
   onConfirm: (itemId: number) => void;
   onCancel: () => void;
@@ -36,11 +46,13 @@ export function PickBanCommandBar({
   session,
   sideName,
   captainAction,
+  kind,
   selectedItemId,
   selectedItemName,
+  selectedItem,
   pending,
   onConfirm,
-  onCancel,
+  onCancel
 }: PickBanCommandBarProps) {
   const t = useTranslations("pickBan.room");
   const deadline = turnDeadlineMs(state);
@@ -50,7 +62,10 @@ export function PickBanCommandBar({
     : state.expected_action === "decider"
       ? t("deciderResolving")
       : state.turn_side && state.expected_action
-        ? t("turn", { side: sideName(state.turn_side), action: t(`action.${state.expected_action}`) })
+        ? t("turn", {
+            side: sideName(state.turn_side),
+            action: t(`action.${state.expected_action}`)
+          })
         : null;
 
   const confirmLabel =
@@ -76,8 +91,21 @@ export function PickBanCommandBar({
         </div>
         {captainAction != null ? (
           <div className="flex items-center gap-2 sm:ml-auto sm:shrink-0">
-            <span className="hidden truncate text-sm text-[color:var(--aqt-fg-muted)] sm:inline">
-              {selectedItemName ?? t("captain.selectHint")}
+            {/* The art of what is about to be banned/picked, next to its name:
+                the pool tile the captain clicked is often scrolled out of view
+                by the time they reach this bar. */}
+            <span className="flex min-w-0 items-center gap-2 text-sm text-[color:var(--aqt-fg-muted)]">
+              {selectedItemName != null ? (
+                <PickBanItemThumb
+                  kind={kind}
+                  item={selectedItem}
+                  name={selectedItemName}
+                  size={26}
+                />
+              ) : null}
+              <span className="hidden min-w-0 truncate sm:inline">
+                {selectedItemName ?? t("captain.selectHint")}
+              </span>
             </span>
             {selectedItemId != null ? (
               <Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>

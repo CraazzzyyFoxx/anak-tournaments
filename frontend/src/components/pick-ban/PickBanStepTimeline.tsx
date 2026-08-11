@@ -10,6 +10,7 @@ import type { PickBanEntry, PickBanKind, PickBanSession } from "@/types/tourname
 
 import { parseStepToken, roundState, stepRoundGroups, type PickBanSide } from "./pick-ban-model";
 import type { PickBanItemLike } from "./PickBanGrid";
+import { PickBanItemThumb } from "./PickBanItemThumb";
 
 interface PickBanStepTimelineProps {
   kind: PickBanKind;
@@ -38,12 +39,15 @@ export function PickBanStepTimeline({
   currentRound,
   itemsById,
   sideName,
-  session,
+  session
 }: PickBanStepTimelineProps) {
   const t = useTranslations("pickBan.room");
   // Done-ness derives from committed pool actions, not from the step pointer:
   // every acted entry carries a global action_index (bans, picks, protects, decider).
-  const actedCount = pool.reduce((count, entry) => (entry.action_index != null ? count + 1 : count), 0);
+  const actedCount = pool.reduce(
+    (count, entry) => (entry.action_index != null ? count + 1 : count),
+    0
+  );
   // The grid groups by round whenever the pool carries rounds, and the two
   // stack in one viewport, so the timeline groups on exactly the same
   // condition — a flat timeline beside a grouped grid repeats "Decider" two to
@@ -57,7 +61,10 @@ export function PickBanStepTimeline({
     const current = !done && currentStepIndex === index;
     const actedEntry = done ? pool.find((entry) => entry.action_index === index) : undefined;
     const actedItemName =
-      actedEntry != null ? (itemsById[actedEntry.item_id]?.name ?? t(`${kind}.itemNumber`, { id: actedEntry.item_id })) : null;
+      actedEntry != null
+        ? (itemsById[actedEntry.item_id]?.name ??
+          t(`${kind}.itemNumber`, { id: actedEntry.item_id }))
+        : null;
 
     const Icon = done
       ? Check
@@ -84,7 +91,7 @@ export function PickBanStepTimeline({
           current
             ? "border-[color:var(--aqt-teal)]/45 bg-[color:var(--aqt-teal)]/10"
             : "border-[color:var(--aqt-border)]",
-          done ? "opacity-70" : null,
+          done ? "opacity-70" : null
         )}
       >
         <span className="w-5 shrink-0 text-right font-mono text-xs text-[color:var(--aqt-fg-faint)]">
@@ -98,7 +105,7 @@ export function PickBanStepTimeline({
               ? "text-[color:var(--aqt-support)]"
               : current
                 ? "text-[color:var(--aqt-teal)]"
-                : "text-[color:var(--aqt-fg-faint)]",
+                : "text-[color:var(--aqt-fg-faint)]"
           )}
         />
         <span
@@ -106,7 +113,7 @@ export function PickBanStepTimeline({
             "inline-flex items-center gap-1 font-medium",
             parsed.action === "ban" ? "text-[color:var(--aqt-rose)]" : null,
             parsed.action === "pick" ? "text-[color:var(--aqt-support)]" : null,
-            parsed.action === "protect" ? "text-[color:var(--aqt-amber)]" : null,
+            parsed.action === "protect" ? "text-[color:var(--aqt-amber)]" : null
           )}
         >
           {parsed.action === "ban" ? <Ban className="h-3.5 w-3.5" aria-hidden /> : null}
@@ -114,9 +121,22 @@ export function PickBanStepTimeline({
           {actionLabel}
         </span>
         {parsed.side ? (
-          <span className="min-w-0 truncate text-[color:var(--aqt-fg-muted)]">{sideName(parsed.side)}</span>
+          <span className="min-w-0 truncate text-[color:var(--aqt-fg-muted)]">
+            {sideName(parsed.side)}
+          </span>
         ) : null}
-        {actedItemName ? <span className="ml-auto min-w-0 truncate font-medium">{actedItemName}</span> : null}
+        {actedEntry != null && actedItemName != null ? (
+          <span className="ml-auto flex min-w-0 items-center gap-1.5">
+            <PickBanItemThumb
+              kind={kind}
+              item={itemsById[actedEntry.item_id]}
+              name={actedItemName}
+              size={22}
+              muted={actedEntry.status === "banned"}
+            />
+            <span className="min-w-0 truncate font-medium">{actedItemName}</span>
+          </span>
+        ) : null}
       </div>
     );
   };

@@ -338,6 +338,80 @@ describe("phase selection", () => {
     expect(document.body.textContent).toContain(ROOM.mapResult.pending.replace("{team}", "Bright Wolves"));
   });
 
+  it("shows the viewer their own filed score while the opponent's stays sealed", async () => {
+    // Two independent claims that reconcile: revealing the first would turn the
+    // second into a copy of it. The viewer's own numbers are theirs already.
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })],
+        map_reports: [{ map_id: 21, side: "home", home_score: 3, away_score: 1 }],
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })],
+      }),
+    );
+    await render();
+
+    // Own claim carries the digits the viewer typed; the opponent has filed
+    // nothing, so its tile is the empty "waiting" state and the verdict still
+    // reads "awaiting both".
+    const claims = Array.from(document.body.querySelectorAll<HTMLElement>("[data-claim]"));
+    expect(claims.map((tile) => tile.dataset.claim)).toEqual(["filed", "waiting"]);
+    const visibleSlab = (tile: HTMLElement) =>
+      Array.from(tile.querySelectorAll<HTMLElement>(".tabular-nums"))
+        .map((slab) => slab.textContent ?? "")
+        .join("");
+    expect(visibleSlab(claims[0])).toBe("3:1");
+    expect(visibleSlab(claims[1])).toBe("?:?");
+    expect(document.body.textContent).toContain(ROOM.mapResult.verdict.waiting);
+    expect(document.body.textContent).toContain(ROOM.mapResult.amend);
+  });
+
+  it("charts every settled map of the series with its confirmed score", async () => {
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 1, away: 0 },
+      matches: [{ map_id: 21, map_index: 1, score: { home: 3, away: 1 } }],
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "picked", action_index: 5 }),
+        ],
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 2, status: "banned" })],
+      }),
+    );
+    await render();
+
+    const strip = document.body.querySelector(`ol[aria-label="${ROOM.series.label}"]`);
+    expect(strip).toBeTruthy();
+    // Map 1 is settled and carries its confirmed score; map 2 is the one whose
+    // result the loop is still waiting on.
+    const items = Array.from(strip?.querySelectorAll("li") ?? []);
+    expect(items).toHaveLength(2);
+    expect(items[0].textContent).toContain("Map 21");
+    expect(items[0].textContent).toContain("3:1");
+    expect(items[1].textContent).toContain("Map 22");
+    expect(items[1].textContent).toContain(ROOM.series.awaiting);
+    expect(items[1].textContent).not.toMatch(/\d:\d/);
+  });
+
   it("stays on the hero phase while the hero round for the pending map is still catching up", async () => {
     // Map 2 was just picked; the hero session still only holds round 1, whose
     // steps are all taken. Jumping to "report" here would skip map 2's bans.

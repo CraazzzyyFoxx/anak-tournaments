@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { usePermissions } from "@/hooks/usePermissions";
+import { teamCrest } from "@/lib/draft-crest";
 import { notify } from "@/lib/notify";
 import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
@@ -34,7 +35,12 @@ import { PickBanGrid, type PickBanItemLike } from "@/components/pick-ban/PickBan
 import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
 import { PregameAdminControls } from "./PregameAdminControls";
-import { PregameHeader, type PregamePhase, type PregamePhaseStatus } from "./PregameHeader";
+import {
+  PregameHeader,
+  type PregamePhase,
+  type PregamePhaseStatus,
+  type PregameSeriesMap,
+} from "./PregameHeader";
 import { PregameMapResult } from "./PregameMapResult";
 import { ReadinessModal } from "./ReadinessModal";
 
@@ -263,6 +269,21 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
     ...(heroApplies ? [{ phase: "hero" as const, done: !mapPhaseOpen && !heroPhaseOpen }] : []),
     ...(mapApplies ? [{ phase: "report" as const, done: phase === "done" }] : []),
   ];
+  // The series' history for the header filmstrip. Confirmed per-map scores come
+  // from the encounter's own `Match` rows -- `map_report.submit_map_report`
+  // writes one the moment both captains agree, and an admin correcting a
+  // disputed map corrects that row too, so it stays right where reconciling
+  // the two raw reports here would not.
+  const series: PregameSeriesMap[] = seriesMaps.map((entry, index) => {
+    const match = (encounter.matches ?? []).find((row) => row.map_id === entry.item_id) ?? null;
+    return {
+      round: index + 1,
+      name: mapsById[entry.item_id]?.name ?? t("map.itemNumber", { id: entry.item_id }),
+      item: mapsById[entry.item_id],
+      score: match != null ? { home: match.score.home, away: match.score.away } : null,
+      played: entry.status === "played",
+    };
+  });
   const header = (
     <PregameHeader
       encounter={encounter}
@@ -270,6 +291,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
       activePhase={phase}
       phases={phases}
       round={round}
+      series={series}
     />
   );
 
@@ -302,10 +324,13 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
           encounterId={encounterId}
           mapId={pendingMap.item_id}
           mapName={mapsById[pendingMap.item_id]?.name ?? t("map.itemNumber", { id: pendingMap.item_id })}
+          mapImagePath={mapsById[pendingMap.item_id]?.image_path ?? null}
           round={pendingRound}
           viewerSide={mapState.viewer_side}
           homeName={encounter.home_team?.name ?? t("side.home")}
           awayName={encounter.away_team?.name ?? t("side.away")}
+          homeHue={encounter.home_team != null ? teamCrest(encounter.home_team).hue : null}
+          awayHue={encounter.away_team != null ? teamCrest(encounter.away_team).hue : null}
           reports={(mapState.map_reports ?? []).filter((report) => report.map_id === pendingMap.item_id)}
           header={header}
           invalidateKeys={[mapKey, heroKey, ["encounter-detail", encounterId]]}
@@ -474,8 +499,10 @@ function PickBanPanel({
           session={session}
           sideName={sideName}
           captainAction={state.is_complete ? null : captainAction}
+          kind={kind}
           selectedItemId={selectedItemId}
           selectedItemName={selectedItemName}
+          selectedItem={selectedItemId != null ? itemsById[selectedItemId] : undefined}
           pending={actionMutation.isPending}
           onConfirm={(itemId) => {
             if (captainAction != null) actionMutation.mutate({ item_id: itemId, action: captainAction });

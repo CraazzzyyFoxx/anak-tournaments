@@ -13,7 +13,14 @@ import HeroImage from "@/components/hero/HeroImage";
 import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
 import type { PickBanEntry, PickBanEntryStatus, PickBanKind } from "@/types/tournament.types";
 
-import { isEntrySelectable, pickedItemsInOrder, poolRoundGroups, roundState, statusLabelKey } from "./pick-ban-model";
+import {
+  isEntrySelectable,
+  pickedItemsInOrder,
+  poolRoundGroups,
+  roundState,
+  statusLabelKey
+} from "./pick-ban-model";
+import { PickBanItemThumb } from "./PickBanItemThumb";
 
 /** Generic catalog entry the grid needs to render one item's tile — either a
  * `MapRead` or a `Hero`, reduced to the fields both shapes carry. */
@@ -47,12 +54,15 @@ interface PickBanGridProps {
   header: React.ReactNode;
 }
 
-const STATUS_BADGE_VARIANT: Record<PickBanEntryStatus, "secondary" | "destructive" | "default" | "outline"> = {
+const STATUS_BADGE_VARIANT: Record<
+  PickBanEntryStatus,
+  "secondary" | "destructive" | "default" | "outline"
+> = {
   available: "outline",
   banned: "destructive",
   picked: "default",
   protected: "secondary",
-  played: "secondary",
+  played: "secondary"
 };
 
 /** Hero Pool role filter: display order and the `common.roles.*` label suffix per role. */
@@ -60,7 +70,7 @@ const ROLE_ORDER: AqtRoleKey[] = ["tank", "damage", "support"];
 const ROLE_LABEL_SUFFIX: Record<AqtRoleKey, "tank" | "dps" | "support"> = {
   tank: "tank",
   damage: "dps",
-  support: "support",
+  support: "support"
 };
 
 /** Ties a locked round's tiles to the paragraph that explains why they are inert. */
@@ -75,15 +85,17 @@ export function PickBanGrid({
   currentRound,
   slotReserves,
   onSelect,
-  header,
+  header
 }: PickBanGridProps) {
   const t = useTranslations("pickBan.room");
   const tCommon = useTranslations("common");
   const [roleFilter, setRoleFilter] = useState<AqtRoleKey | "all">("all");
   const orderedPicks = pickedItemsInOrder(pool);
   const roundGroups = poolRoundGroups(pool);
-  const itemName = (itemId: number) => itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
-  const roleOf = (itemId: number): AqtRoleKey | null => normalizeRole(itemsById[itemId]?.type ?? itemsById[itemId]?.role);
+  const itemName = (itemId: number) =>
+    itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
+  const roleOf = (itemId: number): AqtRoleKey | null =>
+    normalizeRole(itemsById[itemId]?.type ?? itemsById[itemId]?.role);
 
   const currentRoundRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -105,12 +117,17 @@ export function PickBanGrid({
             if (role) counts[role] += 1;
             return counts;
           },
-          { tank: 0, damage: 0, support: 0 },
+          { tank: 0, damage: 0, support: 0 }
         )
       : null;
   const visibleEntries = (entries: PickBanEntry[]) =>
-    kind === "hero" && roleFilter !== "all" ? entries.filter((entry) => roleOf(entry.item_id) === roleFilter) : entries;
-  const poolLayoutClass = kind === "hero" ? "flex flex-wrap gap-2" : "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4";
+    kind === "hero" && roleFilter !== "all"
+      ? entries.filter((entry) => roleOf(entry.item_id) === roleFilter)
+      : entries;
+  const poolLayoutClass =
+    kind === "hero"
+      ? "flex flex-wrap gap-2"
+      : "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4";
 
   /** `lockedRound` is the group's round when that round has not opened yet, else null. */
   const tile = (entry: PickBanEntry, lockedRound: number | null) => {
@@ -142,7 +159,7 @@ export function PickBanGrid({
           selectable
             ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
             : "cursor-default",
-          lockedRound != null ? "border-dashed opacity-55" : null,
+          lockedRound != null ? "border-dashed opacity-55" : null
         )}
       >
         <div className="relative h-20 w-full bg-[color:var(--aqt-card-2)] sm:h-24">
@@ -156,7 +173,7 @@ export function PickBanGrid({
                 "object-cover transition-opacity",
                 dimmed ? "opacity-30 grayscale" : null,
                 entry.status === "played" ? "opacity-60" : null,
-                lockedRound != null ? "opacity-45 saturate-50" : null,
+                lockedRound != null ? "opacity-45 saturate-50" : null
               )}
             />
           ) : (
@@ -171,7 +188,12 @@ export function PickBanGrid({
           ) : null}
         </div>
         <div className="flex flex-col gap-1.5 p-2.5">
-          <span className={cn("truncate text-sm font-medium", dimmed ? "line-through opacity-70" : null)}>
+          <span
+            className={cn(
+              "truncate text-sm font-medium",
+              dimmed ? "line-through opacity-70" : null
+            )}
+          >
             {itemName(entry.item_id)}
           </span>
           <span className="flex flex-wrap items-center gap-1.5">
@@ -179,12 +201,18 @@ export function PickBanGrid({
               {t(statusLabelKey(entry))}
             </Badge>
             {entry.picked_by ? (
-              <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal text-[color:var(--aqt-fg-muted)]">
+              <Badge
+                variant="outline"
+                className="px-1.5 py-0 text-[10px] font-normal text-[color:var(--aqt-fg-muted)]"
+              >
                 {t(`by.${entry.picked_by}`)}
               </Badge>
             ) : null}
             {entry.protected_by ? (
-              <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal text-[color:var(--aqt-fg-muted)]">
+              <Badge
+                variant="outline"
+                className="px-1.5 py-0 text-[10px] font-normal text-[color:var(--aqt-fg-muted)]"
+              >
                 {t(`protectedBy.${entry.protected_by}`)}
               </Badge>
             ) : null}
@@ -227,7 +255,7 @@ export function PickBanGrid({
           selectable
             ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
             : "cursor-default",
-          lockedRound != null ? "border-dashed opacity-55" : null,
+          lockedRound != null ? "border-dashed opacity-55" : null
         )}
       >
         <HeroImage
@@ -236,7 +264,7 @@ export function PickBanGrid({
           className={cn(
             "transition-opacity",
             unavailable ? "opacity-40 grayscale" : null,
-            lockedRound != null ? "opacity-45 saturate-50" : null,
+            lockedRound != null ? "opacity-45 saturate-50" : null
           )}
         />
         {unavailable ? (
@@ -270,11 +298,20 @@ export function PickBanGrid({
       <CardContent className="flex flex-col gap-5">
         {roleCounts ? (
           <FilterChipGroup label={tCommon("filters")}>
-            <FilterChip active={roleFilter === "all"} count={pool.length} onClick={() => setRoleFilter("all")}>
+            <FilterChip
+              active={roleFilter === "all"}
+              count={pool.length}
+              onClick={() => setRoleFilter("all")}
+            >
               {tCommon("all")}
             </FilterChip>
             {ROLE_ORDER.filter((role) => roleCounts[role] > 0).map((role) => (
-              <FilterChip key={role} active={roleFilter === role} count={roleCounts[role]} onClick={() => setRoleFilter(role)}>
+              <FilterChip
+                key={role}
+                active={roleFilter === role}
+                count={roleCounts[role]}
+                onClick={() => setRoleFilter(role)}
+              >
                 {tCommon(`roles.${ROLE_LABEL_SUFFIX[role]}`)}
               </FilterChip>
             ))}
@@ -282,7 +319,9 @@ export function PickBanGrid({
         ) : null}
 
         {roundGroups === null ? (
-          <div className={poolLayoutClass}>{visibleEntries(pool).map((entry) => renderTile(entry, null))}</div>
+          <div className={poolLayoutClass}>
+            {visibleEntries(pool).map((entry) => renderTile(entry, null))}
+          </div>
         ) : (
           roundGroups.map((group) => {
             const state = roundState(group, currentRound);
@@ -300,7 +339,9 @@ export function PickBanGrid({
                 className="flex flex-col gap-2"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold">{t("round.label", { n: group.round })}</span>
+                  <span className="text-sm font-semibold">
+                    {t("round.label", { n: group.round })}
+                  </span>
                   <Badge
                     variant={state === "current" ? "default" : "outline"}
                     className="px-1.5 py-0 text-[10px] font-normal"
@@ -313,7 +354,10 @@ export function PickBanGrid({
                   </Badge>
                 </div>
                 {locked ? (
-                  <p id={lockedHintId(group.round)} className="text-xs text-[color:var(--aqt-fg-muted)]">
+                  <p
+                    id={lockedHintId(group.round)}
+                    className="text-xs text-[color:var(--aqt-fg-muted)]"
+                  >
                     {t("round.locked", { n: group.round })}
                   </p>
                 ) : null}
@@ -323,7 +367,9 @@ export function PickBanGrid({
                   </p>
                 ) : null}
                 <div className={poolLayoutClass}>
-                  {visibleEntries(group.entries).map((entry) => renderTile(entry, locked ? group.round : null))}
+                  {visibleEntries(group.entries).map((entry) =>
+                    renderTile(entry, locked ? group.round : null)
+                  )}
                 </div>
               </div>
             );
@@ -333,14 +379,42 @@ export function PickBanGrid({
         {orderedPicks.length > 0 ? (
           <div>
             <div className="mb-1.5 text-sm font-medium">{t("order.title")}</div>
-            <div className="flex flex-wrap gap-2">
+            {/* The settled order as a rail of stills/portraits: the art is the
+                token, the ordinal rides it as a corner chip, and the name is a
+                caption under it rather than the only thing on screen. */}
+            <ol className="flex flex-wrap gap-2">
               {orderedPicks.map((entry, index) => (
-                <Badge key={entry.id} variant="secondary">
-                  {index + 1}. {itemName(entry.item_id)}
-                  {entry.picked_by === "decider" && entry.round == null ? ` · ${t("by.decider")}` : ""}
-                </Badge>
+                <li
+                  key={entry.id}
+                  className="flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/40 py-1.5 pl-1.5 pr-2.5"
+                >
+                  <span className="relative shrink-0">
+                    <PickBanItemThumb
+                      kind={kind}
+                      item={itemsById[entry.item_id]}
+                      name={itemName(entry.item_id)}
+                      size={26}
+                    />
+                    <span
+                      aria-hidden
+                      className="absolute -left-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[color:var(--aqt-teal)] px-1 font-mono text-[9px] font-bold leading-none text-[color:var(--aqt-bg)]"
+                    >
+                      {index + 1}
+                    </span>
+                  </span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="min-w-0 truncate text-xs font-medium">
+                      {itemName(entry.item_id)}
+                    </span>
+                    {entry.picked_by === "decider" && entry.round == null ? (
+                      <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
+                        {t("by.decider")}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
               ))}
-            </div>
+            </ol>
           </div>
         ) : null}
       </CardContent>
