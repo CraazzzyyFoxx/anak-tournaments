@@ -28,21 +28,29 @@ export interface PregamePhaseStatus {
   done: boolean;
 }
 
-/** One map the series has already settled on, in play order. */
+/** Where one map of the series stands, in the loop's own terms. */
+export type PregameSeriesMapState =
+  /** Played and reconciled — it has a confirmed score. */
+  | "played"
+  /** The map the loop is waiting on right now: played or being played, unreported. */
+  | "awaiting"
+  /** A later map of the series; not reached yet, nothing to show. */
+  | "upcoming";
+
+/** One map of this series, in play order. */
 export interface PregameSeriesMap {
   /** Which map of the series this is, 1-based. */
   round: number;
   name: string;
   item: PickBanItemLike | undefined;
-  /** The score both captains agreed on, or null while it is still unreconciled. */
+  /** The confirmed score. Only ever set when `state` is `"played"`. */
   score: { home: number; away: number } | null;
-  /** True once the map has been played and its result confirmed. */
-  played: boolean;
+  state: PregameSeriesMapState;
 }
 
 interface PregameHeaderProps {
   encounter: Encounter;
-  /** Null before both captains are ready -- no session exists yet (see `ReadinessModal`). */
+  /** Null before both captains are ready -- no session exists yet (see `PregameReadiness`). */
   session: PickBanSession | null;
   activePhase: PregamePhase;
   /**
@@ -86,9 +94,11 @@ const PHASE_ICON: Record<PregamePhase, typeof MapPin> = {
  * actually opens this room for -- where the series stands.
  *
  * Renders with `session=null` while the room is open but waiting on captain
- * readiness (`ReadinessModal` overlays this, rather than replacing it) --
- * every session-derived piece (status chip, seeds, opener marker) is skipped
- * in that state; the turn timer lives in `PickBanCommandBar`, which only ever
+ * readiness -- `PregameReadiness` then takes the pool's place BELOW this header
+ * rather than covering it, which is why the header must stay legible in that
+ * state: every session-derived piece (status chip, seeds, opener marker) is
+ * skipped, and the matchup plus the series standing carry the room on their own.
+ * The turn timer lives in `PickBanCommandBar`, which only ever
  * renders once a session exists. The "who goes first" banner lives in
  * `PickBanStepTimeline` instead, next to the steps it explains.
  */
@@ -482,11 +492,21 @@ function PhaseRail({
 }
 
 /**
- * The maps already settled, as a filmstrip of bare stills: the ordinal rides
- * the art as a corner chip, the score sits under it, and the map whose result
- * the loop is waiting on takes a teal ring plus an hourglass instead of digits.
- * No card around each entry — the still IS the token, and boxing it turned the
- * series into another row of chips competing with the phase rail above it.
+ * Every map of this series as a filmstrip of bare stills, in play order: the
+ * ordinal rides the art as a corner chip, the name captions it, and a settled
+ * map's confirmed score sits under it. No card around each entry — the still IS
+ * the token, and boxing it turned the series into another row of chips
+ * competing with the phase rail above.
+ *
+ * The three states read differently on purpose, because collapsing them to two
+ * is what made an unreached map look finished:
+ *
+ * - `played`   — greyed art, confirmed score under it.
+ * - `awaiting` — full colour, teal ring, hourglass over the art, NO score. It
+ *                is the map being played/reported right now, so any number
+ *                here would contradict the report panel below.
+ * - `upcoming` — dimmed art, no overlay, no score: a map of the series the
+ *                loop has not reached.
  */
 function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
   const t = useTranslations("pickBan.room");
@@ -494,16 +514,21 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
   return (
     <ol aria-label={t("series.label")} className="flex flex-wrap items-start gap-3">
       {series.map((map) => {
-        const roundLabel = t("round.label", { n: map.round });
+        const awaiting = map.state === "awaiting";
+        const stateLabel = awaiting
+          ? t("series.awaiting")
+          : map.state === "upcoming"
+            ? t("series.upcoming")
+            : null;
         return (
-          <li key={map.round} className="flex w-20 flex-col items-center gap-1">
+          <li key={map.round} className="flex w-[5.5rem] flex-col items-center gap-1">
             {/* Ring on the wrapper, not the thumb: the map thumb already carries
                 an inset hairline ring, and `ring-inset` has no counter-utility
                 for `twMerge` to strip. */}
             <span
               className={cn(
                 "relative inline-block rounded-md",
-                map.score == null ? "ring-2 ring-[color:var(--aqt-teal)]" : null
+                awaiting ? "ring-2 ring-[color:var(--aqt-teal)]" : null
               )}
             >
               <PickBanItemThumb
@@ -511,7 +536,12 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
                 item={map.item}
                 name={map.name}
                 size={40}
-                muted={map.score != null}
+                // Only an unreached map is dimmed. A played one keeps its colour:
+                // `muted` is the timeline's "banned" treatment (45% + grayscale)
+                // and at 40px it left the art unrecognisable, so a settled map
+                // became a grey smudge you could not name. Its score below and
+                // the absence of the ring already mark it as done.
+                muted={map.state === "upcoming"}
               />
               <span
                 aria-hidden
@@ -519,7 +549,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
               >
                 {map.round}
               </span>
-              {map.score == null ? (
+              {awaiting ? (
                 <span
                   aria-hidden
                   className="absolute inset-0 grid place-items-center rounded-md bg-[color:var(--aqt-card)]/55"
@@ -529,19 +559,22 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
               ) : null}
             </span>
             <span className="sr-only">
-              {roundLabel}
-              {map.score == null ? ` — ${t("series.awaiting")}` : ""}
+              {t("round.label", { n: map.round })}
+              {stateLabel != null ? ` — ${stateLabel}` : ""}
             </span>
+            {/* Two lines, not one: "Watchpoint: Gibraltar" truncated to
+                "Watchpoint: …" at a single line of this width, which named
+                nothing. The fixed height keeps every column's score aligned. */}
             <span
               title={map.name}
-              className="w-full truncate text-center text-[11px] leading-tight"
+              className="line-clamp-2 h-[2.1rem] w-full text-center text-[11px] leading-tight"
             >
               {map.name}
             </span>
-            {/* Only a settled map gets digits. The one still in play says so with
-                the teal ring and the hourglass over its still -- a caption here
-                wrapped to two lines and knocked every column out of alignment,
-                and it repeated what the overlay already shows. */}
+            {/* Digits belong to a settled map only. The other two states say
+                where they stand with the ring/hourglass and the dimming — a
+                caption here wrapped to two lines and knocked every column out
+                of alignment. */}
             {map.score != null ? (
               <span className="font-onest text-xs font-semibold tabular-nums">
                 <span style={{ color: "var(--aqt-teal)" }}>{map.score.home}</span>

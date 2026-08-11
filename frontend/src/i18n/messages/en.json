@@ -2302,7 +2302,8 @@
       },
       "series": {
         "label": "Maps of this series",
-        "awaiting": "awaiting result"
+        "awaiting": "awaiting result",
+        "upcoming": "not played yet"
       },
       "back": "Back to match",
       "loadError": "Failed to load pick-ban state",
@@ -2340,6 +2341,8 @@
         "sending": "Confirming...",
         "confirmed": "You're ready",
         "waitingOpponent": "Waiting for the other captain to confirm",
+        "stateReady": "Ready",
+        "statePending": "Not ready",
         "failed": "Failed to confirm readiness"
       },
       "steps": {

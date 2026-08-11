@@ -14,7 +14,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -47,11 +47,16 @@ export function PregameAdminControls({
   allowProtect,
   selectedItemId,
   selectedItemName,
-  onMutated,
+  onMutated
 }: PregameAdminControlsProps) {
   const t = useTranslations("pickBan.room");
   const defaultSide: PickBanSide = state.turn_side ?? "home";
-  const defaultAction: PickBanAction = state.expected_action === "pick" ? "pick" : state.expected_action === "protect" ? "protect" : "ban";
+  const defaultAction: PickBanAction =
+    state.expected_action === "pick"
+      ? "pick"
+      : state.expected_action === "protect"
+        ? "protect"
+        : "ban";
   // The override is stored WITH the step it was made for, so a new step
   // automatically falls back to what the sequence expects.
   const step = state.current_step_index;
@@ -72,14 +77,14 @@ export function PregameAdminControls({
       notify.success(t("admin.resetSuccess"));
       onMutated();
     },
-    onError: (error) => notify.apiError(error, { title: t("admin.resetFailed") }),
+    onError: (error) => notify.apiError(error, { title: t("admin.resetFailed") })
   });
 
   const actMutation = useMutation({
     mutationFn: (input: { side: PickBanSide; item_id: number; action: PickBanAction }) =>
       adminService.adminPickBanAct(encounterId, { kind, ...input }),
     onSuccess: onMutated,
-    onError: (error) => notify.apiError(error, { title: t("admin.actFailed") }),
+    onError: (error) => notify.apiError(error, { title: t("admin.actFailed") })
   });
 
   const canAct = state.session?.status === "active" && !state.is_complete && selectedItemId != null;
@@ -88,7 +93,7 @@ export function PregameAdminControls({
   const actionOptions: { value: PickBanAction; label: string }[] = [
     { value: "ban", label: t("action.ban") },
     { value: "pick", label: t("action.pick") },
-    ...(allowProtect ? [{ value: "protect" as const, label: t("action.protect") }] : []),
+    ...(allowProtect ? [{ value: "protect" as const, label: t("action.protect") }] : [])
   ];
 
   return (
@@ -105,12 +110,17 @@ export function PregameAdminControls({
               label={t("admin.sideLabel")}
               options={[
                 { value: "home", label: t("side.home") },
-                { value: "away", label: t("side.away") },
+                { value: "away", label: t("side.away") }
               ]}
               value={side}
               onChange={setSide}
             />
-            <ChoiceGroup label={t("admin.actionLabel")} options={actionOptions} value={action} onChange={setAction} />
+            <ChoiceGroup
+              label={t("admin.actionLabel")}
+              options={actionOptions}
+              value={action}
+              onChange={setAction}
+            />
             <Button
               size="sm"
               disabled={!canAct || pending}
@@ -119,12 +129,16 @@ export function PregameAdminControls({
                 actMutation.mutate({ side, item_id: selectedItemId, action });
               }}
             >
-              {actMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
+              {actMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : null}
               {t("admin.confirm")}
               {selectedItemName ? `: ${selectedItemName}` : ""}
             </Button>
             {selectedItemId == null ? (
-              <span className="text-xs text-[color:var(--aqt-fg-muted)]">{t("admin.selectItemFirst")}</span>
+              <span className="text-xs text-[color:var(--aqt-fg-muted)]">
+                {t("admin.selectItemFirst")}
+              </span>
             ) : null}
           </>
         ) : null}
@@ -147,7 +161,9 @@ export function PregameAdminControls({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>{t("captain.cancel")}</AlertDialogCancel>
-              <AlertDialogAction onClick={() => resetMutation.mutate()}>{t("admin.resetConfirmAction")}</AlertDialogAction>
+              <AlertDialogAction onClick={() => resetMutation.mutate()}>
+                {t("admin.resetConfirmAction")}
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -160,7 +176,7 @@ function ChoiceGroup<TValue extends string>({
   label,
   options,
   value,
-  onChange,
+  onChange
 }: {
   label: string;
   options: { value: TValue; label: string }[];
@@ -169,7 +185,9 @@ function ChoiceGroup<TValue extends string>({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">{label}</span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        {label}
+      </span>
       <div className="flex gap-1">
         {options.map((option) => (
           <Button

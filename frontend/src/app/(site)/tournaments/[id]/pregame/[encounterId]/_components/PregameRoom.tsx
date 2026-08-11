@@ -28,7 +28,7 @@ import {
   pickBanReserveMap,
   pickedItemsInOrder,
   type PickBanSide,
-  type PickBanUnavailableIcon,
+  type PickBanUnavailableIcon
 } from "@/components/pick-ban/pick-ban-model";
 import { PickBanCommandBar } from "@/components/pick-ban/PickBanCommandBar";
 import { PickBanGrid, type PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
@@ -39,10 +39,10 @@ import {
   PregameHeader,
   type PregamePhase,
   type PregamePhaseStatus,
-  type PregameSeriesMap,
+  type PregameSeriesMap
 } from "./PregameHeader";
 import { PregameMapResult } from "./PregameMapResult";
-import { ReadinessModal } from "./ReadinessModal";
+import { PregameReadiness } from "./PregameReadiness";
 
 interface PregameRoomProps {
   encounterId: number;
@@ -52,7 +52,7 @@ interface PregameRoomProps {
 const UNAVAILABLE_ICON: Record<PickBanUnavailableIcon, React.ReactNode> = {
   teams: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-teal)]" aria-hidden />,
   unconfigured: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
-  misconfigured: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
+  misconfigured: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />
 };
 
 /**
@@ -91,28 +91,30 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
     queryKey: mapKey,
     queryFn: () => pickBanService.getPickBanState("map", encounterId),
     enabled,
-    refetchInterval: (query) => (query.state.data?.session != null && !query.state.data.is_complete ? 4000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.session != null && !query.state.data.is_complete ? 4000 : false
   });
   const heroQuery = useQuery({
     queryKey: heroKey,
     queryFn: () => pickBanService.getPickBanState("hero", encounterId),
     enabled,
-    refetchInterval: (query) => (query.state.data?.session != null && !query.state.data.is_complete ? 4000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.session != null && !query.state.data.is_complete ? 4000 : false
   });
   const encounterQuery = useQuery({
     queryKey: ["encounter-detail", encounterId],
     queryFn: () => encounterService.getEncounter(encounterId),
-    enabled,
+    enabled
   });
   const mapsQuery = useQuery({
     queryKey: ["maps-all"],
     queryFn: () => mapService.getAll({ perPage: -1 }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000
   });
   const heroesQuery = useQuery({
     queryKey: ["heroes-all"],
     queryFn: () => heroService.getAll({ perPage: -1 }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000
   });
   // `build_unavailable_state` reports `viewer_side: null` regardless of
   // identity (there is no session yet to resolve a side against), so the
@@ -121,7 +123,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
     queryKey: ["encounter", encounterId, "my-role"],
     queryFn: () => captainService.getMyRole(encounterId),
     enabled,
-    retry: false,
+    retry: false
   });
 
   // The hub only delivers a thin "changed" signal on every mutation — the
@@ -143,7 +145,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: mapKey });
       void queryClient.invalidateQueries({ queryKey: heroKey });
-    },
+    }
   });
 
   const mapsById = useMemo(() => {
@@ -158,7 +160,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   }, [heroesQuery.data]);
   const itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>> = {
     map: mapsById,
-    hero: heroesById,
+    hero: heroesById
   };
 
   if (mapQuery.isPending || heroQuery.isPending || encounterQuery.isPending) {
@@ -174,7 +176,13 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   const mapState = mapQuery.data ?? null;
   const heroState = heroQuery.data ?? null;
 
-  if (mapQuery.isError || heroQuery.isError || encounter === null || mapState === null || heroState === null) {
+  if (
+    mapQuery.isError ||
+    heroQuery.isError ||
+    encounter === null ||
+    mapState === null ||
+    heroState === null
+  ) {
     return (
       <EmptyRoomCard
         icon={<ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />}
@@ -198,7 +206,8 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   const statesByKind: Record<PickBanKind, PickBanState> = { map: mapState, hero: heroState };
   // "Applicable" = something WOULD open here once teams/rules/readiness allow
   // it — everything except "there is genuinely no rule set for this kind".
-  const applicable = (kind: PickBanKind) => statesByKind[kind].reason !== "not_configured" || statesByKind[kind].session != null;
+  const applicable = (kind: PickBanKind) =>
+    statesByKind[kind].reason !== "not_configured" || statesByKind[kind].session != null;
   const mapApplies = applicable("map");
   const heroApplies = applicable("hero");
 
@@ -215,7 +224,10 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
 
   const workspaceId = encounter.tournament?.workspace_id ?? null;
   const isAdmin =
-    workspaceId != null && (isSuperuser || isWorkspaceAdmin(workspaceId) || hasWorkspacePermission(workspaceId, "match.update"));
+    workspaceId != null &&
+    (isSuperuser ||
+      isWorkspaceAdmin(workspaceId) ||
+      hasWorkspacePermission(workspaceId, "match.update"));
   const viewerSide = roleQuery.data?.side ?? null;
 
   // Readiness blocks EVERY kind's session at once (one gate per encounter) --
@@ -224,7 +236,9 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   const readiness = mapState.readiness;
   const waitingOnReadiness =
     !(readiness.home && readiness.away) &&
-    (["map", "hero"] as PickBanKind[]).some((kind) => applicable(kind) && statesByKind[kind].reason === "not_ready");
+    (["map", "hero"] as PickBanKind[]).some(
+      (kind) => applicable(kind) && statesByKind[kind].reason === "not_ready"
+    );
 
   // ── where the loop stands ────────────────────────────────────────────────
   //
@@ -267,21 +281,29 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   const phases: PregamePhaseStatus[] = [
     ...(mapApplies ? [{ phase: "map" as const, done: !mapPhaseOpen }] : []),
     ...(heroApplies ? [{ phase: "hero" as const, done: !mapPhaseOpen && !heroPhaseOpen }] : []),
-    ...(mapApplies ? [{ phase: "report" as const, done: phase === "done" }] : []),
+    ...(mapApplies ? [{ phase: "report" as const, done: phase === "done" }] : [])
   ];
-  // The series' history for the header filmstrip. Confirmed per-map scores come
-  // from the encounter's own `Match` rows -- `map_report.submit_map_report`
-  // writes one the moment both captains agree, and an admin correcting a
-  // disputed map corrects that row too, so it stays right where reconciling
-  // the two raw reports here would not.
+  // The series' history for the header filmstrip. Three distinct states, and
+  // the pool is what tells them apart -- NOT the presence of a `Match` row:
+  // a row exists for a map that a log parser touched or that was pre-created
+  // at 0:0, so keying "settled" off `match != null` marked an unplayed map of
+  // the series as finished and printed a 0:0 nobody scored.
+  //
+  // A `played` entry is settled and shows its confirmed score. Of the rest,
+  // the FIRST one is the map the loop is waiting on right now (see
+  // `pendingIndex`); every later one is simply a map of the series that has
+  // not been reached yet and has no result to show at all.
   const series: PregameSeriesMap[] = seriesMaps.map((entry, index) => {
-    const match = (encounter.matches ?? []).find((row) => row.map_id === entry.item_id) ?? null;
+    const played = entry.status === "played";
+    const match = played
+      ? ((encounter.matches ?? []).find((row) => row.map_id === entry.item_id) ?? null)
+      : null;
     return {
       round: index + 1,
       name: mapsById[entry.item_id]?.name ?? t("map.itemNumber", { id: entry.item_id }),
       item: mapsById[entry.item_id],
       score: match != null ? { home: match.score.home, away: match.score.away } : null,
-      played: entry.status === "played",
+      state: played ? "played" : index === pendingIndex ? "awaiting" : "upcoming"
     };
   });
   const header = (
@@ -296,24 +318,23 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   );
 
   if (waitingOnReadiness) {
+    // One real card, header and all — no skeleton column beside it. Neither
+    // session exists yet, so there is no pool and no step sequence to render,
+    // and a shimmer that can only resolve when a human clicks "I'm ready" in
+    // another browser reads as a page stuck loading.
     return (
-      <div className="flex flex-col gap-4">
-        <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]">
-          <Skeleton className="h-72 w-full rounded-xl" aria-hidden />
-          <Card>
-            <CardContent className="flex flex-col gap-4 p-5">
-              {header}
-              <Skeleton className="h-56 w-full rounded-lg" aria-hidden />
-            </CardContent>
-          </Card>
-        </div>
-        <ReadinessModal
-          readiness={readiness}
-          viewerSide={viewerSide}
-          pending={readyMutation.isPending}
-          onReady={() => readyMutation.mutate()}
-        />
-      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-5 p-5">
+          {header}
+          <PregameReadiness
+            encounter={encounter}
+            readiness={readiness}
+            viewerSide={viewerSide}
+            pending={readyMutation.isPending}
+            onReady={() => readyMutation.mutate()}
+          />
+        </CardContent>
+      </Card>
     );
   }
 
@@ -323,7 +344,9 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
         <PregameMapResult
           encounterId={encounterId}
           mapId={pendingMap.item_id}
-          mapName={mapsById[pendingMap.item_id]?.name ?? t("map.itemNumber", { id: pendingMap.item_id })}
+          mapName={
+            mapsById[pendingMap.item_id]?.name ?? t("map.itemNumber", { id: pendingMap.item_id })
+          }
           mapImagePath={mapsById[pendingMap.item_id]?.image_path ?? null}
           round={pendingRound}
           viewerSide={mapState.viewer_side}
@@ -331,7 +354,9 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
           awayName={encounter.away_team?.name ?? t("side.away")}
           homeHue={encounter.home_team != null ? teamCrest(encounter.home_team).hue : null}
           awayHue={encounter.away_team != null ? teamCrest(encounter.away_team).hue : null}
-          reports={(mapState.map_reports ?? []).filter((report) => report.map_id === pendingMap.item_id)}
+          reports={(mapState.map_reports ?? []).filter(
+            (report) => report.map_id === pendingMap.item_id
+          )}
           header={header}
           invalidateKeys={[mapKey, heroKey, ["encounter-detail", encounterId]]}
         />
@@ -347,7 +372,9 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
             {header}
             <section className="flex flex-col gap-2 rounded-xl border border-[color:var(--aqt-border)] p-4">
               <h2 className="font-onest text-lg font-semibold">{t("seriesDone.title")}</h2>
-              <p className="text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">{t("seriesDone.hint")}</p>
+              <p className="text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
+                {t("seriesDone.hint")}
+              </p>
               <div className="mt-1">
                 <Button variant="outline" asChild>
                   <Link href={`/encounters/${encounterId}`}>
@@ -405,7 +432,7 @@ function PickBanPanel({
   queryKey,
   itemsById,
   isAdmin,
-  header,
+  header
 }: {
   kind: PickBanKind;
   encounterId: number;
@@ -423,30 +450,38 @@ function PickBanPanel({
   const [pickedItemId, setSelectedItemId] = useState<number | null>(null);
 
   const selectedItemId =
-    pickedItemId != null && state.pool.some((entry) => entry.item_id === pickedItemId && entry.status === "available")
+    pickedItemId != null &&
+    state.pool.some((entry) => entry.item_id === pickedItemId && entry.status === "available")
       ? pickedItemId
       : null;
 
   const actionMutation = useMutation({
-    mutationFn: (input: PickBanActionInput) => pickBanService.performPickBanAction(kind, encounterId, input),
+    mutationFn: (input: PickBanActionInput) =>
+      pickBanService.performPickBanAction(kind, encounterId, input),
     onSuccess: () => setSelectedItemId(null),
     onError: (error) => notify.apiError(error, { title: t("captain.actionFailed") }),
-    onSettled: () => void queryClient.invalidateQueries({ queryKey }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey })
   });
 
   const sideName = (side: PickBanSide) =>
-    side === "home" ? (encounter.home_team?.name ?? t("side.home")) : (encounter.away_team?.name ?? t("side.away"));
+    side === "home"
+      ? (encounter.home_team?.name ?? t("side.home"))
+      : (encounter.away_team?.name ?? t("side.away"));
 
   const captainAction: PickBanAction | null =
     state.viewer_can_act && state.allowed_actions.length > 0 ? state.allowed_actions[0] : null;
-  const canSelect = isSessionActive(session) && !state.is_complete && (captainAction !== null || isAdmin);
+  const canSelect =
+    isSessionActive(session) && !state.is_complete && (captainAction !== null || isAdmin);
   const selectedItemName =
-    selectedItemId != null ? (itemsById[selectedItemId]?.name ?? t(`${kind}.itemNumber`, { id: selectedItemId })) : null;
+    selectedItemId != null
+      ? (itemsById[selectedItemId]?.name ?? t(`${kind}.itemNumber`, { id: selectedItemId }))
+      : null;
   const allowProtect = state.sequence.some((token) => token.startsWith("protect_"));
 
   // The backend enforces who may elect (pending_loser_side); this only gates
   // whether the losing captain's own client shows the modal at all.
-  const showElectOpener = session.awaiting_choice && state.viewer_side === session.pending_loser_side;
+  const showElectOpener =
+    session.awaiting_choice && state.viewer_side === session.pending_loser_side;
 
   return (
     <>
@@ -471,7 +506,9 @@ function PickBanPanel({
             canSelect={canSelect}
             currentRound={state.current_round}
             slotReserves={pickBanReserveMap(session)}
-            onSelect={(itemId) => setSelectedItemId((current) => (current === itemId ? null : itemId))}
+            onSelect={(itemId) =>
+              setSelectedItemId((current) => (current === itemId ? null : itemId))
+            }
             header={header}
           />
 
@@ -489,7 +526,6 @@ function PickBanPanel({
               }}
             />
           ) : null}
-
         </div>
       </div>
 
@@ -505,12 +541,12 @@ function PickBanPanel({
           selectedItem={selectedItemId != null ? itemsById[selectedItemId] : undefined}
           pending={actionMutation.isPending}
           onConfirm={(itemId) => {
-            if (captainAction != null) actionMutation.mutate({ item_id: itemId, action: captainAction });
+            if (captainAction != null)
+              actionMutation.mutate({ item_id: itemId, action: captainAction });
           }}
           onCancel={() => setSelectedItemId(null)}
         />
       ) : null}
-
 
       <ElectOpenerDialog
         kind={kind}
@@ -529,7 +565,7 @@ function EmptyRoomCard({
   title,
   hint,
   action,
-  encounterId,
+  encounterId
 }: {
   icon: React.ReactNode;
   title: string;
@@ -544,7 +580,11 @@ function EmptyRoomCard({
       <CardContent className="flex min-h-[40svh] flex-col items-center justify-center gap-3 p-8 text-center">
         {icon}
         <h1 className="font-onest text-xl font-semibold">{title}</h1>
-        {hint ? <p className="max-w-lg text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">{hint}</p> : null}
+        {hint ? (
+          <p className="max-w-lg text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
+            {hint}
+          </p>
+        ) : null}
         <div className="mt-2 flex items-center gap-2">
           {action}
           <Button variant="outline" asChild>
