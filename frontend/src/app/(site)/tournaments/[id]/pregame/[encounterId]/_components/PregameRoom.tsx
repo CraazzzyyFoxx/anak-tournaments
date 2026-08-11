@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { usePermissions } from "@/hooks/usePermissions";
 import { teamCrest } from "@/lib/draft-crest";
 import { notify } from "@/lib/notify";
+import { RETURN_TO_PARAM, safeReturnPath } from "@/lib/return-to";
 import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
 import heroService from "@/services/hero.service";
@@ -41,6 +43,7 @@ import {
   type PregamePhaseStatus,
   type PregameSeriesMap
 } from "./PregameHeader";
+import { PregameFinalReport } from "./PregameFinalReport";
 import { PregameMapResult } from "./PregameMapResult";
 import { PregameReadiness } from "./PregameReadiness";
 
@@ -78,6 +81,14 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   const queryClient = useQueryClient();
   const { isSuperuser, isWorkspaceAdmin, hasWorkspacePermission } = usePermissions();
   const enabled = Number.isFinite(encounterId) && encounterId > 0;
+  // Where every way out of this room leads. The room is opened from the bracket
+  // as well as from the encounter page, and hardcoding the encounter page threw
+  // an organizer working through a round back to a single match every time.
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnPath(
+    searchParams?.get(RETURN_TO_PARAM),
+    `/encounters/${encounterId}`
+  );
 
   const mapKey = ["pregame-state", encounterId, "map"];
   const heroKey = ["pregame-state", encounterId, "hero"];
@@ -198,7 +209,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
             {t("retry")}
           </Button>
         }
-        encounterId={encounterId}
+        returnTo={returnTo}
       />
     );
   }
@@ -217,7 +228,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
         icon={UNAVAILABLE_ICON.unconfigured}
         title={t("notConfiguredTitle")}
         hint={t("notConfiguredHint")}
-        encounterId={encounterId}
+        returnTo={returnTo}
       />
     );
   }
@@ -314,6 +325,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
       phases={phases}
       round={round}
       series={series}
+      returnTo={returnTo}
     />
   );
 
@@ -367,25 +379,12 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   if (phase === "done") {
     return (
       <div className="flex flex-col gap-4">
-        <Card>
-          <CardContent className="flex flex-col gap-5 p-5">
-            {header}
-            <section className="flex flex-col gap-2 rounded-xl border border-[color:var(--aqt-border)] p-4">
-              <h2 className="font-onest text-lg font-semibold">{t("seriesDone.title")}</h2>
-              <p className="text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
-                {t("seriesDone.hint")}
-              </p>
-              <div className="mt-1">
-                <Button variant="outline" asChild>
-                  <Link href={`/encounters/${encounterId}`}>
-                    <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
-                    {t("back")}
-                  </Link>
-                </Button>
-              </div>
-            </section>
-          </CardContent>
-        </Card>
+        <PregameFinalReport
+          encounter={encounter}
+          viewerSide={mapState.viewer_side ?? viewerSide}
+          header={header}
+          returnTo={returnTo}
+        />
       </div>
     );
   }
@@ -400,7 +399,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
         icon={UNAVAILABLE_ICON[copy.icon]}
         title={t(copy.titleKey)}
         hint={t(copy.hintKey)}
-        encounterId={encounterId}
+        returnTo={returnTo}
       />
     );
   }
@@ -565,13 +564,13 @@ function EmptyRoomCard({
   title,
   hint,
   action,
-  encounterId
+  returnTo
 }: {
   icon: React.ReactNode;
   title: string;
   hint?: string;
   action?: React.ReactNode;
-  encounterId: number;
+  returnTo: string;
 }) {
   const t = useTranslations("pickBan.room");
 
@@ -588,7 +587,7 @@ function EmptyRoomCard({
         <div className="mt-2 flex items-center gap-2">
           {action}
           <Button variant="outline" asChild>
-            <Link href={`/encounters/${encounterId}`}>
+            <Link href={returnTo}>
               <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
               {t("back")}
             </Link>

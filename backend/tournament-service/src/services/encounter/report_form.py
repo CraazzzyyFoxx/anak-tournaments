@@ -55,15 +55,16 @@ def _unprocessable(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
 
-def series_map_indices(picked_orders: Iterable[int], best_of: int | None) -> list[int]:
+def series_map_indices(settled_indices: Iterable[int], best_of: int | None) -> list[int]:
     """The ``map_index`` slots a captain is offered a code field for.
 
-    Server-side mirror of ``buildMapCodeSlots``: the veto pool's pick orders when
-    a pool has picks, else ``1..best_of``.
+    Server-side mirror of ``buildMapCodeSlots``: the 1-based positions of the
+    maps the veto has settled (``captain._picked_map_ids``) when it has settled
+    any, else ``1..best_of``.
     """
-    picked = sorted(set(picked_orders))
-    if picked:
-        return picked
+    settled = sorted(set(settled_indices))
+    if settled:
+        return settled
     count = best_of if best_of and best_of > 0 else DEFAULT_BEST_OF
     return list(range(1, count + 1))
 

@@ -63,6 +63,8 @@ interface PregameHeaderProps {
   round: number | null;
   /** Maps this series has settled, oldest first. Empty before the first pick. */
   series: PregameSeriesMap[];
+  /** Where the back arrow leads: the page the room was opened from. */
+  returnTo: string;
 }
 
 /** Accent per session state — carried by an icon, not a labelled pill. */
@@ -108,7 +110,8 @@ export function PregameHeader({
   activePhase,
   phases,
   round,
-  series
+  series,
+  returnTo
 }: PregameHeaderProps) {
   const t = useTranslations("pickBan.room");
   const homeTeam = encounter.home_team ?? null;
@@ -123,7 +126,7 @@ export function PregameHeader({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href={`/encounters/${encounter.id}`}
+          href={returnTo}
           aria-label={t("back")}
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-card-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
         >

@@ -335,8 +335,9 @@ class ValidateMapCodes(TestCase):
 
 
 class SeriesMapIndices(TestCase):
-    def test_picked_orders_win_over_best_of(self) -> None:
-        self.assertEqual([2, 5, 7], report_form.series_map_indices({7: 1, 2: 3, 5: 9}, 3))
+    def test_settled_indices_win_over_best_of(self) -> None:
+        # `_picked_map_ids` already keys by the 1-based series position.
+        self.assertEqual([1, 2, 3], report_form.series_map_indices({2: 1, 1: 3, 3: 9}, 5))
 
     def test_falls_back_to_best_of_slots(self) -> None:
         self.assertEqual([1, 2, 3, 4, 5], report_form.series_map_indices({}, 5))

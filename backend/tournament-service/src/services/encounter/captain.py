@@ -178,27 +178,36 @@ async def _load_encounter_with_reports(session: AsyncSession, encounter_id: int)
 
 
 async def _picked_map_ids(session: AsyncSession, encounter_id: int) -> dict[int, int]:
-    """Map ``map_index`` (== 1-based pick order) -> ``map_id`` for a completed
-    pool. Reads ``PickBanEntry(kind=map)`` via its session's ``encounter_id``
-    (generalizes the legacy direct ``EncounterMapPool.encounter_id`` query --
-    entries are keyed by ``session_id``, not the encounter, since the map
-    veto cutover).
+    """``map_index`` (1-based position in the series) -> ``map_id``, for every
+    map the veto has settled.
+
+    ``PickBanEntry.order`` is NOT the index: it is a per-round display/tiebreak
+    field that starts at 0 and is spaced by ``round * 1000``
+    (``pick_ban_session.advance_to_next_round``), so reading an index off it
+    produced ``map_index=0`` — which the ``map_index >= 1`` check on
+    ``EncounterMapCode`` rejects outright — and ``1000`` for a second map. The
+    index is the position in PLAY order, which is what ``action_index`` records.
+
+    ``played`` counts as settled alongside ``picked``: by the time the series
+    report is filed every map of it has been played and reconciled
+    (``map_report.submit_map_report``), so a picked-only read went blind exactly
+    when the codes are actually entered.
 
     Returns an empty dict when there is no veto pool (map codes then keep
     ``map_id = NULL``). Soft binding: callers never fail on an index beyond the
-    picked count — it simply is not in the dict.
+    settled count — it simply is not in the dict.
     """
     rows = await session.execute(
-        select(PickBanEntry.order, PickBanEntry.item_id)
+        select(PickBanEntry.order, PickBanEntry.action_index, PickBanEntry.item_id)
         .join(PickBanSession, PickBanSession.id == PickBanEntry.session_id)
         .where(
             PickBanSession.encounter_id == encounter_id,
             PickBanSession.kind == PickBanKind.MAP,
-            PickBanEntry.status == MapPoolEntryStatus.PICKED,
+            PickBanEntry.status.in_((MapPoolEntryStatus.PICKED, MapPoolEntryStatus.PLAYED)),
         )
-        .order_by(PickBanEntry.order)
     )
-    return {int(order): int(item_id) for order, item_id in rows.all() if order is not None}
+    settled = sorted(rows.all(), key=lambda row: row[1] if row[1] is not None else row[0])
+    return {index: int(row[2]) for index, row in enumerate(settled, start=1)}
 
 
 def serialize_map_code(code: models.EncounterMapCode) -> EncounterMapCodeRead:

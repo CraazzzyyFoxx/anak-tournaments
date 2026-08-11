@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Pencil, FileEdit, ListChecks, Maximize2, Search } from "lucide-react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { useTranslations } from "next-intl";
 
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
 import { EncounterMapPoolModal } from "@/components/veto/EncounterMapPoolModal";
+import { withReturnTo } from "@/lib/return-to";
 import {
   buildRoundGroups as buildBracketRoundGroups,
   computeMatchNumbers as computeBracketMatchNumbers,
@@ -477,12 +479,15 @@ function MatchCard({
   data,
   encounter,
   hoveredTeamId,
-  onHoveredTeamChange
+  onHoveredTeamChange,
+  returnTo
 }: {
   data: MatchNodeData;
   encounter: Encounter;
   hoveredTeamId: number | null;
   onHoveredTeamChange: (teamId: number | null) => void;
+  /** This bracket's own location, so the pre-game room can send viewers back to it. */
+  returnTo: string;
 }) {
   const t = useTranslations();
   const meta = getMatchMeta(encounter, t);
@@ -598,7 +603,10 @@ function MatchCard({
             awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
           />
           <Link
-            href={`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`}
+            href={withReturnTo(
+              `/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`,
+              returnTo
+            )}
             className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
             aria-label={t("bracket.pregameRoom")}
             onClick={(e) => {
@@ -664,6 +672,12 @@ export function BracketView({
   canReport,
 }: BracketViewProps) {
   const t = useTranslations();
+  // The bracket's own location, stage/view query included: the pre-game room
+  // carries it so its back button and its final report land the viewer back on
+  // the exact tab they left, not on a single encounter's page.
+  const pathname = usePathname();
+  const search = useSearchParams()?.toString();
+  const returnTo = search ? `${pathname}?${search}` : pathname;
   const [hoveredTeamId, setHoveredTeamId] = useState<number | null>(null);
   const panRef = useRef<{
     active: boolean;
@@ -802,6 +816,7 @@ export function BracketView({
                 encounter={node.encounter}
                 hoveredTeamId={hoveredTeamId}
                 onHoveredTeamChange={setHoveredTeamId}
+                returnTo={returnTo}
               />
               <div
                 className="pointer-events-none absolute top-1/2 -translate-y-1/2"

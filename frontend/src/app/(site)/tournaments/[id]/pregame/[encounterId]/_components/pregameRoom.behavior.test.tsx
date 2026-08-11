@@ -29,6 +29,17 @@ const getEncounter = vi.fn();
 const getAllMaps = vi.fn();
 const getAllHeroes = vi.fn();
 const getMyRole = vi.fn();
+const getReports = vi.fn();
+const getMapPoolState = vi.fn();
+const submitReport = vi.fn();
+const routerPush = vi.fn();
+/** The room's `?from=` param, rewritten per test. */
+let search = new URLSearchParams();
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => search,
+  useRouter: () => ({ push: (...args: unknown[]) => routerPush(...args) })
+}));
 
 vi.mock("@/services/pickBan.service", () => ({
   default: {
@@ -40,7 +51,12 @@ vi.mock("@/services/pickBan.service", () => ({
   }
 }));
 vi.mock("@/services/captain.service", () => ({
-  default: { getMyRole: (...args: unknown[]) => getMyRole(...args) }
+  default: {
+    getMyRole: (...args: unknown[]) => getMyRole(...args),
+    getReports: (...args: unknown[]) => getReports(...args),
+    getMapPoolState: (...args: unknown[]) => getMapPoolState(...args),
+    submitReport: (...args: unknown[]) => submitReport(...args)
+  }
 }));
 vi.mock("@/services/encounter.service", () => ({
   default: { getEncounter: (...args: unknown[]) => getEncounter(...args) }
@@ -170,6 +186,9 @@ beforeEach(() => {
   getAllHeroes.mockResolvedValue({ results: HEROES });
   getEncounter.mockResolvedValue(encounter());
   getMyRole.mockResolvedValue({ side: null });
+  getReports.mockResolvedValue({ reports: [], form: undefined });
+  getMapPoolState.mockResolvedValue(null);
+  search = new URLSearchParams();
   usePermissionsMock.mockReturnValue({
     isSuperuser: false,
     isWorkspaceAdmin: () => false,
@@ -530,23 +549,55 @@ describe("phase selection", () => {
     expect(document.body.textContent).not.toContain(ROOM.mapResult.report);
   });
 
-  it("reports the series as settled once nothing is left to pick, ban or report", async () => {
+  /** A series with every map picked, banned, played and reconciled. */
+  function settledSeries(viewerSide: "home" | "away" | null) {
     mockStates(
       readyState({
         session: session({ kind: "map" }),
         is_complete: true,
+        viewer_side: viewerSide,
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 })]
       }),
       readyState({
         session: session({ kind: "hero" }),
         is_complete: true,
+        viewer_side: viewerSide,
         sequence: ["ban_home"],
         pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
       })
     );
+  }
+
+  it("asks a captain for the series report once nothing is left to pick or ban", async () => {
+    // The room used to end on "nothing left to decide" and send captains off to
+    // hunt for the report dialog elsewhere. The form belongs here, prefilled
+    // with the score the room itself just collected map by map.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 1,
+      score: { home: 1, away: 0 }
+    } as unknown as Encounter);
+    settledSeries("home");
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.finalReport.title);
+    expect(document.body.textContent).not.toContain(ROOM.seriesDone.title);
+    // Prefilled from the encounter's own series score, not left at 0:0.
+    const score = (label: string) =>
+      document.body.querySelector<HTMLInputElement>(`input[aria-label="Score for ${label}"]`)?.value;
+    expect(score("Bright Wolves")).toBe("1");
+    expect(score("Quiet Foxes")).toBe("0");
+    expect(document.body.textContent).toContain(en.matchReport.submit);
+  });
+
+  it("keeps the settled notice for anyone who captains neither side", async () => {
+    // A spectator, or an admin who is not a captain, has no report to file: the
+    // captain report is per-team.
+    settledSeries(null);
     await render();
 
     expect(document.body.textContent).toContain(ROOM.seriesDone.title);
+    expect(document.body.textContent).not.toContain(ROOM.finalReport.title);
   });
 
   it("goes straight to hero when the encounter has no map rule set at all", async () => {
@@ -572,6 +623,45 @@ describe("phase selection", () => {
     await render();
 
     expect(document.body.textContent).toContain(ROOM.waitingMapTitle);
+  });
+});
+
+describe("return navigation", () => {
+  const backArrow = () =>
+    document.body.querySelector<HTMLAnchorElement>(`a[aria-label="${ROOM.back}"]`);
+
+  async function renderRoom() {
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        sequence: ["ban_home"],
+        pool: [entry({ id: 1, item_id: 21 })]
+      }),
+      unavailableState("not_configured", { home: true, away: true })
+    );
+    await render();
+  }
+
+  it("returns to the page the room was opened from", async () => {
+    // Mid-tournament the room is opened from the bracket, and that is where the
+    // next match is picked — the encounter page is the wrong place to land.
+    search = new URLSearchParams({ from: "/tournaments/87/bracket?stage=5" });
+    await renderRoom();
+
+    expect(backArrow()?.getAttribute("href")).toBe("/tournaments/87/bracket?stage=5");
+  });
+
+  it("falls back to the encounter without a caller to return to", async () => {
+    await renderRoom();
+
+    expect(backArrow()?.getAttribute("href")).toBe("/encounters/4242");
+  });
+
+  it("refuses an off-site destination", async () => {
+    search = new URLSearchParams({ from: "//evil.example.com/phish" });
+    await renderRoom();
+
+    expect(backArrow()?.getAttribute("href")).toBe("/encounters/4242");
   });
 });
 

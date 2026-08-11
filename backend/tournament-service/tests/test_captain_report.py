@@ -101,12 +101,12 @@ def _mk_session(
     encounter: SimpleNamespace | None,
     captain_player_ids: list[int],
     *,
-    picked_rows: list[tuple[int, int]] | None = None,
+    settled_rows: list[tuple[int, int | None, int]] | None = None,
     report_form_row: SimpleNamespace | None = None,
 ) -> SimpleNamespace:
     linked_player_id = captain_player_ids[0] if captain_player_ids else None
     execute_count = 0
-    rows = picked_rows or []
+    rows = settled_rows or []
 
     async def fake_execute(_query):
         nonlocal execute_count
@@ -291,8 +291,11 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
 
     async def test_map_codes_resolve_map_id_from_pool_softly(self) -> None:
         encounter = _mk_encounter()
-        # Picked pool: order 1 -> map 55, order 2 -> map 66. Index 3 has no pick.
-        session = _mk_session(encounter, [100], picked_rows=[(1, 55), (2, 66)])
+        # Settled pool rows as the query selects them: (order, action_index,
+        # map_id). `order` is deliberately the 0-based/round-spaced shape the
+        # engine writes, and `action_index` is what decides play order — so map
+        # 66 is the FIRST map of the series and map 55 the second.
+        session = _mk_session(encounter, [100], settled_rows=[(1000, 5, 55), (0, 3, 66)])
         with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
             await captain_service.submit_captain_report(
                 session,
@@ -307,9 +310,9 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         by_index = {mc.map_index: mc for mc in report.map_codes}
         # blank code (index 4) is skipped
         self.assertEqual(set(by_index), {1, 2, 3})
-        self.assertEqual(by_index[1].map_id, 55)
-        self.assertEqual(by_index[2].map_id, 66)
-        self.assertIsNone(by_index[3].map_id)  # soft: index beyond picks
+        self.assertEqual(by_index[1].map_id, 66)
+        self.assertEqual(by_index[2].map_id, 55)
+        self.assertIsNone(by_index[3].map_id)  # soft: index beyond the settled maps
         self.assertEqual(by_index[1].code, "AAA")
 
 
