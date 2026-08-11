@@ -6,7 +6,6 @@ import { ArrowUpRight, ChevronDown, Clock3, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,7 +16,10 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import FlexIcon from "@/components/icons/FlexIcon";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { TONE_CLASS } from "@/components/admin/tone";
+import { getRoleIconName, ROLE_ACCENT } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickStrategy, DraftFormat } from "@/types/draft.types";
 import { isRoleSlotCode, orderSlotCodes, type RosterShape } from "@/lib/roster-shape";
@@ -65,16 +67,30 @@ export function DraftConfigStep({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>{t("teamSize")}</Label>
-          <p className="text-sm tabular-nums">
-            {rosterShape.team_size}
-            <span className="ml-2 text-muted-foreground">
-              {orderSlotCodes(rosterShape.slots)
-                .map(
-                  (code) =>
-                    `${rosterShape.slots[code]} ${isRoleSlotCode(code) ? t(`roles.${code}`) : t("roles.flex")}`
-                )
-                .join(" · ")}
-            </span>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm tabular-nums">
+            <span className="font-semibold">{rosterShape.team_size}</span>
+            {orderSlotCodes(rosterShape.slots).map((code) => {
+              const label = isRoleSlotCode(code) ? t(`roles.${code}`) : t("roles.flex");
+              return (
+                <span
+                  key={code}
+                  className="inline-flex items-center gap-1 text-muted-foreground"
+                  title={label}
+                >
+                  {isRoleSlotCode(code) ? (
+                    <PlayerRoleIcon
+                      role={getRoleIconName(code)}
+                      size={16}
+                      color={ROLE_ACCENT[code]}
+                      decorative
+                    />
+                  ) : (
+                    <FlexIcon width={16} height={16} />
+                  )}
+                  <span className="sr-only">{label}</span>×{rosterShape.slots[code]}
+                </span>
+              );
+            })}
           </p>
           <p className="text-xs tabular-nums text-muted-foreground">
             {t("roundsDerived", { rounds })}
@@ -110,32 +126,44 @@ export function DraftConfigStep({
             {t("pickTime")}
           </span>
         </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-labelledby={pickTimeLabelId}>
-          {PICK_TIME_PRESETS.map((seconds) => (
-            <Button
-              key={seconds}
-              type="button"
-              size="sm"
+        <div className="flex flex-wrap items-center gap-3" role="group" aria-labelledby={pickTimeLabelId}>
+          {/* One segmented control instead of four standalone buttons: the presets
+              are a single choice, so they must not read as four separate widgets
+              next to the custom field. */}
+          <div className="inline-flex h-9 items-center gap-0.5 rounded-md border border-border/70 bg-card p-0.5">
+            {PICK_TIME_PRESETS.map((seconds) => (
+              <button
+                key={seconds}
+                type="button"
+                disabled={locked}
+                aria-pressed={value.pickTimeSeconds === seconds}
+                onClick={() => patch({ pickTimeSeconds: seconds })}
+                className={cn(
+                  "inline-flex h-8 min-w-13 items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  value.pickTimeSeconds === seconds
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {seconds}s
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="draft-pick-time" className="text-xs font-normal text-muted-foreground">
+              {t("customPickTime")}
+            </Label>
+            <NumberInput
+              id="draft-pick-time"
+              integer
+              min={10}
+              max={600}
               disabled={locked}
-              aria-pressed={value.pickTimeSeconds === seconds}
-              variant={value.pickTimeSeconds === seconds ? "default" : "outline"}
-              onClick={() => patch({ pickTimeSeconds: seconds })}
-              className="tabular-nums"
-            >
-              {seconds}s
-            </Button>
-          ))}
-          <NumberInput
-            id="draft-pick-time"
-            aria-label={t("customPickTime")}
-            integer
-            min={10}
-            max={600}
-            disabled={locked}
-            value={value.pickTimeSeconds}
-            onValueChange={(next) => patch({ pickTimeSeconds: next ?? 45 })}
-            className="h-9 w-24"
-          />
+              value={value.pickTimeSeconds}
+              onValueChange={(next) => patch({ pickTimeSeconds: next ?? 45 })}
+              className="h-9 w-20 tabular-nums"
+            />
+          </div>
         </div>
       </div>
 

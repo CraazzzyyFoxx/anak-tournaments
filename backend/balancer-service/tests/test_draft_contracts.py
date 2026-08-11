@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -22,7 +23,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-from shared.core.enums import DraftPickStatus, DraftRole  # noqa: E402
+from shared.core.enums import DraftPickStatus, DraftRole, DraftStatus  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftSession  # noqa: E402
 from src import openapi_docs, openapi_schemas  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
@@ -199,6 +200,8 @@ def test_rpc_registers_feasibility_options_and_role_edit_subjects() -> None:
         "rpc.balancer.draft.feasibility",
         "rpc.balancer.draft.pick_options",
         "rpc.balancer.draft.player_role_edit",
+        "rpc.balancer.draft.session_list",
+        "rpc.balancer.draft.session_delete",
     } <= broker.subjects
 
 
@@ -252,6 +255,34 @@ def test_openapi_maps_all_new_draft_contracts() -> None:
         assert subject in openapi_docs.DOCS
 
     assert openapi_schemas.OPERATIONS["rpc.balancer.draft.seed"].response is schemas.DraftSeedResponse
+    # session_delete answers 204 with no body, so it is documented but carries no
+    # response model (see openapi_schemas' module docstring).
+    assert "rpc.balancer.draft.session_delete" in openapi_docs.DOCS
+    assert "rpc.balancer.draft.session_delete" not in openapi_schemas.OPERATIONS
+    session_list = openapi_schemas.OPERATIONS["rpc.balancer.draft.session_list"]
+    assert session_list.response is schemas.DraftSessionRead
+    assert session_list.response_array is True
+    assert "rpc.balancer.draft.session_list" in openapi_docs.DOCS
+
+
+@pytest.mark.parametrize("status", [DraftStatus.LIVE, DraftStatus.PAUSED])
+def test_delete_session_refuses_an_in_flight_draft(status: DraftStatus) -> None:
+    # The guard fires before the session is ever touched, so no DB is needed —
+    # passing None also proves nothing is written on the rejected path.
+    draft = DraftSession(id=1, tournament_id=2, workspace_id=3, status=status.value)
+
+    with pytest.raises(Exception) as exc_info:
+        asyncio.run(lifecycle.delete_session(None, draft))  # type: ignore[arg-type]
+
+    assert exc_info.value.detail[0]["code"] == "draft_in_flight"
+
+
+@pytest.mark.parametrize(
+    "status",
+    [DraftStatus.SETUP, DraftStatus.READY, DraftStatus.COMPLETED, DraftStatus.CANCELLED],
+)
+def test_delete_session_accepts_every_status_that_is_not_in_flight(status: DraftStatus) -> None:
+    assert status.value in lifecycle._DELETABLE_STATUSES
 
 
 def test_seed_version_guard_rejects_stale_preview_and_bumps_on_materialization() -> None:

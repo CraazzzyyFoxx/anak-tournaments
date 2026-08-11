@@ -39,6 +39,9 @@ export default defineConfig({
       // still report green.
       "src/app/**/tournaments/**/pregame/**/*.test.tsx",
       "src/app/admin/tournaments/**/components/draft/**/*.test.ts",
+      // Same `.ts`/`.tsx` trap as the pregame entry above: the render contracts
+      // for the draft setup steps are `.tsx` and would silently never run.
+      "src/app/admin/tournaments/**/components/draft/**/*.test.tsx",
       "src/app/admin/tournaments/**/overview/**/*.test.ts",
       "src/app/admin/tournaments/new/**/*.test.ts",
       "src/app/admin/divisions/**/*.test.tsx",

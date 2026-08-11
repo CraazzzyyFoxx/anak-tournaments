@@ -1,18 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import draftService from "@/services/draft.service";
 
 import { useHubTournamentQuery } from "../hubQueries";
 
 import { AdminControlRoom } from "./draft/AdminControlRoom";
+import { DraftHistoryPanel } from "./draft/DraftHistoryPanel";
 import { DraftSetupWizard } from "./draft/DraftSetupWizard";
 
 interface DraftSessionDashboardProps {
@@ -22,7 +21,7 @@ interface DraftSessionDashboardProps {
 
 export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionDashboardProps) {
   const t = useTranslations("draftAdmin");
-  const queryClient = useQueryClient();
+  const [wizardEpoch, setWizardEpoch] = useState(0);
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
   const boardQuery = useQuery({
     queryKey: boardKey,
@@ -32,16 +31,6 @@ export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionD
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const board = boardQuery.data ?? null;
   const session = board?.session ?? null;
-
-  const lifecycleMutation = useMutation({
-    mutationFn: (action: "pause" | "resume" | "cancel" | "export") =>
-      draftService.lifecycle(tournamentId, session!.id, action),
-    onSuccess: async (_result, action) => {
-      notify.success(t("lifecycleSuccess", { action: t(`actions.${action}`) }));
-      await queryClient.invalidateQueries({ queryKey: boardKey });
-    },
-    onError: (error) => notify.apiError(error)
-  });
 
   // A draft cannot be configured without the tournament's roster shape: the
   // wizard reads rounds and roster size off it instead of deriving them.
@@ -85,37 +74,20 @@ export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionD
     session && (session.status === "completed" || session.status === "cancelled") ? session : null;
   return (
     <div className="space-y-4">
-      {terminalSession && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 px-4 py-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              {t("previousDraft")}
-              <Badge variant="secondary">{t(`statuses.${terminalSession.status}`)}</Badge>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{t("previousDraftHint")}</p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/draft/${tournamentId}`} target="_blank">
-                {t("openBoard")}
-              </Link>
-            </Button>
-            {terminalSession.status === "completed" && (
-              <Button
-                size="sm"
-                disabled={lifecycleMutation.isPending}
-                onClick={() => lifecycleMutation.mutate("export")}
-              >
-                {t("actions.export")}
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
       <DraftSetupWizard
+        // Erasing the session the wizard is editing must clear its local state:
+        // the wizard prefers its own copy over the refetched board, so a stale
+        // session would otherwise survive the delete.
+        key={wizardEpoch}
         tournamentId={tournamentId}
         board={terminalSession ? null : board}
         rosterShape={rosterShape}
+      />
+      <DraftHistoryPanel
+        tournamentId={tournamentId}
+        onSessionDeleted={(sessionId) => {
+          if (sessionId === session?.id) setWizardEpoch((epoch) => epoch + 1);
+        }}
       />
     </div>
   );

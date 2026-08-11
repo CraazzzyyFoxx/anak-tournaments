@@ -7,12 +7,21 @@ import {
   canCancelDraftSetup,
   canNavigateToSetupStep,
   derivePoolReadiness,
+  filterCaptainRows,
   moveCaptain,
   orderCaptainIds,
   previousSetupStep,
   SETUP_STEPS,
-  validateSetupStep
+  validateSetupStep,
+  type DraftCaptainRow
 } from "./setup-model";
+
+const CAPTAIN_ROWS: DraftCaptainRow[] = [
+  { id: 1, label: "Baida#21855", roles: ["tank", "dps", "support"], rank: null },
+  { id: 2, label: "agoNy4#2362", roles: ["support", "tank"], rank: 2600 },
+  { id: 3, label: "sleepdarya#2298", roles: ["support"], rank: 3800 },
+  { id: 4, label: "Zish#2101", roles: ["dps"], rank: 3100 }
+];
 
 /** A `roster_shape` payload as the server sends it, for a 3-slot roster. */
 const SHAPE: RosterShape = {
@@ -121,5 +130,42 @@ describe("draft setup model", () => {
         previewFeasible: true
       })
     ).toEqual([]);
+  });
+
+  it("sorts captains by rank in both directions and keeps unranked players last", () => {
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "rank_desc" }).map((r) => r.id)
+    ).toEqual([3, 4, 2, 1]);
+    // An unranked captain is unknown, not weakest: it stays last ascending too.
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "rank_asc" }).map((r) => r.id)
+    ).toEqual([2, 4, 3, 1]);
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "name" }).map((r) => r.id)
+    ).toEqual([2, 1, 3, 4]);
+  });
+
+  it("ORs the role filter and treats an empty selection as every role", () => {
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: ["dps"], sort: "rank_desc" }).map(
+        (r) => r.id
+      )
+    ).toEqual([4, 1]);
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: ["dps", "support"], sort: "rank_desc" })
+        .map((r) => r.id)
+    ).toEqual([3, 4, 2, 1]);
+    expect(filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "rank_desc" })).toHaveLength(
+      CAPTAIN_ROWS.length
+    );
+  });
+
+  it("matches the search case-insensitively and never mutates the input order", () => {
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "  DARYA ", roles: [], sort: "rank_desc" }).map(
+        (r) => r.id
+      )
+    ).toEqual([3]);
+    expect(CAPTAIN_ROWS.map((row) => row.id)).toEqual([1, 2, 3, 4]);
   });
 });

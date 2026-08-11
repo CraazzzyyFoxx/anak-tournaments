@@ -799,6 +799,36 @@ async def cancel(session: AsyncSession, draft_session: DraftSession) -> DraftSes
     return draft_session
 
 
+_DELETABLE_STATUSES = (
+    DraftStatus.SETUP.value,
+    DraftStatus.READY.value,
+    DraftStatus.COMPLETED.value,
+    DraftStatus.CANCELLED.value,
+)
+
+
+async def delete_session(session: AsyncSession, draft_session: DraftSession) -> None:
+    """Erase a draft session and everything hanging off it.
+
+    A LIVE/PAUSED draft has captains on a clock, so it must be cancelled first;
+    every other status is erasable. Teams already exported to the tournament are
+    NOT removed: the export is a separate artifact and ``exported_team_id`` is
+    only a back-reference into it.
+    """
+    if draft_session.status not in _DELETABLE_STATUSES:
+        raise _err("draft_in_flight", "Cancel the draft before deleting it")
+    # Drop the session -> current pick reference before the cascade removes that
+    # pick, so no flush can write a dangling FK.
+    draft_session.current_pick_id = None
+    await session.flush()
+    # One statement: teams, players, roles, heroes, picks and audit rows all
+    # hang off the session with ON DELETE CASCADE, so the ORM cascade would only
+    # buy hundreds of round-trips. Expunge keeps the deleted row out of any
+    # later flush.
+    await session.execute(sa.delete(DraftSession).where(DraftSession.id == draft_session.id))
+    session.expunge(draft_session)
+
+
 async def rollback(session: AsyncSession, draft_session: DraftSession) -> DraftSession:
     """Rollback the last resolved pick, resetting player/pick states and pausing the draft."""
     draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.PAUSED)

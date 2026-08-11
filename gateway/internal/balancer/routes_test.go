@@ -41,6 +41,33 @@ func TestDraftSafetyRoutes(t *testing.T) {
 	}
 }
 
+// TestDraftSessionHistoryRoutes pins the admin draft-history surface: listing a
+// tournament's sessions and erasing one. The DELETE shares its pattern with the
+// PATCH (session_patch), so a wrong Method here silently reroutes an erase.
+func TestDraftSessionHistoryRoutes(t *testing.T) {
+	var list, del *edge.RouteSpec
+	for i, route := range DraftRoutes {
+		switch route.Queue {
+		case "rpc.balancer.draft.session_list":
+			list = &DraftRoutes[i]
+		case "rpc.balancer.draft.session_delete":
+			del = &DraftRoutes[i]
+		}
+	}
+	if list == nil || del == nil {
+		t.Fatal("draft session list/delete routes are not registered")
+	}
+	if list.Method != "GET" || list.Pattern != "/api/balancer/draft/tournaments/{tournament_id}/sessions" || list.IDParam != "tournament_id" || list.Auth != edge.AuthRequired {
+		t.Fatalf("unexpected session_list contract: %#v", *list)
+	}
+	if del.Method != "DELETE" || del.Pattern != "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}" || del.IDParam != "session_id" || del.Success != 204 || del.Auth != edge.AuthRequired {
+		t.Fatalf("unexpected session_delete contract: %#v", *del)
+	}
+	if len(del.Path) != 1 || del.Path[0] != "tournament_id" {
+		t.Fatalf("session_delete must forward tournament_id for the permission check: %#v", del.Path)
+	}
+}
+
 // TestRoutesRegisterWithoutConflict guards against ServeMux pattern conflicts,
 // which panic at registration time (runtime), not at build time. It registers
 // the entire balancer route surface — the typed route tables plus the two

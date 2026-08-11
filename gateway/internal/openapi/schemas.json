@@ -3395,6 +3395,10 @@
       },
       "summary": "Create draft session"
     },
+    "rpc.balancer.draft.session_delete": {
+      "description": "Permanently erases a draft session with its teams, pool, picks and audit trail (requires team-create); 409 while the draft is live or paused. Teams already exported to the tournament are kept.",
+      "summary": "Delete draft session"
+    },
     "rpc.balancer.draft.session_get": {
       "description": "Returns a single draft session by id for spectating, with no authentication required.",
       "response": {
@@ -3402,6 +3406,14 @@
         "ref": "balancer.DraftSessionRead"
       },
       "summary": "Get draft session"
+    },
+    "rpc.balancer.draft.session_list": {
+      "description": "Returns every draft session ever created for a tournament, newest first (requires workspace team-read).",
+      "response": {
+        "array": true,
+        "ref": "balancer.DraftSessionRead"
+      },
+      "summary": "List tournament draft sessions"
     },
     "rpc.balancer.draft.session_patch": {
       "description": "Updates mutable draft settings (pick time, autopick strategy, override flag, rounds, settings) before the draft starts, requiring team-create.",
@@ -18204,6 +18216,19 @@
           ],
           "title": "Blocked Reason"
         },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
         "current_pick_id": {
           "anyOf": [
             {
@@ -32580,6 +32605,18 @@
           "title": "Map Id",
           "type": "integer"
         },
+        "map_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Index"
+        },
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
         },
@@ -32701,6 +32738,18 @@
         "map_id": {
           "title": "Map Id",
           "type": "integer"
+        },
+        "map_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Index"
         },
         "rounds": {
           "title": "Rounds",

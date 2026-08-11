@@ -85,6 +85,14 @@ DOCS: dict[str, dict] = {
         "summary": "Preview or add a draft player role",
         "description": "Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason. Requires workspace team-create permission.",
     },
+    "rpc.balancer.draft.session_list": {
+        "summary": "List tournament draft sessions",
+        "description": "Returns every draft session ever created for a tournament, newest first (requires workspace team-read).",
+    },
+    "rpc.balancer.draft.session_delete": {
+        "summary": "Delete draft session",
+        "description": "Permanently erases a draft session with its teams, pool, picks and audit trail (requires team-create); 409 while the draft is live or paused. Teams already exported to the tournament are kept.",
+    },
     "rpc.balancer.draft.session_create": {
         "summary": "Create draft session",
         "description": "Creates a new draft session for a tournament (requires workspace team-create) and publishes a session-updated realtime event.",

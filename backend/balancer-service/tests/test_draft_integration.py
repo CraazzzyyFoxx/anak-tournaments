@@ -529,6 +529,46 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
                 await s2.commit()
 
+    async def test_delete_session_erases_teams_players_and_picks(self) -> None:
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            draft_id = draft.id
+
+            await lifecycle.delete_session(s, draft)
+            await s.commit()
+
+            from shared.models.balancer.draft import DraftPlayer, DraftSession, DraftTeam
+
+            for model in (DraftSession, DraftTeam, DraftPlayer, DraftPick):
+                column = DraftSession.id if model is DraftSession else model.session_id
+                remaining = (await s.scalars(sa.select(model.id).where(column == draft_id))).all()
+                self.assertEqual(list(remaining), [], f"{model.__name__} rows survived the delete")
+
+        # The active-session index is free again, so a fresh draft can be set up.
+        async with self.Session() as s2:
+            replacement = await lifecycle.create_session(
+                s2,
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                shape=_SHAPE,
+            )
+            await s2.commit()
+            self.assertNotEqual(replacement.id, draft_id)
+
+    async def test_delete_session_erases_a_cancelled_draft(self) -> None:
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.cancel(s, draft)
+            await s.commit()
+            draft_id = draft.id
+
+            await lifecycle.delete_session(s, draft)
+            await s.commit()
+
+            from shared.models.balancer.draft import DraftSession
+
+            self.assertIsNone(await s.get(DraftSession, draft_id))
+
     async def test_full_run_autopick_to_completion_then_export(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)

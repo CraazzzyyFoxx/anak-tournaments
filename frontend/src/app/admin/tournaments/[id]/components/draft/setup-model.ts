@@ -107,6 +107,45 @@ export function derivePoolReadiness(
   };
 }
 
+export type DraftCaptainSort = "rank_desc" | "rank_asc" | "name";
+
+export interface DraftCaptainRow {
+  id: number;
+  label: string;
+  roles: DraftRole[];
+  rank: number | null;
+}
+
+/**
+ * Search + role filter + sort for the captain picker.
+ *
+ * Roles are OR-ed and an empty selection means "any role", so unchecking every
+ * role never hides the whole pool. Unranked players sort last in BOTH rank
+ * directions: a missing rank is unknown, not zero, so it must not win the
+ * strongest seat by accident nor the weakest one.
+ */
+export function filterCaptainRows(
+  rows: readonly DraftCaptainRow[],
+  filters: { query: string; roles: readonly DraftRole[]; sort: DraftCaptainSort }
+): DraftCaptainRow[] {
+  const needle = filters.query.trim().toLocaleLowerCase();
+  const matched = rows.filter(
+    (row) =>
+      (filters.roles.length === 0 || filters.roles.some((role) => row.roles.includes(role))) &&
+      (needle === "" || row.label.toLocaleLowerCase().includes(needle))
+  );
+  if (filters.sort === "name") {
+    return matched.sort((left, right) => left.label.localeCompare(right.label));
+  }
+  const direction = filters.sort === "rank_desc" ? -1 : 1;
+  return matched.sort((left, right) => {
+    if (left.rank == null || right.rank == null) {
+      return left.rank == null ? (right.rank == null ? 0 : 1) : -1;
+    }
+    return (left.rank - right.rank) * direction;
+  });
+}
+
 export function moveCaptain(ids: number[], activeId: number, overId: number): number[] {
   const from = ids.indexOf(activeId);
   const to = ids.indexOf(overId);

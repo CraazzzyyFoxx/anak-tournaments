@@ -32,6 +32,8 @@ export interface DraftSession {
   export_status: string | null;
   settings_json: Record<string, any>;
   version: number;
+  /** Null only for a session the server has not persisted yet. */
+  created_at: string | null;
 }
 
 export interface DraftTeam {

@@ -3609,7 +3609,12 @@
     "captainsSelected": "Captains selected",
     "searchCaptains": "Search by BattleTag or name…",
     "roleFilter": "Filter by role",
-    "allRoles": "All roles",
+    "captainSort": "Sort captains",
+    "captainSorts": {
+      "rank_desc": "Rank: high to low",
+      "rank_asc": "Rank: low to high",
+      "name": "Name (A–Z)"
+    },
     "selectCaptain": "Select {name} as captain",
     "removeCaptain": "Remove captain {name}",
     "noCaptainsFound": "No players match this search. Clear the search or widen the role filter.",
@@ -3693,10 +3698,22 @@
     "liveSummary": "{completed} of {total} picks complete · {seconds}s per pick",
     "systemPauseReason": "The draft was paused by the system: {reason}",
     "realtimeActive": "Realtime updates active",
-    "previousDraft": "Previous draft",
-    "previousDraftHint": "This session is read-only. A new setup can be created below.",
     "openBoard": "Open board",
     "lifecycleSuccess": "Draft action completed: {action}",
+    "roundsShort": "{rounds, plural, one {# round} other {# rounds}}",
+    "history": {
+      "title": "Draft history",
+      "hint": "Every session created for this tournament. Erase the ones you no longer need.",
+      "empty": "No draft session has been created for this tournament yet.",
+      "loadFailed": "The draft history could not be loaded.",
+      "delete": "Delete draft session #{id}",
+      "deleteConfirm": "Delete permanently",
+      "cancelFirst": "Cancel the draft before deleting it.",
+      "confirmTitle": "Delete draft session #{id}?",
+      "confirmDescription": "Teams, the player pool, every pick and the audit trail of this session are erased for good. Teams already exported to the tournament are kept.",
+      "deleted": "Draft session #{id} deleted",
+      "deleteFailed": "Draft session could not be deleted"
+    },
     "controlRoom": {
       "title": "Draft control room",
       "description": "Monitor the live invariant, captain connectivity and exceptional organizer actions from one surface.",

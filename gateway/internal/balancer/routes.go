@@ -71,7 +71,9 @@ var DraftRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/draft/picks/{pick_id}/options", Queue: "rpc.balancer.draft.pick_options", IDParam: "pick_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/sessions/{session_id}/players/{player_id}/roles", Queue: "rpc.balancer.draft.player_role_edit", IDParam: "player_id", Path: []string{"session_id"}, Body: true, Auth: edge.AuthRequired},
 	// lifecycle
+	{Method: "GET", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions", Queue: "rpc.balancer.draft.session_list", IDParam: "tournament_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions", Queue: "rpc.balancer.draft.session_create", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}", Queue: "rpc.balancer.draft.session_delete", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired, Success: 204},
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/seed", Queue: "rpc.balancer.draft.seed", IDParam: "session_id", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}", Queue: "rpc.balancer.draft.session_patch", IDParam: "session_id", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/start", Queue: "rpc.balancer.draft.start", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},

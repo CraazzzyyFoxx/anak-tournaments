@@ -635,6 +635,53 @@ def register(broker: Any, logger: Any) -> None:
     _make_lifecycle("rpc.balancer.draft.cancel", lifecycle.cancel, "draft.cancelled")
     _make_lifecycle("rpc.balancer.draft.rollback", lifecycle.rollback, "draft.rollback")
 
+    @broker.subscriber("rpc.balancer.draft.session_list")
+    async def _session_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            tournament_id = c.require_id(data)
+            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            c.require_workspace_permission(data, user, ws_id, "team", "read")
+            rows = (
+                await session.scalars(
+                    sa.select(DraftSession)
+                    .where(DraftSession.tournament_id == tournament_id)
+                    .order_by(DraftSession.id.desc())
+                )
+            ).all()
+            # The shape lookup behind session_read is cache-backed at both
+            # levels, so one call per row costs a dict hit, not a query.
+            return [await board_svc.session_read(session, row) for row in rows]
+
+        return await c.envelope(logger, "draft.session_list", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.draft.session_delete")
+    async def _session_delete(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            session_id = c.require_id(data)
+            tournament_id = c.path_int(data, "tournament_id")
+            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
+            draft = await _load_session(session, session_id)
+            if draft.tournament_id != tournament_id:
+                raise HTTPException(status_code=404, detail="Draft session not found")
+            # Published before the row goes away: spectators keep a board keyed
+            # by this session and would otherwise never learn it is gone.
+            await draft_rt.publish_draft_event(
+                session,
+                _redis(logger),
+                draft_session=draft,
+                event_type="draft.session_updated",
+                payload={"session_id": draft.id, "status": draft.status, "deleted": True},
+                actor_user_id=user.id,
+            )
+            await lifecycle.delete_session(session, draft)
+            await session.commit()
+            return None
+
+        return await c.envelope(logger, "draft.session_delete", op, session_factory=_SF)
+
     @broker.subscriber("rpc.balancer.draft.export")
     async def _export(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

@@ -269,6 +269,9 @@ class DraftSessionRead(BaseRead):
     export_status: str | None
     settings_json: dict[str, Any]
     version: int
+    # None only for a transient row that has not been flushed yet; every session
+    # off the wire carries the timestamp the admin draft history sorts on.
+    created_at: datetime | None = None
 
     @classmethod
     def from_session(cls, draft_session: Any, *, shape: RosterShape) -> DraftSessionRead:

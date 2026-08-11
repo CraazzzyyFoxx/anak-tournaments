@@ -42,6 +42,7 @@ OPERATIONS: dict[str, Op] = {
         response=draft_schemas.DraftRoleEditResponse,
     ),
     # ── draft: admin lifecycle (all -> DraftSessionRead) ───────────────────
+    "rpc.balancer.draft.session_list": Op(response=draft_schemas.DraftSessionRead, response_array=True),
     "rpc.balancer.draft.session_create": Op(
         request=draft_schemas.DraftSessionCreateRequest, response=draft_schemas.DraftSessionRead
     ),
