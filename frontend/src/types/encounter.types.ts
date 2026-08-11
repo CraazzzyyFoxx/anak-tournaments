@@ -63,6 +63,8 @@ export interface CaptainReport {
   team_id: number;
   side: "home" | "away" | null;
   reporter_user_id: number | null;
+  /** Display name of the captain who filed it (`CaptainReportRead.reporter_name`). */
+  reporter_name?: string | null;
   home_score: number;
   away_score: number;
   /** 1..10, or null when the tournament disables/does not require match quality. */

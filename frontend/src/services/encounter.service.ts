@@ -16,10 +16,17 @@ export default class encounterService {
         entities: [
           "matches",
           "matches.map",
+          // The detail page names each map's gamemode; without this the nested
+          // `map.gamemode` comes back null.
+          "matches.map.gamemode",
           "teams",
           "teams.players",
           "teams.placement",
           "teams.players.user",
+          // `captain_id` is a user id, so the roster needs the captain resolved
+          // to mark the row; `group` names the side's group on the scoreboard.
+          "teams.captain",
+          "teams.group",
           "tournament",
           "tournament.division_grid_version",
           "stage",

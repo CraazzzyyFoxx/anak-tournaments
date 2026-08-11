@@ -15,7 +15,14 @@ import ru from "./messages/ru.json";
 
 // `encounters.veto.room` is the veto room's own namespace and carries slot-mode
 // plurals of its own, so it is checked here rather than left unguarded.
-const NAMESPACES = ["mapVeto", "mapVetoAdmin", "encounters.veto.room"] as const;
+// `encounters.detail` joined it once the encounter detail page grew map/report
+// counters — same four-category Russian risk, same silent failure mode.
+const NAMESPACES = [
+  "mapVeto",
+  "mapVetoAdmin",
+  "encounters.veto.room",
+  "encounters.detail"
+] as const;
 
 type Leaf = { key: string; message: string };
 
@@ -39,6 +46,23 @@ function argNames(message: string): string[] {
 /** The argument a plural selects on — `count` in `{count, plural, …}`. */
 function pluralArg(message: string): string | null {
   return message.match(/\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*,\s*plural\s*,/)?.[1] ?? null;
+}
+
+/**
+ * XML-ish tag names a message expects the call site to supply a renderer for
+ * (`<em>…</em>` in a hero title). Rendering through `t()` without them is a
+ * FORMATTING_ERROR, so the checks below pass a stub per tag.
+ */
+function tagNames(message: string): string[] {
+  return [...new Set([...message.matchAll(/<([a-zA-Z][a-zA-Z0-9]*)>/g)].map((m) => m[1]))];
+}
+
+function argsFor(message: string): Record<string, unknown> {
+  // A number satisfies both `{count, plural, …}` and a bare `{stage}`.
+  return {
+    ...Object.fromEntries(argNames(message).map((name) => [name, 1])),
+    ...Object.fromEntries(tagNames(message).map((tag) => [tag, (chunks: string) => chunks]))
+  };
 }
 
 function collectLeaves(messages: typeof en): Leaf[] {
@@ -78,9 +102,7 @@ describe.each([
     const leftover: string[] = [];
 
     for (const { key, message } of entries) {
-      // A number satisfies both `{count, plural, …}` and a bare `{stage}`.
-      const values = Object.fromEntries(argNames(message).map((name) => [name, 1]));
-      const rendered = t(key as never, values as never);
+      const rendered = t(key as never, argsFor(message) as never);
 
       if (rendered === key) unresolved.push(key);
       if (typeof rendered === "string" && /[{}]/.test(rendered)) leftover.push(key);
@@ -112,8 +134,9 @@ describe.each([
     for (const { key, message } of plurals) {
       const arg = pluralArg(message);
       if (arg === null) continue;
-      // Sibling arguments must still be present or ICU refuses to format.
-      const base = Object.fromEntries(argNames(message).map((name) => [name, 1]));
+      // Sibling arguments and tag renderers must still be present or ICU
+      // refuses to format.
+      const base = argsFor(message);
       rendered[key] = counts.map(
         (count) => t(key as never, { ...base, [arg]: count } as never) as string
       );
