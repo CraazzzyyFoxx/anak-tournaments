@@ -92,13 +92,6 @@ export function getTournamentStatusMeta(status: TournamentStatus) {
   return TOURNAMENT_STATUS_META[status];
 }
 
-export const TOURNAMENT_STATUS_OPTIONS = (
-  Object.entries(TOURNAMENT_STATUS_META) as Array<[TournamentStatus, TournamentStatusMeta]>
-).map(([value, meta]) => ({
-  value,
-  label: meta.badgeLabel
-}));
-
 export function isTournamentStatusActive(status: TournamentStatus) {
   return TOURNAMENT_STATUS_META[status].isActive;
 }

@@ -32,15 +32,15 @@ const STATUS_CONFIG: Record<
   registration: {
     label: "Registration",
     tone: "info",
-    next: ["draft"]
-  },
-  draft: {
-    label: "Draft",
-    tone: "warning",
-    next: ["check_in", "live"]
+    next: ["check_in"]
   },
   check_in: {
     label: "Check-in",
+    tone: "warning",
+    next: ["draft", "live"]
+  },
+  draft: {
+    label: "Draft",
     tone: "warning",
     next: ["live"]
   },
