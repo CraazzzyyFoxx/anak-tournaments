@@ -50,7 +50,7 @@ export function participantDefaultColumnIds(
 // and Reset clears the stored entry.
 // ---------------------------------------------------------------------------
 
-type ColumnStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+type PageStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export function participantColumnsStorageKey(tournamentId: number): string {
   return `aqt:participants:columns:v1:${tournamentId}`;
@@ -76,7 +76,7 @@ export function parseStoredParticipantColumnIds(raw: string | null): string[] | 
 
 /** Stored optional column ids for the tournament; see `parseStoredParticipantColumnIds`. */
 export function readStoredParticipantColumnIds(
-  storage: ColumnStorage | null,
+  storage: PageStorage | null,
   tournamentId: number,
 ): string[] | null {
   if (!storage) return null;
@@ -116,7 +116,7 @@ export function subscribeParticipantColumnsStorage(listener: () => void): () => 
  * Returns the stored optional ids, or `null` when the entry was removed.
  */
 export function writeStoredParticipantColumnIds(
-  storage: ColumnStorage | null,
+  storage: PageStorage | null,
   tournamentId: number,
   visibleColumnIds: readonly string[],
   defaultColumnIds: readonly string[],
@@ -140,6 +140,43 @@ export function writeStoredParticipantColumnIds(
     return isDefault ? null : optionalValue;
   } catch {
     return isDefault ? null : optionalValue;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// One-shot check-in prompt (localStorage)
+//
+// Check-in is the only deadline on this page, and the player who misses it is
+// the one who never scrolled down to the card. So the first visit while the
+// window is open opens the dialog itself — once per tournament per browser,
+// because a prompt that returns on every reload is a nag and trains the reflex
+// to dismiss it.
+// ---------------------------------------------------------------------------
+
+export function checkInPromptStorageKey(tournamentId: number): string {
+  return `aqt:participants:checkin-prompted:v1:${tournamentId}`;
+}
+
+/**
+ * Whether this browser should auto-open the check-in dialog, claiming the
+ * one-shot when it says yes so the next call returns `false`.
+ *
+ * Unreadable storage (private mode, blocked cookies) answers `true`: the
+ * prompt then repeats once per mount, which is the failure this page prefers
+ * over silently never reminding anyone.
+ */
+export function claimCheckInPrompt(
+  storage: PageStorage | null,
+  tournamentId: number,
+): boolean {
+  if (!storage) return true;
+  try {
+    const key = checkInPromptStorageKey(tournamentId);
+    if (storage.getItem(key) !== null) return false;
+    storage.setItem(key, "1");
+    return true;
+  } catch {
+    return true;
   }
 }
 

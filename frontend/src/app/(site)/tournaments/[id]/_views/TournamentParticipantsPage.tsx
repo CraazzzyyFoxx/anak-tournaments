@@ -55,6 +55,7 @@ import {
 } from "./_components/participantsColumns";
 import {
   PARTICIPANT_SEARCH_MAX_LENGTH,
+  claimCheckInPrompt,
   isMandatoryParticipantColumnId,
   parseStoredParticipantColumnIds,
   participantColumnsStorageKey,
@@ -501,14 +502,22 @@ function MyRegistrationCard({
 
         <div className="flex items-center gap-2">
           {canCheckIn && (
+            // Check-in is the one time-boxed action on this page and the only one
+            // a player loses the tournament by missing, so it is sized and lit to
+            // be the first thing the eye lands on rather than one more chip beside
+            // Withdraw. The glow is a box-shadow rather than a scaling halo: the
+            // card is `overflow-hidden`, so anything growing past the button
+            // clips at the card edge.
             <button
               type="button"
               onClick={onCheckIn}
               disabled={isCheckingIn}
-              className="inline-flex items-center justify-center gap-1 rounded-md bg-[color:var(--aqt-emerald)] px-3 py-1.5 text-xs font-semibold text-[color:var(--aqt-bg)] transition-all hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[color:var(--aqt-emerald)] px-4 py-2 text-sm font-bold text-[color:var(--aqt-bg)] shadow-[0_0_18px_color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] transition-all hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
-              {isCheckingIn && (
-                <Loader2 className="size-3 animate-spin motion-reduce:animate-none" aria-hidden />
+              {isCheckingIn ? (
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+              ) : (
+                <CheckCircle2 className="size-4" aria-hidden />
               )}
               {isCheckingIn ? t("common.checkingIn") : t("common.checkIn")}
             </button>
@@ -775,6 +784,15 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
     myRegistration?.status === "approved" &&
     myRegistration.checked_in !== true &&
     isCheckInWindowActive(tournament);
+
+  // The check-in window is open and this player still has to confirm: open the
+  // dialog for them rather than trusting they will find the button. `claimCheckInPrompt`
+  // makes it once per tournament per browser.
+  useEffect(() => {
+    if (!canCheckIn) return;
+    if (!claimCheckInPrompt(window.localStorage, tournament.id)) return;
+    setIsCheckInDialogOpen(true);
+  }, [canCheckIn, tournament.id]);
 
   const divisionGrid = useDivisionGrid();
   const [needsHeroes, setNeedsHeroes] = useState(false);

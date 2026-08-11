@@ -68,6 +68,7 @@ export default defineConfig({
       // Same allow-list trap: this folder also holds `bun:test` files, so the
       // entry is file-level rather than a directory glob.
       "src/app/(site)/tournaments/[id]/_views/TournamentMapsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[id]/_views/TournamentParticipantsPage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       "src/components/veto/**/*.test.ts",
       "src/components/veto/**/*.test.tsx",

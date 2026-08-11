@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  claimCheckInPrompt,
   participantColumnsStorageKey,
   participantDefaultColumnIds,
   participantResultsScrollTarget,
@@ -292,5 +293,25 @@ describe("participant URL state", () => {
     expect(readStoredParticipantColumnIds(garbage, 9)).toBeNull();
     expect(readStoredParticipantColumnIds(garbage, 10)).toBeNull();
     expect(readStoredParticipantColumnIds(null, 9)).toBeNull();
+  });
+
+  it("claims the check-in prompt once per tournament and survives broken storage", () => {
+    const storage = memoryStorage();
+
+    expect(claimCheckInPrompt(storage, 7)).toBe(true);
+    // The reload the same player does an hour later must not re-prompt.
+    expect(claimCheckInPrompt(storage, 7)).toBe(false);
+    // A different tournament is a different deadline.
+    expect(claimCheckInPrompt(storage, 8)).toBe(true);
+
+    const throwing = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {},
+      removeItem: () => {},
+    };
+    expect(claimCheckInPrompt(throwing, 7)).toBe(true);
+    expect(claimCheckInPrompt(null, 7)).toBe(true);
   });
 });
