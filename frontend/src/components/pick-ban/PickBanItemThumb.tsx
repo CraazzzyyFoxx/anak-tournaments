@@ -18,7 +18,6 @@ interface PickBanItemThumbProps {
   size?: number;
   /** Greys the art out — a banned item, a round that has not opened. */
   muted?: boolean;
-  className?: string;
 }
 
 /**
@@ -28,21 +27,14 @@ interface PickBanItemThumbProps {
  * app's canonical hero renderer, initials fallback included — so only the map
  * shape is implemented here.
  */
-export function PickBanItemThumb({
-  kind,
-  item,
-  name,
-  size = 28,
-  muted,
-  className
-}: PickBanItemThumbProps) {
+export function PickBanItemThumb({ kind, item, name, size = 28, muted }: PickBanItemThumbProps) {
   if (kind === "hero") {
     return (
       <HeroImage
         hero={{ name, image_path: item?.image_path ?? "", role: item?.role ?? "" }}
         size={size}
         title={name}
-        className={cn("shrink-0", muted ? "opacity-45 grayscale" : null, className)}
+        className={cn("shrink-0", muted ? "opacity-45 grayscale" : null)}
       />
     );
   }
@@ -54,9 +46,10 @@ export function PickBanItemThumb({
     <span
       title={name}
       className={cn(
-        "relative shrink-0 overflow-hidden rounded-md bg-[color:var(--aqt-card-2)] ring-1 ring-inset ring-[color:var(--aqt-border-2)]",
-        muted ? "opacity-45 grayscale" : null,
-        className
+        // `inline-block`, not bare `inline`: an inline span ignores width/height,
+        // so the tile only ever had a size when a flex parent blockified it.
+        "relative inline-block shrink-0 overflow-hidden rounded-md bg-[color:var(--aqt-card-2)] align-middle ring-1 ring-inset ring-[color:var(--aqt-border-2)]",
+        muted ? "opacity-45 grayscale" : null
       )}
       style={{ width, height: size }}
     >

@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Ban, Check, Flag, MapPin } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  Check,
+  CircleCheck,
+  CircleSlash,
+  Flag,
+  Hourglass,
+  MapPin
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
@@ -48,12 +57,11 @@ interface PregameHeaderProps {
   series: PregameSeriesMap[];
 }
 
-const STATUS_CHIP_CLASSES: Record<PickBanSession["status"], string> = {
-  active:
-    "border-[color:var(--aqt-teal)]/35 bg-[color:var(--aqt-teal)]/12 text-[color:var(--aqt-teal)]",
-  completed:
-    "border-[color:var(--aqt-support)]/35 bg-[color:var(--aqt-support)]/12 text-[color:var(--aqt-support)]",
-  cancelled: "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-amber)]"
+/** Accent per session state — carried by an icon, not a labelled pill. */
+const STATUS_COLOR: Record<PickBanSession["status"], string> = {
+  active: "var(--aqt-teal)",
+  completed: "var(--aqt-support)",
+  cancelled: "var(--aqt-amber)"
 };
 
 /** The glyph that stands for each step of the loop once it is not yet done. */
@@ -112,23 +120,7 @@ export function PregameHeader({
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <h1 className="font-onest text-xl font-semibold tracking-[-0.01em]">{t("title")}</h1>
-        {session != null ? (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]",
-              STATUS_CHIP_CLASSES[session.status]
-            )}
-          >
-            {session.status === "active" ? (
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-teal)] animate-pulse motion-reduce:animate-none"
-                style={{ boxShadow: "0 0 8px var(--aqt-teal)" }}
-              />
-            ) : null}
-            {t(`statusChip.${session.status}`)}
-          </span>
-        ) : null}
+        {session != null ? <StatusMark status={session.status} /> : null}
         {round != null ? (
           <span className="ml-auto font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
             {t("round.label", { n: round })}
@@ -153,6 +145,34 @@ export function PregameHeader({
 
       {series.length > 0 ? <SeriesStrip series={series} /> : null}
     </div>
+  );
+}
+
+/**
+ * Session state as one mark rather than a labelled pill: a pulsing dot while a
+ * session is live, a check once it is done, a slash once it is cancelled. The
+ * words move to `title`/screen-reader text — the colour and glyph already say
+ * it, and a third uppercase pill next to the room title said it twice.
+ */
+function StatusMark({ status }: { status: PickBanSession["status"] }) {
+  const t = useTranslations("pickBan.room");
+  const label = t(`statusChip.${status}`);
+  const color = STATUS_COLOR[status];
+  const Icon = status === "completed" ? CircleCheck : CircleSlash;
+
+  return (
+    <span className="inline-flex shrink-0 items-center" title={label}>
+      <span className="sr-only">{label}</span>
+      {status === "active" ? (
+        <span
+          aria-hidden
+          className="h-2 w-2 animate-pulse rounded-full motion-reduce:animate-none"
+          style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+        />
+      ) : (
+        <Icon aria-hidden className="h-4 w-4" style={{ color }} />
+      )}
+    </span>
   );
 }
 
@@ -331,15 +351,15 @@ function TeamSide({
             {t("board.seed")} {seed != null ? seed : t("board.seedNone")}
           </span>
           {opens ? (
-            // Below `sm` the label would eat the whole line, so the flag alone
-            // carries it there — the accessible name stays on the element.
+            // Bare glyph, no pill: the flag next to the seed already reads as
+            // "this side opens", and the words live in `title`/screen-reader
+            // text instead of a fourth tinted box in the header.
             <span
-              className="inline-flex items-center gap-1 rounded-sm bg-[color:var(--aqt-teal)]/15 px-1 py-px text-[color:var(--aqt-teal)] sm:px-1.5"
+              className="inline-flex shrink-0 items-center text-[color:var(--aqt-teal)]"
               title={t("board.opens")}
-              aria-label={t("board.opens")}
             >
-              <Flag className="h-2.5 w-2.5 shrink-0" aria-hidden />
-              <span className="hidden whitespace-nowrap sm:inline">{t("board.opens")}</span>
+              <span className="sr-only">{t("board.opens")}</span>
+              <Flag className="h-3 w-3" aria-hidden />
             </span>
           ) : null}
         </span>
@@ -386,10 +406,12 @@ function SeriesPips({
 }
 
 /**
- * The round's steps as a connected rail instead of a row of badges: an icon
- * node per step (map pin -> ban -> flag), joined by a connector that is filled
- * up to the live step. Only the active node carries a label at narrow widths,
- * so the whole loop still fits on a phone without wrapping into four lines.
+ * The round's steps as a rail of bare icon nodes — map pin, ban, flag — joined
+ * by a connector filled up to the live step. Every node used to be a labelled
+ * pill, which put three same-weight boxes next to the three of the filmstrip
+ * and one more at the title; the glyph plus a filled/hollow/dashed ring says
+ * the same thing, and ONE line under the rail names the step that is live.
+ * Every node keeps its full name in `title` and screen-reader text.
  */
 function PhaseRail({
   phases,
@@ -399,119 +421,137 @@ function PhaseRail({
   activePhase: PregamePhase;
 }) {
   const t = useTranslations("pickBan.room");
+  const activeEntry = phases.find((entry) => entry.phase === activePhase) ?? null;
 
   return (
-    <ol
-      aria-label={t("phase.rail")}
-      className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:flex-nowrap"
-    >
-      {phases.map((entry, index) => {
-        const active = entry.phase === activePhase;
-        const Icon = entry.done ? Check : PHASE_ICON[entry.phase];
-        const state = active ? t("phase.current") : entry.done ? t("phase.done") : t("phase.next");
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <ol aria-label={t("phase.rail")} className="flex items-center">
+        {phases.map((entry, index) => {
+          const active = entry.phase === activePhase;
+          const Icon = entry.done ? Check : PHASE_ICON[entry.phase];
+          const name = t(`phase.${entry.phase}`);
+          const state = active
+            ? t("phase.current")
+            : entry.done
+              ? t("phase.done")
+              : t("phase.next");
 
-        return (
-          <li key={entry.phase} className="flex min-w-0 items-center gap-1">
-            {index > 0 ? (
-              <span
-                aria-hidden
-                className={cn(
-                  // Hidden below `sm`: the rail wraps there, and a connector
-                  // that starts a new line points at nothing.
-                  "hidden h-px w-4 shrink-0 sm:block sm:w-8",
-                  entry.done || active
-                    ? "bg-[color:var(--aqt-teal)]/50"
-                    : "bg-[color:var(--aqt-border-2)]"
-                )}
-              />
-            ) : null}
-            <span
-              aria-current={active ? "step" : undefined}
-              className={cn(
-                "inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors",
-                active
-                  ? "border-[color:var(--aqt-teal)]/45 bg-[color:var(--aqt-teal)]/10 text-[color:var(--aqt-fg)]"
-                  : entry.done
-                    ? "border-[color:var(--aqt-support)]/25 text-[color:var(--aqt-fg-muted)]"
-                    : "border-dashed border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-faint)]"
-              )}
-            >
-              <Icon
-                className={cn(
-                  "h-3.5 w-3.5 shrink-0",
-                  active
-                    ? "text-[color:var(--aqt-teal)]"
-                    : entry.done
-                      ? "text-[color:var(--aqt-support)]"
-                      : "text-[color:var(--aqt-fg-faint)]"
-                )}
-                aria-hidden
-              />
-              <span className="truncate text-xs font-medium">{t(`phase.${entry.phase}`)}</span>
-              <span className="sr-only">{` — ${state}`}</span>
-              {active ? (
-                <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-[color:var(--aqt-teal)] sm:inline">
-                  {state}
-                </span>
+          return (
+            <li key={entry.phase} className="flex items-center">
+              {index > 0 ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "h-px w-5 shrink-0 sm:w-8",
+                    entry.done || active
+                      ? "bg-[color:var(--aqt-teal)]/50"
+                      : "bg-[color:var(--aqt-border-2)]"
+                  )}
+                />
               ) : null}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
+              <span
+                aria-current={active ? "step" : undefined}
+                title={`${name} — ${state}`}
+                className={cn(
+                  "grid h-7 w-7 shrink-0 place-items-center rounded-full border transition-colors",
+                  active
+                    ? "border-[color:var(--aqt-teal)] bg-[color:var(--aqt-teal)]/12 text-[color:var(--aqt-teal)]"
+                    : entry.done
+                      ? "border-[color:var(--aqt-support)]/45 text-[color:var(--aqt-support)]"
+                      : "border-dashed border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-faint)]"
+                )}
+              >
+                <span className="sr-only">{`${name} — ${state}`}</span>
+                <Icon aria-hidden className="h-3.5 w-3.5" />
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      {activeEntry != null ? (
+        <span
+          aria-hidden
+          className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-muted)]"
+        >
+          <span className="text-[color:var(--aqt-teal)]">{t(`phase.${activeEntry.phase}`)}</span>
+          {` · ${t("phase.current")}`}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
 /**
- * The maps already settled, as a filmstrip of stills with each map's confirmed
- * score under it — the series' history in one glance, where the room otherwise
- * only ever names the map it is currently on. The map still is the label; the
- * name sits under it as caption rather than as the primary token.
+ * The maps already settled, as a filmstrip of bare stills: the ordinal rides
+ * the art as a corner chip, the score sits under it, and the map whose result
+ * the loop is waiting on takes a teal ring plus an hourglass instead of digits.
+ * No card around each entry — the still IS the token, and boxing it turned the
+ * series into another row of chips competing with the phase rail above it.
  */
 function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
   const t = useTranslations("pickBan.room");
 
   return (
-    <ol aria-label={t("series.label")} className="flex flex-wrap items-stretch gap-2">
-      {series.map((map) => (
-        <li
-          key={map.round}
-          className={cn(
-            "flex items-center gap-2.5 rounded-lg border px-2.5 py-2",
-            map.played
-              ? "border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/40"
-              : "border-[color:var(--aqt-teal)]/40 bg-[color:var(--aqt-teal)]/[0.07]"
-          )}
-        >
-          <PickBanItemThumb
-            kind="map"
-            item={map.item}
-            name={map.name}
-            size={30}
-            muted={map.played}
-          />
-          <div className="flex min-w-0 flex-col">
-            <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
-              {t("round.label", { n: map.round })}
+    <ol aria-label={t("series.label")} className="flex flex-wrap items-start gap-3">
+      {series.map((map) => {
+        const roundLabel = t("round.label", { n: map.round });
+        return (
+          <li key={map.round} className="flex w-20 flex-col items-center gap-1">
+            {/* Ring on the wrapper, not the thumb: the map thumb already carries
+                an inset hairline ring, and `ring-inset` has no counter-utility
+                for `twMerge` to strip. */}
+            <span
+              className={cn(
+                "relative inline-block rounded-md",
+                map.score == null ? "ring-2 ring-[color:var(--aqt-teal)]" : null
+              )}
+            >
+              <PickBanItemThumb
+                kind="map"
+                item={map.item}
+                name={map.name}
+                size={40}
+                muted={map.score != null}
+              />
+              <span
+                aria-hidden
+                className="absolute -left-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[color:var(--aqt-card)] px-1 font-mono text-[9px] font-bold leading-none text-[color:var(--aqt-fg-muted)] ring-1 ring-[color:var(--aqt-border-2)]"
+              >
+                {map.round}
+              </span>
+              {map.score == null ? (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 grid place-items-center rounded-md bg-[color:var(--aqt-card)]/55"
+                >
+                  <Hourglass className="h-4 w-4 text-[color:var(--aqt-teal)]" />
+                </span>
+              ) : null}
             </span>
-            <span className="min-w-0 truncate text-xs font-medium">{map.name}</span>
-          </div>
-          {map.score != null ? (
-            <span className="ml-1 font-onest text-sm font-semibold tabular-nums">
-              <span style={{ color: "var(--aqt-teal)" }}>{map.score.home}</span>
-              <span className="text-[color:var(--aqt-fg-faint)]">:</span>
-              <span style={{ color: "var(--aqt-rose)" }}>{map.score.away}</span>
+            <span className="sr-only">
+              {roundLabel}
+              {map.score == null ? ` — ${t("series.awaiting")}` : ""}
             </span>
-          ) : (
-            // No confirmed score yet: this is the map whose result the loop is
-            // waiting on (or, for an already-played map, one an admin settled
-            // outside the captains' reports).
-            <span className="ml-1 font-mono text-[9px] uppercase tracking-[0.12em] text-[color:var(--aqt-teal)]">
-              {t("series.awaiting")}
+            <span
+              title={map.name}
+              className="w-full truncate text-center text-[11px] leading-tight"
+            >
+              {map.name}
             </span>
-          )}
-        </li>
-      ))}
+            {/* Only a settled map gets digits. The one still in play says so with
+                the teal ring and the hourglass over its still -- a caption here
+                wrapped to two lines and knocked every column out of alignment,
+                and it repeated what the overlay already shows. */}
+            {map.score != null ? (
+              <span className="font-onest text-xs font-semibold tabular-nums">
+                <span style={{ color: "var(--aqt-teal)" }}>{map.score.home}</span>
+                <span className="text-[color:var(--aqt-fg-faint)]">:</span>
+                <span style={{ color: "var(--aqt-rose)" }}>{map.score.away}</span>
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }
