@@ -429,7 +429,7 @@ async def reset_pick_ban_session(
     generalized: the ledger clear has no legacy equivalent because
     ``EncounterVetoSession`` never had cross-round memory -- a genuine
     from-scratch reset must also forget what an earlier, scrapped session
-    banned/protected, or a later round would wrongly still exclude it."""
+    banned, or a later round would wrongly still exclude it."""
     existing = await get_pick_ban_session(session, encounter.id, kind)
     if existing is not None:
         await session.execute(sa.delete(PickBanSession).where(PickBanSession.id == existing.id))

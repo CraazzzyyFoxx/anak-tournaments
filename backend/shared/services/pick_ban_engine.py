@@ -134,6 +134,13 @@ def is_entry_bannable(entry, *, active_round: int | None) -> bool:
 
 @dataclass(frozen=True)
 class LedgerRow:
+    """One committed BAN, remembered across rounds.
+
+    Protects are deliberately absent: a protect is a round-local immunity, so
+    it neither bars a later ban nor is barred by one — bans and protects never
+    restrict each other.
+    """
+
     item_id: int
     banned_by_side: str
 
@@ -149,7 +156,7 @@ def excluded_item_ids(
     ``NONE``: nothing excluded (today's behavior).
     ``ENCOUNTER``: every item the ledger has anywhere, regardless of side —
     Doc 1's "nobody may re-ban a hero for the whole match".
-    ``ENCOUNTER_SAME_SIDE``: only items THIS side banned/protected earlier —
+    ``ENCOUNTER_SAME_SIDE``: only items THIS side banned earlier —
     Doc 2's "a team can't repeat its own ban; banning the opponent's earlier
     ban is fine". Requires `side`.
     """
@@ -165,20 +172,45 @@ def excluded_item_ids(
 # ── role/attribute uniqueness within one side's actions this round ──────────
 
 
+def committed_attributes(
+    pool: list,
+    *,
+    action: Action,
+    attribute_lookup: dict[int, object],
+) -> list[tuple[str | None, int | None, object]]:
+    """``(side, round, attribute)`` per action of the SAME KIND as `action`
+    already committed in `pool` — the history `violates_unique_attribute`
+    measures a new `action` against.
+
+    Bans and protects are tracked SEPARATELY: uniqueness constrains a side's
+    bans among its bans and its protects among its protects, never across the
+    two — banning a tank does not spend that side's tank protect, and vice
+    versa. Status is the discriminator, so the side is read off `picked_by`
+    for a ban and `protected_by` for a protect. Picks and deciders carry no
+    attribute restriction in either rulebook and are never included.
+    """
+    if action == "ban":
+        status = enums.MapPoolEntryStatus.BANNED.value
+        return [(e.picked_by, e.round, attribute_lookup.get(e.item_id)) for e in pool if e.status == status]
+    if action == "protect":
+        status = enums.MapPoolEntryStatus.PROTECTED.value
+        return [(e.protected_by, e.round, attribute_lookup.get(e.item_id)) for e in pool if e.status == status]
+    return []
+
+
 def violates_unique_attribute(
     *,
     candidate_attribute,
     acting_side: Side,
     round_number: int | None,
-    committed_this_round: list[tuple[Side, int, object]],
+    committed_this_round: list[tuple[str | None, int | None, object]],
 ) -> bool:
-    """True if `acting_side` already has a committed ban/protect THIS round
-    whose target shares `candidate_attribute` (e.g. hero role).
+    """True if `acting_side` already has a committed action of the SAME KIND
+    THIS round whose target shares `candidate_attribute` (e.g. hero role).
 
-    `committed_this_round` is `(side, round, attribute_value)` for every
-    ban/protect already applied in the pool — the caller filters to the active
-    round and passes only ban/protect entries (not picks/deciders, which carry
-    no role restriction in either rulebook).
+    `committed_this_round` comes from `committed_attributes`, which keeps the
+    ban and protect histories apart — pass the wrong one and a ban would bar a
+    protect.
     """
     if candidate_attribute is None:
         return False

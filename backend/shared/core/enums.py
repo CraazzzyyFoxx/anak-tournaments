@@ -404,13 +404,15 @@ class PickBanKind(StrEnum):
 
 
 class PickBanNoRepeatScope(StrEnum):
-    """Cross-round memory rule for :class:`EncounterPickBanLedger` exclusion.
+    """Cross-round BAN memory rule for :class:`EncounterPickBanLedger`
+    exclusion. Protects are never recorded there, so they neither exclude nor
+    are excluded by anything under any scope.
 
     ``NONE``: no cross-round memory (today's flat/slot veto behavior).
-    ``ENCOUNTER``: an item banned/protected by EITHER side, anywhere earlier in
-    this encounter's series, is excluded from every later round's pool.
-    ``ENCOUNTER_SAME_SIDE``: excluded only for the side that banned/protected
-    it; the opponent may still target it.
+    ``ENCOUNTER``: an item banned by EITHER side, anywhere earlier in this
+    encounter's series, is excluded from every later round's pool.
+    ``ENCOUNTER_SAME_SIDE``: excluded only for the side that banned it; the
+    opponent may still target it.
     """
 
     NONE = "none"

@@ -14,8 +14,15 @@ from shared.core import enums
 from shared.services import pick_ban_engine as engine
 
 
-def entry(item_id: int, *, round: int | None = None, status: str = "available", protected_by: str | None = None):
-    return SimpleNamespace(item_id=item_id, round=round, status=status, protected_by=protected_by)
+def entry(
+    item_id: int,
+    *,
+    round: int | None = None,
+    status: str = "available",
+    picked_by: str | None = None,
+    protected_by: str | None = None,
+):
+    return SimpleNamespace(item_id=item_id, round=round, status=status, picked_by=picked_by, protected_by=protected_by)
 
 
 # ── parse_step_token / resolve_sequence_tokens ──────────────────────────────
@@ -149,6 +156,81 @@ def test_violates_unique_attribute_none_attribute_never_violates():
             candidate_attribute=None, acting_side="home", round_number=1, committed_this_round=[("home", 1, None)]
         )
         is False
+    )
+
+
+# ── committed_attributes (bans and protects are separate histories) ─────────
+
+ROLES = {1: "tank", 2: "tank", 3: "support"}
+
+
+def _pool_with_home_tank_ban_and_protect():
+    return [
+        entry(1, round=1, status="banned", picked_by="home"),
+        entry(2, round=1, status="protected", protected_by="home"),
+        entry(3, round=1),
+    ]
+
+
+def test_committed_attributes_for_a_ban_reads_bans_only():
+    committed = engine.committed_attributes(
+        _pool_with_home_tank_ban_and_protect(), action="ban", attribute_lookup=ROLES
+    )
+    assert committed == [("home", 1, "tank")]
+
+
+def test_committed_attributes_for_a_protect_reads_protects_only():
+    committed = engine.committed_attributes(
+        _pool_with_home_tank_ban_and_protect(), action="protect", attribute_lookup=ROLES
+    )
+    assert committed == [("home", 1, "tank")]
+
+
+@pytest.mark.parametrize("action", ["pick", "decider"])
+def test_committed_attributes_is_empty_for_actions_without_the_rule(action):
+    pool = _pool_with_home_tank_ban_and_protect()
+    assert engine.committed_attributes(pool, action=action, attribute_lookup=ROLES) == []
+
+
+def test_own_tank_ban_does_not_bar_that_side_from_protecting_a_tank():
+    # The bug this pairing fixes: the room counted a protect as a ban, so home
+    # banning a tank spent home's tank protect too. Protects and bans never
+    # restrict each other.
+    pool = [entry(1, round=1, status="banned", picked_by="home"), entry(2, round=1)]
+    assert (
+        engine.violates_unique_attribute(
+            candidate_attribute="tank",
+            acting_side="home",
+            round_number=1,
+            committed_this_round=engine.committed_attributes(pool, action="protect", attribute_lookup=ROLES),
+        )
+        is False
+    )
+
+
+def test_own_tank_ban_still_bars_a_second_tank_ban():
+    pool = [entry(1, round=1, status="banned", picked_by="home"), entry(2, round=1)]
+    assert (
+        engine.violates_unique_attribute(
+            candidate_attribute="tank",
+            acting_side="home",
+            round_number=1,
+            committed_this_round=engine.committed_attributes(pool, action="ban", attribute_lookup=ROLES),
+        )
+        is True
+    )
+
+
+def test_own_tank_protect_still_bars_a_second_tank_protect():
+    pool = [entry(1, round=1, status="protected", protected_by="home"), entry(2, round=1)]
+    assert (
+        engine.violates_unique_attribute(
+            candidate_attribute="tank",
+            acting_side="home",
+            round_number=1,
+            committed_this_round=engine.committed_attributes(pool, action="protect", attribute_lookup=ROLES),
+        )
+        is True
     )
 
 

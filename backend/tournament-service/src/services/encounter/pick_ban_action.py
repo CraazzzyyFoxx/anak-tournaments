@@ -178,23 +178,22 @@ async def auto_resolve_timeout(
     attribute_lookup = (
         await _attribute_lookup(session, kind, [e.item_id for e in pool]) if unique_attribute is not None else {}
     )
+    # Ban memory is ban-only: a protect step is never barred by what this side
+    # banned earlier, so it needs no ledger lookup at all.
+    same_side_ban_memory = config is not None and config.no_repeat_scope == PickBanNoRepeatScope.ENCOUNTER_SAME_SIDE
     excluded_for_side = (
         await _ledger_exclusions_for_side(session, encounter_id, kind, parsed.side)
-        if config is not None and config.no_repeat_scope == PickBanNoRepeatScope.ENCOUNTER_SAME_SIDE
+        if parsed.action == "ban" and same_side_ban_memory
         else frozenset()
     )
-    committed = [
-        (e.picked_by or e.protected_by, e.round, attribute_lookup.get(e.item_id))
-        for e in pool
-        if e.status in (MapPoolEntryStatus.BANNED.value, MapPoolEntryStatus.PROTECTED.value)
-    ]
+    committed = engine.committed_attributes(pool, action=parsed.action, attribute_lookup=attribute_lookup)
 
     def eligible(entry: PickBanEntry) -> bool:
         if not engine.in_current_round(entry, active_round):
             return False
-        if parsed.action in ("ban", "protect") and entry.item_id in excluded_for_side:
-            return False
         if parsed.action == "ban":
+            if entry.item_id in excluded_for_side:
+                return False
             if not engine.is_entry_bannable(entry, active_round=active_round):
                 return False
         elif entry.status != MapPoolEntryStatus.AVAILABLE.value:
@@ -232,7 +231,7 @@ async def auto_resolve_timeout(
         now=now,
         excluded_for_side=excluded_for_side,
     )
-    if parsed.action in ("ban", "protect") and config is not None and config.no_repeat_scope != "none":
+    if parsed.action == "ban" and config is not None and config.no_repeat_scope != "none":
         session.add(
             EncounterPickBanLedger(
                 encounter_id=encounter_id,
@@ -264,10 +263,11 @@ async def _attribute_lookup(session: AsyncSession, kind: PickBanKind, item_ids: 
 async def _ledger_exclusions_for_side(
     session: AsyncSession, encounter_id: int, kind: PickBanKind, side: str
 ) -> frozenset[int]:
-    """Items ``side`` may not ban/protect again, under
-    ``no_repeat_scope=encounter_same_side``: the ones it already banned or
-    protected earlier in this series (the opponent's earlier bans stay fair
-    game — Doc 2's rule, design §5.4)."""
+    """Items ``side`` may not ban again, under
+    ``no_repeat_scope=encounter_same_side``: the ones it already banned earlier
+    in this series (the opponent's earlier bans stay fair game — Doc 2's rule,
+    design §5.4). Protects are not in the ledger and are neither barred by it
+    nor recorded in it."""
     result = await session.execute(
         select(EncounterPickBanLedger.item_id).where(
             EncounterPickBanLedger.encounter_id == encounter_id,
@@ -288,9 +288,7 @@ async def _map_reports(session: AsyncSession, encounter: Encounter) -> list[dict
     disagree", and ``submit_map_report``'s own return value only ever reaches
     the captain who filed it, only until they reload.
     """
-    result = await session.execute(
-        select(EncounterMapReport).where(EncounterMapReport.encounter_id == encounter.id)
-    )
+    result = await session.execute(select(EncounterMapReport).where(EncounterMapReport.encounter_id == encounter.id))
     reports: list[dict[str, Any]] = []
     for row in result.scalars().all():
         if row.team_id == encounter.home_team_id:
@@ -467,11 +465,17 @@ def apply_pick_ban_action(
     """Pure step: validate and apply one ban/pick/protect. Generalizes
     ``map_veto.apply_veto_action`` with the `protect` action, the optional
     role/attribute-uniqueness check, and ``excluded_for_side``: items this side
-    may not target again because it already banned/protected them earlier in
-    the series (``no_repeat_scope=encounter_same_side``). That scope cannot be
-    applied when a round's candidate pool is built — one pool, two sides, and
-    only one of them is barred — so unlike the side-blind ``encounter`` scope
-    it is enforced here, per action."""
+    may not BAN again because it already banned them earlier in the series
+    (``no_repeat_scope=encounter_same_side``). That scope cannot be applied
+    when a round's candidate pool is built — one pool, two sides, and only one
+    of them is barred — so unlike the side-blind ``encounter`` scope it is
+    enforced here, per action.
+
+    Bans and protects never restrict each other: a protect does not spend that
+    side's role budget for the round and is not remembered across rounds by the
+    ledger. The only thing it blocks is a `ban` on that same item, for the rest
+    of the round (``engine.is_entry_bannable``).
+    """
     step = engine.get_current_step(pick_ban.resolved_sequence_json, pool)
     if step is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban sequence is already complete")
@@ -499,27 +503,29 @@ def apply_pick_ban_action(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Item is {reason}")
     if action in ("pick", "protect") and entry.status != MapPoolEntryStatus.AVAILABLE.value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Item is already {entry.status}")
-    if action in ("ban", "protect") and item_id in excluded_for_side:
+    if action == "ban" and item_id in excluded_for_side:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Your side already banned this item earlier in the series",
         )
 
     if action in ("ban", "protect") and unique_attribute is not None:
-        committed = [
-            (e.picked_by or e.protected_by, e.round, attribute_lookup.get(e.item_id))
-            for e in pool
-            if e.status in (MapPoolEntryStatus.BANNED.value, MapPoolEntryStatus.PROTECTED.value)
-        ]
         if engine.violates_unique_attribute(
             candidate_attribute=attribute_lookup.get(item_id),
             acting_side=captain_side,
             round_number=active_round,
-            committed_this_round=committed,
+            # `action == parsed.action` was enforced above; the parsed one is
+            # the narrowly typed twin.
+            committed_this_round=engine.committed_attributes(
+                pool, action=parsed.action, attribute_lookup=attribute_lookup
+            ),
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Your side already banned/protected an item with this attribute this round",
+                detail=(
+                    f"Your side already {'banned' if action == 'ban' else 'protected'} "
+                    "an item with this attribute this round"
+                ),
             )
 
     entry.action_index = sum(1 for e in pool if e.status != MapPoolEntryStatus.AVAILABLE.value)
@@ -561,9 +567,10 @@ async def perform_pick_ban_action(
         if config is not None and config.unique_attribute_per_side_per_round
         else {}
     )
+    same_side_ban_memory = config is not None and config.no_repeat_scope == PickBanNoRepeatScope.ENCOUNTER_SAME_SIDE
     excluded_for_side = (
         await _ledger_exclusions_for_side(session, encounter_id, kind, captain_side)
-        if config is not None and config.no_repeat_scope == PickBanNoRepeatScope.ENCOUNTER_SAME_SIDE
+        if action == "ban" and same_side_ban_memory
         else frozenset()
     )
 
@@ -579,7 +586,10 @@ async def perform_pick_ban_action(
         now=datetime.now(UTC),
     )
 
-    if action in ("ban", "protect") and config is not None and config.no_repeat_scope != "none":
+    # Ban memory only: a protect is round-local, so recording it here would
+    # make it act as a ban on every later round (its item would be excluded
+    # from their pools, or barred for this side).
+    if action == "ban" and config is not None and config.no_repeat_scope != "none":
         session.add(
             EncounterPickBanLedger(
                 encounter_id=encounter_id,

@@ -331,10 +331,13 @@ class PickBanEntry(db.TimeStampIntegerMixin):
         server_default=enums.MapPoolEntryStatus.AVAILABLE.value,
     )
     team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="SET NULL"), nullable=True, index=True)
-    # Set together with status=PROTECTED: which side protected it, so the
-    # opponent's ban is rejected but the protecting side's own later actions
-    # are unaffected. Cleared (status back to AVAILABLE) at round close if the
-    # round's config does not carry the protection into the ledger.
+    # Set together with status=PROTECTED: which side protected it. The entry is
+    # then out of ban range for the rest of the round (``is_entry_bannable``) --
+    # that immunity IS the action. Nothing else about it is remembered: a
+    # protect never enters ``EncounterPickBanLedger`` (entries are per-round
+    # rows, so protection is round-local) and it does not spend that side's
+    # ban budget under ``unique_attribute_per_side_per_round`` -- bans and
+    # protects never restrict each other.
     protected_by: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
 
     session: Mapped[PickBanSession] = relationship()
@@ -342,12 +345,14 @@ class PickBanEntry(db.TimeStampIntegerMixin):
 
 
 class EncounterPickBanLedger(db.TimeStampIntegerMixin):
-    """Cross-round memory: every item banned/protected anywhere in this
-    encounter's series, for a given ``kind``.
+    """Cross-round BAN memory: every item banned anywhere in this encounter's
+    series, for a given ``kind``.
 
     Read when a new round's candidate pool is built (excluded per the owning
-    config's ``no_repeat_scope``); written once when a round's bans/protects
-    commit. Never read or written mid-round.
+    config's ``no_repeat_scope``); written once when a round's bans commit.
+    Never read or written mid-round. Protects are deliberately NOT recorded:
+    a remembered protect would exclude its item from later rounds exactly as a
+    ban does.
     """
 
     __tablename__ = "encounter_pick_ban_ledger"
@@ -361,7 +366,7 @@ class EncounterPickBanLedger(db.TimeStampIntegerMixin):
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
     kind: Mapped[enums.PickBanKind] = mapped_column(PICK_BAN_KIND_ENUM)
     item_id: Mapped[int] = mapped_column(Integer(), index=True)
-    # The side that banned/protected it. Required (not nullable) even for a
+    # The side that banned it. Required (not nullable) even for a
     # ``no_repeat_scope=encounter`` (global) rule: the scope decides at READ
     # time whether to filter by side or ignore it, so one ledger shape serves
     # both scopes without a second nullable-vs-not column pair.

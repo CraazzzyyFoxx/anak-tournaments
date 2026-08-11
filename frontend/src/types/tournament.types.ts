@@ -479,9 +479,10 @@ export type PickBanSequenceToken =
 /** Only `"higher_seed"` exists today; kept as a union (not a literal) since
  * the backend models it as an extensible enum. */
 export type PickBanFirstPickRule = "higher_seed";
-/** `encounter_same_side` excludes an item only for the side that
- * banned/protected it — the opponent may still target it. `encounter`
- * excludes it for BOTH sides once anyone has. */
+/** Cross-round BAN memory only — a protect is round-local and never recorded,
+ * so it neither excludes nor is excluded. `encounter_same_side` excludes an
+ * item only for the side that banned it — the opponent may still target it.
+ * `encounter` excludes it for BOTH sides once anyone has. */
 export type PickBanNoRepeatScope = "none" | "encounter" | "encounter_same_side";
 /**
  * Wider than the legacy veto config's `FirstBanRotation` (`fixed`|`alternate`
@@ -517,7 +518,11 @@ export interface PickBanConfig {
   preset: string | null;
   sequence: PickBanSequenceToken[];
   no_repeat_scope: PickBanNoRepeatScope;
-  /** Only `"role"` is implemented server-side today; null disables the check. */
+  /**
+   * Only `"role"` is implemented server-side today; null disables the check.
+   * Scoped per action kind: a side's bans constrain its bans and its protects
+   * constrain its protects, never each other.
+   */
   unique_attribute_per_side_per_round: string | null;
   allow_protect: boolean;
   item_ids: number[];

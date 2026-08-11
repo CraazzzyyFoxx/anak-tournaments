@@ -24,6 +24,7 @@ os.environ.setdefault("CHALLONGE_API_KEY", "test")
 from shared.core.enums import MapPickSide, MapPoolEntryStatus, MapVetoSessionStatus, PickBanKind  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from src.services.encounter.pick_ban_action import (  # noqa: E402
+    apply_pick_ban_action,
     auto_complete_decider,
     auto_complete_decider_entry,
     auto_resolve_timeout,
@@ -186,9 +187,7 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
         )
         session = _FakeAutoCompleteSession()
 
-        entry = await auto_complete_decider(
-            session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=[make_entry(1)]
-        )
+        entry = await auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=[make_entry(1)])
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
@@ -335,6 +334,101 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(entry)
         self.assertIn(entry.item_id, (2, 3))
+
+
+class ApplyPickBanActionUniquenessTests(TestCase):
+    """``unique_attribute_per_side_per_round`` is scoped PER ACTION KIND: a
+    side's bans constrain its bans and its protects constrain its protects,
+    never each other. Banning a tank used to spend that side's tank protect
+    too, because both statuses were counted into one history."""
+
+    ROLES = {101: "tank", 102: "tank", 103: "support"}
+
+    def _apply(self, sequence: list[str], pool: list, *, item_id: int, action: str):
+        pick_ban = SimpleNamespace(
+            resolved_sequence_json=sequence,
+            status=MapVetoSessionStatus.ACTIVE.value,
+            current_step_started_at=None,
+        )
+        return apply_pick_ban_action(
+            pick_ban,
+            pool,
+            captain_side="home",
+            item_id=item_id,
+            action=action,
+            attribute_lookup=self.ROLES,
+            unique_attribute="role",
+            now=datetime.now(UTC),
+        )
+
+    def _pool(self, *, first_status: MapPoolEntryStatus) -> list:
+        """101 (tank) already committed by home; 102 (tank) and 103 (support)
+        still open."""
+        first = make_entry(101, status=first_status, action_index=0, round=1)
+        if first_status == MapPoolEntryStatus.BANNED:
+            first.picked_by = MapPickSide.HOME
+        else:
+            first.protected_by = MapPickSide.HOME
+        return [first, make_entry(102, round=1), make_entry(103, round=1)]
+
+    def test_protect_allowed_after_the_same_side_banned_that_role(self) -> None:
+        pool = self._pool(first_status=MapPoolEntryStatus.BANNED)
+
+        entry = self._apply(["ban_home", "protect_home", "decider"], pool, item_id=102, action="protect")
+
+        self.assertEqual(MapPoolEntryStatus.PROTECTED.value, entry.status)
+        self.assertEqual("home", entry.protected_by)
+
+    def test_ban_allowed_after_the_same_side_protected_that_role(self) -> None:
+        pool = self._pool(first_status=MapPoolEntryStatus.PROTECTED)
+
+        entry = self._apply(["protect_home", "ban_home", "decider"], pool, item_id=102, action="ban")
+
+        self.assertEqual(MapPoolEntryStatus.BANNED.value, entry.status)
+        self.assertEqual("home", entry.picked_by)
+
+    def test_second_ban_of_the_same_role_is_still_rejected(self) -> None:
+        pool = self._pool(first_status=MapPoolEntryStatus.BANNED)
+
+        with self.assertRaises(HTTPException) as ctx:
+            self._apply(["ban_home", "ban_home", "decider"], pool, item_id=102, action="ban")
+
+        self.assertEqual(400, ctx.exception.status_code)
+        self.assertEqual("Your side already banned an item with this attribute this round", ctx.exception.detail)
+
+    def test_second_protect_of_the_same_role_is_still_rejected(self) -> None:
+        pool = self._pool(first_status=MapPoolEntryStatus.PROTECTED)
+
+        with self.assertRaises(HTTPException) as ctx:
+            self._apply(["protect_home", "protect_home", "decider"], pool, item_id=102, action="protect")
+
+        self.assertEqual(400, ctx.exception.status_code)
+        self.assertEqual("Your side already protected an item with this attribute this round", ctx.exception.detail)
+
+    def test_a_ban_is_not_barred_by_the_sides_own_earlier_protect_in_the_series(self) -> None:
+        """``excluded_for_side`` is BAN memory: it never carried protects, so a
+        protect cannot bar a later ban of the same item. The reverse (an actual
+        earlier ban) still rejects."""
+        pool = [make_entry(101, round=1), make_entry(102, round=1)]
+
+        with self.assertRaises(HTTPException) as ctx:
+            apply_pick_ban_action(
+                SimpleNamespace(
+                    resolved_sequence_json=["ban_home", "decider"],
+                    status=MapVetoSessionStatus.ACTIVE.value,
+                    current_step_started_at=None,
+                ),
+                pool,
+                captain_side="home",
+                item_id=101,
+                action="ban",
+                attribute_lookup={},
+                unique_attribute=None,
+                excluded_for_side=frozenset({101}),
+                now=datetime.now(UTC),
+            )
+
+        self.assertEqual("Your side already banned this item earlier in the series", ctx.exception.detail)
 
 
 class SerializePickBanSessionSlotReservesTests(TestCase):
