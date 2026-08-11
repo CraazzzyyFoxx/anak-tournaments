@@ -12,6 +12,8 @@ import { teamCrest } from "@/lib/draft-crest";
 import { cn } from "@/lib/utils";
 import type { PickBanMapReport } from "@/types/tournament.types";
 
+import { PregameHeroBans, type PregameHeroAction } from "./PregameHeroBans";
+
 interface PregameMapResultProps {
   encounterId: number;
   /** The map awaiting its result — picked by the veto, not yet reconciled. */
@@ -30,6 +32,18 @@ interface PregameMapResultProps {
   awayHue: number | null;
   /** Every report filed for THIS map (both sides), from the map pick-ban state. */
   reports: PickBanMapReport[];
+  /**
+   * This map's committed hero bans/protects, from the hero pick-ban state.
+   * Empty when the encounter runs no hero phase — the section then renders
+   * nothing at all.
+   */
+  heroActions: PregameHeroAction[];
+  /**
+   * The hero session's undo affordance, rendered under the bans it would take
+   * back. Supplied as a node because the consent flow needs the room's query
+   * keys and catalog, neither of which this screen otherwise knows about.
+   */
+  heroUndo?: React.ReactNode;
   header: React.ReactNode;
   /** Query keys to invalidate once a report lands. */
   invalidateKeys: unknown[][];
@@ -69,6 +83,8 @@ export function PregameMapResult({
   homeHue,
   awayHue,
   reports,
+  heroActions,
+  heroUndo,
   header,
   invalidateKeys
 }: PregameMapResultProps) {
@@ -142,6 +158,25 @@ export function PregameMapResult({
                 </h2>
               </div>
             </div>
+
+            {/* Between the banner and the claims, because that is the order the
+                captains need it in: the bans belong to the map above (they are
+                set up in its lobby) and are read before there is any result to
+                file below. */}
+            {heroActions.length > 0 ? (
+              <div className="flex flex-col gap-3 border-y border-[color:var(--aqt-border)] p-4">
+                <PregameHeroBans
+                  actions={heroActions}
+                  homeName={homeName}
+                  awayName={awayName}
+                  homeHue={homeHue}
+                  awayHue={awayHue}
+                />
+                {/* Directly under the list it corrects: a wrong ban is noticed
+                    HERE, reading the lobby setup, not back in the closed grid. */}
+                {heroUndo != null ? <div className="mx-auto w-full max-w-2xl">{heroUndo}</div> : null}
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-4 p-4">
               {/* Stacked below `sm`: side by side there, three columns on a

@@ -35,6 +35,14 @@ class ElectOpenerInput(BaseModel):
     first_side: str  # "home" | "away"
 
 
+class PickBanUndoInput(BaseModel):
+    """One captain's consent to undo the session's last action. ``consent=False``
+    withdraws an open request — the asker changing their mind and the opponent
+    refusing are the same outcome, so they share one field."""
+
+    consent: bool = True
+
+
 class MapReportInput(BaseModel):
     """One captain's independent claim of a single played map's result —
     submitted immediately after that map, not at series end (contrast

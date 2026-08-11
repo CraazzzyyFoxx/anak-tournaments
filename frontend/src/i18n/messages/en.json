@@ -2464,6 +2464,25 @@
         "report": "Report the result",
         "amend": "Change my report"
       },
+      "heroBans": {
+        "eyebrow": "Hero bans for this map",
+        "hint": "Disable these heroes in the custom game before you start. Protected heroes stay in — the shield marks them.",
+        "none": "No bans this map",
+        "state": {
+          "ban": "Banned:",
+          "protect": "Protected:"
+        }
+      },
+      "undo": {
+        "label": "Take the last action back — both captains have to agree",
+        "ask": "Ask to undo",
+        "waiting": "Waiting for {team} to agree to undo this",
+        "withdraw": "Withdraw",
+        "asked": "{team} asks to undo this",
+        "agree": "Agree",
+        "decline": "Decline",
+        "failed": "Could not undo the last action"
+      },
       "seriesDone": {
         "title": "Nothing left to decide",
         "hint": "Every map of this series has been picked, banned and reported. The result is with the organizers now."

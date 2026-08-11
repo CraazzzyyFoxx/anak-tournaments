@@ -1,5 +1,12 @@
 import { apiFetch } from "@/lib/api-fetch";
-import type { PickBanConfig, PickBanConfigUpsertInput, PickBanEntry, PickBanKind, PickBanState } from "@/types/tournament.types";
+import type {
+  PickBanConfig,
+  PickBanConfigUpsertInput,
+  PickBanEntry,
+  PickBanKind,
+  PickBanState,
+  PickBanUndo
+} from "@/types/tournament.types";
 
 export interface PickBanActionInput {
   item_id: number;
@@ -34,32 +41,65 @@ class PickBanService {
    */
   async getPickBanState(kind: PickBanKind, encounterId: number): Promise<PickBanState | null> {
     const response = await apiFetch(`/api/v1/encounters/${encounterId}/pick-ban/${kind}/state`, {
-      throwOnError: false,
+      throwOnError: false
     });
     if (!response.ok) return null;
     return response.json();
   }
 
-  async performPickBanAction(kind: PickBanKind, encounterId: number, data: PickBanActionInput): Promise<PickBanEntry> {
+  async performPickBanAction(
+    kind: PickBanKind,
+    encounterId: number,
+    data: PickBanActionInput
+  ): Promise<PickBanEntry> {
     const response = await apiFetch(`/api/v1/encounters/${encounterId}/pick-ban/${kind}/act`, {
       method: "POST",
-      body: data,
+      body: data
     });
     return response.json();
   }
 
-  async electOpener(kind: PickBanKind, encounterId: number, data: ElectOpenerInput): Promise<unknown> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/pick-ban/${kind}/elect-opener`, {
+  async electOpener(
+    kind: PickBanKind,
+    encounterId: number,
+    data: ElectOpenerInput
+  ): Promise<unknown> {
+    const response = await apiFetch(
+      `/api/v1/encounters/${encounterId}/pick-ban/${kind}/elect-opener`,
+      {
+        method: "POST",
+        body: data
+      }
+    );
+    return response.json();
+  }
+
+  /**
+   * Records the calling captain's consent to undo the session's last action.
+   * The OPPONENT's matching call is what applies it — this is a two-sided
+   * agreement, not a take-back. `consent: false` withdraws an open request
+   * (the asker changing their mind and the opponent refusing are one outcome).
+   */
+  async undoLastAction(
+    kind: PickBanKind,
+    encounterId: number,
+    consent = true
+  ): Promise<PickBanUndo> {
+    const response = await apiFetch(`/api/v1/encounters/${encounterId}/pick-ban/${kind}/undo`, {
       method: "POST",
-      body: data,
+      body: { consent }
     });
     return response.json();
   }
 
-  async reportMap(encounterId: number, mapId: number, data: MapReportInput): Promise<MapReportResult> {
+  async reportMap(
+    encounterId: number,
+    mapId: number,
+    data: MapReportInput
+  ): Promise<MapReportResult> {
     const response = await apiFetch(`/api/v1/encounters/${encounterId}/map-pool/${mapId}/report`, {
       method: "POST",
-      body: data,
+      body: data
     });
     return response.json();
   }
@@ -79,13 +119,15 @@ class PickBanService {
   async upsertConfig(tournamentId: number, data: PickBanConfigUpsertInput): Promise<PickBanConfig> {
     const response = await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/pick-ban-configs`, {
       method: "PUT",
-      body: data,
+      body: data
     });
     return response.json();
   }
 
   async deleteConfig(configId: number): Promise<{ deleted: boolean }> {
-    const response = await apiFetch(`/api/v1/admin/pick-ban-configs/${configId}`, { method: "DELETE" });
+    const response = await apiFetch(`/api/v1/admin/pick-ban-configs/${configId}`, {
+      method: "DELETE"
+    });
     return response.json();
   }
 }

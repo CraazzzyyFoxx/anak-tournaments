@@ -129,6 +129,60 @@ def is_entry_bannable(entry, *, active_round: int | None) -> bool:
     return in_current_round(entry, active_round)
 
 
+# ── undo (both captains agree to take the last action back) ─────────────────
+
+
+DECIDER_SIDE = enums.MapPickSide.DECIDER.value
+
+
+def undoable_entries(pool: list) -> list:
+    """The trailing committed action(s) an undo would revert, latest first —
+    empty when nothing may be taken back.
+
+    Only the LAST action is ever undoable: `get_current_step` counts committed
+    entries and indexes that into the sequence, so removing the newest one
+    restores exactly the step that produced it, while removing anything older
+    would leave a hole the arithmetic cannot express.
+
+    A `decider` pick is not an action anybody took — the engine resolves it the
+    moment the sequence reaches that step (``auto_complete_decider``), so it is
+    reverted TOGETHER with the captain action beneath it. Undoing it alone would
+    be a no-op the next read undoes again.
+
+    Refuses (returns empty) when the round in question is already settled:
+
+    - a `played` entry in that round — the map has been played, so its bans are
+      history, not a mistake still fixable;
+    - a round beyond it exists in the pool — a later round only opens once this
+      one's map is played and reported (``advance_to_next_round``), so the
+      trailing action of THIS round is behind that barrier.
+    """
+    committed = sorted(
+        (e for e in pool if e.action_index is not None),
+        key=lambda e: e.action_index,
+        reverse=True,
+    )
+    if not committed:
+        return []
+
+    group: list = []
+    for entry in committed:
+        group.append(entry)
+        if entry.picked_by != DECIDER_SIDE:
+            break
+    else:
+        # Deciders all the way down: nothing a captain chose, nothing to undo.
+        return []
+
+    target_round = group[-1].round
+    for entry in pool:
+        if entry.round == target_round and entry.status == enums.MapPoolEntryStatus.PLAYED.value:
+            return []
+        if target_round is not None and entry.round is not None and entry.round > target_round:
+            return []
+    return group
+
+
 # ── ledger exclusion (no-repeat) ─────────────────────────────────────────────
 
 

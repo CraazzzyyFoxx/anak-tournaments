@@ -297,6 +297,15 @@ class PickBanSession(db.TimeStampIntegerMixin):
     # tell the loser's captain from the winner's, and either could dictate the
     # next round's opener.
     pending_loser_side: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
+    # Undo consent. A captain may ask for the session's last action to be taken
+    # back; the OPPONENT's matching call applies it (both sides agree, which is
+    # what keeps a mistake from becoming a re-pick nobody consented to). The
+    # request names the ``PickBanEntry.action_index`` it was made against, so an
+    # action landing in between cannot be undone by a consent meant for a
+    # different one -- a new action clears the request outright
+    # (``pick_ban_action.apply_pick_ban_action``). Both NULL = no request open.
+    undo_requested_by: Mapped[enums.MapPickSide | None] = mapped_column(PICK_BAN_SIDE_ENUM, nullable=True)
+    undo_target_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
     current_step_started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
 

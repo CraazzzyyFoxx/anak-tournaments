@@ -32,6 +32,7 @@ from shared.models.tournament.encounter_report import EncounterMapReport
 from shared.models.tournament.pick_ban import EncounterPickBanLedger, PickBanConfig, PickBanEntry, PickBanSession
 from shared.services import pick_ban_engine as engine
 from src.services.encounter import pick_ban_session as pick_ban_session_service
+from src.services.encounter import pick_ban_undo
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 
 
@@ -364,6 +365,7 @@ def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[
         "current_round": None,
         "is_complete": False,
         "map_reports": [],
+        "undo": pick_ban_undo.undo_state(None, []),
     }
 
 
@@ -412,6 +414,9 @@ def build_pick_ban_state(
         # Filled in by `get_pick_ban_state` for kind=map only; a hero session
         # has no per-map results of its own to report.
         "map_reports": [],
+        # What both captains could agree to take back right now, and whether one
+        # of them already has.
+        "undo": pick_ban_undo.undo_state(pick_ban, pool),
     }
 
 
@@ -540,6 +545,9 @@ def apply_pick_ban_action(
         entry.picked_by = captain_side
         entry.order = sum(1 for e in pool if e.status == MapPoolEntryStatus.PICKED.value)
 
+    # Any open undo consent was given against the action that WAS last; this
+    # one supersedes it, so the agreement dies with the state it was read on.
+    pick_ban_undo.clear_undo_request(pick_ban)
     pick_ban.current_step_started_at = now
     if engine.get_current_step(pick_ban.resolved_sequence_json, pool) is None:
         pick_ban.status = MapVetoSessionStatus.COMPLETED.value

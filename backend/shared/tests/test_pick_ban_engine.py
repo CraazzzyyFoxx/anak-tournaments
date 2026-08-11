@@ -21,8 +21,16 @@ def entry(
     status: str = "available",
     picked_by: str | None = None,
     protected_by: str | None = None,
+    action_index: int | None = None,
 ):
-    return SimpleNamespace(item_id=item_id, round=round, status=status, picked_by=picked_by, protected_by=protected_by)
+    return SimpleNamespace(
+        item_id=item_id,
+        round=round,
+        status=status,
+        picked_by=picked_by,
+        protected_by=protected_by,
+        action_index=action_index,
+    )
 
 
 # ── parse_step_token / resolve_sequence_tokens ──────────────────────────────
@@ -82,6 +90,54 @@ def test_is_entry_bannable_false_outside_active_round():
 def test_is_entry_bannable_true_when_available_unprotected_in_round():
     e = entry(1, round=1)
     assert engine.is_entry_bannable(e, active_round=1) is True
+
+
+# ── undoable_entries (both captains agree to take the last action back) ──────
+
+
+def test_undoable_entries_is_empty_without_a_committed_action():
+    assert engine.undoable_entries([]) == []
+    assert engine.undoable_entries([entry(1, round=1)]) == []
+
+
+def test_undoable_entries_returns_only_the_last_action():
+    first = entry(1, round=1, status="banned", picked_by="home", action_index=0)
+    last = entry(2, round=1, status="banned", picked_by="away", action_index=1)
+    assert engine.undoable_entries([first, last, entry(3, round=1)]) == [last]
+
+
+def test_undoable_entries_carries_the_decider_it_triggered():
+    # The decider is not an action anybody took: the engine resolves it the
+    # moment the sequence reaches that step, so undoing the ban without it
+    # would leave the next read resolving the decider straight back.
+    ban = entry(1, round=1, status="banned", picked_by="home", action_index=0)
+    decided = entry(2, round=1, status="picked", picked_by="decider", action_index=1)
+    assert engine.undoable_entries([ban, decided]) == [decided, ban]
+
+
+def test_undoable_entries_is_empty_when_only_deciders_were_committed():
+    decided = entry(1, round=1, status="picked", picked_by="decider", action_index=0)
+    assert engine.undoable_entries([decided]) == []
+
+
+def test_undoable_entries_is_empty_once_the_round_has_been_played():
+    played = entry(1, round=1, status="played", picked_by="home", action_index=0)
+    ban = entry(2, round=1, status="banned", picked_by="away", action_index=1)
+    assert engine.undoable_entries([played, ban]) == []
+
+
+def test_undoable_entries_is_empty_when_a_later_round_is_open():
+    # Round 2 only exists because round 1's map was played and reported, so
+    # round 1's trailing ban is behind that barrier even though round 2 has
+    # nothing committed yet.
+    ban = entry(1, round=1, status="banned", picked_by="home", action_index=0)
+    assert engine.undoable_entries([ban, entry(2, round=2)]) == []
+
+
+def test_undoable_entries_works_on_a_flat_pool():
+    ban = entry(1, status="banned", picked_by="home", action_index=0)
+    assert engine.undoable_entries([ban, entry(2)]) == [ban]
+    assert engine.undoable_entries([ban, entry(2, status="played", action_index=1)]) == []
 
 
 # ── excluded_item_ids (ledger no-repeat) ─────────────────────────────────────

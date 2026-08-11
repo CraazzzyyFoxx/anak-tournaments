@@ -24,6 +24,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getPickBanState = vi.fn();
 const performPickBanAction = vi.fn();
+const undoLastAction = vi.fn();
 const markReady = vi.fn();
 const getEncounter = vi.fn();
 const getAllMaps = vi.fn();
@@ -46,6 +47,7 @@ vi.mock("@/services/pickBan.service", () => ({
     getPickBanState: (...args: unknown[]) => getPickBanState(...args),
     performPickBanAction: (...args: unknown[]) => performPickBanAction(...args),
     markReady: (...args: unknown[]) => markReady(...args),
+    undoLastAction: (...args: unknown[]) => undoLastAction(...args),
     electOpener: vi.fn(),
     reportMap: vi.fn()
   }
@@ -375,6 +377,42 @@ describe("phase selection", () => {
     expect(document.body.querySelector('button[title="Hero 101"]')).toBeTruthy();
   });
 
+  it("offers the undo beside the pool a captain is still acting on", async () => {
+    // The other placement: mid-sequence, where the misclick happens. Both read
+    // the same server-side `undo` block, so neither screen holds its own idea
+    // of what is pending.
+    getMyRole.mockResolvedValue({ side: "away" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["ban_home", "ban_away"],
+        viewer_side: "away",
+        pool: [
+          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home", action_index: 0 }),
+          entry({ id: 4, item_id: 102, round: 1 })
+        ],
+        undo: { requested_by: null, item_ids: [101], action: "ban", side: "home" }
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.hero.title);
+    const ask = Array.from(document.body.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes(ROOM.undo.ask)
+    );
+    expect(ask).toBeTruthy();
+
+    await act(async () => ask!.click());
+    await settle();
+
+    expect(undoLastAction).toHaveBeenCalledWith("hero", 4242, true);
+  });
+
   it("asks for the map's result once its heroes are banned", async () => {
     mockStates(
       readyState({
@@ -398,6 +436,185 @@ describe("phase selection", () => {
     expect(document.body.textContent).toContain(
       ROOM.mapResult.pending.replace("{team}", "Bright Wolves")
     );
+  });
+
+  it("carries this map's hero bans onto the result screen, split by side", async () => {
+    // The room renders one phase at a time, so the moment the hero grid closes
+    // this is the only screen still naming what was banned -- and it is the
+    // screen the captains are on while setting up the lobby.
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home", "ban_away", "protect_away"],
+        pool: [
+          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" }),
+          entry({ id: 4, item_id: 102, round: 1, status: "banned", picked_by: "away" }),
+          entry({ id: 5, item_id: 103, round: 1, status: "protected", protected_by: "away" }),
+          // Another round's ban: the lobby for THIS map must not carry it.
+          entry({ id: 6, item_id: 104, round: 2, status: "banned", picked_by: "home" })
+        ]
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.heroBans.eyebrow);
+    const sides = Array.from(document.body.querySelectorAll<HTMLElement>("[data-hero-bans]"));
+    expect(sides.map((tile) => tile.dataset.heroBans)).toEqual(["home", "away"]);
+    expect(sides[0].textContent).toContain("Hero 101");
+    expect(sides[1].textContent).toContain("Hero 102");
+    expect(sides[1].textContent).toContain("Hero 103");
+    expect(sides[0].textContent).not.toContain("Hero 102");
+    expect(document.body.textContent).not.toContain("Hero 104");
+    // A protect is not a ban: it is marked apart and sorted after them, because
+    // a protected hero must stay ENABLED in the lobby.
+    const awayRows = Array.from(sides[1].querySelectorAll<HTMLElement>("[data-hero-action]"));
+    expect(awayRows.map((row) => row.dataset.heroAction)).toEqual(["ban", "protect"]);
+    expect(awayRows[1].textContent).toContain(ROOM.heroBans.state.protect);
+  });
+
+  it("leaves the result screen without a bans block when no heroes were banned", async () => {
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      unavailableState("not_configured", { home: true, away: true })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.mapResult.report);
+    expect(document.body.textContent).not.toContain(ROOM.heroBans.eyebrow);
+    expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+  });
+
+  it("offers the hero undo under the bans, and asks the opponent to agree", async () => {
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" })],
+        undo: { requested_by: null, item_ids: [101], action: "ban", side: "home" }
+      })
+    );
+    await render();
+
+    const ask = Array.from(document.body.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes(ROOM.undo.ask)
+    );
+    expect(ask).toBeTruthy();
+    // The affordance names what goes back, so "undo" is never a blind button.
+    expect(document.body.textContent).toContain(ROOM.undo.label);
+
+    await act(async () => ask!.click());
+    await settle();
+
+    expect(undoLastAction).toHaveBeenCalledWith("hero", 4242, true);
+  });
+
+  it("shows the opponent's open request with agree and decline", async () => {
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_away"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "away" })],
+        undo: { requested_by: "away", item_ids: [101], action: "ban", side: "away" }
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(
+      ROOM.undo.asked.replace("{team}", "Quiet Foxes")
+    );
+    const agree = Array.from(document.body.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes(ROOM.undo.agree)
+    );
+    const decline = Array.from(document.body.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes(ROOM.undo.decline)
+    );
+    expect(agree).toBeTruthy();
+    expect(decline).toBeTruthy();
+
+    await act(async () => decline!.click());
+    await settle();
+
+    expect(undoLastAction).toHaveBeenCalledWith("hero", 4242, false);
+  });
+
+  it("tells the asking side it is waiting, and offers no agree button", async () => {
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" })],
+        undo: { requested_by: "home", item_ids: [101], action: "ban", side: "home" }
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(
+      ROOM.undo.waiting.replace("{team}", "Quiet Foxes")
+    );
+    expect(document.body.textContent).toContain(ROOM.undo.withdraw);
+    expect(document.body.textContent).not.toContain(ROOM.undo.agree);
+  });
+
+  it("keeps the undo affordance off the screen when nothing can be taken back", async () => {
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" })],
+        undo: { requested_by: null, item_ids: [], action: null, side: null }
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).not.toContain(ROOM.undo.label);
+    expect(document.body.textContent).not.toContain(ROOM.undo.ask);
   });
 
   it("shows the viewer their own filed score while the opponent's stays sealed", async () => {

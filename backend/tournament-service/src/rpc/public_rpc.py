@@ -63,6 +63,7 @@ from src.schemas.captain import (
     ElectOpenerInput,
     MapReportInput,
     PickBanActionInput,
+    PickBanUndoInput,
     VetoAction,
     resolve_optional_viewer_side,
 )
@@ -83,6 +84,7 @@ from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_report as map_report_service
 from src.services.encounter import pick_ban_action as pick_ban_action_service
 from src.services.encounter import pick_ban_session as pick_ban_session_service
+from src.services.encounter import pick_ban_undo as pick_ban_undo_service
 from src.services.encounter import report_form as report_form_service
 from src.services.registration import service as reg_service
 from src.services.registration import subscription_config
@@ -368,7 +370,9 @@ def register(broker: Any, logger: Any) -> None:
             await assert_tournament_viewable(session, user, tournament_id)
             encounter = await captain_service._load_encounter(session, encounter_id)
             viewer_side = await resolve_optional_viewer_side(session, user, encounter)
-            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, kind, viewer_side=viewer_side)
+            return await pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, kind, viewer_side=viewer_side
+            )
 
         return await _run(logger, op)
 
@@ -416,6 +420,24 @@ def register(broker: Any, logger: Any) -> None:
                 loser_choice=body.first_side,
             )
             return pick_ban_action_service.serialize_pick_ban_session(pick_ban)
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.captain_pick_ban_undo")
+    async def _captain_pick_ban_undo(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            kind = _parse_kind(data)
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            body = PickBanUndoInput.model_validate(_payload(data))
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            # Commits internally; returns the resulting undo block (empty
+            # `item_ids` once the undo landed and the step it restored is open
+            # again).
+            return await pick_ban_undo_service.perform_undo(
+                session, encounter_id, kind, captain_side, consent=body.consent
+            )
 
         return await _run(logger, op)
 

@@ -7,33 +7,15 @@ import type { RosterShape, RosterSlotMap } from "@/lib/roster-shape";
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
 export type TournamentStatus =
-  | "registration"
-  | "draft"
-  | "check_in"
-  | "live"
-  | "playoffs"
-  | "completed"
-  | "archived";
+  "registration" | "draft" | "check_in" | "live" | "playoffs" | "completed" | "archived";
 
-export type StageType =
-  | "round_robin"
-  | "single_elimination"
-  | "double_elimination"
-  | "swiss";
+export type StageType = "round_robin" | "single_elimination" | "double_elimination" | "swiss";
 
-export type StageItemType =
-  | "group"
-  | "bracket_upper"
-  | "bracket_lower"
-  | "single_bracket";
+export type StageItemType = "group" | "bracket_upper" | "bracket_lower" | "single_bracket";
 
 export type StageItemInputType = "final" | "tentative" | "empty";
 
-export type EncounterResultStatus =
-  | "none"
-  | "pending_confirmation"
-  | "confirmed"
-  | "disputed";
+export type EncounterResultStatus = "none" | "pending_confirmation" | "confirmed" | "disputed";
 
 export type MapPoolEntryStatus = "available" | "picked" | "banned" | "played";
 export type MapPickSide = "home" | "away" | "decider" | "admin";
@@ -247,11 +229,7 @@ export interface EncounterMapPoolState {
 
 /** Side-agnostic step tokens stored on veto configs. */
 export type VetoSequenceToken =
-  | "ban_first"
-  | "ban_second"
-  | "pick_first"
-  | "pick_second"
-  | "decider";
+  "ban_first" | "ban_second" | "pick_first" | "pick_second" | "decider";
 
 /**
  * How a veto config decides its step order.
@@ -309,7 +287,6 @@ export interface MapVetoConfig {
   /** Empty in `"pool"` mode: the serializer always sends both pool shapes. */
   slots: MapVetoConfigSlot[];
 }
-
 
 export interface OwalStandingDay {
   tournament: Tournament;
@@ -379,7 +356,6 @@ export interface OwalStack {
   avg_position: number;
 }
 
-
 // ─── Generic pick-ban engine (map + hero) ───────────────────────────────────
 //
 // Mirrors backend `PickBanSession`/`PickBanEntry`/`build_pick_ban_state` (see
@@ -438,6 +414,24 @@ export interface PickBanMapReport {
   away_score: number;
 }
 
+/**
+ * What both captains could agree to take back right now (`undo_state`).
+ *
+ * `item_ids` empty means nothing is undoable — the only signal needed to decide
+ * whether the affordance exists. It can hold more than one id: a `decider` the
+ * engine resolved off the back of the action is reverted with it, since undoing
+ * the action alone would have the next read resolve the decider straight back.
+ */
+export interface PickBanUndo {
+  /** The side that already asked; null while nobody has, or once it landed. */
+  requested_by: "home" | "away" | null;
+  /** Everything the undo reverts, in the order it was committed. */
+  item_ids: number[];
+  /** The primary action — the one a captain actually took. */
+  action: PickBanAction | null;
+  side: "home" | "away" | "decider" | null;
+}
+
 export interface PickBanState {
   session: PickBanSession | null;
   /** Set only when `session` is null — same contract as `EncounterMapPoolState.reason`. */
@@ -464,6 +458,9 @@ export interface PickBanState {
    * it — and that confirmation is what opens the next map's bans.
    */
   map_reports?: PickBanMapReport[];
+  /** Never absent in practice; optional for the same reason `map_reports` is —
+   * a client reading an older payload must not crash on its absence. */
+  undo?: PickBanUndo;
 }
 
 /** Side-agnostic step tokens, adds `protect_*` to the legacy veto vocabulary. */
@@ -492,11 +489,7 @@ export type PickBanNoRepeatScope = "none" | "encounter" | "encounter_same_side";
  * result-dependent rotations the elect_opener flow needs.
  */
 export type PickBanFirstBanRotation =
-  | "fixed"
-  | "alternate"
-  | "result_winner_first"
-  | "result_loser_first"
-  | "result_loser_choice";
+  "fixed" | "alternate" | "result_winner_first" | "result_loser_first" | "result_loser_choice";
 
 /** One slot of a slot-mode `PickBanConfig`, as the admin CRUD serializer returns it. */
 export interface PickBanConfigSlot {

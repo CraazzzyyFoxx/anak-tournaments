@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeRole } from "@/components/hero/heroRole";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { usePermissions } from "@/hooks/usePermissions";
 import { teamCrest } from "@/lib/draft-crest";
@@ -35,8 +36,10 @@ import {
 import { PickBanCommandBar } from "@/components/pick-ban/PickBanCommandBar";
 import { PickBanGrid, type PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
+import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
 import { PregameAdminControls } from "./PregameAdminControls";
+import type { PregameHeroAction } from "./PregameHeroBans";
 import {
   PregameHeader,
   type PregamePhase,
@@ -317,6 +320,37 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
       state: played ? "played" : index === pendingIndex ? "awaiting" : "upcoming"
     };
   });
+  // This map's hero bans, for the result screen. The room shows one phase at a
+  // time, so once the hero grid closes nothing on screen names what was banned
+  // -- which is precisely when the captains have to enter it into the game
+  // lobby. A flat (round-less) hero pool has one set of bans for the whole
+  // series, so it applies to every map.
+  const heroActions: PregameHeroAction[] =
+    pendingRound == null
+      ? []
+      : heroState.pool
+          .filter(
+            (entry) =>
+              (entry.round == null || entry.round === pendingRound) &&
+              (entry.status === "banned" || entry.status === "protected")
+          )
+          .map((entry) => {
+            const item = heroesById[entry.item_id];
+            const side = entry.status === "banned" ? entry.picked_by : entry.protected_by;
+            return {
+              itemId: entry.item_id,
+              name: item?.name ?? t("hero.itemNumber", { id: entry.item_id }),
+              item,
+              role: normalizeRole(item?.type ?? item?.role),
+              action: entry.status === "banned" ? ("ban" as const) : ("protect" as const),
+              // `picked_by` also carries `"decider"`, which no ban can be.
+              side: side === "away" ? ("away" as const) : ("home" as const)
+            };
+          });
+  const sideNameOf = (side: PickBanSide) =>
+    side === "home"
+      ? (encounter.home_team?.name ?? t("side.home"))
+      : (encounter.away_team?.name ?? t("side.away"));
   const header = (
     <PregameHeader
       encounter={encounter}
@@ -362,13 +396,25 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
           mapImagePath={mapsById[pendingMap.item_id]?.image_path ?? null}
           round={pendingRound}
           viewerSide={mapState.viewer_side}
-          homeName={encounter.home_team?.name ?? t("side.home")}
-          awayName={encounter.away_team?.name ?? t("side.away")}
+          homeName={sideNameOf("home")}
+          awayName={sideNameOf("away")}
           homeHue={encounter.home_team != null ? teamCrest(encounter.home_team).hue : null}
           awayHue={encounter.away_team != null ? teamCrest(encounter.away_team).hue : null}
           reports={(mapState.map_reports ?? []).filter(
             (report) => report.map_id === pendingMap.item_id
           )}
+          heroActions={heroActions}
+          heroUndo={
+            <PickBanUndoControl
+              kind="hero"
+              encounterId={encounterId}
+              undo={heroState.undo}
+              viewerSide={heroState.viewer_side}
+              itemsById={heroesById}
+              sideName={sideNameOf}
+              invalidateKeys={[mapKey, heroKey]}
+            />
+          }
           header={header}
           invalidateKeys={[mapKey, heroKey, ["encounter-detail", encounterId]]}
         />
@@ -509,6 +555,19 @@ function PickBanPanel({
               setSelectedItemId((current) => (current === itemId ? null : itemId))
             }
             header={header}
+          />
+
+          {/* Under the grid, above the admin panel: the correction path a
+              captain reaches for belongs next to the pool they misclicked, and
+              it is the captains' own — an organizer's blunt reset is separate. */}
+          <PickBanUndoControl
+            kind={kind}
+            encounterId={encounterId}
+            undo={state.undo}
+            viewerSide={state.viewer_side}
+            itemsById={itemsById}
+            sideName={sideName}
+            invalidateKeys={[queryKey]}
           />
 
           {isAdmin ? (
