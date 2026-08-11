@@ -67,6 +67,9 @@ from shared.models.tournament.pick_ban import (  # noqa: E402
 from src.services.encounter import map_report as map_report_service  # noqa: E402
 from src.services.encounter import pick_ban_action as action_service  # noqa: E402
 from src.services.encounter import pick_ban_session as session_service  # noqa: E402
+from src.services.encounter.realtime_commit import (  # noqa: E402
+    pop_registered_map_veto_realtime_updates,
+)
 
 # ── the store ────────────────────────────────────────────────────────────────
 
@@ -531,3 +534,82 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
         self.assertEqual((1, 0), (self.encounter.home_score, self.encounter.away_score))
         match = self.store.all_of(Match)[0]
         self.assertEqual((1, 2), (match.home_score, match.away_score))
+
+    async def test_a_map_played_twice_keeps_the_two_plays_apart(self) -> None:
+        # A slot config may list the same map in two rounds, and with
+        # `no_repeat_scope=none` nothing stops the series from playing it twice.
+        # Both per-map tables used to key a played map on `map_id` alone, so the
+        # second play read back the first play's claims (already filed, already
+        # agreed), flipped the FIRST play's entry to `played` again -- opening no
+        # round and stalling the series -- and overwrote the first play's score.
+        # Slot 3's decider is slot 1's decider: `ban_out_the_map_round` bans the
+        # first two candidates, so both rounds settle on 13.
+        self.map_config.slots[2].items = [
+            PickBanConfigSlotItem(item_id=item_id) for item_id in (31, 32, 13)
+        ]
+
+        first_play = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(first_play, 2, 1)
+
+        map_two = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(map_two, 1, 2)
+
+        third_play = await self.ban_out_the_map_round()
+        self.assertEqual(first_play, third_play, "the fixture plays map 13 twice")
+        await self.ban_out_the_hero_round()
+
+        # The room tells the two plays apart by POSITION: map 13's round-1 claims
+        # are on the state, and nothing is filed for position 3 yet.
+        state = await self.map_state()
+        thirteens = [report for report in state["map_reports"] if report["map_id"] == first_play]
+        self.assertEqual([1, 1], sorted(report["map_index"] for report in thirteens))
+
+        await self.report(third_play, 2, 0)
+
+        # Two claims per side, one per play, and each play's own score.
+        state = await self.map_state()
+        thirteens = [report for report in state["map_reports"] if report["map_id"] == first_play]
+        self.assertEqual([1, 1, 3, 3], sorted(report["map_index"] for report in thirteens))
+        by_index = {
+            match.map_index: (match.home_score, match.away_score)
+            for match in self.store.all_of(Match)
+            if match.map_id == first_play
+        }
+        self.assertEqual({1: (2, 1), 3: (2, 0)}, by_index)
+
+        # Round 3's entry is the one that flipped, and the series counted three
+        # maps rather than recounting the first.
+        played_rounds = {
+            entry["round"]
+            for entry in state["pool"]
+            if entry["item_id"] == first_play and entry["status"] == MapPoolEntryStatus.PLAYED.value
+        }
+        self.assertEqual({1, 3}, played_rounds)
+        self.assertEqual((2, 1), (self.encounter.home_score, self.encounter.away_score))
+
+    async def test_the_first_report_of_a_map_pushes_a_room_update(self) -> None:
+        # The opponent's tile only flips from "not reported" to "sealed" on a
+        # realtime signal: nothing else pushes it, and `submit_map_report`'s
+        # return value reaches the captain who filed and nobody else. The
+        # unresolved path used to commit silently, so the opponent had to reload.
+        map_one = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        pop_registered_map_veto_realtime_updates(self.store)
+
+        result = await map_report_service.submit_map_report(
+            self.store,
+            self.encounter,
+            map_id=map_one,
+            team_id=HOME_TEAM,
+            reporter_user_id=None,
+            home_score=2,
+            away_score=1,
+        )
+
+        self.assertFalse(result["resolved"], "one claim resolves nothing on its own")
+        self.assertEqual(
+            [(self.encounter_id, "hero"), (self.encounter_id, "map")],
+            pop_registered_map_veto_realtime_updates(self.store),
+        )

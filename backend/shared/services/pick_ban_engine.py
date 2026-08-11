@@ -129,6 +129,27 @@ def is_entry_bannable(entry, *, active_round: int | None) -> bool:
     return in_current_round(entry, active_round)
 
 
+def settled_in_order(pool: list) -> list:
+    """The pool's `picked`/`played` entries in PLAY order — for a map pool this
+    is the series' map order, and index + 1 is the map's position in the series
+    (``EncounterMapReport.map_index``, ``Match.map_index``).
+
+    Play order is ``action_index``, falling back to the legacy ``order``.
+    ``order`` on its own is NOT the position: it is a per-round display/tiebreak
+    field spaced by ``round * 1000`` (see ``captain._picked_map_ids``). Mirrors
+    the frontend's ``pickedItemsInOrder``.
+    """
+    settled = (
+        entry
+        for entry in pool
+        if entry.status
+        in (enums.MapPoolEntryStatus.PICKED.value, enums.MapPoolEntryStatus.PLAYED.value)
+    )
+    return sorted(
+        settled, key=lambda entry: entry.action_index if entry.action_index is not None else entry.order
+    )
+
+
 # ── undo (both captains agree to take the last action back) ─────────────────
 
 

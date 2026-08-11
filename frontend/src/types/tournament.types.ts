@@ -409,6 +409,13 @@ export interface PickBanSession {
 /** One captain's independent claim of ONE map's score (`EncounterMapReport`). */
 export interface PickBanMapReport {
   map_id: number;
+  /**
+   * Which map OF THE SERIES the claim is for, 1-based in play order. This, not
+   * `map_id`, is what a claim is matched against: a series may play the same
+   * map twice, and keying on the map alone showed the earlier play's claims on
+   * the later one. 0 when the encounter has no map pick-ban session at all.
+   */
+  map_index: number;
   side: "home" | "away";
   home_score: number;
   away_score: number;
@@ -464,6 +471,14 @@ export interface PickBanState {
    * it forbids the side on the clock — see `attributeLocks`.
    */
   unique_attribute?: string | null;
+  /**
+   * Items the side on the clock may no longer BAN, because it already banned
+   * them earlier in this series. Non-empty only under
+   * `PickBanConfig.no_repeat_scope = "encounter_same_side"`, the one scope that
+   * leaves them in the pool (one pool, two sides, only one of them barred) —
+   * the room greys them out instead of letting a captain find out from the 400.
+   */
+  repeat_banned?: number[];
   /** Never absent in practice; optional for the same reason `map_reports` is —
    * a client reading an older payload must not crash on its absence. */
   undo?: PickBanUndo;

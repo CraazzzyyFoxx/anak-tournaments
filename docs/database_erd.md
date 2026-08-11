@@ -737,6 +737,7 @@ erDiagram
         int id PK
         int encounter_id FK
         int map_id FK
+        int map_index "nullable — 1-based позиция карты в серии (mapidx01); NULL у распарсенных логов"
         int home_team_id FK
         int away_team_id FK
         int home_score

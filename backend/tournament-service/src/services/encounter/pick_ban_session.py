@@ -666,6 +666,36 @@ async def advance_to_next_round(
     return pick_ban
 
 
+async def find_series_match(
+    session: AsyncSession, encounter_id: int, map_id: int, map_index: int
+) -> Match | None:
+    """The ``Match`` row for map ``map_index`` of this encounter's series, or
+    ``None`` when nothing has been written for it yet.
+
+    A series can play the SAME map twice, so the POSITION identifies the row,
+    not the map: ``map_report.submit_map_report`` stamps ``Match.map_index`` on
+    the row it reconciles. Rows with no position -- every parsed log, and every
+    row written before that column existed -- are adopted, earliest first, by a
+    position that has no exact row of its own; that keeps a log uploaded before
+    the captains reported from being duplicated, without letting two positions
+    claim one row (the caller stamps what it adopts).
+
+    ``map_index=0`` means the position is unknown (no map pick-ban session, or a
+    map its pool never settled): nothing can tell two rows apart then, so the
+    earliest row for the map is the answer -- never a second row beside it.
+    """
+    result = await session.execute(
+        select(Match).where(Match.encounter_id == encounter_id, Match.map_id == map_id)
+    )
+    rows = sorted(result.scalars().all(), key=lambda match: match.id or 0)
+    if map_index == 0:
+        return rows[0] if rows else None
+    exact = next((match for match in rows if match.map_index == map_index), None)
+    if exact is not None:
+        return exact
+    return next((match for match in rows if match.map_index is None), None)
+
+
 async def map_round_winner(session: AsyncSession, encounter: Encounter, round_number: int) -> str | None:
     """Who won map ``round_number`` of the series, per the ``Match`` row its
     result was reconciled into (``map_report.submit_map_report``).
@@ -685,16 +715,11 @@ async def map_round_winner(session: AsyncSession, encounter: Encounter, round_nu
             PickBanEntry.status.in_((MapPoolEntryStatus.PICKED, MapPoolEntryStatus.PLAYED)),
         )
     )
-    settled = sorted(
-        result.scalars().all(),
-        key=lambda entry: entry.action_index if entry.action_index is not None else entry.order,
-    )
+    settled = engine.settled_in_order(list(result.scalars().all()))
     if len(settled) < round_number:
         return None
-    match = await session.scalar(
-        select(Match).where(
-            Match.encounter_id == encounter.id, Match.map_id == settled[round_number - 1].item_id
-        )
+    match = await find_series_match(
+        session, encounter.id, settled[round_number - 1].item_id, round_number
     )
     if match is None:
         return None

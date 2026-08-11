@@ -281,7 +281,11 @@ async def _ledger_exclusions_for_side(
 
 async def _map_reports(session: AsyncSession, encounter: Encounter) -> list[dict[str, Any]]:
     """Every per-map result claim filed for this encounter, as
-    ``{map_id, side, home_score, away_score}``.
+    ``{map_id, map_index, side, home_score, away_score}``.
+
+    ``map_index`` is the map's 1-based position in the series, which is what the
+    room matches a claim against -- a series may play the same map twice, and
+    keying on ``map_id`` alone showed the earlier play's claims on the later one.
 
     Read by the room's per-map result step, which is the loop's third phase
     (map picked -> heroes banned -> map played and reported -> next map): it
@@ -301,6 +305,7 @@ async def _map_reports(session: AsyncSession, encounter: Encounter) -> list[dict
         reports.append(
             {
                 "map_id": row.map_id,
+                "map_index": row.map_index,
                 "side": side,
                 "home_score": row.home_score,
                 "away_score": row.away_score,
@@ -365,6 +370,7 @@ def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[
         "current_round": None,
         "is_complete": False,
         "map_reports": [],
+        "repeat_banned": [],
         "unique_attribute": None,
         "undo": pick_ban_undo.undo_state(None, []),
     }
@@ -416,6 +422,9 @@ def build_pick_ban_state(
         # Filled in by `get_pick_ban_state` for kind=map only; a hero session
         # has no per-map results of its own to report.
         "map_reports": [],
+        # Filled in below by `get_pick_ban_state` when the config remembers bans
+        # per side (`no_repeat_scope=encounter_same_side`) -- see there.
+        "repeat_banned": [],
         # What both captains could agree to take back right now, and whether one
         # of them already has.
         "undo": pick_ban_undo.undo_state(pick_ban, pool),
@@ -464,6 +473,20 @@ async def get_pick_ban_state(
     )
     if kind == PickBanKind.MAP:
         state["map_reports"] = await _map_reports(session, encounter)
+    if (
+        config is not None
+        and config.no_repeat_scope == PickBanNoRepeatScope.ENCOUNTER_SAME_SIDE
+        and state["turn_side"] is not None
+    ):
+        # What the side on the clock may no longer BAN because it already banned
+        # it earlier in this series. Under this scope alone the item stays in the
+        # pool -- one pool, two sides, and only one of them is barred -- so the
+        # rule is enforced per action (`apply_pick_ban_action`) and the room had
+        # no way to know before the click. The side-blind `encounter` scope needs
+        # nothing here: those items never enter a later round's pool at all.
+        state["repeat_banned"] = sorted(
+            await _ledger_exclusions_for_side(session, encounter_id, kind, state["turn_side"])
+        )
     return state
 
 

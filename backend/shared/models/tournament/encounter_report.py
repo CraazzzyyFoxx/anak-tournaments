@@ -131,14 +131,27 @@ class EncounterMapReport(db.TimeStampIntegerMixin):
     __tablename__ = "encounter_map_report"
     __table_args__ = (
         UniqueConstraint(
-            "encounter_id", "map_id", "team_id", name="uq_encounter_map_report_encounter_map_team"
+            "encounter_id",
+            "map_id",
+            "map_index",
+            "team_id",
+            name="uq_encounter_map_report_encounter_map_index_team",
         ),
         CheckConstraint("home_score >= 0 AND away_score >= 0", name="ck_encounter_map_report_scores"),
+        CheckConstraint("map_index >= 0", name="ck_encounter_map_report_index"),
         {"schema": "tournament"},
     )
 
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
     map_id: Mapped[int] = mapped_column(ForeignKey("overwatch.map.id", ondelete="CASCADE"), index=True)
+    # Which map OF THE SERIES this claim is for, 1-based in play order — the
+    # same index ``EncounterMapCode.map_index`` uses. The map alone does not
+    # identify it: a series may play the same map twice (a slot config that
+    # lists it in two rounds, with ``no_repeat_scope=none``), and keying on
+    # ``map_id`` alone made the second play read back the first play's reports
+    # as already filed and agreed. 0 means "no position known" — a report filed
+    # for an encounter that has no map pick-ban session at all.
+    map_index: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
     reporter_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
     # In the encounter's home/away orientation, same convention as

@@ -31,6 +31,7 @@ import {
   isSessionActive,
   pickBanReserveMap,
   pickedItemsInOrder,
+  seriesMatchesByPosition,
   type PickBanSide,
   type PickBanUnavailableIcon
 } from "@/components/pick-ban/pick-ban-model";
@@ -147,9 +148,14 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   // Either signal refetches BOTH: the two sessions are two phases of one loop,
   // so a map pick opens a hero round and a confirmed result opens a map round
   // — the state that changed is rarely only the one that was acted on.
+  // The series score lives on the ENCOUNTER (`map_report.submit_map_report`
+  // increments it), so a confirmed map moves a number this room renders from a
+  // third query -- refetch it here too, or the captain who reported FIRST kept
+  // reading a stale scoreboard until they reloaded.
   const invalidateRoom = () => {
     void queryClient.invalidateQueries({ queryKey: mapKey });
     void queryClient.invalidateQueries({ queryKey: heroKey });
+    void queryClient.invalidateQueries({ queryKey: ["encounter-detail", encounterId] });
   };
   useRealtimeTopic(`encounter:${encounterId}:map-veto`, invalidateRoom);
   useRealtimeTopic(`encounter:${encounterId}:pick-ban:hero`, invalidateRoom);
@@ -308,11 +314,17 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   // the FIRST one is the map the loop is waiting on right now (see
   // `pendingIndex`); every later one is simply a map of the series that has
   // not been reached yet and has no result to show at all.
+  //
+  // Which `Match` row belongs to which map of the series is `map_index`, never
+  // `map_id`: a series may play the same map twice, and matching on the map
+  // alone printed the first play's score on both.
+  const seriesMatches = seriesMatchesByPosition(
+    encounter.matches ?? [],
+    seriesMaps.map((entry) => entry.item_id)
+  );
   const series: PregameSeriesMap[] = seriesMaps.map((entry, index) => {
     const played = entry.status === "played";
-    const match = played
-      ? ((encounter.matches ?? []).find((row) => row.map_id === entry.item_id) ?? null)
-      : null;
+    const match = played ? seriesMatches[index] : null;
     return {
       round: index + 1,
       name: mapsById[entry.item_id]?.name ?? t("map.itemNumber", { id: entry.item_id }),
@@ -401,8 +413,13 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
           awayName={sideNameOf("away")}
           homeHue={encounter.home_team != null ? teamCrest(encounter.home_team).hue : null}
           awayHue={encounter.away_team != null ? teamCrest(encounter.away_team).hue : null}
+          // By POSITION in the series, not by map: a series may play the same
+          // map twice, and filtering on `map_id` alone carried the earlier
+          // play's claims onto the later one — which read as "both captains
+          // already agreed" on a map nobody had reported yet.
           reports={(mapState.map_reports ?? []).filter(
-            (report) => report.map_id === pendingMap.item_id
+            (report) =>
+              report.map_id === pendingMap.item_id && report.map_index === pendingRound
           )}
           heroActions={heroActions}
           heroUndo={
@@ -535,6 +552,11 @@ function PickBanPanel({
     currentRound: state.current_round,
     attributeOf: (itemId) => normalizeRole(itemsById[itemId]?.type ?? itemsById[itemId]?.role)
   });
+  // Same reading, from the ledger instead of the round: what the side on the
+  // clock already banned earlier in this SERIES and may not ban again
+  // (`no_repeat_scope=encounter_same_side`). Those items stay in the pool, so
+  // without this the only feedback was the 400 after the click.
+  const repeatBanned = new Set(state.repeat_banned ?? []);
 
   // The backend enforces who may elect (pending_loser_side); this only gates
   // whether the losing captain's own client shows the modal at all.
@@ -564,6 +586,7 @@ function PickBanPanel({
             canSelect={canSelect}
             currentRound={state.current_round}
             slotReserves={pickBanReserveMap(session)}
+            repeatBanned={repeatBanned}
             locks={locks}
             onSelect={(itemId) =>
               setSelectedItemId((current) => (current === itemId ? null : itemId))

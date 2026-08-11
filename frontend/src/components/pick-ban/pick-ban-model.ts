@@ -54,6 +54,47 @@ export function pickedItemsInOrder(pool: PickBanEntry[]): PickBanEntry[] {
     .sort((left, right) => (left.action_index ?? left.order) - (right.action_index ?? right.order));
 }
 
+/** The fields of a `Match` row the series strip reads. */
+export interface SeriesMatchLike {
+  map_id: number;
+  map_index: number | null;
+}
+
+/**
+ * One `Match` row per position of the series, 1-based, aligned with `mapIds`
+ * (the settled maps in play order — `pickedItemsInOrder`). `null` where nothing
+ * has been written for that position yet.
+ *
+ * The POSITION identifies the row, not the map: a series can play the same map
+ * twice, and matching on `map_id` alone printed one play's score on both. A row
+ * with no position (every parsed log, and every row written before
+ * `Match.map_index` existed) is adopted by the earliest position holding its map
+ * that has no exact row — resolved in a second pass, so an exact row is never
+ * stolen by an earlier position, and never by two positions at once.
+ */
+export function seriesMatchesByPosition<T extends SeriesMatchLike>(
+  matches: T[],
+  mapIds: number[]
+): (T | null)[] {
+  const claimed = new Set<T>();
+  const byPosition = mapIds.map((mapId, index) => {
+    const exact = matches.find(
+      (match) => !claimed.has(match) && match.map_id === mapId && match.map_index === index + 1
+    );
+    if (exact != null) claimed.add(exact);
+    return exact ?? null;
+  });
+  return byPosition.map((match, index) => {
+    if (match != null) return match;
+    const adopted = matches.find(
+      (candidate) =>
+        !claimed.has(candidate) && candidate.map_id === mapIds[index] && candidate.map_index == null
+    );
+    if (adopted != null) claimed.add(adopted);
+    return adopted ?? null;
+  });
+}
+
 /**
  * The highest round `pool` holds entries for, or null for a flat pool.
  *

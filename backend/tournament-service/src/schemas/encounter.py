@@ -93,6 +93,9 @@ class MatchRead(BaseRead):
 
     encounter_id: int
     map_id: int
+    # 1-based position in the series, NULL when unknown (every parsed log). Read
+    # by the pre-game room to tell two plays of the SAME map apart.
+    map_index: int | None = None
     code: str | None = None
 
     home_team: TeamRead | None

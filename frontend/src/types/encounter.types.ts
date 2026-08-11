@@ -128,6 +128,13 @@ export interface Match {
   time: number | null;
   encounter_id: number;
   map_id: number;
+  /**
+   * Which map OF THE SERIES this row is, 1-based in play order. Null when
+   * unknown — every parsed log, and every row written before the column
+   * existed. It, not `map_id`, is what identifies a played map: a series may
+   * play the same map twice (see `seriesMatchesByPosition`).
+   */
+  map_index: number | null;
   log_name: string | null;
   source: "log_parser" | "captain_report";
   code: string | null;

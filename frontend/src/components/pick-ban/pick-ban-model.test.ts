@@ -14,6 +14,7 @@ import {
   pickedItemsInOrder,
   poolRoundGroups,
   roundState,
+  seriesMatchesByPosition,
   statusLabelKey,
   stepRoundGroups,
   turnDeadlineMs,
@@ -182,6 +183,46 @@ describe("pickedItemsInOrder", () => {
       entry({ id: 2, item_id: 12, status: "picked", order: 1 }),
     ];
     expect(pickedItemsInOrder(pool).map((e) => e.item_id)).toEqual([12, 11]);
+  });
+});
+
+describe("seriesMatchesByPosition", () => {
+  /** A `Match` row reduced to what the series strip reads, plus a tag to assert on. */
+  const row = (map_id: number, map_index: number | null, tag: string) => ({ map_id, map_index, tag });
+
+  it("gives each play of a repeated map its own row", () => {
+    const rows = [row(21, 1, "first"), row(21, 2, "second")];
+    expect(seriesMatchesByPosition(rows, [21, 21]).map((match) => match?.tag)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("ignores a row whose position belongs to another map", () => {
+    const rows = [row(21, 1, "first"), row(22, 2, "other")];
+    expect(seriesMatchesByPosition(rows, [21, 21]).map((match) => match?.tag)).toEqual([
+      "first",
+      undefined,
+    ]);
+  });
+
+  it("adopts a positionless row for the earliest play that has no exact one", () => {
+    // A parsed log carries no position, and neither does any row written before
+    // `Match.map_index` existed: the second play HAS its own row, so the
+    // positionless one belongs to the first.
+    const rows = [row(21, null, "log"), row(21, 2, "second")];
+    expect(seriesMatchesByPosition(rows, [21, 21]).map((match) => match?.tag)).toEqual([
+      "log",
+      "second",
+    ]);
+  });
+
+  it("never hands one row to two positions", () => {
+    const rows = [row(21, null, "log")];
+    expect(seriesMatchesByPosition(rows, [21, 21]).map((match) => match?.tag)).toEqual([
+      "log",
+      undefined,
+    ]);
   });
 });
 

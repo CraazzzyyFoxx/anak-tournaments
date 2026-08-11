@@ -15,13 +15,11 @@ import type { PickBanEntry, PickBanEntryStatus, PickBanKind } from "@/types/tour
 
 import {
   isEntrySelectable,
-  pickedItemsInOrder,
   poolRoundGroups,
   roundState,
   statusLabelKey,
   type PickBanAttributeLocks
 } from "./pick-ban-model";
-import { PickBanItemThumb } from "./PickBanItemThumb";
 
 /** Generic catalog entry the grid needs to render one item's tile — either a
  * `MapRead` or a `Hero`, reduced to the fields both shapes carry. */
@@ -50,6 +48,13 @@ interface PickBanGridProps {
    * only — always empty for hero). See `pickBanReserveMap`.
    */
   slotReserves: Map<number, number>;
+  /**
+   * Items the side on the clock may no longer BAN, because it already banned
+   * them earlier in this series (`PickBanState.repeat_banned`). Empty under
+   * every no-repeat scope but `encounter_same_side` — the only one that leaves
+   * them in the pool for the other side to still take.
+   */
+  repeatBanned: Set<number>;
   /**
    * What the attribute-uniqueness rule forbids (disabled) and what it makes
    * moot (greyed only) for the side on the clock — see `attributeLocks`.
@@ -82,6 +87,15 @@ const ROLE_LABEL_SUFFIX: Record<AqtRoleKey, "tank" | "dps" | "support"> = {
 /** Ties a locked round's tiles to the paragraph that explains why they are inert. */
 const lockedHintId = (round: number) => `pick-ban-round-${round}-locked`;
 
+/**
+ * Why a tile is out of reach for the side on the clock. `blocked` and `repeat`
+ * are clicks the server would reject — the round's attribute budget is spent
+ * (`attributeLocks`), or this side already banned the item earlier in the series
+ * (`PickBanState.repeat_banned`). `pointless` is a legal click that achieves
+ * nothing, so it is greyed but never disabled.
+ */
+type PickBanTileLock = "blocked" | "pointless" | "repeat";
+
 export function PickBanGrid({
   kind,
   pool,
@@ -90,6 +104,7 @@ export function PickBanGrid({
   canSelect,
   currentRound,
   slotReserves,
+  repeatBanned,
   locks,
   onSelect,
   header
@@ -97,20 +112,16 @@ export function PickBanGrid({
   const t = useTranslations("pickBan.room");
   const tCommon = useTranslations("common");
   const [roleFilter, setRoleFilter] = useState<AqtRoleKey | "all">("all");
-  const orderedPicks = pickedItemsInOrder(pool);
   const roundGroups = poolRoundGroups(pool);
   const itemName = (itemId: number) =>
     itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
   const roleOf = (itemId: number): AqtRoleKey | null =>
     normalizeRole(itemsById[itemId]?.type ?? itemsById[itemId]?.role);
-  /**
-   * How the uniqueness rule treats this tile: `blocked` is a click the server
-   * would reject, `pointless` a legal one that achieves nothing. Only
-   * `available` entries can be either — anything already taken is out of play
-   * for its own reasons.
-   */
-  const lockOf = (entry: PickBanEntry): "blocked" | "pointless" | null => {
+  /** Only `available` entries can be locked; anything already taken is out of
+   * play for its own reasons. */
+  const lockOf = (entry: PickBanEntry): PickBanTileLock | null => {
     if (entry.status !== "available") return null;
+    if (repeatBanned.has(entry.item_id)) return "repeat";
     const attribute = roleOf(entry.item_id);
     if (attribute == null) return null;
     if (locks.blocked.has(attribute)) return "blocked";
@@ -154,7 +165,9 @@ export function PickBanGrid({
   const tile = (entry: PickBanEntry, lockedRound: number | null) => {
     const item = itemsById[entry.item_id];
     const lock = lockOf(entry);
-    const selectable = isEntrySelectable(entry, { canSelect, currentRound }) && lock !== "blocked";
+    // `pointless` stays clickable — a captain may still have their own reasons.
+    const selectable =
+      isEntrySelectable(entry, { canSelect, currentRound }) && (lock == null || lock === "pointless");
     const selected = selectedItemId === entry.item_id;
     const dimmed = entry.status === "banned";
     const initials = itemName(entry.item_id)
@@ -266,7 +279,8 @@ export function PickBanGrid({
   const heroTile = (entry: PickBanEntry, lockedRound: number | null) => {
     const item = itemsById[entry.item_id];
     const lock = lockOf(entry);
-    const selectable = isEntrySelectable(entry, { canSelect, currentRound }) && lock !== "blocked";
+    const selectable =
+      isEntrySelectable(entry, { canSelect, currentRound }) && (lock == null || lock === "pointless");
     const selected = selectedItemId === entry.item_id;
     const shielded = entry.status === "protected";
     // Out of play for the rest of the round, whoever took it and however.
@@ -428,48 +442,6 @@ export function PickBanGrid({
             );
           })
         )}
-
-        {orderedPicks.length > 0 ? (
-          <div>
-            <div className="mb-1.5 text-sm font-medium">{t("order.title")}</div>
-            {/* The settled order as a rail of stills/portraits: the art is the
-                token, the ordinal rides it as a corner chip, and the name is a
-                caption under it rather than the only thing on screen. */}
-            <ol className="flex flex-wrap gap-2">
-              {orderedPicks.map((entry, index) => (
-                <li
-                  key={entry.id}
-                  className="flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/40 py-1.5 pl-1.5 pr-2.5"
-                >
-                  <span className="relative shrink-0">
-                    <PickBanItemThumb
-                      kind={kind}
-                      item={itemsById[entry.item_id]}
-                      name={itemName(entry.item_id)}
-                      size={26}
-                    />
-                    <span
-                      aria-hidden
-                      className="absolute -left-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[color:var(--aqt-teal)] px-1 font-mono text-[9px] font-bold leading-none text-[color:var(--aqt-bg)]"
-                    >
-                      {index + 1}
-                    </span>
-                  </span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className="min-w-0 truncate text-xs font-medium">
-                      {itemName(entry.item_id)}
-                    </span>
-                    {entry.picked_by === "decider" && entry.round == null ? (
-                      <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">
-                        {t("by.decider")}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </div>
-        ) : null}
       </CardContent>
     </Card>
   );

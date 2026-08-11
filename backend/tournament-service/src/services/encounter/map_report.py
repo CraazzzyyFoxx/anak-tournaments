@@ -24,17 +24,41 @@ from shared.core.enums import MapPoolEntryStatus, MatchSource, PickBanKind
 from shared.models.matches.match import Match
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.encounter_report import EncounterMapReport
-from shared.models.tournament.pick_ban import PickBanEntry
+from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from shared.services import pick_ban_engine as engine
 from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 
 
-async def _get_match(session: AsyncSession, encounter_id: int, map_id: int) -> Match | None:
-    result = await session.execute(
-        select(Match).where(Match.encounter_id == encounter_id, Match.map_id == map_id)
-    )
-    return result.scalar_one_or_none()
+async def _pending_play(
+    session: AsyncSession, map_pick_ban: PickBanSession | None, map_id: int
+) -> tuple[int, PickBanEntry | None]:
+    """Which play of ``map_id`` this report is for: its 1-based position in the
+    series and the pool entry that holds it.
+
+    A series may play the same map twice, and then the map alone names neither
+    the report nor the entry to flip `played`. The report belongs to the FIRST
+    play still awaiting a result -- exactly the map the room's result phase is
+    showing. With every play already `played` (an amendment of an already-agreed
+    report) it belongs to the LAST one, so the correction lands on the map it
+    was typed against instead of on an earlier play of it.
+
+    ``(0, None)`` when this encounter has no map pick-ban session, or its pool
+    never settled this map: there is no series position to speak of.
+    """
+    if map_pick_ban is None:
+        return 0, None
+    result = await session.execute(select(PickBanEntry).where(PickBanEntry.session_id == map_pick_ban.id))
+    settled = engine.settled_in_order(list(result.scalars().all()))
+    plays = [
+        (index, entry) for index, entry in enumerate(settled, start=1) if entry.item_id == map_id
+    ]
+    if not plays:
+        return 0, None
+    awaiting = [
+        (index, entry) for index, entry in plays if entry.status != MapPoolEntryStatus.PLAYED.value
+    ]
+    return awaiting[0] if awaiting else plays[-1]
 
 
 async def submit_map_report(
@@ -50,20 +74,34 @@ async def submit_map_report(
     """Upsert this captain's report for ``map_id``; reconcile if both sides
     have now reported. Returns
     ``{"disputed": bool, "resolved": bool, "match_id": int | None}``."""
+    map_pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter.id, PickBanKind.MAP)
+    map_index, entry = await _pending_play(session, map_pick_ban, map_id)
+
     existing = await session.execute(
         select(EncounterMapReport).where(
             EncounterMapReport.encounter_id == encounter.id,
             EncounterMapReport.map_id == map_id,
+            EncounterMapReport.map_index == map_index,
             EncounterMapReport.team_id == team_id,
         )
     )
     row = existing.scalar_one_or_none()
     if row is None:
-        row = EncounterMapReport(encounter_id=encounter.id, map_id=map_id, team_id=team_id)
+        row = EncounterMapReport(
+            encounter_id=encounter.id, map_id=map_id, map_index=map_index, team_id=team_id
+        )
         session.add(row)
     row.reporter_user_id = reporter_user_id
     row.home_score = home_score
     row.away_score = away_score
+    # Staged BEFORE this flush, not before the commit: `realtime_commit` collects
+    # registrations in `before_flush`, and a session whose only change is already
+    # flushed can commit without flushing again -- which silently dropped the
+    # signal for the FIRST captain's report, leaving the opponent's room to
+    # discover the claim on a manual reload. Both topics, because the room
+    # refetches map and hero state together: they are two phases of one loop.
+    register_map_veto_realtime_update(session, encounter.id)
+    register_map_veto_realtime_update(session, encounter.id, kind=PickBanKind.HERO.value)
     await session.flush()
 
     other_team_id = (
@@ -73,6 +111,7 @@ async def submit_map_report(
         select(EncounterMapReport).where(
             EncounterMapReport.encounter_id == encounter.id,
             EncounterMapReport.map_id == map_id,
+            EncounterMapReport.map_index == map_index,
             EncounterMapReport.team_id == other_team_id,
         )
     )
@@ -93,27 +132,17 @@ async def submit_map_report(
         return {"disputed": reconciliation.disputed, "resolved": False, "match_id": None}
 
     resolved_home, resolved_away = reconciliation.resolved
-    map_pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter.id, PickBanKind.MAP)
-    entry = None
-    if map_pick_ban is not None:
-        map_entries = await session.execute(
-            select(PickBanEntry).where(
-                PickBanEntry.session_id == map_pick_ban.id,
-                PickBanEntry.item_id == map_id,
-                PickBanEntry.status != MapPoolEntryStatus.AVAILABLE.value,
-            )
-        )
-        entry = map_entries.scalars().first()
     # `played` is the once-per-map transition, and the series score rides it:
     # a captain amending an already-agreed report (or any other re-entry) must
     # correct the map, never count it twice.
     already_played = entry is not None and entry.status == MapPoolEntryStatus.PLAYED.value
 
-    match = await _get_match(session, encounter.id, map_id)
+    match = await pick_ban_session_service.find_series_match(session, encounter.id, map_id, map_index)
     if match is None:
         match = Match(
             encounter_id=encounter.id,
             map_id=map_id,
+            map_index=map_index or None,
             home_team_id=encounter.home_team_id,
             away_team_id=encounter.away_team_id,
             home_score=resolved_home,
@@ -124,6 +153,9 @@ async def submit_map_report(
         )
         session.add(match)
     else:
+        # Claim the position for this play, so a second play of the same map
+        # writes its own row instead of adopting this one.
+        match.map_index = map_index or None
         # A log arrived first (or a re-report after a dispute correction):
         # never downgrade a real parsed log back to a captain claim, but do
         # let the captains' agreement correct a captain-report row.
@@ -157,7 +189,5 @@ async def submit_map_report(
                 map_pick_ban.pending_loser_side = "away" if winner == "home" else "home"
                 await session.flush()
 
-    register_map_veto_realtime_update(session, encounter.id)
-    register_map_veto_realtime_update(session, encounter.id, kind=PickBanKind.HERO.value)
     await session.commit()
     return {"disputed": False, "resolved": True, "match_id": match.id}

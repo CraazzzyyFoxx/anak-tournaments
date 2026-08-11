@@ -2377,9 +2377,6 @@
         "home": "protected by home",
         "away": "protected by away"
       },
-      "order": {
-        "title": "Play order"
-      },
       "turn": "Turn: {side} — {action}",
       "action": {
         "ban": "ban",
@@ -2485,7 +2482,8 @@
       },
       "rule": {
         "blocked": "This side has already used its one action on this role this round",
-        "pointless": "The opponent has already banned this role — protecting it changes nothing"
+        "pointless": "The opponent has already banned this role — protecting it changes nothing",
+        "repeat": "Your side already banned this earlier in the series"
       },
       "seriesDone": {
         "title": "Nothing left to decide",

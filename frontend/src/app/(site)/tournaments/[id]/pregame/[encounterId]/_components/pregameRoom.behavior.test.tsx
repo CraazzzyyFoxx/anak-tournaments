@@ -69,7 +69,13 @@ vi.mock("@/services/map.service", () => ({
 vi.mock("@/services/hero.service", () => ({
   default: { getAll: (...args: unknown[]) => getAllHeroes(...args) }
 }));
-vi.mock("@/hooks/useRealtimeTopic", () => ({ useRealtimeTopic: () => undefined }));
+/** Topic -> the room's handler, so a test can fire what the hub would push. */
+const realtimeHandlers = new Map<string, () => void>();
+vi.mock("@/hooks/useRealtimeTopic", () => ({
+  useRealtimeTopic: (topic: string, onEvent: () => void) => {
+    realtimeHandlers.set(topic, onEvent);
+  }
+}));
 const usePermissionsMock = vi.fn(() => ({
   isSuperuser: false,
   isWorkspaceAdmin: () => false,
@@ -190,6 +196,7 @@ beforeEach(() => {
   getMyRole.mockResolvedValue({ side: null });
   getReports.mockResolvedValue({ reports: [], form: undefined });
   getMapPoolState.mockResolvedValue(null);
+  realtimeHandlers.clear();
   search = new URLSearchParams();
   usePermissionsMock.mockReturnValue({
     isSuperuser: false,
@@ -502,6 +509,80 @@ describe("phase selection", () => {
     expect(tank?.title).toBe(ROOM.rule.pointless);
   });
 
+  it("greys out and disables a hero this side already banned earlier in the series", async () => {
+    // `no_repeat_scope=encounter_same_side`: one pool, two sides, and only the
+    // side that spent the ban is barred -- so the item STAYS in the round's pool
+    // and the rule is enforced per action. Without this the only feedback was
+    // the 400 that arrives after the click.
+    getAllHeroes.mockResolvedValue({
+      results: [
+        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
+        { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+      ]
+    });
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 22, round: 2, status: "picked", action_index: 5 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["ban_home"],
+        viewer_side: "home",
+        viewer_can_act: true,
+        allowed_actions: ["ban"],
+        expected_action: "ban",
+        turn_side: "home",
+        current_round: 2,
+        // Home banned Tank A back in round 1; round 2's pool offers it again.
+        repeat_banned: [201],
+        pool: [entry({ id: 3, item_id: 201, round: 2 }), entry({ id: 4, item_id: 203, round: 2 })]
+      })
+    );
+    await render();
+
+    const tile = (name: string) =>
+      document.body.querySelector<HTMLButtonElement>(`button[aria-label^="${name}"]`);
+    expect(tile("Tank A")?.disabled).toBe(true);
+    expect(tile("Tank A")?.className).toContain("grayscale");
+    expect(tile("Tank A")?.title).toBe(ROOM.rule.repeat);
+    expect(tile("Support A")?.disabled).toBe(false);
+    expect(tile("Support A")?.className).not.toContain("grayscale");
+  });
+
+  it("charts the series' play order once, in the header", async () => {
+    // The pool card used to repeat the whole play order under the grid — the
+    // same maps the header's series filmstrip already charts, twice on one
+    // screen. These two are the only ordered lists the room draws.
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        viewer_side: "home",
+        sequence: ["ban_home", "ban_away", "decider"],
+        current_round: 2,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2 }),
+          entry({ id: 3, item_id: 23, round: 2 })
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 4, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.map.title);
+    expect(
+      Array.from(document.body.querySelectorAll("ol")).map((list) => list.getAttribute("aria-label"))
+    ).toEqual([ROOM.phase.rail, ROOM.series.label]);
+  });
+
   it("draws a protected hero as protected, never as banned", async () => {
     getAllHeroes.mockResolvedValue({
       results: [
@@ -758,7 +839,7 @@ describe("phase selection", () => {
         is_complete: true,
         viewer_side: "home",
         pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })],
-        map_reports: [{ map_id: 21, side: "home", home_score: 3, away_score: 1 }]
+        map_reports: [{ map_id: 21, map_index: 1, side: "home", home_score: 3, away_score: 1 }]
       }),
       readyState({
         session: session({ kind: "hero" }),
@@ -871,6 +952,92 @@ describe("phase selection", () => {
     expect(items[0].textContent).toContain(ROOM.series.awaiting);
     expect(items[1].textContent).toContain(ROOM.series.upcoming);
     expect(items[2].textContent).toContain(ROOM.series.upcoming);
+  });
+
+  it("keeps an earlier play's claims and score off a map the series plays twice", async () => {
+    // A slot config may list the same map in every round, and with
+    // `no_repeat_scope=none` nothing stops the series from playing it three
+    // times. Keyed on `map_id` alone, the third play inherited the first play's
+    // two agreeing claims — so the room told both captains the map was already
+    // locked in — and both settled positions printed the same score, the one
+    // from whichever Match row happened to come first.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 1, away: 1 },
+      matches: [
+        { map_id: 21, map_index: 1, score: { home: 2, away: 1 } },
+        { map_id: 21, map_index: 2, score: { home: 0, away: 2 } }
+      ]
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 21, round: 2, status: "played", action_index: 5 }),
+          entry({ id: 3, item_id: 21, round: 3, status: "picked", action_index: 8 })
+        ],
+        map_reports: [
+          { map_id: 21, map_index: 1, side: "home", home_score: 2, away_score: 1 },
+          { map_id: 21, map_index: 1, side: "away", home_score: 2, away_score: 1 },
+          { map_id: 21, map_index: 2, side: "home", home_score: 0, away_score: 2 },
+          { map_id: 21, map_index: 2, side: "away", home_score: 0, away_score: 2 }
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 4, item_id: 101, round: 3, status: "banned" })]
+      })
+    );
+    await render();
+
+    // Round 3 of map 21 is awaiting its result: neither claim is in yet.
+    const claims = Array.from(document.body.querySelectorAll<HTMLElement>("[data-claim]"));
+    expect(claims.map((tile) => tile.dataset.claim)).toEqual(["waiting", "waiting"]);
+    expect(document.body.textContent).toContain(ROOM.mapResult.verdict.waiting);
+    expect(document.body.textContent).toContain(ROOM.mapResult.report);
+
+    // Each settled position carries ITS OWN score; the third play has none.
+    const items = Array.from(
+      document.body.querySelectorAll(`ol[aria-label="${ROOM.series.label}"] li`)
+    );
+    expect(items).toHaveLength(3);
+    expect(items[0].textContent).toContain("2:1");
+    expect(items[1].textContent).toContain("0:2");
+    expect(items[2].textContent).toContain(ROOM.series.awaiting);
+    expect(items[2].textContent).not.toMatch(/\d:\d/);
+  });
+
+  it("refetches the encounter when a map result lands over the wire", async () => {
+    // The series score lives on the encounter, not in the pool, so the captain
+    // who reported FIRST only sees it move on a refetch of THAT query — the
+    // realtime handler used to refresh the two pick-ban states and nothing else.
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render();
+    const before = getEncounter.mock.calls.length;
+
+    realtimeHandlers.get("encounter:4242:map-veto")?.();
+    await settle();
+
+    expect(getEncounter.mock.calls.length).toBeGreaterThan(before);
   });
 
   it("stays on the hero phase while the hero round for the pending map is still catching up", async () => {

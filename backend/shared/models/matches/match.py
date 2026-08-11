@@ -62,6 +62,13 @@ class Match(db.TimeStampIntegerMixin):
 
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
     map_id: Mapped[int] = mapped_column(ForeignKey("overwatch.map.id", ondelete="CASCADE"), index=True)
+    # Which map OF THE SERIES this row is, 1-based in play order (the index
+    # ``EncounterMapCode``/``EncounterMapReport`` use). NULL when unknown: every
+    # parsed log, and every row written before this column existed. Stamped by
+    # ``map_report.submit_map_report`` on the row it reconciles, because a series
+    # can play the SAME map twice — without a position the second play's result
+    # overwrote the first play's row instead of standing beside it.
+    map_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     home_team: Mapped["Team"] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])
