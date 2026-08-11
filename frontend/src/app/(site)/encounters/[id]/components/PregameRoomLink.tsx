@@ -5,12 +5,19 @@ import { ListChecks } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import pickBanService from "@/services/pickBan.service";
 
 interface PregameRoomLinkProps {
   encounterId: number;
   tournamentId: number;
+  /**
+   * Button styling, supplied by the caller. The link used to hardcode a shadcn
+   * `<Button variant="outline">`, which resolves against the shadcn theme
+   * variables and therefore read a shade off — and a size off — next to the
+   * `--aqt-*` controls it sits beside.
+   */
+  className?: string;
 }
 
 /**
@@ -21,28 +28,27 @@ interface PregameRoomLinkProps {
  * creation, not room existence). Replaces the retired `VetoRoomLink` /
  * `HeroBanRoomLink` pair.
  */
-export function PregameRoomLink({ encounterId, tournamentId }: PregameRoomLinkProps) {
+export function PregameRoomLink({ encounterId, tournamentId, className }: PregameRoomLinkProps) {
   const t = useTranslations();
   const mapQuery = useQuery({
     queryKey: ["pregame-state", encounterId, "map"],
-    queryFn: () => pickBanService.getPickBanState("map", encounterId),
+    queryFn: () => pickBanService.getPickBanState("map", encounterId)
   });
   const heroQuery = useQuery({
     queryKey: ["pregame-state", encounterId, "hero"],
-    queryFn: () => pickBanService.getPickBanState("hero", encounterId),
+    queryFn: () => pickBanService.getPickBanState("hero", encounterId)
   });
 
-  const applies = (state: typeof mapQuery.data) => state != null && (state.reason !== "not_configured" || state.session != null);
+  const applies = (state: typeof mapQuery.data) =>
+    state != null && (state.reason !== "not_configured" || state.session != null);
   if (!applies(mapQuery.data) && !applies(heroQuery.data)) {
     return null;
   }
 
   return (
-    <Button variant="outline" asChild>
-      <Link href={`/tournaments/${tournamentId}/pregame/${encounterId}`}>
-        <ListChecks className="mr-2 h-4 w-4" aria-hidden />
-        {t("encounters.detail.pregameRoom")}
-      </Link>
-    </Button>
+    <Link href={`/tournaments/${tournamentId}/pregame/${encounterId}`} className={cn(className)}>
+      <ListChecks className="h-4 w-4" aria-hidden />
+      {t("encounters.detail.pregameRoom")}
+    </Link>
   );
 }

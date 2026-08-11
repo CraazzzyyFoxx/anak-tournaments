@@ -50,9 +50,10 @@ export default function EncounterPregamePanel({
     // tournament without pre-game rules, and an empty landmark with a heading
     // would still be announced.
     <section aria-label={t("encounters.detail.pregame")}>
+      {/* No section meta: it read "Map veto and hero bans" directly above two
+          cards titled "Map veto" and "Hero bans". */}
       <div className={styles.sectionHead}>
         <h2 className={styles.sectionTitle}>{t("encounters.detail.pregame")}</h2>
-        <span className={styles.sectionMeta}>{t("encounters.detail.pregameMeta")}</span>
       </div>
       <div className={styles.statsStack}>
         {readiness ? (

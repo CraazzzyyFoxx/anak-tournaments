@@ -119,7 +119,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
     <div className={styles.surface}>
       <PageHero
         align="start"
-        titleClassName="text-[clamp(1.6rem,3.2vw,2.6rem)]"
+        titleClassName="text-[clamp(1.35rem,2.4vw,2rem)]"
         eyebrow={
           <>
             {/* The new design's back affordance is a mono coordinate link in the
@@ -193,12 +193,17 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
         lede={lede}
         actions={
           <div className={styles.heroActions}>
-            <PregameRoomLink encounterId={encounter.id} tournamentId={encounter.tournament_id} />
+            {/* Both controls share the module's button geometry. The pre-game
+                link used to be a shadcn <Button variant="outline"> (shadcn theme
+                vars) sitting beside a labelled pill wrapping the log icon, so
+                the pair had different heights, radii, borders and weights. */}
+            <PregameRoomLink
+              encounterId={encounter.id}
+              tournamentId={encounter.tournament_id}
+              className={styles.button}
+            />
             {logs.length > 0 ? (
-              <span className={styles.pill}>
-                <span className={styles.label}>{t("common.matchLogs.title")}</span>
-                <MatchLogIndicator hasLogs logs={logs} />
-              </span>
+              <MatchLogIndicator hasLogs logs={logs} className={styles.iconButton} />
             ) : null}
           </div>
         }

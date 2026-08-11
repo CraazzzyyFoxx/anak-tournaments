@@ -390,10 +390,16 @@
 
 /* Every track is fixed or `1fr` on purpose. Each row is its OWN grid (rows are
    siblings, not a single table), so an `auto` track would size to that row's
-   content and the score/actions columns would drift row to row. */
+   content and the score/action columns would drift row to row.
+
+   The slack lives in the FACTS track, not the name track. When the name took
+   it, a wide viewport left a few hundred pixels of void between a short map
+   name and its score, splitting each row into a far-left and a far-right group;
+   giving it to the facts instead keeps the row together and lets long parsed
+   log filenames show more of themselves before truncating. */
 .mapRow {
   display: grid;
-  grid-template-columns: 2rem 6.5rem minmax(0, 1fr) 4.5rem 15rem 9.75rem;
+  grid-template-columns: 2rem 6.5rem minmax(0, 20rem) 4.5rem minmax(0, 1fr) 9.75rem;
   align-items: center;
   gap: 16px;
   padding: 12px 18px;
@@ -591,6 +597,16 @@
   border-color: color-mix(in srgb, var(--ed-teal) 45%, transparent);
 }
 
+/* Square sibling of `.button`, for a control whose whole label is its icon.
+   `MatchLogIndicator` merges `className` last, so this overrides its default
+   28px `h-7 w-7 rounded-[7px]` box while leaving its emerald availability tint
+   intact — the two hero actions then share one height and radius. */
+.iconButton {
+  height: 32px;
+  width: 32px;
+  border-radius: 8px;
+}
+
 /* ============ Rosters ============ */
 .rosterGrid {
   display: grid;
@@ -640,14 +656,16 @@
 }
 
 .rosterTable {
-  min-width: 30rem;
+  /* Four columns now the SR one is gone, so the panel stops needing a
+     horizontal scroll several hundred pixels earlier. */
+  min-width: 24rem;
   display: flex;
   flex-direction: column;
 }
 
 .rosterRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 3rem 4.25rem 3rem 3.5rem;
+  grid-template-columns: minmax(0, 1fr) 3.5rem 3rem 3.5rem;
   align-items: center;
   gap: 10px;
   padding: 8px 18px;
@@ -751,14 +769,6 @@
   display: flex;
   justify-content: center;
   align-items: center;
-}
-
-.rosterSr {
-  font-family: var(--ed-mono);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ed-muted);
-  justify-content: flex-end;
 }
 
 .flagOn {
@@ -1068,14 +1078,16 @@
     grid-template-columns: 1fr;
   }
 
-  /* Facts move to a second line under the identity, so the row keeps four
-     aligned tracks instead of squeezing five.
+  /* Facts move to a second line under the identity, so row 1 keeps the name,
+     the score and the action.
 
-     Score and action MUST be placed explicitly. With five tracks and six
-     children, auto-placement pushed the action button onto a third row at
-     column 1 — it escaped the row and sat against the card's left edge. */
+     Score and action MUST be placed explicitly. With the facts spanning row 2
+     and every other child auto-placing, the action button was pushed onto a
+     THIRD row at column 1 — it escaped the row and sat against the card's left
+     edge. Column 5 is a bare spacer so the score stays beside the name and the
+     action still pins to the right edge. */
   .mapRow {
-    grid-template-columns: 2rem 6.5rem minmax(0, 1fr) 4.5rem 9.75rem;
+    grid-template-columns: 2rem 6.5rem minmax(0, 20rem) 4.5rem 1fr 9.75rem;
   }
 
   .mapScore {
@@ -1084,7 +1096,7 @@
   }
 
   .mapAction {
-    grid-column: 5;
+    grid-column: 6;
     grid-row: 1;
   }
 

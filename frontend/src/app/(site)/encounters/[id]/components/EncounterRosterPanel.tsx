@@ -42,13 +42,10 @@ export default function EncounterRosterPanel({
       <div className={styles.rosterHead}>
         <h3 className={styles.rosterName}>{team?.name ?? t("common.tbd")}</h3>
         <div className={styles.rosterFacts}>
+          {/* No avg/total SR here. Public pages express skill rating as the
+              division icon only — raw SR numbers live in /admin (or behind the
+              participants table's `showRanks` gate), never on a site page. */}
           <PillFact label={t("common.playersLabel")} value={players.length} />
-          {team && Number.isFinite(team.avg_sr) && team.avg_sr > 0 ? (
-            <PillFact label={t("encounters.team.avgSr")} value={Math.round(team.avg_sr)} />
-          ) : null}
-          {team && Number.isFinite(team.total_sr) && team.total_sr > 0 ? (
-            <PillFact label={t("encounters.team.totalSr")} value={team.total_sr.toLocaleString()} />
-          ) : null}
         </div>
       </div>
 
@@ -74,13 +71,6 @@ export default function EncounterRosterPanel({
                 aria-label={t("encounters.team.colDivision")}
               >
                 {t("encounters.team.colDivisionShort")}
-              </span>
-              <span
-                className={cn(styles.rosterHeadCell, styles.rosterSr)}
-                role="columnheader"
-                title={t("encounters.team.colSrTitle")}
-              >
-                {t("encounters.team.colSr")}
               </span>
               <span
                 className={cn(styles.rosterHeadCell, styles.rosterCell)}
@@ -139,9 +129,6 @@ export default function EncounterRosterPanel({
                       height={28}
                       tournamentGrid={tournamentGrid}
                     />
-                  </span>
-                  <span className={cn(styles.rosterSr, styles.mono)} role="cell">
-                    {player.rank > 0 ? player.rank.toLocaleString() : "—"}
                   </span>
                   <span className={styles.rosterCell} role="cell">
                     <Flag
