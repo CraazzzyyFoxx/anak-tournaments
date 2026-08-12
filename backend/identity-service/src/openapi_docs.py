@@ -19,8 +19,14 @@ DOCS: dict[str, dict] = {
         "description": "Exchanges service client credentials (client_id + client_secret) for a signed service access token.",
     },
     "rpc.identity.invalidate_session": {
-        "summary": "Invalidate user session",
-        "description": "Service-token-authenticated call that revokes all sessions for the given user_id; returns 204 No Content.",
+        "summary": "Invalidate cached permissions for a user",
+        "description": (
+            "Service-token-authenticated call that drops the cached RBAC entry for the given user_id, so "
+            "their next request re-resolves roles and permissions from the database instead of waiting out "
+            "the cache TTL; returns 204 No Content. Despite the endpoint name it does NOT revoke tokens or "
+            "end sessions — an issued access token stays valid until it expires. Use the session endpoints "
+            "for revocation."
+        ),
     },
     # ── auth core ──────────────────────────────────────────────────────────
     "rpc.identity.register": {

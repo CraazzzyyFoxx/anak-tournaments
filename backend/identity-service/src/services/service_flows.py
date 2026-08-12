@@ -70,5 +70,20 @@ def validate_service_token(token: str) -> schemas.ServiceTokenPayload:
 
 
 async def invalidate_session(token: str, user_id: int) -> None:
+    """Drop the cached RBAC for ``user_id``; tokens and sessions are untouched.
+
+    The next request from that user re-resolves roles and permissions from the
+    database instead of the ``rbac:v2:user:*`` Redis entry, so a grant or a deny
+    applied out-of-band takes effect immediately rather than after ``RBAC_TTL``.
+
+    **This does not end a session and does not revoke a token**, despite the
+    endpoint's name. An access token stays valid until it expires; the mechanism
+    that actually kills one is ``session_cache.blacklist_session``, driven by
+    ``AuthService.revoke_session_tokens`` / ``revoke_all_user_tokens`` — all of
+    which write to the database, which this module deliberately does not do (see
+    the module docstring). The name is kept because ``/service/invalidate-session``
+    is an existing service-to-service contract and machine clients are configured
+    outside this repository; renaming it would break callers we cannot see.
+    """
     _decode_service_payload(token)  # requires a valid service token
     await invalidate_rbac(user_id)

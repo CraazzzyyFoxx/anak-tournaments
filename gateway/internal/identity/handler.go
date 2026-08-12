@@ -154,6 +154,10 @@ func (h *Handler) ServiceToken(w http.ResponseWriter, r *http.Request) {
 
 // InvalidateSession mirrors POST /service/invalidate-session/{user_id} -> 204.
 // Requires a valid service token (bearer).
+//
+// The name is historical: the worker drops the user's cached RBAC so their next
+// request re-reads permissions from the database. It does NOT revoke a token or
+// end a session -- see invalidate_session in identity-service service_flows.py.
 func (h *Handler) InvalidateSession(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {

@@ -56,12 +56,12 @@ Representative method groups:
 |---|---|
 | Token / auth | `validate_token`, `register`, `login`, `refresh`, `logout`, `logout_all` |
 | Current user | `get_me`, `update_me`, `set_password`, `me.avatar_set`, `me.avatar_delete` |
-| Sessions | `list_sessions`, `revoke_session`, `invalidate_session` |
+| Sessions | `list_sessions`, `revoke_session` |
 | OAuth (Discord) | `oauth_providers`, `oauth_url`, `oauth_callback`, `oauth_link`, `oauth_unlink`, `oauth_connections`, `sso_exchange`, `link_complete` |
 | RBAC admin | `rbac.list_permissions`, `rbac.create_permission`, `rbac.list_roles`, `rbac.create_role`, `rbac.update_role`, `rbac.assign_role`, `rbac.remove_role`, `rbac.get_user_roles`, `rbac.list_user_denies`, `rbac.add_user_deny`, `rbac.remove_user_deny`, `rbac.list_auth_users`, `rbac.assign_linked_player`, … |
 | Player linking | `player.link`, `player.unlink`, `player.linked`, `player.set_primary` |
 | API keys | `api_key` group: `list_api_keys`, `create_api_key`, `update_api_key`, `revoke_api_key` |
-| Service tokens | `service_token`, `validate_service_token` |
+| Service tokens | `service_token`, `validate_service_token`, `invalidate_session` (drops a user's cached RBAC so the next request re-reads permissions; **not** a session revoke) |
 
 ## Dependencies
 
