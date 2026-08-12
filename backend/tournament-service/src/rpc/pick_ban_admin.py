@@ -42,7 +42,10 @@ from src.services.encounter import pick_ban_action as pick_ban_action_service
 from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.veto_session import BRACKET_PRESET, CUSTOM_PRESET
 
-_CONFIG_LOAD = (selectinload(PickBanConfig.items), selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items))
+_CONFIG_LOAD = (
+    selectinload(PickBanConfig.items),
+    selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items),
+)
 _serialize_config = pick_ban_session_service.serialize_pick_ban_config
 
 
@@ -282,9 +285,7 @@ def register(broker: Any, logger: Any) -> None:
             # same state shape the room polls (viewer_side stays null for
             # admins).
             await pick_ban_session_service.reset_pick_ban_session(session, encounter, body.kind)
-            return await pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, body.kind, viewer_side=None
-            )
+            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
 
         return await _run(logger, op)
 

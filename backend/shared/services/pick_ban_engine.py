@@ -142,12 +142,9 @@ def settled_in_order(pool: list) -> list:
     settled = (
         entry
         for entry in pool
-        if entry.status
-        in (enums.MapPoolEntryStatus.PICKED.value, enums.MapPoolEntryStatus.PLAYED.value)
+        if entry.status in (enums.MapPoolEntryStatus.PICKED.value, enums.MapPoolEntryStatus.PLAYED.value)
     )
-    return sorted(
-        settled, key=lambda entry: entry.action_index if entry.action_index is not None else entry.order
-    )
+    return sorted(settled, key=lambda entry: entry.action_index if entry.action_index is not None else entry.order)
 
 
 # ── undo (both captains agree to take the last action back) ─────────────────

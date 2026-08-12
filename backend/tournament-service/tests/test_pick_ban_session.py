@@ -68,9 +68,7 @@ def _slot(position: int, item_ids: list[int], *, reserve: int | None = None) -> 
     )
 
 
-def _entry(
-    item_id: int, *, round: int | None = None, status: str = "available", order: int = 0
-) -> SimpleNamespace:
+def _entry(item_id: int, *, round: int | None = None, status: str = "available", order: int = 0) -> SimpleNamespace:
     """One ``PickBanEntry``-shaped row, as the engine reads it."""
     return SimpleNamespace(
         item_id=item_id,
@@ -664,7 +662,9 @@ class AdvanceToNextRoundCandidateFloorTests(IsolatedAsyncioTestCase):
             await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
 
         self.assertEqual(422, ctx.exception.status_code)
-        self.assertIn(f"1 candidate(s) left after no-repeat exclusion (needs >= {SLOT_CANDIDATE_FLOOR})", ctx.exception.detail)
+        self.assertIn(
+            f"1 candidate(s) left after no-repeat exclusion (needs >= {SLOT_CANDIDATE_FLOOR})", ctx.exception.detail
+        )
         self.assertEqual(0, session.commits)
 
     async def test_does_not_raise_once_the_pool_stays_at_the_floor(self) -> None:
@@ -760,9 +760,7 @@ class ProgressiveRoundCreationTests(IsolatedAsyncioTestCase):
 
         self.assertIsNone(pick_ban)
         self.assertEqual([], session.pool_rows)
-        self.assertEqual(
-            REASON_WAITING_MAP, await unavailable_reason(session, _encounter(best_of=3), PickBanKind.HERO)
-        )
+        self.assertEqual(REASON_WAITING_MAP, await unavailable_reason(session, _encounter(best_of=3), PickBanKind.HERO))
 
 
 class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):

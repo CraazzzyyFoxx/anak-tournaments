@@ -89,13 +89,11 @@ def upgrade() -> None:
     op.execute("CREATE TYPE tournament.pickbannorepeatscope AS ENUM ('none', 'encounter', 'encounter_same_side')")
     op.execute("CREATE TYPE tournament.pickbanside AS ENUM ('home', 'away', 'decider', 'admin')")
     op.execute(
-        "CREATE TYPE tournament.pickbanentrystatus AS ENUM "
-        "('available', 'picked', 'banned', 'played', 'protected')"
+        "CREATE TYPE tournament.pickbanentrystatus AS ENUM ('available', 'picked', 'banned', 'played', 'protected')"
     )
     op.execute("CREATE TYPE tournament.pickbansessionstatus AS ENUM ('active', 'completed', 'cancelled')")
     op.execute(
-        "CREATE TYPE tournament.pickbanseedsource AS ENUM "
-        "('bracket_slot', 'standings', 'fallback_home', 'admin')"
+        "CREATE TYPE tournament.pickbanseedsource AS ENUM ('bracket_slot', 'standings', 'fallback_home', 'admin')"
     )
     op.execute("CREATE TYPE matches.matchsource AS ENUM ('log_parser', 'captain_report')")
 
@@ -285,9 +283,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["map_id"], ["overwatch.map.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["team_id"], ["tournament.team.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["reporter_user_id"], ["players.user.id"], ondelete="SET NULL"),
-        sa.UniqueConstraint(
-            "encounter_id", "map_id", "team_id", name="uq_encounter_map_report_encounter_map_team"
-        ),
+        sa.UniqueConstraint("encounter_id", "map_id", "team_id", name="uq_encounter_map_report_encounter_map_team"),
         sa.CheckConstraint("home_score >= 0 AND away_score >= 0", name="ck_encounter_map_report_scores"),
         schema="tournament",
     )

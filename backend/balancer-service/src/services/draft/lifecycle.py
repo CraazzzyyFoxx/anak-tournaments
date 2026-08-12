@@ -553,9 +553,7 @@ async def load_pool(session: AsyncSession, tournament_id: int) -> list[BalancerR
     deleted, and the current balancer_status doesn't exclude it (not_in_balancer
     / excluded / a workspace custom status configured to exclude).
     """
-    workspace_id_expr = (
-        sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id).scalar_subquery()
-    )
+    workspace_id_expr = sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id).scalar_subquery()
     return list(
         await session.scalars(
             sa.select(BalancerRegistration)

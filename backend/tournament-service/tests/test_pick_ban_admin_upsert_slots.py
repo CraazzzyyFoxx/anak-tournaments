@@ -446,7 +446,6 @@ class CustomPresetIsUnstorableInSlotMode(_UpsertCase):
         )
         self.assertEqual(0, session.commits)
 
-
     async def test_a_custom_preset_is_still_accepted_in_pool_mode(self) -> None:
         # The (missing or present) slot-mode CHECK is irrelevant here; flat
         # mode's hand-authored order is exactly what ``custom`` is for.
@@ -522,9 +521,7 @@ class SlotValidationGuards(_UpsertCase):
         def _spy(slots, *, reserves):
             seen.append((slots, list(reserves)))
 
-        self.enterContext(
-            patch.object(pick_ban_admin.pick_ban_session_service, "validate_pick_ban_slot_config", _spy)
-        )
+        self.enterContext(patch.object(pick_ban_admin.pick_ban_session_service, "validate_pick_ban_slot_config", _spy))
         await self.invoke(slot_body())
 
         self.assertEqual([(CANDIDATES, RESERVES)], seen)
@@ -910,16 +907,13 @@ class SerializeOrdersSlotsByPosition(TestCase):
                 position=7,
                 reserve_item_id=99,
                 items=[
-                    pick_ban_models.PickBanConfigSlotItem(item_id=m, sort_order=i)
-                    for i, m in enumerate([88, 42, 66])
+                    pick_ban_models.PickBanConfigSlotItem(item_id=m, sort_order=i) for i, m in enumerate([88, 42, 66])
                 ],
             ),
             pick_ban_models.PickBanConfigSlot(
                 position=2,
                 reserve_item_id=None,
-                items=[
-                    pick_ban_models.PickBanConfigSlotItem(item_id=m, sort_order=i) for i, m in enumerate([77, 15])
-                ],
+                items=[pick_ban_models.PickBanConfigSlotItem(item_id=m, sort_order=i) for i, m in enumerate([77, 15])],
             ),
         ]
 
@@ -930,4 +924,3 @@ class SerializeOrdersSlotsByPosition(TestCase):
             ],
             pick_ban_admin._serialize_config(config)["slots"],
         )
-

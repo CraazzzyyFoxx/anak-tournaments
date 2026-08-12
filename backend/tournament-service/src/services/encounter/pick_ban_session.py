@@ -81,13 +81,9 @@ async def highest_round_of(session: AsyncSession, pick_ban: PickBanSession) -> i
     return max(rounds) if rounds else None
 
 
-async def get_pick_ban_session(
-    session: AsyncSession, encounter_id: int, kind: PickBanKind
-) -> PickBanSession | None:
+async def get_pick_ban_session(session: AsyncSession, encounter_id: int, kind: PickBanKind) -> PickBanSession | None:
     result = await session.execute(
-        select(PickBanSession).where(
-            PickBanSession.encounter_id == encounter_id, PickBanSession.kind == kind
-        )
+        select(PickBanSession).where(PickBanSession.encounter_id == encounter_id, PickBanSession.kind == kind)
     )
     return result.scalar_one_or_none()
 
@@ -114,9 +110,7 @@ async def _load_config(session: AsyncSession, config_id: int) -> PickBanConfig |
     return await session.scalar(select(PickBanConfig).where(PickBanConfig.id == config_id).options(*_CONFIG_POOL_LOAD))
 
 
-async def _resolve_config(
-    session: AsyncSession, encounter: Encounter, kind: PickBanKind
-) -> PickBanConfig | None:
+async def _resolve_config(session: AsyncSession, encounter: Encounter, kind: PickBanKind) -> PickBanConfig | None:
     """Same cascade as ``veto_session.resolve_config``, scoped by ``kind``."""
     result = await session.execute(
         select(PickBanConfig)
@@ -241,9 +235,7 @@ async def both_sides_ready(session: AsyncSession, encounter_id: int) -> bool:
     return readiness["home"] and readiness["away"]
 
 
-async def mark_ready(
-    session: AsyncSession, encounter: Encounter, side: str, user_id: int | None
-) -> dict[str, bool]:
+async def mark_ready(session: AsyncSession, encounter: Encounter, side: str, user_id: int | None) -> dict[str, bool]:
     """Idempotently record ``side``'s captain confirming readiness. Returns
     the resulting ``{"home", "away"}`` readiness map."""
     existing = await session.execute(
@@ -332,7 +324,9 @@ async def ensure_pick_ban_session(
         # mirrors veto_session.slot_reserves exactly (Decision 18: the room
         # reads this snapshot off the session, never the config, so a later
         # config edit cannot move a running session's reserve labels).
-        slot_reserves = {str(slot.position): slot.reserve_item_id for slot in ordered if slot.reserve_item_id is not None}
+        slot_reserves = {
+            str(slot.position): slot.reserve_item_id for slot in ordered if slot.reserve_item_id is not None
+        }
 
     if not await both_sides_ready(session, encounter.id):
         return None
@@ -361,9 +355,7 @@ async def ensure_pick_ban_session(
         home_seed=seeds.home_seed,
         away_seed=seeds.away_seed,
         resolved_sequence_json=(
-            build_round_sequence(
-                config, kind, candidate_count=len(round_one_item_ids), opener=seeds.first_side
-            )
+            build_round_sequence(config, kind, candidate_count=len(round_one_item_ids), opener=seeds.first_side)
             if progressive
             else engine.resolve_sequence_tokens(
                 build_sequence_for_best_of(encounter.best_of, pool_size)
@@ -666,9 +658,7 @@ async def advance_to_next_round(
     return pick_ban
 
 
-async def find_series_match(
-    session: AsyncSession, encounter_id: int, map_id: int, map_index: int
-) -> Match | None:
+async def find_series_match(session: AsyncSession, encounter_id: int, map_id: int, map_index: int) -> Match | None:
     """The ``Match`` row for map ``map_index`` of this encounter's series, or
     ``None`` when nothing has been written for it yet.
 
@@ -684,9 +674,7 @@ async def find_series_match(
     map its pool never settled): nothing can tell two rows apart then, so the
     earliest row for the map is the answer -- never a second row beside it.
     """
-    result = await session.execute(
-        select(Match).where(Match.encounter_id == encounter_id, Match.map_id == map_id)
-    )
+    result = await session.execute(select(Match).where(Match.encounter_id == encounter_id, Match.map_id == map_id))
     rows = sorted(result.scalars().all(), key=lambda match: match.id or 0)
     if map_index == 0:
         return rows[0] if rows else None
@@ -718,9 +706,7 @@ async def map_round_winner(session: AsyncSession, encounter: Encounter, round_nu
     settled = engine.settled_in_order(list(result.scalars().all()))
     if len(settled) < round_number:
         return None
-    match = await find_series_match(
-        session, encounter.id, settled[round_number - 1].item_id, round_number
-    )
+    match = await find_series_match(session, encounter.id, settled[round_number - 1].item_id, round_number)
     if match is None:
         return None
     return engine.winner_side(match.home_score, match.away_score)
@@ -746,14 +732,14 @@ async def sync_hero_rounds(session: AsyncSession, encounter: Encounter, *, commi
     while highest < target:
         winner = await map_round_winner(session, encounter, highest)
         try:
-            await advance_to_next_round(
-                session, hero, completed_round=highest, winner=winner, commit=False
-            )
+            await advance_to_next_round(session, hero, completed_round=highest, winner=winner, commit=False)
         except engine.RotationNeedsChoice:
             # `result_loser_choice`: the round waits for the losing captain's
             # `elect_opener` call, which resumes this same append.
             hero.awaiting_choice = True
-            hero.pending_loser_side = MapPickSide.AWAY.value if winner == MapPickSide.HOME.value else MapPickSide.HOME.value
+            hero.pending_loser_side = (
+                MapPickSide.AWAY.value if winner == MapPickSide.HOME.value else MapPickSide.HOME.value
+            )
             await session.flush()
             break
         appended = await highest_round_of(session, hero) or 0

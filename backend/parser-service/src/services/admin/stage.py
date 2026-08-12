@@ -249,8 +249,7 @@ async def _merge_pick_ban_configs(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Source stages have different {kind.value} pick-ban configs; "
-                "keep one target config before merging"
+                f"Source stages have different {kind.value} pick-ban configs; keep one target config before merging"
             ),
         )
 

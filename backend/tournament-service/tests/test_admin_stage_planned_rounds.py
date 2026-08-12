@@ -88,9 +88,7 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
             _input(3, 4),
             _input(4, 5),
         ]
-        stage = SimpleNamespace(
-            id=5, stage_type=enums.StageType.SINGLE_ELIMINATION, items=[_item(1, inputs)]
-        )
+        stage = SimpleNamespace(id=5, stage_type=enums.StageType.SINGLE_ELIMINATION, items=[_item(1, inputs)])
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
         with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):

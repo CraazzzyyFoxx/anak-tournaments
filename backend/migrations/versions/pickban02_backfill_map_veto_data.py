@@ -71,13 +71,17 @@ def upgrade() -> None:
 
     # ── configs (+ items, + slots + slot-items) ─────────────────────────────
     config_id_map: dict[int, int] = {}
-    configs = conn.execute(
-        sa.text(
-            "SELECT id, created_at, updated_at, tournament_id, stage_id, round, mode, first_pick_rule, "
-            "first_ban_rotation, turn_timer_seconds, preset, veto_sequence_json "
-            "FROM tournament.map_veto_config ORDER BY id"
+    configs = (
+        conn.execute(
+            sa.text(
+                "SELECT id, created_at, updated_at, tournament_id, stage_id, round, mode, first_pick_rule, "
+                "first_ban_rotation, turn_timer_seconds, preset, veto_sequence_json "
+                "FROM tournament.map_veto_config ORDER BY id"
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     for cfg in configs:
         existing_id = conn.execute(
@@ -171,20 +175,22 @@ def upgrade() -> None:
                 )
 
     # ── sessions (+ entries) ─────────────────────────────────────────────────
-    sessions = conn.execute(
-        sa.text(
-            "SELECT id, created_at, updated_at, encounter_id, config_id, first_side, seed_source, "
-            "home_seed, away_seed, resolved_sequence_json, slot_reserves_json, turn_timer_seconds, "
-            "status, started_at, current_step_started_at "
-            "FROM tournament.encounter_veto_session ORDER BY id"
+    sessions = (
+        conn.execute(
+            sa.text(
+                "SELECT id, created_at, updated_at, encounter_id, config_id, first_side, seed_source, "
+                "home_seed, away_seed, resolved_sequence_json, slot_reserves_json, turn_timer_seconds, "
+                "status, started_at, current_step_started_at "
+                "FROM tournament.encounter_veto_session ORDER BY id"
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     for sess in sessions:
         existing_id = conn.execute(
-            sa.text(
-                "SELECT id FROM tournament.pick_ban_session WHERE encounter_id = :eid AND kind = 'map'"
-            ),
+            sa.text("SELECT id FROM tournament.pick_ban_session WHERE encounter_id = :eid AND kind = 'map'"),
             {"eid": sess["encounter_id"]},
         ).scalar()
         if existing_id is not None:
@@ -224,7 +230,7 @@ def upgrade() -> None:
         pool_rows = conn.execute(
             sa.text(
                 'SELECT map_id, "order", action_index, slot, picked_by, status, team_id '
-                "FROM tournament.encounter_map_pool WHERE encounter_id = :eid ORDER BY \"order\""
+                'FROM tournament.encounter_map_pool WHERE encounter_id = :eid ORDER BY "order"'
             ),
             {"eid": sess["encounter_id"]},
         ).all()
@@ -234,7 +240,7 @@ def upgrade() -> None:
                     "INSERT INTO tournament.pick_ban_entry "
                     '(created_at, updated_at, session_id, item_id, "order", action_index, round, '
                     "picked_by, status, team_id) "
-                    'VALUES (now(), now(), :sid, :item_id, :order, :action_index, :round, :picked_by, '
+                    "VALUES (now(), now(), :sid, :item_id, :order, :action_index, :round, :picked_by, "
                     ":status, :team_id)"
                 ),
                 {

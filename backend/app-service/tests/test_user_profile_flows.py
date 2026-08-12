@@ -440,9 +440,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 "get_tournaments_with_stats",
                 AsyncMock(return_value=[(team, 4, 2, 0.75)]),
             ),
-            patch.object(
-                user_flows._repositories, "count_teams_by_tournament_bulk", AsyncMock(return_value={3: 8})
-            ),
+            patch.object(user_flows._repositories, "count_teams_by_tournament_bulk", AsyncMock(return_value={3: 8})),
             patch.object(user_flows._repositories, "get_roster_avg_mvp_bulk", AsyncMock(return_value={})),
             patch.object(user_flows._repositories, "get_roster_top_heroes_bulk", AsyncMock(return_value={})),
             patch.object(
@@ -451,9 +449,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=_boom),
             ),
         ):
-            tournaments = await user_flows.get_tournaments(
-                session, 42, workspace_id=5, grid=division_grid.DEFAULT_GRID
-            )
+            tournaments = await user_flows.get_tournaments(session, 42, workspace_id=5, grid=division_grid.DEFAULT_GRID)
 
         self.assertEqual(1, len(tournaments))
         self.assertEqual([], tournaments[0].encounters)

@@ -379,9 +379,7 @@ async def update_registration_profile(
                     detail="Registration must be approved before adding to balancer",
                 )
             registration.balancer_status = balancer_status_value
-            registration.exclude_reason = (
-                exclude_reason if balancer_status_value == EXCLUDED_BALANCER_STATUS else None
-            )
+            registration.exclude_reason = exclude_reason if balancer_status_value == EXCLUDED_BALANCER_STATUS else None
 
     override_changed = False
     if status_value is not None or balancer_status_value is not None:

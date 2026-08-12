@@ -121,9 +121,7 @@ class BalancerRegistrationStatus(db.TimeStampIntegerMixin):
     # completeness -- forces the "Need Fix" lane and the frontend's
     # exclude-from-run gate. Same non-editable-for-builtins rule as
     # excludes_from_balancer.
-    excludes_from_ready: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default="false", default=False
-    )
+    excludes_from_ready: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
 
     workspace: Mapped[Workspace] = relationship()
 

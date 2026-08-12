@@ -71,6 +71,7 @@ def pop_registered_map_veto_realtime_updates(session: Any) -> list[tuple[int, st
     updates: set[tuple[int, str]] = info.pop(_SESSION_KEY, set())
     return sorted(updates)
 
+
 def _build_realtime_event(encounter_id: int, kind: str) -> WorkspaceEvent:
     topic = realtime_topics.map_veto(encounter_id) if kind == "map" else realtime_topics.pick_ban_hero(encounter_id)
     return WorkspaceEvent(

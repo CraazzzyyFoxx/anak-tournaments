@@ -97,8 +97,7 @@ async def get_planned_rounds(session: AsyncSession, stage_id: int) -> list[int]:
         stage.stage_type,
         len(team_ids),
         split_lower_bracket=(
-            stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
-            and getattr(stage, "split_lower_bracket", False)
+            stage.stage_type == enums.StageType.DOUBLE_ELIMINATION and getattr(stage, "split_lower_bracket", False)
         ),
     )
 
@@ -257,7 +256,6 @@ async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     await session.commit()
 
 
-
 def _pick_ban_config_signature(
     config: PickBanConfig,
 ) -> tuple[tuple, tuple, enums.MapVetoMode, enums.FirstBanRotation | None, tuple]:
@@ -330,8 +328,7 @@ async def _merge_pick_ban_configs(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Source stages have different {kind.value} pick-ban configs; "
-                "keep one target config before merging"
+                f"Source stages have different {kind.value} pick-ban configs; keep one target config before merging"
             ),
         )
 

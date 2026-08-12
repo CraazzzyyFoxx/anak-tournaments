@@ -151,9 +151,7 @@ class PredicatePartitioning(TestCase):
                 unlinked_only=True,
             ),
         )
-        self.assertEqual(
-            5, len(builder.scope_predicates()), "workspace + source + tournament + encounter + map"
-        )
+        self.assertEqual(5, len(builder.scope_predicates()), "workspace + source + tournament + encounter + map")
         self.assertEqual(2, len(builder.provenance_predicates()))
 
     def test_no_filters_means_no_provenance_predicates(self):

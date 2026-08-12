@@ -1307,9 +1307,7 @@ async def get_tournament_encounters(
         played on more than one — e.g. a mid-tournament substitution).
     """
     user = await get(session, id, [])
-    rows = await _repositories.get_user_encounter_matches_unpaginated(
-        session, user.id, tournament_id=tournament_id
-    )
+    rows = await _repositories.get_user_encounter_matches_unpaginated(session, user.id, tournament_id=tournament_id)
 
     encounters_cache: dict[int, models.Encounter] = {}
     matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}

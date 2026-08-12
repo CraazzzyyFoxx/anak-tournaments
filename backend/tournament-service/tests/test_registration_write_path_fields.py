@@ -51,6 +51,7 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from src import models  # noqa: E402
 from src.schemas.admin import balancer as admin_schemas  # noqa: E402
 from src.schemas.registration import RegistrationCreate, RegistrationUpdate  # noqa: E402
@@ -323,7 +324,6 @@ class TestAdminProfileUpdateCustomFields(IsolatedAsyncioTestCase):
         assert missing == set(), f"update request fields no writer accepts: {sorted(missing)}"
 
 
-
 class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
     """``ready``/``incomplete`` are derived from role ranks. The admin edit
     form always round-trips the registration's current ``balancer_status``,
@@ -352,12 +352,8 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
             await reg_lifecycle.update_registration_profile(_RecordingSession(), registration.id, **payload)
 
     async def test_resaving_a_ready_registration_recomputes_instead_of_rejecting(self) -> None:
-        registration = models.BalancerRegistration(
-            id=1, tournament_id=7, status="approved", balancer_status="ready"
-        )
-        registration.roles = [
-            models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=2500)
-        ]
+        registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", balancer_status="ready")
+        registration.roles = [models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=2500)]
 
         # Must not raise -- the old behaviour 400ed on this exact resend.
         await self._update(registration, balancer_status_value="ready")
@@ -378,5 +374,9 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
         """The dedicated pin action (`set_balancer_status`) must keep rejecting
         an explicit ready/incomplete request outright -- only the profile
         resave path gained tolerance."""
-        with self.assertRaises(Exception):
+        # The concrete type, not a blind `Exception`: a bare AttributeError from a
+        # renamed helper would satisfy that and read as the guard still working.
+        with self.assertRaises(HTTPException) as caught:
             reg_lifecycle._reject_auto_managed_status("ready")
+
+        assert caught.exception.status_code == 400

@@ -60,7 +60,7 @@ def _session(*execute_results: object) -> SimpleNamespace:
 
 class BulkSetBalancerStatusTests(IsolatedAsyncioTestCase):
     async def test_excluded_only_touches_the_rows_the_query_returns(self) -> None:
-        """"excluded" (like every non-not_in_balancer target) filters to
+        """ "excluded" (like every non-not_in_balancer target) filters to
         approved rows at the SQL level -- this fake session can't express
         that filter, so it only hands back the row that would actually match."""
         approved = _registration(1, status="approved", ranked=True)

@@ -50,14 +50,10 @@ async def _pending_play(
         return 0, None
     result = await session.execute(select(PickBanEntry).where(PickBanEntry.session_id == map_pick_ban.id))
     settled = engine.settled_in_order(list(result.scalars().all()))
-    plays = [
-        (index, entry) for index, entry in enumerate(settled, start=1) if entry.item_id == map_id
-    ]
+    plays = [(index, entry) for index, entry in enumerate(settled, start=1) if entry.item_id == map_id]
     if not plays:
         return 0, None
-    awaiting = [
-        (index, entry) for index, entry in plays if entry.status != MapPoolEntryStatus.PLAYED.value
-    ]
+    awaiting = [(index, entry) for index, entry in plays if entry.status != MapPoolEntryStatus.PLAYED.value]
     return awaiting[0] if awaiting else plays[-1]
 
 
@@ -87,9 +83,7 @@ async def submit_map_report(
     )
     row = existing.scalar_one_or_none()
     if row is None:
-        row = EncounterMapReport(
-            encounter_id=encounter.id, map_id=map_id, map_index=map_index, team_id=team_id
-        )
+        row = EncounterMapReport(encounter_id=encounter.id, map_id=map_id, map_index=map_index, team_id=team_id)
         session.add(row)
     row.reporter_user_id = reporter_user_id
     row.home_score = home_score
@@ -104,9 +98,7 @@ async def submit_map_report(
     register_map_veto_realtime_update(session, encounter.id, kind=PickBanKind.HERO.value)
     await session.flush()
 
-    other_team_id = (
-        encounter.away_team_id if team_id == encounter.home_team_id else encounter.home_team_id
-    )
+    other_team_id = encounter.away_team_id if team_id == encounter.home_team_id else encounter.home_team_id
     other_result = await session.execute(
         select(EncounterMapReport).where(
             EncounterMapReport.encounter_id == encounter.id,
@@ -118,12 +110,12 @@ async def submit_map_report(
     other_row = other_result.scalar_one_or_none()
 
     pair = engine.MapReportPair(
-        home_report=(row.home_score, row.away_score) if team_id == encounter.home_team_id else (
-            (other_row.home_score, other_row.away_score) if other_row else None
-        ),
-        away_report=(row.home_score, row.away_score) if team_id == encounter.away_team_id else (
-            (other_row.home_score, other_row.away_score) if other_row else None
-        ),
+        home_report=(row.home_score, row.away_score)
+        if team_id == encounter.home_team_id
+        else ((other_row.home_score, other_row.away_score) if other_row else None),
+        away_report=(row.home_score, row.away_score)
+        if team_id == encounter.away_team_id
+        else ((other_row.home_score, other_row.away_score) if other_row else None),
     )
     reconciliation = engine.reconcile_map_reports(pair)
 

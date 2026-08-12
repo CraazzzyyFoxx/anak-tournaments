@@ -207,15 +207,20 @@ class _Store:
                 self.rows[model] = [row for row in self.rows[model] if not _matches(row, statement.whereclause)]
             return _Result([])
         entity = self._entity(statement)
-        if entity is not None and entity not in self.rows and entity not in (
-            PickBanSession,
-            PickBanEntry,
-            PickBanConfig,
-            EncounterReadiness,
-            EncounterPickBanLedger,
-            EncounterMapReport,
-            Match,
-            Encounter,
+        if (
+            entity is not None
+            and entity not in self.rows
+            and entity
+            not in (
+                PickBanSession,
+                PickBanEntry,
+                PickBanConfig,
+                EncounterReadiness,
+                EncounterPickBanLedger,
+                EncounterMapReport,
+                Match,
+                Encounter,
+            )
         ):
             # Seed resolution's bracket/standings lookups: nothing stored, which
             # is the "no seeds, home acts first" path.
@@ -261,8 +266,7 @@ def _map_config() -> PickBanConfig:
     )
     config.items = []
     config.slots = [
-        PickBanConfigSlot(position=position, reserve_item_id=None)
-        for position, _ in enumerate(MAP_SLOTS, start=1)
+        PickBanConfigSlot(position=position, reserve_item_id=None) for position, _ in enumerate(MAP_SLOTS, start=1)
     ]
     for slot, item_ids in zip(config.slots, MAP_SLOTS, strict=True):
         slot.items = [PickBanConfigSlotItem(item_id=item_id) for item_id in item_ids]
@@ -287,9 +291,7 @@ def _hero_config() -> PickBanConfig:
         allow_protect=False,
     )
     config.slots = []
-    config.items = [
-        PickBanConfigItem(item_id=item_id, sort_order=index) for index, item_id in enumerate(HEROES)
-    ]
+    config.items = [PickBanConfigItem(item_id=item_id, sort_order=index) for index, item_id in enumerate(HEROES)]
     return config
 
 
@@ -344,7 +346,9 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
         """Both sides ban this round's first two candidates; the decider takes
         the survivor. Returns the map the round settled on."""
         state = await self.map_state()
-        available = [entry["item_id"] for entry in state["pool"] if entry["status"] == MapPoolEntryStatus.AVAILABLE.value]
+        available = [
+            entry["item_id"] for entry in state["pool"] if entry["status"] == MapPoolEntryStatus.AVAILABLE.value
+        ]
         self.assertEqual(3, len(available), "a map round offers its slot's three candidates")
         await self.act(PickBanKind.MAP, state["turn_side"], available[0])
         state = await self.map_state()
@@ -362,8 +366,7 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
             available = [
                 entry["item_id"]
                 for entry in state["pool"]
-                if entry["status"] == MapPoolEntryStatus.AVAILABLE.value
-                and entry["round"] == state["current_round"]
+                if entry["status"] == MapPoolEntryStatus.AVAILABLE.value and entry["round"] == state["current_round"]
             ]
             await self.act(PickBanKind.HERO, state["turn_side"], available[0])
             banned.append(available[0])
@@ -453,9 +456,7 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
         # ── the series is over ───────────────────────────────────────────
         state = await self.map_state()
         self.assertTrue(state["is_complete"])
-        self.assertEqual(
-            {1, 2, 3}, {entry["round"] for entry in state["pool"]}, "no fourth map round was ever opened"
-        )
+        self.assertEqual({1, 2, 3}, {entry["round"] for entry in state["pool"]}, "no fourth map round was ever opened")
         self.assertEqual(
             {MapPoolEntryStatus.PLAYED.value},
             {entry["status"] for entry in state["pool"] if entry["picked_by"] == MapPickSide.DECIDER.value},
@@ -466,9 +467,7 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
         # Each closed hero round keeps its four bans and drops the candidates
         # nobody touched, so the round in play is never mistaken for an old one.
         for round_number in (1, 2):
-            self.assertEqual(
-                4, len([entry for entry in hero["pool"] if entry["round"] == round_number])
-            )
+            self.assertEqual(4, len([entry for entry in hero["pool"] if entry["round"] == round_number]))
 
     async def test_a_disputed_result_holds_the_next_map_closed(self) -> None:
         map_one = await self.ban_out_the_map_round()
@@ -544,9 +543,7 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
         # round and stalling the series -- and overwrote the first play's score.
         # Slot 3's decider is slot 1's decider: `ban_out_the_map_round` bans the
         # first two candidates, so both rounds settle on 13.
-        self.map_config.slots[2].items = [
-            PickBanConfigSlotItem(item_id=item_id) for item_id in (31, 32, 13)
-        ]
+        self.map_config.slots[2].items = [PickBanConfigSlotItem(item_id=item_id) for item_id in (31, 32, 13)]
 
         first_play = await self.ban_out_the_map_round()
         await self.ban_out_the_hero_round()
