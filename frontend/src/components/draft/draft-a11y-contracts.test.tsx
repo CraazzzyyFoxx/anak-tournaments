@@ -23,6 +23,7 @@ const player = {
   is_flex: false,
   is_captain: false,
   rank_value: 3000,
+  effective_rank: 3000,
   division_number: 4,
   role_ranks: {},
   additional_info: {}

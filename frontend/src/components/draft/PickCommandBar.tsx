@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, ShieldCheck, WifiOff } from "lucide-react";
+import { Check, Loader2, ShieldCheck, Shuffle, WifiOff } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -25,7 +25,7 @@ import type { DivisionGrid } from "@/types/workspace.types";
 
 import { DraftClockRing } from "./DraftClockRing";
 import { resolveDraftAccent } from "@/lib/draft-visual";
-import { picksUntilTeamTurn } from "@/lib/draft-workspace-model";
+import { picksUntilTeamTurn, slotRankForPlayer } from "@/lib/draft-workspace-model";
 
 interface PickCommandBarProps {
   player: DraftPlayer | null;
@@ -60,8 +60,13 @@ export function PickCommandBar({
   const [reviewOpen, setReviewOpen] = useState(false);
   const isConnected = connectionState === "connected";
   const ready = canConfirm && !pending;
-  const selection = player && role ? `${player.battle_tag ?? `#${player.id}`} · ${t(`roles.${role}`)}` : t("noSelection");
-  const roleRank = player && role ? player.role_ranks[role] ?? player.rank_value ?? null : null;
+  // A role-less (all-flex) roster drops the requested role server-side, so the
+  // bar names the slot the pick actually fills — and its rank, which is the
+  // player's best, not the rank of a role nobody is assigned.
+  const shape = board.session.roster_shape;
+  const slotLabel = shape.has_role_slots && role ? t(`roles.${role}`) : t("roles.flex");
+  const selection = player && role ? `${player.battle_tag ?? `#${player.id}`} · ${slotLabel}` : t("noSelection");
+  const roleRank = player && role ? slotRankForPlayer(player, role, shape) : null;
   const roleDivision = roleRank != null ? resolveDivisionFromRank(divisionGrid, roleRank) : null;
   const accent = resolveDraftAccent(board);
   const current = board.current_pick;
@@ -121,7 +126,11 @@ export function PickCommandBar({
                 {player && role ? (
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate" title={player.battle_tag ?? undefined}>{player.battle_tag ?? `#${player.id}`}</span>
-                    <PlayerRoleIcon role={getRoleIconName(role)} size={18} color={ROLE_ACCENT[role]} />
+                    {shape.has_role_slots ? (
+                      <PlayerRoleIcon role={getRoleIconName(role)} size={18} color={ROLE_ACCENT[role]} />
+                    ) : (
+                      <Shuffle className="h-4 w-4 shrink-0 text-[color:var(--aqt-fg-muted)]" aria-hidden />
+                    )}
                   </span>
                 ) : (
                   <span className="line-clamp-2 text-[color:var(--aqt-fg-muted)]">{t("noSelection")}</span>

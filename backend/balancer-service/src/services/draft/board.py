@@ -22,7 +22,7 @@ from src.schemas.draft import (
     DraftSessionRead,
     DraftTeamRead,
 )
-from src.services.draft import feasibility, loaders
+from src.services.draft import feasibility, loaders, ranks
 
 # Where seeding parks the registration's custom-field ANSWERS (lifecycle.
 # _registration_additional_info). Private: the answers a spectator may read are
@@ -207,6 +207,10 @@ async def build_board(session: AsyncSession, draft_session: DraftSession) -> Dra
         if draft_session.current_pick_id
         else None
     )
+    # Per-player `effective_rank` is a function of the shape, so resolve it here
+    # too; both levels of the lookup are cached, so this costs nothing beyond the
+    # resolve `session_read` already does.
+    shape = await feasibility.resolve_shape(session, draft_session)
     snapshot = DraftBoardSnapshot(
         session=await session_read(session, draft_session),
         teams=[DraftTeamRead.model_validate(t) for t in teams],
@@ -216,6 +220,10 @@ async def build_board(session: AsyncSession, draft_session: DraftSession) -> Dra
                 update={
                     "additional_info": public_additional_info(p.additional_info),
                     "custom_fields": player_custom_fields(p.additional_info, custom_field_defs),
+                    # Shape-aware, so it cannot be an ORM property: a role-less
+                    # roster makes the player's best role rank the one that
+                    # represents them. See services.draft.ranks.slot_rank.
+                    "effective_rank": ranks.slot_rank(p, None, shape),
                 }
             )
             for p in players

@@ -119,7 +119,9 @@ async def _advance(session: AsyncSession, draft_session: DraftSession) -> DraftP
             if rule in ("team_avg_asc", "team_avg_desc"):
                 # Average the drafted-role rank (off-role aware), not the
                 # primary-role rank_value.
-                avg_by_team = await _team_avg_drafted_rank(session, draft_session.id)
+                avg_by_team = await _team_avg_drafted_rank(
+                    session, draft_session.id, await feasibility.resolve_shape(session, draft_session)
+                )
 
                 # Load all teams in this draft session
                 teams = (
@@ -229,11 +231,16 @@ def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftR
     return {role: max(0, targets.get(role.value, 0) - counts.get(role.value, 0)) + free_flex for role in DraftRole}
 
 
-async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int) -> dict[int, float]:
+async def _team_avg_drafted_rank(
+    session: AsyncSession, draft_session_id: int, shape: RosterShape
+) -> dict[int, float]:
     """Average drafted-role rank per team (picked players + captains).
 
-    Uses each pick's frozen ``target_rank_value``; falls back to the
-    role-specific rank for the drafted/primary role (captains have no pick).
+    Uses each pick's frozen ``target_rank_value``; falls back to the rank the
+    shape gives the drafted/primary role (captains have no pick). A role-less
+    shape ignores the frozen value: it was frozen against a role the shape gives
+    no meaning to, so ``slot_rank`` re-derives the same maximum every other
+    reader of a flex draft shows.
     """
     players = (
         await session.scalars(
@@ -260,11 +267,11 @@ async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int) -
     counts: dict[int, int] = {}
     for p in players:
         pk = pick_by_player_id.get(p.id)
-        if pk is not None and pk.target_rank_value is not None:
+        if shape.has_role_slots and pk is not None and pk.target_rank_value is not None:
             rank = pk.target_rank_value
         else:
             role = (pk.target_role if pk else None) or p.primary_role
-            rank = ranks.role_rank(p, role) or 0
+            rank = ranks.slot_rank(p, role, shape) or 0
         tid = p.drafted_by_team_id
         sums[tid] = sums.get(tid, 0.0) + rank
         counts[tid] = counts.get(tid, 0) + 1
@@ -443,7 +450,7 @@ async def select(
     # pick is a complete (player, role, rank) record regardless of off-role. A
     # role-less roster records no role: recorded_role is None there.
     pick.target_role = decision.recorded_role
-    pick.target_rank_value = ranks.role_rank(player, decision.role)
+    pick.target_rank_value = ranks.slot_rank(player, decision.role, shape)
     return await _apply_won(session, draft_session, pick, player)
 
 
@@ -515,7 +522,7 @@ async def autopick(
     player = next(p for p in available if p.id == chosen_id)
     resolved_role = chosen_role or DraftRole(player.primary_role)
     pick.target_role = resolved_role.value if shape.has_role_slots else None
-    pick.target_rank_value = ranks.role_rank(player, resolved_role)
+    pick.target_rank_value = ranks.slot_rank(player, resolved_role, shape)
     return await _apply_won(session, draft_session, pick, player)
 
 
@@ -565,5 +572,5 @@ async def override(
     if not won:
         raise _err("pick_already_resolved", "Pick was already resolved")
     pick.target_role = decision.recorded_role
-    pick.target_rank_value = ranks.role_rank(player, decision.role)
+    pick.target_rank_value = ranks.slot_rank(player, decision.role, shape)
     return await _apply_won(session, draft_session, pick, player)

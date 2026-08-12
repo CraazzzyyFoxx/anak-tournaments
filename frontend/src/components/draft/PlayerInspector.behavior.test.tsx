@@ -24,6 +24,7 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
     is_flex: false,
     division_number: null,
     rank_value: 3000,
+    effective_rank: 3000,
     status: "available",
     is_captain: false,
     drafted_by_team_id: null,

@@ -86,7 +86,7 @@ export function PlayerInspector({
     (option) => option.role !== selectedOption?.role
   );
   const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;
-  const headerDivision = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.rank_value);
+  const headerDivision = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.effective_rank);
   const notes =
     typeof player.additional_info.notes === "string" && player.additional_info.notes.trim() !== ""
       ? player.additional_info.notes

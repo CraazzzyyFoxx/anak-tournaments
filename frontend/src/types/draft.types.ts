@@ -68,6 +68,14 @@ export interface DraftPlayer {
   is_flex: boolean;
   division_number: number | null;
   rank_value: number | null;
+  /**
+   * Server-resolved: the ONE rank that represents this player in THIS draft.
+   * `rank_value` under a shape with role slots, their best role rank under a
+   * role-less (all-flex) one, where nobody is assigned a role. Render this,
+   * not `rank_value`, wherever a player is shown without a role — the flex
+   * rule lives once, in `services.draft.ranks.slot_rank`.
+   */
+  effective_rank: number | null;
   status: DraftPlayerStatus;
   is_captain: boolean;
   drafted_by_team_id: number | null;

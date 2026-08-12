@@ -9,7 +9,7 @@ import {
   roleTopHeroes,
   groupPicksByRound,
   rosterRoleForPlayer,
-  rosterRankForPlayer,
+  slotRankForPlayer,
   optionForSelection,
   playerRoles,
   parseDraftViewParams
@@ -60,7 +60,7 @@ describe("draft workspace model", () => {
 
 const mkPlayer = (p: Partial<DraftPlayer>): DraftPlayer => ({
   id: 1, session_id: 1, user_id: null, battle_tag: "Ana#1", primary_role: "support",
-  sub_role: null, is_flex: false, division_number: null, rank_value: 3000,
+  sub_role: null, is_flex: false, division_number: null, rank_value: 3000, effective_rank: 3000,
   status: "available", is_captain: false, drafted_by_team_id: null,
   secondary_roles_json: null, role_ranks: {}, role_top_heroes: {}, additional_info: {}, custom_fields: [],
   version: 1, ...p,
@@ -104,16 +104,32 @@ describe("groupPicksByRound", () => {
   });
 });
 
+const ROLE_SLOTS = { has_role_slots: true };
+const ALL_FLEX = { has_role_slots: false };
+
 describe("roster role/rank", () => {
   it("uses drafted target role over primary", () => {
     const player = mkPlayer({ id: 5, primary_role: "support", role_ranks: { dps: 3500, support: 3000 } });
     const picks = [{ id: 9, picked_player_id: 5, target_role: "dps" }] as DraftPick[];
     expect(rosterRoleForPlayer(player, picks)).toBe("dps");
-    expect(rosterRankForPlayer(player, "dps")).toBe(3500);
+    expect(slotRankForPlayer(player, "dps", ROLE_SLOTS)).toBe(3500);
   });
   it("falls back to primary role + rank_value", () => {
     const player = mkPlayer({ id: 6, primary_role: "tank", rank_value: 2800, role_ranks: {} });
     expect(rosterRoleForPlayer(player, [])).toBe("tank");
-    expect(rosterRankForPlayer(player, "tank")).toBe(2800);
+    expect(slotRankForPlayer(player, "tank", ROLE_SLOTS)).toBe(2800);
+  });
+  it("shows the server's effective rank under an all-flex shape", () => {
+    // No slot asks for a role, so the requested one may not lower the rank:
+    // the server already resolved the maximum into `effective_rank`.
+    const player = mkPlayer({
+      id: 7,
+      primary_role: "support",
+      rank_value: 3000,
+      role_ranks: { dps: 3500, support: 3000 },
+      effective_rank: 3500
+    });
+    expect(slotRankForPlayer(player, "support", ALL_FLEX)).toBe(3500);
+    expect(slotRankForPlayer(player, "support", ROLE_SLOTS)).toBe(3000);
   });
 });
