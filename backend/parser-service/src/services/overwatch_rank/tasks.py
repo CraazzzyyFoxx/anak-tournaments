@@ -2,13 +2,13 @@
 
 Topology: the scheduler (FastAPI process) publishes one ``FetchRankEvent`` per
 due battle tag; the worker (serve.py) consumes and performs the HTTP call. Redis
-provides per-tag enqueue/in-flight dedup, a soft global rate limiter and a 429
-cooldown so a fleet of workers can't overrun the self-hosted OverFast instance.
+provides per-tag enqueue/in-flight dedup, a global per-minute ceiling (over it, a
+tag is deferred past the window rather than fetched) and a 429 cooldown so a
+fleet of workers can't overrun the self-hosted OverFast instance.
 """
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -66,14 +66,26 @@ async def _set_once(redis: Any, key: str, ttl_seconds: int) -> bool:
     return bool(await redis.set(key, "1", nx=True, ex=ttl_seconds))
 
 
-async def _allow_request(redis: Any, limit: int) -> bool:
-    """Fixed-window per-minute limiter; returns False when the window is full."""
-    bucket = int(datetime.now(UTC).timestamp() // 60)
-    key = f"ow_rank:rl:{bucket}"
+async def _reserve_slot(redis: Any, limit: int) -> int:
+    """Fixed-window per-minute limiter.
+
+    Returns 0 when the caller may proceed, otherwise the seconds until the
+    current window resets. A non-positive ``limit`` disables the limiter
+    (pass-through), matching the convention used by the gateway's limiters.
+
+    The counter keeps incrementing on rejection: the window is already full, so
+    the extra INCRs cost one round-trip and cannot let a request slip through.
+    """
+    if limit <= 0:
+        return 0
+    now = datetime.now(UTC).timestamp()
+    key = f"ow_rank:rl:{int(now // 60)}"
     count = await redis.incr(key)
     if count == 1:
         await redis.expire(key, 70)
-    return count <= limit
+    if count <= limit:
+        return 0
+    return max(1, int(60 - (now % 60)))
 
 
 async def enqueue_fetch(
@@ -186,8 +198,28 @@ async def process_fetch_rank(
                 await session.commit()
                 return
 
-            if not await _allow_request(redis_client, cfg.rate_limit_per_minute):
-                await asyncio.sleep(min(2.0, 60.0 / max(cfg.rate_limit_per_minute, 1)))
+            # Over the per-minute ceiling: push the tag past the window and let
+            # the scheduler re-enqueue it. Previously this only slept for a
+            # fraction of a second and then issued the request anyway, so the
+            # ceiling bounded nothing — which mattered most on the priority
+            # queue (registration approvals bypass the scheduler's per-tick
+            # pacing, so this is their only rate control). Not written to
+            # fetch_log: self-throttling is not an upstream failure and the
+            # admin error rate counts `rate_limited` rows as errors.
+            retry_after = await _reserve_slot(redis_client, cfg.rate_limit_per_minute)
+            if retry_after:
+                await service.defer_tag(
+                    session,
+                    social_account_id=event.social_account_id,
+                    delay_seconds=retry_after,
+                )
+                await session.commit()
+                logger.info(
+                    "OverFast rank fetch deferred: over {}/min, retry in {}s",
+                    cfg.rate_limit_per_minute,
+                    retry_after,
+                )
+                return
 
             lookup, version = await mapping.get_rank_mapping(session)
 
