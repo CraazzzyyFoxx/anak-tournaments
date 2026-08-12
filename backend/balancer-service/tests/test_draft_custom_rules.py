@@ -18,7 +18,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from shared.core.enums import DraftFormat, DraftPlayerStatus, DraftRole
+from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftRole, DraftStatus
+from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import parse_roster_slots
 from shared.models.balancer.draft import DraftPick
 from shared.models.identity.user import User
@@ -278,3 +279,30 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             self.assertEqual(picks[3].draft_team_id, team_by_pos[2])
             self.assertEqual(picks[4].draft_team_id, team_by_pos[3])
             self.assertEqual(picks[5].draft_team_id, team_by_pos[1])
+
+            # The seats moved under the captains, so the draft locks instead of
+            # dropping the new leader onto a running clock.
+            self.assertEqual(draft.status, DraftStatus.PAUSED.value)
+            self.assertEqual(draft.blocked_reason, "order_recalculated")
+            self.assertEqual(draft.current_pick_id, picks[3].id)
+            self.assertEqual(picks[3].status, DraftPickStatus.ON_CLOCK.value)
+            self.assertIsNone(picks[3].clock_expires_at)
+
+            # Nobody — captain or admin — can pick through the lock.
+            with self.assertRaises(ApiHTTPException):
+                await selection.select(
+                    s,
+                    draft,
+                    picks[3],
+                    player_id=dps_players[1].id,
+                    expected_version=picks[3].version,
+                    target_role=None,
+                    actor_user_id=None,
+                    is_admin=True,
+                )
+
+            # Resuming arms a full timer for whoever the new order put on clock.
+            await lifecycle.resume(s, draft)
+            self.assertEqual(draft.status, DraftStatus.LIVE.value)
+            self.assertIsNone(draft.blocked_reason)
+            self.assertIsNotNone(picks[3].clock_expires_at)

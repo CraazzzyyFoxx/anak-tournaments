@@ -200,7 +200,8 @@ async def _publish_result(
     made_event: str,
     actor_user_id: int | None,
 ) -> None:
-    if result.blocked_reason:
+    if result.blocked_reason and result.next_pick is None:
+        # Nothing was picked (role shortage) — the block is the whole story.
         await draft_rt.publish_draft_event(
             session,
             redis,
@@ -230,6 +231,22 @@ async def _publish_result(
             draft_session=draft,
             event_type="draft.completed",
             payload={"session_id": draft.id, "status": draft.status},
+        )
+    elif result.blocked_reason and result.next_pick is not None:
+        # The pick landed, but the next round re-seated the teams and the draft
+        # is paused: no pick_started, it would flip clients back to live.
+        await draft_rt.publish_draft_event(
+            session,
+            redis,
+            draft_session=draft,
+            event_type="draft.blocked",
+            payload={
+                "session_id": draft.id,
+                "pick_id": result.next_pick.id,
+                "draft_team_id": result.next_pick.draft_team_id,
+                "reason": result.blocked_reason,
+            },
+            actor_user_id=actor_user_id,
         )
     elif result.next_pick is not None:
         await draft_rt.publish_draft_event(

@@ -69,7 +69,11 @@ export function CurrentPick({ board, isMyPick = false, myTeamId = null }: Curren
       </div>
       {(blocked || paused) && (
         <p className="mt-4 text-sm font-medium" style={{ color: accentColor }}>
-          {blocked ? t("roleShortagePaused") : t("organizerPaused")}
+          {!blocked
+            ? t("organizerPaused")
+            : board.session.blocked_reason === "order_recalculated"
+              ? t("orderRecalculatedPaused")
+              : t("roleShortagePaused")}
         </p>
       )}
     </section>

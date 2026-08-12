@@ -92,8 +92,67 @@ async def _finalize(
     return result.rowcount == 1
 
 
+_DYNAMIC_ROUND_RULES = ("team_avg_asc", "team_avg_desc")
+
+
+async def _apply_dynamic_round_order(
+    session: AsyncSession, draft_session: DraftSession, next_pick: DraftPick
+) -> bool:
+    """Re-seat a CUSTOM round whose rule ranks teams by their live average.
+
+    Runs on the first pick of a round only. Returns True when the seating
+    actually moved — the caller locks the draft on that, so nobody picks
+    against the order they were reading a second ago.
+    """
+    if next_pick.pick_in_round != 1 or draft_session.format != DraftFormat.CUSTOM.value:
+        return False
+    round_rules = draft_session.settings_json.get("round_rules") or []
+    round_idx = next_pick.round_no - 1
+    rule = round_rules[round_idx] if round_idx < len(round_rules) else None
+    if rule not in _DYNAMIC_ROUND_RULES:
+        return False
+
+    # Average the drafted-role rank (off-role aware), not the primary-role
+    # rank_value.
+    avg_by_team = await _team_avg_drafted_rank(
+        session, draft_session.id, await feasibility.resolve_shape(session, draft_session)
+    )
+    teams = (await session.scalars(sa.select(DraftTeam).where(DraftTeam.session_id == draft_session.id))).all()
+    sorted_team_ids = [
+        team.id
+        for team in sorted(
+            teams,
+            key=lambda t: (avg_by_team.get(t.id, 0.0), t.draft_position),
+            reverse=rule == "team_avg_desc",
+        )
+    ]
+    round_picks = (
+        await session.scalars(
+            sa.select(DraftPick)
+            .where(DraftPick.session_id == draft_session.id, DraftPick.round_no == next_pick.round_no)
+            .order_by(DraftPick.overall_no.asc())
+        )
+    ).all()
+
+    changed = False
+    for pick_to_update, team_id in zip(round_picks, sorted_team_ids, strict=False):
+        if pick_to_update.draft_team_id != team_id:
+            pick_to_update.draft_team_id = team_id
+            changed = True
+    await session.flush()
+    # round_picks returned the identity-mapped objects, so next_pick's
+    # draft_team_id reassignment above is already visible in memory.
+    return changed
+
+
 async def _advance(session: AsyncSession, draft_session: DraftSession) -> DraftPick | None:
-    """Move the next UPCOMING pick to ON_CLOCK, or complete the draft."""
+    """Move the next UPCOMING pick to ON_CLOCK, or complete the draft.
+
+    When the starting round re-seated the teams under the captains (a dynamic
+    ``team_avg_*`` rule), the pick goes on the clock unarmed and the session
+    pauses instead of running: the board changed order, so everyone has to
+    re-read it before anyone may act. An admin resume arms a full pick timer.
+    """
     next_pick = await session.scalar(
         sa.select(DraftPick)
         .where(
@@ -110,54 +169,22 @@ async def _advance(session: AsyncSession, draft_session: DraftSession) -> DraftP
         await session.flush()
         return None
 
-    # Handle custom round dynamic ordering when a new round starts (first pick of the round)
-    if next_pick.pick_in_round == 1 and draft_session.format == DraftFormat.CUSTOM.value:
-        round_rules = draft_session.settings_json.get("round_rules") or []
-        round_idx = next_pick.round_no - 1
-        if round_idx < len(round_rules):
-            rule = round_rules[round_idx]
-            if rule in ("team_avg_asc", "team_avg_desc"):
-                # Average the drafted-role rank (off-role aware), not the
-                # primary-role rank_value.
-                avg_by_team = await _team_avg_drafted_rank(
-                    session, draft_session.id, await feasibility.resolve_shape(session, draft_session)
-                )
+    reordered = await _apply_dynamic_round_order(session, draft_session, next_pick)
 
-                # Load all teams in this draft session
-                teams = (
-                    await session.scalars(sa.select(DraftTeam).where(DraftTeam.session_id == draft_session.id))
-                ).all()
-
-                reverse_sort = rule == "team_avg_desc"
-                sorted_teams = sorted(
-                    teams, key=lambda t: (avg_by_team.get(t.id, 0.0), t.draft_position), reverse=reverse_sort
-                )
-                sorted_team_ids = [t.id for t in sorted_teams]
-
-                # Get all picks in this round
-                round_picks = (
-                    await session.scalars(
-                        sa.select(DraftPick)
-                        .where(DraftPick.session_id == draft_session.id, DraftPick.round_no == next_pick.round_no)
-                        .order_by(DraftPick.overall_no.asc())
-                    )
-                ).all()
-
-                # Re-assign teams to the picks of this round
-                for index, pick_to_update in enumerate(round_picks):
-                    if index < len(sorted_team_ids):
-                        pick_to_update.draft_team_id = sorted_team_ids[index]
-
-                await session.flush()
-                # round_picks returned the identity-mapped objects, so next_pick's
-                # draft_team_id reassignment above is already visible in memory.
-
-    now = datetime.now(UTC)
     next_pick.status = DraftPickStatus.ON_CLOCK.value
-    next_pick.clock_started_at = now
-    next_pick.clock_expires_at = now + timedelta(seconds=draft_session.pick_time_seconds)
     next_pick.clock_remaining_ms = None
     draft_session.current_pick_id = next_pick.id
+    if reordered:
+        draft_session.status = DraftStatus.PAUSED.value
+        draft_session.blocked_reason = "order_recalculated"
+        # No deadline and no recorded remainder: lifecycle.resume() arms a full
+        # pick timer for whoever the new order put on the clock.
+        next_pick.clock_started_at = None
+        next_pick.clock_expires_at = None
+    else:
+        now = datetime.now(UTC)
+        next_pick.clock_started_at = now
+        next_pick.clock_expires_at = now + timedelta(seconds=draft_session.pick_time_seconds)
     await session.flush()
     return next_pick
 
@@ -174,7 +201,13 @@ async def _apply_won(
     next_pick = await _advance(session, draft_session)
     # No refresh needed: _finalize syncs the pick via synchronize_session and
     # draft_session was only mutated in Python (expire_on_commit=False).
-    return DraftResult(pick=pick, next_pick=next_pick, completed=next_pick is None)
+    return DraftResult(
+        pick=pick,
+        next_pick=next_pick,
+        completed=next_pick is None,
+        # Set by _advance when the next round re-seated the teams.
+        blocked_reason=draft_session.blocked_reason,
+    )
 
 
 def _team_slot_counts(

@@ -25,6 +25,8 @@ interface AdminControlRoomProps {
   board: DraftBoard;
 }
 
+const BLOCKED_REASONS = ["role_shortage", "order_recalculated"] as const;
+
 export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps) {
   const t = useTranslations("draftAdmin.controlRoom");
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
@@ -41,6 +43,9 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
     ["completed", "autopicked", "skipped"].includes(pick.status)
   ).length;
   const shouldResolve = session.blocked_reason === "role_shortage" || feasibility?.is_feasible === false;
+  // Only translate reasons the messages actually carry; anything else (a newer
+  // backend than this build) falls back to the raw code.
+  const blockedReason = BLOCKED_REASONS.find((reason) => reason === session.blocked_reason);
 
   return (
     <div className="space-y-5 text-[color:var(--aqt-fg)]">
@@ -92,9 +97,7 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
           <div className="flex-1">
             <p className="font-medium">{t("systemPause")}</p>
             <p className="mt-1 text-sm text-[color:var(--aqt-fg-muted)]">
-              {session.blocked_reason === "role_shortage"
-                ? t("blockedReason.role_shortage")
-                : session.blocked_reason}
+              {blockedReason ? t(`blockedReason.${blockedReason}`) : session.blocked_reason}
             </p>
           </div>
           {shouldResolve && (

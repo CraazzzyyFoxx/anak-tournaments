@@ -3769,7 +3769,8 @@
       "clock": "Clock",
       "systemPause": "System pause",
       "blockedReason": {
-        "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually."
+        "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually.",
+        "order_recalculated": "This round's pick order was recalculated from the live team averages. Review the new order on the board, then resume — captains cannot pick until you do."
       },
       "resolveRoles": "Resolve role shortage",
       "currentPick": "Current operation",
@@ -3931,6 +3932,7 @@
     "pickWaiting": "Waiting for {team}",
     "pickIdle": "Waiting for the next draft update.",
     "roleShortagePaused": "Draft paused: the remaining role requirements cannot be fulfilled. The organizer must resolve the player roles before play resumes.",
+    "orderRecalculatedPaused": "Draft paused: this round's pick order was just recalculated from the live team averages. Check the new order — the organizer resumes the clock.",
     "organizerPaused": "The organizer paused the draft. Your selection is preserved until current data is available again.",
     "focalPickPrompt": "Select a player below to pick",
     "yourTurnInPicks": "You pick in {n, plural, one {# pick} other {# picks}}",
