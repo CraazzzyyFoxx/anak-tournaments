@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -5,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import BigInteger, ColumnCollection, DateTime, Uuid, event, func
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -17,6 +19,7 @@ __all__ = [
     "TimeStampIntegerMixin",
     "TimeStampUUIDMixin",
     "DatabaseEngines",
+    "ResilientAsyncSession",
     "create_database",
 ]
 
@@ -87,6 +90,52 @@ class TimeStampUUIDMixin(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, sort_order=-998, onupdate=func.now()
     )
+
+
+# Substrings PostgreSQL drivers use when the socket is already gone. Matched on
+# the driver exception, because SQLAlchemy does not set ``connection_invalidated``
+# when the failure happens *during* teardown -- the point where it would tell us
+# nothing we can act on anyway.
+_GONE_CONNECTION_MARKERS = (
+    "connection is closed",
+    "connection was closed",
+    "connection already closed",
+    "connection is already closed",
+)
+
+
+def _connection_already_gone(exc: DBAPIError) -> bool:
+    if exc.connection_invalidated:
+        return True
+    message = str(exc.orig if exc.orig is not None else exc).lower()
+    return any(marker in message for marker in _GONE_CONNECTION_MARKERS)
+
+
+class ResilientAsyncSession(AsyncSession):
+    """``AsyncSession`` whose teardown cannot mask the error that killed it.
+
+    ``statement_timeout`` (and a pooler or server dropping a connection
+    mid-transaction) leaves the asyncpg connection closed. The session's own
+    exit path then emits a ``ROLLBACK`` on that dead socket and raises
+    ``InterfaceError: cannot call Transaction.rollback(): the underlying
+    connection is closed`` -- from ``__aexit__``, so it *replaces* the real
+    exception with a generic one and reports the caller's frame as the culprit.
+
+    Nothing is recoverable at that point: the transaction died with the
+    connection, so there is no work left to roll back. Discard the session
+    state instead and let the original failure (or success) stand.
+    """
+
+    async def close(self) -> None:
+        try:
+            await super().close()
+        except DBAPIError as exc:
+            if not _connection_already_gone(exc):
+                raise
+            # Drop identity map + the half-torn-down transaction without
+            # touching the socket again.
+            with contextlib.suppress(Exception):
+                await self.invalidate()
 
 
 @dataclass(frozen=True)
@@ -194,7 +243,7 @@ def create_database(
     if pgbouncer and statement_timeout > 0:
         _register_statement_timeout(async_engine, statement_timeout)
 
-    async_session = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    async_session = async_sessionmaker(async_engine, class_=ResilientAsyncSession, expire_on_commit=False)
 
     return DatabaseEngines(
         async_engine=async_engine,
