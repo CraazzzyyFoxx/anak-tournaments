@@ -106,7 +106,21 @@ export default defineConfig({
       // worse than none, since it reports green either way.
       "src/lib/best-of.test.ts",
       "src/lib/roster-shape.test.ts",
-      "src/lib/return-to.test.ts"
+      "src/lib/return-to.test.ts",
+      // Added when frontend CI landed: these nine imported `vitest` but matched
+      // no pattern above, so the suite reported green without ever running them
+      // (the allow-list trap this file warns about three times). `scripts/
+      // check-vitest-include.mjs` now fails CI on the next one, instead of it
+      // going unnoticed until someone reads this array.
+      "src/lib/draft-crest.test.ts",
+      "src/lib/draft-data.test.ts",
+      "src/lib/draft-logic.test.ts",
+      "src/lib/draft-visual.test.ts",
+      "src/lib/draft-workspace-model.test.ts",
+      "src/components/Header.mobile-layout.test.ts",
+      "src/components/WorkspaceBootstrap.helpers.test.ts",
+      "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
+      "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx"
     ]
   }
 });

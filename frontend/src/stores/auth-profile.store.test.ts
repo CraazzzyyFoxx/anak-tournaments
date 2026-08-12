@@ -48,12 +48,24 @@ const authenticatedState = {
 // than reaching into the mock's internals.
 let requested: string[] = [];
 
+// `globalThis.window` is a non-writable accessor under current Bun, so a plain
+// `g.window = {}` throws "Attempted to assign to readonly property" before a
+// single assertion runs. Redefining the property does what the assignment meant.
+// (This file only started failing once CI actually ran the bun:test half.)
+function stubWindow(value: unknown): void {
+  Object.defineProperty(globalThis, "window", {
+    value,
+    writable: true,
+    configurable: true,
+  });
+}
+
 beforeEach(() => {
   refreshStatus = 500;
   meStatus = 401;
   requested = [];
   resetRefreshStateForTests();
-  g.window = {};
+  stubWindow({});
   g.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     requested.push(url);
@@ -80,7 +92,7 @@ beforeEach(() => {
 
 afterEach(() => {
   g.fetch = originalFetch;
-  delete g.window;
+  stubWindow(undefined);
 });
 
 describe("auth-profile store fetchMe", () => {

@@ -5,8 +5,34 @@ on:
     types:
       - published
 
+# Nothing gated this before: publishing a release built and started the whole
+# stack straight from the tag, with no lint, no tests, and no proof the frontend
+# or the gateway even compiled. Each gate below CALLS the workflow a PR already
+# runs (workflow_call), so a release is held to exactly the same bar and there is
+# no second copy of those commands to drift.
+#
+# They run in parallel; `deploy` needs all four, so a single red gate leaves
+# production untouched.
 jobs:
+  gate-lint-backend:
+    uses: ./.github/workflows/lint-backend.yml
+
+  gate-test-backend:
+    uses: ./.github/workflows/test-backend.yml
+    secrets: inherit
+
+  gate-ci-frontend:
+    uses: ./.github/workflows/ci-frontend.yml
+
+  gate-ci-gateway:
+    uses: ./.github/workflows/ci-gateway.yml
+
   deploy:
+    needs:
+      - gate-lint-backend
+      - gate-test-backend
+      - gate-ci-frontend
+      - gate-ci-gateway
     runs-on:
       - self-hosted
       - production

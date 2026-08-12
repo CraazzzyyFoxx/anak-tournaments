@@ -114,6 +114,10 @@ describe("buildTournamentSectionNav", () => {
       ["teams", "common.teams"],
       ["participants", "common.participants"],
       ["matches", "common.matches"],
+      // `maps` joined TOURNAMENT_SECTION_ORDER after this expectation was
+      // written; the file was outside vitest's include list, so the stale
+      // assertion never failed.
+      ["maps", "common.maps"],
       ["heroes", "common.heroes"],
       ["standings", "common.standings"]
     ]);

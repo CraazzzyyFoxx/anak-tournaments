@@ -8,6 +8,10 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "test:vitest": "vitest run",
+    "test:bun": "bun test $(node scripts/test-runner-split.mjs --bun | tr '\\n' ' ')",
+    "test:split": "node scripts/test-runner-split.mjs",
     "lint": "eslint .",
     "format": "prettier --write './**/*.{js,jsx,ts,tsx,css,md,json}' --config ./.prettierrc"
   },

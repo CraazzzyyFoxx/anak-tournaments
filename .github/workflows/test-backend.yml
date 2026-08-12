@@ -8,6 +8,8 @@ on:
     types:
       - opened
       - synchronize
+  # See lint-backend.yml: the release deploy calls this rather than restating it.
+  workflow_call:
 
 jobs:
   test-backend:

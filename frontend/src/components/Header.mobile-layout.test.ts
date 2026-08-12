@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const headerSource = readFileSync(join(import.meta.dir, "Header.tsx"), "utf8");
+// `import.meta.dirname`, not Bun's `import.meta.dir`: this file imports `vitest`
+// and runs on Node, where the Bun-only property is undefined. It matched no
+// vitest `include` pattern until frontend CI landed, so the TypeError it threw
+// on the very first line had never actually run anywhere.
+const headerSource = readFileSync(join(import.meta.dirname, "Header.tsx"), "utf8");
 
 describe("Header mobile layout", () => {
   it("keeps the trailing controls inside the available header width", () => {

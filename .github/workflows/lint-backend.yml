@@ -8,6 +8,9 @@ on:
     types:
       - opened
       - synchronize
+  # Callable so the release deploy can gate on the very same gate a PR saw,
+  # instead of a second copy of these commands drifting inside that workflow.
+  workflow_call:
 
 jobs:
   lint-backend:
