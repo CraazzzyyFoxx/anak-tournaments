@@ -192,6 +192,7 @@ func run() error {
 	mux.HandleFunc("DELETE /api/auth/sessions/{id}", identityHandler.RevokeSession)
 	mux.HandleFunc("GET /api/auth/me", identityHandler.Me)
 	mux.HandleFunc("PATCH /api/auth/me", identityHandler.UpdateMe)
+	mux.HandleFunc("DELETE /api/auth/me", identityHandler.DeleteMe)
 	mux.HandleFunc("POST /api/auth/set-password", identityHandler.SetPassword)
 	mux.HandleFunc("POST /api/auth/service/token", identityHandler.ServiceToken)
 	mux.HandleFunc("POST /api/auth/service/validate", identityHandler.ValidateService)

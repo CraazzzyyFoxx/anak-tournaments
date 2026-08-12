@@ -3662,6 +3662,10 @@
       },
       "summary": "Create API key"
     },
+    "rpc.identity.delete_me": {
+      "description": "Permanently deletes the active user's own account (sessions, OAuth connections, API keys, role grants) and returns 204. Historical data is preserved: the linked player identity survives with its account link nulled, so tournaments, matches, statistics and registrations are untouched. 400 for a superuser account.",
+      "summary": "Delete current account"
+    },
     "rpc.identity.get_me": {
       "description": "Returns the profile of the bearer-authenticated user.",
       "response": {

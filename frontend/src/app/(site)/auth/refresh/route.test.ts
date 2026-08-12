@@ -23,7 +23,14 @@ mock.module("next/headers", () => ({
 
 let refreshOutcome: (() => Promise<{ access_token: string; refresh_token: string }>) | null = null;
 
+// `bun test` shares one module registry across the files in a run, so whichever
+// mock of this module registers first is the one every other auth-route test
+// sees. Re-export the link-error classes here too -- @/lib/oauth-callback
+// imports them, and a mock missing either name takes the sibling route tests
+// down with a SyntaxError at import time.
 mock.module("@/services/auth.service", () => ({
+  OAuthLinkAuthRequiredError: class extends Error {},
+  OAuthLinkFailedError: class extends Error {},
   authService: {
     refresh: async () => refreshOutcome!()
   }

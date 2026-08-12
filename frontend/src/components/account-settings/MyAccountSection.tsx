@@ -1,9 +1,21 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Eye, EyeOff, Loader2, Plus, Star, Unlink } from "lucide-react";
+import { useState } from "react";
+import { Check, Eye, EyeOff, Loader2, Plus, Star, Trash2, Unlink } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { SocialIcon } from "@/components/social/SocialIcon";
@@ -23,10 +35,12 @@ export default function MyAccountSection() {
   const t = useTranslations("accountSettings");
   const user = useAuthProfileStore((s) => s.user);
   const fetchMe = useAuthProfileStore((s) => s.fetchMe);
+  const clearAuth = useAuthProfileStore((s) => s.clear);
   const { canUseCapability } = usePermissions();
   const canAvatar = canUseCapability("account.avatar");
   const canSocial = canUseCapability("account.social");
   const queryClient = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const socialQuery = useQuery({
     queryKey: ["me", "social"],
@@ -76,6 +90,20 @@ export default function MyAccountSection() {
       void revalidateUser();
       void queryClient.invalidateQueries({ queryKey: ["me", "social"] });
     },
+  });
+  // Self-service account deletion. Historical data (tournaments, matches,
+  // statistics, registrations) is untouched — identity-svc only removes the
+  // account itself and unclaims the player (see auth_flows.delete_me). The
+  // session is dead the moment this returns, so go straight through
+  // /auth/logout to drop the cookies rather than leaving a stale profile in
+  // memory. Refusals (a superuser account) surface via the global toast.
+  const deleteAccount = useMutation({
+    mutationFn: () => meService.deleteAccount(),
+    onSuccess: () => {
+      clearAuth();
+      window.location.href = "/auth/logout";
+    },
+    onError: () => setConfirmDelete(false),
   });
 
   const linkHref = (provider: string) => {
@@ -214,6 +242,52 @@ export default function MyAccountSection() {
           </>
         )}
       </section>
+
+      {/* ── Danger zone ────────────────────────────────── */}
+      {!user?.isSuperuser && (
+        <section className="space-y-3">
+          <h4 className="text-sm font-medium text-destructive">{t("danger.title")}</h4>
+          <div className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+            <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("danger.deleteDesc")}</p>
+            <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">{t("danger.deleteKeeps")}</p>
+            <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                  {t("danger.delete")}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t("danger.confirmTitle")}</AlertDialogTitle>
+                  <AlertDialogDescription>{t("danger.confirmBody")}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleteAccount.isPending}>
+                    {t("danger.confirmCancel")}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled={deleteAccount.isPending}
+                    onClick={(event) => {
+                      // Hold the dialog open while the request is in flight so
+                      // the pending state stays visible; onError closes it and
+                      // the global toast carries the reason.
+                      event.preventDefault();
+                      deleteAccount.mutate();
+                    }}
+                  >
+                    {deleteAccount.isPending && (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+                    )}
+                    {t("danger.confirmDelete")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { getSocialProviderConfig } from "@/lib/social-providers";
 import { notify } from "@/lib/notify";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 
@@ -16,7 +17,10 @@ const KNOWN_AUTH_ERRORS: Record<string, true> = {
   invalid_state: true,
   invalid_provider: true,
   exchange_failed: true,
-  invalid_origin: true
+  invalid_origin: true,
+  // Account linking (oauth-callback.ts's "link" branch, /auth/link/complete):
+  // this provider account already belongs to a different account here.
+  link_taken: true
 };
 
 const LoginModalTrigger = () => {
@@ -30,6 +34,7 @@ const LoginModalTrigger = () => {
   const nextParam = searchParams.get("next") ?? "/";
   const authError = searchParams.get("auth_error");
   const authErrorDescription = searchParams.get("auth_error_description");
+  const authErrorProvider = searchParams.get("auth_error_provider");
 
   useEffect(() => {
     if (loginParam === "1") {
@@ -43,9 +48,14 @@ const LoginModalTrigger = () => {
     }
 
     const key = KNOWN_AUTH_ERRORS[authError] ? authError : "generic";
+    // Only the apex link callback knows which provider was being linked; the
+    // custom-domain one sees an opaque ticket, hence the generic fallback.
+    const provider = authErrorProvider
+      ? getSocialProviderConfig(authErrorProvider).label
+      : t("linkProviderFallback");
     // Fixed id: StrictMode double-runs effects in dev — the second toast
     // replaces the first instead of stacking a duplicate.
-    notify.error(t(key as "generic"), {
+    notify.error(t(key as "generic", { provider }), {
       id: "auth-error",
       description: authErrorDescription ?? undefined
     });
@@ -54,9 +64,10 @@ const LoginModalTrigger = () => {
     const params = new URLSearchParams(searchParams);
     params.delete("auth_error");
     params.delete("auth_error_description");
+    params.delete("auth_error_provider");
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }, [authError, authErrorDescription, pathname, router, searchParams, t]);
+  }, [authError, authErrorDescription, authErrorProvider, pathname, router, searchParams, t]);
 
   return null;
 };

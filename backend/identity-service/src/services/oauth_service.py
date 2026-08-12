@@ -851,22 +851,59 @@ class OAuthService:
         session: AsyncSession,
         auth_user: models.AuthUser,
         oauth_info: schemas.OAuthUserInfo,
+        *,
+        claim_subject: bool = False,
     ) -> None:
         """Mark the player's social identity for this provider as OAuth-verified.
 
         Targets the player owning the handle (or, failing that, the auth user's
         linked player). No-op when the auth user has no linked player yet.
+
+        ``claim_subject=True`` is the explicit link flow
+        (``link_oauth_to_existing_user``), which has already rejected the only
+        case where another account can legitimately hold this provider subject:
+        a surviving ``OAuthConnection`` on a different auth user. Any pin of the
+        subject left on another player is therefore unprovable leftover -- a
+        deleted account, an admin unlink, a profile merge -- while the caller
+        just cryptographically proved ownership of it. So the leftover is
+        released (verified mark and pin cleared, handle row kept, exactly as
+        ``oauth_flows.unlink`` does) and the identity is attached to THIS auth
+        user's own player. Without that release the leftover captured the
+        verification instead: the link reported success while the linking user's
+        profile gained nothing, with no error anywhere to explain it.
         """
         provider = OAUTH_TO_SOCIAL.get(oauth_info.provider.value)
         if provider is None:
             return
 
-        player = await cls._find_player_by_provider_record(session, oauth_info)
-        if player is None:
-            result = await session.execute(select(models.User).where(models.User.auth_user_id == auth_user.id))
-            player = result.scalar_one_or_none()
+        if claim_subject:
+            player = await session.scalar(select(models.User).where(models.User.auth_user_id == auth_user.id))
             if player is None:
                 return
+            released = (
+                await session.execute(
+                    sa.update(SocialAccount)
+                    .where(
+                        SocialAccount.provider == provider,
+                        SocialAccount.provider_user_id == oauth_info.provider_user_id,
+                        SocialAccount.user_id != player.id,
+                    )
+                    .values(is_verified=False, provider_user_id=None)
+                )
+            ).rowcount
+            if released:
+                logger.info(
+                    "Released stale {} verification from another player on explicit link",
+                    provider,
+                    player_id=player.id,
+                    released=released,
+                )
+        else:
+            player = await cls._find_player_by_provider_record(session, oauth_info)
+            if player is None:
+                player = await session.scalar(select(models.User).where(models.User.auth_user_id == auth_user.id))
+                if player is None:
+                    return
 
         try:
             await social_identity.upsert_social_account(
@@ -878,9 +915,11 @@ class OAuthService:
                 is_verified=True,
             )
         except social_identity.SocialHandleConflict:
-            # This provider_user_id is already verified on a different player
-            # (e.g. a shared/reassigned OAuth account). Marking verification is
-            # best-effort here -- the login itself must not fail over it.
+            # LOGIN path: this provider_user_id is verified on a different player
+            # (a shared/reassigned OAuth account). Marking verification is
+            # best-effort here -- the login itself must not fail over it. Under
+            # ``claim_subject`` the release above already cleared every foreign
+            # pin, so this is unreachable defence rather than a real outcome.
             logger.warning(
                 "OAuth verify skipped: {} account already linked to another player",
                 provider,
@@ -1179,8 +1218,15 @@ class OAuthService:
         oauth_info: schemas.OAuthUserInfo,
         token_data: dict[str, Any],
     ) -> OAuthConnection:
-        """
-        Link OAuth provider to existing authenticated user
+        """Attach a proven provider identity to an already-authenticated account.
+
+        Idempotent for a re-link of the SAME provider account to the SAME
+        account (tokens are refreshed). Rejected with 409 only when a surviving
+        connection for this exact provider subject belongs to a DIFFERENT
+        account -- the detail spells out the way out, because there is no
+        self-service way to break someone else's link from here: sign in with
+        that provider (it lands on that other account), delete it in account
+        settings, then link again.
         """
         # Check if this OAuth account is already linked to another user
         result = await session.execute(
@@ -1207,11 +1253,14 @@ class OAuthService:
                 await session.commit()
                 await session.refresh(existing_conn)
                 return existing_conn
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"This {oauth_info.provider} account is already linked to another user",
-                )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"This {oauth_info.provider.value.title()} account ({cls._oauth_handle(oauth_info)}) is "
+                    "already linked to a different account here. Sign in with it to reach that account, "
+                    "delete the account in Account settings, then link it again."
+                ),
+            )
 
         # Create new OAuth connection
         oauth_conn = OAuthConnection(
@@ -1236,5 +1285,5 @@ class OAuthService:
 
         logger.success(f"{oauth_info.provider.value.title()} account linked to user {auth_user.username}")
 
-        await cls._attach_verified_social_account(session, auth_user, oauth_info)
+        await cls._attach_verified_social_account(session, auth_user, oauth_info, claim_subject=True)
         return oauth_conn

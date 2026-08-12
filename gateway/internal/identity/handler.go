@@ -30,6 +30,7 @@ const (
 	queueRevokeSession = "rpc.identity.revoke_session"
 	queueGetMe         = "rpc.identity.get_me"
 	queueUpdateMe      = "rpc.identity.update_me"
+	queueDeleteMe      = "rpc.identity.delete_me"
 	queueSetPassword   = "rpc.identity.set_password"
 
 	queueServiceToken         = "rpc.identity.service_token"
@@ -224,6 +225,13 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 // Me mirrors GET /me -> 200 AuthUser.
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	h.authedNoBody(w, r, queueGetMe, http.StatusOK)
+}
+
+// DeleteMe mirrors DELETE /me -> 204: the user deletes their OWN account.
+// Historical data survives the deletion (see identity-svc auth_flows.delete_me);
+// only auth-owned rows cascade away.
+func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	h.authedNoBody(w, r, queueDeleteMe, http.StatusNoContent)
 }
 
 // RevokeSession mirrors DELETE /sessions/{id} -> 204.

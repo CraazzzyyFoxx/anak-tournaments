@@ -65,6 +65,10 @@ DOCS: dict[str, dict] = {
         "summary": "Update current user",
         "description": "Applies a partial profile update to the active user and returns the updated user.",
     },
+    "rpc.identity.delete_me": {
+        "summary": "Delete current account",
+        "description": "Permanently deletes the active user's own account (sessions, OAuth connections, API keys, role grants) and returns 204. Historical data is preserved: the linked player identity survives with its account link nulled, so tournaments, matches, statistics and registrations are untouched. 400 for a superuser account.",
+    },
     "rpc.identity.set_password": {
         "summary": "Set password",
         "description": "Sets or changes the active user's password; returns 204 No Content.",

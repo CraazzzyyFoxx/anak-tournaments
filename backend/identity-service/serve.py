@@ -295,6 +295,21 @@ async def rpc_update_me(data: dict, msg: RabbitMessage) -> dict:
     return await _with_active_user(data.get("access_token"), op)
 
 
+@broker.subscriber("rpc.identity.delete_me")
+async def rpc_delete_me(data: dict, msg: RabbitMessage) -> dict:
+    data = data or {}
+
+    async def op(session: Any, user: Any) -> None:
+        await auth_flows.delete_me(
+            session,
+            user,
+            ip_address=data.get("ip_address"),
+            user_agent=data.get("user_agent"),
+        )
+
+    return await _with_active_user(data.get("access_token"), op)
+
+
 @broker.subscriber("rpc.identity.set_password")
 async def rpc_set_password(data: dict, msg: RabbitMessage) -> dict:
     data = data or {}

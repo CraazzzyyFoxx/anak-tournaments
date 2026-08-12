@@ -1,0 +1,173 @@
+"""Self-service account deletion: what goes away, and what must NOT.
+
+``delete_me`` exists so a user locked out of a stale account can free the OAuth
+identities behind it (see ``oauth_service.link_oauth_to_existing_user``'s 409).
+That only works if two things hold, and both are what these tests pin down:
+
+- the account row is the ONLY thing deleted -- the player identity carrying the
+  tournament history is never handed to ``session.delete``; the DB nulls its
+  ``auth_user_id`` (``ondelete=SET NULL``) instead;
+- the player's verified social marks lose ``is_verified``/``provider_user_id``,
+  or the freed provider account stays pinned to the old player and captures the
+  next link instead of verifying the new account.
+"""
+
+import asyncio
+import os
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from shared.core.errors import BaseAPIException as HTTPException
+
+
+def _ensure_test_env() -> None:
+    env = {
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DB": "auth_test",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "postgres",
+        "JWT_SECRET_KEY": "test-secret",
+        "DISCORD_CLIENT_ID": "discord-client",
+        "DISCORD_CLIENT_SECRET": "discord-secret",
+        "TWITCH_CLIENT_ID": "twitch-client",
+        "TWITCH_CLIENT_SECRET": "twitch-secret",
+        "BATTLENET_CLIENT_ID": "battlenet-client",
+        "BATTLENET_CLIENT_SECRET": "battlenet-secret",
+        "OAUTH_REDIRECT": "http://localhost:3000/auth/callback",
+    }
+    for key, value in env.items():
+        os.environ.setdefault(key, value)
+
+
+_ensure_test_env()
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from src.services import auth_flows  # noqa: E402
+
+
+class _FakeSession:
+    def __init__(self, player_id: int | None):
+        self._player_id = player_id
+        self.executed: list = []
+        self.deleted: list = []
+        self.added: list = []
+        self.commit_called = False
+
+    async def scalar(self, _query):
+        return self._player_id
+
+    async def execute(self, query):
+        self.executed.append(query)
+        return SimpleNamespace(rowcount=1)
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def delete(self, value):
+        self.deleted.append(value)
+
+    async def commit(self):
+        self.commit_called = True
+
+
+def _user(*, is_superuser: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=9,
+        username="grace",
+        email="grace@example.com",
+        is_superuser=is_superuser,
+    )
+
+
+@pytest.fixture
+def patched(monkeypatch: pytest.MonkeyPatch) -> dict:
+    calls: dict = {"revoked": [], "invalidated": [], "audited": []}
+
+    async def fake_revoke(_session, user_id, commit=True):
+        calls["revoked"].append((user_id, commit))
+        return 1
+
+    async def fake_invalidate(user_id):
+        calls["invalidated"].append(user_id)
+
+    async def fake_audit(_session, **kwargs):
+        calls["audited"].append(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(auth_flows.AuthService, "revoke_all_user_tokens", staticmethod(fake_revoke))
+    monkeypatch.setattr(auth_flows, "invalidate_rbac", fake_invalidate)
+    monkeypatch.setattr(auth_flows, "record_audit", fake_audit)
+    return calls
+
+
+def test_deleting_an_account_never_deletes_the_player(patched: dict) -> None:
+    session = _FakeSession(player_id=42)
+    user = _user()
+
+    asyncio.run(auth_flows.delete_me(session, user))
+
+    assert session.deleted == [user]
+    assert session.commit_called is True
+    assert patched["invalidated"] == [9]
+
+
+def test_verified_marks_are_released_so_the_provider_can_be_linked_again(patched: dict) -> None:
+    session = _FakeSession(player_id=42)
+
+    asyncio.run(auth_flows.delete_me(session, _user()))
+
+    assert len(session.executed) == 1
+    release = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "UPDATE" in release.upper()
+    assert "is_verified" in release
+    assert "provider_user_id" in release
+
+
+def test_no_player_means_nothing_to_release(patched: dict) -> None:
+    """A legacy account with no player identity still deletes cleanly."""
+    session = _FakeSession(player_id=None)
+    user = _user()
+
+    asyncio.run(auth_flows.delete_me(session, user))
+
+    assert session.executed == []
+    assert session.deleted == [user]
+    assert session.commit_called is True
+
+
+def test_live_sessions_are_revoked_inside_the_deleting_transaction(patched: dict) -> None:
+    """``commit=False``: the revoke must not commit ahead of the delete, but it
+    still blacklists the session ids so already-issued access tokens die now
+    instead of outliving the account by an access-token TTL."""
+    asyncio.run(auth_flows.delete_me(_FakeSession(player_id=42), _user()))
+
+    assert patched["revoked"] == [(9, False)]
+
+
+def test_audit_row_is_written_before_the_delete(patched: dict) -> None:
+    asyncio.run(auth_flows.delete_me(_FakeSession(player_id=42), _user(), ip_address="10.0.0.1"))
+
+    assert len(patched["audited"]) == 1
+    entry = patched["audited"][0]
+    assert entry["action"] == "auth_user.delete_self"
+    assert entry["entity_id"] == 9
+    assert entry["before"]["player_id"] == 42
+    assert entry["ip_address"] == "10.0.0.1"
+
+
+def test_superuser_account_is_refused(patched: dict) -> None:
+    session = _FakeSession(player_id=42)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(auth_flows.delete_me(session, _user(is_superuser=True)))
+
+    assert exc_info.value.status_code == 400
+    assert session.deleted == []
+    assert session.executed == []
+    assert patched["revoked"] == []

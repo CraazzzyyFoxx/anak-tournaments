@@ -105,6 +105,36 @@ export class OAuthLinkAuthRequiredError extends Error {
   }
 }
 
+// The `?auth_error=` codes the OAuth routes redirect with for a refused link.
+// `link_taken` is the only one specific to linking (409: this exact provider
+// account already belongs to a different site account); the other two are the
+// codes the login flow already uses, reused so one localized message covers
+// both flows.
+export type OAuthLinkErrorCode = "link_taken" | "invalid_state" | "exchange_failed";
+
+// Thrown by linkOAuth / completeLink when identity-svc REFUSED the link (as
+// opposed to OAuthLinkAuthRequiredError above, which means "log in first, then
+// retry"). `code` is what the caller puts in `?auth_error=`, so the user gets
+// the actual reason instead of the generic "couldn't complete sign-in";
+// `message` is identity-svc's own detail, kept for server-side logs.
+export class OAuthLinkFailedError extends Error {
+  readonly code: OAuthLinkErrorCode;
+
+  constructor(code: OAuthLinkErrorCode, message: string) {
+    super(message);
+    this.name = "OAuthLinkFailedError";
+    this.code = code;
+  }
+}
+
+function linkErrorCode(status: number): OAuthLinkErrorCode {
+  if (status === 409) return "link_taken";
+  // 400: the signed state expired, was replayed, or its csrf binding failed;
+  // 422: a malformed/missing field. Both mean "start the flow again".
+  if (status === 400 || status === 422) return "invalid_state";
+  return "exchange_failed";
+}
+
 export const authService = {
   async getOAuthUrl(provider: OAuthProviderName, params: OAuthUrlParams): Promise<OAuthUrlResponse> {
     const res = await apiFetch(`/api/auth/oauth/${provider}/url`, {
@@ -183,12 +213,18 @@ export const authService = {
     if (!res.ok) {
       // 403 here is identity-svc's "Not authenticated" for the platform-host
       // branch (missing/invalid apex bearer) -- the same signal a missing
-      // accessToken produced client-side before Task 10R. Any other failure
-      // (bad state, provider error, ...) is generic.
+      // accessToken produced client-side before Task 10R.
       if (res.status === 403) {
         throw new OAuthLinkAuthRequiredError();
       }
-      throw new Error(`Failed to link ${provider} OAuth account`);
+      // Everything else is a refusal with a REASON worth showing (409: the
+      // provider account belongs to someone else's site account) -- keep
+      // identity-svc's detail instead of flattening it into "link failed".
+      const parsed = await parseApiError(res);
+      throw new OAuthLinkFailedError(
+        linkErrorCode(res.status),
+        parsed.message || `Failed to link ${provider} OAuth account`
+      );
     }
     return res.json();
   },
@@ -212,7 +248,13 @@ export const authService = {
       body: { ticket, guard },
       throwOnError: false
     });
-    if (!res.ok) throw new Error("Failed to complete OAuth account link");
+    if (!res.ok) {
+      const parsed = await parseApiError(res);
+      throw new OAuthLinkFailedError(
+        linkErrorCode(res.status),
+        parsed.message || "Failed to complete OAuth account link"
+      );
+    }
     return res.json();
   },
 

@@ -11,14 +11,22 @@ from __future__ import annotations
 from uuid import UUID
 
 import sqlalchemy as sa
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.identity.social import SocialAccount
+from shared.services.audit import record_audit
 from src import models, schemas
 from src.services.auth_service import AuthService
 from src.services.auth_token_helpers import _linked_players_payload, _load_user_denies
-from src.services.session_cache import get_refresh_idem, is_session_blacklisted, set_refresh_idem
+from src.services.session_cache import (
+    get_refresh_idem,
+    invalidate_rbac,
+    is_session_blacklisted,
+    set_refresh_idem,
+)
 from src.services.session_service import SessionService
 
 
@@ -298,3 +306,78 @@ async def set_password(session: AsyncSession, user: models.AuthUser, payload: sc
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
     user.hashed_password = AuthService.get_password_hash(payload.new_password)
     await session.commit()
+
+
+async def delete_me(
+    session: AsyncSession,
+    user: models.AuthUser,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Self-service account deletion. Historical data is never touched.
+
+    Only auth-owned rows go away, all via ``ondelete=CASCADE``: sessions and
+    refresh tokens, OAuth connections, role grants, permission denies, API keys,
+    preview-access grants, subscription records. Everything that carries history
+    references the account with ``ondelete=SET NULL`` instead -- the player
+    identity (``players.user.auth_user_id``), audit rows, and the
+    ``reviewed_by``/``checked_in_by``/``deleted_by`` stamps on registrations --
+    so tournaments, matches, statistics, registrations, achievements and
+    workspace membership all survive verbatim. The player simply becomes
+    unclaimed again, exactly as it was before this account existed, and can be
+    re-claimed by a future OAuth login or an admin link.
+
+    The player's OAuth-verified social identities lose their verified mark and
+    their ``provider_user_id`` pin, the same pair ``oauth_flows.unlink`` clears:
+    the connections that proved them are gone with the account, and a surviving
+    pin would keep capturing that provider identity (see
+    ``OAuthService._attach_verified_social_account``) instead of letting the
+    provider account be linked to a new one -- which is the whole reason a user
+    deletes an account they cannot sign into any other way. The handle rows
+    themselves stay, so the public profile keeps showing the same names.
+
+    Superusers are refused: self-deleting the account that administers the
+    platform is a footgun the admin surface already refuses in the other
+    direction (``rbac_flows.delete_auth_user`` rejects deleting yourself).
+    """
+    if user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Superuser accounts cannot be deleted here. Ask another administrator to remove it.",
+        )
+
+    user_id = user.id
+    email = user.email  # captured before the delete/commit expires the instance
+    username = user.username
+
+    player_id = await session.scalar(sa.select(models.User.id).where(models.User.auth_user_id == user_id))
+    if player_id is not None:
+        await session.execute(
+            sa.update(SocialAccount)
+            .where(SocialAccount.user_id == player_id, SocialAccount.is_verified.is_(True))
+            .values(is_verified=False, provider_user_id=None)
+        )
+
+    # Blacklists every live session id: the refresh tokens are about to be
+    # cascade-deleted, but the stateless access tokens already handed out stay
+    # decodable until they expire on their own.
+    await AuthService.revoke_all_user_tokens(session, user_id, commit=False)
+
+    await record_audit(
+        session,
+        action="auth_user.delete_self",
+        source="admin",
+        actor=user,
+        actor_label=username or email,
+        entity_type="auth_user",
+        entity_id=user_id,
+        entity_label=username or email,
+        before={"email": email, "username": username, "player_id": player_id},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    await session.delete(user)
+    await session.commit()
+    await invalidate_rbac(user_id)
+    logger.info(f"Account self-deleted: user_id={user_id} email={email} player_id={player_id}")
