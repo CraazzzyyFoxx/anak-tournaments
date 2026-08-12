@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { useId } from "react";
-import { ArrowUpRight, ChevronDown, Clock3, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Clock3 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -232,6 +231,61 @@ export function DraftConfigStep({
             </button>
           ))}
         </div>
+        {value.format === "custom" && (
+          <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
+            <div className="space-y-1">
+              <span id={roundRulesLabelId} className="text-sm font-medium leading-none">
+                {t("roundRules")}
+              </span>
+              <p className="text-xs text-muted-foreground">{t("roundRulesHint", { rounds })}</p>
+            </div>
+            {/* One labelled row per round, read top to bottom: a bare two-column
+                grid of selects never said which round each rule belonged to, nor
+                whether the flow was row- or column-major. */}
+            <div className="space-y-2" role="group" aria-labelledby={roundRulesLabelId}>
+              {Array.from({ length: rounds }, (_, index) => {
+                const round = index + 1;
+                const selectId = `draft-round-rule-${round}`;
+                return (
+                  <div key={round} className="flex items-center gap-3">
+                    <Label
+                      htmlFor={selectId}
+                      className="min-w-16 shrink-0 text-xs font-medium tabular-nums text-muted-foreground"
+                    >
+                      {t("roundNumber", { round })}
+                    </Label>
+                    <Select
+                      disabled={locked}
+                      value={value.roundRules[index] ?? "linear"}
+                      onValueChange={(rule) => {
+                        // Rebuild at the current round count so a shape change can
+                        // never leave a hole (serialized as null) in the payload.
+                        const roundRules = Array.from(
+                          { length: rounds },
+                          (_, i) => value.roundRules[i] ?? "linear"
+                        );
+                        roundRules[index] = rule;
+                        patch({ roundRules });
+                      }}
+                    >
+                      <SelectTrigger id={selectId} className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="linear">{t("rules.linear")}</SelectItem>
+                        <SelectItem value="reverse">{t("rules.reverse")}</SelectItem>
+                        <SelectItem value="weakest_first">{t("rules.weakest_first")}</SelectItem>
+                        <SelectItem value="strongest_first">{t("rules.strongest_first")}</SelectItem>
+                        <SelectItem value="team_avg_asc">{t("rules.team_avg_asc")}</SelectItem>
+                        <SelectItem value="team_avg_desc">{t("rules.team_avg_desc")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -273,49 +327,6 @@ export function DraftConfigStep({
               onCheckedChange={(allowAdminOverride) => patch({ allowAdminOverride })}
             />
           </div>
-          {value.format === "custom" && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" aria-hidden />
-                <span id={roundRulesLabelId} className="text-sm font-medium leading-none">
-                  {t("roundRules")}
-                </span>
-                <Badge variant="secondary" className="tabular-nums">
-                  {rounds}
-                </Badge>
-              </div>
-              <div
-                className="grid gap-2 sm:grid-cols-2"
-                role="group"
-                aria-labelledby={roundRulesLabelId}
-              >
-                {Array.from({ length: rounds }, (_, index) => (
-                  <Select
-                    key={index}
-                    disabled={locked}
-                    value={value.roundRules[index] ?? "linear"}
-                    onValueChange={(rule) => {
-                      const roundRules = [...value.roundRules];
-                      roundRules[index] = rule;
-                      patch({ roundRules });
-                    }}
-                  >
-                    <SelectTrigger aria-label={t("roundNumber", { round: index + 1 })}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="linear">{t("rules.linear")}</SelectItem>
-                      <SelectItem value="reverse">{t("rules.reverse")}</SelectItem>
-                      <SelectItem value="weakest_first">{t("rules.weakest_first")}</SelectItem>
-                      <SelectItem value="strongest_first">{t("rules.strongest_first")}</SelectItem>
-                      <SelectItem value="team_avg_asc">{t("rules.team_avg_asc")}</SelectItem>
-                      <SelectItem value="team_avg_desc">{t("rules.team_avg_desc")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </details>
     </div>

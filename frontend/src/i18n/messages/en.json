@@ -3582,6 +3582,7 @@
     "allowOverrideHint": "Admins can correct a pick when an exceptional situation occurs. Every correction is audited.",
     "roundRules": "Rules by round",
     "roundNumber": "Round {round}",
+    "roundRulesHint": "Each round follows its own rule, in order from round 1 to round {rounds}.",
     "rules": {
       "linear": "Linear (1 → N)",
       "reverse": "Reverse (N → 1)",
