@@ -4,10 +4,22 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# Importing `main` instantiates the service `Settings`, which requires the whole
+# Postgres/Redis/Rabbit block on top of the Discord credentials. Without these the
+# file only passed on a machine with a populated backend/.env — in CI it raised
+# five missing-field ValidationErrors before a single test ran. Nothing here
+# connects; the values just have to exist.
 os.environ.setdefault("DISCORD_TOKEN", "dummy_token")
 os.environ.setdefault("PARSER_URL", "http://parser:8002")
 os.environ.setdefault("SERVICE_CLIENT_ID", "dummy_id")
 os.environ.setdefault("SERVICE_CLIENT_SECRET", "dummy_secret")
+os.environ.setdefault("POSTGRES_USER", "postgres")
+os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
+os.environ.setdefault("POSTGRES_DB", "postgres")
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_PORT", "5432")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

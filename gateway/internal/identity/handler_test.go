@@ -582,9 +582,11 @@ func TestAuthedHelpers_LeftmostForwardedHopNeverWins(t *testing.T) {
 			invoke: (*Handler).PlayerSetPrimary,
 		},
 		{
-			name:   "authedAllQuery",
-			resp:   []byte(`{"ok":true,"data":{"results":[],"total":0,"page":1,"per_page":25}}`),
-			newReq: func() *http.Request { return httptest.NewRequest(http.MethodGet, "/api/auth/rbac/sessions?page=1", nil) },
+			name: "authedAllQuery",
+			resp: []byte(`{"ok":true,"data":{"results":[],"total":0,"page":1,"per_page":25}}`),
+			newReq: func() *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/api/auth/rbac/sessions?page=1", nil)
+			},
 			invoke: (*Handler).RbacListSessions,
 		},
 		{

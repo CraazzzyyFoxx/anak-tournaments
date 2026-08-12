@@ -79,12 +79,12 @@ type Registry struct {
 // spectating topics are public UNLESS the tournament is hidden (issue #115).
 func New(resolver WorkspaceResolver, members MembershipChecker, vis VisibilityChecker) *Registry {
 	r := &Registry{resolver: resolver, members: members, vis: vis}
-	r.register("tournament:*:bracket", r.allowSpectateTournament) // public unless hidden
-	r.register("tournament:*:draft", r.allowSpectateTournament)   // public unless hidden
-	r.register("encounter:*:map-veto", r.allowSpectateEncounter)  // public unless hidden
+	r.register("tournament:*:bracket", r.allowSpectateTournament)     // public unless hidden
+	r.register("tournament:*:draft", r.allowSpectateTournament)       // public unless hidden
+	r.register("encounter:*:map-veto", r.allowSpectateEncounter)      // public unless hidden
 	r.register("encounter:*:pick-ban:hero", r.allowSpectateEncounter) // public unless hidden
-	r.register("tournament:*:balancer", r.allowBalancer)          // admin tool: workspace member
-	r.register("workspace:*:*", r.allowWorkspaceMember)           // workspace member
+	r.register("tournament:*:balancer", r.allowBalancer)              // admin tool: workspace member
+	r.register("workspace:*:*", r.allowWorkspaceMember)               // workspace member
 	return r
 }
 

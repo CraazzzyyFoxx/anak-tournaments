@@ -577,7 +577,7 @@ func (h *Handler) broadcastPresence(topic string) {
 		OccurredAt:    time.Now().UTC(),
 		ActorUserID:   nil,
 		Data: map[string]any{
-			"user_ids":              ids,
+			"user_ids":               ids,
 			"anonymous_viewer_count": anonymousViewerCount,
 		},
 	}
