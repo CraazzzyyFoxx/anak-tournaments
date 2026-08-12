@@ -17,6 +17,7 @@ import { clampDivisionToGrid, getDivisionLabel, getDivisionOptions } from "@/lib
 import { cn } from "@/lib/utils";
 import userService from "@/services/user.service";
 import { getPlayerSlug } from "@/utils/player";
+import { roleImageSrc } from "@/lib/player-role";
 import {
   UserCatalogEntry,
   UserOverviewHero,
@@ -65,11 +66,17 @@ const SORT_OPTIONS: Array<{ value: SortValue; labelKey: SortLabelKey }> = [
   { value: "avg_placement", labelKey: "users.list.sort.avgPlacement" }
 ];
 
+// The `Flex` chip filters on `role=Flex` — players whose declared roster role is
+// literally flex. The read-only `stats.flex_count` chip rendered right next to it
+// counts a strictly wider population ("plays anything": multi-role OR explicit
+// flex), so the two numbers are meant to disagree. Do not "fix" one to match the
+// other.
 const ROLE_FILTERS: Array<{ value: "all" | UserRoleType; labelKey: "common.all" | (typeof ROLE_LABEL_KEY)[UserRoleType] }> = [
   { value: "all", labelKey: "common.all" },
   { value: "Tank", labelKey: "common.roles.tank" },
   { value: "Damage", labelKey: "common.roles.dps" },
-  { value: "Support", labelKey: "common.roles.support" }
+  { value: "Support", labelKey: "common.roles.support" },
+  { value: "Flex", labelKey: "common.roles.flex" }
 ];
 
 const ALPHABET = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")];
@@ -163,7 +170,7 @@ const DivisionHex = ({ role, division, title, size = 36 }: DivisionHexProps) => 
       <DivisionIcon division={division} width={size} height={size} className="h-full w-full" />
       <div className={styles.divisionRoleDot}>
         <Image
-          src={`/roles/${role}.png`}
+          src={roleImageSrc(role)}
           alt={t("users.list.a11y.roleAlt", { role: t(ROLE_LABEL_KEY[role]) })}
           width={12}
           height={12}

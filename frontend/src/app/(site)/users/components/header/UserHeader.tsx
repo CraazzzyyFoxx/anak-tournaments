@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, BadgeCheck } from "lucide-react";
 import { User, UserProfile } from "@/types/user.types";
 import { hasVerifiedSocial } from "@/lib/social-providers";
+import { playerRoleTint } from "@/lib/player-role";
 import { SocialAccountList } from "@/components/social/SocialAccountList";
 import { getPlayerImage } from "@/utils/player";
 import DivisionIcon from "@/components/DivisionIcon";
@@ -74,12 +75,13 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
     lastTournament && lastTournament.maps > 0 ? (lastTournament.maps_won / lastTournament.maps) * 100 : null;
   const winrateDelta = lastWinrate !== null && winrate !== null ? lastWinrate - winrate : null;
 
-  const roleTint: "tank" | "damage" | "support" =
-    primaryRole?.role === "Tank" ? "tank" : primaryRole?.role === "Support" ? "support" : "damage";
-  const roleSwatchColor = `var(--aqt-${roleTint})`;
+  // `playerRoleTint` is null only when there is no role at all, so a Flex
+  // primary role tints flex instead of falling through to damage.
+  const roleTint = playerRoleTint(primaryRole?.role);
+  const roleSwatchColor = `var(--aqt-${roleTint ?? "damage"})`;
 
   return (
-    <HeroFrame className="aqt-player" variant="profile" roleTint={primaryRole ? roleTint : undefined}>
+    <HeroFrame className="aqt-player" variant="profile" roleTint={roleTint ?? undefined}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pt-4 md:px-9 md:pt-5">
         <p className="aqt-mono m-0 text-[12px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]">
           <span aria-hidden className="mr-1.5 text-[color:var(--aqt-fg-dim)]">{"//"}</span>
@@ -92,7 +94,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
             name,
             tag: tag ?? null,
             role: primaryRole?.role ?? null,
-            roleTint: primaryRole ? roleTint : null,
+            roleTint,
             division: primaryRole?.division ?? null,
             winrate,
             avgPlacement: profile.avg_placement,

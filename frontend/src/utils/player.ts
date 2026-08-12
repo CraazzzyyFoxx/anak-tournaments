@@ -72,7 +72,10 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P
     if (role === "Tank") return 1;
     if (role === "Damage") return 2;
     if (role === "Support") return 3;
-    return 4;
+    // Flex is a real role and ranks right after Support; unknown/null is corrupt
+    // or missing data and sorts last, so the two are no longer interchangeable.
+    if (role === "Flex") return 4;
+    return 5;
   };
 
   const playerById = new Map(players.map((p) => [p.id, p]));

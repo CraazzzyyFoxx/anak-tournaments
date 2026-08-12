@@ -1923,7 +1923,12 @@ async def get_overview_stats(
 
     tank_count = damage_count = support_count = flex_count = 0
     for roles_set in user_roles.values():
-        if len(roles_set) > 1:
+        # "Flex" here means "plays anything", which a player reaches two ways:
+        # by having been rostered on more than one role, or by carrying the
+        # explicit HeroClass.flex a role-less roster assigns. Before flex
+        # existed only the first was possible; an explicitly flex player has a
+        # one-element role set and would otherwise land in no bucket at all.
+        if len(roles_set) > 1 or enums.HeroClass.flex in roles_set:
             flex_count += 1
         if enums.HeroClass.tank in roles_set:
             tank_count += 1

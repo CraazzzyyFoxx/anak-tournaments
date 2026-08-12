@@ -46,6 +46,7 @@ import {
   PLAYER_ROLE_OPTIONS,
   filterSubRoleOptions,
   normalizePlayerRole,
+  subRoleCatalogRole,
   type PlayerRoleOption
 } from "@/lib/player-role";
 import { hasUnsavedChanges } from "@/lib/form-change";
@@ -55,6 +56,9 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import { getPlayerRowDivisionGrid } from "@/app/admin/players/playerRowDivisionGrid";
 
 const TOURNAMENT_QUERY_PARAM = "tournament";
+
+/** Shown on the sub-role field for a role the sub-role catalog has no rows for. */
+const NO_SUB_ROLE_CATALOG_PLACEHOLDER = "No sub-roles for this role";
 
 interface PlayerFormData {
   name: string;
@@ -187,30 +191,45 @@ function buildPlayerRows(teams: Team[]): PlayerRow[] {
   );
 }
 
+/**
+ * Sub-role fragment of a player payload. A role with no sub-role catalog (Flex)
+ * sends an explicit `null`, because omitting the key would leave an already
+ * stored sub-role in place on a role that cannot have one.
+ */
+function buildSubRolePayload(
+  role: PlayerRoleOption,
+  subRole: string
+): { sub_role?: string | null } {
+  if (subRoleCatalogRole(role) == null) return { sub_role: null };
+  return subRole ? { sub_role: subRole } : {};
+}
+
 function buildPlayerCreateInput(formData: PlayerFormData): PlayerCreateInput {
+  const role = normalizePlayerRole(formData.role);
   return {
     name: formData.name.trim(),
     user_id: formData.user_id,
     team_id: formData.team_id,
     tournament_id: formData.tournament_id,
-    role: normalizePlayerRole(formData.role),
+    role,
     rank: formData.rank,
     div: formData.division,
     is_newcomer: formData.is_newcomer,
     is_substitution: formData.is_substitution,
-    ...(formData.sub_role ? { sub_role: formData.sub_role } : {})
+    ...buildSubRolePayload(role, formData.sub_role)
   };
 }
 
 function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
+  const role = normalizePlayerRole(formData.role);
   return {
     name: formData.name.trim(),
-    role: normalizePlayerRole(formData.role),
+    role,
     rank: formData.rank,
     div: formData.division,
     is_newcomer: formData.is_newcomer,
     is_substitution: formData.is_substitution,
-    ...(formData.sub_role ? { sub_role: formData.sub_role } : {})
+    ...buildSubRolePayload(role, formData.sub_role)
   };
 }
 
@@ -385,11 +404,16 @@ export default function PlayersPage() {
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
+  // Flex has no sub-role catalog, so its sub-role field is inert rather than a
+  // dropdown holding a single unusable "No sub-role" row.
+  const hasSubRoleCatalog = subRoleCatalogRole(formData.role) != null;
   const subRoleOptions = filterSubRoleOptions(playerSubRoles, formData.role);
   const hasCurrentSubRoleOption = subRoleOptions.some(
     (subRole) => subRole.slug === formData.sub_role
   );
   const subRoleSelectOptions = useMemo(() => {
+    if (!hasSubRoleCatalog) return [];
+
     const options = [
       { value: "none", label: "No sub-role" },
       ...subRoleOptions.map((subRole) => ({
@@ -408,7 +432,7 @@ export default function PlayersPage() {
     }
 
     return options;
-  }, [formData.sub_role, hasCurrentSubRoleOption, subRoleOptions]);
+  }, [formData.sub_role, hasCurrentSubRoleOption, hasSubRoleCatalog, subRoleOptions]);
 
   const columns: ColumnDef<PlayerRow>[] = [
     {
@@ -665,7 +689,10 @@ export default function PlayersPage() {
               id="sub_role"
               value={formData.sub_role || "none"}
               options={subRoleSelectOptions}
-              placeholder="Select sub-role"
+              disabled={!hasSubRoleCatalog}
+              placeholder={
+                hasSubRoleCatalog ? "Select sub-role" : NO_SUB_ROLE_CATALOG_PLACEHOLDER
+              }
               searchPlaceholder="Search sub-role…"
               emptyMessage="No sub-roles match that search."
               onChange={(value) => {
@@ -779,7 +806,10 @@ export default function PlayersPage() {
               id="edit-sub_role"
               value={formData.sub_role || "none"}
               options={subRoleSelectOptions}
-              placeholder="Select sub-role"
+              disabled={!hasSubRoleCatalog}
+              placeholder={
+                hasSubRoleCatalog ? "Select sub-role" : NO_SUB_ROLE_CATALOG_PLACEHOLDER
+              }
               searchPlaceholder="Search sub-role…"
               emptyMessage="No sub-roles match that search."
               onChange={(value) => {

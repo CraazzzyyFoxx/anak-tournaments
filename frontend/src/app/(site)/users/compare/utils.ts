@@ -1,4 +1,5 @@
 import { MapRead } from "@/types/map.types";
+import { PLAYER_ROLE_LABEL_KEY } from "@/lib/player-role";
 import { UserRoleType } from "@/types/user.types";
 import { CompareScope } from "@/app/(site)/users/compare/types";
 
@@ -17,7 +18,7 @@ export const parseOptionalInt = (value: string | null): number | undefined => {
 };
 
 export const parseRole = (value: string | null): UserRoleType | undefined => {
-  if (value === "Tank" || value === "Damage" || value === "Support") return value;
+  if (value === "Tank" || value === "Damage" || value === "Support" || value === "Flex") return value;
   return undefined;
 };
 
@@ -33,13 +34,9 @@ export const normalizeNumber = (value: number | string | null | undefined): numb
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export type RoleLabelKey = "common.roles.tank" | "common.roles.dps" | "common.roles.support";
+export type RoleLabelKey = (typeof PLAYER_ROLE_LABEL_KEY)[UserRoleType];
 
-export const roleLabelKey = (role: UserRoleType): RoleLabelKey => {
-  if (role === "Tank") return "common.roles.tank";
-  if (role === "Damage") return "common.roles.dps";
-  return "common.roles.support";
-};
+export const roleLabelKey = (role: UserRoleType): RoleLabelKey => PLAYER_ROLE_LABEL_KEY[role];
 
 export interface DurationUnits {
   h: string;

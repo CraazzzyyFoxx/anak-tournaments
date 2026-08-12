@@ -201,7 +201,14 @@ def add_impact_scores(
     for idx, row in df.iterrows():
         ref = players.get(int(row["player_id"]))
         secs = float(seconds.loc[idx])
-        if ref is None or ref.role is None or secs < MIN_SECONDS:
+        # ``HeroClass.flex`` is a roster role, not a game role: no baseline is
+        # ever computed for it (baselines group by ``Hero.type``, which cannot be
+        # flex), so every z-score would come back 0.0 anyway. Routing it through
+        # the same gate as ``role is None`` makes that explicit rather than
+        # letting it look like a genuine zero-impact performance. Callers prefer
+        # the dominant role derived from actual hero playtime, so this only bites
+        # a match with no per-hero playtime rows at all.
+        if ref is None or ref.role is None or ref.role is enums.HeroClass.flex or secs < MIN_SECONDS:
             impact_scores.append(0.0)
             overperf_scores.append(0.0)
             continue

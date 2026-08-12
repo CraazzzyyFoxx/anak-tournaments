@@ -3,6 +3,8 @@ from uuid import uuid4
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field
 
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterSlotCode
+
 __all__ = (
     "BalancerTeamMember",
     "BalancerTeam",
@@ -16,7 +18,9 @@ class BalancerTeamMember(BaseModel):
     uuid: str | UUID4
     name: str
     sub_role: str | None = None
-    role: typing.Literal["tank", "dps", "support"] | None
+    # A roster slot code, not a game role: ``flex`` is what a role-less roster
+    # assigns, and the tournament player it creates carries HeroClass.flex.
+    role: RosterSlotCode | None
     rank: int
 
 
@@ -75,7 +79,7 @@ class InternalBalancerTeam(BaseModel):
     roster: dict[str, list[InternalBalancerPlayer]]
 
     @staticmethod
-    def _map_role(role_name: str) -> typing.Literal["tank", "dps", "support"] | None:
+    def _map_role(role_name: str) -> RosterSlotCode | None:
         normalized = role_name.strip().lower()
         if normalized in {"damage", "dps"}:
             return "dps"
@@ -83,6 +87,10 @@ class InternalBalancerTeam(BaseModel):
             return "support"
         if normalized == "tank":
             return "tank"
+        if normalized == FLEX_SLOT_CODE:
+            # A flex slot names no role; say so instead of dropping it to None,
+            # which used to make the exported player look role-less by accident.
+            return "flex"
         return None
 
     def to_balancer_team(self) -> BalancerTeam:

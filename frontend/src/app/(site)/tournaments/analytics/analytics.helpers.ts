@@ -278,11 +278,11 @@ export function formatPlace(n: number | null | undefined, locale: "en" | "ru"): 
   return locale === "en" ? ordinal(n) : String(n);
 }
 
-export type CommunityRoleKey = "tank" | "damage" | "support";
+export type CommunityRoleKey = "tank" | "damage" | "support" | "flex";
 
 /**
- * Normalise a raw player role ("Tank" / "Damage" / "dps" / "Support") to the
- * community role key used for the localized role label. Returns null for
+ * Normalise a raw player role ("Tank" / "Damage" / "dps" / "Support" / "Flex") to
+ * the community role key used for the localized role label. Returns null for
  * unknown roles so callers can fall back to the raw string.
  */
 export function roleKey(role: string | null | undefined): CommunityRoleKey | null {
@@ -294,6 +294,8 @@ export function roleKey(role: string | null | undefined): CommunityRoleKey | nul
       return "damage";
     case "support":
       return "support";
+    case "flex":
+      return "flex";
     default:
       return null;
   }

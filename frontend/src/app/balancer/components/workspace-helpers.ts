@@ -730,7 +730,17 @@ export function buildRoleEntriesFromRankHistory(
   return entries;
 }
 
-const USER_ROLE_TO_BALANCER: Record<UserRoleType, BalancerRoleCode> = {
+/**
+ * A past tournament role -> the balancer registration role it seeds.
+ *
+ * Deliberately partial: `Flex` has no registration code. A flex roster row
+ * carries ONE rank that stands for no particular role (the player's maximum),
+ * so attributing it to tank, dps or support would invent per-role history the
+ * tournament never recorded — the same call the backend makes in
+ * `registration/rank_sources.py::HERO_CLASS_TO_REGISTRATION_ROLE`. The lookup
+ * below already skips a missing code.
+ */
+const USER_ROLE_TO_BALANCER: Partial<Record<UserRoleType, BalancerRoleCode>> = {
   Tank: "tank",
   Damage: "dps",
   Support: "support"

@@ -146,16 +146,18 @@ def test_payload_captain_without_pick_uses_primary_role() -> None:
     assert member.rank == 3900
 
 
-def test_flex_shape_exports_the_max_role_rank_not_the_frozen_pick_rank() -> None:
+def test_flex_shape_exports_the_flex_slot_code_and_the_max_role_rank() -> None:
     # An all-flex roster drafted nobody onto a role, so the rank frozen on the
-    # pick names a role the shape gives no meaning to: export the maximum.
+    # pick names a role the shape gives no meaning to: export the maximum. The
+    # slot code says "no fixed role" outright instead of guessing the primary --
+    # bulk_create_from_balancer turns it into HeroClass.flex.
     teams = [_team(1, 1, "T")]
     p = _player(11, bt="Mate#1", role=DraftRole.SUPPORT, rank=2800, uid=11, role_ranks={"dps": 4000, "support": 2800})
     roster = {1: [p]}
     picks = {11: _pick(11, 1, role=None, rank=2800)}
     payload = _draft_to_balancer_payload(teams, roster, FLEX_SHAPE, picks)
     member = payload[0].members[0]
-    assert member.role == "support"  # the primary: an exported player carries one role
+    assert member.role == "flex"
     assert member.rank == 4000
 
 
@@ -165,5 +167,22 @@ def test_flex_shape_exports_the_max_role_rank_for_a_captain() -> None:
         10, captain=True, bt="Cap#1", role=DraftRole.TANK, rank=3100, uid=10, role_ranks={"tank": 3100, "dps": 3700}
     )
     payload = _draft_to_balancer_payload(teams, {1: [cap]}, FLEX_SHAPE, {})
-    assert payload[0].members[0].rank == 3700
+    member = payload[0].members[0]
+    assert member.role == "flex"
+    assert member.rank == 3700
     assert payload[0].total_sr == 3700
+
+
+def test_role_shape_still_exports_a_game_role_never_flex() -> None:
+    # The flex slot code is reachable only from a role-less shape: a roster with
+    # role slots assigns a real role to every pick, captains included.
+    teams = [_team(1, 1, "T")]
+    roster = {
+        1: [
+            _player(10, captain=True, bt="Cap#1", role=DraftRole.TANK, rank=3100, uid=10),
+            _player(11, bt="Mate#1", role=DraftRole.DPS, rank=4000, uid=11, role_ranks={"support": 2800}),
+        ]
+    }
+    picks = {11: _pick(11, 1, role=DraftRole.SUPPORT, rank=2800)}
+    payload = _draft_to_balancer_payload(teams, roster, ROLE_SHAPE, picks)
+    assert sorted(m.role for m in payload[0].members) == ["support", "tank"]

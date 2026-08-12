@@ -79,6 +79,12 @@ REGISTRATION_ROLE_LABELS = {
 }
 # tournament.player.role is a HeroClass (Tank/Damage/Support); bridge it to the registration
 # role codes (tank/dps/support) used to key balancer history and the per-role rank data.
+# ``HeroClass.flex`` is deliberately absent and callers must keep using ``.get()``:
+# a flex roster row carries ONE rank that stands for no particular role (the
+# player's maximum, see balancer-service ``services.draft.ranks.slot_rank``), so
+# attributing it to tank, dps or support would invent per-role history the
+# tournament never recorded. Such rows are skipped, which is why a player whose
+# only history is flex tournaments autofills empty.
 HERO_CLASS_TO_REGISTRATION_ROLE = {
     enums.HeroClass.tank: "tank",
     enums.HeroClass.damage: "dps",

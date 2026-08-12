@@ -77,6 +77,7 @@ const ROLE_TO_ICON: Record<string, string> = {
   tank: "Tank",
   dps: "Damage",
   support: "Support",
+  flex: "Flex",
 };
 
 function getRoleLabel(role: string, t: Translator): string {

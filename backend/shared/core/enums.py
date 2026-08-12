@@ -5,9 +5,33 @@ from typing import Final, Literal
 
 
 class HeroClass(StrEnum):
+    """A roster role OR a hero's class -- two concepts on one Postgres type.
+
+    ``tank``/``damage``/``support`` mean both things at once, which is why the
+    same ``heroclass`` type backs ``overwatch.hero.type``,
+    ``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``
+    only ever means the third: a player who holds no fixed role, which is what
+    a role-less (all-``flex``) roster shape drafts and balances for. No hero has
+    a class of "flex", so the two hero-side columns are narrowed back to
+    :data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by
+    CHECK constraints in the database (migration ``heroflex0001``).
+
+    Member NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),
+    so the DB sees ``flex`` while the Python value is ``"Flex"``.
+    """
+
     tank = "Tank"
     damage = "Damage"
     support = "Support"
+    flex = "Flex"
+
+
+#: The classes a *hero* can have -- ``HeroClass`` minus ``flex``. Use these
+#: wherever the subject is ``overwatch.hero.type`` or a baseline keyed off it,
+#: so an admin cannot type a hero as "flex" through an existing endpoint and
+#: silently poison ``dominant_roles``, the stat baselines and impact scoring.
+HERO_TYPE_CLASSES: Final[tuple[HeroClass, ...]] = (HeroClass.tank, HeroClass.damage, HeroClass.support)
+HeroTypeClass = Literal[HeroClass.tank, HeroClass.damage, HeroClass.support]
 
 
 class CatalogEntityType(StrEnum):
@@ -480,6 +504,8 @@ class AbilityEvent(StrEnum):
 # these names and never leaks re-imported stdlib/typing helpers.
 __all__ = [
     "HeroClass",
+    "HERO_TYPE_CLASSES",
+    "HeroTypeClass",
     "CatalogEntityType",
     "RankPlatform",
     "RankRole",

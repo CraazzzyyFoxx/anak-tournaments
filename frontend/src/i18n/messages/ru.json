@@ -189,7 +189,7 @@
       "tank": "Танк",
       "dps": "Дамаг",
       "support": "Саппорт",
-      "flex": "Flex"
+      "flex": "Флекс"
     },
     "subroles": {
       "hitscan": "Хитскан",
@@ -1257,7 +1257,8 @@
       "role": {
         "tank": "Танк",
         "damage": "Дамаг",
-        "support": "Саппорт"
+        "support": "Саппорт",
+        "flex": "Флекс"
       }
     },
     "howItWorks": {

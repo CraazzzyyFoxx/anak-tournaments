@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.core.errors import ApiExc, ApiHTTPException
-from shared.domain.roster_shape import RosterShape
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from src import models
 from src.schemas.team import BalancerTeam, BalancerTeamMember
@@ -39,16 +39,17 @@ def _draft_to_balancer_payload(
 
     The team name is the captain's battle_tag/name so the export's
     ``find_by_battle_tag`` resolves the captain; members carry their
-    battle_tag, the role they were *drafted on* (tank/dps/support), and the
+    battle_tag, the slot they were *drafted into* (tank/dps/support), and the
     rank ``shape`` gives them on it. Mirrors the balancer's own payload
     (assigned role + assigned rating) so both feed
     ``bulk_create_from_balancer`` identically.
 
-    A role-less (all-flex) shape drafted nobody onto a role, so the frozen pick
-    rank is skipped there and ``ranks.slot_rank`` hands out the player's maximum
-    -- the same rank the draft board showed the captain who picked them. Role
-    still falls back to the primary: the exported tournament player carries one
-    concrete role, and the registration's primary is the only honest guess.
+    A role-less (all-flex) shape drafted nobody onto a role, so it exports the
+    ``flex`` slot code -- which ``bulk_create_from_balancer`` stores as
+    ``HeroClass.flex`` -- and the rank is the one ``ranks.slot_rank`` hands out
+    for no role: the player's maximum, the same number the draft board showed
+    the captain who picked them. The frozen pick rank is skipped there because
+    it was frozen against a role the shape gives no meaning to.
     """
     pick_by_player_id = pick_by_player_id or {}
     payload: list[BalancerTeam] = []
@@ -61,19 +62,24 @@ def _draft_to_balancer_payload(
         total_sr = 0
         for p in roster:
             pk = pick_by_player_id.get(p.id)
-            # Drafted role + its rank. Captains have no pick -> primary role.
-            role = (pk.target_role if (pk and pk.target_role) else None) or p.primary_role
-            if shape.has_role_slots and pk is not None and pk.target_rank_value is not None:
-                rank = pk.target_rank_value
+            if shape.has_role_slots:
+                # Drafted role + its rank. Captains have no pick -> primary role.
+                role = (pk.target_role if (pk and pk.target_role) else None) or p.primary_role
+                rank = (
+                    pk.target_rank_value
+                    if (pk is not None and pk.target_rank_value is not None)
+                    else (ranks.slot_rank(p, role, shape) or 0)
+                )
             else:
-                rank = ranks.slot_rank(p, role, shape) or 0
+                role = FLEX_SLOT_CODE
+                rank = ranks.slot_rank(p, None, shape) or 0
             total_sr += rank
             members.append(
                 BalancerTeamMember(
                     uuid=str(p.user_id) if p.user_id is not None else str(uuid4()),
                     name=p.battle_tag or "",
                     sub_role=p.sub_role,
-                    role=role,  # tank/dps/support
+                    role=role,  # tank/dps/support/flex
                     rank=rank,
                 )
             )

@@ -299,7 +299,7 @@ export interface MinimizedUser {
   name: string;
 }
 
-export type UserRoleType = "Tank" | "Damage" | "Support";
+export type UserRoleType = "Tank" | "Damage" | "Support" | "Flex";
 
 export interface UserOverviewRoleDivision {
   role: UserRoleType;

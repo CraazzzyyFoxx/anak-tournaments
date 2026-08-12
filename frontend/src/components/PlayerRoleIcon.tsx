@@ -3,24 +3,21 @@ import { useTranslations } from "next-intl";
 import TankIcon from "@/components/icons/TankIcon";
 import DamageIcon from "@/components/icons/DamageIcon";
 import SupportIcon from "@/components/icons/SupportIcon";
+import FlexIcon from "@/components/icons/FlexIcon";
+import { PLAYER_ROLE_LABEL_KEY } from "@/lib/player-role";
 
-/** Canonical English role names, the only values that map to a glyph. */
+/** Canonical English player role names, the only values that map to a glyph. */
 const ROLE_ICON = {
   Tank: TankIcon,
   Damage: DamageIcon,
-  Support: SupportIcon
-} as const;
-
-const ROLE_LABEL_KEY = {
-  Tank: "common.roles.tank",
-  Damage: "common.roles.dps",
-  Support: "common.roles.support"
+  Support: SupportIcon,
+  Flex: FlexIcon
 } as const;
 
 type RoleName = keyof typeof ROLE_ICON;
 
 /**
- * Role glyph.
+ * Player role glyph — tank, damage, support or flex.
  *
  * Renders nothing at all for an unrecognised or absent role — the wrapper used
  * to be emitted unconditionally, so an unknown role left an invisible element
@@ -56,7 +53,7 @@ const PlayerRoleIcon = ({
   const roleName = role as RoleName;
   const Icon = ROLE_ICON[roleName];
   const hidden = decorative === true || ariaHidden === true || ariaHidden === "true";
-  const accessibleName = label ?? t(ROLE_LABEL_KEY[roleName] as Parameters<typeof t>[0]);
+  const accessibleName = label ?? t(PLAYER_ROLE_LABEL_KEY[roleName] as Parameters<typeof t>[0]);
 
   return (
     <span

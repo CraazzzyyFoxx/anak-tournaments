@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.domain.player_sub_roles import normalize_sub_role
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.repository import get_or_create_workspace_member
 from src import models
 from src.core.enums import HeroClass
@@ -22,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_hero_role(role: str | None) -> HeroClass | None:
+    """Roster slot code -> the role stored on ``tournament.player``.
+
+    ``flex`` is a real answer, not a missing one: a role-less roster assigns no
+    game role, and ``HeroClass.flex`` is how that survives the export. ``None``
+    stays reserved for "the payload named no slot at all".
+    """
     if role is None:
         return None
     normalized = role.lower()
@@ -31,6 +38,8 @@ def _resolve_hero_role(role: str | None) -> HeroClass | None:
         return HeroClass.damage
     if normalized == "support":
         return HeroClass.support
+    if normalized == FLEX_SLOT_CODE:
+        return HeroClass.flex
     return None
 
 

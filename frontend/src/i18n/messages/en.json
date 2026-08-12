@@ -1257,7 +1257,8 @@
       "role": {
         "tank": "Tank",
         "damage": "Damage",
-        "support": "Support"
+        "support": "Support",
+        "flex": "Flex"
       }
     },
     "howItWorks": {

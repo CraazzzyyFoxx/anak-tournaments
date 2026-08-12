@@ -10,6 +10,7 @@ import { UserTournamentStat } from "@/types/statistics.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { playerRoleTint } from "@/lib/player-role";
 import {
   Select,
   SelectContent,
@@ -40,11 +41,9 @@ const formatPercent = (value: number | null | undefined, digits = 0) => {
   return `${(value * 100).toFixed(digits)}%`;
 };
 
-const roleColor = (role: string) => {
-  if (role === "Tank") return "var(--aqt-tank)";
-  if (role === "Support") return "var(--aqt-support)";
-  return "var(--aqt-damage)";
-};
+// Role → its `--aqt-*` hue. Flex is a real roster role, so it gets its own
+// token instead of falling through to damage.
+const roleColor = (role: string) => `var(--aqt-${playerRoleTint(role) ?? "damage"})`;
 
 interface StatEntry {
   rank: number;

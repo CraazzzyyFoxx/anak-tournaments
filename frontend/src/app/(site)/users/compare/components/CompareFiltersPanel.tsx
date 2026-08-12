@@ -8,6 +8,7 @@ import { CompareScope } from "@/app/(site)/users/compare/types";
 import { getDivisionOptions, ROLE_FILTER_OPTIONS } from "@/app/(site)/users/compare/constants";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { parseOptionalInt, getMapIconSrc, roleLabelKey } from "@/app/(site)/users/compare/utils";
+import { roleImageSrc } from "@/lib/player-role";
 import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
 import SearchableImageSelect, {
   type SearchableImageOption,
@@ -189,7 +190,7 @@ const CompareFiltersPanel = ({
                 <div className="flex items-center gap-2">
                   {role ? (
                     <Image
-                      src={`/roles/${role}.png`}
+                      src={roleImageSrc(role)}
                       alt={t("users.compare.filters.roleIconAlt", { role: t(roleLabelKey(role)) })}
                       width={22}
                       height={22}
@@ -205,7 +206,7 @@ const CompareFiltersPanel = ({
                     <div className="flex items-center gap-2">
                       {option.value === "all" ? null : (
                         <Image
-                          src={`/roles/${option.value}.png`}
+                          src={roleImageSrc(option.value)}
                           alt={t("users.compare.filters.roleIconAlt", { role: t(option.labelKey) })}
                           width={20}
                           height={20}

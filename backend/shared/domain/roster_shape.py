@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 
@@ -31,12 +31,18 @@ __all__ = (
     "ROSTER_SLOT_CODES",
     "RosterShape",
     "RosterShapeError",
+    "RosterSlotCode",
     "parse_roster_slots",
     "resolve_roster_shape",
 )
 
 FLEX_SLOT_CODE: Final[str] = "flex"
 ROSTER_SLOT_CODES: Final[tuple[str, ...]] = (*REGISTRATION_ROLE_CODES, FLEX_SLOT_CODE)
+#: The same vocabulary as a static type, for Pydantic contracts that carry one
+#: slot code (the balancer/draft export payloads). Spelled out because a
+#: ``Literal`` cannot be derived from a tuple; ``test_roster_shape`` pins the two
+#: against each other so they cannot drift.
+RosterSlotCode = Literal["tank", "dps", "support", "flex"]
 DEFAULT_ROSTER_SLOTS: Final[Mapping[str, int]] = MappingProxyType({"tank": 1, "dps": 2, "support": 2})
 # A one-slot roster has nothing to draft and nothing to balance: the captain
 # fills the only slot.

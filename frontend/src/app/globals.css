@@ -1617,6 +1617,7 @@
   --aqt-tank: hsl(209 82% 65%);
   --aqt-damage: hsl(337 81% 66%);
   --aqt-support: hsl(150 57% 52%);
+  --aqt-flex: var(--aqt-violet);
   --aqt-live: var(--aqt-rose);
   --aqt-warm: var(--aqt-amber);
   /* Third-party brand marks. Not ours to re-hue, but they belong in one place

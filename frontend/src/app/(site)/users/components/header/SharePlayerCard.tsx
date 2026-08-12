@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
+import type { PlayerRoleTint } from "@/lib/player-role";
 import type { FormResult } from "@/app/(site)/users/components/shared/atoms";
 import type { Translate } from "@/app/(site)/users/components/shared/list-utils";
 
@@ -20,7 +21,7 @@ export interface ShareCardData {
   name: string;
   tag: string | null;
   role: string | null;
-  roleTint: "tank" | "damage" | "support" | null;
+  roleTint: PlayerRoleTint | null;
   division: number | null;
   winrate: number | null;
   avgPlacement: number | null;
@@ -100,6 +101,7 @@ interface Palette {
   tank: string;
   damage: string;
   support: string;
+  flex: string;
   emerald: string;
   rose: string;
   amber: string;
@@ -362,6 +364,7 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
         tank: token("--aqt-tank"),
         damage: token("--aqt-damage"),
         support: token("--aqt-support"),
+        flex: token("--aqt-flex"),
         emerald: token("--aqt-emerald"),
         rose: token("--aqt-rose"),
         amber: token("--aqt-amber")

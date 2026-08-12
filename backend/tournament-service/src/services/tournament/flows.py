@@ -420,6 +420,12 @@ async def get_avg_divisions_tournaments(
     # Values are (division_number, players_count) pairs: the service layer
     # aggregates players to a per-(tournament, role, rank) histogram, so the
     # average is weighted by the count instead of iterating every player row.
+    #
+    # Keyed by HeroClass, so a ``flex`` roster row lands in a bucket the three
+    # response fields below never read -- flex players are deliberately absent
+    # from the per-role averages, because their single rank stands for no
+    # particular role and averaging it into one would misreport that role's
+    # strength. The reads use ``.get()``, so this stays a silent skip by design.
     raw_rank_cache: dict[int, dict[enums.HeroClass, list[tuple[float, int]]]] = {}
     tournament_names: dict[int, str] = {}
 

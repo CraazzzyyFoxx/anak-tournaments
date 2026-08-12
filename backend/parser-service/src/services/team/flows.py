@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DEFAULT_GRID
 from shared.domain.player_sub_roles import normalize_sub_role
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.services.division_grid_resolution import resolve_tournament_division
 from src import models, schemas
 from src.core import enums, errors, utils
@@ -30,15 +31,24 @@ def resolve_team_placement(team: models.Team) -> int | None:
 
 
 def resolve_hero_role_from_balancer(role: str) -> enums.HeroClass | None:
+    """Roster slot code -> the role stored on ``tournament.player``.
+
+    ``flex`` is a real slot, not a bad input: a role-less roster assigns no game
+    role and ``HeroClass.flex`` is how that survives the import. Anything else
+    unrecognized still fails loudly rather than silently becoming ``None``.
+    """
     if role is None:
         return None
 
-    if role.lower() == "tank":
+    normalized = role.lower()
+    if normalized == "tank":
         return enums.HeroClass.tank
-    if role.lower() == "dps":
+    if normalized == "dps":
         return enums.HeroClass.damage
-    if role.lower() == "support":
+    if normalized == "support":
         return enums.HeroClass.support
+    if normalized == FLEX_SLOT_CODE:
+        return enums.HeroClass.flex
     raise errors.ApiHTTPException(
         status_code=400,
         detail=[errors.ApiExc(code="invalid_hero_role", msg=f"{role} is not a valid hero role.")],
