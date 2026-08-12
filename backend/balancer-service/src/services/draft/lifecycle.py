@@ -46,6 +46,7 @@ from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.repository.workspace import get_or_create_workspace_member
 from src.services.draft import feasibility
+from src.services.draft.board import REGISTRATION_CUSTOM_FIELDS_KEY
 
 _ACTIVE_STATUSES = (
     DraftStatus.SETUP.value,
@@ -462,6 +463,26 @@ def _all_roles_required(form: BalancerRegistrationForm | None) -> bool:
     return config.get("mode") in ("all_roles", "forced")
 
 
+def _registration_additional_info(reg: BalancerRegistration) -> dict:
+    """The per-player catch-all bag seeded from a registration.
+
+    ``notes`` stays public (captains read it while drafting). The registration's
+    custom-field ANSWERS are copied wholesale under a private key: which of them
+    a spectator may see is decided per field by the organizer
+    (``registration_form.custom_fields_json[*].show_in_draft``) and resolved on
+    the read side, so toggling a field takes effect on an already-seeded draft
+    instead of demanding a re-seed. ``board.public_additional_info`` strips the
+    raw bag from the public snapshot.
+    """
+    info: dict = {}
+    if reg.notes:
+        info["notes"] = reg.notes
+    answers = getattr(reg, "custom_fields_json", None) or {}
+    if answers:
+        info[REGISTRATION_CUSTOM_FIELDS_KEY] = dict(answers)
+    return info
+
+
 def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> dict:
     """Derive draft role/rank fields from a tournament registration's roles.
 
@@ -542,7 +563,7 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
         "is_flex": bool(reg.is_flex_computed),
         "role_ranks": role_ranks,
         "role_top_heroes": role_top_heroes,
-        "additional_info": {"notes": reg.notes} if reg.notes else {},
+        "additional_info": _registration_additional_info(reg),
     }
 
 

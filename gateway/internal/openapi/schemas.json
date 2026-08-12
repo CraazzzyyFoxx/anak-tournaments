@@ -18166,6 +18166,34 @@
       "title": "DraftPickStatus",
       "type": "string"
     },
+    "balancer.DraftPlayerCustomFieldRead": {
+      "description": "One organizer-approved registration answer, ready to render.\n\nCarries the definition's current ``label``/``type`` alongside the value so\nthe draft client renders it without knowing anything about registration\nforms. Built by ``services.draft.board.player_custom_fields``; only fields\nflagged ``show_in_draft`` on the registration form ever appear here, because\nthe board snapshot is public.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "type",
+        "value"
+      ],
+      "title": "DraftPlayerCustomFieldRead",
+      "type": "object"
+    },
     "balancer.DraftPlayerRead": {
       "properties": {
         "additional_info": {
@@ -18183,6 +18211,13 @@
             }
           ],
           "title": "Battle Tag"
+        },
+        "custom_fields": {
+          "items": {
+            "$ref": "#/components/schemas/balancer.DraftPlayerCustomFieldRead"
+          },
+          "title": "Custom Fields",
+          "type": "array"
         },
         "division_number": {
           "anyOf": [
@@ -28948,6 +28983,11 @@
         "required": {
           "default": false,
           "title": "Required",
+          "type": "boolean"
+        },
+        "show_in_draft": {
+          "default": false,
+          "title": "Show In Draft",
           "type": "boolean"
         },
         "type": {

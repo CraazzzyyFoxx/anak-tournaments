@@ -62,7 +62,7 @@ const mkPlayer = (p: Partial<DraftPlayer>): DraftPlayer => ({
   id: 1, session_id: 1, user_id: null, battle_tag: "Ana#1", primary_role: "support",
   sub_role: null, is_flex: false, division_number: null, rank_value: 3000,
   status: "available", is_captain: false, drafted_by_team_id: null,
-  secondary_roles_json: null, role_ranks: {}, role_top_heroes: {}, additional_info: {},
+  secondary_roles_json: null, role_ranks: {}, role_top_heroes: {}, additional_info: {}, custom_fields: [],
   version: 1, ...p,
 });
 

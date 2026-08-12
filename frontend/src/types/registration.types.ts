@@ -8,6 +8,11 @@ export interface CustomFieldDefinition {
   placeholder: string | null;
   options: string[] | null;
   validation?: FieldValidationConfig | null;
+  /**
+   * Surface this answer in the live draft's player inspector. Off by default:
+   * the draft board is public, so exposing an answer is an explicit choice.
+   */
+  show_in_draft?: boolean;
 }
 
 export interface FieldValidationConfig {

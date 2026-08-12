@@ -48,6 +48,7 @@ function player(id: number): DraftPlayer {
     role_ranks: {},
     role_top_heroes: {},
     additional_info: {},
+    custom_fields: [],
     version: 0,
   };
 }

@@ -126,7 +126,7 @@ export function CustomFieldsCard({
                         placeholder={t("placeholderHint")}
                       />
                     </div>
-                    <div className="flex items-end gap-2">
+                    <div className="flex flex-wrap items-end gap-2">
                       <label
                         htmlFor={`${rowId}-required`}
                         className="flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg border px-3 text-xs text-muted-foreground"
@@ -137,6 +137,20 @@ export function CustomFieldsCard({
                           onCheckedChange={(checked) => onUpdate(index, { required: checked })}
                         />
                         <span className="whitespace-nowrap">{t("required")}</span>
+                      </label>
+                      {/* The draft board is public, so this is an explicit
+                          per-field opt-in rather than a consequence of asking. */}
+                      <label
+                        htmlFor={`${rowId}-show-in-draft`}
+                        title={t("showInDraftHint")}
+                        className="flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg border px-3 text-xs text-muted-foreground"
+                      >
+                        <Switch
+                          id={`${rowId}-show-in-draft`}
+                          checked={field.show_in_draft ?? false}
+                          onCheckedChange={(checked) => onUpdate(index, { show_in_draft: checked })}
+                        />
+                        <span className="whitespace-nowrap">{t("showInDraft")}</span>
                       </label>
                       {hasSettings && (
                         <Button

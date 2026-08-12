@@ -1,6 +1,7 @@
 // Live Draft types — mirror the balancer-service DTOs (src/schemas/draft.py).
 
 import type { RosterShape, RosterSlotCode } from "@/lib/roster-shape";
+import type { CustomFieldDefinition } from "@/types/registration.types";
 
 export type DraftStatus = "setup" | "ready" | "live" | "paused" | "completed" | "cancelled";
 
@@ -46,6 +47,17 @@ export interface DraftTeam {
   exported_team_id: number | null;
 }
 
+/** One organizer-approved registration answer, ready to render in the inspector.
+ *  Only definitions flagged `show_in_draft` on the registration form reach the
+ *  public board, and the server sends the definition's CURRENT label/type with
+ *  each value so the draft client needs no form config of its own. */
+export interface DraftPlayerCustomField {
+  key: string;
+  label: string;
+  type: CustomFieldDefinition["type"];
+  value: unknown;
+}
+
 export interface DraftPlayer {
   id: number;
   session_id: number;
@@ -63,6 +75,7 @@ export interface DraftPlayer {
   role_ranks: Record<string, number>;
   role_top_heroes: Record<string, Array<string | { slug: string; image_path: string | null }>>;
   additional_info: Record<string, unknown>;
+  custom_fields: DraftPlayerCustomField[];
   version: number;
 }
 

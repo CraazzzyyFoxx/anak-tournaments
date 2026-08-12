@@ -37,6 +37,7 @@ __all__ = (
     "DraftPickOptionsResponse",
     "DraftPickRead",
     "DraftPickSelectRequest",
+    "DraftPlayerCustomFieldRead",
     "DraftPlayerRead",
     "DraftRoleEditRequest",
     "DraftRoleEditResponse",
@@ -208,6 +209,22 @@ class DraftTeamRead(BaseRead):
     exported_team_id: int | None
 
 
+class DraftPlayerCustomFieldRead(BaseModel):
+    """One organizer-approved registration answer, ready to render.
+
+    Carries the definition's current ``label``/``type`` alongside the value so
+    the draft client renders it without knowing anything about registration
+    forms. Built by ``services.draft.board.player_custom_fields``; only fields
+    flagged ``show_in_draft`` on the registration form ever appear here, because
+    the board snapshot is public.
+    """
+
+    key: str
+    label: str
+    type: str
+    value: Any
+
+
 class DraftPlayerRead(BaseRead):
     model_config = _ReadConfig
 
@@ -226,6 +243,8 @@ class DraftPlayerRead(BaseRead):
     role_ranks: dict[str, int] = Field(default_factory=dict)
     role_top_heroes: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     additional_info: dict[str, Any] = Field(default_factory=dict)
+    # Projected on the read side (not an ORM column) — see board.build_board.
+    custom_fields: list[DraftPlayerCustomFieldRead] = Field(default_factory=list)
     version: int
 
 

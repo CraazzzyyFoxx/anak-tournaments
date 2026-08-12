@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { renderCustomFieldValue } from "@/components/registration/customFieldValue";
 import { HeroCoord } from "@/components/site/PageHero";
 import { Avatar, AvatarImage, AvatarStack } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,9 @@ export function PlayerInspector({
     typeof player.additional_info.notes === "string" && player.additional_info.notes.trim() !== ""
       ? player.additional_info.notes
       : null;
+  // Server-side projection: only fields the organizer flagged `show_in_draft`
+  // arrive here, already carrying their current label and type.
+  const customFields = player.custom_fields ?? [];
   return (
     <section className="rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)] p-4" aria-labelledby={headingId}>
       <div className="flex items-start justify-between gap-3">
@@ -182,10 +186,29 @@ export function PlayerInspector({
         </div>
       </div>
 
-      {notes && (
-        <div className="mt-3 border-t border-[color:var(--aqt-border)] pt-3 text-sm">
-          <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("note")}</p>
-          <p className="mt-1 text-[color:var(--aqt-fg)]">{notes}</p>
+      {(notes || customFields.length > 0) && (
+        <div className="mt-3 space-y-3 border-t border-[color:var(--aqt-border)] pt-3 text-sm">
+          {notes && (
+            <div>
+              <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("note")}</p>
+              <p className="mt-1 text-[color:var(--aqt-fg)]">{notes}</p>
+            </div>
+          )}
+          {customFields.length > 0 && (
+            <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+              {customFields.map((entry) => (
+                <div key={entry.key} className="min-w-0">
+                  <dt className="text-xs text-[color:var(--aqt-fg-muted)]">{entry.label}</dt>
+                  <dd className="mt-0.5 break-words text-[color:var(--aqt-fg)]">
+                    {renderCustomFieldValue(entry, entry.value, {
+                      yes: t("customFieldYes"),
+                      no: t("customFieldNo")
+                    })}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
       )}
 
