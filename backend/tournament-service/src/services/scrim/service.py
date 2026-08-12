@@ -55,8 +55,15 @@ from shared.services.tournament_visibility import assert_tournament_viewable
 from src import models
 from src.services.encounter.pick_ban_session import (
     resolve_config_at_level,
+    unavailable_reason,
     validate_pick_ban_config,
     validate_pick_ban_slot_config,
+)
+from src.services.encounter.veto_session import (
+    REASON_NOT_CONFIGURED,
+    REASON_SLOT_COUNT_MISMATCH,
+    REASON_SLOT_UNDERFILLED,
+    SLOT_CANDIDATE_FLOOR,
 )
 
 Side = Literal["home", "away"]
@@ -485,6 +492,65 @@ async def _assert_under_cap(session: AsyncSession, user: models.AuthUser, limit:
         )
 
 
+#: Reasons ``unavailable_reason`` gives that describe the POOL, not the room's
+#: progress. Each one is permanent: it is answered by editing a config, which a
+#: scrim has no organizer to do -- so a room in any of these states is bricked and
+#: its only recovery is to close it and make another.
+_BRICKING_REASONS = frozenset({REASON_NOT_CONFIGURED, REASON_SLOT_COUNT_MISMATCH, REASON_SLOT_UNDERFILLED})
+
+
+async def _assert_playable(
+    session: AsyncSession,
+    encounter: models.Encounter,
+    kinds: list[PickBanKind],
+    *,
+    best_of: int,
+) -> None:
+    """Refuse a room the engine would not open a session for.
+
+    Asked of the engine rather than re-derived here: ``unavailable_reason`` runs
+    the same checks ``ensure_pick_ban_session`` does, against the rows just
+    written, so the two cannot drift. Anything it reports about the room's
+    *progress* -- nobody is ready yet, hero bans waiting on a map -- is the normal
+    state of a fresh room and passes.
+
+    This closes the gap that let ``pool.source = "copy"`` brick a room: the custom
+    branch validates its own payload, but a copied config was trusted, so
+    borrowing a 3-slot round for a best-of-5 produced a room whose only screen
+    read "The pool does not cover this series -- the organizer has to add the
+    missing slots", naming a person a scrim does not have.
+    """
+    for kind in kinds:
+        reason = await unavailable_reason(session, encounter, kind)
+        if reason not in _BRICKING_REASONS:
+            continue
+        config = await resolve_config_at_level(
+            session,
+            tournament_id=encounter.tournament_id,
+            kind=kind,
+            stage_id=encounter.stage_id,
+            round=None,
+        )
+        slots = len(config.slots) if config is not None else 0
+        if reason == REASON_SLOT_COUNT_MISMATCH:
+            detail = (
+                f"That pool has {slots} map slot(s), so it plays a best-of-{slots} at most. "
+                f"Lower best_of to {slots} or copy a round with more slots."
+                if slots
+                else "That pool is slot-based but has no slots configured. Pick a different round."
+            )
+        elif reason == REASON_SLOT_UNDERFILLED:
+            detail = (
+                f"One of that pool's first {best_of} slots offers fewer than {SLOT_CANDIDATE_FLOOR} "
+                "candidates, so there is nothing to ban. Copy a different round or author the pool here."
+            )
+        else:
+            detail = f"The {kind.value} pool this room was given does not resolve for it."
+        # 422, not 409: the request itself is unsatisfiable as sent, and the caller
+        # fixes it by changing best_of or the source round.
+        raise HTTPException(status_code=422, detail=detail)
+
+
 async def create_room(
     session: AsyncSession,
     user: models.AuthUser,
@@ -537,7 +603,8 @@ async def create_room(
     session.add(stage)
     await session.flush()
 
-    for pick_ban_config in await _build_configs(session, user, pool, tournament_id=container.id, stage_id=stage.id):
+    configs = await _build_configs(session, user, pool, tournament_id=container.id, stage_id=stage.id)
+    for pick_ban_config in configs:
         session.add(pick_ban_config)
 
     captain = await _ensure_player(session, user)
@@ -561,6 +628,8 @@ async def create_room(
     )
     session.add(encounter)
     await session.flush()
+
+    await _assert_playable(session, encounter, [config.kind for config in configs], best_of=best_of)
 
     room = ScrimRoom(
         token=secrets.token_urlsafe(12),

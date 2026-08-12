@@ -206,3 +206,11 @@ instead.
     aimed at the container creates and removes nothing, and one `Player` row on a
     scrim team is enough to break that
     (`parser-service/tests/test_scrim_achievement_isolation.py`).
+15. A room whose `best_of` exceeds the copied pool's slot count is **refused at
+    create time**, naming both numbers, while a flat pool (which the engine
+    clamps) and a fresh not-ready room are both accepted
+    (`tournament-service/tests/test_scrim_pool_fit.py`). Copying was the gap: only
+    the *custom* branch validated its payload, so a Bo5 room borrowing a 3-slot
+    round reached the room screen "The pool does not cover this series — the
+    organizer has to add the missing slots", naming a role a scrim has no one in
+    and leaving no recovery but closing the room.
