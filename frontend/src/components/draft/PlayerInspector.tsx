@@ -131,7 +131,13 @@ export function PlayerInspector({
           {roles.map((entry) => {
             const option = optionForSelection(options, player.id, entry);
             const blocked = safetyRequired && option?.is_safe !== true;
-            const roleRank = player.role_ranks[entry] ?? player.rank_value ?? null;
+            // The role's OWN rank, with no fallback. `rank_value` is the primary
+            // role's, so lending it to a role the player was never ranked on
+            // invents a rating the captain then picks on — three identical
+            // division icons for one real number. An unranked role renders the
+            // em-dash below; the player's overall strength stays in the header,
+            // where `effective_rank` answers it once.
+            const roleRank = player.role_ranks[entry] ?? null;
             const roleDivision = resolveDivisionFromRank(divisionGrid, roleRank);
             const heroes = roleTopHeroes(player, entry);
             const active = role === entry;

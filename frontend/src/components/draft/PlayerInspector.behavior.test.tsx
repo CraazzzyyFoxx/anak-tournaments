@@ -38,7 +38,16 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
   };
 }
 
-function render(subject: DraftPlayer) {
+// Two tiers so a rank maps to a division number a test can tell apart. An empty
+// grid resolves every rank to null, which would make a rank assertion vacuous.
+const GRID = {
+  tiers: [
+    { slug: "high", number: 9, name: "High", sort_order: 0, rank_min: 3000, rank_max: 3999, icon_url: "/high.png" },
+    { slug: "low", number: 4, name: "Low", sort_order: 1, rank_min: 2000, rank_max: 2999, icon_url: "/low.png" }
+  ]
+};
+
+function render(subject: DraftPlayer, divisionGrid: { tiers: typeof GRID.tiers } = { tiers: [] }) {
   return renderToStaticMarkup(
     <PlayerInspector
       player={subject}
@@ -47,7 +56,7 @@ function render(subject: DraftPlayer) {
       safetyRequired={false}
       onRoleChange={() => {}}
       onClose={() => {}}
-      divisionGrid={{ tiers: [] }}
+      divisionGrid={divisionGrid}
     />
   );
 }
@@ -89,5 +98,51 @@ describe("player inspector registration answers", () => {
     const neither = render(player());
     expect(neither).not.toContain(">note<");
     expect(neither).not.toContain("VK profile");
+  });
+});
+
+describe("player inspector role ranks", () => {
+  // Ranked on support only, but flex — so tank is offered without a rating.
+  const flexPlayer = player({
+    primary_role: "support",
+    secondary_roles_json: ["tank"],
+    is_flex: true,
+    rank_value: 2814,
+    effective_rank: 2814,
+    role_ranks: { support: 2814 }
+  });
+
+  test("a role the player has no rank on shows no rank, not the primary's", () => {
+    const html = render(flexPlayer, GRID);
+
+    // Support carries its own rank; tank carries the em-dash, because lending it
+    // `rank_value` would invent a rating the captain then picks on.
+    expect(html).toContain("2814 SR");
+    expect(html).toContain("roles.tank");
+    expect(html).not.toContain("roles.tank · 2814 SR");
+    expect(html).toContain("—");
+  });
+
+  test("the header answers the player's strength with the effective rank", () => {
+    // Best role is dps at 3900 while the primary sits at 2814: the header shows
+    // the division of what the pick will freeze, the rows stay per-role.
+    const html = render(
+      player({
+        primary_role: "support",
+        secondary_roles_json: ["dps"],
+        rank_value: 2814,
+        effective_rank: 3900,
+        role_ranks: { support: 2814, dps: 3900 }
+      }),
+      GRID
+    );
+
+    // The header icon precedes the role list, so its division is the effective
+    // rank's (High, 3000+) and not the primary role's (Low, 2814).
+    const headerIcon = html.indexOf('title="High"');
+    expect(headerIcon).toBeGreaterThan(-1);
+    expect(headerIcon).toBeLessThan(html.indexOf("chooseRole"));
+    expect(html).toContain("2814 SR");
+    expect(html).toContain("3900 SR");
   });
 });
