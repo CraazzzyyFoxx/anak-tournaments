@@ -508,16 +508,23 @@ class ScrimRosterLeakTests(_EngineTestCase):
 class ScrimTournamentTimelineTests(_EngineTestCase):
     """The container must not disturb the streak conditions' ordinal timeline.
 
-    ``conditions/streak.py`` ranks every non-league tournament in the workspace
-    with ``dense_rank() OVER (ORDER BY start_date NULLS LAST, id)`` and has no
-    ``is_hidden`` filter, so the container does take a rank. It takes the LAST
-    one, because it has no start date — which is the only reason a streak spanning
-    real tournaments is not broken in half by it. Pinned through the public
-    condition rather than the private subquery.
+    ``conditions/streak.py`` ranks the workspace's non-league tournaments with
+    ``dense_rank() OVER (ORDER BY start_date NULLS LAST, id)`` — an ordinal
+    timeline, so any row that takes a rank BETWEEN two real tournaments splits a
+    streak spanning them.
+
+    This used to hold by accident: the container had no start date, so
+    ``NULLS LAST`` parked it at the end. It now carries its creation date
+    (``TournamentRead`` requires one), so the accident is gone and the
+    ``is_hidden`` filter is what keeps the sequence honest. The dated case below
+    is the one that fails without that filter.
     """
 
-    async def test_a_streak_across_real_tournaments_survives_the_container(self) -> None:
+    async def _streak_users(self) -> set:
         rule = {"type": "consecutive", "params": {"metric": "win", "min_streak": 2}}
+        return await evaluator.evaluate(self.db.shim, rule, await self.context(None))
+
+    def _two_won_tournaments(self) -> None:
         for tournament_id in (REAL_TOURNAMENT_ID, LATER_TOURNAMENT_ID):
             self.db.tournament(
                 tournament_id,
@@ -529,17 +536,36 @@ class ScrimTournamentTimelineTests(_EngineTestCase):
             self.db.winning_standing(tournament_id, parts["home"])
         self.db.session.commit()
 
-        without_container = await evaluator.evaluate(self.db.shim, rule, await self.context(None))
+    async def test_a_dated_container_between_them_does_not_split_the_streak(self) -> None:
+        """The real case since the container gained dates: its start date sits
+        between the two wins, so an unfiltered timeline ranks it 2nd and the
+        streak becomes two runs of one."""
+        self._two_won_tournaments()
+        without_container = await self._streak_users()
         self.assertEqual({(REAL_HOME_USER,)}, without_container)
 
-        # The container is created between the two real tournaments by id, and
-        # would split the streak if it were ranked chronologically by id alone.
+        self.db.tournament(
+            CONTAINER_ID,
+            name="Scrims",
+            is_hidden=True,
+            start=datetime(2026, REAL_TOURNAMENT_ID, 15, tzinfo=UTC),
+        )
+        self.db.scrim_room()
+        self.db.session.commit()
+
+        self.assertEqual(without_container, await self._streak_users())
+
+    async def test_a_dateless_container_is_still_tolerated(self) -> None:
+        """A container provisioned by the shipped version, before ``scrim0002``
+        backfilled its dates, must keep working after the filter lands."""
+        self._two_won_tournaments()
+        without_container = await self._streak_users()
+
         self.db.tournament(CONTAINER_ID, name="Scrims", is_hidden=True, start=None)
         self.db.scrim_room()
         self.db.session.commit()
 
-        with_container = await evaluator.evaluate(self.db.shim, rule, await self.context(None))
-        self.assertEqual(without_container, with_container)
+        self.assertEqual(without_container, await self._streak_users())
 
 
 class ScrimEvaluationRunTests(_EngineTestCase):

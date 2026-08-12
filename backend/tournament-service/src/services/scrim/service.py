@@ -159,12 +159,23 @@ async def _ensure_container(session: AsyncSession, workspace_id: int) -> models.
     )
     if container is not None:
         return container
+    now = datetime.now(UTC)
     container = models.Tournament(
         workspace_id=workspace_id,
         name=CONTAINER_NAME,
         description="Container for ad-hoc scrim rooms. Not a real tournament.",
         is_hidden=True,
         status=TournamentStatus.LIVE,
+        # Both dates set, even though a container neither starts nor ends. The
+        # columns are nullable and purely informational, but ``TournamentRead``
+        # declares them NOT NULL and every one of ~15 render sites (public and
+        # admin) reads them unguarded -- a contract that held because the admin
+        # create form requires both. A container with NULL dates was the single
+        # violator and 500'd the admin tournament list, which is the one list that
+        # shows hidden rows. Its creation instant is the least misleading value
+        # available: the row did come into existence then.
+        start_date=now,
+        end_date=now,
         # Nothing schedules or advances this row; leaving automation on would let
         # the tournament worker walk its status through a phase schedule it does
         # not have.

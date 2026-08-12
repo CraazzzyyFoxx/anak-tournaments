@@ -38,6 +38,16 @@ async def execute_consecutive(
     min_streak = params["min_streak"]
 
     # Per-workspace chronological sequence over regular (non-league) tournaments.
+    #
+    # Hidden tournaments are excluded because the scrim container is one
+    # (docs/plans/2026-08-12-scrim-rooms.md §4.1) and this rank is an ordinal
+    # timeline: a row that takes a rank in the middle of it splits any streak
+    # that spans it. The container used to be harmless here only by accident --
+    # it had no start date, so ``NULLS LAST`` parked it at the end -- and it now
+    # carries its creation date, so the accident is gone and the filter is what
+    # keeps the sequence honest. Hidden PREVIEW tournaments are excluded too:
+    # they are real tournaments, but one that is still hidden has not been played
+    # yet, so it cannot be a link in a consecutive-tournament streak either.
     tournament_seq = (
         sa.select(
             models.Tournament.id.label("tournament_id"),
@@ -47,6 +57,7 @@ async def execute_consecutive(
         ).where(
             models.Tournament.workspace_id == context.workspace_id,
             models.Tournament.is_league.is_(False),
+            models.Tournament.is_hidden.is_(False),
         )
     ).subquery("tournament_seq")
 

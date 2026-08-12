@@ -13,7 +13,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, get_args
 from unittest import IsolatedAsyncioTestCase
 
 backend_root = Path(__file__).resolve().parents[2]
@@ -96,9 +96,17 @@ class _ScalarSession:
     def __init__(self, *scalars: Any) -> None:
         self._scalars = list(scalars)
         self.added: list[Any] = []
+        self.flushes = 0
 
     async def scalar(self, _statement: Any) -> Any:
         return self._scalars.pop(0) if self._scalars else None
+
+    async def execute(self, _statement: Any) -> Any:
+        """Only the advisory lock goes through ``execute``; its result is unread."""
+        return None
+
+    async def flush(self) -> None:
+        self.flushes += 1
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
@@ -402,3 +410,70 @@ class TheSerializerMatchesTheWireSchema(IsolatedAsyncioTestCase):
 
         payload = await scrim.serialize_room(_ScalarSession(None), _room(), None)
         self.assertEqual(set(schemas.ScrimRoomRead.model_fields), set(payload))
+
+
+class TheContainerSatisfiesTheTournamentReadContract(IsolatedAsyncioTestCase):
+    """The container is a real ``Tournament`` row, so every reader of one must
+    survive it — including the admin tournament list, the one list that shows
+    hidden rows.
+
+    ``Tournament.start_date``/``end_date`` are nullable and drive nothing, but
+    ``TournamentRead`` declares both NOT NULL and ~15 render sites read them
+    unguarded. That contract held only because the admin create form requires
+    both; the container shipped without them and 500'd the list with
+    ``2 validation errors for TournamentRead``. Pinned against the FIELDS the
+    schema requires, so a future reader-visible column with the same shape fails
+    here rather than in production.
+    """
+
+    async def test_a_new_container_fills_every_non_nullable_read_field(self) -> None:
+        """Every ``TournamentRead`` field whose type rejects ``None`` and that
+        nothing fills for us must be set here.
+
+        The three exemptions are what makes this a contract check rather than a
+        snapshot: a primary key arrives on flush, and a column with a Python-side
+        or server default fills itself. Everything left is the container's own
+        responsibility -- which is exactly the class ``start_date``/``end_date``
+        fall into, being nullable columns with no default.
+        """
+        from src import models, schemas
+
+        session = _ScalarSession(None)  # one scalar: "no container yet"
+        container = await scrim._ensure_container(session, WORKSPACE_ID)
+        self.assertIs(container, session.added[0])
+
+        columns = models.Tournament.__table__.columns
+        gaps: list[str] = []
+        for name, field in schemas.TournamentRead.model_fields.items():
+            if type(None) in get_args(field.annotation):
+                continue
+            column = columns.get(name)
+            if column is None or column.primary_key:
+                continue
+            if column.default is not None or column.server_default is not None:
+                continue
+            if getattr(container, name) is None:
+                gaps.append(name)
+
+        self.assertEqual([], sorted(gaps), f"NULL where TournamentRead rejects it: {sorted(gaps)}")
+
+    async def test_both_dates_are_the_creation_instant(self) -> None:
+        """Named explicitly, not just covered by the sweep above: these two are
+        the fields the shipped version left NULL."""
+        container = await scrim._ensure_container(_ScalarSession(None), WORKSPACE_ID)
+        self.assertIsNotNone(container.start_date)
+        self.assertEqual(container.start_date, container.end_date)
+
+    async def test_the_container_is_hidden_and_never_auto_advanced(self) -> None:
+        session = _ScalarSession(None)
+        container = await scrim._ensure_container(session, WORKSPACE_ID)
+        self.assertTrue(container.is_hidden)
+        self.assertFalse(container.auto_transitions_enabled)
+        self.assertEqual(scrim.CONTAINER_NAME, container.name)
+
+    async def test_an_existing_container_is_reused_not_duplicated(self) -> None:
+        """One per workspace forever: ``Tournament.id`` is an ordinal ML timeline."""
+        existing = SimpleNamespace(id=99, name=scrim.CONTAINER_NAME)
+        session = _ScalarSession(existing)
+        self.assertIs(existing, await scrim._ensure_container(session, WORKSPACE_ID))
+        self.assertEqual([], session.added)
