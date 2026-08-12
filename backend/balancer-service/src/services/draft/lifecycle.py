@@ -749,16 +749,20 @@ async def _first_upcoming(session: AsyncSession, draft_session_id: int) -> Draft
     )
 
 
-async def start(session: AsyncSession, draft_session: DraftSession) -> DraftSession:
+async def start(session: AsyncSession, draft_session: DraftSession, *, force: bool = False) -> DraftSession:
     draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.LIVE)
-    tournament_status = await session.scalar(
-        sa.select(Tournament.status).where(Tournament.id == draft_session.tournament_id)
-    )
-    if tournament_status != TournamentStatus.DRAFT.value:
-        raise _err(
-            "tournament_not_in_draft_phase",
-            "Draft can only start while the tournament is in the draft phase",
+    # The phase gate keeps organizers from going live before the tournament
+    # reaches its draft phase. A superuser may bypass it (``force``) to run a
+    # draft out of band — a test run, or a rescue after the schedule drifted.
+    if not force:
+        tournament_status = await session.scalar(
+            sa.select(Tournament.status).where(Tournament.id == draft_session.tournament_id)
         )
+        if tournament_status != TournamentStatus.DRAFT.value:
+            raise _err(
+                "tournament_not_in_draft_phase",
+                "Draft can only start while the tournament is in the draft phase",
+            )
     first = await _first_upcoming(session, draft_session.id)
     if first is None:
         raise _err("draft_no_picks", "Draft has no picks to start")

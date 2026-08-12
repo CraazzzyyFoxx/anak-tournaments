@@ -3603,7 +3603,7 @@
       "summary": "Patch draft session"
     },
     "rpc.balancer.draft.start": {
-      "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline.",
+      "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline. The tournament must be in its draft phase unless the caller is a superuser.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"

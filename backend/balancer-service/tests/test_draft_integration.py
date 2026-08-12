@@ -96,6 +96,10 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             tourn = Tournament(workspace_id=ws.id, name=f"T {self._suffix}", status=DraftStatus.SETUP.value)
             # Tournament.status is TournamentStatus; reuse "draft" value via enum string.
             tourn.status = "draft"
+            # The draft resolves its shape from the tournament/workspace override,
+            # not from the shape stored on the session, so the override has to
+            # match `_SHAPE` or every start preflight sees the default 5-stack.
+            tourn.roster_slots_json = {"tank": 1, "dps": 2}
             s.add(tourn)
             await s.flush()
             users = []
@@ -217,6 +221,20 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
             await _set_status(s, TournamentStatus.DRAFT)
             await lifecycle.start(s, draft)
+            await s.commit()
+            self.assertEqual(draft.status, DraftStatus.LIVE.value)
+
+    async def test_start_phase_gate_is_bypassed_for_superusers(self) -> None:
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await s.execute(
+                sa.update(Tournament)
+                .values(status=TournamentStatus.REGISTRATION.value)
+                .where(Tournament.id == self.tournament_id)
+            )
+            await s.commit()
+
+            await lifecycle.start(s, draft, force=True)
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
 

@@ -249,9 +249,9 @@ async def _publish_result(
         )
 
 
-async def _lifecycle_action(session, redis, session_id, action, event_type, user) -> DraftSessionRead:
+async def _lifecycle_action(session, redis, session_id, action, event_type, user, **action_kwargs) -> DraftSessionRead:
     draft = await _load_session(session, session_id)
-    await action(session, draft)
+    await action(session, draft, **action_kwargs)
     extra: dict = {"session_id": draft.id, "status": draft.status}
     if event_type == "draft.pick_started" and draft.current_pick_id:
         current = await session.get(DraftPick, draft.current_pick_id)
@@ -616,7 +616,7 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "draft.session_patch", op, session_factory=_SF)
 
-    def _make_lifecycle(subject: str, action, event_type: str) -> None:
+    def _make_lifecycle(subject: str, action, event_type: str, *, superuser_forces: bool = False) -> None:
         @broker.subscriber(subject)
         async def _handler(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
@@ -625,11 +625,15 @@ def register(broker: Any, logger: Any) -> None:
                 tournament_id = c.path_int(data, "tournament_id")
                 ws_id = await _get_tournament_workspace_id(session, tournament_id)
                 c.require_workspace_permission(data, user, ws_id, "team", "create")
-                return await _lifecycle_action(session, _redis(logger), session_id, action, event_type, user)
+                # Only ``start`` has a phase gate, and only a superuser may skip it.
+                extra = {"force": bool(user.is_superuser)} if superuser_forces else {}
+                return await _lifecycle_action(
+                    session, _redis(logger), session_id, action, event_type, user, **extra
+                )
 
             return await c.envelope(logger, subject, op, session_factory=_SF)
 
-    _make_lifecycle("rpc.balancer.draft.start", lifecycle.start, "draft.pick_started")
+    _make_lifecycle("rpc.balancer.draft.start", lifecycle.start, "draft.pick_started", superuser_forces=True)
     _make_lifecycle("rpc.balancer.draft.pause", lifecycle.pause, "draft.paused")
     _make_lifecycle("rpc.balancer.draft.resume", lifecycle.resume, "draft.resumed")
     _make_lifecycle("rpc.balancer.draft.cancel", lifecycle.cancel, "draft.cancelled")

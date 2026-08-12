@@ -107,7 +107,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.start": {
         "summary": "Start draft session",
-        "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline.",
+        "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline. The tournament must be in its draft phase unless the caller is a superuser.",
     },
     "rpc.balancer.draft.pause": {
         "summary": "Pause draft session",
