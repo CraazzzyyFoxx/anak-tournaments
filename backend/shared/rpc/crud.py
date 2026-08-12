@@ -24,9 +24,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, time
-from decimal import Decimal
-from enum import Enum
 from functools import cached_property
 from typing import Any
 
@@ -41,7 +38,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.repository.base import BaseRepository
 from shared.rpc.identity import MissingIdentityError, ensure_workspace_permission, rehydrate_user
 from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
-from shared.services.audit import record_audit
+from shared.services.audit import json_safe, record_audit
 
 __all__ = ("EntityConfig", "CrudDispatcher")
 
@@ -95,22 +92,10 @@ def _label(obj: Any) -> str | None:
     return None
 
 
-def _json_safe(value: Any) -> Any:
-    """Coerce one field value into something JSONB can hold."""
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-    if isinstance(value, Enum):
-        return _json_safe(value.value)
-    if isinstance(value, (datetime, date, time)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        # str, not float: an audited money value must not drift on the way in.
-        return str(value)
-    if isinstance(value, (list, tuple, set)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    return str(value)
+# One implementation, in the primitive that owns the columns: ``record_audit``
+# coerces ``before``/``after`` itself, so a call site cannot forget. Kept under
+# the old private name because this module's callers and tests already use it.
+_json_safe = json_safe
 
 
 def _field_values(obj: Any, fields: Iterable[str]) -> dict[str, Any]:

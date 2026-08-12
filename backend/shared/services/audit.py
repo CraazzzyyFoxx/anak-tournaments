@@ -17,6 +17,9 @@ appeared" stays green while a rolled-back mutation keeps its audit trail.
 
 from __future__ import annotations
 
+from datetime import date, datetime, time
+from decimal import Decimal
+from enum import Enum
 from typing import Any, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +28,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.models.platform.audit import AuditLog
 from shared.observability.correlation import get_correlation_id
 
-__all__ = ("AuditSource", "record_audit")
+__all__ = ("AuditSource", "json_safe", "record_audit")
 
 # Mirrors ``audit_log.source`` — a plain ``String(16)`` with no DB enum, the same
 # shape ``FinalizeSource`` gives ``encounter_result_audit.source``.
@@ -50,6 +53,34 @@ def _clip(value: str | None, limit: int) -> str | None:
     if value is None:
         return None
     return value[:limit]
+
+
+def json_safe(value: Any) -> Any:
+    """Coerce one value into something JSONB can hold.
+
+    Same reasoning as ``_clip``, one layer up: the audit row shares the
+    mutation's transaction, so a value asyncpg cannot encode — a bare
+    ``datetime``, an ``Enum``, a ``Decimal`` — would raise on flush and take the
+    audited mutation down with it. Every current call site already hands over
+    JSON-ready primitives; this makes that a property of the primitive instead of
+    a convention each new call site has to remember.
+
+    ``Decimal`` becomes ``str``, never ``float``: an audited money value must not
+    drift on the way in.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Enum):
+        return json_safe(value.value)
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    return str(value)
 
 
 async def record_audit(
@@ -87,8 +118,8 @@ async def record_audit(
         entity_type=entity_type,
         entity_id=entity_id,
         entity_label=_clip(entity_label, _LABEL_LIMIT),
-        before_json=before,
-        after_json=after,
+        before_json=json_safe(before),
+        after_json=json_safe(after),
         reason=reason,
         ip_address=_clip(ip_address, _IP_LIMIT),
         user_agent=_clip(user_agent, _LABEL_LIMIT),
