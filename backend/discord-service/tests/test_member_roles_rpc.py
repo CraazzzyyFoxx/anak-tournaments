@@ -8,18 +8,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Postgres/Redis/Rabbit block on top of the Discord credentials. Without these the
 # file only passed on a machine with a populated backend/.env — in CI it raised
 # five missing-field ValidationErrors before a single test ran. Nothing here
-# connects; the values just have to exist.
+# connects; the values only have to parse.
+#
+# The AMQP URL deliberately carries no `user:pass@` (AmqpDsn accepts that) — the
+# `guest:guest@` form other suites use is what GitGuardian reports as a leaked
+# secret, and a placeholder is not worth a security finding on every PR.
 os.environ.setdefault("DISCORD_TOKEN", "dummy_token")
 os.environ.setdefault("PARSER_URL", "http://parser:8002")
 os.environ.setdefault("SERVICE_CLIENT_ID", "dummy_id")
 os.environ.setdefault("SERVICE_CLIENT_SECRET", "dummy_secret")
 os.environ.setdefault("POSTGRES_USER", "postgres")
-os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
+os.environ.setdefault("POSTGRES_PASSWORD", "not-a-real-password")
 os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
+os.environ.setdefault("RABBITMQ_URL", "amqp://localhost:5672")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

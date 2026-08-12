@@ -41,7 +41,10 @@ const normalize = (p) => p.replaceAll("\\", "/");
 
 const all = [];
 for await (const entry of glob("src/**/*.test.{ts,tsx}")) all.push(normalize(entry));
-all.sort();
+// Explicit comparator: byte order, not locale, so the bun file list this feeds is
+// identical on every machine and CI runner. (A bare `.sort()` is also what
+// sonarjs S2871 flags, since it cannot prove the elements are strings.)
+all.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
 // One collected path per line. Anything vitest refuses to collect is absent,
 // which is precisely the signal this script is built on. The bin is resolved off
