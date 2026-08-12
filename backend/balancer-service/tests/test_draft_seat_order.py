@@ -37,7 +37,11 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.core.enums import DraftFormat  # noqa: E402
-from src.services.draft.lifecycle import DYNAMIC_ROUND_RULES, round_seat_order  # noqa: E402
+from src.services.draft.lifecycle import (  # noqa: E402
+    DYNAMIC_ROUND_RULES,
+    average_seat_order,
+    round_seat_order,
+)
 
 
 @dataclass(frozen=True)
@@ -109,6 +113,52 @@ def test_snake_reverses_every_even_round_and_ignores_the_rules() -> None:
 
 def test_linear_format_ignores_the_rules_entirely() -> None:
     assert _order(fmt=DraftFormat.LINEAR, round_rules=["reverse"], round_idx=1) == [70, 20, 50]
+
+
+class TestAverageSeatOrder:
+    """``team_avg_*``: by live average, and what happens when averages tie.
+
+    Round 2 is where this decides everything: every team holds exactly its
+    captain, so equal captain ranks mean equal averages and the tie-break IS the
+    round order.
+    """
+
+    def test_ascending_puts_the_lowest_average_first(self) -> None:
+        order = average_seat_order(SEATS, averages={70: 3000.0, 20: 2000.0, 50: 2500.0}, descending=False)
+
+        assert [team.id for team in order] == [20, 50, 70]
+
+    def test_descending_puts_the_highest_average_first(self) -> None:
+        order = average_seat_order(SEATS, averages={70: 3000.0, 20: 2000.0, 50: 2500.0}, descending=True)
+
+        assert [team.id for team in order] == [70, 50, 20]
+
+    def test_equal_averages_fall_back_to_the_seed_order_in_both_directions(self) -> None:
+        # The regression this pins: `reverse=True` flipped the whole sort key, so
+        # tied teams came out 3 -> 1 under desc and 1 -> 3 under asc. The seed
+        # order is the answer either way, as it is for equal captain ranks.
+        tied = {70: 2800.0, 20: 2800.0, 50: 2800.0}
+
+        assert [team.draft_position for team in average_seat_order(SEATS, averages=tied, descending=False)] == [1, 2, 3]
+        assert [team.draft_position for team in average_seat_order(SEATS, averages=tied, descending=True)] == [1, 2, 3]
+
+    def test_a_partial_tie_breaks_by_seed_within_the_tied_group_only(self) -> None:
+        averages = {70: 2800.0, 20: 2800.0, 50: 3500.0}
+
+        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=False)] == [70, 20, 50]
+        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=True)] == [50, 70, 20]
+
+    def test_a_team_without_an_average_sorts_as_zero(self) -> None:
+        averages = {70: 2800.0, 20: 2800.0}
+
+        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=False)] == [50, 70, 20]
+        assert [t.id for t in average_seat_order(SEATS, averages=averages, descending=True)] == [70, 20, 50]
+
+    def test_the_input_list_is_never_mutated(self) -> None:
+        before = list(SEATS)
+        average_seat_order(SEATS, averages={70: 1.0}, descending=True)
+
+        assert SEATS == before
 
 
 def test_the_input_list_is_never_mutated() -> None:

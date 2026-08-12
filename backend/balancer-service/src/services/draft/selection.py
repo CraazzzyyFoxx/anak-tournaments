@@ -119,10 +119,10 @@ async def _apply_dynamic_round_order(
     teams = (await session.scalars(sa.select(DraftTeam).where(DraftTeam.session_id == draft_session.id))).all()
     sorted_team_ids = [
         team.id
-        for team in sorted(
-            teams,
-            key=lambda t: (avg_by_team.get(t.id, 0.0), t.draft_position),
-            reverse=rule == "team_avg_desc",
+        for team in lifecycle.average_seat_order(
+            list(teams),
+            averages=avg_by_team,
+            descending=rule == "team_avg_desc",
         )
     ]
     round_picks = (

@@ -286,6 +286,34 @@ def round_seat_order(
     return list(seats)
 
 
+def average_seat_order(
+    seats: Sequence[_SeatT],
+    *,
+    averages: Mapping[int, float],
+    descending: bool,
+) -> list[_SeatT]:
+    """Seat order for a ``team_avg_*`` round: by live average, ties by seed.
+
+    The direction lives in the key rather than in ``reverse=``, because
+    ``reverse`` flips the WHOLE key: the tie-break would run backwards under
+    ``team_avg_desc`` and forwards under ``team_avg_asc``, so two teams on the
+    same average would swap seats purely from the direction of the rule. Equal
+    averages therefore always fall back to the seed order, matching what
+    ``weakest_first``/``strongest_first`` already do with equal captain ranks.
+
+    A team with no average yet sorts as 0.0. In practice every team has one --
+    captains are seeded as PICKED players on their own roster -- so this only
+    guards a team whose roster was emptied by hand.
+    """
+    return sorted(
+        seats,
+        key=lambda t: (
+            -averages.get(t.id, 0.0) if descending else averages.get(t.id, 0.0),
+            t.draft_position,
+        ),
+    )
+
+
 async def resync_pick_order(session: AsyncSession, draft_session: DraftSession) -> int:
     """Re-seat every round that has not started yet. Returns how many picks moved.
 
