@@ -1,11 +1,16 @@
 """Draft seeding in a forced-flex tournament.
 
 ``flex_role.mode == "forced"`` means role does not matter, so a player's
-strength is the MAXIMUM rank across all their roles, applied to all three. That
-is what makes the mode work at all: in the balancer, eligibility for a role is
-the presence of a rating for it (``Player.can_play`` is ``role in ratings``, and
-Rust mirrors it in ``context.rs``), not the ``is_flex`` flag -- so without
-flattening, a player ranked only on DPS could never be placed as tank.
+strength -- ``rank_value`` -- is the MAXIMUM rank across all their roles. Every
+role also has to CARRY a rating: in the balancer, eligibility for a role is the
+presence of one (``Player.can_play`` is ``role in ratings``, and Rust mirrors it
+in ``context.rs``), not the ``is_flex`` flag -- so a player ranked only on DPS
+could never be placed as tank without it. Roles the registration never ranked
+therefore take the maximum.
+
+What the maximum must NOT do is overwrite a rank the registrant actually stated.
+The draft shows the per-role number to the captain choosing a role, and
+flattening all three turned that display into one value printed three times.
 
 The draft's own ``rank_value`` selection is also corrected here: it used to
 prefer the primary role's rank even when another role was higher.
@@ -83,7 +88,8 @@ def _mapped(roles: list[_Role], **kwargs: Any) -> dict:
 
 
 class TestForcedFlexMapping:
-    def test_max_rank_is_applied_to_all_three_roles(self) -> None:
+    def test_a_ranked_role_keeps_its_own_rank(self) -> None:
+        """The draft shows this number per role, so it may not be overwritten."""
         mapped = _mapped(
             [
                 _Role("dps", priority=0, is_primary=True, rank_value=3900),
@@ -92,7 +98,9 @@ class TestForcedFlexMapping:
             all_roles=True,
         )
 
-        assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3900)
+        # Tank was never ranked, so it takes the maximum: eligibility is the
+        # presence of a rating, and that is the only value available for it.
+        assert mapped["role_ranks"] == {"dps": 3900, "support": 2400, "tank": 3900}
 
     def test_rank_value_is_the_max_not_the_primary_role_rank(self) -> None:
         """The bug this closes: the primary's rank won even when lower."""
@@ -214,8 +222,8 @@ class TestForcedFlexEnabledMirror:
 class TestAllRolesModeKeepsThePriority:
     """``all_roles`` differs from ``forced`` in exactly one respect.
 
-    Both make every role playable at the maximum rank, because balancer
-    eligibility demands a rating per role. Only ``forced`` also forces every role
+    Both make every role playable and carrying a rating, because balancer
+    eligibility demands one per role. Only ``forced`` also forces every role
     primary. Under ``all_roles`` the registrant's single priority role survives,
     which is what keeps a real balance-versus-comfort trade-off alive: a forced
     tournament has zero discomfort everywhere and the solver's second objective
@@ -247,7 +255,7 @@ class TestAllRolesModeKeepsThePriority:
 
         assert mapped["is_flex"] is False
 
-    def test_max_rank_still_covers_every_role(self) -> None:
+    def test_every_role_is_rated_without_losing_the_stated_ranks(self) -> None:
         mapped = lifecycle._map_registration(
             _Registration(
                 [
@@ -259,7 +267,9 @@ class TestAllRolesModeKeepsThePriority:
             all_roles=True,
         )
 
-        assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3900)
+        # Support is unrated and takes the maximum; tank keeps the 2800 the
+        # registrant stated, which is what the draft shows on the tank row.
+        assert mapped["role_ranks"] == {"tank": 2800, "dps": 3900, "support": 3900}
         assert mapped["rank_value"] == 3900
 
 

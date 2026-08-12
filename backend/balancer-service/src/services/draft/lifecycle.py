@@ -490,8 +490,14 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
     role rows sorted by priority -> primary (preferring is_primary) + secondaries;
     rank/sub-role come from the primary role.
 
-    Under ``all_roles`` role stops being a constraint: every role is playable
-    and the player's strength is the maximum rank across all their roles. The
+    Under ``all_roles`` role stops being a constraint: every role is playable and
+    the player's *strength* -- ``rank_value`` -- is the maximum rank across all
+    their roles. Their per-role catalogue still says what they are actually rated
+    at on each role, because the draft SHOWS it: a captain picking a role reads
+    that number, and stamping the maximum onto all three turned the role chooser
+    into one number printed three times. Roles the registration never ranked take
+    the maximum instead of nothing, so every playable role still carries a rating
+    (the balancer's eligibility for a role is the presence of one). The
     ``is_active`` filter is deliberately bypassed there -- a Google-Sheets row
     whose rank did not parse arrives with ``is_active=False`` and would
     otherwise silently lose a playable role.
@@ -549,10 +555,14 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
             role_top_heroes[role.value] = heroes
 
     if all_roles:
-        # Every role playable at the same strength. Keyed off DraftRole rather
-        # than the rows so a registration written before the mode was switched
-        # on (fewer than three role rows) still comes out fully flex.
-        role_ranks = {} if effective_rank is None else {role.value: effective_rank for role in DraftRole}
+        # Every role rated, none overwritten. Keyed off DraftRole rather than the
+        # rows so a registration written before the mode was switched on (fewer
+        # than three role rows) still comes out fully playable.
+        role_ranks = (
+            {}
+            if effective_rank is None
+            else {role.value: role_ranks.get(role.value, effective_rank) for role in DraftRole}
+        )
 
     return {
         "primary_role": primary,
