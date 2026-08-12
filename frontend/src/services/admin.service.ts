@@ -113,6 +113,8 @@ import {
   AdminMatchDetail,
   AdminMatchRow,
   AdminMatchesQuery,
+  AuditLogQuery,
+  AuditLogRead,
 } from "@/types/admin.types";
 
 /**
@@ -1707,6 +1709,27 @@ class AdminService {
     const response = await apiFetch("/api/v1/admin/subscriptions/collect", {
       method: "POST",
       body: data
+    });
+    return response.json();
+  }
+
+  // ─── Platform audit log ────────────────────────────────────────────────────
+
+  /**
+   * One feed for "who did this", scoped by the ambient workspace.
+   *
+   * `workspace_id` rides the usual injection because it IS the RBAC scope the
+   * endpoint authorizes against — and the scope is applied first and
+   * unconditionally, so `entity_type`/`entity_id`/`actor_user_id` narrow inside
+   * it rather than reaching around it. Only a superuser may drop it
+   * (`allWorkspaces`), which is also the only way platform rows
+   * (`workspace_id IS NULL`) come back at all.
+   */
+  async listAudit(params: AuditLogQuery = {}): Promise<PaginatedResponse<AuditLogRead>> {
+    const { allWorkspaces, ...query } = params;
+    const response = await apiFetch("/api/v1/admin/audit", {
+      skipWorkspace: allWorkspaces === true,
+      query
     });
     return response.json();
   }

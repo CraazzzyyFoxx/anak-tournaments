@@ -468,8 +468,14 @@ def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkey
             return self._value
 
     class _FakeSession:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+
         async def execute(self, _query):
             return _ScalarResult(user)
+
+        def add(self, row) -> None:
+            self.added.append(row)
 
     async def fake_admin_link_player(session, auth_user_id, player_id, is_primary):
         assert session is fake_session
@@ -488,7 +494,13 @@ def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkey
     response = asyncio.run(
         rbac_flows.assign_linked_player_to_auth_user(
             fake_session,
-            SimpleNamespace(is_superuser=True, has_permission=lambda r, a: True),
+            SimpleNamespace(
+                id=1,
+                username="root",
+                email="root@example.com",
+                is_superuser=True,
+                has_permission=lambda r, a: True,
+            ),
             9,
             SimpleNamespace(player_id=42, is_primary=False),
         )
@@ -508,8 +520,14 @@ def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(mo
             return self._value
 
     class _FakeSession:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+
         async def execute(self, _query):
             return _ScalarResult(user)
+
+        def add(self, row) -> None:
+            self.added.append(row)
 
     async def fake_admin_unlink_player(session, auth_user_id, player_id):
         assert session is fake_session
@@ -527,7 +545,13 @@ def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(mo
     response = asyncio.run(
         rbac_flows.remove_linked_player_from_auth_user(
             fake_session,
-            SimpleNamespace(is_superuser=True, has_permission=lambda r, a: True),
+            SimpleNamespace(
+                id=1,
+                username="root",
+                email="root@example.com",
+                is_superuser=True,
+                has_permission=lambda r, a: True,
+            ),
             9,
             42,
         )
@@ -603,9 +627,13 @@ def test_remove_role_route_allows_admin_removal_when_another_assignment_exists(
         def __init__(self):
             self._values = [current_user, admin_role]
             self.commit_called = False
+            self.added: list[object] = []
 
         async def execute(self, _query):
             return _ScalarResult(self._values.pop(0))
+
+        def add(self, row):
+            self.added.append(row)
 
         async def commit(self):
             self.commit_called = True
@@ -709,9 +737,13 @@ def test_delete_oauth_connection_route_deletes_connection(monkeypatch: pytest.Mo
         def __init__(self):
             self.commit_called = False
             self.deleted: list[object] = []
+            self.added: list[object] = []
 
         async def execute(self, _query):
             return _ScalarResult(connection)
+
+        def add(self, row):
+            self.added.append(row)
 
         async def delete(self, value):
             self.deleted.append(value)
@@ -724,7 +756,13 @@ def test_delete_oauth_connection_route_deletes_connection(monkeypatch: pytest.Mo
     asyncio.run(
         rbac_flows.delete_oauth_connection(
             session,
-            SimpleNamespace(id=1, is_superuser=True, has_permission=lambda r, a: True),
+            SimpleNamespace(
+                id=1,
+                username="root",
+                email="root@example.com",
+                is_superuser=True,
+                has_permission=lambda r, a: True,
+            ),
             21,
         )
     )
@@ -794,7 +832,7 @@ def test_delete_oauth_connection_route_blocks_last_passwordless_login() -> None:
 
 
 def test_delete_auth_user_route_deletes_and_invalidates(monkeypatch: pytest.MonkeyPatch) -> None:
-    target = SimpleNamespace(id=9, email="grace@example.com")
+    target = SimpleNamespace(id=9, username="grace", email="grace@example.com")
 
     class _ScalarResult:
         def __init__(self, value):
@@ -807,9 +845,13 @@ def test_delete_auth_user_route_deletes_and_invalidates(monkeypatch: pytest.Monk
         def __init__(self):
             self.commit_called = False
             self.deleted: list[object] = []
+            self.added: list[object] = []
 
         async def execute(self, _query):
             return _ScalarResult(target)
+
+        def add(self, row):
+            self.added.append(row)
 
         async def delete(self, value):
             self.deleted.append(value)
@@ -829,7 +871,7 @@ def test_delete_auth_user_route_deletes_and_invalidates(monkeypatch: pytest.Monk
     asyncio.run(
         rbac_flows.delete_auth_user(
             session,
-            SimpleNamespace(id=1, is_superuser=True),
+            SimpleNamespace(id=1, username="root", email="root@example.com", is_superuser=True),
             9,
         )
     )

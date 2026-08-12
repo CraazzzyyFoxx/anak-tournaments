@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import ApiKeyRepository, WorkspaceMemberRepository, WorkspaceRepository
+from shared.services.audit import record_audit
 from src import models, schemas
 from src.core import key_derivation
 from src.core.config import settings
@@ -52,6 +53,11 @@ _workspace_repo = WorkspaceRepository()
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _isoformat(value: datetime | None) -> str | None:
+    """Render a timestamp for a JSONB audit snapshot (``json.dumps`` cannot)."""
+    return value.isoformat() if value is not None else None
 
 
 def _hash_secret(secret: str) -> str:
@@ -249,6 +255,8 @@ async def create_api_key(
     *,
     user: models.AuthUser,
     payload: schemas.ApiKeyCreate,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> schemas.ApiKeyCreateResponse:
     await ensure_can_manage_api_keys(session, user=user, workspace_id=payload.workspace_id)
 
@@ -267,6 +275,26 @@ async def create_api_key(
         expires_at=payload.expires_at,
     )
     await _api_key_repo.create(session, row)
+    # Never the secret, its hash, or the public id: an API key is identified in
+    # the journal by its row id and human name, and by nothing that authenticates.
+    await record_audit(
+        session,
+        action="api_key.create",
+        source="admin",
+        actor=user,
+        actor_label=user.username or user.email,
+        workspace_id=row.workspace_id,
+        entity_type="api_key",
+        entity_id=row.id,
+        entity_label=row.name,
+        after={
+            "name": row.name,
+            "scopes_json": list(row.scopes_json),
+            "expires_at": _isoformat(row.expires_at),
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.commit()
     await session.refresh(row)
     return schemas.ApiKeyCreateResponse(api_key=_serialize_api_key(row), key=full_key)
@@ -278,12 +306,30 @@ async def update_api_key(
     user: models.AuthUser,
     api_key_id: int,
     payload: schemas.ApiKeyUpdate,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> schemas.ApiKeyRead:
     row = await _api_key_repo.get(session, api_key_id)
     if row is None or row.auth_user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
     await ensure_can_manage_api_keys(session, user=user, workspace_id=row.workspace_id)
+    before_name = row.name
     row.name = _clean_name(payload.name)
+    await record_audit(
+        session,
+        action="api_key.update",
+        source="admin",
+        actor=user,
+        actor_label=user.username or user.email,
+        workspace_id=row.workspace_id,
+        entity_type="api_key",
+        entity_id=row.id,
+        entity_label=row.name,
+        before={"name": before_name},
+        after={"name": row.name},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.commit()
     await session.refresh(row)
     return _serialize_api_key(row)
@@ -294,6 +340,8 @@ async def revoke_api_key(
     *,
     user: models.AuthUser,
     api_key_id: int,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     row = await _api_key_repo.get(session, api_key_id)
     if row is None or row.auth_user_id != user.id:
@@ -301,6 +349,23 @@ async def revoke_api_key(
     await ensure_can_manage_api_keys(session, user=user, workspace_id=row.workspace_id)
     if row.revoked_at is None:
         row.revoked_at = _now()
+        # Inside the branch: revoking an already-revoked key changes nothing and
+        # must not add a second "revoked" row to the journal.
+        await record_audit(
+            session,
+            action="api_key.revoke",
+            source="admin",
+            actor=user,
+            actor_label=user.username or user.email,
+            workspace_id=row.workspace_id,
+            entity_type="api_key",
+            entity_id=row.id,
+            entity_label=row.name,
+            before={"revoked_at": None},
+            after={"revoked_at": _isoformat(row.revoked_at)},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         await session.commit()
 
 

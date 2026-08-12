@@ -30,4 +30,10 @@ var MetadataAdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/admin/catalog-aliases/misses", Queue: "rpc.app.catalog_aliases.misses_list", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/catalog-aliases/attach", Queue: "rpc.app.catalog_aliases.attach", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/catalog-aliases/misses/{id}/dismiss", Queue: "rpc.app.catalog_aliases.dismiss", IDParam: "id", Auth: edge.AuthRequired},
+	// Platform audit log ("who did this", workspace-scoped, gated by audit.read
+	// in the worker). Not game metadata — it rides this table because the table
+	// is already registered on the mux in main.go and already carries
+	// non-metadata (catalog-aliases above), so the feed costs no new Register.
+	// The docs file it under its own tag; see apidocs.Groups.
+	{Method: "GET", Pattern: "/api/v1/admin/audit", Queue: "rpc.app.audit_list", AllQuery: true, Auth: edge.AuthRequired},
 }

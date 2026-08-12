@@ -67,6 +67,7 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     _permission("rank", "update", "Trigger a rank re-fetch"),
     _permission("subscription", "read", "Read subscription-collection health and check history"),
     _permission("subscription", "update", "Trigger a subscription re-check"),
+    _permission("audit", "read", "Read the platform audit log"),
     # Self-service capabilities: allowed by default for every authenticated user;
     # exist only so an admin can DENY them per user (negative RBAC).
     _permission("account", "avatar", "Change one's own avatar"),

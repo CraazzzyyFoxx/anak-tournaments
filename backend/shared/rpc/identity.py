@@ -69,6 +69,12 @@ def rehydrate_user(identity: dict[str, Any] | None) -> AuthUser:
     user.id = _payload_user_id(identity)
     user.is_superuser = bool(identity.get("is_superuser", False))
     user.is_active = bool(identity.get("is_active", True))
+    # ``TokenPayload.username`` always rides the envelope, and the audit log needs
+    # it as an actor label that stays readable after the account is deleted. Left
+    # unset when absent (hand-built identities in tests) rather than blanked.
+    username = identity.get("username")
+    if isinstance(username, str) and username:
+        user.username = username
 
     workspaces = identity.get("workspaces") or []
     workspace_rbac: dict[int, dict] = {}

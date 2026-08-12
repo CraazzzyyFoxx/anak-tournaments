@@ -36,6 +36,7 @@ type CrudPermission = `${CrudResource}.${CrudAction}`;
 
 type SpecialPermission =
   | "admin.*"
+  | "audit.read"
   | "permission.read"
   | "auth_user.read"
   | "auth_user.update"

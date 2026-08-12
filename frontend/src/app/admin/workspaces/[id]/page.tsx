@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, Copy, Loader2 } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AuditTrail } from "@/components/admin/AuditTrail";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
@@ -682,6 +683,11 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           {updateMutation.isPending ? "Saving…" : "Save changes"}
         </Button>
       </div>
+
+      {/* Branding, the custom domain and the Discord guild are all audited from
+          this screen, so the trail that answers "who changed this" sits on it.
+          Below the save row on purpose: history is for after the fact. */}
+      <AuditTrail entityType="workspace" entityId={id} workspaceId={id} />
       <DeleteConfirmDialog
         open={removeDomainOpen}
         onOpenChange={setRemoveDomainOpen}

@@ -6,6 +6,7 @@ import {
   Building2,
   ClipboardCheck,
   Gamepad2,
+  History,
   Layers,
   LayoutDashboard,
   Map,
@@ -249,6 +250,15 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Manage workspaces and their settings.",
         workspaceAdminVisible: true,
       },
+      {
+        title: "Audit log",
+        href: "/admin/audit",
+        icon: History,
+        description: "Who changed what, and when — roles, API keys, tournaments, workspace settings.",
+        permissions: ["audit.read"],
+        workspaceAdminVisible: true,
+        aliases: ["audit", "who changed this", "change log", "trail"],
+      },
     ],
   },
 ];
@@ -287,6 +297,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/aliases", permissions: [], superuserOnly: true },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
   { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },
+  { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
   { prefix: "/admin", permissions: adminEntryPermissions, workspaceAdminVisible: true },
 ];
 

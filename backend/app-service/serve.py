@@ -24,6 +24,7 @@ from src.rpc import (
     _clients,
     achievements,
     admin_crud,
+    audit,
     binary,
     catalog_aliases,
     gamemodes,
@@ -76,6 +77,9 @@ catalog_aliases.register(broker, logger)
 
 # User + identity admin CRUD, profile merge, avatar, CSV import (from parser-service).
 users_admin.register(broker, logger)
+
+# Platform audit log (read-only feed + per-entity trail), gated by audit.read.
+audit.register(broker, logger)
 
 # Phase 3 — binary/multipart endpoints (icons, assets, match-log) over base64.
 binary.register(broker, logger)

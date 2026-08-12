@@ -318,6 +318,17 @@ DOCS: dict[str, dict] = {
         "summary": "Dismiss a catalog alias miss",
         "description": "Marks an alias miss resolved without attaching it; the row reopens if the same name reappears in a log. 404 if the miss is missing (superuser only).",
     },
+    # ── platform audit log ────────────────────────────────────────────────────────────────
+    "rpc.app.audit_list": {
+        "summary": "List audit log entries",
+        "description": (
+            "Returns a paginated slice of the platform audit log, newest first (created_at then id, both "
+            "descending). workspace_id is required for everyone but a superuser and is enforced as a hard "
+            "scope: entity_type/entity_id and actor_user_id narrow within it and never reach a row outside "
+            "it. A superuser may omit workspace_id to see every workspace plus the platform-level rows that "
+            "belong to none. Requires audit.read in the requested workspace."
+        ),
+    },
     # ── users admin (CRUD) ───────────────────────────────────────────────────────────────
     "rpc.app.users.admin_list": {
         "summary": "Admin list users",

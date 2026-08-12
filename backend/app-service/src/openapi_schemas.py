@@ -20,6 +20,7 @@ from shared.core.pagination import (
 )
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
+from src.schemas.admin.audit import AuditLogListQueryParams, AuditLogRead
 from src.schemas.admin.catalog_alias import (
     CatalogAliasAttach,
     CatalogAliasMissListQueryParams,
@@ -190,6 +191,8 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.app.catalog_aliases.attach": Op(request=CatalogAliasAttach),
     "rpc.app.catalog_aliases.dismiss": Op(),
+    # ── platform audit log ─────────────────────────────────────────────────
+    "rpc.app.audit_list": Op(response=Paginated[AuditLogRead], query=AuditLogListQueryParams),
     # ── users admin (CRUD + identities + merge) ────────────────────────────
     "rpc.app.users.admin_create": Op(request=UserCreate, response=schemas.UserRead),
     "rpc.app.users.admin_update": Op(request=UserUpdate, response=schemas.UserRead),

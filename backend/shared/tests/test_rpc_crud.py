@@ -35,6 +35,26 @@ MEMBER: dict[str, Any] = {
 
 
 class _FakeSession:
+    """Enough of AsyncSession for the engine's write paths.
+
+    The write verbs stage an audit row and commit, so ``add``/``commit``/``flush``
+    have to exist here; ``backend/tests/test_audit_scope.py`` is what asserts on
+    the rows that land in them.
+    """
+
+    def __init__(self) -> None:
+        self.added: list[Any] = []
+        self.commits = 0
+
+    def add(self, instance: Any) -> None:
+        self.added.append(instance)
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def flush(self) -> None:
+        return None
+
     async def __aenter__(self) -> _FakeSession:
         return self
 

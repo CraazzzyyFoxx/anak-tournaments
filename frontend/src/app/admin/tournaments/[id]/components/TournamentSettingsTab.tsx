@@ -22,6 +22,7 @@ import {
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { AuditTrail } from "@/components/admin/AuditTrail";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { RosterShapeEditor } from "@/components/admin/tournaments/RosterShapeEditor";
@@ -671,6 +672,15 @@ export function TournamentSettingsTab({
           </Card>
         )}
       </div>
+
+      {/* Below the settings it explains: every field on this tab, and the delete
+          above, is an audited action, so the answer to "who changed this" belongs
+          on the same screen as the change. */}
+      <AuditTrail
+        entityType="tournament"
+        entityId={tournamentId}
+        workspaceId={tournament.workspace_id}
+      />
 
       {canDeleteTournament && (
         <DeleteConfirmDialog

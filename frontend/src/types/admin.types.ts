@@ -1295,3 +1295,61 @@ export interface CsvUserImportParams {
   has_twitch?: boolean;
   sheet_url?: string;
 }
+
+// ─── Platform audit log ──────────────────────────────────────────────────────
+
+/** Curated set the backend writes today. `source` stays a `string` on the wire. */
+export type AuditSource = "admin" | "challonge" | "discord" | "scheduler" | "system";
+
+export interface AuditLogRead {
+  id: number;
+  created_at: string;
+  /** `null` is a platform-level action with no owning workspace — superuser only. */
+  workspace_id: number | null;
+  /** `null` is a machine actor, not a missing one (FR3). */
+  actor_auth_user_id: number | null;
+  actor_label: string | null;
+  /** `String(16)` from the whole platform, so an unrecognised value must render. */
+  source: string;
+  /** `String(64)`, not a closed enum — always render through `describeAuditAction`. */
+  action: string;
+  entity_type: string | null;
+  entity_id: number | null;
+  entity_label: string | null;
+  /** Named domain fields the writer chose, never a raw request payload. */
+  before_json: Record<string, unknown> | null;
+  after_json: Record<string, unknown> | null;
+  reason: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  correlation_id: string | null;
+}
+
+/** Whitelisted server-side; anything else is a 422 from the query model. */
+export type AuditSortField =
+  | "created_at"
+  | "id"
+  | "action"
+  | "source"
+  | "actor_label"
+  | "entity_type";
+
+export interface AuditLogQuery {
+  workspace_id?: number | null;
+  entity_type?: string | null;
+  entity_id?: number | null;
+  action?: string | null;
+  actor_user_id?: number | null;
+  page?: number;
+  /** 1..200 server-side. */
+  per_page?: number;
+  sort?: AuditSortField | null;
+  order?: "asc" | "desc";
+  search?: string | null;
+  /**
+   * Client-side only (hence camelCase, unlike the wire params above): drops the
+   * ambient `workspace_id` injection. The only way to reach platform rows
+   * (`workspace_id IS NULL`), and a 422 for anyone but a superuser.
+   */
+  allWorkspaces?: boolean;
+}

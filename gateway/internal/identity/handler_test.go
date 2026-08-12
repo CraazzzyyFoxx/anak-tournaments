@@ -440,3 +440,208 @@ func TestClientMeta(t *testing.T) {
 		t.Fatalf("clientMeta ip = %q, want \"192.0.2.5\"", ip)
 	}
 }
+
+// The four bearer-authenticated helpers below never pass through
+// edge.Dispatcher, so setClientMeta is the only thing that puts the caller's
+// origin on their RPC bodies -- and these are exactly the routes writing the
+// platform audit log's security rows. The key names are load-bearing:
+// identity-svc reads data.get("ip_address")/data.get("user_agent"), so a
+// synonym would silently drop the forensics.
+func rpcClientMeta(t *testing.T, caller *fakeCaller) (userAgent, ip string) {
+	t.Helper()
+	var req struct {
+		UserAgent string `json:"user_agent"`
+		IPAddress string `json:"ip_address"`
+	}
+	if err := json.Unmarshal(caller.gotBody, &req); err != nil {
+		t.Fatal(err)
+	}
+	return req.UserAgent, req.IPAddress
+}
+
+func TestAuthedFields_StampsClientMeta(t *testing.T) {
+	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":null}`)}
+	r := httptest.NewRequest(http.MethodPatch, "/api/auth/player/linked/7/primary", nil)
+	r.SetPathValue("player_id", "7")
+	r.Header.Set("Authorization", "Bearer acc")
+	r.Header.Set("X-Real-IP", "203.0.113.7")
+	r.Header.Set("User-Agent", "UA/1")
+	w := httptest.NewRecorder()
+	newHandler(caller).PlayerSetPrimary(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if ua, ip := rpcClientMeta(t, caller); ua != "UA/1" || ip != "203.0.113.7" {
+		t.Fatalf("meta = %q/%q, want \"UA/1\"/\"203.0.113.7\"", ua, ip)
+	}
+	// The fixed path-param and the bearer must still ride along untouched.
+	var req map[string]any
+	if err := json.Unmarshal(caller.gotBody, &req); err != nil {
+		t.Fatal(err)
+	}
+	if req["player_id"] != "7" || req["access_token"] != "acc" {
+		t.Fatalf("rpc body lost its fields: %v", req)
+	}
+}
+
+func TestAuthedAllQuery_StampsClientMetaOutsideQuery(t *testing.T) {
+	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":{"results":[],"total":0,"page":1,"per_page":25}}`)}
+	r := httptest.NewRequest(http.MethodGet, "/api/auth/rbac/sessions?page=1", nil)
+	r.Header.Set("Authorization", "Bearer acc")
+	r.Header.Set("X-Real-IP", "203.0.113.7")
+	r.Header.Set("User-Agent", "UA/1")
+	w := httptest.NewRecorder()
+	newHandler(caller).RbacListSessions(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if ua, ip := rpcClientMeta(t, caller); ua != "UA/1" || ip != "203.0.113.7" {
+		t.Fatalf("meta = %q/%q, want \"UA/1\"/\"203.0.113.7\"", ua, ip)
+	}
+
+	// The metadata must stay at the top level: build_query_model only ever
+	// sees "query", and a stray key there would surface as a bogus filter.
+	var req struct {
+		Query map[string][]string `json:"query"`
+	}
+	if err := json.Unmarshal(caller.gotBody, &req); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := req.Query["ip_address"]; ok {
+		t.Fatalf("client metadata leaked into the query-params model: %v", req.Query)
+	}
+	if got := req.Query["page"]; len(got) != 1 || got[0] != "1" {
+		t.Fatalf("query[page] = %v, want [\"1\"]", got)
+	}
+}
+
+func TestAuthedMerge_ServerClientMetaOverridesBody(t *testing.T) {
+	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":{}}`)}
+	r := httptest.NewRequest(http.MethodPost, "/api/auth/player/link",
+		strings.NewReader(`{"battle_tag":"x#1","ip_address":"6.6.6.6","user_agent":"forged"}`))
+	r.Header.Set("Authorization", "Bearer acc")
+	r.Header.Set("X-Real-IP", "203.0.113.7")
+	r.Header.Set("User-Agent", "UA/1")
+	w := httptest.NewRecorder()
+	newHandler(caller).PlayerLink(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", w.Code)
+	}
+	// A caller must never be able to forge the recorded origin of its own
+	// mutation -- the server value overwrites the body's unconditionally.
+	if ua, ip := rpcClientMeta(t, caller); ua != "UA/1" || ip != "203.0.113.7" {
+		t.Fatalf("client-supplied metadata survived: %q/%q", ua, ip)
+	}
+	var req map[string]any
+	if err := json.Unmarshal(caller.gotBody, &req); err != nil {
+		t.Fatal(err)
+	}
+	if req["battle_tag"] != "x#1" {
+		t.Fatalf("legitimate client field was dropped: %v", req)
+	}
+}
+
+func TestAuthedNoBody_StampsClientMeta(t *testing.T) {
+	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":[]}`)}
+	r := httptest.NewRequest(http.MethodGet, "/api/auth/player/linked", nil)
+	r.Header.Set("Authorization", "Bearer acc")
+	r.Header.Set("X-Real-IP", "203.0.113.7")
+	r.Header.Set("User-Agent", "UA/1")
+	w := httptest.NewRecorder()
+	newHandler(caller).PlayerLinked(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if ua, ip := rpcClientMeta(t, caller); ua != "UA/1" || ip != "203.0.113.7" {
+		t.Fatalf("meta = %q/%q, want \"UA/1\"/\"203.0.113.7\"", ua, ip)
+	}
+}
+
+// TestAuthedHelpers_LeftmostForwardedHopNeverWins runs all four helpers with a
+// client-forged left-most X-Forwarded-For entry present. The audited row must
+// carry the nginx-set X-Real-IP, never the forgeable hop.
+func TestAuthedHelpers_LeftmostForwardedHopNeverWins(t *testing.T) {
+	cases := []struct {
+		name   string
+		resp   []byte
+		newReq func() *http.Request
+		invoke func(*Handler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name: "authedFields",
+			resp: []byte(`{"ok":true,"data":null}`),
+			newReq: func() *http.Request {
+				r := httptest.NewRequest(http.MethodPatch, "/api/auth/player/linked/7/primary", nil)
+				r.SetPathValue("player_id", "7")
+				return r
+			},
+			invoke: (*Handler).PlayerSetPrimary,
+		},
+		{
+			name:   "authedAllQuery",
+			resp:   []byte(`{"ok":true,"data":{"results":[],"total":0,"page":1,"per_page":25}}`),
+			newReq: func() *http.Request { return httptest.NewRequest(http.MethodGet, "/api/auth/rbac/sessions?page=1", nil) },
+			invoke: (*Handler).RbacListSessions,
+		},
+		{
+			name: "authedMerge",
+			resp: []byte(`{"ok":true,"data":{}}`),
+			newReq: func() *http.Request {
+				return httptest.NewRequest(http.MethodPost, "/api/auth/player/link",
+					strings.NewReader(`{"battle_tag":"x#1","ip_address":"9.9.9.9"}`))
+			},
+			invoke: (*Handler).PlayerLink,
+		},
+		{
+			name:   "authedNoBody",
+			resp:   []byte(`{"ok":true,"data":[]}`),
+			newReq: func() *http.Request { return httptest.NewRequest(http.MethodGet, "/api/auth/player/linked", nil) },
+			invoke: (*Handler).PlayerLinked,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := &fakeCaller{resp: tc.resp}
+			r := tc.newReq()
+			r.Header.Set("Authorization", "Bearer acc")
+			r.Header.Set("X-Real-IP", "203.0.113.7")
+			r.Header.Set("X-Forwarded-For", "9.9.9.9, 10.0.0.1")
+			r.Header.Set("User-Agent", "UA/1")
+			w := httptest.NewRecorder()
+			tc.invoke(newHandler(caller), w, r)
+
+			if !caller.called {
+				t.Fatal("RPC did not run")
+			}
+			ua, ip := rpcClientMeta(t, caller)
+			if ip != "203.0.113.7" {
+				t.Fatalf("ip_address = %q, want the nginx-set \"203.0.113.7\"", ip)
+			}
+			if ua != "UA/1" {
+				t.Fatalf("user_agent = %q, want \"UA/1\"", ua)
+			}
+		})
+	}
+}
+
+// Without X-Real-IP the trusted value is the RIGHT-most X-Forwarded-For hop
+// (appended by nginx), still never the client-supplied left-most one.
+func TestAuthedFields_TrustsRightmostForwardedHop(t *testing.T) {
+	caller := &fakeCaller{resp: []byte(`{"ok":true,"data":null}`)}
+	r := httptest.NewRequest(http.MethodPatch, "/api/auth/player/linked/7/primary", nil)
+	r.SetPathValue("player_id", "7")
+	r.Header.Set("Authorization", "Bearer acc")
+	r.Header.Set("X-Forwarded-For", "9.9.9.9, 10.0.0.1")
+	r.Header.Set("User-Agent", "UA/1")
+	w := httptest.NewRecorder()
+	newHandler(caller).PlayerSetPrimary(w, r)
+
+	if _, ip := rpcClientMeta(t, caller); ip != "10.0.0.1" {
+		t.Fatalf("ip_address = %q, want \"10.0.0.1\"", ip)
+	}
+}

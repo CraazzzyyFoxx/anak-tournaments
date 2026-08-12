@@ -558,6 +558,181 @@
       "description": "Uploads an achievements/divisions asset to S3 (superuser only), optionally workspace-scoped, returning its key and public URL; 422 on invalid asset_type.",
       "summary": "Upload asset"
     },
+    "rpc.app.audit_list": {
+      "description": "Returns a paginated slice of the platform audit log, newest first (created_at then id, both descending). workspace_id is required for everyone but a superuser and is enforced as a hard scope: entity_type/entity_id and actor_user_id narrow within it and never reach a row outside it. A superuser may omit workspace_id to see every workspace plus the platform-level rows that belong to none. Requires audit.read in the requested workspace.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 25,
+            "maximum": 200,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "created_at",
+            "enum": [
+              "created_at",
+              "id",
+              "action",
+              "source",
+              "actor_label",
+              "entity_type"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.SortOrder",
+            "default": "desc"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workspace Id"
+          }
+        },
+        {
+          "name": "entity_type",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Type"
+          }
+        },
+        {
+          "name": "entity_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Id"
+          }
+        },
+        {
+          "name": "action",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Action"
+          }
+        },
+        {
+          "name": "actor_user_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Actor User Id"
+          }
+        },
+        {
+          "name": "search",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Search"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_AuditLogRead_"
+      },
+      "summary": "List audit log entries"
+    },
     "rpc.app.catalog_aliases.attach": {
       "description": "Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing (superuser only).",
       "request": {
@@ -10128,6 +10303,306 @@
       "title": "AchievementTournamentLink",
       "type": "object"
     },
+    "app.AuditLogListQueryParams": {
+      "description": "Query string of ``GET /api/v1/admin/audit``.\n\nDefaults are ``created_at`` descending: the feed answers \"what just\nhappened\", and ``created_at`` \u2014 not ``id`` \u2014 is the time order, because\n``func.now()`` stamps the transaction's start.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor User Id"
+        },
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "entity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Id"
+        },
+        "entity_type": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Type"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/app.SortOrder",
+          "default": "desc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 25,
+          "maximum": 200,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        },
+        "sort": {
+          "default": "created_at",
+          "enum": [
+            "created_at",
+            "id",
+            "action",
+            "source",
+            "actor_label",
+            "entity_type"
+          ],
+          "title": "Sort",
+          "type": "string"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        }
+      },
+      "title": "AuditLogListQueryParams",
+      "type": "object"
+    },
+    "app.AuditLogRead": {
+      "description": "One audit row, verbatim: every column the model stores.\n\n``actor_label`` is a snapshot taken at write time so the row stays readable\nafter the account is gone; the handler backfills it from the auth user when\nthe snapshot is null, which is why it is optional here rather than required.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "actor_auth_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor Auth User Id"
+        },
+        "actor_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor Label"
+        },
+        "after_json": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After Json"
+        },
+        "before_json": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before Json"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "entity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Id"
+        },
+        "entity_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Label"
+        },
+        "entity_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Type"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "ip_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ip Address"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "user_agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Agent"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        }
+      },
+      "required": [
+        "id",
+        "created_at",
+        "source",
+        "action"
+      ],
+      "title": "AuditLogRead",
+      "type": "object"
+    },
     "app.CatalogAliasAttach": {
       "description": "Attach `alias` to one catalog entity and close the matching miss.",
       "properties": {
@@ -11939,6 +12414,37 @@
         "results"
       ],
       "title": "Paginated[AchievementRead]",
+      "type": "object"
+    },
+    "app.Paginated_AuditLogRead_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.AuditLogRead"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[AuditLogRead]",
       "type": "object"
     },
     "app.Paginated_CatalogAliasMissRead_": {
@@ -26749,6 +27255,18 @@
           "default": null,
           "title": "Notes"
         },
+        "profiles_open": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profiles Open"
+        },
         "reviewed_at": {
           "anyOf": [
             {
@@ -26832,6 +27350,18 @@
           ],
           "default": null,
           "title": "Submitted At"
+        },
+        "subscription_outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subscription Outcome"
         },
         "tournament_id": {
           "title": "Tournament Id",

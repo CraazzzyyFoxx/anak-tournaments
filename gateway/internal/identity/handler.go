@@ -576,7 +576,8 @@ func (h *Handler) PlayerSetPrimary(w http.ResponseWriter, r *http.Request) {
 }
 
 // authedFields handles a bearer-authenticated endpoint with no JSON request body,
-// forwarding the access token plus fixed extra fields (path params) to identity-svc.
+// forwarding the access token plus fixed extra fields (path params) and the
+// trusted client metadata (see setClientMeta) to identity-svc.
 func (h *Handler) authedFields(w http.ResponseWriter, r *http.Request, queue string, successStatus int, extra map[string]any) {
 	token := bearerToken(r)
 	if token == "" {
@@ -587,6 +588,7 @@ func (h *Handler) authedFields(w http.ResponseWriter, r *http.Request, queue str
 	for k, v := range extra {
 		body[k] = v
 	}
+	setClientMeta(r, body)
 	b, _ := json.Marshal(body)
 	h.callIdentity(w, r, queue, b, successStatus)
 }
@@ -619,15 +621,21 @@ func (h *Handler) authedAllQuery(w http.ResponseWriter, r *http.Request, queue s
 		writeDetail(w, http.StatusForbidden, "Not authenticated")
 		return
 	}
-	body, _ := json.Marshal(map[string]any{
+	// The metadata rides at the TOP level, never inside "query":
+	// build_query_model only ever sees the nested map, so an audit field can
+	// never be mistaken for (or collide with) a filter name.
+	body := map[string]any{
 		"access_token": token,
 		"query":        map[string][]string(r.URL.Query()),
-	})
-	h.callIdentity(w, r, queue, body, successStatus)
+	}
+	setClientMeta(r, body)
+	b, _ := json.Marshal(body)
+	h.callIdentity(w, r, queue, b, successStatus)
 }
 
 // authedMerge handles a bearer-authenticated endpoint with a JSON request body,
-// merging the access token plus fixed extra fields (path params) before forwarding.
+// merging the access token plus fixed extra fields (path params) and the trusted
+// client metadata before forwarding.
 func (h *Handler) authedMerge(w http.ResponseWriter, r *http.Request, queue string, successStatus int, extra map[string]any) {
 	token := bearerToken(r)
 	if token == "" {
@@ -638,6 +646,11 @@ func (h *Handler) authedMerge(w http.ResponseWriter, r *http.Request, queue stri
 	for k, v := range extra {
 		merged[k] = v
 	}
+	// mergeBody applies `merged` OVER the decoded client body, so stamping the
+	// metadata into it here is still an unconditional post-merge overwrite --
+	// the very mechanism that keeps a body-supplied access_token from surviving
+	// in OAuthLink above.
+	setClientMeta(r, merged)
 	body, ok := mergeBody(w, r, merged)
 	if !ok {
 		return
@@ -646,15 +659,17 @@ func (h *Handler) authedMerge(w http.ResponseWriter, r *http.Request, queue stri
 }
 
 // authedNoBody handles a bearer-authenticated endpoint with no request body,
-// forwarding just the access token to identity-svc.
+// forwarding just the access token plus the trusted client metadata to identity-svc.
 func (h *Handler) authedNoBody(w http.ResponseWriter, r *http.Request, queue string, successStatus int) {
 	token := bearerToken(r)
 	if token == "" {
 		writeDetail(w, http.StatusForbidden, "Not authenticated")
 		return
 	}
-	body, _ := json.Marshal(map[string]any{"access_token": token})
-	h.callIdentity(w, r, queue, body, successStatus)
+	body := map[string]any{"access_token": token}
+	setClientMeta(r, body)
+	b, _ := json.Marshal(body)
+	h.callIdentity(w, r, queue, b, successStatus)
 }
 
 // callIdentity performs the RPC and maps the reply envelope to an HTTP response.
@@ -766,6 +781,22 @@ func clientMeta(r *http.Request) (userAgent, ip string) {
 	userAgent = firstNonEmpty(r.Header.Get("X-Original-User-Agent"), r.Header.Get("User-Agent"))
 	ip = clientip.From(r)
 	return userAgent, ip
+}
+
+// setClientMeta stamps the trusted client IP/user-agent onto an outgoing RPC
+// body under the names identity-svc already reads (`ip_address`/`user_agent`).
+// These bearer-authenticated routes never pass through edge.Dispatcher, so this
+// is the only place the caller's origin can be captured -- and they are the ones
+// writing the platform audit log's security rows (role grants, API keys, session
+// revocations, player links), where a missing IP costs the forensics.
+//
+// It is applied AFTER any client-supplied body is merged and overwrites
+// unconditionally: a caller must never be able to forge the recorded origin of
+// its own mutation, the same reason access_token is overwritten in OAuthLink.
+func setClientMeta(r *http.Request, body map[string]any) {
+	ua, ip := clientMeta(r)
+	body["user_agent"] = ua
+	body["ip_address"] = ip
 }
 
 func firstNonEmpty(values ...string) string {

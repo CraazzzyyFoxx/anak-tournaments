@@ -24,6 +24,7 @@ from shared.models.identity.oauth import OAuthConnection
 from shared.models.identity.rbac import Permission, Role, UserPermissionDeny, role_permissions, user_roles
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.rbac import user_has_only_workspace_owner_role
+from shared.services.audit import record_audit
 from src import models, schemas
 from src.services import auth_service
 from src.services.player_link_service import PlayerLinkService
@@ -38,6 +39,17 @@ ADMIN_EQUIVALENT_ROLE_NAMES = {"admin"}
 # Allowing a self-service role with any of these names would be an escalation
 # path, so ``create_role`` rejects them (case-insensitive).
 _RESERVED_ROLE_NAMES = frozenset({"admin", "owner", "member", "player"})
+
+
+def _actor_label(user: models.AuthUser) -> str | None:
+    """Snapshot of the actor's display name at the moment of the action.
+
+    identity-svc resolves ``current_user`` from the bearer token before any flow
+    runs, so this is a live row rather than an id lifted off an envelope: the
+    label is a true snapshot and keeps the row readable after the account is
+    deleted.
+    """
+    return user.username or user.email
 
 
 def _permission_key(resource: str, action: str) -> str:
@@ -212,6 +224,9 @@ async def create_permission(
     session: AsyncSession,
     current_user: models.AuthUser,
     permission_data: schemas.PermissionCreate,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> Permission:
     """Create a new permission (superuser only)."""
     _require_superuser(current_user)
@@ -226,6 +241,26 @@ async def create_permission(
         description=permission_data.description,
     )
     session.add(permission)
+    # Flush so the audit row can name the id the operator will see in the UI.
+    await session.flush()
+    await record_audit(
+        session,
+        action="permission.create",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        entity_type="permission",
+        entity_id=permission.id,
+        entity_label=permission.name,
+        after={
+            "name": permission.name,
+            "resource": permission.resource,
+            "action": permission.action,
+            "description": permission.description,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.commit()
     await session.refresh(permission)
 
@@ -237,6 +272,9 @@ async def delete_permission(
     session: AsyncSession,
     current_user: models.AuthUser,
     permission_id: int,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Delete a permission (superuser only)."""
     _require_superuser(current_user)
@@ -253,6 +291,24 @@ async def delete_permission(
     for rid in affected_role_ids:
         await _invalidate_users_with_role(session, rid)
 
+    await record_audit(
+        session,
+        action="permission.delete",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        entity_type="permission",
+        entity_id=permission.id,
+        entity_label=permission.name,
+        before={
+            "name": permission.name,
+            "resource": permission.resource,
+            "action": permission.action,
+            "description": permission.description,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.delete(permission)
     await session.commit()
     logger.info(f"Permission deleted: {permission.name}")
@@ -326,6 +382,9 @@ async def create_role(
     session: AsyncSession,
     current_user: models.AuthUser,
     role_data: schemas.RoleCreate,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> Role:
     """Create a new role (global or workspace-scoped)."""
     if role_data.workspace_id is not None:
@@ -380,6 +439,27 @@ async def create_role(
     role.permissions = permissions
 
     session.add(role)
+    # Flush so the audit row can name the id the operator will see in the UI.
+    await session.flush()
+    await record_audit(
+        session,
+        action="role.create",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        workspace_id=role.workspace_id,
+        entity_type="role",
+        entity_id=role.id,
+        entity_label=role.name,
+        after={
+            "name": role.name,
+            "description": role.description,
+            "workspace_id": role.workspace_id,
+            "permissions": sorted(permission.name for permission in permissions),
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.commit()
     await session.refresh(role)
 
@@ -392,6 +472,9 @@ async def update_role(
     current_user: models.AuthUser,
     role_id: int,
     role_data: schemas.RoleUpdate,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> Role:
     """Update a role."""
     result = await session.execute(select(Role).where(Role.id == role_id).options(selectinload(Role.permissions)))
@@ -404,6 +487,14 @@ async def update_role(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify system roles")
 
     _check_role_access(current_user, role, "update")
+
+    # Snapshot before any field is touched; ``role.permissions`` is eager-loaded
+    # above, so reading it here costs nothing and cannot lazy-load mid-flow.
+    before = {
+        "name": role.name,
+        "description": role.description,
+        "permissions": sorted(permission.name for permission in role.permissions),
+    }
 
     if role_data.name is not None:
         uniqueness_query = select(Role).where(Role.name == role_data.name, Role.id != role_id)
@@ -429,6 +520,25 @@ async def update_role(
         role.permissions = list(permissions)
         permissions_changed = True
 
+    await record_audit(
+        session,
+        action="role.update",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        workspace_id=role.workspace_id,
+        entity_type="role",
+        entity_id=role.id,
+        entity_label=role.name,
+        before=before,
+        after={
+            "name": role.name,
+            "description": role.description,
+            "permissions": sorted(permission.name for permission in role.permissions),
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.commit()
     await session.refresh(role)
 
@@ -443,6 +553,9 @@ async def delete_role(
     session: AsyncSession,
     current_user: models.AuthUser,
     role_id: int,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Delete a role."""
     result = await session.execute(select(Role).where(Role.id == role_id))
@@ -457,6 +570,26 @@ async def delete_role(
     _check_role_access(current_user, role, "delete")
 
     await _invalidate_users_with_role(session, role.id)
+    # ``role`` is loaded without its permissions here, so the snapshot stays on
+    # the columns the row itself carries.
+    await record_audit(
+        session,
+        action="role.delete",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        workspace_id=role.workspace_id,
+        entity_type="role",
+        entity_id=role.id,
+        entity_label=role.name,
+        before={
+            "name": role.name,
+            "description": role.description,
+            "workspace_id": role.workspace_id,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.delete(role)
     await session.commit()
     logger.info(f"Role deleted: {role.name}")
@@ -519,6 +652,9 @@ async def assign_linked_player_to_auth_user(
     current_user: models.AuthUser,
     user_id: int,
     data: schemas.AuthUserPlayerLinkAssign,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Assign a player account from the analytics system to an auth user."""
     _require_permission(current_user, "auth_user", "update")
@@ -528,6 +664,21 @@ async def assign_linked_player_to_auth_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # PlayerLinkService owns the commit for this flow, so the audit row is staged
+    # before the call to land in the same transaction as the link itself.
+    await record_audit(
+        session,
+        action="linked_player.assign",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        entity_type="auth_user",
+        entity_id=user_id,
+        entity_label=user.username or user.email,
+        after={"player_id": data.player_id},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await PlayerLinkService.admin_link_player(session, user_id, data.player_id, data.is_primary)
 
 
@@ -536,6 +687,9 @@ async def remove_linked_player_from_auth_user(
     current_user: models.AuthUser,
     user_id: int,
     player_id: int,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Remove a player account link from an auth user."""
     _require_permission(current_user, "auth_user", "update")
@@ -545,6 +699,21 @@ async def remove_linked_player_from_auth_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # PlayerLinkService owns the commit for this flow, so the audit row is staged
+    # before the call to land in the same transaction as the unlink itself.
+    await record_audit(
+        session,
+        action="linked_player.remove",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        entity_type="auth_user",
+        entity_id=user_id,
+        entity_label=user.username or user.email,
+        before={"player_id": player_id},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await PlayerLinkService.admin_unlink_player(session, user_id, player_id)
 
 
@@ -552,6 +721,9 @@ async def delete_auth_user(
     session: AsyncSession,
     current_user: models.AuthUser,
     user_id: int,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Permanently delete an auth account (superuser only).
 
@@ -575,6 +747,19 @@ async def delete_auth_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     email = user.email  # capture before delete/commit expires the instance
+    await record_audit(
+        session,
+        action="auth_user.delete",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        entity_type="auth_user",
+        entity_id=user_id,
+        entity_label=user.username or email,
+        before={"email": email, "username": user.username},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.delete(user)
     await session.commit()
     await invalidate_rbac(user_id)
@@ -585,6 +770,9 @@ async def assign_role_to_user(
     session: AsyncSession,
     current_user: models.AuthUser,
     data: schemas.UserRoleAssign,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Assign a role to a user."""
     result = await session.execute(select(models.AuthUser).where(models.AuthUser.id == data.user_id))
@@ -631,6 +819,20 @@ async def assign_role_to_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already has this role")
 
     user.roles.append(role)
+    await record_audit(
+        session,
+        action="role.assign",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        workspace_id=role.workspace_id,
+        entity_type="auth_user",
+        entity_id=data.user_id,
+        entity_label=user.username or user.email,
+        after={"role_id": role.id, "role_name": role.name, "workspace_id": role.workspace_id},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.commit()
     await invalidate_rbac(data.user_id)
     logger.info(f"Role {role.name} assigned to user {user.email}")
@@ -640,6 +842,9 @@ async def remove_role_from_user(
     session: AsyncSession,
     current_user: models.AuthUser,
     data: schemas.UserRoleRemove,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Remove a role from a user."""
     result = await session.execute(
@@ -685,6 +890,20 @@ async def remove_role_from_user(
             )
 
     user.roles.remove(role)
+    await record_audit(
+        session,
+        action="role.remove",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        workspace_id=role.workspace_id,
+        entity_type="auth_user",
+        entity_id=data.user_id,
+        entity_label=user.username or user.email,
+        before={"role_id": role.id, "role_name": role.name, "workspace_id": role.workspace_id},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.commit()
     await invalidate_rbac(data.user_id)
     logger.info(f"Role {role.name} removed from user {user.email}")
@@ -825,6 +1044,9 @@ async def delete_oauth_connection(
     session: AsyncSession,
     current_user: models.AuthUser,
     connection_id: int,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Delete a specific OAuth connection from an auth user (admin view)."""
     _require_permission(current_user, "auth_user", "update")
@@ -851,6 +1073,19 @@ async def delete_oauth_connection(
                 detail="Cannot unlink last OAuth provider for a passwordless account. Set a password first.",
             )
 
+    await record_audit(
+        session,
+        action="oauth_connection.delete",
+        source="admin",
+        actor=current_user,
+        actor_label=_actor_label(current_user),
+        entity_type="oauth_connection",
+        entity_id=connection.id,
+        entity_label=connection.provider,
+        before={"provider": connection.provider, "auth_user_id": connection.auth_user_id},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
     await session.delete(connection)
     await session.commit()
     logger.info(
@@ -910,6 +1145,9 @@ async def add_user_deny(
     permission_id: int,
     reason: str | None = None,
     workspace_id: int | None = None,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> list[dict]:
     """Deny a permission to a user (idempotent). Rejects governance permissions.
 
@@ -954,6 +1192,25 @@ async def add_user_deny(
                 reason=reason,
             )
         )
+        await record_audit(
+            session,
+            action="permission_deny.add",
+            source="admin",
+            actor=current_user,
+            actor_label=_actor_label(current_user),
+            workspace_id=workspace_id,
+            entity_type="auth_user",
+            entity_id=user_id,
+            entity_label=user.username or user.email,
+            after={
+                "permission_id": permission_id,
+                "permission_name": permission.name,
+                "workspace_id": workspace_id,
+            },
+            reason=reason,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         await session.commit()
         logger.info(
             f"Permission denied to user: user_id={user_id} permission={permission.name} "
@@ -969,6 +1226,9 @@ async def remove_user_deny(
     user_id: int,
     permission_id: int,
     workspace_id: int | None = None,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> list[dict]:
     """Remove a permission deny from a user (idempotent).
 
@@ -977,13 +1237,29 @@ async def remove_user_deny(
     workspace-scoped deny for the same permission, and vice-versa.
     """
     _require_permission(current_user, "auth_user", "update")
-    await session.execute(
+    result = await session.execute(
         delete(UserPermissionDeny).where(
             UserPermissionDeny.user_id == user_id,
             UserPermissionDeny.permission_id == permission_id,
             _workspace_scope_filter(workspace_id),
         )
     )
+    # Idempotent by contract: a remove that matched nothing lifted nothing, and
+    # must not claim in the journal that it did.
+    if result.rowcount:
+        await record_audit(
+            session,
+            action="permission_deny.remove",
+            source="admin",
+            actor=current_user,
+            actor_label=_actor_label(current_user),
+            workspace_id=workspace_id,
+            entity_type="auth_user",
+            entity_id=user_id,
+            before={"permission_id": permission_id, "workspace_id": workspace_id},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
     await session.commit()
     await invalidate_rbac(user_id)
     logger.info(

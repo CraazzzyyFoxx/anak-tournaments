@@ -8,6 +8,11 @@ update/delete go through the shared CRUD engine (see services/workspace/registry
 ``workspace.update`` permission — since verification has a side effect (a DNS
 lookup) the generic CRUD engine has no hook for.
 
+Each bespoke mutation here appends one ``audit_log`` row inside the mutation's own
+transaction (``record_audit``), so the trail lives or dies with the write. The
+workspace's own field updates are NOT audited here: they go through the shared CRUD
+engine, which records them at its single hook.
+
 The role-resolution / member-payload / RBAC-cache-bust helpers are replicated
 here (not imported from the route module) so the headless worker never depends on
 route internals — the route module is deleted at decommission.
@@ -15,6 +20,7 @@ route internals — the route module is deleted at decommission.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
@@ -36,6 +42,7 @@ from shared.rbac import (
 )
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.audit import record_audit
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
 from src import models, schemas
 from src.core import config, db
@@ -51,6 +58,11 @@ def _path_int(data: dict[str, Any], key: str) -> int:
         return int(data[key])
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"{key} is required") from exc
+
+
+def _iso(value: datetime | None) -> str | None:
+    """JSONB-safe timestamp for an audit before/after snapshot."""
+    return value.isoformat() if value else None
 
 
 CROSS_SERVICE_RBAC_KEY_PREFIX = "rbac:v2:user:"  # noqa: E501 -- must match identity-service/src/services/session_cache.py RBAC_KEY_PREFIX
@@ -338,10 +350,35 @@ def register(broker: Any, logger: Any) -> None:
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
             body = schemas.WorkspaceCustomDomainSet.model_validate(c.payload(data))
+            domain_before = workspace.custom_domain
+            verified_before = workspace.custom_domain_verified_at
             try:
                 workspace = await workspace_service.set_custom_domain(session, workspace, body.custom_domain)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+            # The freshly minted ``custom_domain_verification_token`` is deliberately
+            # absent from before/after: the row records that a token was issued, never
+            # its value. It is not a platform secret (the organizer publishes it as a
+            # public DNS TXT record), but the journal is append-only and never purged,
+            # so every rotated challenge would pile up there forever while answering
+            # nothing an auditor asks -- "who re-pointed our domain" is answered by the
+            # domain itself.
+            await record_audit(
+                session,
+                action="workspace.domain_set",
+                source="admin",
+                actor=user,
+                actor_label=user.username,
+                # The workspace the permission check above ran against, reused rather
+                # than re-derived: the audit scope must be the authorization scope.
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.slug,
+                before={"custom_domain": domain_before, "custom_domain_verified_at": _iso(verified_before)},
+                # Re-pointing always resets verification, so the after side is known.
+                after={"custom_domain": workspace.custom_domain, "custom_domain_verified_at": None},
+            )
             await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
@@ -357,7 +394,31 @@ def register(broker: Any, logger: Any) -> None:
             workspace = await workspace_service.get_by_id(session, workspace_id)
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
+            verified_before = workspace.custom_domain_verified_at
             workspace = await workspace_service.verify_custom_domain(session, workspace)
+            # Recorded after the service call, not before it: ``verify_custom_domain``
+            # commits once to release the connection across the DNS lookup, so a row
+            # added earlier would survive a failed verification.
+            #
+            # ``custom_domain`` is unchanged and sits on both sides on purpose --
+            # without it the row says a domain was verified without saying which one.
+            # The token stays out for the reason spelled out in domain_set above.
+            await record_audit(
+                session,
+                action="workspace.domain_verified",
+                source="admin",
+                actor=user,
+                actor_label=user.username,
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.slug,
+                before={"custom_domain": workspace.custom_domain, "custom_domain_verified_at": _iso(verified_before)},
+                after={
+                    "custom_domain": workspace.custom_domain,
+                    "custom_domain_verified_at": _iso(workspace.custom_domain_verified_at),
+                },
+            )
             await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
@@ -373,7 +434,24 @@ def register(broker: Any, logger: Any) -> None:
             workspace = await workspace_service.get_by_id(session, workspace_id)
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
+            domain_before = workspace.custom_domain
+            verified_before = workspace.custom_domain_verified_at
             workspace = await workspace_service.clear_custom_domain(session, workspace)
+            # Token value omitted for the reason given in domain_set; that it was
+            # dropped follows from the domain going away.
+            await record_audit(
+                session,
+                action="workspace.domain_clear",
+                source="admin",
+                actor=user,
+                actor_label=user.username,
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.slug,
+                before={"custom_domain": domain_before, "custom_domain_verified_at": _iso(verified_before)},
+                after={"custom_domain": None, "custom_domain_verified_at": None},
+            )
             await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 

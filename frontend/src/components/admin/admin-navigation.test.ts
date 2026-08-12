@@ -104,6 +104,7 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
       "/admin/rank",
       "/admin/subscriptions",
       "/admin/workspaces",
+      "/admin/audit",
     ]);
   });
 
@@ -111,6 +112,16 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
     expect(getMatchingAdminRoute("/admin/access/users")?.globalOnly).toBe(true);
     expect(getMatchingAdminRoute("/admin/access/api-keys")?.workspaceAdminVisible).toBe(true);
     expect(getMatchingAdminRoute("/admin/access")?.workspaceAdminVisible).toBe(true);
+  });
+
+  it("gates /admin/audit by audit.read, not by the broad workspace-admin entry", () => {
+    // The journal is workspace-scoped, so a workspace owner holding only
+    // `audit.read` in their own workspace must reach it — hence
+    // `workspaceAdminVisible`, and hence its own prefix ahead of the /admin
+    // catch-all rather than inheriting `adminEntryPermissions`.
+    expect(getMatchingAdminRoute("/admin/audit")?.permissions).toEqual(["audit.read"]);
+    expect(getMatchingAdminRoute("/admin/audit")?.prefix).toBe("/admin/audit");
+    expect(getMatchingAdminRoute("/admin/audit")?.workspaceAdminVisible).toBe(true);
   });
 
   it("registers each destination exactly once across the whole navigation", () => {
