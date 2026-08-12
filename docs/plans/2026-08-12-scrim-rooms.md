@@ -161,6 +161,27 @@ encounter page indefinitely; everyone else gets 404; it never appears in
 which joins `Player` rows (scrim teams have none) and hard-excludes hidden
 tournaments anyway (`encounter/service.py:243`).
 
+### 4.5 Reporting
+
+A scrim keeps **no result**. The series report — match codes, closeness, the
+organizer's custom fields — is not shown at all: there is nothing to publish and
+no organizer to read it, and the form is built from a per-tournament config the
+container does not have.
+
+The **per-map score stays**, and this is not an oversight.
+`map_report.submit_map_report` is the only caller of `advance_to_next_round`, so
+that score is the series' clock: without it a slot-mode room — which is what
+"copy this round's maps" produces — stalls after map 1, and its hero rounds stall
+with it. It is also the input to `first_ban_rotation`, which is
+result-dependent in both real rulebooks ("the winner of the previous map opens").
+A scoreless "map done" button would leave the engine nothing to rotate on, and a
+copied pool would quietly play by different rules than the round it came from.
+
+What is dropped is the bookkeeping around it: no `matches.match` row is written
+for a scrim, so `match_id` comes back null. Everything the loop needs still
+happens — the entry flips to `played`, the series score advances, the next round
+opens.
+
 ## 5. Required exclusions — the real work beyond plumbing
 
 The scrims container is a real tournament row, so anything that enumerates

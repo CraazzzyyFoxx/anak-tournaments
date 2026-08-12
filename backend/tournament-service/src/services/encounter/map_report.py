@@ -13,6 +13,11 @@ in both the map and hero pick-ban sessions, and advances both to their next
 round. Disagreement -> leaves both reports standing for an admin to resolve
 (mirrors ``captain.set_encounter_result``'s own reconciliation, applied here
 at map granularity instead of series granularity).
+
+A scrim room runs this same loop for the progression only: no ``matches.match``
+row is written for one, because the score is there to name the next map's opener
+rather than to record a result nobody publishes
+(``docs/plans/2026-08-12-scrim-rooms.md``).
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.encounter_report import EncounterMapReport
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from shared.services import pick_ban_engine as engine
+from shared.services.scrim_scope import is_scrim_container
 from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 
@@ -129,31 +135,41 @@ async def submit_map_report(
     # correct the map, never count it twice.
     already_played = entry is not None and entry.status == MapPoolEntryStatus.PLAYED.value
 
-    match = await pick_ban_session_service.find_series_match(session, encounter.id, map_id, map_index)
-    if match is None:
-        match = Match(
-            encounter_id=encounter.id,
-            map_id=map_id,
-            map_index=map_index or None,
-            home_team_id=encounter.home_team_id,
-            away_team_id=encounter.away_team_id,
-            home_score=resolved_home,
-            away_score=resolved_away,
-            time=None,
-            log_name=None,
-            source=MatchSource.CAPTAIN_REPORT.value,
-        )
-        session.add(match)
-    else:
-        # Claim the position for this play, so a second play of the same map
-        # writes its own row instead of adopting this one.
-        match.map_index = map_index or None
-        # A log arrived first (or a re-report after a dispute correction):
-        # never downgrade a real parsed log back to a captain claim, but do
-        # let the captains' agreement correct a captain-report row.
-        if match.source == MatchSource.CAPTAIN_REPORT.value:
-            match.home_score = resolved_home
-            match.away_score = resolved_away
+    # A scrim's per-map score exists to run the SERIES, not to record it: it is
+    # what tells the engine who won and therefore who opens the next map's bans
+    # (``first_ban_rotation``, result-dependent in both real rulebooks). None of
+    # the bookkeeping that surrounds that is wanted -- a scrim has no result to
+    # publish and no organizer reading it -- so no ``matches.match`` row is
+    # written for one. Everything the loop itself needs still happens below:
+    # the entry flips to ``played``, the series score advances, and the next
+    # round opens. See docs/plans/2026-08-12-scrim-rooms.md.
+    match: Match | None = None
+    if not await is_scrim_container(session, encounter.tournament_id):
+        match = await pick_ban_session_service.find_series_match(session, encounter.id, map_id, map_index)
+        if match is None:
+            match = Match(
+                encounter_id=encounter.id,
+                map_id=map_id,
+                map_index=map_index or None,
+                home_team_id=encounter.home_team_id,
+                away_team_id=encounter.away_team_id,
+                home_score=resolved_home,
+                away_score=resolved_away,
+                time=None,
+                log_name=None,
+                source=MatchSource.CAPTAIN_REPORT.value,
+            )
+            session.add(match)
+        else:
+            # Claim the position for this play, so a second play of the same map
+            # writes its own row instead of adopting this one.
+            match.map_index = map_index or None
+            # A log arrived first (or a re-report after a dispute correction):
+            # never downgrade a real parsed log back to a captain claim, but do
+            # let the captains' agreement correct a captain-report row.
+            if match.source == MatchSource.CAPTAIN_REPORT.value:
+                match.home_score = resolved_home
+                match.away_score = resolved_away
 
     played_round: int | None = None
     if entry is not None:
@@ -182,4 +198,6 @@ async def submit_map_report(
                 await session.flush()
 
     await session.commit()
-    return {"disputed": False, "resolved": True, "match_id": match.id}
+    # ``match_id`` is null for a scrim: there is no row to point at. The client
+    # only uses it to link a parsed match, which a scrim never has.
+    return {"disputed": False, "resolved": True, "match_id": match.id if match is not None else None}

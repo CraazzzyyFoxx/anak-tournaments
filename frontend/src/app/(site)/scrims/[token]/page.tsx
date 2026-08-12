@@ -142,5 +142,7 @@ export default function ScrimRoomPage() {
     );
   }
 
-  return <PregameRoom encounterId={room.encounter_id} />;
+  // No series report: a scrim publishes no result, and the report form is built
+  // from a per-tournament config the scrims container does not have.
+  return <PregameRoom encounterId={room.encounter_id} seriesReport={false} />;
 }

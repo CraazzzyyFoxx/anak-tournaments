@@ -15,6 +15,14 @@ interface PregameFinalReportProps {
   encounter: Encounter;
   /** Null for anyone who captains neither side: the report is per-team. */
   viewerSide: "home" | "away" | null;
+  /**
+   * Whether a series report exists to be filed at all. False for a scrim room:
+   * it publishes no result, and the form is built from a per-tournament config
+   * the scrims container does not have. Behaves like the settled state a
+   * spectator already sees, with its own closing line — "the result is with the
+   * organizers now" would name a role a scrim has nobody in.
+   */
+  reportable?: boolean;
   header: ReactNode;
   /** Where the room hands the viewer back — the page they opened it from. */
   returnTo: string;
@@ -39,6 +47,7 @@ interface PregameFinalReportProps {
 export function PregameFinalReport({
   encounter,
   viewerSide,
+  reportable = true,
   header,
   returnTo
 }: PregameFinalReportProps) {
@@ -49,7 +58,7 @@ export function PregameFinalReport({
   // Nothing for a spectator (or an admin who captains neither side) to file, and
   // nothing to file once the organizers have confirmed the result: for them the
   // series really is settled and the old copy is the honest answer.
-  const settled = confirmed || viewerSide == null;
+  const settled = confirmed || viewerSide == null || !reportable;
 
   const back = (
     <Button variant="outline" asChild className="h-10 px-5 font-semibold">
@@ -69,7 +78,11 @@ export function PregameFinalReport({
             {settled ? t("seriesDone.title") : t("finalReport.title")}
           </h2>
           <p className="text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
-            {settled ? t("seriesDone.hint") : t("finalReport.hint")}
+            {!settled
+              ? t("finalReport.hint")
+              : reportable
+                ? t("seriesDone.hint")
+                : t("seriesDone.hintNoReport")}
           </p>
           {settled ? (
             <div className="mt-1">{back}</div>

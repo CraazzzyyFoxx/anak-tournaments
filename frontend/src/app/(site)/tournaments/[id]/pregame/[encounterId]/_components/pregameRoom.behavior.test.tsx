@@ -225,13 +225,13 @@ async function settle(ticks = 3) {
   }
 }
 
-async function render() {
+async function render(props: { seriesReport?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en}>
-          <PregameRoom encounterId={4242} />
+          <PregameRoom encounterId={4242} {...props} />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -400,7 +400,14 @@ describe("phase selection", () => {
         sequence: ["ban_home", "ban_away"],
         viewer_side: "away",
         pool: [
-          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home", action_index: 0 }),
+          entry({
+            id: 3,
+            item_id: 101,
+            round: 1,
+            status: "banned",
+            picked_by: "home",
+            action_index: 0
+          }),
           entry({ id: 4, item_id: 102, round: 1 })
         ],
         undo: { requested_by: null, item_ids: [101], action: "ban", side: "home" }
@@ -449,7 +456,14 @@ describe("phase selection", () => {
         current_round: 1,
         unique_attribute: "role",
         pool: [
-          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "home", action_index: 0 }),
+          entry({
+            id: 3,
+            item_id: 201,
+            round: 1,
+            status: "banned",
+            picked_by: "home",
+            action_index: 0
+          }),
           entry({ id: 4, item_id: 202, round: 1 }),
           entry({ id: 5, item_id: 203, round: 1 })
         ]
@@ -495,7 +509,14 @@ describe("phase selection", () => {
         current_round: 1,
         unique_attribute: "role",
         pool: [
-          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "away", action_index: 0 }),
+          entry({
+            id: 3,
+            item_id: 201,
+            round: 1,
+            status: "banned",
+            picked_by: "away",
+            action_index: 0
+          }),
           entry({ id: 4, item_id: 202, round: 1 }),
           entry({ id: 5, item_id: 203, round: 1 })
         ]
@@ -579,7 +600,9 @@ describe("phase selection", () => {
 
     expect(document.body.textContent).toContain(ROOM.map.title);
     expect(
-      Array.from(document.body.querySelectorAll("ol")).map((list) => list.getAttribute("aria-label"))
+      Array.from(document.body.querySelectorAll("ol")).map((list) =>
+        list.getAttribute("aria-label")
+      )
     ).toEqual([ROOM.phase.rail, ROOM.series.label]);
   });
 
@@ -609,14 +632,25 @@ describe("phase selection", () => {
             protected_by: "home",
             action_index: 0
           }),
-          entry({ id: 4, item_id: 202, round: 1, status: "banned", picked_by: "away", action_index: 1 })
+          entry({
+            id: 4,
+            item_id: 202,
+            round: 1,
+            status: "banned",
+            picked_by: "away",
+            action_index: 1
+          })
         ]
       })
     );
     await render();
 
-    const protectedTile = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank A"]');
-    const bannedTile = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank B"]');
+    const protectedTile = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Tank A"]'
+    );
+    const bannedTile = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Tank B"]'
+    );
     // The banned one is crossed out and drained of colour; the protected one is
     // neither -- it is still in the game, and it wears a shield instead.
     expect(bannedTile?.querySelector(".lucide-ban")).toBeTruthy();
@@ -762,9 +796,7 @@ describe("phase selection", () => {
     );
     await render();
 
-    expect(document.body.textContent).toContain(
-      ROOM.undo.asked.replace("{team}", "Quiet Foxes")
-    );
+    expect(document.body.textContent).toContain(ROOM.undo.asked.replace("{team}", "Quiet Foxes"));
     const agree = Array.from(document.body.querySelectorAll("button")).find((button) =>
       button.textContent?.includes(ROOM.undo.agree)
     );
@@ -800,9 +832,7 @@ describe("phase selection", () => {
     );
     await render();
 
-    expect(document.body.textContent).toContain(
-      ROOM.undo.waiting.replace("{team}", "Quiet Foxes")
-    );
+    expect(document.body.textContent).toContain(ROOM.undo.waiting.replace("{team}", "Quiet Foxes"));
     expect(document.body.textContent).toContain(ROOM.undo.withdraw);
     expect(document.body.textContent).not.toContain(ROOM.undo.agree);
   });
@@ -1100,7 +1130,8 @@ describe("phase selection", () => {
     expect(document.body.textContent).not.toContain(ROOM.seriesDone.title);
     // Prefilled from the encounter's own series score, not left at 0:0.
     const score = (label: string) =>
-      document.body.querySelector<HTMLInputElement>(`input[aria-label="Score for ${label}"]`)?.value;
+      document.body.querySelector<HTMLInputElement>(`input[aria-label="Score for ${label}"]`)
+        ?.value;
     expect(score("Bright Wolves")).toBe("1");
     expect(score("Quiet Foxes")).toBe("0");
     expect(document.body.textContent).toContain(en.matchReport.submit);
@@ -1114,6 +1145,29 @@ describe("phase selection", () => {
 
     expect(document.body.textContent).toContain(ROOM.seriesDone.title);
     expect(document.body.textContent).not.toContain(ROOM.finalReport.title);
+  });
+
+  it("never asks a scrim captain for a series report", async () => {
+    // A scrim publishes no result, and the report form is built from a
+    // per-tournament config the scrims container does not have — so a captain who
+    // WOULD be asked in a tournament gets the closing notice instead, with its
+    // own line: "the result is with the organizers now" names a role a scrim has
+    // nobody in.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 1,
+      score: { home: 1, away: 0 }
+    } as unknown as Encounter);
+    settledSeries("home");
+    await render({ seriesReport: false });
+
+    expect(document.body.textContent).toContain(ROOM.seriesDone.title);
+    expect(document.body.textContent).toContain(ROOM.seriesDone.hintNoReport);
+    expect(document.body.textContent).not.toContain(ROOM.finalReport.title);
+    expect(document.body.textContent).not.toContain(ROOM.seriesDone.hint);
+    // The form itself is gone, not merely hidden behind a heading.
+    expect(document.body.textContent).not.toContain(en.matchReport.submit);
+    expect(document.body.querySelector('input[aria-label="Score for Bright Wolves"]')).toBeNull();
   });
 
   it("goes straight to hero when the encounter has no map rule set at all", async () => {

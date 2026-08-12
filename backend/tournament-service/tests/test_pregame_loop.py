@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 import sqlalchemy as sa
 
@@ -610,3 +611,114 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
             [(self.encounter_id, "hero"), (self.encounter_id, "map")],
             pop_registered_map_veto_realtime_updates(self.store),
         )
+
+
+class ScrimLoopTests(PregameLoopTests):
+    """The same loop for a scrim room: it must CYCLE identically while writing no
+    ``matches.match`` row.
+
+    A scrim's per-map score exists to run the series, not to record it — it is
+    what names the next map's opener under a result-dependent rotation, which
+    both real rulebooks use. Everything the progression needs still has to
+    happen; only the bookkeeping goes.
+
+    Inherits the whole suite deliberately: every loop assertion above is re-run
+    with the scrim predicate on, so a divergence in the progression itself shows
+    up here rather than only in the one case below. ``is_scrim_container`` is
+    patched rather than seeded — the predicate has its own tests
+    (``test_scrim_recalculation_exclusion.py``); what is under test here is what
+    ``submit_map_report`` does once it answers True.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        patcher = patch.object(map_report_service, "is_scrim_container", AsyncMock(return_value=True))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_a_bo3_cycles_without_writing_a_single_match_row(self) -> None:
+        for round_number in (1, 2):
+            played_map = await self.ban_out_the_map_round()
+            await self.ban_out_the_hero_round()
+            result = await self.report(played_map, 2, 1)
+
+            self.assertTrue(result["resolved"], f"round {round_number} did not reconcile")
+            # The one difference from a tournament: nothing to point at.
+            self.assertIsNone(result["match_id"])
+            self.assertEqual([], self.store.all_of(Match), "a scrim wrote a match row")
+
+        # And the progression the score drives is intact: home won both maps, so
+        # the series is decided and the loop stopped opening rounds.
+        self.assertEqual((2, 0), (self.encounter.home_score, self.encounter.away_score))
+        state = await self.map_state()
+        self.assertTrue(state["is_complete"])
+        self.assertEqual(
+            [MapPoolEntryStatus.PLAYED.value] * 2,
+            [entry["status"] for entry in state["pool"] if entry["picked_by"] == MapPickSide.DECIDER.value],
+            "both settled maps must still flip to played — that is what advances the series",
+        )
+
+    async def test_the_winner_still_opens_the_next_round(self) -> None:
+        """The reason the score is kept at all. ``result_winner_first``: away wins
+        map 1, so away opens map 2's bans — which is impossible to resolve from a
+        scoreless "map done" click."""
+        map_one = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(map_one, 1, 2)
+
+        state = await self.map_state()
+        self.assertEqual(2, state["current_round"])
+        self.assertEqual(MapPickSide.AWAY.value, state["turn_side"])
+
+    # -- overrides: the two inherited cases whose assertions ARE about the row a
+    #    scrim does not write. Re-stated so the behaviour they defend is still
+    #    covered here, minus the row.
+
+    async def test_amending_an_already_agreed_report_corrects_it_without_recounting(self) -> None:
+        map_one = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(map_one, 2, 1)
+        self.assertEqual((1, 0), (self.encounter.home_score, self.encounter.away_score))
+
+        await self.report(map_one, 1, 2)
+
+        # Counted once, exactly as for a tournament; the corrected score lives on
+        # the captains' own claims instead of on a match row.
+        self.assertEqual((1, 0), (self.encounter.home_score, self.encounter.away_score))
+        self.assertEqual([], self.store.all_of(Match))
+        state = await self.map_state()
+        self.assertEqual(
+            [(1, 2), (1, 2)],
+            [(report["home_score"], report["away_score"]) for report in state["map_reports"]],
+        )
+
+    async def test_a_map_played_twice_keeps_the_two_plays_apart(self) -> None:
+        self.map_config.slots[2].items = [PickBanConfigSlotItem(item_id=item_id) for item_id in (31, 32, 13)]
+
+        first_play = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(first_play, 2, 1)
+
+        map_two = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(map_two, 1, 2)
+
+        third_play = await self.ban_out_the_map_round()
+        self.assertEqual(first_play, third_play, "the fixture plays map 13 twice")
+        await self.ban_out_the_hero_round()
+        await self.report(third_play, 2, 0)
+
+        # The two plays are still told apart by POSITION -- the property this test
+        # exists for -- and that is carried by the claims, not by the match row.
+        state = await self.map_state()
+        thirteens = [report for report in state["map_reports"] if report["map_id"] == first_play]
+        self.assertEqual([1, 1, 3, 3], sorted(report["map_index"] for report in thirteens))
+        self.assertEqual([], self.store.all_of(Match))
+
+        played_rounds = {
+            entry["round"]
+            for entry in state["pool"]
+            if entry["item_id"] == first_play and entry["status"] == MapPoolEntryStatus.PLAYED.value
+        }
+        self.assertEqual({1, 3}, played_rounds)
+        self.assertEqual((2, 1), (self.encounter.home_score, self.encounter.away_score))

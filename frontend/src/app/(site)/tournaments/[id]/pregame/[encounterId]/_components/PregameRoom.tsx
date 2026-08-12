@@ -54,6 +54,15 @@ import { PregameReadiness } from "./PregameReadiness";
 
 interface PregameRoomProps {
   encounterId: number;
+  /**
+   * Whether the loop ends in the SERIES report (match codes, closeness, the
+   * organizer's custom fields). False for a scrim room: it has no result to
+   * publish and no organizer to read one, and the report form is built from a
+   * per-tournament config a scrim container does not have. The per-map score is
+   * unaffected — that one drives the progression, not the bookkeeping
+   * (docs/plans/2026-08-12-scrim-rooms.md).
+   */
+  seriesReport?: boolean;
 }
 
 /** One icon per cause, keyed by what `PICK_BAN_UNAVAILABLE_COPY` names. */
@@ -81,7 +90,7 @@ const UNAVAILABLE_ICON: Record<PickBanUnavailableIcon, React.ReactNode> = {
  * `pick_ban_session.ensure_pick_ban_session`) until both captains confirm
  * readiness, shown here as a waiting screen with an "I'm ready" button.
  */
-export function PregameRoom({ encounterId }: PregameRoomProps) {
+export function PregameRoom({ encounterId, seriesReport = true }: PregameRoomProps) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
   const { isSuperuser, isWorkspaceAdmin, hasWorkspacePermission } = usePermissions();
@@ -90,10 +99,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   // as well as from the encounter page, and hardcoding the encounter page threw
   // an organizer working through a round back to a single match every time.
   const searchParams = useSearchParams();
-  const returnTo = safeReturnPath(
-    searchParams?.get(RETURN_TO_PARAM),
-    `/encounters/${encounterId}`
-  );
+  const returnTo = safeReturnPath(searchParams?.get(RETURN_TO_PARAM), `/encounters/${encounterId}`);
 
   const mapKey = ["pregame-state", encounterId, "map"];
   const heroKey = ["pregame-state", encounterId, "hero"];
@@ -418,8 +424,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
           // play's claims onto the later one — which read as "both captains
           // already agreed" on a map nobody had reported yet.
           reports={(mapState.map_reports ?? []).filter(
-            (report) =>
-              report.map_id === pendingMap.item_id && report.map_index === pendingRound
+            (report) => report.map_id === pendingMap.item_id && report.map_index === pendingRound
           )}
           heroActions={heroActions}
           heroUndo={
@@ -446,6 +451,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
         <PregameFinalReport
           encounter={encounter}
           viewerSide={mapState.viewer_side ?? viewerSide}
+          reportable={seriesReport}
           header={header}
           returnTo={returnTo}
         />

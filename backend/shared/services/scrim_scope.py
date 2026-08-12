@@ -38,14 +38,18 @@ __all__ = ("is_scrim_container",)
 async def is_scrim_container(session: AsyncSession, tournament_id: int | None) -> bool:
     """True when ``tournament_id`` is a workspace's scrim container.
 
-    Keyed on ``ScrimRoom.tournament_id``, which is indexed, and answered with an
-    EXISTS so the cost is one index probe regardless of how many rooms the
-    container has accumulated.
+    Keyed on ``ScrimRoom.tournament_id``, which is indexed, and capped at one row,
+    so the cost is a single index probe however many rooms the container has
+    accumulated.
+
+    A plain ``SELECT id ... LIMIT 1`` rather than ``SELECT EXISTS(...)``: the two
+    cost the same against an index, but this is a shape every in-memory session
+    double in the suite already understands, and the predicate now also sits on
+    the per-map report path, which several of those doubles drive. The EXISTS
+    form surfaced there as ``KeyError: 'entity'`` inside a fake instead of a real
+    result — a query shape is not worth teaching test doubles about.
     """
     if tournament_id is None:
         return False
-    return bool(
-        await session.scalar(
-            sa.select(sa.literal(True)).where(sa.exists().where(ScrimRoom.tournament_id == tournament_id))
-        )
-    )
+    found = await session.scalar(sa.select(ScrimRoom.id).where(ScrimRoom.tournament_id == tournament_id).limit(1))
+    return found is not None
