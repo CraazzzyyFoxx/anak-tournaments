@@ -84,8 +84,8 @@ func TestValidate_NoAuthHeader(t *testing.T) {
 	caller := &fakeCaller{}
 	w := doValidate(newHandler(caller), "")
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
 	}
 	if caller.called {
 		t.Fatal("RPC must not be called when no credentials are present")
@@ -142,8 +142,8 @@ func TestLogout_NoBearer(t *testing.T) {
 	w := httptest.NewRecorder()
 	newHandler(caller).Logout(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
 	}
 	if caller.called {
 		t.Fatal("RPC must not run without a bearer token")
@@ -270,8 +270,8 @@ func TestLinkComplete_NoBearer(t *testing.T) {
 	w := httptest.NewRecorder()
 	newHandler(caller).LinkComplete(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
 	}
 	if caller.called {
 		t.Fatal("RPC must not run without a bearer token -- this route is NOT public (unlike SsoExchange)")
@@ -404,8 +404,8 @@ func TestRbacListSessions_NoBearer(t *testing.T) {
 	w := httptest.NewRecorder()
 	newHandler(caller).RbacListSessions(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
 	}
 	if caller.called {
 		t.Fatal("RPC must not run without a bearer token")

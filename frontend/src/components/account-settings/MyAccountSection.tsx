@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getSocialProviderConfig, sortSocialAccounts } from "@/lib/social-providers";
+import { logout } from "@/lib/logout";
 import { notify } from "@/lib/notify";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -94,14 +95,14 @@ export default function MyAccountSection() {
   // Self-service account deletion. Historical data (tournaments, matches,
   // statistics, registrations) is untouched — identity-svc only removes the
   // account itself and unclaims the player (see auth_flows.delete_me). The
-  // session is dead the moment this returns, so go straight through
-  // /auth/logout to drop the cookies rather than leaving a stale profile in
-  // memory. Refusals (a superuser account) surface via the global toast.
+  // session is dead the moment this returns, so go straight through the logout
+  // POST to drop the cookies rather than leaving a stale profile in memory.
+  // Refusals (a superuser account) surface via the global toast.
   const deleteAccount = useMutation({
     mutationFn: () => meService.deleteAccount(),
     onSuccess: () => {
       clearAuth();
-      window.location.href = "/auth/logout";
+      void logout();
     },
     onError: () => setConfirmDelete(false),
   });

@@ -137,7 +137,7 @@ func (h *Handler) ValidateService(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) validateBearer(w http.ResponseWriter, r *http.Request, queue string) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"token": token})
@@ -162,7 +162,7 @@ func (h *Handler) ServiceToken(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) InvalidateSession(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"token": token, "user_id": r.PathValue("user_id")})
@@ -202,7 +202,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := bodyWithMeta(w, r, map[string]any{"access_token": token})
@@ -238,7 +238,7 @@ func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token, "session_id": r.PathValue("id")})
@@ -249,7 +249,7 @@ func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -263,7 +263,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -348,7 +348,7 @@ func (h *Handler) OAuthLink(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) LinkComplete(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -385,7 +385,7 @@ func (h *Handler) OAuthConnections(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) OAuthUnlink(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token, "provider": r.PathValue("provider")})
@@ -403,7 +403,7 @@ func (h *Handler) ListApiKeys(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CreateApiKey(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -417,7 +417,7 @@ func (h *Handler) CreateApiKey(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateApiKey(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token, "api_key_id": r.PathValue("id")})
@@ -431,7 +431,7 @@ func (h *Handler) UpdateApiKey(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RevokeApiKey(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token, "api_key_id": r.PathValue("id")})
@@ -593,7 +593,7 @@ func (h *Handler) PlayerSetPrimary(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) authedFields(w http.ResponseWriter, r *http.Request, queue string, successStatus int, extra map[string]any) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body := map[string]any{"access_token": token}
@@ -610,7 +610,7 @@ func (h *Handler) authedFields(w http.ResponseWriter, r *http.Request, queue str
 func (h *Handler) authedQuery(w http.ResponseWriter, r *http.Request, queue string, successStatus int, params ...string) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body := map[string]any{"access_token": token}
@@ -630,7 +630,7 @@ func (h *Handler) authedQuery(w http.ResponseWriter, r *http.Request, queue stri
 func (h *Handler) authedAllQuery(w http.ResponseWriter, r *http.Request, queue string, successStatus int) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	// The metadata rides at the TOP level, never inside "query":
@@ -651,7 +651,7 @@ func (h *Handler) authedAllQuery(w http.ResponseWriter, r *http.Request, queue s
 func (h *Handler) authedMerge(w http.ResponseWriter, r *http.Request, queue string, successStatus int, extra map[string]any) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	merged := map[string]any{"access_token": token}
@@ -670,12 +670,19 @@ func (h *Handler) authedMerge(w http.ResponseWriter, r *http.Request, queue stri
 	h.callIdentity(w, r, queue, body, successStatus)
 }
 
+// A MISSING bearer is 401, never 403: 401 means "not authenticated" and invites
+// the caller to refresh, 403 means "authenticated but not allowed". These
+// handlers answered 403, which the frontend's refresh path (it only reacts to
+// 401) read as a hard permission error — so an expired access cookie silently
+// presented a still-valid 30-day session as logged out. edge/dispatch.go and the
+// OpenAPI generator have always documented 401 here; keep every guard aligned.
+
 // authedNoBody handles a bearer-authenticated endpoint with no request body,
 // forwarding just the access token plus the trusted client metadata to identity-svc.
 func (h *Handler) authedNoBody(w http.ResponseWriter, r *http.Request, queue string, successStatus int) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body := map[string]any{"access_token": token}

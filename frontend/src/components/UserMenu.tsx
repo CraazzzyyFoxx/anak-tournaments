@@ -17,25 +17,26 @@ import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { useTranslations } from "next-intl";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { logout } from "@/lib/logout";
 
 type UserMenuProps = {
   username: string;
   avatarUrl?: string | null;
   profileHref: string;
-  logoutHref?: string;
 };
 
-const UserMenu = ({ username, avatarUrl, profileHref, logoutHref = "/auth/logout" }: UserMenuProps) => {
+const UserMenu = ({ username, avatarUrl, profileHref }: UserMenuProps) => {
   const router = useRouter();
   const clearAuth = useAuthProfileStore((s) => s.clear);
   const openSettings = useAccountSettingsModalStore((s) => s.open);
   const t = useTranslations();
 
   const handleLogout = () => {
-    // Clear auth store before redirecting
+    // Drop the cached profile first so the UI can't render a stale identity
+    // while the POST is in flight; `logout` then clears the cookies server-side
+    // and hard-navigates.
     clearAuth();
-    // Use window.location for full page navigation to ensure cookies are properly handled
-    window.location.href = logoutHref;
+    void logout();
   };
 
   return (

@@ -1,20 +1,8 @@
-import { getTokenExpMs } from "./jwt";
-import { PLATFORM_ZONE, isPlatformHost } from "./host";
-
 // Canonical access-token cookie name. LEGACY_ACCESS_TOKEN_COOKIE is read as a
 // fallback during the aqt->owt rename so existing sessions are not logged out;
 // it is never written.
 const ACCESS_TOKEN_COOKIE = "owt_access_token";
 const LEGACY_ACCESS_TOKEN_COOKIE = "aqt_access_token";
-
-// Must match the Domain the server sets on login (oauth-callback.ts) /
-// refresh (auth/refresh/route.ts) in production. A client-side `Cookies.set`
-// without a matching Domain wouldn't overwrite that cookie — RFC 6265 keys a
-// cookie by (name, domain, path) — it would instead create a second,
-// host-only cookie with the same name, and which one a later request sends
-// first (stale domain-wide vs. fresh host-only) is undefined.
-const IS_PROD = process.env.NODE_ENV === "production";
-const COOKIE_DOMAIN = `.${PLATFORM_ZONE}`;
 
 // Outcome of an access-token refresh attempt. The distinction matters: only a
 // genuinely dead session ("unauthenticated" — the refresh endpoint returned 401)
@@ -28,6 +16,28 @@ export type RefreshOutcome =
 
 let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
+// A 401 from /auth/refresh is TERMINAL for this document: the route answers 401
+// only when the refresh cookie is absent or upstream rejected it, and it clears
+// both cookies on the way out — nothing in this page context can make the next
+// attempt succeed. Latch it, because every 401 used to be re-attempted on each
+// focus/visibility event: prod logs showed clients that had never been logged in
+// at all looping `/auth/refresh 401` + `/api/auth/me` pairs indefinitely (57
+// browsers, 408 of the 627 "logout" responses in five days). A real login always
+// navigates the document (the OAuth redirect), which resets this module.
+let sessionKnownDead = false;
+
+// Test seam. In a browser the latch is scoped to the document — logging back in
+// always navigates, which discards this module — but a test process keeps ONE
+// module instance across files, so a suite asserting a dead session would poison
+// every later suite asserting a live refresh.
+export function resetRefreshStateForTests(): void {
+  sessionKnownDead = false;
+  refreshInFlight = null;
+}
+
+// Runs in BOTH renderers, so both imports must stay dynamic: `next/headers` is
+// server-only (a static import poisons every client bundle that touches this
+// module) and `js-cookie` needs `document`, which does not exist on the server.
 export async function getTokenFromCookies(cookieName: string): Promise<string | undefined> {
   if (typeof window === "undefined") {
     try {
@@ -58,40 +68,13 @@ export async function getAccessTokenCookie(): Promise<string | undefined> {
   return getTokenFromCookies(LEGACY_ACCESS_TOKEN_COOKIE);
 }
 
-// Persist the access token in a JS-readable cookie whose lifetime matches the
-// token's own `exp`, so the client keeps the token exactly as long as it is
-// valid (and decides when to refresh by `exp`, instead of losing it early).
-// Mirrors the attributes set server-side by the /auth/refresh route handler.
-export async function setAccessTokenCookie(token: string): Promise<void> {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    const Cookies = (await import("js-cookie")).default;
-    const expMs = getTokenExpMs(token);
-    // Domain-wide (`.owt`) only on the platform apex/subdomains; host-only on a
-    // custom domain (the browser rejects a `.owt` cookie there, so a domain-wide
-    // write silently no-ops and the refreshed token is lost). Mirrors the
-    // server-side /auth/refresh route.
-    const domainAttr = IS_PROD && isPlatformHost(window.location.hostname) ? { domain: COOKIE_DOMAIN } : {};
-    Cookies.set(ACCESS_TOKEN_COOKIE, token, {
-      path: "/",
-      sameSite: "lax",
-      secure: IS_PROD,
-      ...domainAttr,
-      ...(expMs !== undefined ? { expires: new Date(expMs) } : {}),
-    });
-  } catch {
-    // ignore
-  }
-}
-
 export async function refreshAccessToken(): Promise<RefreshOutcome> {
   // Client-only. On the server there is no refresh path (no SSR middleware);
   // SSR renders from whatever cookie is present and the client takes over on
   // hydration via the proactive scheduler + reactive 401 path.
   if (typeof window === "undefined") return { status: "error" };
+
+  if (sessionKnownDead) return { status: "unauthenticated" };
 
   if (!refreshInFlight) {
     refreshInFlight = (async (): Promise<RefreshOutcome> => {
@@ -108,6 +91,7 @@ export async function refreshAccessToken(): Promise<RefreshOutcome> {
         // 401 => the refresh token is missing/expired/revoked: the session is
         // genuinely dead. The route handler already cleared the cookies.
         if (res.status === 401) {
+          sessionKnownDead = true;
           return { status: "unauthenticated" };
         }
 
@@ -118,7 +102,12 @@ export async function refreshAccessToken(): Promise<RefreshOutcome> {
 
         const tokens = (await res.json()) as { access_token?: string };
         if (tokens.access_token) {
-          await setAccessTokenCookie(tokens.access_token);
+          // The route's own `Set-Cookie` (relative `maxAge`, matching Domain) is
+          // already applied by `fetch` — it is the ONLY writer. A client-side
+          // re-write used to follow with an ABSOLUTE `expires` taken from the
+          // token's `exp`, which the browser evaluates against the USER's clock:
+          // a device running fast simply dropped the cookie it had just been
+          // given, and the whole login/refresh cycle restarted forever.
           return { status: "refreshed", token: tokens.access_token };
         }
         return { status: "error" };

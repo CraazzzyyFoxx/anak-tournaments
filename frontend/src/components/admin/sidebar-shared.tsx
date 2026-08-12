@@ -22,6 +22,7 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getAuthProfileHref } from "@/lib/auth-profile-links";
+import { logout } from "@/lib/logout";
 import { WorkspaceAvatar } from "@/components/WorkspaceSwitcher";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
@@ -134,11 +135,11 @@ export function SidebarUserDropdown() {
   const roleLabel = getRoleLabel({ isSuperuser, isAdmin, isOrganizer, isModerator });
   const profileHref = getAuthProfileHref(user);
 
-  // Same contract as the public UserMenu: drop the cached profile, then hand the
-  // browser to the route handler so the auth cookies are cleared server-side.
+  // Same contract as the public UserMenu: drop the cached profile, then POST to
+  // the logout route so the auth cookies are cleared server-side.
   const handleSignOut = () => {
     clearAuthProfile();
-    window.location.href = "/auth/logout";
+    void logout();
   };
 
   return (

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
+import { resetRefreshStateForTests } from "@/lib/auth-tokens";
 import { retryWithRefreshOnUnauthorized } from "@/lib/auth-request";
 
 // We exercise the REAL refreshAccessToken / notifyUnauthorized and drive their
@@ -21,6 +22,7 @@ const ok = () => new Response(null, { status: 200 });
 
 beforeEach(() => {
   refreshStatus = 500;
+  resetRefreshStateForTests();
   dispatchEvent.mockClear();
   g.window = { dispatchEvent };
   g.CustomEvent = class {

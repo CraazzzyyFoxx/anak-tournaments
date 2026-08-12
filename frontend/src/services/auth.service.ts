@@ -211,10 +211,12 @@ export const authService = {
     });
 
     if (!res.ok) {
-      // 403 here is identity-svc's "Not authenticated" for the platform-host
-      // branch (missing/invalid apex bearer) -- the same signal a missing
-      // accessToken produced client-side before Task 10R.
-      if (res.status === 403) {
+      // "Not authenticated" for the platform-host branch (missing/invalid apex
+      // bearer) -- the same signal a missing accessToken produced client-side
+      // before Task 10R. The gateway now answers 401 for a missing bearer (403
+      // conflated "unauthenticated" with "forbidden"); identity-svc still maps
+      // its own forbidden envelope to 403, so accept both.
+      if (res.status === 401 || res.status === 403) {
         throw new OAuthLinkAuthRequiredError();
       }
       // Everything else is a refusal with a REASON worth showing (409: the

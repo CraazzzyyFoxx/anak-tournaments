@@ -421,7 +421,7 @@ func TestApiAuthGuard_NoConflictAndNoLoop(t *testing.T) {
 
 // TestApiAuth_TypedRoutesHitHandler asserts the typed RBAC/player/avatar routes win
 // over the /api/auth/ guard (ServeMux specificity) and reach the identity handler
-// (403 without a bearer, or 504 with the stub caller), never "frontend"/"guard".
+// (401 without a bearer, or 504 with the stub caller), never "frontend"/"guard".
 func TestApiAuth_TypedRoutesHitHandler(t *testing.T) {
 	mux := buildAuthGuardedMux(t)
 	srv := httptest.NewServer(mux)

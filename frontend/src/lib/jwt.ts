@@ -41,11 +41,18 @@ export function isExpiredOrNearExpiry(
   return expMs <= Date.now() + skewMs;
 }
 
-// Remaining lifetime of the token in whole seconds, clamped to >= 0. Falls back
-// to `fallbackSeconds` when `exp` can't be decoded. Used to align cookie
-// lifetimes with the actual token lifetime.
+// Remaining lifetime of the token in whole seconds. Falls back to
+// `fallbackSeconds` when `exp` can't be decoded OR when the token already looks
+// expired. Used to align cookie lifetimes with the actual token lifetime.
 export function getTokenMaxAgeSeconds(token: string, fallbackSeconds: number): number {
   const expMs = getTokenExpMs(token);
   if (expMs === undefined) return fallbackSeconds;
-  return Math.max(0, Math.floor((expMs - Date.now()) / 1000));
+  const remaining = Math.floor((expMs - Date.now()) / 1000);
+  // `maxAge: 0` does not mean "very short-lived", it means "delete this cookie
+  // now". A server clock running ahead of the token issuer — or a token that
+  // spent its whole lifetime inside a slow RPC — would otherwise answer a
+  // successful login/refresh with a Set-Cookie that erases the session it was
+  // supposed to establish. The gateway verifies `exp` on every request, so a
+  // cookie that outlives its token grants nothing.
+  return remaining > 0 ? remaining : fallbackSeconds;
 }

@@ -4700,7 +4700,7 @@
       "summary": "Validate service token"
     },
     "rpc.identity.validate_token": {
-      "description": "Validates a bearer access token or API key and returns the RBAC token payload (user, permissions); 403 if not authenticated.",
+      "description": "Validates a bearer access token or API key and returns the RBAC token payload (user, permissions); 401 if not authenticated.",
       "response": {
         "array": false,
         "ref": "identity.TokenPayload"
