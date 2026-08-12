@@ -55,7 +55,14 @@ async def to_pydantic(
         players_read = [
             await to_pydantic_player(session, player, players_entities, grid=grid) for player in team.players
         ]
-    if "captain" in entities:
+    # ``Team.captain_id`` is nullable, and NOT only in theory: it is ``SET NULL``
+    # on the captain's player row, and a scrim room's away side has no captain at
+    # all until someone claims it (docs/plans/2026-08-12-scrim-rooms.md §4.2). The
+    # encounter flow one level up already guards its own nullable sides the same
+    # way; without this, requesting the ``captain`` entity for such a team raised
+    # ``AttributeError: 'NoneType' object has no attribute 'id'`` inside
+    # ``user_flows.to_pydantic``. ``TeamRead.captain`` was already ``| None``.
+    if "captain" in entities and team.captain is not None:
         captain = await user_flows.to_pydantic(session, team.captain, utils.prepare_entities(entities, "captain"))
     if "placement" in entities:
         placement = resolve_team_placement(team)
