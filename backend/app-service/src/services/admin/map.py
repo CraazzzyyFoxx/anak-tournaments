@@ -59,6 +59,7 @@ async def create_map(session: AsyncSession, data: admin_schemas.MapCreate) -> mo
     map_obj = models.Map(
         name=data.name,
         gamemode_id=data.gamemode_id,
+        image_path=data.image_path or "",
         in_competitive=data.in_competitive,
         aliases=normalize_aliases(data.aliases or [], canonical=data.name),
     )
