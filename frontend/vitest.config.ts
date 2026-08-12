@@ -72,6 +72,7 @@ export default defineConfig({
       // entry is file-level rather than a directory glob.
       "src/app/(site)/tournaments/[id]/_views/TournamentMapsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_views/TournamentParticipantsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[id]/_views/TournamentSchedulePage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       "src/components/veto/**/*.test.ts",
       "src/components/veto/**/*.test.tsx",

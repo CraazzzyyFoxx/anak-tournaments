@@ -22,6 +22,7 @@
     "matches": "Matches",
     "heroes": "Heroes",
     "maps": "Maps",
+    "schedule": "Schedule",
     "standings": "Standings",
     "bracket": "Bracket",
     "rolesList": "Roles",
@@ -1667,7 +1668,8 @@
       "scrollNext": "Scroll tournament sections forward",
       "reasons": {
         "competitionNotStarted": "Available when tournament play begins.",
-        "noStages": "The organizer has not published tournament stages yet."
+        "noStages": "The organizer has not published tournament stages yet.",
+        "noSchedule": "The organizer has not published a phase schedule yet."
       }
     },
     "loading": {
@@ -1678,7 +1680,8 @@
         "matches": "Loading tournament matches",
         "heroes": "Loading hero statistics",
         "standings": "Loading tournament standings",
-        "maps": "Loading the tournament map pool"
+        "maps": "Loading the tournament map pool",
+        "schedule": "Loading the tournament schedule"
       }
     },
     "participants": {
@@ -1695,6 +1698,21 @@
         "tableLabel": "Tournament matches. Scroll horizontally for all result details.",
         "emptyTitle": "No matches found",
         "emptyDescription": "Matches will appear here after they are scheduled or published."
+      },
+      "schedule": {
+        "title": "Phase schedule",
+        "emptyTitle": "No schedule published",
+        "emptyDescription": "Phase times will appear here once the organizer sets them.",
+        "startsLabel": "Starts",
+        "closesLabel": "Closes",
+        "startsRelative": "Starts {relative}",
+        "closesRelative": "Closes {relative}",
+        "state": {
+          "done": "Done",
+          "current": "Now"
+        },
+        "windowHint": "A closing time ends that phase's own actions — check-in, for example. It does not move the tournament to the next phase.",
+        "manualHint": "Automatic phase transitions are off, so these times are the organizer's plan rather than a promise."
       },
       "heroes": {
         "roleLabel": "Filter heroes by role",

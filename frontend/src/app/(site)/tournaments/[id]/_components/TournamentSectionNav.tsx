@@ -9,6 +9,7 @@ import {
   ArrowRight,
   BarChart3,
   Calendar,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -35,6 +36,7 @@ const icons: Record<TournamentSectionId, React.ComponentType<{ className?: strin
   bracket: LayoutGrid,
   teams: Users,
   participants: ClipboardList,
+  schedule: CalendarClock,
   matches: Calendar,
   maps: Map,
   heroes: Trophy,
@@ -57,6 +59,7 @@ type TournamentSectionNavProps = {
   status: TournamentStatus;
   stages?: StageSummary[];
   teamFormation?: string;
+  hasSchedule?: boolean;
   // Retained for call-site compatibility; both variants render the same adaptive rail.
   variant?: "desktop" | "mobile";
   className?: string;
@@ -67,6 +70,7 @@ export default function TournamentSectionNav({
   status,
   stages = [],
   teamFormation,
+  hasSchedule,
   className
 }: TournamentSectionNavProps) {
   const t = useTranslations();
@@ -83,9 +87,10 @@ export default function TournamentSectionNav({
         status,
         stages,
         teamFormation,
+        hasSchedule,
         pathname
       }),
-    [pathname, stages, status, teamFormation, tournamentId]
+    [hasSchedule, pathname, stages, status, teamFormation, tournamentId]
   );
   const setActiveRef = (node: HTMLElement | null) => {
     activeRef.current = node;

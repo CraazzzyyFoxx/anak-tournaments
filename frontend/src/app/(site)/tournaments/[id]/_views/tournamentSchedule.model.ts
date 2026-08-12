@@ -1,0 +1,134 @@
+import type { Tournament, TournamentStatus } from "@/types/tournament.types";
+
+/**
+ * The phases that may carry a `tournament_phase_schedule` row, in the backend's
+ * own lifecycle order — mirrors `SCHEDULABLE_STATUSES` ordered by `PHASE_ORDER`
+ * in `backend/shared/core/tournament_state.py`. PLAYOFFS and everything after
+ * it depend on the actual course of play and are never scheduled, so they can
+ * never appear on this timeline: the hero's status pill carries them instead.
+ */
+const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;
+
+export type SchedulablePhase = (typeof SCHEDULABLE_PHASES)[number];
+
+export type PhaseSegmentState = "done" | "current" | "upcoming";
+
+export type PhaseSegment = {
+  status: SchedulablePhase;
+  /**
+   * Derived from `tournament.status`, NEVER from `now` vs `startsAt`. A
+   * `starts_at` is a plan the worker tick executes, and with automation off it
+   * may never be executed at all — comparing clocks would report a phase as
+   * running while the tournament sits in the previous one.
+   */
+  state: PhaseSegmentState;
+  /** Planned phase start, ISO-8601. */
+  startsAt: string;
+  /**
+   * When the phase's action window closes, ISO-8601, or null when it stays open
+   * for the whole phase. This never advances the status (see
+   * `TournamentPhaseSchedule` in `shared/models/tournament/tournament.py`).
+   */
+  endsAt: string | null;
+  /**
+   * ms left until this segment's next boundary. Set on at most one segment: the
+   * current one counts down to its `endsAt`, otherwise the nearest upcoming one
+   * counts down to its `startsAt`. Null once that boundary is in the past, so a
+   * plan automation did not execute never renders as a negative countdown.
+   */
+  countdownMs: number | null;
+  /** Elapsed fraction (0..1) of a current segment with a closed window. */
+  progress: number | null;
+};
+
+export type TournamentScheduleModel = {
+  segments: PhaseSegment[];
+  /**
+   * With auto-transitions off the organizer advances phases by hand, so the
+   * times are the intended plan rather than a commitment.
+   */
+  automationOff: boolean;
+};
+
+type ScheduleInput = {
+  tournament: Pick<
+    Tournament,
+    "status" | "team_formation" | "phase_schedule" | "auto_transitions_enabled"
+  >;
+  /**
+   * `null` on the server and on the first client render — the caller only knows
+   * the viewer's clock after hydration. Countdown and progress are simply
+   * omitted then; the phase states and timestamps do not depend on it.
+   */
+  now: number | null;
+};
+
+/**
+ * Position of a status within the schedulable prefix of the lifecycle.
+ * PLAYOFFS/COMPLETED/ARCHIVED all sit after the whole prefix, so a finished
+ * tournament ranks above every segment and the timeline reads as all-done.
+ */
+function statusRank(status: TournamentStatus): number {
+  const index = (SCHEDULABLE_PHASES as readonly string[]).indexOf(status);
+  return index === -1 ? SCHEDULABLE_PHASES.length : index;
+}
+
+function epoch(iso: string | null): number | null {
+  if (iso === null) return null;
+  const value = Date.parse(iso);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function buildTournamentSchedule({
+  tournament,
+  now
+}: ScheduleInput): TournamentScheduleModel {
+  const schedule = tournament.phase_schedule ?? [];
+
+  const currentRank = statusRank(tournament.status);
+  const segments: PhaseSegment[] = [];
+
+  for (const phase of SCHEDULABLE_PHASES) {
+    // A balancer tournament has no draft phase at all, even if a stale row says
+    // otherwise (the settings form offers all four regardless of formation).
+    if (phase === "draft" && tournament.team_formation !== "draft") continue;
+
+    const row = schedule.find((entry) => entry.status === phase);
+    // An unscheduled phase has no place on a timeline: it carries no time, and
+    // for check-in its absence is exactly what "this tournament has no
+    // check-in" means. A row of em-dashes would be noise, not information.
+    if (!row) continue;
+
+    const rank = statusRank(phase);
+    segments.push({
+      status: phase,
+      state: rank < currentRank ? "done" : rank === currentRank ? "current" : "upcoming",
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      countdownMs: null,
+      progress: null
+    });
+  }
+
+  if (now !== null) {
+    const current = segments.find((segment) => segment.state === "current");
+    if (current) {
+      const startsAt = epoch(current.startsAt);
+      const endsAt = epoch(current.endsAt);
+      if (startsAt !== null && endsAt !== null && endsAt > startsAt) {
+        current.progress = Math.min(1, Math.max(0, (now - startsAt) / (endsAt - startsAt)));
+        if (endsAt > now) current.countdownMs = endsAt - now;
+      }
+    }
+
+    if (current?.countdownMs == null) {
+      const next = segments.find((segment) => segment.state === "upcoming");
+      const startsAt = next ? epoch(next.startsAt) : null;
+      if (next && startsAt !== null && startsAt > now) {
+        next.countdownMs = startsAt - now;
+      }
+    }
+  }
+
+  return { segments, automationOff: !tournament.auto_transitions_enabled };
+}

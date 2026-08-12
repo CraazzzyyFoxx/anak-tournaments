@@ -42,6 +42,7 @@ function model(
     status,
     stages,
     teamFormation: "draft",
+    hasSchedule: true,
     pathname
   });
 }
@@ -88,6 +89,26 @@ describe("buildTournamentSectionNav", () => {
     );
   });
 
+  it("locks Schedule until the organizer publishes a phase schedule", () => {
+    const items = buildTournamentSectionNav({
+      tournamentId,
+      status: "registration",
+      stages: [stage()],
+      teamFormation: "balancer",
+      hasSchedule: false,
+      pathname: `/tournaments/${tournamentId}/participants`
+    });
+
+    expect(items.find((item) => item.id === "schedule")).toMatchObject({
+      available: false,
+      reasonKey: "tournamentDetail.nav.reasons.noSchedule",
+      href: `/tournaments/${tournamentId}/schedule`
+    });
+    // A published schedule is the ONLY thing that gate reads: it stays open
+    // during play, where the timeline is the record of when each phase ran.
+    expect(model("playoffs").find((item) => item.id === "schedule")?.available).toBe(true);
+  });
+
   it("prefers the active stage, then elimination, then group stage for the bracket href", () => {
     const stages = [
       stage({ id: 1, stage_type: "round_robin", is_active: false }),
@@ -113,6 +134,7 @@ describe("buildTournamentSectionNav", () => {
       ["bracket", "common.bracket"],
       ["teams", "common.teams"],
       ["participants", "common.participants"],
+      ["schedule", "common.schedule"],
       ["matches", "common.matches"],
       // `maps` joined TOURNAMENT_SECTION_ORDER after this expectation was
       // written; the file was outside vitest's include list, so the stale

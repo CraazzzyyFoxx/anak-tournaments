@@ -1,10 +1,12 @@
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
-  | "bracket" | "teams" | "participants" | "matches" | "maps" | "heroes" | "standings" | "draft";
+  | "bracket" | "teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
 
 export type TournamentNavReasonKey =
-  "tournamentDetail.nav.reasons.competitionNotStarted" | "tournamentDetail.nav.reasons.noStages";
+  | "tournamentDetail.nav.reasons.competitionNotStarted"
+  | "tournamentDetail.nav.reasons.noStages"
+  | "tournamentDetail.nav.reasons.noSchedule";
 
 export type TournamentSectionNavItem = {
   id: TournamentSectionId;
@@ -20,6 +22,12 @@ type BuildTournamentSectionNavInput = {
   status: TournamentStatus;
   stages: StageSummary[];
   teamFormation?: string;
+  /**
+   * Whether the organizer published any `tournament_phase_schedule` row. The
+   * Schedule section has nothing to show without one, so it locks rather than
+   * leading to an empty page.
+   */
+  hasSchedule?: boolean;
   pathname: string;
 };
 
@@ -42,6 +50,7 @@ const tournamentSections: Exclude<TournamentSectionId, "draft">[] = [
   "bracket",
   "teams",
   "participants",
+  "schedule",
   "matches",
   "maps",
   "heroes",
@@ -74,6 +83,7 @@ export function buildTournamentSectionNav({
   status,
   stages,
   teamFormation,
+  hasSchedule = false,
   pathname
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
   const competitionStarted = competitionStatuses.has(status);
@@ -91,18 +101,21 @@ export function buildTournamentSectionNav({
     const canonicalPath = href.split("?", 1)[0];
     const phaseLocked = competitionOnlySections.has(id) && !competitionStarted;
     const stageLocked = id === "bracket" && competitionStarted && stages.length === 0;
+    const scheduleLocked = id === "schedule" && !hasSchedule;
 
     return {
       id,
       labelKey: `common.${id}`,
       href,
       active: currentPath === canonicalPath,
-      available: !phaseLocked && !stageLocked,
+      available: !phaseLocked && !stageLocked && !scheduleLocked,
       reasonKey: phaseLocked
         ? "tournamentDetail.nav.reasons.competitionNotStarted"
         : stageLocked
           ? "tournamentDetail.nav.reasons.noStages"
-          : null
+          : scheduleLocked
+            ? "tournamentDetail.nav.reasons.noSchedule"
+            : null
     };
   });
 }
