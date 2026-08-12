@@ -275,6 +275,13 @@ def prepare_openskill_data(
     analytics_matches: list[AnalyticsMatch] = []
 
     for encounter in encounters:
+        # A bracket row can carry a NULL side: a bye, or a slot whose team has
+        # not been seeded yet. It rates nothing and describes no match, so skip
+        # it -- the same guard ``opponent_strength`` already applies when it
+        # replays these very rows.
+        if encounter.home_team is None or encounter.away_team is None:
+            continue
+
         home_team = [get_id_role(player) for player in encounter.home_team.players]
         away_team = [get_id_role(player) for player in encounter.away_team.players]
 
