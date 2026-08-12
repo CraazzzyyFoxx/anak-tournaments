@@ -110,27 +110,42 @@ async def _load_config(session: AsyncSession, config_id: int) -> PickBanConfig |
     return await session.scalar(select(PickBanConfig).where(PickBanConfig.id == config_id).options(*_CONFIG_POOL_LOAD))
 
 
-async def _resolve_config(session: AsyncSession, encounter: Encounter, kind: PickBanKind) -> PickBanConfig | None:
-    """Same cascade as ``veto_session.resolve_config``, scoped by ``kind``."""
+async def resolve_config_at_level(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    kind: PickBanKind,
+    stage_id: int | None,
+    round: int | None,
+) -> PickBanConfig | None:
+    """The config this ``(tournament, kind, stage, round)`` coordinate resolves to.
+
+    The cascade itself, addressed by coordinate rather than by encounter, so a
+    caller that has no encounter in hand — the scrim room's "copy this round's
+    pool" (``services/scrim/service.py``) — asks the same question the engine
+    asks, instead of reimplementing the ranking and drifting from it.
+
+    Ranking, most specific first: an exact stage+round config (2), the stage's
+    round-less config (1), the tournament-wide config (0).
+    """
     result = await session.execute(
         select(PickBanConfig)
         .where(
-            PickBanConfig.tournament_id == encounter.tournament_id,
+            PickBanConfig.tournament_id == tournament_id,
             PickBanConfig.kind == kind,
             sa.or_(
                 PickBanConfig.stage_id.is_(None),
-                PickBanConfig.stage_id == encounter.stage_id,
+                PickBanConfig.stage_id == stage_id,
             ),
         )
         .options(*_CONFIG_POOL_LOAD)
     )
-    configs = list(result.scalars().all())
     best = None
     best_rank = -1
-    for config in configs:
-        if config.round is not None and config.round == encounter.round and config.stage_id == encounter.stage_id:
+    for config in result.scalars().all():
+        if config.round is not None and config.round == round and config.stage_id == stage_id:
             rank = 2
-        elif config.stage_id == encounter.stage_id and config.round is None:
+        elif config.stage_id == stage_id and config.round is None:
             rank = 1
         elif config.stage_id is None and config.round is None:
             rank = 0
@@ -139,6 +154,17 @@ async def _resolve_config(session: AsyncSession, encounter: Encounter, kind: Pic
         if rank > best_rank:
             best, best_rank = config, rank
     return best
+
+
+async def _resolve_config(session: AsyncSession, encounter: Encounter, kind: PickBanKind) -> PickBanConfig | None:
+    """Same cascade as ``veto_session.resolve_config``, scoped by ``kind``."""
+    return await resolve_config_at_level(
+        session,
+        tournament_id=encounter.tournament_id,
+        kind=kind,
+        stage_id=encounter.stage_id,
+        round=encounter.round,
+    )
 
 
 # Session-creation blocker distinct from the ``veto_session``-derived
