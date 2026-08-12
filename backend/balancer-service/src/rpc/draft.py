@@ -627,6 +627,21 @@ def register(broker: Any, logger: Any) -> None:
                 draft.rounds = payload.rounds
             if payload.settings is not None:
                 draft.settings_json = payload.settings
+            # The pick rows carry the seat order, and `round_rules` decides it, so
+            # a rules change that stopped at `settings_json` left the board picking
+            # in the order it was seeded with while the wizard previewed the new
+            # one. Rounds already in progress keep their order (see
+            # lifecycle.resync_pick_order).
+            moved = await lifecycle.resync_pick_order(session, draft)
+            if moved:
+                await draft_rt.publish_draft_event(
+                    session,
+                    _redis(logger),
+                    draft_session=draft,
+                    event_type="draft.session_updated",
+                    payload={"session_id": draft.id, "status": draft.status, "picks_reordered": moved},
+                    actor_user_id=user.id,
+                )
             await session.commit()
             await session.refresh(draft)
             return await board_svc.session_read(session, draft)

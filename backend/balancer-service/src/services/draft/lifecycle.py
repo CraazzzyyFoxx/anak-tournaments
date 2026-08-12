@@ -8,8 +8,10 @@ DB-resumable: absolute ``clock_expires_at`` while live, frozen
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Final, Protocol, TypeVar
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -234,6 +236,125 @@ async def _load_full(session: AsyncSession, draft_session_id: int) -> DraftSessi
     return draft
 
 
+# Round rules whose seat order is only known once the round starts: they rank
+# teams by their live average, so seeding and any later resync leave the linear
+# order in place and ``selection._apply_dynamic_round_order`` re-seats the round
+# on its first pick.
+DYNAMIC_ROUND_RULES: Final[tuple[str, ...]] = ("team_avg_asc", "team_avg_desc")
+
+
+class _Seat(Protocol):
+    """What seat ordering reads off a team: its id and its seed position."""
+
+    id: int
+    draft_position: int
+
+
+_SeatT = TypeVar("_SeatT", bound=_Seat)
+
+
+def round_seat_order(
+    seats: Sequence[_SeatT],
+    *,
+    fmt: DraftFormat,
+    round_rules: Sequence[str | None],
+    round_idx: int,
+    captain_ranks: Mapping[int, int],
+) -> list[_SeatT]:
+    """Seat order for one round: who picks first, second, ... in it.
+
+    ``seats`` is the seed order (position 1 first) and ``round_idx`` is 0-based.
+    The single source of truth for what a rule MEANS, shared by seeding and
+    :func:`resync_pick_order` -- the two used to hold separate copies, which is
+    how a rule changed after seeding could mean one thing in the wizard preview
+    and another on the board.
+    """
+    if fmt == DraftFormat.SNAKE:
+        return list(reversed(seats)) if round_idx % 2 == 1 else list(seats)
+    if fmt != DraftFormat.CUSTOM:
+        return list(seats)
+
+    rule = round_rules[round_idx] if round_idx < len(round_rules) else None
+    if rule == "reverse":
+        return list(reversed(seats))
+    if rule == "weakest_first":
+        return sorted(seats, key=lambda t: (captain_ranks.get(t.id, -1), t.draft_position))
+    if rule == "strongest_first":
+        return sorted(seats, key=lambda t: (captain_ranks.get(t.id, -1), -t.draft_position), reverse=True)
+    # "linear", a dynamic rule, an unknown value, or a hole left by an older
+    # client: all keep the seed order here.
+    return list(seats)
+
+
+async def resync_pick_order(session: AsyncSession, draft_session: DraftSession) -> int:
+    """Re-seat every round that has not started yet. Returns how many picks moved.
+
+    ``round_rules`` lives on the session while the pick rows are materialized at
+    seed time, so changing a rule afterwards used to change nothing on the board:
+    the wizard previewed the new order and the draft kept picking in the old one.
+    Callers run this after a settings change so the two cannot disagree.
+
+    A round holding any pick that is no longer UPCOMING is history and is left
+    alone -- reordering a round somebody already picked in would rewrite who
+    picked when. Dynamic ``team_avg_*`` rounds keep the seed order here; they are
+    re-seated when they start.
+    """
+    teams = (
+        await session.scalars(
+            sa.select(DraftTeam)
+            .where(DraftTeam.session_id == draft_session.id)
+            .order_by(DraftTeam.draft_position.asc())
+        )
+    ).all()
+    if not teams:
+        return 0
+    picks = (
+        await session.scalars(
+            sa.select(DraftPick)
+            .where(DraftPick.session_id == draft_session.id)
+            .order_by(DraftPick.overall_no.asc())
+        )
+    ).all()
+    if not picks:
+        return 0
+
+    captain_ranks = {
+        captain.drafted_by_team_id: (captain.rank_value if captain.rank_value is not None else -1)
+        for captain in await session.scalars(
+            sa.select(DraftPlayer).where(
+                DraftPlayer.session_id == draft_session.id,
+                DraftPlayer.is_captain.is_(True),
+                DraftPlayer.drafted_by_team_id.isnot(None),
+            )
+        )
+    }
+    fmt = DraftFormat(draft_session.format)
+    round_rules = draft_session.settings_json.get("round_rules") or []
+
+    by_round: dict[int, list[DraftPick]] = {}
+    for pick in picks:
+        by_round.setdefault(pick.round_no, []).append(pick)
+
+    moved = 0
+    for round_no, round_picks in by_round.items():
+        if any(pick.status != DraftPickStatus.UPCOMING.value for pick in round_picks):
+            continue
+        round_seats = round_seat_order(
+            list(teams),
+            fmt=fmt,
+            round_rules=round_rules,
+            round_idx=round_no - 1,
+            captain_ranks=captain_ranks,
+        )
+        for pick, team in zip(sorted(round_picks, key=lambda p: p.pick_in_round), round_seats, strict=False):
+            if pick.draft_team_id != team.id:
+                pick.draft_team_id = team.id
+                moved += 1
+    if moved:
+        await session.flush()
+    return moved
+
+
 async def seed(
     session: AsyncSession,
     draft_session: DraftSession,
@@ -352,36 +473,19 @@ async def seed(
 
     overall_no = 1
     for round_idx in range(draft_session.rounds):
-        round_no = round_idx + 1
-
-        # Determine team ordering for this round
-        if fmt == DraftFormat.SNAKE:
-            reverse = round_idx % 2 == 1
-            round_seats = list(reversed(seats)) if reverse else seats
-        elif fmt == DraftFormat.LINEAR:
-            round_seats = seats
-        elif fmt == DraftFormat.CUSTOM:
-            rule = round_rules[round_idx] if round_idx < len(round_rules) else "linear"
-            if rule == "reverse":
-                round_seats = list(reversed(seats))
-            elif rule == "weakest_first":
-                round_seats = sorted(seats, key=lambda t: (team_captain_ranks.get(t.id, -1), t.draft_position))
-            elif rule == "strongest_first":
-                round_seats = sorted(
-                    seats, key=lambda t: (team_captain_ranks.get(t.id, -1), -t.draft_position), reverse=True
-                )
-            else:
-                # Dynamic rules (team_avg_asc, team_avg_desc) default to linear order at seeding time
-                round_seats = seats
-        else:
-            round_seats = seats
-
+        round_seats = round_seat_order(
+            seats,
+            fmt=fmt,
+            round_rules=round_rules,
+            round_idx=round_idx,
+            captain_ranks=team_captain_ranks,
+        )
         for pick_in_round, team in enumerate(round_seats, start=1):
             session.add(
                 DraftPick(
                     session_id=draft_session.id,
                     overall_no=overall_no,
-                    round_no=round_no,
+                    round_no=round_idx + 1,
                     pick_in_round=pick_in_round,
                     draft_team_id=team.id,
                     status=DraftPickStatus.UPCOMING.value,

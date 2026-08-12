@@ -27,7 +27,7 @@ from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.workspace import get_or_create_workspace_member
-from src.services.draft import feasibility, loaders, ranks
+from src.services.draft import feasibility, lifecycle, loaders, ranks
 from src.services.draft import suggestions as sug
 
 
@@ -92,9 +92,6 @@ async def _finalize(
     return result.rowcount == 1
 
 
-_DYNAMIC_ROUND_RULES = ("team_avg_asc", "team_avg_desc")
-
-
 async def _apply_dynamic_round_order(
     session: AsyncSession, draft_session: DraftSession, next_pick: DraftPick
 ) -> bool:
@@ -109,7 +106,9 @@ async def _apply_dynamic_round_order(
     round_rules = draft_session.settings_json.get("round_rules") or []
     round_idx = next_pick.round_no - 1
     rule = round_rules[round_idx] if round_idx < len(round_rules) else None
-    if rule not in _DYNAMIC_ROUND_RULES:
+    # The seat-order vocabulary lives once, in lifecycle: seeding, the settings
+    # resync and this live re-seat have to agree on which rules are dynamic.
+    if rule not in lifecycle.DYNAMIC_ROUND_RULES:
         return False
 
     # Average the drafted-role rank (off-role aware), not the primary-role

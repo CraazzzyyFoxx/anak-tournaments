@@ -177,6 +177,59 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             self.assertEqual(picks[10].draft_team_id, team_by_pos[3])
             self.assertEqual(picks[11].draft_team_id, team_by_pos[1])
 
+    async def test_changing_a_rule_after_seeding_reorders_the_untouched_rounds(self) -> None:
+        """The bug: round_rules lived on the session, the seat order on the picks.
+
+        Changing a rule wrote settings_json and nothing else, so the wizard
+        previewed the new order while the board kept drafting the seeded one.
+        """
+        async with self.Session() as s:
+            draft = await lifecycle.create_session(
+                s,
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                shape=_SHAPE,
+                fmt=DraftFormat.CUSTOM,
+                settings={"round_rules": ["linear", "linear", "linear", "linear"]},
+            )
+            await lifecycle.seed(s, draft, captains=self._captains(), players=self._players())
+            await lifecycle.start(s, draft)
+            await s.commit()
+
+            teams = (
+                await s.scalars(sa.select(lifecycle.DraftTeam).where(lifecycle.DraftTeam.session_id == draft.id))
+            ).all()
+            team_by_pos = {t.draft_position: t.id for t in teams}
+
+            # Round 1 is on the clock, so it is history and must not move.
+            draft.settings_json = {"round_rules": ["reverse", "reverse", "linear", "linear"]}
+            moved = await lifecycle.resync_pick_order(s, draft)
+            await s.commit()
+
+            picks = (
+                await s.scalars(
+                    sa.select(DraftPick).where(DraftPick.session_id == draft.id).order_by(DraftPick.overall_no.asc())
+                )
+            ).all()
+
+            self.assertEqual(moved, 2)  # only round 2's outer seats swap
+            # Round 1 untouched: it already started under the old rule.
+            self.assertEqual(
+                [p.draft_team_id for p in picks[:3]],
+                [team_by_pos[1], team_by_pos[2], team_by_pos[3]],
+            )
+            # Round 2 now reads N -> 1, the rule the admin just chose.
+            self.assertEqual(
+                [p.draft_team_id for p in picks[3:6]],
+                [team_by_pos[3], team_by_pos[2], team_by_pos[1]],
+            )
+            # Rounds 3-4 stayed linear, and a second resync is a no-op.
+            self.assertEqual(
+                [p.draft_team_id for p in picks[6:9]],
+                [team_by_pos[1], team_by_pos[2], team_by_pos[3]],
+            )
+            self.assertEqual(await lifecycle.resync_pick_order(s, draft), 0)
+
     async def test_custom_format_dynamic_rules(self) -> None:
         async with self.Session() as s:
             rules = ["linear", "team_avg_asc", "linear", "linear"]

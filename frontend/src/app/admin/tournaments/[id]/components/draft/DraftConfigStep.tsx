@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import type { DraftAutopickStrategy, DraftFormat } from "@/types/draft.types";
 import { isRoleSlotCode, orderSlotCodes, type RosterShape } from "@/lib/roster-shape";
 
-import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT } from "./setup-model";
+import { DRAFT_ROUND_RULES, MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT } from "./setup-model";
 import type { DraftSetupConfig } from "./setup-types";
 
 interface DraftConfigStepProps {
@@ -272,12 +272,11 @@ export function DraftConfigStep({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="linear">{t("rules.linear")}</SelectItem>
-                        <SelectItem value="reverse">{t("rules.reverse")}</SelectItem>
-                        <SelectItem value="weakest_first">{t("rules.weakest_first")}</SelectItem>
-                        <SelectItem value="strongest_first">{t("rules.strongest_first")}</SelectItem>
-                        <SelectItem value="team_avg_asc">{t("rules.team_avg_asc")}</SelectItem>
-                        <SelectItem value="team_avg_desc">{t("rules.team_avg_desc")}</SelectItem>
+                        {DRAFT_ROUND_RULES.map((rule) => (
+                          <SelectItem key={rule} value={rule}>
+                            {t(`rules.${rule}`)}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

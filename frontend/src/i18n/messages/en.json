@@ -3671,6 +3671,7 @@
     },
     "newRandomSeed": "Generate a new random seed",
     "moveCaptain": "Move captain {name}",
+    "orderResolvedOnTheServer": "the server resolves the order when the round starts",
     "schedulePreview": "Round schedule preview",
     "validatingDraft": "The server is building a dry-run and checking role feasibility…",
     "previewFailed": "Draft validation failed",

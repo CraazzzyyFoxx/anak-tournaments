@@ -3671,6 +3671,7 @@
     },
     "newRandomSeed": "Создать новый случайный seed",
     "moveCaptain": "Переместить капитана {name}",
+    "orderResolvedOnTheServer": "порядок определится на сервере в начале раунда",
     "schedulePreview": "Предпросмотр порядка по раундам",
     "validatingDraft": "Сервер выполняет dry-run и проверяет достижимость ролей…",
     "previewFailed": "Не удалось проверить драфт",
