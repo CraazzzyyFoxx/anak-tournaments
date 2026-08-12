@@ -1,56 +1,29 @@
 "use client";
 
 import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { DivisionGridMappingEditor } from "./MappingEditor";
 import { OwRankRangePicker } from "./OwRankRangePicker";
+import { DivisionGridImportWizard } from "./ImportWizard";
+import { DivisionGridLibrary } from "./GridLibrary";
+import { DivisionGridConflictResolver } from "./ConflictResolver";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Check,
-  CopyPlus,
-  Download,
-  Minus,
-  Plus,
-  Save,
-  Star,
-  Store,
-  Trash2,
-  Upload,
-  Wand2,
-  X
-} from "lucide-react";
+import { Minus, Plus, Save, Star, Trash2, Upload, Wand2, X } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ApiError } from "@/lib/api-error";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { usePermissions } from "@/hooks/usePermissions";
 import { OW2_RANK_OPTIONS } from "@/lib/ow-rank-mapping";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
-  DivisionGridMarketplaceImportResult,
+  DivisionGridActivationReadiness,
   DivisionGridVersion,
   DivisionTier
 } from "@/types/workspace.types";
@@ -89,7 +62,7 @@ function buildDefaultTiers(): DivisionTier[] {
       const offset = (5 - tier_num) * 100;
       const rank_min = base + offset;
       const rank_max = div === "champion" && tier_num === 1 ? null : rank_min + 99;
-      const icon_url = `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/${slug}.png`;
+      const icon_url = `https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/${slug}.png`;
 
       tiers.push({
         slug,
@@ -116,20 +89,10 @@ function emptyTier(number: number, index: number): DivisionTier {
     sort_order: index,
     rank_min: 1000,
     rank_max: 1099,
-    icon_url: `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/bronze-5.png`,
+    icon_url: `https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/bronze-5.png`,
     ow_rank_min: null,
     ow_rank_max: null
   };
-}
-
-function hasCriticalChanges(original: DivisionTier[], current: DivisionTier[]): boolean {
-  if (original.length !== current.length) return true;
-  const origSorted = [...original].sort((a, b) => a.number - b.number);
-  const currSorted = [...current].sort((a, b) => a.number - b.number);
-  return origSorted.some((orig, i) => {
-    const curr = currSorted[i];
-    return orig.rank_min !== curr.rank_min || orig.rank_max !== curr.rank_max;
-  });
 }
 
 function buildEditorState(selectedVersion: DivisionGridVersion | null): {
@@ -151,12 +114,25 @@ function buildEditorState(selectedVersion: DivisionGridVersion | null): {
   };
 }
 
+type SaveTierPayload = {
+  id?: number | null;
+  slug: string;
+  number: number;
+  name: string;
+  sort_order: number;
+  rank_min: number;
+  rank_max: number | null;
+  icon_url: string;
+  ow_rank_min: number | null;
+  ow_rank_max: number | null;
+};
+
 type DivisionGridEditorCardProps = {
   workspaceId: number;
-  gridId: number;
   canEdit: boolean;
-  selectedVersion: DivisionGridVersion | null;
-  onSaved: () => Promise<void>;
+  activeVersion: DivisionGridVersion | null;
+  saving: boolean;
+  onSave: (payload: { name: string; tiers: SaveTierPayload[] }) => void;
 };
 
 // Navigable column indices: 0=#, 1=name, 2=rank_min, 3=rank_max (OW range uses a popover, no nav)
@@ -221,6 +197,8 @@ const TierEditorRow = memo(function TierEditorRow({
     (col: number) => (element: HTMLInputElement | null) => onSetInputRef(rowIndex, col, element),
     [onSetInputRef, rowIndex]
   );
+  // Every cell needs its own accessible name; the name cell can be blank mid-edit.
+  const rowLabel = tier.name || `division ${tier.number}`;
 
   return (
     <div className="grid min-w-[900px] grid-cols-[40px_56px_48px_180px_220px_1fr_40px_36px] gap-2 border-b px-4 py-1.5 last:border-b-0">
@@ -228,13 +206,14 @@ const TierEditorRow = memo(function TierEditorRow({
         <Checkbox
           checked={isSelected}
           onCheckedChange={(checked) => onSelect(rowIndex, checked === true)}
-          aria-label={`Select ${tier.name}`}
+          aria-label={`Select ${rowLabel}`}
           disabled={!canEdit}
         />
       </div>
       <Input
         ref={setInputRef(0)}
         inputMode="numeric"
+        aria-label={`Number for ${rowLabel}`}
         className="h-8 text-center tabular-nums"
         value={tier.number}
         onChange={(event) => onUpdate(rowIndex, "number", parseIntegerInput(event.target.value))}
@@ -242,9 +221,10 @@ const TierEditorRow = memo(function TierEditorRow({
         disabled={!canEdit}
       />
       <div className="flex items-center justify-center">
+        {/* Decorative: the editable name sits in the next cell. */}
         <Image
           src={tier.icon_url}
-          alt={tier.name}
+          alt=""
           width={28}
           height={28}
           className="h-7 w-7 object-contain"
@@ -252,6 +232,7 @@ const TierEditorRow = memo(function TierEditorRow({
       </div>
       <Input
         ref={setInputRef(1)}
+        aria-label={`Name for ${rowLabel}`}
         className="h-8"
         value={tier.name}
         onChange={(event) => onUpdate(rowIndex, "name", event.target.value)}
@@ -262,6 +243,7 @@ const TierEditorRow = memo(function TierEditorRow({
         <Input
           ref={setInputRef(2)}
           inputMode="numeric"
+          aria-label={`Minimum rank for ${rowLabel}`}
           className="h-8 w-24 tabular-nums"
           value={tier.rank_min}
           onChange={(event) =>
@@ -270,10 +252,13 @@ const TierEditorRow = memo(function TierEditorRow({
           onKeyDown={(event) => onKeyDown(event, rowIndex, 2)}
           disabled={!canEdit}
         />
-        <span className="shrink-0 text-xs text-muted-foreground">-</span>
+        <span aria-hidden className="shrink-0 text-xs text-muted-foreground">
+          –
+        </span>
         <Input
           ref={setInputRef(3)}
           inputMode="numeric"
+          aria-label={`Maximum rank for ${rowLabel}`}
           className="h-8 w-24 tabular-nums"
           placeholder="max"
           value={tier.rank_max ?? ""}
@@ -296,10 +281,12 @@ const TierEditorRow = memo(function TierEditorRow({
           onChange={(min, max) => onUpdateOwRange(rowIndex, min, max)}
         />
       </div>
+      {/* `sr-only` rather than `hidden`: a display:none input is unreachable by keyboard. */}
       <label className="inline-flex cursor-pointer items-center justify-center">
         <input
           type="file"
-          className="hidden"
+          className="peer sr-only"
+          aria-label={`Upload icon for ${rowLabel}`}
           accept="image/png,image/webp,image/jpeg,image/gif"
           disabled={!canEdit}
           onChange={(event) => {
@@ -308,8 +295,8 @@ const TierEditorRow = memo(function TierEditorRow({
             event.currentTarget.value = "";
           }}
         />
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted">
-          <Upload className="h-3.5 w-3.5" />
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted peer-focus-visible:ring-1 peer-focus-visible:ring-ring">
+          <Upload aria-hidden className="h-3.5 w-3.5" />
         </span>
       </label>
       <Button
@@ -318,9 +305,9 @@ const TierEditorRow = memo(function TierEditorRow({
         className="h-8 w-8 text-muted-foreground hover:text-destructive"
         onClick={() => onDelete(rowIndex)}
         disabled={!canEdit}
-        aria-label={`Delete ${tier.name}`}
+        aria-label={`Delete ${rowLabel}`}
       >
-        <Trash2 className="h-3.5 w-3.5" />
+        <Trash2 aria-hidden className="h-3.5 w-3.5" />
       </Button>
     </div>
   );
@@ -328,12 +315,12 @@ const TierEditorRow = memo(function TierEditorRow({
 
 function DivisionGridEditorCard({
   workspaceId,
-  gridId,
   canEdit,
-  selectedVersion,
-  onSaved
+  activeVersion,
+  saving,
+  onSave
 }: DivisionGridEditorCardProps) {
-  const initialState = useMemo(() => buildEditorState(selectedVersion), [selectedVersion]);
+  const initialState = useMemo(() => buildEditorState(activeVersion), [activeVersion]);
   const [label, setLabel] = useState(initialState.label);
   const [tiers, setTiers] = useState<DivisionTier[]>(initialState.tiers);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(() => new Set());
@@ -341,7 +328,6 @@ function DivisionGridEditorCard({
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeStep, setRangeStep] = useState(DEFAULT_RANK_STEP);
   const [tiersToAdd, setTiersToAdd] = useState(1);
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   // Keyboard navigation refs: key = `${row}-${col}`
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -385,6 +371,7 @@ function DivisionGridEditorCard({
   const tiersPayload = useMemo(
     () =>
       tiers.map((tier, index) => ({
+        id: tier.id,
         slug: tier.slug || `division-${tier.number}`,
         number: tier.number,
         name: tier.name,
@@ -398,36 +385,9 @@ function DivisionGridEditorCard({
     [tiers]
   );
 
-  const saveVersionMutation = useMutation({
-    mutationFn: async (mode: "edit" | "new") => {
-      if (mode === "edit" && selectedVersion) {
-        return workspaceService.updateDivisionGridVersion(selectedVersion.id, {
-          label,
-          tiers: tiersPayload
-        });
-      }
-      return workspaceService.createDivisionGridVersion(workspaceId, gridId, {
-        label,
-        tiers: tiersPayload
-      });
-    },
-    onSuccess: async (_, mode) => {
-      await onSaved();
-      notify.success(mode === "edit" ? "Version saved" : "New draft created");
-    }
-  });
-
   const handleSave = useCallback(() => {
-    if (!selectedVersion) {
-      saveVersionMutation.mutate("new");
-      return;
-    }
-    if (hasCriticalChanges(selectedVersion.tiers, tiers)) {
-      setShowSaveDialog(true);
-    } else {
-      saveVersionMutation.mutate("edit");
-    }
-  }, [selectedVersion, tiers, saveVersionMutation]);
+    onSave({ name: label, tiers: tiersPayload });
+  }, [onSave, label, tiersPayload]);
 
   const updateTier = useCallback(
     (index: number, field: keyof DivisionTier, value: string | number | null) => {
@@ -616,7 +576,9 @@ function DivisionGridEditorCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Version Editor</CardTitle>
+        <CardTitle asChild>
+          <h2>Version editor</h2>
+        </CardTitle>
         <CardDescription>
           Minor changes (name, icon, OW ranks) save in-place. Adding or removing tiers, or changing
           rank ranges, will prompt you to choose between editing the current version or creating a
@@ -624,17 +586,23 @@ function DivisionGridEditorCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Input
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-          placeholder="Version label"
-        />
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor="version-label">
+            Version label
+          </label>
+          <Input
+            id="version-label"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder="Version label"
+          />
+        </div>
 
         <div className="rounded-md border bg-muted/20 p-3">
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <div className="text-xs font-medium text-muted-foreground">Bulk target</div>
-              <Badge variant="outline" className="h-9 px-3">
+              <Badge variant="outline" className="h-9 px-3 tabular-nums">
                 {bulkTargetLabel}
               </Badge>
             </div>
@@ -657,16 +625,16 @@ function DivisionGridEditorCard({
               onClick={() => shiftBulkRanks(1)}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <Plus className="mr-2 h-4 w-4" />
-              Add
+              <Plus aria-hidden className="mr-2 h-4 w-4" />
+              Raise ranks
             </Button>
             <Button
               variant="outline"
               onClick={() => shiftBulkRanks(-1)}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <Minus className="mr-2 h-4 w-4" />
-              Reduce
+              <Minus aria-hidden className="mr-2 h-4 w-4" />
+              Lower ranks
             </Button>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="range-start">
@@ -701,8 +669,8 @@ function DivisionGridEditorCard({
               onClick={autoFillBulkRanges}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <Wand2 className="mr-2 h-4 w-4" />
-              Auto ranges
+              <Wand2 aria-hidden className="mr-2 h-4 w-4" />
+              Auto-fill ranges
             </Button>
             <Button
               variant="outline"
@@ -710,16 +678,16 @@ function DivisionGridEditorCard({
               disabled={!canEdit || bulkTargetIndexes.length === 0}
               title="Distribute the OW2 ladder across the targeted tiers (top tier gets the highest ranks)"
             >
-              <Wand2 className="mr-2 h-4 w-4" />
-              Auto OW map
+              <Wand2 aria-hidden className="mr-2 h-4 w-4" />
+              Auto-map OW ranges
             </Button>
             <Button
               variant="outline"
               onClick={clearOwRanges}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <X className="mr-2 h-4 w-4" />
-              Clear OW
+              <X aria-hidden className="mr-2 h-4 w-4" />
+              Clear OW ranges
             </Button>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="tiers-to-add">
@@ -736,7 +704,7 @@ function DivisionGridEditorCard({
               />
             </div>
             <Button variant="outline" onClick={addTiers} disabled={!canEdit}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus aria-hidden className="mr-2 h-4 w-4" />
               Add tiers
             </Button>
             <Button
@@ -745,8 +713,8 @@ function DivisionGridEditorCard({
               disabled={!canEdit || selectedRowIndexes.length === 0}
               className="text-destructive hover:text-destructive"
             >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete selected
+              <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+              Delete selected tiers
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -767,8 +735,8 @@ function DivisionGridEditorCard({
             <span>#</span>
             <span>Icon</span>
             <span>Name</span>
-            <span>Rank Range</span>
-            <span>OW Range</span>
+            <span>Rank range</span>
+            <span>OW range</span>
             <span>Upload</span>
             <span />
           </div>
@@ -788,231 +756,189 @@ function DivisionGridEditorCard({
               onUpload={uploadIcon}
             />
           ))}
+          {tiers.length === 0 && (
+            <p className="px-4 py-6 text-sm text-muted-foreground">
+              No divisions yet. Set “Tiers” above, then choose “Add tiers” to start the grid.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={handleSave} disabled={!canEdit || saveVersionMutation.isPending}>
-            <Save className="mr-2 h-4 w-4" />
-            Save
+          <Button onClick={handleSave} disabled={!canEdit || saving}>
+            <Save aria-hidden className="mr-2 h-4 w-4" />
+            {saving ? "Saving…" : "Save grid"}
           </Button>
         </div>
       </CardContent>
+    </Card>
+  );
+}
 
-      <AlertDialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Critical changes detected</AlertDialogTitle>
-            <AlertDialogDescription>
-              You changed the number of tiers or their rank ranges. Would you like to edit the
-              current version in-place, or save these changes as a new draft version?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setShowSaveDialog(false);
-                saveVersionMutation.mutate("new");
-              }}
-            >
-              Create new version
-            </AlertDialogAction>
-            <AlertDialogAction
-              onClick={() => {
-                setShowSaveDialog(false);
-                saveVersionMutation.mutate("edit");
-              }}
-            >
-              Edit current version
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+function VersionHistoryCard({
+  versions,
+  activeVersionId
+}: {
+  versions: DivisionGridVersion[];
+  activeVersionId: number | null;
+}) {
+  const ordered = [...versions].sort((left, right) => right.version - left.version);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle asChild>
+          <h2>Version history</h2>
+        </CardTitle>
+        <CardDescription>
+          Read-only. Each structural save creates a new version; existing tournaments stay pinned to
+          theirs and are remapped automatically.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {ordered.map((version) => (
+          <div
+            key={version.id}
+            className="flex flex-wrap items-center gap-2 border-b py-1.5 text-sm last:border-b-0"
+          >
+            <span className="font-medium tabular-nums">v{version.version}</span>
+            <span className="text-muted-foreground">{version.label}</span>
+            <Badge variant="outline">{version.status}</Badge>
+            {version.id === activeVersionId && <Badge>Active</Badge>}
+            {version.published_at && (
+              <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                {new Date(version.published_at).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+        ))}
+      </CardContent>
     </Card>
   );
 }
 
 export default function DivisionsAdminPage() {
   const queryClient = useQueryClient();
-  const { isSuperuser, canAccessAnyPermission } = usePermissions();
-  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const getCurrentWorkspace = useWorkspaceStore((s) => s.getCurrentWorkspace);
-  const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
+  const { isSuperuser, canAccessPermission } = usePermissions();
+  const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
+  const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
 
-  const canEdit =
-    isSuperuser ||
-    (currentWorkspaceId !== null &&
-      canAccessAnyPermission(
-        [
-          "division_grid.create",
-          "division_grid.update",
-          "division_grid.delete",
-          "division_grid.import"
-        ],
-        currentWorkspaceId
-      ));
+  const [conflict, setConflict] = useState<{
+    targetVersionId: number;
+    readiness: DivisionGridActivationReadiness;
+  } | null>(null);
+  const [selectedGridId, setSelectedGridId] = useState<number | null>(null);
+
+  const canCreate =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.create", currentWorkspaceId));
+  const canUpdate =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.update", currentWorkspaceId));
+  const canImport =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.create", currentWorkspaceId));
+  const canExport =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.read", currentWorkspaceId));
+  const canDelete =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.delete", currentWorkspaceId));
+  const canPublish =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.update", currentWorkspaceId));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],
     queryFn: () => workspaceService.getDivisionGrids(currentWorkspaceId!),
     enabled: currentWorkspaceId !== null
   });
+  const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
+  const defaultVersionId = workspace?.default_division_grid_version_id ?? null;
+  const activeGrid =
+    grids.find((grid) => grid.versions.some((version) => version.id === defaultVersionId)) ??
+    grids.find((grid) => !grid.archived_at) ??
+    grids[0] ??
+    null;
+  const editedGrid =
+    grids.find((grid) => grid.id === selectedGridId) ??
+    activeGrid ??
+    null;
+  const activeVersion =
+    editedGrid?.versions.find((version) => version.id === defaultVersionId) ??
+    editedGrid?.versions.slice().sort((left, right) => right.version - left.version)[0] ??
+    null;
 
-  const marketplaceWorkspacesQuery = useQuery({
-    queryKey: ["division-grid-marketplace-workspaces", currentWorkspaceId],
-    queryFn: () => workspaceService.getDivisionGridMarketplaceWorkspaces(currentWorkspaceId!),
-    enabled: currentWorkspaceId !== null && canEdit
-  });
+  const refreshGrids = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] }),
+      fetchWorkspaces()
+    ]);
+  }, [currentWorkspaceId, queryClient, fetchWorkspaces]);
 
-  const marketplaceWorkspaces = useMemo(
-    () => marketplaceWorkspacesQuery.data ?? [],
-    [marketplaceWorkspacesQuery.data]
-  );
+  const conflictTargetVersion = useMemo(() => {
+    if (!conflict || !editedGrid) return null;
+    return editedGrid.versions.find((version) => version.id === conflict.targetVersionId) ?? null;
+  }, [conflict, editedGrid]);
 
-  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [marketplaceSourceWorkspaceId, setMarketplaceSourceWorkspaceId] = useState<number | null>(
-    null
-  );
-  const [selectedMarketplaceGridIds, setSelectedMarketplaceGridIds] = useState<number[]>([]);
-  const [makeImportedDefault, setMakeImportedDefault] = useState(false);
-  const [marketplaceImportResult, setMarketplaceImportResult] =
-    useState<DivisionGridMarketplaceImportResult | null>(null);
-
-  const grids = gridsQuery.data ?? [];
-  const activeGrid = grids[0] ?? null;
-  const versions = activeGrid?.versions ?? [];
-  const effectiveMarketplaceSourceWorkspaceId =
-    marketplaceSourceWorkspaceId !== null &&
-    marketplaceWorkspaces.some(
-      (sourceWorkspace) => sourceWorkspace.id === marketplaceSourceWorkspaceId
-    )
-      ? marketplaceSourceWorkspaceId
-      : null;
-
-  const marketplaceGridsQuery = useQuery({
-    queryKey: [
-      "division-grid-marketplace",
-      currentWorkspaceId,
-      effectiveMarketplaceSourceWorkspaceId
-    ],
-    queryFn: () =>
-      workspaceService.getDivisionGridMarketplace(
-        currentWorkspaceId!,
-        effectiveMarketplaceSourceWorkspaceId!
-      ),
-    enabled:
-      currentWorkspaceId !== null && canEdit && effectiveMarketplaceSourceWorkspaceId !== null
-  });
-
-  const marketplaceGrids = marketplaceGridsQuery.data ?? [];
-  const selectedMarketplaceGridIdsSet = useMemo(
-    () => new Set(selectedMarketplaceGridIds),
-    [selectedMarketplaceGridIds]
-  );
-
-  const toggleMarketplaceGrid = useCallback((gridId: number, checked: boolean) => {
-    setSelectedMarketplaceGridIds((current) =>
-      checked ? Array.from(new Set([...current, gridId])) : current.filter((id) => id !== gridId)
-    );
-  }, []);
-
-  const defaultVersionId = useMemo(() => {
-    if (!workspace || versions.length === 0) return null;
-    return (
-      (
-        versions.find((v) => v.id === workspace.default_division_grid_version_id) ??
-        versions.find((v) => v.status === "published") ??
-        versions[versions.length - 1] ??
-        null
-      )?.id ?? null
-    );
-  }, [versions, workspace]);
-
-  const effectiveVersionId = selectedVersionId ?? defaultVersionId;
-  const selectedVersion = versions.find((v) => v.id === effectiveVersionId) ?? null;
-
-  const createGridMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentWorkspaceId) return null;
-      return workspaceService.createDivisionGrid(currentWorkspaceId, {
-        slug: "default",
-        name: `${workspace?.name ?? "Workspace"} Division Grid`
-      });
+  const saveMutation = useMutation({
+    mutationFn: (payload: { name: string; tiers: SaveTierPayload[] }) =>
+      workspaceService.saveWorkspaceGrid(currentWorkspaceId!, {
+        ...payload,
+        grid_id: editedGrid?.id ?? null
+      }),
+    onSuccess: async (result) => {
+      await refreshGrids();
+      if (result.mode === "new_version_pending") {
+        setConflict({ targetVersionId: result.saved_version_id, readiness: result.readiness });
+        notify.warning("Saved as a new version", {
+          description: "Resolve the mapping conflicts below to activate it."
+        });
+        return;
+      }
+      setConflict(null);
+      notify.success(result.mode === "in_place" ? "Grid updated" : "New version activated");
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      notify.success("Division grid created");
-    }
-  });
-
-  const cloneMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedVersion) return null;
-      return workspaceService.cloneDivisionGridVersion(selectedVersion.id);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      notify.success("Version cloned");
-    }
+    onError: () =>
+      notify.error("Grid could not be saved", {
+        description:
+          "Your edits are still in the form — check that every division has a name and a rank range, then save again."
+      })
   });
 
   const publishMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedVersion) return null;
-      return workspaceService.publishDivisionGridVersion(selectedVersion.id);
-    },
+    mutationFn: () => workspaceService.publishDivisionGridVersion(activeVersion!.id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
+      await refreshGrids();
       notify.success("Version published");
-    }
-  });
-
-  const deleteVersionMutation = useMutation({
-    mutationFn: (versionId: number) => workspaceService.deleteDivisionGridVersion(versionId),
-    onSuccess: async (_, versionId) => {
-      if (selectedVersionId === versionId) setSelectedVersionId(null);
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      notify.success("Version deleted");
-    }
-  });
-
-  const setDefaultMutation = useMutation({
-    mutationFn: async () => {
-      if (!workspace || !selectedVersion) return null;
-      return workspaceService.update(workspace.id, {
-        default_division_grid_version_id: selectedVersion.id
-      });
     },
+    onError: () =>
+      notify.error("Version could not be published", {
+        description: "The version is still a draft. Retry, or reload the page if it keeps failing."
+      })
+  });
+  const activateMutation = useMutation({
+    mutationFn: () => workspaceService.activateDivisionGridVersion(currentWorkspaceId!, activeVersion!.id),
     onSuccess: async () => {
-      await fetchWorkspaces();
-      notify.success("Workspace default updated");
-    }
-  });
-
-  const importMarketplaceMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentWorkspaceId || !effectiveMarketplaceSourceWorkspaceId) {
-        throw new Error("Select a source workspace");
-      }
-      if (selectedMarketplaceGridIds.length === 0) {
-        throw new Error("Select at least one grid");
-      }
-      return workspaceService.importDivisionGridMarketplace(currentWorkspaceId, {
-        source_workspace_id: effectiveMarketplaceSourceWorkspaceId,
-        source_grid_ids: selectedMarketplaceGridIds,
-        set_default: makeImportedDefault
-      });
+      setConflict(null);
+      await refreshGrids();
+      notify.success("Grid activated for the workspace");
     },
-    onSuccess: async (result) => {
-      setMarketplaceImportResult(result);
-      setSelectedMarketplaceGridIds([]);
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      if (makeImportedDefault) {
-        await fetchWorkspaces();
+    onError: async (error) => {
+      if (error instanceof ApiError && error.status === 409 && activeVersion) {
+        const readiness = await workspaceService.getDivisionGridVersionReadiness(
+          currentWorkspaceId!,
+          activeVersion.id
+        );
+        setConflict({ targetVersionId: activeVersion.id, readiness });
+        notify.warning("Activation blocked", {
+          description: "Resolve the mapping conflicts below, then activate."
+        });
+        return;
       }
-      notify.success("Division grid imported", {
-        description: `${result.created_grids} grid(s), ${result.created_versions} version(s), ${result.copied_images} image(s)`
+      notify.error("Grid could not be activated", {
+        description:
+          "The workspace still uses its previous grid. Publish this version first, then activate it."
       });
     }
   });
@@ -1026,361 +952,106 @@ export default function DivisionsAdminPage() {
     );
   }
 
+  const conflictSources =
+    conflict?.readiness.sources.filter((source) => source.conflict_tiers.length > 0) ?? [];
+
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title="Divisions"
-        description="Manage workspace division grids, versions, and tier icons."
+        description="Edit your workspace division grid. Saving auto-versions, remaps existing tournaments, and activates when the mapping is complete."
         actions={
-          canEdit ? (
-            <div className="flex gap-2">
-              {!activeGrid && (
-                <Button
-                  onClick={() => createGridMutation.mutate()}
-                  disabled={createGridMutation.isPending}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Grid
-                </Button>
+          activeVersion ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {defaultVersionId === activeVersion.id ? (
+                <Badge variant="secondary">Active grid</Badge>
+              ) : (
+                canPublish && (
+                  <Button
+                    onClick={() => activateMutation.mutate()}
+                    disabled={activateMutation.isPending || activeVersion.status !== "published"}
+                    title={
+                      activeVersion.status === "published"
+                        ? undefined
+                        : "Publish this version first, then activate it."
+                    }
+                  >
+                    <Star aria-hidden className="mr-2 h-4 w-4" />
+                    Activate grid
+                  </Button>
+                )
               )}
-              {selectedVersion && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={() => cloneMutation.mutate()}
-                    disabled={cloneMutation.isPending}
-                  >
-                    <CopyPlus className="mr-2 h-4 w-4" />
-                    {selectedVersion?.status === "published"
-                      ? "Fork to New Draft"
-                      : "Clone Version"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => publishMutation.mutate()}
-                    disabled={publishMutation.isPending}
-                  >
-                    Publish
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setDefaultMutation.mutate()}
-                    disabled={setDefaultMutation.isPending}
-                  >
-                    <Star className="mr-2 h-4 w-4" />
-                    Set Default
-                  </Button>
-                </>
+              {canPublish && activeVersion.status === "draft" && (
+                <Button
+                  variant="outline"
+                  onClick={() => publishMutation.mutate()}
+                  disabled={publishMutation.isPending}
+                >
+                  Publish version
+                </Button>
               )}
             </div>
           ) : null
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Grid Status</CardTitle>
-          <CardDescription>
-            {activeGrid ? (
-              <>
-                Grid <span className="font-medium">{activeGrid.name}</span> with {versions.length}{" "}
-                version(s).
-              </>
-            ) : (
-              "No division grid created for this workspace yet."
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-4">
-          {versions.length > 0 ? (
-            <>
-              <Select
-                value={effectiveVersionId?.toString() ?? ""}
-                onValueChange={(value) => setSelectedVersionId(Number(value))}
-              >
-                <SelectTrigger className="w-90">
-                  <SelectValue placeholder="Select version" />
-                </SelectTrigger>
-                <SelectContent>
-                  {versions
-                    .slice()
-                    .sort((a, b) => b.version - a.version)
-                    .map((version) => (
-                      <SelectItem key={version.id} value={version.id.toString()}>
-                        <span className="flex items-center gap-2">
-                          v{version.version} — {version.label}
-                          {version.status === "published" && (
-                            <Badge variant="default" className="ml-1 text-[10px] px-1.5 py-0">
-                              published
-                            </Badge>
-                          )}
-                          {workspace?.default_division_grid_version_id === version.id && (
-                            <Star className="h-3 w-3 text-yellow-500" />
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {selectedVersion && (
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Version {selectedVersion.version}</Badge>
-                  <Badge variant={selectedVersion.status === "published" ? "default" : "secondary"}>
-                    {selectedVersion.status}
-                  </Badge>
-                  {workspace?.default_division_grid_version_id === selectedVersion.id && (
-                    <Badge variant="secondary">Workspace Default</Badge>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              Create a grid to start versioning.
-            </span>
-          )}
-        </CardContent>
-      </Card>
+      <DivisionGridLibrary
+        workspaceId={currentWorkspaceId}
+        workspaceName={workspace?.name ?? "Workspace"}
+        defaultVersionId={defaultVersionId}
+        grids={grids}
+        selectedGridId={editedGrid?.id ?? null}
+        permissions={{
+          create: canCreate,
+          update: canUpdate,
+          import: canImport,
+          export: canExport,
+          delete: canDelete
+        }}
+        loading={gridsQuery.isLoading}
+        error={gridsQuery.error}
+        onSelect={(gridId) => setSelectedGridId(gridId)}
+        onChanged={refreshGrids}
+      />
 
-      {canEdit && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Store className="h-4 w-4" />
-              Marketplace
-            </CardTitle>
-            <CardDescription>
-              Import full division grids from another workspace, including versions, mappings, and
-              tier icons.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {marketplaceWorkspaces.length === 0 ? (
-              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                {marketplaceWorkspacesQuery.isLoading
-                  ? "Loading available workspaces..."
-                  : "No accessible workspace with division grids was found."}
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Select
-                    value={effectiveMarketplaceSourceWorkspaceId?.toString() ?? ""}
-                    onValueChange={(value) => {
-                      setMarketplaceSourceWorkspaceId(Number(value));
-                      setSelectedMarketplaceGridIds([]);
-                      setMarketplaceImportResult(null);
-                    }}
-                  >
-                    <SelectTrigger className="w-80">
-                      <SelectValue placeholder="Source workspace" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {marketplaceWorkspaces.map((sourceWorkspace) => (
-                        <SelectItem key={sourceWorkspace.id} value={sourceWorkspace.id.toString()}>
-                          {sourceWorkspace.name} ({sourceWorkspace.grids_count} grid
-                          {sourceWorkspace.grids_count === 1 ? "" : "s"})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={makeImportedDefault}
-                      onCheckedChange={(checked) => setMakeImportedDefault(checked === true)}
-                    />
-                    Set imported grid as workspace default
-                  </label>
-                </div>
+      <DivisionGridImportWizard
+        workspaceId={currentWorkspaceId}
+        canImport={canImport}
+        onImported={async (job) => {
+          await refreshGrids();
+          const imported = job.result?.imported_grids[0];
+          if (imported) setSelectedGridId(imported.target_grid_id);
+        }}
+      />
 
-                {marketplaceGridsQuery.isLoading ? (
-                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                    Loading grids...
-                  </div>
-                ) : marketplaceGrids.length === 0 ? (
-                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                    This source workspace does not have division grids.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {marketplaceGrids.map((grid) => {
-                      const checked = selectedMarketplaceGridIdsSet.has(grid.id);
-                      return (
-                        <div
-                          key={grid.id}
-                          className={`flex flex-wrap items-center gap-3 rounded-md border p-3 transition-colors ${
-                            checked ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                          }`}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(value) =>
-                              toggleMarketplaceGrid(grid.id, value === true)
-                            }
-                            aria-label={`Select ${grid.name}`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{grid.name}</span>
-                              <Badge variant="outline">{grid.slug}</Badge>
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span>{grid.versions_count} version(s)</span>
-                              <span>{grid.tiers_count} tier(s)</span>
-                              {grid.versions.slice(-2).map((version) => (
-                                <Badge key={version.id} variant="secondary" className="text-[10px]">
-                                  v{version.version} {version.status}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                          {grid.preview_icon_urls.length > 0 && (
-                            <div className="flex max-w-56 flex-wrap justify-end gap-1">
-                              {grid.preview_icon_urls.slice(0, 8).map((iconUrl, index) => (
-                                <span
-                                  key={`${grid.id}-${iconUrl}-${index}`}
-                                  className="flex h-8 w-8 items-center justify-center rounded border bg-background"
-                                >
-                                  <Image
-                                    src={iconUrl}
-                                    alt=""
-                                    width={24}
-                                    height={24}
-                                    className="h-6 w-6 object-contain"
-                                  />
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button
-                    onClick={() => importMarketplaceMutation.mutate()}
-                    disabled={
-                      importMarketplaceMutation.isPending ||
-                      selectedMarketplaceGridIds.length === 0 ||
-                      effectiveMarketplaceSourceWorkspaceId === null
-                    }
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Import Selected
-                  </Button>
-                  {selectedMarketplaceGridIds.length > 0 && (
-                    <span className="text-sm text-muted-foreground">
-                      {selectedMarketplaceGridIds.length} selected
-                    </span>
-                  )}
-                </div>
-
-                {marketplaceImportResult && (
-                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                    <div className="font-medium">
-                      Imported {marketplaceImportResult.created_grids} grid(s),{" "}
-                      {marketplaceImportResult.created_versions} version(s),{" "}
-                      {marketplaceImportResult.copied_images} image(s).
-                    </div>
-                    {marketplaceImportResult.warnings.length > 0 && (
-                      <div className="mt-2 space-y-1 text-muted-foreground">
-                        {marketplaceImportResult.warnings.map((warning, index) => (
-                          <div key={`${warning.message}-${index}`}>{warning.message}</div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {activeGrid && (
-        <DivisionGridEditorCard
-          key={selectedVersion?.id ?? "default-grid-editor"}
+      {conflict && conflictTargetVersion && (
+        <DivisionGridConflictResolver
           workspaceId={currentWorkspaceId}
-          gridId={activeGrid.id}
-          canEdit={canEdit}
-          selectedVersion={selectedVersion}
-          onSaved={async () => {
-            await queryClient.invalidateQueries({
-              queryKey: ["division-grids", currentWorkspaceId]
-            });
+          targetVersionId={conflict.targetVersionId}
+          targetTiers={conflictTargetVersion.tiers}
+          sources={conflictSources}
+          canEdit={canUpdate}
+          onResolved={async () => {
+            setConflict(null);
+            await refreshGrids();
           }}
         />
       )}
 
-      {versions.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Versions</CardTitle>
-            <CardDescription>
-              Published and draft versions available in this workspace grid.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {versions
-              .slice()
-              .sort((a, b) => b.version - a.version)
-              .map((version) => {
-                const isSelected = version.id === effectiveVersionId;
-                const isDefault = workspace?.default_division_grid_version_id === version.id;
-                const isDeleting =
-                  deleteVersionMutation.isPending && deleteVersionMutation.variables === version.id;
-                return (
-                  <div
-                    key={version.id}
-                    role="button"
-                    tabIndex={0}
-                    className={`flex w-full cursor-pointer items-center justify-between rounded-lg border p-3 text-left transition-colors ${
-                      isSelected
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                        : "hover:bg-muted/50"
-                    }`}
-                    onClick={() => setSelectedVersionId(version.id)}
-                    onKeyDown={(e) => e.key === "Enter" && setSelectedVersionId(version.id)}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2 font-medium">
-                        {version.label}
-                        {isSelected && <Check className="h-4 w-4 text-primary" />}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Version {version.version} • {version.tiers.length} tiers
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={version.status === "published" ? "default" : "secondary"}>
-                        {version.status}
-                      </Badge>
-                      {isDefault && <Badge variant="outline">Default</Badge>}
-                      {canEdit && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          disabled={isDeleting}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteVersionMutation.mutate(version.id);
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-          </CardContent>
-        </Card>
+      {editedGrid && (
+        <DivisionGridEditorCard
+          key={activeVersion?.id ?? `${editedGrid.id}-new`}
+          workspaceId={currentWorkspaceId}
+          canEdit={activeVersion ? canUpdate : canCreate}
+          activeVersion={activeVersion}
+          saving={saveMutation.isPending}
+          onSave={(payload) => saveMutation.mutate(payload)}
+        />
       )}
 
-      {versions.length >= 2 && <DivisionGridMappingEditor versions={versions} canEdit={canEdit} />}
+      {editedGrid && editedGrid.versions.length > 0 && (
+        <VersionHistoryCard versions={editedGrid.versions} activeVersionId={defaultVersionId} />
+      )}
     </div>
   );
 }

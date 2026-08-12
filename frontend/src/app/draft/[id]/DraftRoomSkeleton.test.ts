@@ -77,7 +77,7 @@ describe("standalone Draft loading skeleton", () => {
   it("uses the canonical composition in route and client initial loading states", () => {
     const loading = sourceFor("loading.tsx");
     const page = sourceFor("page.tsx");
-    const board = sourceFor("../../(site)/tournaments/[id]/draft/_components/DraftBoard.tsx");
+    const board = sourceFor("../../../components/draft/DraftBoard.tsx");
 
     expect(loading).toContain('import { DraftRoomSkeleton } from "./DraftRoomSkeleton"');
     expect(loading).toContain("return <DraftRoomSkeleton />");
@@ -92,14 +92,18 @@ describe("standalone Draft loading skeleton", () => {
     expect(board).not.toContain("Loader2");
   });
 
+  // The loaded room's Back action lives in DraftPageHero (rendered by
+  // DraftBoard), not on this route's page.tsx -- it moved there in the draft
+  // redesign, along with the breadcrumb. page.tsx kept only the error branch.
+  // These assertions still pointed at page.tsx and had been failing since; the
+  // file is bun:test-only and nothing in CI ran it until now.
   it("retains loaded content during background failures and preserves the real Back action", () => {
     const page = sourceFor("page.tsx");
+    const hero = sourceFor("../../../components/draft/DraftPageHero.tsx");
 
     expect(page).toMatch(/tournamentQuery\.isError\s*&&\s*!tournament/);
-    expect(page).toContain("href={`/tournaments/${tournamentId}`}");
-    expect(page).toContain("styles.toolbar");
-    expect(page).toContain("sticky top-0");
-    expect(page).toContain('t("room.back")');
+    expect(hero).toContain("href={`/tournaments/${tournament.id}`}");
+    expect(hero).toContain('aria-label={t("room.back")}');
   });
 
   it("contains the 360px layout and disables shimmer for reduced motion", () => {
@@ -113,23 +117,22 @@ describe("standalone Draft loading skeleton", () => {
     expect(css).toMatch(/prefers-reduced-motion:[\s\S]*?\.skeletonBlock[\s\S]*?animation:\s*none/);
   });
 
-  it("matches the loaded board width and mobile Back toolbar geometry", () => {
+  it("matches the loaded board width and the skeleton's Back-action geometry", () => {
     const css = sourceFor("DraftRoom.module.css");
-    const page = sourceFor("page.tsx");
-    const board = sourceFor("../../(site)/tournaments/[id]/draft/_components/DraftBoard.tsx");
+    const board = sourceFor("../../../components/draft/DraftBoard.tsx");
+    const hero = sourceFor("../../../components/draft/DraftPageHero.tsx");
 
     expect(board).toContain("max-w-[min(2000px,96vw)]");
     expect(css).toMatch(
       /\.skeletonWorkspace\s*\{[\s\S]*?max-width:\s*min\(2000px,\s*96vw\);[\s\S]*?margin-inline:\s*auto/
     );
 
-    expect(page).toContain("min-h-16");
-    expect(page).toContain("gap-4");
-    expect(page).toContain("px-4");
-    expect(page).toContain("min-h-11");
-    expect(page).toContain("gap-2");
-    expect(page).toContain("px-3");
-    expect(page).toContain('t("room.backShort")');
+    // 2.75rem is 44px is `h-11`: the skeleton's collapsed Back block has to
+    // reserve exactly the box the hero's real Back control occupies, or the
+    // first paint after the skeleton shifts. The old responsive toolbar this
+    // test used to compare against (min-h-16 / room.backShort on page.tsx) no
+    // longer exists anywhere -- only the skeleton side of that pairing survived.
+    expect(hero).toContain("h-11 w-11");
     expect(css).toMatch(
       /\.skeletonToolbarInner\s*\{[\s\S]*?min-height:\s*4rem;[\s\S]*?gap:\s*1rem/
     );

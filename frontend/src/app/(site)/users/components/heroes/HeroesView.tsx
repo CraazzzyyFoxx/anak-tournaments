@@ -3,23 +3,16 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Activity } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { HeroWithUserStats } from "@/types/hero.types";
 import type { UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
 import { getHumanizedStats } from "@/utils/stats";
-import {
-  CardSurface,
-  heroVariantFromRole,
-  normalizeRole,
-  type AqtRoleKey
-} from "@/app/(site)/users/components/shared/atoms";
-import HeroImage from "@/components/hero/HeroImage";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { heroVariantFromRole, type AqtRoleKey } from "@/components/hero/heroRole";
 import {
   computeDelta,
   formatDelta,
   formatPercent,
-  formatSeconds,
   formatStatValue,
   getOverall,
   isRevertedStat
@@ -35,6 +28,7 @@ import MapsForHero from "@/app/(site)/users/components/heroes/MapsForHero";
 import HeroRail, { type HeroRow } from "@/app/(site)/users/components/heroes/HeroRail";
 import HeroBestGames from "@/app/(site)/users/components/heroes/HeroBestGames";
 import RadarAxisPicker from "@/app/(site)/users/components/heroes/RadarAxisPicker";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 
 interface Props {
   heroes: HeroWithUserStats[];
@@ -118,16 +112,6 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
         impact: total > 0 ? positive / total : 0
       };
     });
-  }, [enriched]);
-
-  // Role split for the summary strip (tank / damage / support counts).
-  const roleSplit = useMemo(() => {
-    const acc = { tank: 0, damage: 0, support: 0 };
-    for (const it of enriched) {
-      const r = normalizeRole(it.hero.hero.type ?? it.hero.hero.role);
-      if (r) acc[r] += 1;
-    }
-    return acc;
   }, [enriched]);
 
   // Build radar data for the selected hero (you vs global) over the chosen
@@ -265,28 +249,6 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
     return rows;
   }, [selected, maps]);
 
-  const mostEffective = useMemo(() => {
-    let best: typeof enriched[0] | null = null;
-    let bestScore = -Infinity;
-    for (const item of enriched) {
-      if (item.playtime < 30 * 60) continue;
-      let positive = 0;
-      let total = 0;
-      for (const stat of item.hero.stats) {
-        if (stat.name === LogStatsName.HeroTimePlayed) continue;
-        if (!Number.isFinite(stat.avg_10) || !Number.isFinite(stat.avg_10_all) || stat.avg_10_all <= 0) continue;
-        total++;
-        const reversed = isRevertedStat(stat.name);
-        if ((reversed ? stat.avg_10 < stat.avg_10_all : stat.avg_10 > stat.avg_10_all)) positive++;
-      }
-      if (total > 0 && positive > bestScore) {
-        bestScore = positive;
-        best = item;
-      }
-    }
-    return best;
-  }, [enriched]);
-
   if (!selected) {
     return (
       <div className="aqt-player">
@@ -301,39 +263,6 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
 
   return (
     <div className="aqt-player flex flex-col gap-3.5">
-
-
-      {/* Summary strip (one compact row; no duplicate "Hero pool") */}
-      {/* <div className="aqt-card-surface flex flex-wrap items-center gap-x-8 gap-y-3 px-4.5 py-3.5">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-(--aqt-fg-faint)">Hero pool</div>
-          <div className="aqt-display text-[22px] font-bold leading-[1.1]">
-            {items.length} <span className="aqt-mono text-[13px] text-(--aqt-fg-muted)">heroes</span>
-          </div>
-          <div className="aqt-mono text-[12px] text-(--aqt-fg-dim)">
-            {roleSplit.tank}T · {roleSplit.damage}D · {roleSplit.support}S
-          </div>
-        </div>
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-(--aqt-fg-faint)">Total playtime</div>
-          <div className="aqt-display text-[22px] font-bold leading-[1.1]" style={{ color: "var(--aqt-amber)" }}>
-            {Math.floor(totalSeconds / 3600)}
-            <span className="aqt-mono text-[13px] text-(--aqt-fg-muted)">h</span>
-          </div>
-          <div className="aqt-mono text-[12px] text-(--aqt-fg-dim)">{formatSeconds(totalSeconds)}</div>
-        </div>
-        {mostEffective ? (
-          <div className="flex items-center gap-2.5">
-            <HeroImage hero={mostEffective.hero.hero} size="md" />
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-(--aqt-fg-faint)">Most effective</div>
-              <div className="aqt-display text-[18px] font-bold leading-[1.1]">{mostEffective.hero.hero.name}</div>
-              <div className="aqt-mono text-[12px] text-(--aqt-emerald)">{formatSeconds(mostEffective.playtime)}</div>
-            </div>
-          </div>
-        ) : null}
-      </div> */}
-
       {/* Sticky hero rail (cross-hero compare) + detail, side by side so
           switching heroes never requires a long scroll up/down. */}
       <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_360px] xl:items-start">
@@ -344,31 +273,27 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
           {/* Radar + insights */}
           <CardSurface
             title={t("users.heroes.insights")}
-            icon={<Activity size={15} />}
+            icon={<Activity aria-hidden size={15} />}
             subtitle={t("users.heroes.insightsSubtitle", { hero: selected.hero.hero.name })}
             action={
-              <div className="aqt-filters mb-0!">
-                <>
-                  {filterSlot ? <div className="flex justify-end">{filterSlot}</div> : null}
-                </>
-                <span
-                  className={cn("aqt-filter-chip", insightsMode === "highlights" && "active")}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setInsightsMode("highlights")}
-                >
-                  {t("users.heroes.highlights")}
-                </span>
-                <span
-                  className={cn("aqt-filter-chip", insightsMode === "all" && "active")}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setInsightsMode("all")}
-                >
-                  {t("users.heroes.allStats")}
-                  <span className="aqt-count">{allStatsRows.length}</span>
-                </span>
-              </div>
+              <>
+                {filterSlot ? <div className="flex justify-end">{filterSlot}</div> : null}
+                <FilterChipGroup label={t("common.filters")} className="mb-0!">
+                  <FilterChip
+                    active={insightsMode === "highlights"}
+                    onClick={() => setInsightsMode("highlights")}
+                  >
+                    {t("users.heroes.highlights")}
+                  </FilterChip>
+                  <FilterChip
+                    active={insightsMode === "all"}
+                    count={allStatsRows.length}
+                    onClick={() => setInsightsMode("all")}
+                  >
+                    {t("users.heroes.allStats")}
+                  </FilterChip>
+                </FilterChipGroup>
+              </>
             }
           >
             {insightsMode === "highlights" ? (

@@ -28,6 +28,11 @@ services:
 
   redis:
     image: redis/redis-stack:latest
+    # See docker-compose.production.yml for why REDIS_ARGS (not `command:`)
+    # is required: overriding `command:` skips /entrypoint.sh, which is what
+    # sets --protected-mode no and loads the redis-stack modules.
+    environment:
+      REDIS_ARGS: "--maxmemory 96mb --maxmemory-policy allkeys-lru"
     ports:
       - "6379:6379"
     volumes:
@@ -294,7 +299,7 @@ services:
       - ./backend/analytics-service:/app/analytics-service
       - ./backend/shared:/app/shared
       - ./backend/.cache/analytics:/cache/analytics
-      - analytics-models:/opt/anak/models
+      - analytics-models:/opt/owt/models
       - ./logs/analytics-worker:/logs
     networks:
       - app-network
@@ -564,11 +569,16 @@ services:
   # (Traefik in prod), not here. Sole external edge (Kong removed). Binds
   # APP_PORT so the frontend dev env (http://localhost/api/...) works unchanged.
   nginx:
-    image: nginx:1.27-alpine
+    # Pinned to the same tag as production: nginx.conf is shared between the two,
+    # so a version skew here means dev validates a config prod does not run.
+    image: nginx:1.31-alpine
     ports:
       - "${APP_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Same log layout as prod so the promtail `nginx` job works under
+      # `--profile monitoring` too.
+      - ./logs/nginx:/var/log/nginx
     depends_on:
       gateway:
         condition: service_started
@@ -577,8 +587,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 64M
+          # Mirrors prod: nginx.conf preallocates ~27 MB of limit_req/limit_conn
+          # shared zones, which does not fit the previous 64M.
+          cpus: '0.50'
+          memory: 256M
         reservations:
           cpus: '0.05'
           memory: 32M

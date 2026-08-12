@@ -3,18 +3,7 @@
 import { useState, type FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Save,
-  RotateCcw,
-  Trash2,
-  AlertTriangle,
-  Info,
-  CalendarDays,
-  Wrench,
-  Award,
-  Network,
-  EyeOff
-} from "lucide-react";
+import { Save, RotateCcw, Trash2, Info, CalendarDays, EyeOff, Wrench } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +22,11 @@ import {
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { AuditTrail } from "@/components/admin/AuditTrail";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { RosterShapeEditor } from "@/components/admin/tournaments/RosterShapeEditor";
+import { payloadTotalError } from "@/components/admin/tournaments/roster-shape-editor.model";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import { normalizeChallongeSlug } from "@/lib/challonge";
@@ -42,7 +35,11 @@ import { DEFAULT_WORKSPACE_TIMEZONE, getUtcOffsetLabel } from "@/lib/timezone";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
-import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
+import type {
+  DiscordChannelRead,
+  TournamentPhaseScheduleEntryInput,
+  TournamentUpdateInput
+} from "@/types/admin.types";
 import {
   getPhaseSchedulePayload,
   getTournamentForm,
@@ -51,8 +48,8 @@ import {
   type TournamentFormState
 } from "./tournamentWorkspace.helpers";
 import { TournamentPreviewAllowlist } from "./TournamentPreviewAllowlist";
+import { TournamentIntegrationsPanel } from "./TournamentIntegrationsPanel";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
-import { cn } from "@/lib/utils";
 
 const PHASE_LABELS: Record<SchedulablePhase, string> = {
   registration: "Registration",
@@ -67,6 +64,10 @@ interface TournamentSettingsTabProps {
   divisionGridVersions: DivisionGridVersion[];
   divisionGridLoading: boolean;
   canDeleteTournament: boolean;
+  canUpdateTournament: boolean;
+  hasChallongeSource: boolean;
+  discordChannel: DiscordChannelRead | null | undefined;
+  discordChannelLoading: boolean;
 }
 
 export function TournamentSettingsTab({
@@ -74,7 +75,11 @@ export function TournamentSettingsTab({
   tournamentId,
   divisionGridVersions,
   divisionGridLoading,
-  canDeleteTournament
+  canDeleteTournament,
+  canUpdateTournament,
+  hasChallongeSource,
+  discordChannel,
+  discordChannelLoading
 }: TournamentSettingsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -147,11 +152,23 @@ export function TournamentSettingsTab({
     (phase) => phase !== "draft" || formData.team_formation === "draft"
   );
 
+  // The server rejects an out-of-range roster total with a 422. The save stays
+  // clickable — a greyed-out button a viewport away from the error explains
+  // nothing — and instead walks the admin to the numbers that block it.
+  const rosterTotalError = payloadTotalError(formData.roster_slots_json);
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    if (rosterTotalError) {
+      const target =
+        document.getElementById("settings-roster-slot-tank") ??
+        document.getElementById("settings-roster-shape-mode");
+      target?.scrollIntoView({ block: "center" });
+      target?.focus();
+      return;
+    }
 
     const payload: TournamentUpdateInput = {
-      number: formData.number,
       name: formData.name.trim(),
       description: formData.description.trim() || null,
       challonge_slug: formData.challonge_slug
@@ -168,7 +185,8 @@ export function TournamentSettingsTab({
       auto_transitions_enabled: formData.auto_transitions_enabled,
       allow_late_registration: formData.allow_late_registration,
       division_grid_version_id: formData.division_grid_version_id,
-      team_formation: formData.team_formation
+      team_formation: formData.team_formation,
+      roster_slots_json: formData.roster_slots_json
     };
 
     updateMutation.mutate({
@@ -179,14 +197,14 @@ export function TournamentSettingsTab({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-20">
-      {/* Dirty state notification bar */}
+      {/* Dirty state notification bar — the only place settings are saved from. */}
       {isDirty && (
-        <div className="sticky top-4 z-40 flex items-center justify-between gap-4 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3.5 shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-2 text-sm text-primary">
-            <Info className="size-4 shrink-0" />
+        <div className="sticky top-4 z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3.5 shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-300 motion-reduce:animate-none">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-primary">
+            <Info className="size-4 shrink-0" aria-hidden />
             <span className="font-medium">You have unsaved changes in settings.</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="ms-auto flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
@@ -195,56 +213,54 @@ export function TournamentSettingsTab({
               className="h-8 border-primary/30 text-primary hover:bg-primary/20"
               disabled={updateMutation.isPending}
             >
-              <RotateCcw className="mr-1.5 size-3.5" />
+              <RotateCcw className="mr-1.5 size-3.5" aria-hidden />
               Discard
             </Button>
-            <Button type="submit" size="sm" className="h-8" disabled={updateMutation.isPending}>
-              <Save className="mr-1.5 size-3.5" />
-              {updateMutation.isPending ? "Saving..." : "Save changes"}
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8"
+              disabled={updateMutation.isPending}
+            >
+              <Save className="mr-1.5 size-3.5" aria-hidden />
+              {updateMutation.isPending ? "Saving…" : "Save changes"}
             </Button>
           </div>
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="flex flex-col gap-6 min-w-0">
-          {/* Card 1: General Info */}
+      {/* One grid, not two hand-packed columns of cards. Card heights differ by
+          hundreds of pixels, so auto-placement left a hole under whichever card
+          was shorter. The two tall stacks pair up — configuration on the left,
+          integrations on the right — and the schedule spans the full width,
+          where its phase grid lays out as rows instead of stacking. */}
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div className="flex flex-col gap-6">
+          {/* Identity and description */}
           <Card className="border-border/40 bg-card/50">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-2">
-                <Info className="size-4 text-primary" />
-                <CardTitle className="text-sm font-semibold">General Information</CardTitle>
+                <Info className="size-4 text-primary" aria-hidden />
+                <CardTitle asChild className="text-sm font-semibold">
+                  <h2>General information</h2>
+                </CardTitle>
               </div>
               <CardDescription className="text-xs">
                 Update core tournament identity metadata.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-[3fr_1fr] gap-4">
-                <div>
-                  <Label htmlFor="settings-name" className="text-xs">
-                    Tournament Name
-                  </Label>
-                  <Input
-                    id="settings-name"
-                    value={formData.name}
-                    onChange={(event) => setFormData({ ...formData, name: event.target.value })}
-                    required
-                    className="mt-1.5 bg-background/50"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="settings-number" className="text-xs">
-                    Number
-                  </Label>
-                  <NumberInput
-                    id="settings-number"
-                    integer
-                    value={formData.number}
-                    onValueChange={(next) => setFormData({ ...formData, number: next })}
-                    className="mt-1.5 bg-background/50"
-                  />
-                </div>
+              <div>
+                <Label htmlFor="settings-name" className="text-xs">
+                  Tournament name
+                </Label>
+                <Input
+                  id="settings-name"
+                  value={formData.name}
+                  onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                  required
+                  className="mt-1.5 bg-background/50"
+                />
               </div>
               <div>
                 <Label htmlFor="settings-description" className="text-xs">
@@ -256,148 +272,28 @@ export function TournamentSettingsTab({
                   onChange={(event) =>
                     setFormData({ ...formData, description: event.target.value })
                   }
-                  className="mt-1.5 bg-background/50 min-h-[90px]"
-                  placeholder="Optional tournament description..."
+                  rows={4}
+                  className="mt-1.5 bg-background/50"
+                  placeholder="Optional tournament description…"
                 />
               </div>
             </CardContent>
           </Card>
 
-          {/* Card 2: Schedule & Periods */}
+          {/* Format rules and scoring */}
           <Card className="border-border/40 bg-card/50">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-2">
-                <CalendarDays className="size-4 text-primary" />
-                <CardTitle className="text-sm font-semibold">Schedule & Timeline</CardTitle>
+                <Wrench className="size-4 text-primary" aria-hidden />
+                <CardTitle asChild className="text-sm font-semibold">
+                  <h2>Rules & grid configuration</h2>
+                </CardTitle>
               </div>
               <CardDescription className="text-xs">
-                Manage operational dates, registration periods, and player check-in.
+                Adjust grid versions, team formation, scoring points and league status.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div>
-                <Field>
-                  <FieldLabel
-                    htmlFor="settings-date-range"
-                    className="text-xs font-normal text-foreground"
-                  >
-                    Tournament Duration Range
-                  </FieldLabel>
-                  <div className="mt-1.5">
-                    <DateRangePicker
-                      id="settings-date-range"
-                      startDate={formData.start_date}
-                      endDate={formData.end_date}
-                      onChange={(start, end) =>
-                        setFormData({ ...formData, start_date: start, end_date: end })
-                      }
-                    />
-                  </div>
-                </Field>
-              </div>
-
-              <div className="space-y-4 border-t border-border/30 pt-4">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Phase Schedule
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Each phase starts automatically at its start time when automatic transitions
-                    are enabled. An end time only closes that phase&apos;s action window early —
-                    it never changes the tournament status.
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-foreground/80">
-                    Time zone: {timezone} ({getUtcOffsetLabel(timezone)})
-                  </p>
-                </div>
-
-                {visiblePhases.map((phase) => (
-                  <div key={phase} className="space-y-2">
-                    <p className="text-xs font-medium text-foreground">{PHASE_LABELS[phase]}</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <DateTimePicker
-                        id={`settings-phase-${phase}-starts`}
-                        timeId={`settings-phase-${phase}-starts-time`}
-                        dateLabel="Starts at"
-                        timeLabel="Time"
-                        value={formData.phase_schedule[phase].starts_at}
-                        onChange={(nextValue) => setPhaseField(phase, "starts_at", nextValue)}
-                      />
-                      <DateTimePicker
-                        id={`settings-phase-${phase}-ends`}
-                        timeId={`settings-phase-${phase}-ends-time`}
-                        dateLabel="Ends at (optional)"
-                        timeLabel="Time"
-                        value={formData.phase_schedule[phase].ends_at}
-                        onChange={(nextValue) => setPhaseField(phase, "ends_at", nextValue)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <Label
-                      htmlFor="settings-auto-transitions"
-                      className="cursor-pointer text-sm font-medium"
-                    >
-                      Automatic phase transitions
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Re-enabling immediately catches up any overdue phases. Manual status changes
-                      switch this off.
-                    </p>
-                  </div>
-                  <Switch
-                    id="settings-auto-transitions"
-                    checked={formData.auto_transitions_enabled}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, auto_transitions_enabled: checked })
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <Label
-                      htmlFor="settings-allow-late-registration"
-                      className="cursor-pointer text-sm font-medium"
-                    >
-                      Allow late registration
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Keep registration open after the registration phase, until the tournament is
-                      completed.
-                    </p>
-                  </div>
-                  <Switch
-                    id="settings-allow-late-registration"
-                    checked={formData.allow_late_registration}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, allow_late_registration: checked })
-                    }
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="flex flex-col gap-6 min-w-0">
-          {/* Card 3: Rules & Format */}
-          <Card className="border-border/40 bg-card/50">
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <Wrench className="size-4 text-primary" />
-                <CardTitle className="text-sm font-semibold">Rules & Grid Configuration</CardTitle>
-              </div>
-              <CardDescription className="text-xs">
-                Adjust grid versions, team formation mechanism, and toggle league status.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="settings-team-formation" className="text-xs">
@@ -421,7 +317,7 @@ export function TournamentSettingsTab({
 
                 <div>
                   <Label htmlFor="settings-division-grid-version" className="text-xs">
-                    Division Grid Version
+                    Division grid version
                   </Label>
                   <Select
                     value={formData.division_grid_version_id?.toString() ?? "none"}
@@ -438,7 +334,7 @@ export function TournamentSettingsTab({
                     >
                       <SelectValue
                         placeholder={
-                          divisionGridLoading ? "Loading division grids..." : "Select version"
+                          divisionGridLoading ? "Loading division grids…" : "Select version"
                         }
                       />
                     </SelectTrigger>
@@ -455,7 +351,7 @@ export function TournamentSettingsTab({
               </div>
 
               {/* Checkboxes panel */}
-              <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5 mt-2">
+              <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="settings-is-league"
@@ -488,22 +384,85 @@ export function TournamentSettingsTab({
                   </Label>
                 </div>
               </div>
+
+              <section className="space-y-2 border-t border-border/30 pt-4">
+                <h3 className={EYEBROW_CLASS}>Scoring points</h3>
+                <p className="text-xs text-muted-foreground">
+                  Points awarded in standings logic for match outcomes.
+                </p>
+                <div className="grid grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <Label htmlFor="settings-win-points" className="text-xs">
+                      Win
+                    </Label>
+                    <NumberInput
+                      id="settings-win-points"
+                      value={formData.win_points}
+                      onValueChange={(next) => setFormData({ ...formData, win_points: next ?? 0 })}
+                      className="mt-1.5 bg-background/50"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="settings-draw-points" className="text-xs">
+                      Draw
+                    </Label>
+                    <NumberInput
+                      id="settings-draw-points"
+                      value={formData.draw_points}
+                      onValueChange={(next) => setFormData({ ...formData, draw_points: next ?? 0 })}
+                      className="mt-1.5 bg-background/50"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="settings-loss-points" className="text-xs">
+                      Loss
+                    </Label>
+                    <NumberInput
+                      id="settings-loss-points"
+                      value={formData.loss_points}
+                      onValueChange={(next) => setFormData({ ...formData, loss_points: next ?? 0 })}
+                      className="mt-1.5 bg-background/50"
+                    />
+                  </div>
+                </div>
+              </section>
             </CardContent>
           </Card>
+        </div>
 
-          {/* Card: Visibility (hidden / preview) */}
+        {/* Right column: what points outward — external connections and public
+            visibility. The integration buttons fire their own mutations, so they
+            carry an explicit type inside this form. */}
+        <div className="flex flex-col gap-6">
+          <TournamentIntegrationsPanel
+            tournamentId={tournamentId}
+            tournament={tournament}
+            hasChallongeSource={hasChallongeSource}
+            canUpdateTournament={canUpdateTournament}
+            discordChannel={discordChannel}
+            discordChannelLoading={discordChannelLoading}
+            challongeSlug={formData.challonge_slug}
+            onChallongeSlugChange={(value) => setFormData({ ...formData, challonge_slug: value })}
+          />
+
+          {/* Public visibility is its own card, not a third section of the rules
+            card: it is the one setting here that decides what the outside world
+            sees, it owns a sub-list, and stacked under the integrations it
+            balances the two columns instead of leaving 480px of nothing. */}
           <Card className="border-border/40 bg-card/50">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-2">
-                <EyeOff className="size-4 text-primary" />
-                <CardTitle className="text-sm font-semibold">Visibility</CardTitle>
+                <EyeOff className="size-4 text-primary" aria-hidden />
+                <CardTitle asChild className="text-sm font-semibold">
+                  <h2>Visibility</h2>
+                </CardTitle>
               </div>
               <CardDescription className="text-xs">
                 Hide this tournament and all its data from the public site. Only workspace admins
-                and the preview allowlist below can see a hidden tournament.
+                and the preview allowlist can see a hidden tournament.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               <div className="flex items-center gap-2 bg-muted/20 border border-border/50 rounded-lg p-3.5">
                 <Checkbox
                   id="settings-is-hidden"
@@ -517,157 +476,219 @@ export function TournamentSettingsTab({
                 </Label>
               </div>
 
-              {formData.is_hidden && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Preview allowlist
-                  </p>
+              <div className="space-y-2">
+                <h3 className={EYEBROW_CLASS}>Preview allowlist</h3>
+                {formData.is_hidden ? (
                   <TournamentPreviewAllowlist
                     tournamentId={tournamentId}
                     workspaceId={tournament.workspace_id}
                   />
-                </div>
-              )}
+                ) : (
+                  <p className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                    Tick “Hidden (preview)” above to choose who may view this tournament while it is
+                    still private.
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
+        </div>
 
-          {/* Scoring and Integrations side-by-side */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Card 4: Scoring */}
-            <Card className="border-border/40 bg-card/50">
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-2">
-                  <Award className="size-4 text-primary" />
-                  <CardTitle className="text-sm font-semibold">Scoring Points</CardTitle>
-                </div>
-                <CardDescription className="text-xs">
-                  Points awarded in standings logic for match outcomes.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label htmlFor="settings-win-points" className="text-xs">
-                      Win
-                    </Label>
-                    <NumberInput
-                      id="settings-win-points"
-                      value={formData.win_points}
-                      onValueChange={(next) =>
-                        setFormData({ ...formData, win_points: next ?? 0 })
-                      }
-                      className="mt-1.5 bg-background/50"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="settings-draw-points" className="text-xs">
-                      Draw
-                    </Label>
-                    <NumberInput
-                      id="settings-draw-points"
-                      value={formData.draw_points}
-                      onValueChange={(next) =>
-                        setFormData({ ...formData, draw_points: next ?? 0 })
-                      }
-                      className="mt-1.5 bg-background/50"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="settings-loss-points" className="text-xs">
-                      Loss
-                    </Label>
-                    <NumberInput
-                      id="settings-loss-points"
-                      value={formData.loss_points}
-                      onValueChange={(next) =>
-                        setFormData({ ...formData, loss_points: next ?? 0 })
-                      }
-                      className="mt-1.5 bg-background/50"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Roster shape: full width, and its own card. Tucked under the scoring
+            block of "Rules & grid configuration" it was an unannounced seventh
+            section of a card whose description never mentioned it, and its
+            controls-plus-outcome pair had one column to lay out in. Spanning
+            the grid also lets the two columns above it finish level. */}
+        <RosterShapeEditor
+          className="xl:col-span-2"
+          value={formData.roster_slots_json}
+          effective={tournament.roster_shape}
+          locked={tournament.roster_locked_by_draft === true}
+          disabled={!canUpdateTournament}
+          onChange={(next) => setFormData({ ...formData, roster_slots_json: next })}
+        />
 
-            {/* Card 5: Integrations */}
-            <Card className="border-border/40 bg-card/50">
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-2">
-                  <Network className="size-4 text-primary" />
-                  <CardTitle className="text-sm font-semibold">Integrations</CardTitle>
-                </div>
-                <CardDescription className="text-xs">
-                  Link this tournament to external provider accounts.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div>
-                  <Label htmlFor="settings-challonge" className="text-xs">
-                    Challonge URL or Slug
-                  </Label>
-                  <Input
-                    id="settings-challonge"
-                    placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
-                    value={formData.challonge_slug}
-                    onChange={(event) =>
-                      setFormData({ ...formData, challonge_slug: event.target.value })
+        {/* Schedule: full width so the phase grid can lay out as rows. In half a
+            grid it needs 780px of columns and overflows the card. */}
+        <Card className="xl:col-span-2 border-border/40 bg-card/50">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="size-4 text-primary" aria-hidden />
+              <CardTitle asChild className="text-sm font-semibold">
+                <h2>Schedule & timeline</h2>
+              </CardTitle>
+            </div>
+            <CardDescription className="text-xs">
+              Manage operational dates, registration periods, and player check-in.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div>
+              <Field>
+                <FieldLabel
+                  htmlFor="settings-date-range"
+                  className="text-xs font-normal text-foreground"
+                >
+                  Tournament duration range
+                </FieldLabel>
+                <div className="mt-1.5">
+                  <DateRangePicker
+                    id="settings-date-range"
+                    startDate={formData.start_date}
+                    endDate={formData.end_date}
+                    onChange={(start, end) =>
+                      setFormData({ ...formData, start_date: start, end_date: end })
                     }
-                    className="mt-1.5 bg-background/50"
                   />
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              </Field>
+            </div>
 
-          {/* Card 6: Danger Zone */}
-          {canDeleteTournament && (
-            <Card className="border-destructive/30 bg-destructive/5">
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="size-4 text-destructive" />
-                  <CardTitle className="text-sm font-semibold text-destructive">
-                    Danger Zone
-                  </CardTitle>
+            <section className="space-y-4 border-t border-border/30 pt-4">
+              <div>
+                <h3 className={EYEBROW_CLASS}>Phase schedule</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Each phase starts automatically at its start time when automatic transitions are
+                  enabled. An end time only closes that phase&apos;s action window early — it never
+                  changes the tournament status.
+                </p>
+                <p className="mt-1 text-xs font-medium text-foreground/80">
+                  Time zone: {timezone} ({getUtcOffsetLabel(timezone)})
+                </p>
+              </div>
+
+              {/* One header row instead of four repeated label pairs. Stacked
+                  below lg, where each picker shows its own labels again. */}
+              <div
+                role="group"
+                aria-label="Phase schedule"
+                className="space-y-4 lg:grid lg:grid-cols-[minmax(6rem,8rem)_1fr_1fr] lg:items-center lg:gap-x-4 lg:gap-y-3 lg:space-y-0"
+              >
+                <div aria-hidden className="hidden lg:contents">
+                  <span />
+                  <span className={EYEBROW_CLASS}>Starts at</span>
+                  <span className={EYEBROW_CLASS}>Ends at (optional)</span>
                 </div>
-                <CardDescription className="text-xs text-destructive/70">
-                  Irreversible actions. Deleting a tournament will remove all historical logs and
-                  participant rosters.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="w-full"
-                  onClick={() => setDeleteDialogOpen(true)}
-                  disabled={deleteMutation.isPending}
-                >
-                  <Trash2 className="mr-2 size-4" />
-                  {deleteMutation.isPending ? "Deleting..." : "Delete Tournament"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+
+                {visiblePhases.map((phase) => (
+                  <div key={phase} className="space-y-2 lg:contents">
+                    <p className="text-xs font-medium text-foreground lg:py-1">
+                      {PHASE_LABELS[phase]}
+                    </p>
+                    <DateTimePicker
+                      id={`settings-phase-${phase}-starts`}
+                      timeId={`settings-phase-${phase}-starts-time`}
+                      dateLabel={`${PHASE_LABELS[phase]} starts at`}
+                      timeLabel={`${PHASE_LABELS[phase]} start time`}
+                      labelClassName="lg:sr-only"
+                      value={formData.phase_schedule[phase].starts_at}
+                      onChange={(nextValue) => setPhaseField(phase, "starts_at", nextValue)}
+                    />
+                    <DateTimePicker
+                      id={`settings-phase-${phase}-ends`}
+                      timeId={`settings-phase-${phase}-ends-time`}
+                      dateLabel={`${PHASE_LABELS[phase]} ends at (optional)`}
+                      timeLabel={`${PHASE_LABELS[phase]} end time`}
+                      labelClassName="lg:sr-only"
+                      value={formData.phase_schedule[phase].ends_at}
+                      onChange={(nextValue) => setPhaseField(phase, "ends_at", nextValue)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="settings-auto-transitions"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Automatic phase transitions
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Re-enabling immediately catches up any overdue phases. Manual status changes
+                    switch this off.
+                  </p>
+                </div>
+                <Switch
+                  id="settings-auto-transitions"
+                  checked={formData.auto_transitions_enabled}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, auto_transitions_enabled: checked })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="settings-allow-late-registration"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Allow late registration
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Keep registration open after the registration phase, until the tournament is
+                    completed.
+                  </p>
+                </div>
+                <Switch
+                  id="settings-allow-late-registration"
+                  checked={formData.allow_late_registration}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, allow_late_registration: checked })
+                  }
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Full width, so the action sits beside its warning rather than under
+            it: a destructive button stretched across the whole grid is a
+            1500px-wide target for the one irreversible action on the page. */}
+        {canDeleteTournament && (
+          <Card className="xl:col-span-2 border-destructive/30 bg-destructive/5">
+            <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-sm font-semibold text-destructive">Danger zone</h2>
+                <p className="text-xs text-destructive/70">
+                  Deleting a tournament permanently removes its logs, rosters and standings.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="destructive"
+                className="sm:w-auto"
+                onClick={() => setDeleteDialogOpen(true)}
+                disabled={deleteMutation.isPending}
+              >
+                <Trash2 className="mr-2 size-4" aria-hidden />
+                {deleteMutation.isPending ? "Deleting…" : "Delete tournament"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Non-sticky Save/Discard actions at bottom of screen if no changes, or regular placement */}
-      {!isDirty && (
-        <div className="flex items-center justify-end gap-3 border-t border-border/40 pt-4 mt-6">
-          <Button type="submit" disabled={true} className="opacity-50 cursor-not-allowed">
-            <Save className="mr-1.5 size-3.5" />
-            Save changes
-          </Button>
-        </div>
-      )}
+      {/* Below the settings it explains: every field on this tab, and the delete
+          above, is an audited action, so the answer to "who changed this" belongs
+          on the same screen as the change. */}
+      <AuditTrail
+        entityType="tournament"
+        entityId={tournamentId}
+        workspaceId={tournament.workspace_id}
+      />
 
       {canDeleteTournament && (
         <DeleteConfirmDialog
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={() => deleteMutation.mutate()}
-          title="Delete Tournament"
-          description={`Delete "${tournament.name}"? This removes the tournament and all linked workspace data.`}
+          title="Delete tournament"
+          description={`"${tournament.name}" and every piece of workspace data linked to it will be removed. This cannot be undone.`}
           cascadeInfo={[
             "Tournament stages",
             "Teams and players",

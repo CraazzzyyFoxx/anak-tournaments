@@ -1,14 +1,12 @@
 import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { HydrationBoundary } from "@tanstack/react-query";
-import { isValidElement, Suspense, type ReactElement } from "react";
+import { Fragment, isValidElement, Suspense, type ReactElement } from "react";
 
 import { ApiError } from "@/lib/api-error";
 import tournamentService from "@/services/tournament.service";
 import type { Tournament } from "@/types/tournament.types";
 
 import TournamentOverviewBoundary from "./TournamentOverviewBoundary";
-import TournamentShellError from "./TournamentShellError";
-import { TournamentShellSkeleton } from "./_components/TournamentSkeletons";
 
 mock.module("next-intl/server", () => ({
   getTranslations: async () => (key: string) => key
@@ -32,7 +30,6 @@ const overviewFixture: Tournament = {
   name: "Summer Clash",
   start_date: new Date("2026-07-15T12:00:00Z"),
   end_date: new Date("2026-07-16T12:00:00Z"),
-  number: 72,
   description: "Public tournament",
   challonge_id: null,
   challonge_slug: null,
@@ -93,7 +90,7 @@ afterEach(() => {
 });
 
 describe("TournamentLayout streaming overview", () => {
-  it("exposes the exact shell fallback while a valid tournament overview is unresolved", async () => {
+  it("keeps the overview hydration boundary decoupled from the client shell while unresolved", async () => {
     const pendingOverview = deferred<Tournament>();
     const overviewSpy = spyOn(tournamentService, "getPublicOverview").mockReturnValue(
       pendingOverview.promise
@@ -112,13 +109,19 @@ describe("TournamentLayout streaming overview", () => {
 
     expect(firstResult.kind).toBe("layout");
     if (firstResult.kind !== "layout") return;
-    expect(firstResult.result.type).toBe(Suspense);
-    const suspenseProps = firstResult.result.props as {
-      fallback: ReactElement;
-      children: ReactElement;
-    };
-    expect(suspenseProps.fallback.type).toBe(TournamentShellSkeleton);
+    expect(firstResult.result.type).toBe(Fragment);
+    const [suspenseEl, clientLayoutEl] = (
+      firstResult.result.props as { children: ReactElement[] }
+    ).children;
+    expect(suspenseEl.type).toBe(Suspense);
+    const suspenseProps = suspenseEl.props as { fallback: unknown; children: ReactElement };
+    // A re-suspended overview fetch must never blank/replace the client shell,
+    // so the Suspense carries no fallback of its own.
+    expect(suspenseProps.fallback).toBeNull();
     expect(overviewSpy).not.toHaveBeenCalled();
+    // TournamentClientLayout is a sibling of the Suspense, not wrapped by it.
+    expect(clientLayoutEl.type).not.toBe(Suspense);
+    expect((clientLayoutEl.props as { children: unknown }).children).toBeNull();
 
     const boundaryPromise = TournamentOverviewBoundary(
       suspenseProps.children.props as Parameters<typeof TournamentOverviewBoundary>[0]
@@ -144,25 +147,22 @@ describe("TournamentLayout streaming overview", () => {
     );
 
     const thrown = await captureThrown(() =>
-      Promise.resolve(TournamentOverviewBoundary({ tournamentId: 7302, children: null }))
+      Promise.resolve(TournamentOverviewBoundary({ tournamentId: 7302 }))
     );
 
     expect(overviewSpy).toHaveBeenCalledTimes(1);
     expect(thrown).toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
   });
 
-  it("renders the serializable retry UI for a non-404 overview failure", async () => {
+  it("returns nothing for a non-404 overview failure, deferring to the client shell's own retry", async () => {
     const overviewSpy = spyOn(tournamentService, "getPublicOverview").mockRejectedValue(
       new Error("upstream unavailable")
     );
 
-    const result = await TournamentOverviewBoundary({ tournamentId: 7303, children: null });
+    const result = await TournamentOverviewBoundary({ tournamentId: 7303 });
 
     expect(overviewSpy).toHaveBeenCalledTimes(1);
-    expect(isValidElement(result)).toBe(true);
-    if (!isValidElement(result)) throw new Error("Expected a React element");
-    expect(result.type).toBe(TournamentShellError);
-    expect(result.props).toEqual({});
+    expect(result).toBeNull();
   });
 
   it("hydrates a successful overview after the boundary resolves", async () => {
@@ -171,7 +171,7 @@ describe("TournamentLayout streaming overview", () => {
       id: 7304
     });
 
-    const result = await TournamentOverviewBoundary({ tournamentId: 7304, children: null });
+    const result = await TournamentOverviewBoundary({ tournamentId: 7304 });
 
     expect(overviewSpy).toHaveBeenCalledTimes(1);
     expect(isValidElement(result)).toBe(true);
@@ -186,9 +186,10 @@ describe("TournamentLayout streaming overview", () => {
 
     const result = await TournamentLayout({ children: null, params: paramsFor("72") });
 
-    expect(result.type).toBe(Suspense);
+    expect(result.type).toBe(Fragment);
     expect(overviewSpy).not.toHaveBeenCalled();
   });
+
 
   for (const invalidId of invalidRawIds) {
     it(`rejects invalid id ${invalidId} before streaming without an API request`, async () => {

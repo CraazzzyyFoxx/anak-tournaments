@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import {
   ColumnDef,
   flexRender,
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,7 +44,6 @@ function parseSortDir(value: string | null): SortDir {
 export type SortDir = "asc" | "desc";
 
 export interface AdminDataTableProps<TData> {
-  initialData?: PaginatedResponse<TData>;
   queryKey: (page: number, search: string, pageSize: number, sortField: string | null, sortDir: SortDir) => readonly unknown[];
   queryFn: (page: number, search: string, pageSize: number, sortField: string | null, sortDir: SortDir) => Promise<PaginatedResponse<TData>>;
 
@@ -53,55 +53,54 @@ export interface AdminDataTableProps<TData> {
   initialPageSize?: number;
   pageSizeOptions?: number[];
 
+  /**
+   * Opaque identity of filters the caller owns (chips, scope selects) rather
+   * than this table. Changing it resets to page 1: narrowing a filter while on
+   * page 4 otherwise lands on a page the new result set does not have.
+   */
+  filterKey?: string;
+
   onRowClick?: (row: Row<TData>) => void;
   onRowDoubleClick?: (row: Row<TData>) => void;
   actions?: React.ReactNode;
-
-  initialPage?: number;
-  initialSearch?: string;
 }
 
 export function AdminDataTable<TData>({
-  initialData,
   queryKey,
   queryFn,
   columns,
-  searchPlaceholder = "Search...",
-  emptyMessage = "No results found.",
+  searchPlaceholder = "Search…",
+  emptyMessage = "No records to show yet.",
   onRowClick,
   onRowDoubleClick,
   actions,
-  initialPage = 1,
-  initialSearch = "",
   initialPageSize = 15,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  filterKey,
 }: AdminDataTableProps<TData>) {
   const pathname = usePathname();
-  const defaultPageSize = initialData?.per_page && initialData.per_page > 0 ? initialData.per_page : initialPageSize;
-  const [searchValue, setSearchValue] = useState<string>(initialSearch);
+  const searchInputId = useId();
+  const rowHintId = useId();
+  const [searchValue, setSearchValue] = useState("");
   const [debouncedSearchValue] = useDebounce(searchValue, 300);
-  const [currentPage, setCurrentPage] = useState<number>(initialPage);
-  const [pageSize, setPageSize] = useState<number>(defaultPageSize);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(initialPageSize);
   const [sorting, setSorting] = useState<SortingState>([]);
   const sortField = sorting[0]?.id ?? null;
   const sortDir: SortDir = sorting[0]?.desc ? "desc" : "asc";
-  const previousDebouncedSearchRef = useRef(initialSearch);
-  const previousPageSizeRef = useRef(defaultPageSize);
+  const previousDebouncedSearchRef = useRef("");
+  const previousPageSizeRef = useRef(initialPageSize);
+  const previousFilterKeyRef = useRef(filterKey);
   const previousSortRef = useRef<{ field: string | null; dir: SortDir }>({ field: null, dir: "asc" });
-  const previousUrlStateRef = useRef({ page: initialPage, search: initialSearch, pageSize: defaultPageSize, sortField: null as string | null, sortDir: "asc" as SortDir });
+  const previousUrlStateRef = useRef({ page: 1, search: "", pageSize: initialPageSize, sortField: null as string | null, sortDir: "asc" as SortDir });
   const rowClickTimeoutRef = useRef<number | null>(null);
-  const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : initialPage;
-  const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : defaultPageSize;
+  const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
+  const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : initialPageSize;
 
   useEffect(() => {
-    previousDebouncedSearchRef.current = initialSearch;
-    setSearchValue(initialSearch);
-  }, [initialSearch]);
-
-  useEffect(() => {
-    setPageSize(defaultPageSize);
-    previousPageSizeRef.current = defaultPageSize;
-  }, [defaultPageSize]);
+    setPageSize(initialPageSize);
+    previousPageSizeRef.current = initialPageSize;
+  }, [initialPageSize]);
 
   useEffect(() => {
     if (previousDebouncedSearchRef.current !== debouncedSearchValue) {
@@ -118,6 +117,13 @@ export function AdminDataTable<TData>({
   }, [pageSize]);
 
   useEffect(() => {
+    if (previousFilterKeyRef.current !== filterKey) {
+      previousFilterKeyRef.current = filterKey;
+      setCurrentPage(1);
+    }
+  }, [filterKey]);
+
+  useEffect(() => {
     const prev = previousSortRef.current;
     if (prev.field !== sortField || prev.dir !== sortDir) {
       previousSortRef.current = { field: sortField, dir: sortDir };
@@ -129,17 +135,9 @@ export function AdminDataTable<TData>({
     queryKey: queryKey(safeCurrentPage, debouncedSearchValue, safePageSize, sortField, sortDir),
     queryFn: () => queryFn(safeCurrentPage, debouncedSearchValue, safePageSize, sortField, sortDir),
     placeholderData: (previousData) => previousData,
-    initialData:
-      initialData &&
-      safeCurrentPage === initialPage &&
-      debouncedSearchValue === initialSearch &&
-      safePageSize === defaultPageSize &&
-      sortField === null
-        ? initialData
-        : undefined,
   });
 
-  const data = dataQuery.data ?? initialData ?? { results: [], total: 0, page: 1, per_page: safePageSize };
+  const data = dataQuery.data ?? { results: [], total: 0, page: 1, per_page: safePageSize };
   const isRefreshing = dataQuery.isFetching && !dataQuery.isLoading;
   const safeTotal = Number.isFinite(data.total) ? data.total : 0;
   const responsePageSize = Number.isFinite(data.per_page) ? data.per_page : undefined;
@@ -159,9 +157,9 @@ export function AdminDataTable<TData>({
   useEffect(() => {
     const syncStateFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
-      const nextPage = parsePositiveInt(params.get("page"), initialPage);
-      const nextSearch = params.get("search") ?? initialSearch;
-      const nextPageSize = parsePositiveInt(params.get("per_page"), defaultPageSize);
+      const nextPage = parsePositiveInt(params.get("page"), 1);
+      const nextSearch = params.get("search") ?? "";
+      const nextPageSize = parsePositiveInt(params.get("per_page"), initialPageSize);
       const nextSortField = params.get("sort") ?? null;
       const nextSortDir = parseSortDir(params.get("dir"));
 
@@ -178,7 +176,7 @@ export function AdminDataTable<TData>({
     syncStateFromUrl();
     window.addEventListener("popstate", syncStateFromUrl);
     return () => window.removeEventListener("popstate", syncStateFromUrl);
-  }, [defaultPageSize, initialPage, initialSearch]);
+  }, [initialPageSize]);
 
   useEffect(() => {
     return () => {
@@ -200,7 +198,7 @@ export function AdminDataTable<TData>({
 
     const currentSearch = params.get("search") ?? "";
     const currentPageParam = Number.parseInt(params.get("page") ?? "1", 10) || 1;
-    const currentPageSizeParam = parsePositiveInt(params.get("per_page"), defaultPageSize);
+    const currentPageSizeParam = parsePositiveInt(params.get("per_page"), initialPageSize);
     const currentSortField = params.get("sort") ?? null;
     const currentSortDir = parseSortDir(params.get("dir"));
 
@@ -217,7 +215,7 @@ export function AdminDataTable<TData>({
 
     if (debouncedSearchValue) params.set("search", debouncedSearchValue); else params.delete("search");
     if (safeCurrentPage > 1) params.set("page", String(safeCurrentPage)); else params.delete("page");
-    if (safePageSize !== defaultPageSize) params.set("per_page", String(safePageSize)); else params.delete("per_page");
+    if (safePageSize !== initialPageSize) params.set("per_page", String(safePageSize)); else params.delete("per_page");
     if (sortField) { params.set("sort", sortField); if (sortDir === "desc") params.set("dir", "desc"); else params.delete("dir"); } else { params.delete("sort"); params.delete("dir"); }
 
     const query = params.toString();
@@ -230,7 +228,7 @@ export function AdminDataTable<TData>({
     }
 
     previousUrlStateRef.current = { page: safeCurrentPage, search: debouncedSearchValue, pageSize: safePageSize, sortField, sortDir };
-  }, [safeCurrentPage, debouncedSearchValue, defaultPageSize, safePageSize, pathname, sortField, sortDir]);
+  }, [safeCurrentPage, debouncedSearchValue, initialPageSize, safePageSize, pathname, sortField, sortDir]);
 
   const table = useReactTable({
     data: data.results ?? [],
@@ -286,18 +284,17 @@ export function AdminDataTable<TData>({
 
   return (
     <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
-      {/* ── TOOLBAR: search + actions + record count ───── */}
+      {/* ── TOOLBAR: search + actions ──────────────────── */}
       <div className="flex items-center justify-between gap-3 border-b border-border/40 px-4 py-2.5">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {/* Search */}
           <div className="relative w-full max-w-xs">
-            <Label htmlFor="admin-table-search" className="sr-only">{searchPlaceholder}</Label>
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Label htmlFor={searchInputId} className="sr-only">{searchPlaceholder}</Label>
+            <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              id="admin-table-search"
-              aria-label={searchPlaceholder}
+              id={searchInputId}
               autoComplete="off"
-              className="h-9 border-border bg-muted/30 pl-9 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring"
+              className="h-9 border-border bg-muted/30 pl-9 text-sm placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring"
               name="admin-table-search"
               placeholder={searchPlaceholder}
               value={searchValue}
@@ -305,11 +302,12 @@ export function AdminDataTable<TData>({
             />
           </div>
 
-          {/* Record count + loading indicator */}
-          <div className="flex items-center gap-2 text-[12px] text-muted-foreground/60 shrink-0">
-            {isRefreshing && <LoaderCircle className="size-3 animate-spin" />}
-            {safeTotal > 0 && <span>{safeTotal} records</span>}
-          </div>
+          {isRefreshing ? (
+            <span role="status" className="flex shrink-0 items-center text-muted-foreground">
+              <LoaderCircle aria-hidden className="size-3 animate-spin" />
+              <span className="sr-only">Refreshing results…</span>
+            </span>
+          ) : null}
         </div>
 
         {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
@@ -317,6 +315,11 @@ export function AdminDataTable<TData>({
 
       {/* ── TABLE ───────────────────────────────────────── */}
       <div className="overflow-x-auto">
+        {onRowClick ? (
+          <p id={rowHintId} className="sr-only">
+            Press Enter to open the focused row.
+          </p>
+        ) : null}
         <Table className="min-w-full border-separate border-spacing-0">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -331,8 +334,17 @@ export function AdminDataTable<TData>({
                   return (
                     <TableHead
                       key={header.id}
+                      aria-sort={
+                        canSort
+                          ? sorted === "asc"
+                            ? "ascending"
+                            : sorted === "desc"
+                              ? "descending"
+                              : "none"
+                          : undefined
+                      }
                       className={cn(
-                        "h-9 border-b border-border/40 bg-muted/20 text-[11px] font-medium text-muted-foreground/70",
+                        "h-9 border-b border-border/40 bg-muted/20 text-xs font-medium text-muted-foreground",
                         isFirstColumn && "pl-4",
                         isLastColumn && "pr-4",
                         isActionColumn ? "text-right" : "text-left",
@@ -345,16 +357,16 @@ export function AdminDataTable<TData>({
                           onClick={header.column.getToggleSortingHandler()}
                           className={cn(
                             "inline-flex items-center gap-1 rounded transition-colors hover:text-foreground",
-                            sorted ? "text-foreground" : "text-muted-foreground/70",
+                            sorted ? "text-foreground" : "text-muted-foreground",
                           )}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                           {sorted === "asc" ? (
-                            <ArrowUp className="size-3 shrink-0" />
+                            <ArrowUp aria-hidden className="size-3 shrink-0" />
                           ) : sorted === "desc" ? (
-                            <ArrowDown className="size-3 shrink-0" />
+                            <ArrowDown aria-hidden className="size-3 shrink-0" />
                           ) : (
-                            <ArrowUpDown className="size-3 shrink-0 opacity-30" />
+                            <ArrowUpDown aria-hidden className="size-3 shrink-0 opacity-30" />
                           )}
                         </button>
                       ) : (
@@ -380,6 +392,7 @@ export function AdminDataTable<TData>({
                   onDoubleClick={(event) => handleRowDoubleClick(event, row)}
                   onKeyDown={(event) => handleRowKeyDown(event, row)}
                   tabIndex={onRowClick ? 0 : undefined}
+                  aria-describedby={onRowClick ? rowHintId : undefined}
                 >
                   {row.getVisibleCells().map((cell, index) => {
                     const isActionColumn = cell.column.id === ADMIN_ACTION_COLUMN_ID;
@@ -390,7 +403,7 @@ export function AdminDataTable<TData>({
                       <TableCell
                         key={cell.id}
                         className={cn(
-                          "py-2.5 text-[13px]",
+                          "py-2.5 text-sm",
                           isFirstColumn && "pl-4 text-muted-foreground",
                           isLastColumn && "pr-4",
                           isActionColumn && "whitespace-nowrap text-right",
@@ -398,7 +411,7 @@ export function AdminDataTable<TData>({
                         style={getColumnStyle(cell.column)}
                       >
                         {isActionColumn ? (
-                          <div className="flex w-full items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex w-full items-center justify-end opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </div>
                         ) : (
@@ -411,13 +424,18 @@ export function AdminDataTable<TData>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center">
+                <TableCell colSpan={columns.length} className="py-8 text-center">
                   <div className="flex flex-col items-center justify-center gap-2">
-                    <CircleMinus className="size-5 text-muted-foreground/40" />
-                    <p className="text-[13px] text-muted-foreground">{emptyMessage}</p>
-                    {searchValue && (
-                      <p className="text-[12px] text-muted-foreground/50">Try a broader search or clear the filter.</p>
-                    )}
+                    <CircleMinus aria-hidden className="size-5 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+                    {searchValue ? (
+                      <>
+                        <p className="text-xs text-muted-foreground">Nothing matches the current search.</p>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setSearchValue("")}>
+                          Clear search
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>
@@ -429,17 +447,17 @@ export function AdminDataTable<TData>({
       {/* ── FOOTER: pagination ─────────────────────────── */}
       {safeTotal > 0 && (
         <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-2">
-          <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
-            <span>{rangeStart}–{rangeEnd} of {safeTotal}</span>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="tabular-nums">{rangeStart}–{rangeEnd} of {safeTotal}</span>
             <div className="flex items-center gap-1.5">
               <span>Rows</span>
               <Select value={String(effectivePageSize)} onValueChange={(v) => handlePageSizeChange(Number(v))}>
-                <SelectTrigger className="h-8 w-auto gap-1 border-border bg-muted/30 px-2.5 text-[13px] text-muted-foreground">
+                <SelectTrigger aria-label="Rows per page" className="h-8 w-auto gap-1 border-border bg-muted/30 px-2.5 text-sm tabular-nums text-muted-foreground">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {availablePageSizeOptions.map((opt) => (
-                    <SelectItem key={opt} value={String(opt)} className="text-[12px]">{opt}</SelectItem>
+                    <SelectItem key={opt} value={String(opt)} className="text-xs tabular-nums">{opt}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -453,56 +471,45 @@ export function AdminDataTable<TData>({
               className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
               aria-label="Previous page"
             >
-              <ChevronLeft className="size-4" />
+              <ChevronLeft aria-hidden className="size-4" />
             </button>
 
             {(() => {
-              const pages: React.ReactNode[] = [];
               const maxVisible = 5;
 
-              if (totalPageCount <= maxVisible) {
-                for (let i = 1; i <= totalPageCount; i++) {
-                  pages.push(
-                    <button
-                      key={i}
-                      onClick={() => setCurrentPage(i)}
-                      className={cn(
-                        "flex size-7 items-center justify-center rounded-md text-[12px] transition-colors",
-                        safeCurrentPage === i
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "text-muted-foreground hover:bg-accent/30 hover:text-foreground",
-                      )}
-                    >
-                      {i}
-                    </button>,
-                  );
-                }
-              } else {
-                const addPage = (i: number) => {
-                  pages.push(
-                    <button
-                      key={i}
-                      onClick={() => setCurrentPage(i)}
-                      className={cn(
-                        "flex size-7 items-center justify-center rounded-md text-[12px] transition-colors",
-                        safeCurrentPage === i
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "text-muted-foreground hover:bg-accent/30 hover:text-foreground",
-                      )}
-                    >
-                      {i}
-                    </button>,
-                  );
-                };
+              const pageButton = (page: number) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  aria-label={`Page ${page}`}
+                  aria-current={safeCurrentPage === page ? "page" : undefined}
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-md text-xs tabular-nums transition-colors",
+                    safeCurrentPage === page
+                      ? "bg-primary text-primary-foreground font-medium"
+                      : "text-muted-foreground hover:bg-accent/30 hover:text-foreground",
+                  )}
+                >
+                  {page}
+                </button>
+              );
 
-                addPage(1);
-                if (safeCurrentPage > 3) pages.push(<span key="e1" className="flex size-7 items-center justify-center text-[12px] text-muted-foreground/40">...</span>);
-                const start = Math.max(2, safeCurrentPage - 1);
-                const end = Math.min(totalPageCount - 1, safeCurrentPage + 1);
-                for (let i = start; i <= end; i++) addPage(i);
-                if (safeCurrentPage < totalPageCount - 2) pages.push(<span key="e2" className="flex size-7 items-center justify-center text-[12px] text-muted-foreground/40">...</span>);
-                addPage(totalPageCount);
+              const gap = (key: string) => (
+                <span key={key} aria-hidden className="flex size-7 items-center justify-center text-xs text-muted-foreground">…</span>
+              );
+
+              if (totalPageCount <= maxVisible) {
+                return Array.from({ length: totalPageCount }, (_, index) => pageButton(index + 1));
               }
+
+              const pages: React.ReactNode[] = [pageButton(1)];
+              if (safeCurrentPage > 3) pages.push(gap("gap-start"));
+              const start = Math.max(2, safeCurrentPage - 1);
+              const end = Math.min(totalPageCount - 1, safeCurrentPage + 1);
+              for (let i = start; i <= end; i++) pages.push(pageButton(i));
+              if (safeCurrentPage < totalPageCount - 2) pages.push(gap("gap-end"));
+              pages.push(pageButton(totalPageCount));
 
               return pages;
             })()}
@@ -513,7 +520,7 @@ export function AdminDataTable<TData>({
               className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
               aria-label="Next page"
             >
-              <ChevronRight className="size-4" />
+              <ChevronRight aria-hidden className="size-4" />
             </button>
           </div>
         </div>

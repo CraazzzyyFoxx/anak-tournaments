@@ -3,6 +3,13 @@ import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 type TournamentStatusMeta = {
   label: string;
   badgeLabel: string;
+  /**
+   * Which of the four presentation buckets this status falls into. The public
+   * tournament surfaces collapse seven statuses into live / upcoming /
+   * finished / draft; three files each re-derived that with the same nested
+   * ternary. It is a domain fact about the status, so it lives here once.
+   */
+  variant: "live" | "upcoming" | "finished" | "draft";
   textClassName: string;
   badgeClassName: string;
   dotClassName?: string;
@@ -14,61 +21,68 @@ export const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMe
   draft: {
     label: "Draft",
     badgeLabel: "Draft",
-    textClassName: "text-amber-400",
-    badgeClassName: "text-amber-400",
-    dotClassName: "bg-amber-400",
+    variant: "draft",
+    textClassName: "text-[color:var(--aqt-gold)]",
+    badgeClassName: "text-[color:var(--aqt-gold)]",
+    dotClassName: "bg-[color:var(--aqt-gold)]",
     isActive: true,
     isEnded: false
   },
   registration: {
     label: "Registration",
     badgeLabel: "Registration",
-    textClassName: "text-sky-400",
-    badgeClassName: "text-sky-400",
-    dotClassName: "bg-sky-400",
+    variant: "upcoming",
+    textClassName: "text-[color:var(--aqt-tank)]",
+    badgeClassName: "text-[color:var(--aqt-tank)]",
+    dotClassName: "bg-[color:var(--aqt-tank)]",
     isActive: true,
     isEnded: false
   },
   check_in: {
     label: "Check-in",
     badgeLabel: "Check-in",
-    textClassName: "text-orange-400",
-    badgeClassName: "text-orange-400",
-    dotClassName: "bg-orange-400",
+    variant: "upcoming",
+    textClassName: "text-[color:var(--aqt-amber)]",
+    badgeClassName: "text-[color:var(--aqt-amber)]",
+    dotClassName: "bg-[color:var(--aqt-amber)]",
     isActive: true,
     isEnded: false
   },
   live: {
     label: "Live",
     badgeLabel: "Live",
-    textClassName: "text-emerald-400",
-    badgeClassName: "text-emerald-400",
-    dotClassName: "bg-emerald-400",
+    variant: "live",
+    textClassName: "text-[color:var(--aqt-emerald)]",
+    badgeClassName: "text-[color:var(--aqt-emerald)]",
+    dotClassName: "bg-[color:var(--aqt-emerald)]",
     isActive: true,
     isEnded: false
   },
   playoffs: {
     label: "Playoffs",
     badgeLabel: "Playoffs",
-    textClassName: "text-violet-400",
-    badgeClassName: "text-violet-400",
-    dotClassName: "bg-violet-400",
+    variant: "live",
+    textClassName: "text-[color:var(--aqt-violet)]",
+    badgeClassName: "text-[color:var(--aqt-violet)]",
+    dotClassName: "bg-[color:var(--aqt-violet)]",
     isActive: true,
     isEnded: false
   },
   completed: {
     label: "Ended",
     badgeLabel: "Ended",
-    textClassName: "text-white/60",
-    badgeClassName: "text-white/45",
+    variant: "finished",
+    textClassName: "text-[color:var(--aqt-fg-muted)]",
+    badgeClassName: "text-[color:var(--aqt-fg-dim)]",
     isActive: false,
     isEnded: true
   },
   archived: {
     label: "Archived",
     badgeLabel: "Archived",
-    textClassName: "text-zinc-500",
-    badgeClassName: "text-zinc-500",
+    variant: "finished",
+    textClassName: "text-[color:var(--aqt-fg-dim)]",
+    badgeClassName: "text-[color:var(--aqt-fg-dim)]",
     isActive: false,
     isEnded: true
   }
@@ -77,13 +91,6 @@ export const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMe
 export function getTournamentStatusMeta(status: TournamentStatus) {
   return TOURNAMENT_STATUS_META[status];
 }
-
-export const TOURNAMENT_STATUS_OPTIONS = (
-  Object.entries(TOURNAMENT_STATUS_META) as Array<[TournamentStatus, TournamentStatusMeta]>
-).map(([value, meta]) => ({
-  value,
-  label: meta.badgeLabel
-}));
 
 export function isTournamentStatusActive(status: TournamentStatus) {
   return TOURNAMENT_STATUS_META[status].isActive;

@@ -58,6 +58,7 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, app.WorkspaceWriteRoutes)
 	d.Register(mux, app.MetadataAdminRoutes)
 	d.Register(mux, app.UsersAdminRoutes)
+	d.Register(mux, app.TournamentAdminRoutes)
 	mux.Handle("/api/v1/achievements/", d.Subtree(app.AchievementsSubtreeRoutes))
 	// parser domains folded into /api/v1. The achievement-rule admin subtree mounts
 	// at the shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes
@@ -126,6 +127,39 @@ func TestApiV1Guard_NoConflictAndNoLoop(t *testing.T) {
 			}
 			if route != c.wantRoute {
 				t.Fatalf("%s %s: routed to %q, want %q", c.method, c.path, route, c.wantRoute)
+			}
+		})
+	}
+}
+
+// A new /api/v1/admin/... path is only reachable if it is in a table main.go
+// registers — otherwise the /api/v1/ guard answers 404 and the feature is dead
+// on arrival with no compile error to warn anyone. These ride the existing
+// AdminMiscRoutes table, and this pins that they actually made it onto the mux.
+func TestApiV1Guard_MatchSurfaceRoutesAreRegistered(t *testing.T) {
+	mux := buildGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, path := range []string{
+		"/api/v1/admin/encounter-reports?workspace_id=1",
+		"/api/v1/admin/encounter-reports/stats?workspace_id=1",
+		"/api/v1/admin/matches?workspace_id=1",
+		// The collection must not swallow this as an id, nor the id pattern
+		// shadow the collection.
+		"/api/v1/admin/matches/42?workspace_id=1",
+		// The per-tournament report-form config sits under the {tournament_id}
+		// prefix shared with finish/status/schedule/preview-access.
+		"/api/v1/admin/tournaments/7/report-form",
+	} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(srv.URL + path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", path, err)
+			}
+			defer resp.Body.Close()
+			if route := resp.Header.Get("X-Route"); route == "guard" {
+				t.Fatalf("GET %s hit the /api/v1/ guard — the route is not registered", path)
 			}
 		})
 	}
@@ -387,7 +421,7 @@ func TestApiAuthGuard_NoConflictAndNoLoop(t *testing.T) {
 
 // TestApiAuth_TypedRoutesHitHandler asserts the typed RBAC/player/avatar routes win
 // over the /api/auth/ guard (ServeMux specificity) and reach the identity handler
-// (403 without a bearer, or 504 with the stub caller), never "frontend"/"guard".
+// (401 without a bearer, or 504 with the stub caller), never "frontend"/"guard".
 func TestApiAuth_TypedRoutesHitHandler(t *testing.T) {
 	mux := buildAuthGuardedMux(t)
 	srv := httptest.NewServer(mux)

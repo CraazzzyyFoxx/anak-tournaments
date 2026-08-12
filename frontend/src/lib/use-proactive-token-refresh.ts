@@ -9,12 +9,18 @@ const REFRESH_SKEW_MS = 60_000; // refresh ~1 min before the token expires
 const MIN_DELAY_MS = 5_000; // never schedule a busy-loop
 const FALLBACK_DELAY_MS = 5 * 60_000; // when `exp` can't be decoded
 const RETRY_DELAY_MS = 30_000; // back off after a transient refresh error
+// Every tab reads the SAME access cookie, so every tab derives the same absolute
+// refresh deadline and fires at the same instant — a self-inflicted thundering
+// herd on /auth/refresh that races the rotation (one prod session accumulated
+// 1368 rotations). Spread the wake-ups; the 60s skew leaves ≥40s of headroom.
+const REFRESH_JITTER_MS = 20_000;
 
 function computeDelay(token: string | undefined): number {
-  if (!token) return MIN_DELAY_MS;
+  const jitter = Math.random() * REFRESH_JITTER_MS;
+  if (!token) return MIN_DELAY_MS + jitter;
   const expMs = getTokenExpMs(token);
-  if (expMs === undefined) return FALLBACK_DELAY_MS;
-  return Math.max(MIN_DELAY_MS, expMs - Date.now() - REFRESH_SKEW_MS);
+  if (expMs === undefined) return FALLBACK_DELAY_MS + jitter;
+  return Math.max(MIN_DELAY_MS, expMs - Date.now() - REFRESH_SKEW_MS) + jitter;
 }
 
 // Proactively refreshes the access token shortly before it expires, so an

@@ -16,24 +16,62 @@ from src.services.encounter import captain as captain_service
 # ── Schemas ──────────────────────────────────────────────────────────────
 
 
-class ResultSubmission(BaseModel):
-    home_score: int
-    away_score: int
-
-
-class DisputeRequest(BaseModel):
-    reason: str | None = None
-
-
 class VetoAction(BaseModel):
     map_id: int
     action: str  # "ban" or "pick"
 
 
-class CaptainMatchReport(BaseModel):
+class PickBanActionInput(BaseModel):
+    """One ban/pick/protect against a hero- or map-kind pick-ban session."""
+
+    item_id: int
+    action: str  # "ban" | "pick" | "protect"
+
+
+class ElectOpenerInput(BaseModel):
+    """``result_loser_choice`` rotation only: the losing captain names who
+    opens the next round's bans."""
+
+    first_side: str  # "home" | "away"
+
+
+class PickBanUndoInput(BaseModel):
+    """One captain's consent to undo the session's last action. ``consent=False``
+    withdraws an open request — the asker changing their mind and the opponent
+    refusing are the same outcome, so they share one field."""
+
+    consent: bool = True
+
+
+class MapReportInput(BaseModel):
+    """One captain's independent claim of a single played map's result —
+    submitted immediately after that map, not at series end (contrast
+    ``CaptainReportSubmission``). See ``services.encounter.map_report``."""
+
     home_score: int = Field(ge=0)
     away_score: int = Field(ge=0)
-    closeness: int = Field(ge=1, le=10)
+
+
+class CaptainMapCodeInput(BaseModel):
+    map_index: int = Field(ge=1)
+    code: str = Field(min_length=1, max_length=32)
+
+
+class CaptainReportSubmission(BaseModel):
+    """One captain's independent encounter report.
+
+    ``home_score``/``away_score`` are in the encounter's home/away orientation.
+    Everything else is optional here and validated against the tournament's
+    report-form config server-side (``services.encounter.report_form``), because
+    what is required depends on that config, not on the wire shape.
+    """
+
+    home_score: int = Field(ge=0)
+    away_score: int = Field(ge=0)
+    closeness: int | None = Field(default=None, ge=1, le=10)
+    map_codes: list[CaptainMapCodeInput] = Field(default_factory=list)
+    comment: str | None = None
+    custom_fields: dict[str, str] = Field(default_factory=dict)
 
 
 # HTTP 403 Forbidden — matched without importing fastapi so this module stays

@@ -18,6 +18,10 @@ backend/.cache/
 /app/.idea
 /parser/.idea
 logs/
+# `logs/` above is for runtime logs. Any `logs` segment under the Next app tree
+# is a route, not output — this used to name one exact hub path and silently
+# dropped the file the moment that route moved.
+!frontend/src/app/**/logs/
 monitoring/secrets/*
 !monitoring/secrets/.gitkeep
 !monitoring/secrets/*.example
@@ -35,3 +39,7 @@ target/
 debug/
 .playwright-mcp/
 frontend-redesign/
+
+# Local agent scratch: worktrees, transcripts and one-off deploy helpers. Never
+# belongs in the tree — a committed worktree pointer breaks every other checkout.
+.aislop/

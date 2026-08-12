@@ -7,10 +7,6 @@ import workspaceService from "@/services/workspace.service";
 import { deriveWorkspacePalette } from "@/lib/workspace-theme";
 import { WorkspaceThemeSync } from "@/components/WorkspaceThemeSync";
 import { WorkspaceHostLock } from "@/components/WorkspaceHostLock";
-import {
-  getTournamentOwnerWorkspace,
-  tournamentIdFromPathname,
-} from "./tournaments/[id]/_data";
 import type { Workspace } from "@/types/workspace.types";
 
 // Resolve the current workspace server-side. On a tenant (white-label) host
@@ -41,24 +37,12 @@ export default async function SiteLayout({
 }>) {
   const requestHeaders = await headers();
   const tenantMode = requestHeaders.get("x-owt-host-mode") === "tenant";
-  const workspace = await resolveCurrentWorkspace();
+  // Custom workspace branding is tenant-only: a subdomain / custom-domain host
+  // paints its workspace's palette. The shared platform (apex) host applies no
+  // customization at all, so it needs neither the workspace nor a palette seed.
+  const workspace = tenantMode ? await resolveCurrentWorkspace() : null;
 
-  // A tournament may belong to a workspace other than the one the viewer has
-  // selected; its pages must paint the owner's brand. Resolve the owner here so
-  // the SSR seed is already correct (flash-free) — the client keeps it in sync
-  // via TournamentThemeScope for soft navigations. Never re-theme a locked
-  // tenant (white-label) host: its brand is fixed by the request host.
-  let seedWorkspace: Workspace | null = workspace;
-  if (!tenantMode) {
-    const tournamentId = tournamentIdFromPathname(requestHeaders.get("x-owt-pathname") ?? "");
-    if (tournamentId !== null) {
-      seedWorkspace = (await getTournamentOwnerWorkspace(tournamentId)) ?? workspace;
-    }
-  }
-
-  // Branding seed for a flash-free first paint (no-op when the workspace has no
-  // custom palette).
-  const seed = seedWorkspace ? deriveWorkspacePalette(seedWorkspace) : null;
+  const seed = workspace ? deriveWorkspacePalette(workspace) : null;
   const style: React.CSSProperties | undefined = seed
     ? ({ ...seed, backgroundColor: "var(--aqt-bg)" } as React.CSSProperties)
     : undefined;
@@ -77,7 +61,7 @@ export default async function SiteLayout({
       <div className="w-full max-w-screen-3xl pt-6 mx-auto px-4 md:px-6 xl:px-10 h-full">
         <Header tenantMode={tenantMode} tenantWorkspace={tenantWorkspace} />
         <div className="flex w-full flex-col min-h-[95%]">
-          <main className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8">
+          <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8">
             {children}
           </main>
         </div>

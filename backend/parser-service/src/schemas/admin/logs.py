@@ -15,6 +15,7 @@ __all__ = (
     "QueueDepth",
     "LogRecordRead",
     "LogHistoryResponse",
+    "LogStatsRead",
     "LogUploadItem",
     "LogUploadError",
     "LogUploadResponse",
@@ -40,6 +41,8 @@ class LogRecordRead(BaseModel):
     source: str
     uploader_name: str | None
     error_message: str | None
+    # Times the record entered processing; >1 means the stall reaper requeued it.
+    attempts: int = 0
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
@@ -50,6 +53,22 @@ class LogRecordRead(BaseModel):
 class LogHistoryResponse(BaseModel):
     items: list[LogRecordRead]
     total: int
+
+
+class LogStatsRead(BaseModel):
+    """Scope-wide processing aggregate, computed in one SQL round trip.
+
+    The admin console used to derive these from the page it happened to be
+    showing, so "Failed: 0" only ever meant "none on this page".
+    """
+
+    total: int
+    pending: int
+    processing: int
+    done: int
+    failed: int
+    avg_duration_seconds: float | None
+    last_created_at: datetime | None
 
 
 class LogUploadItem(BaseModel):

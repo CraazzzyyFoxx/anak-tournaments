@@ -21,7 +21,8 @@ export interface Player {
   related_player_id: number | null;
   relative_player?: number | null;
 
-  user: User;
+  /** Linked identity. `null` when the roster row has no resolvable user. */
+  user: User | null;
 }
 
 export interface Team {

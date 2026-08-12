@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { Hero } from "@/types/hero.types";
 import { HeroStrip } from "@/components/hero/HeroImage";
-import { type ScoreKind } from "@/app/(site)/users/components/shared/atoms";
+import { type ScoreKind } from "@/components/match/cells";
 import MvpMatchPill from "@/components/match/MvpMatchPill";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { TooltipProvider } from "@/components/ui/tooltip";

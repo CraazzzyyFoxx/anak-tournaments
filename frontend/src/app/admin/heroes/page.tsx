@@ -1,15 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AssetPreview } from "@/components/admin/AssetPreview";
+import {
+  CatalogToolbarActions,
+  entityFormError,
+  onEntityDialogClose
+} from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,51 +41,24 @@ import adminService from "@/services/admin.service";
 import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
+/** Overwatch blue: the form default, the color-picker fallback and the hex hint. */
+const DEFAULT_HERO_COLOR = "#3b82f6";
+// Key order matters: `hasUnsavedChanges` compares JSON, so `getHeroForm` below
+// must list the shared fields in the same order or every dialog opens dirty.
 const emptyHeroForm: HeroCreateInput = {
   name: "",
   role: "Damage",
-  color: "#3b82f6",
-  image_path: "",
+  color: DEFAULT_HERO_COLOR,
+  aliases: [],
 };
 
-function getHeroRoleValue(hero: { role?: string | null; type?: string | null }): string {
+/** The backend sends `type`; `role` is the legacy field kept for older payloads. */
+function getHeroRoleValue(hero: Hero): string {
   return hero.type || hero.role || emptyHeroForm.role;
-}
-
-function HeroIconPreview({
-  imagePath,
-  name,
-  className,
-}: {
-  imagePath?: string | null;
-  name: string;
-  className: string;
-}) {
-  const fallbackLabel = (name.trim().charAt(0) || "?").toUpperCase();
-
-  if (!imagePath) {
-    return (
-      <div
-        aria-label={name ? `${name} icon placeholder` : "Hero icon placeholder"}
-        className={`${className} flex items-center justify-center rounded-full border border-dashed border-border/70 bg-muted/30 text-sm font-semibold text-muted-foreground`}
-      >
-        {fallbackLabel}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      role="img"
-      aria-label={name ? `${name} icon` : "Hero icon"}
-      className={`${className} rounded-full border border-border/70 bg-muted/20 bg-cover bg-center`}
-      style={{ backgroundImage: `url("${imagePath}")`, backgroundPosition: "center", backgroundSize: "cover" }}
-    />
-  );
 }
 
 function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
@@ -90,30 +71,38 @@ function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
     role: getHeroRoleValue(hero),
     color: hero.color,
     image_path: hero.image_path,
+    aliases: hero.aliases ?? [],
   };
 }
 
 export default function HeroesAdminPage() {
   const queryClient = useQueryClient();
-  const { canAccessPermission } = usePermissions();
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isSuperuser } = usePermissions();
+  const formId = useId();
+  const nameFieldId = `${formId}-name`;
+  const imageFieldId = `${formId}-image`;
+  const roleFieldId = `${formId}-role`;
+  const colorFieldId = `${formId}-color`;
+  const colorPickerId = `${formId}-color-picker`;
+  const aliasesFieldId = `${formId}-aliases`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingHero, setEditingHero] = useState<Hero | null>(null);
   const [deletingHero, setDeletingHero] = useState<Hero | null>(null);
   const [formData, setFormData] = useState<HeroCreateInput | HeroUpdateInput>({
     ...emptyHeroForm,
   });
-  const canCreate = canAccessPermission("hero.create", workspaceId);
-  const canUpdate = canAccessPermission("hero.update", workspaceId);
-  const canDelete = canAccessPermission("hero.delete", workspaceId);
-  const canSync = canAccessPermission("hero.sync", workspaceId);
+
+  const closeForm = () => {
+    setCreateDialogOpen(false);
+    setEditingHero(null);
+    setFormData({ ...emptyHeroForm });
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: HeroCreateInput) => adminService.createHero(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
-      setCreateDialogOpen(false);
-      setFormData({ ...emptyHeroForm });
+      closeForm();
     },
   });
 
@@ -122,8 +111,7 @@ export default function HeroesAdminPage() {
       adminService.updateHero(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
-      setEditingHero(null);
-      setFormData({ ...emptyHeroForm });
+      closeForm();
     },
   });
 
@@ -159,6 +147,7 @@ export default function HeroesAdminPage() {
       accessorKey: "id",
       header: "ID",
       size: 44,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
     },
     {
       id: "icon",
@@ -168,7 +157,13 @@ export default function HeroesAdminPage() {
         const hero = row.original;
         return (
           <div className="flex justify-center">
-            <HeroIconPreview imagePath={hero.image_path} name={hero.name} className="h-10 w-10" />
+            <AssetPreview
+              imagePath={hero.image_path}
+              name={hero.name}
+              assetLabel="hero icon"
+              shape="circle"
+              className="h-10 w-10"
+            />
           </div>
         );
       },
@@ -183,7 +178,10 @@ export default function HeroesAdminPage() {
           <div className="flex items-center gap-2">
             {hero.color && (
               <div
-                className="w-4 h-4 rounded-full border border-border"
+                role="img"
+                aria-label={`Hero color ${hero.color}`}
+                title={hero.color}
+                className="h-4 w-4 rounded-full border border-border"
                 style={{ backgroundColor: hero.color }}
               />
             )}
@@ -201,10 +199,24 @@ export default function HeroesAdminPage() {
         return (
           <div className="flex justify-center">
             <div title={role}>
-              <PlayerRoleIcon role={role} size={22} />
+              <PlayerRoleIcon role={role} size={22} decorative />
               <span className="sr-only">{role}</span>
             </div>
           </div>
+        );
+      },
+    },
+    {
+      id: "aliases",
+      header: "Aliases",
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const count = row.original.aliases?.length ?? 0;
+        return count > 0 ? (
+          <Badge variant="secondary">{count}</Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
         );
       },
     },
@@ -213,7 +225,7 @@ export default function HeroesAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const hero = row.original;
-        if (!canUpdate && !canDelete) {
+        if (!isSuperuser) {
           return null;
         }
 
@@ -221,31 +233,27 @@ export default function HeroesAdminPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button aria-label={`Open actions for ${hero.name}`} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal aria-hidden className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-               {canUpdate ? (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      updateMutation.reset();
-                      setEditingHero(hero);
-                      setFormData(getHeroForm(hero));
-                    }}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                 </DropdownMenuItem>
-               ) : null}
-               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
-               {canDelete ? (
-                 <DropdownMenuItem onClick={() => setDeletingHero(hero)} className="text-destructive">
-                   <Trash2 className="mr-2 h-4 w-4" />
-                   Delete
-                 </DropdownMenuItem>
-               ) : null}
-             </DropdownMenuContent>
+              <DropdownMenuLabel className="truncate">{hero.name}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => {
+                  updateMutation.reset();
+                  setEditingHero(hero);
+                  setFormData(getHeroForm(hero));
+                }}
+              >
+                <Pencil aria-hidden className="mr-2 h-4 w-4" />
+                Edit hero
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDeletingHero(hero)} className="text-destructive">
+                <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                Delete hero
+              </DropdownMenuItem>
+            </DropdownMenuContent>
            </DropdownMenu>
          );
       },
@@ -258,33 +266,19 @@ export default function HeroesAdminPage() {
         title="Heroes"
         description="Manage game heroes and their roles"
         actions={
-          canSync || canCreate ? (
-            <div className="flex gap-2">
-              {canSync ? (
-                <Button
-                  variant="outline"
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-                  Sync from Game
-                </Button>
-              ) : null}
-              {canCreate ? (
-                <Button
-                  onClick={() => {
-                    createMutation.reset();
-                    updateMutation.reset();
-                    setFormData({ ...emptyHeroForm });
-                    setCreateDialogOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Hero
-                </Button>
-              ) : null}
-            </div>
-          ) : null
+          <CatalogToolbarActions
+            canSync={isSuperuser}
+            isSyncing={syncMutation.isPending}
+            onSync={() => syncMutation.mutate()}
+            syncLabel="Sync heroes from game"
+            onCreate={() => {
+              createMutation.reset();
+              updateMutation.reset();
+              setFormData({ ...emptyHeroForm });
+              setCreateDialogOpen(true);
+            }}
+            createLabel="Create hero"
+          />
         }
       />
 
@@ -294,10 +288,10 @@ export default function HeroesAdminPage() {
           adminService.getHeroes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
         }
         columns={columns}
-        searchPlaceholder="Search heroes..."
-        emptyMessage="No heroes found."
+        searchPlaceholder="Search heroes…"
+        emptyMessage="No heroes yet. Use “Create hero” to add the first one."
         onRowDoubleClick={
-          canUpdate
+          isSuperuser
             ? (row) => {
                 const hero = row.original;
                 updateMutation.reset();
@@ -311,30 +305,25 @@ export default function HeroesAdminPage() {
       {/* Create/Edit Dialog */}
       <EntityFormDialog
         open={createDialogOpen || !!editingHero}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCreateDialogOpen(false);
-            setEditingHero(null);
-            setFormData({ ...emptyHeroForm });
-          }
-        }}
-        title={editingHero ? "Edit Hero" : "Create Hero"}
+        onOpenChange={onEntityDialogClose(closeForm)}
+        title={editingHero ? "Edit hero" : "Create hero"}
         description={editingHero ? "Update hero information" : "Create a new hero in the game"}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         submittingLabel={editingHero ? "Updating hero…" : "Creating hero…"}
-        errorMessage={
-          (editingHero ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingHero ? updateMutation.error : createMutation.error)?.message
-            : undefined
-        }
+        errorMessage={entityFormError(
+          "hero",
+          !!editingHero,
+          updateMutation.error,
+          createMutation.error
+        )}
         isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor={nameFieldId}>Name *</Label>
             <Input
-              id="name"
+              id={nameFieldId}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Hero name"
@@ -343,30 +332,29 @@ export default function HeroesAdminPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="image_path">Hero icon</Label>
-            <div className="flex items-start gap-3">
-              <HeroIconPreview
+            <Label htmlFor={imageFieldId}>Hero icon URL</Label>
+            <div className="flex items-center gap-3">
+              <AssetPreview
                 imagePath={formData.image_path}
                 name={formData.name || "Hero"}
-                className="h-16 w-16 shrink-0"
+                assetLabel="hero icon"
+                shape="circle"
+                className="h-10 w-10 shrink-0"
               />
-              <div className="flex-1 space-y-2">
-                <Input
-                  id="image_path"
-                  type="url"
-                  value={formData.image_path || ""}
-                  onChange={(e) => setFormData({ ...formData, image_path: e.target.value })}
-                  placeholder="https://overfast.craazzzyyfoxx.me/static/heroes/ana.png"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Use a direct URL to the hero portrait shown in the admin table and user pages.
-                </p>
-              </div>
+              <Input
+                id={imageFieldId}
+                type="url"
+                value={formData.image_path || ""}
+                onChange={(e) => setFormData({ ...formData, image_path: e.target.value })}
+                placeholder="https://overfast.craazzzyyfoxx.me/static/heroes/ana.png"
+                className="flex-1"
+              />
             </div>
+            <p className="text-xs text-muted-foreground">Direct link to the hero portrait.</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="role">Role</Label>
+            <Label htmlFor={roleFieldId}>Role *</Label>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 bg-muted/20">
                 <PlayerRoleIcon role={formData.role || emptyHeroForm.role} size={20} />
@@ -375,14 +363,14 @@ export default function HeroesAdminPage() {
                 value={formData.role}
                 onValueChange={(value) => setFormData({ ...formData, role: value })}
               >
-                <SelectTrigger className="flex-1">
+                <SelectTrigger id={roleFieldId} className="flex-1">
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
                   {HERO_ROLES.map((role) => (
                     <SelectItem key={role} value={role}>
                       <div className="flex items-center gap-2">
-                        <PlayerRoleIcon role={role} size={16} />
+                        <PlayerRoleIcon role={role} size={16} decorative />
                         <span>{role}</span>
                       </div>
                     </SelectItem>
@@ -393,35 +381,54 @@ export default function HeroesAdminPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="color">Color</Label>
+            <Label htmlFor={colorFieldId}>Color</Label>
             <div className="flex items-center gap-2">
               <Input
-                id="color"
+                id={colorPickerId}
+                aria-label="Pick hero color"
                 type="color"
-                value={formData.color || "#3b82f6"}
+                value={formData.color || DEFAULT_HERO_COLOR}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                className="w-20 h-10 cursor-pointer"
+                className="h-10 w-14 shrink-0 cursor-pointer p-1"
               />
               <Input
+                id={colorFieldId}
                 type="text"
                 value={formData.color || ""}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                placeholder="#3b82f6"
-                className="flex-1"
+                placeholder={DEFAULT_HERO_COLOR}
+                className="flex-1 font-mono"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={aliasesFieldId}>Aliases</Label>
+            <Textarea
+              id={aliasesFieldId}
+              value={formatAliasesInput(formData.aliases ?? [])}
+              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
+              placeholder={"Ана\nアナ"}
+              rows={5}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              One alias per line — names as they appear in match logs. The hero sync fills these
+              from every Blizzard locale; manual entries survive it.
+            </p>
           </div>
         </div>
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {canDelete && deletingHero && (
+      {deletingHero && (
         <DeleteConfirmDialog
           open={!!deletingHero}
           onOpenChange={(open) => !open && setDeletingHero(null)}
           onConfirm={() => deleteMutation.mutate(deletingHero.id)}
           isDeleting={deleteMutation.isPending}
-          title={`Delete ${deletingHero.name}?`}
+          title="Delete hero"
+          description={`“${deletingHero.name}” will be permanently removed from the hero catalogue. This cannot be undone.`}
         />
       )}
     </div>

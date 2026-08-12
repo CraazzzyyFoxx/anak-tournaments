@@ -21,9 +21,14 @@ export function teamInitials(name?: string | null): string {
 
 // Compact relative time ("2m ago", "in 19d", "Mar 01") for the Updated column
 // and live-card timestamps. `now` is injectable for deterministic tests.
+//
+// `locale` is required: the fallback used to be pinned to `en-US`, so a Russian
+// reader saw an English "Jun 13" in the Updated column of a row whose date
+// column was already correctly localized.
 export function relativeTime(
   value: Date | string | null | undefined,
   t: Translate,
+  locale: string,
   now: Date = new Date()
 ): string {
   if (!value) return "—";
@@ -53,7 +58,10 @@ export function relativeTime(
       ? t("tournamentsList.time.daysAgo", { count: days })
       : t("tournamentsList.time.inDays", { count: days });
 
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return date.toLocaleDateString(locale.startsWith("ru") ? "ru-RU" : "en-US", {
+    month: "short",
+    day: "numeric"
+  });
 }
 
 export interface LiveTournamentGroup {

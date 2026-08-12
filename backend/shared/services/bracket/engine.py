@@ -61,8 +61,50 @@ def generate_bracket(
     raise ValueError(f"Unsupported stage type: {stage_type}")
 
 
+def predict_rounds(
+    stage_type: StageType,
+    team_count: int,
+    *,
+    split_lower_bracket: bool = False,
+) -> list[int]:
+    """The round numbers a bracket of `team_count` teams will contain, without
+    generating or persisting anything.
+
+    Runs the real generator against placeholder team ids, so the predicted
+    list can never drift from what `generate_bracket` will actually produce
+    once seeds are known -- notably double elimination's negative lower-bracket
+    round numbers, and single elimination's round count depending on team
+    count rather than a stage's independently-set ``max_rounds``.
+
+    Round-robin and Swiss rounds are already a plain ``1..N`` sequence the
+    caller can compute without this; only the two bracket types are supported.
+    """
+    if team_count < 2:
+        return []
+    # Negative, so a caller who slips a predicted id past this function's
+    # boundary can never collide with a real team id.
+    placeholder_ids = list(range(-1, -(team_count + 1), -1))
+
+    if stage_type == StageType.SINGLE_ELIMINATION:
+        skeleton = single_elimination.generate(placeholder_ids)
+    elif stage_type == StageType.DOUBLE_ELIMINATION:
+        if split_lower_bracket:
+            half = team_count // 2
+            skeleton = double_elimination.generate(
+                placeholder_ids[: team_count - half],
+                lower_bracket_team_ids=placeholder_ids[team_count - half :],
+            )
+        else:
+            skeleton = double_elimination.generate(placeholder_ids)
+    else:
+        raise ValueError(f"Unsupported stage type for round prediction: {stage_type}")
+
+    return sorted({pairing.round_number for pairing in skeleton.pairings})
+
+
 __all__ = [
     "generate_bracket",
+    "predict_rounds",
     "BracketSkeleton",
     "Pairing",
     "AdvancementEdge",

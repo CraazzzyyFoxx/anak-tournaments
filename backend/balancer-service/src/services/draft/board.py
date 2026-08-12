@@ -19,7 +19,7 @@ from src.schemas.draft import (
     DraftSessionRead,
     DraftTeamRead,
 )
-from src.services.draft import loaders
+from src.services.draft import feasibility, loaders
 
 # Registration `notes` stay public: captains read them in the Player Inspector
 # while drafting. Only organizer-side metadata is stripped from the snapshot.
@@ -64,11 +64,18 @@ async def get_active_session(session: AsyncSession, tournament_id: int) -> Draft
 def public_additional_info(additional_info: dict | None) -> dict:
     """Remove organizer-only metadata from the public draft snapshot."""
 
-    return {
-        key: value
-        for key, value in (additional_info or {}).items()
-        if key not in _PRIVATE_ADDITIONAL_INFO_KEYS
-    }
+    return {key: value for key, value in (additional_info or {}).items() if key not in _PRIVATE_ADDITIONAL_INFO_KEYS}
+
+
+async def session_read(session: AsyncSession, draft_session: DraftSession) -> DraftSessionRead:
+    """The only way a draft session leaves the service.
+
+    The roster shape is no longer a column on the row, so every reader resolves
+    it through the one helper that knows which ids a draft resolves from. Both
+    levels are cached, so this is free on the hot board path.
+    """
+    shape = await feasibility.resolve_shape(session, draft_session)
+    return DraftSessionRead.from_session(draft_session, shape=shape)
 
 
 async def build_board(session: AsyncSession, draft_session: DraftSession) -> DraftBoardSnapshot:
@@ -77,9 +84,7 @@ async def build_board(session: AsyncSession, draft_session: DraftSession) -> Dra
     # transaction (services.draft.realtime), so new event -> new key -> fresh
     # board, and an unchanged id can safely serve the cached snapshot.
     topic = realtime_topics.draft(draft_session.tournament_id)
-    last_event_id = await session.scalar(
-        sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic)
-    )
+    last_event_id = await session.scalar(sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic))
     cache_key = _board_cache_key(draft_session.id, last_event_id)
     if cache.is_setup():
         try:
@@ -126,7 +131,7 @@ async def build_board(session: AsyncSession, draft_session: DraftSession) -> Dra
         else None
     )
     snapshot = DraftBoardSnapshot(
-        session=DraftSessionRead.model_validate(draft_session),
+        session=await session_read(session, draft_session),
         teams=[DraftTeamRead.model_validate(t) for t in teams],
         picks=[DraftPickRead.model_validate(p) for p in picks],
         players=[

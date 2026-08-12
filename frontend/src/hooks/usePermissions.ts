@@ -10,6 +10,7 @@ const resourcesWithCrud = [
   "workspace_member",
   "api_key",
   "user",
+  "role",
   "tournament",
   "stage",
   "team",
@@ -22,9 +23,6 @@ const resourcesWithCrud = [
   "balancer",
   "analytics",
   "achievement",
-  "hero",
-  "gamemode",
-  "map",
   "division_grid",
   "log",
   "discord_channel",
@@ -38,50 +36,22 @@ type CrudPermission = `${CrudResource}.${CrudAction}`;
 
 type SpecialPermission =
   | "admin.*"
-  | "role.read"
-  | "role.create"
-  | "role.update"
-  | "role.delete"
-  | "role.assign"
+  | "audit.read"
   | "permission.read"
   | "auth_user.read"
   | "auth_user.update"
   | "oauth_connection.read"
   | "oauth_connection.delete"
-  | "auth_session.read"
-  | "auth_session.revoke"
-  | "team.import"
-  | "team.export"
-  | "player.import"
-  | "player.export"
-  | "match.sync"
-  | "standing.recalculate"
   | "registration.approve"
   | "registration.reject"
   | "registration.check_in"
-  | "registration_status.check_in"
-  | "balancer.calculate"
-  | "balancer.generate"
-  | "balancer.publish"
-  | "balancer.export"
-  | "analytics.export"
-  | "analytics.recalculate"
-  | "achievement.calculate"
-  | "achievement.import"
-  | "achievement.export"
-  | "hero.sync"
-  | "gamemode.sync"
-  | "map.sync"
-  | "division_grid.import"
-  | "division_grid.export"
-  | "division_grid.publish"
-  | "division_grid.sync"
-  | "log.upload"
-  | "log.stream"
-  | "log.reprocess"
-  | "discord_channel.sync"
-  | "challonge.sync"
-  | "asset.upload";
+  | "rank.read"
+  | "rank.update"
+  | "subscription.read"
+  | "subscription.update"
+  | "account.avatar"
+  | "account.social"
+  | "registration.self_register";
 
 export type AppPermission = CrudPermission | SpecialPermission;
 
@@ -100,7 +70,6 @@ export type PermissionProfile = {
   denies?: string[];
   workspaces: Array<{
     workspace_id: number;
-    memberRole: string;
     permissions: string[];
   }>;
 };
@@ -109,15 +78,16 @@ export function isAdminPanelRole(role: string): boolean {
   return role === "admin" || role === "tournament_organizer" || role === "moderator";
 }
 
-export function isWorkspaceAdminRole(role: string | undefined): boolean {
-  return role === "owner";
-}
-
 function workspaceHasPermission(
   workspace: PermissionProfile["workspaces"][number] | undefined,
   permission: AppPermission,
 ): boolean {
-  return workspace?.permissions.includes("admin.*") || workspace?.permissions.includes(permission) || false;
+  // RBAC permissions are the only grant; "admin.*" is the workspace-wide wildcard.
+  return (
+    workspace?.permissions.includes("admin.*") ||
+    workspace?.permissions.includes(permission) ||
+    false
+  );
 }
 
 function permissionGrantsAdminPanelAccess(permission: string): boolean {

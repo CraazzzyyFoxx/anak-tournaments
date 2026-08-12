@@ -21,8 +21,10 @@ from shared import models
 from shared.schemas.settings import (
     SETTINGS_KEY_RANK_COLLECTION,
     SETTINGS_KEY_RANK_MAPPING,
+    SETTINGS_KEY_SUBSCRIPTION_COLLECTION,
     RankCollectionConfig,
     RankMappingConfig,
+    SubscriptionCollectionConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,3 +85,12 @@ async def get_rank_mapping_config(session: AsyncSession) -> RankMappingConfig:
     except ValidationError as exc:
         logger.warning("invalid %s settings, using defaults: %s", SETTINGS_KEY_RANK_MAPPING, exc)
         return RankMappingConfig()
+
+
+async def get_subscription_collection_config(session: AsyncSession) -> SubscriptionCollectionConfig:
+    raw = await get_setting_value(session, SETTINGS_KEY_SUBSCRIPTION_COLLECTION)
+    try:
+        return SubscriptionCollectionConfig.model_validate(raw)
+    except ValidationError as exc:
+        logger.warning("invalid %s settings, using defaults: %s", SETTINGS_KEY_SUBSCRIPTION_COLLECTION, exc)
+        return SubscriptionCollectionConfig()

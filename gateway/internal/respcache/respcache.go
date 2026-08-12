@@ -32,11 +32,12 @@
 // Redis pub/sub is fire-and-forget: a gateway that is briefly disconnected
 // misses invalidations. The TTL bounds that damage window too.
 //
-// Bounds: entries are LRU-evicted past maxEntries, and bodies larger than
-// maxBodyBytes are served but never stored. The key space is derived from
-// request URLs, which an anonymous client controls (arbitrary query strings),
-// so the LRU bound is what keeps a query-string flood from growing the map —
-// the same posture as principal.Resolver's token LRU.
+// Bounds: entries are LRU-evicted past maxEntries or past maxTotalBytes
+// aggregate stored size, and individual bodies larger than maxBodyBytes are
+// served but never stored. The key space is derived from request URLs, which
+// an anonymous client controls (arbitrary query strings), so the LRU bound is
+// what keeps a query-string flood from growing the map — the same posture as
+// principal.Resolver's token LRU.
 //
 // Concurrent misses for one key are collapsed via singleflight so a cold or
 // just-invalidated hot key costs ONE upstream RPC, not one per waiting client.
@@ -49,6 +50,8 @@ package respcache
 import (
 	"container/list"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -67,8 +70,22 @@ const (
 	maxEntries = 4096
 	// maxBodyBytes: responses larger than this are proxied through but not
 	// stored (the RPC reply is already fully in memory, so recording adds no
-	// extra buffering — only storing is capped).
-	maxBodyBytes = 1 << 20
+	// extra buffering — only storing is capped). Raised from the original
+	// 1 MiB after a real profile (/api/v1/users/{id}/tournaments, a veteran
+	// player with 40+ tournaments of nested encounters) measured ~1.045 MiB
+	// and silently never cached — every page view paid the full upstream RPC
+	// forever. 3 MiB gives headroom for larger histories; maxTotalBytes below
+	// keeps the aggregate footprint bounded regardless of this per-entry cap.
+	maxBodyBytes = 3 << 20
+	// maxTotalBytes bounds the sum of stored entry bodies. Without this, a
+	// cache full of maxBodyBytes-sized entries could reach maxEntries *
+	// maxBodyBytes (12 GiB) — wildly past the gateway container's 256 MiB
+	// limit (docker-compose.production.yml). 32 MiB is 32x the profile that
+	// motivated the raise above, comfortably covers realistic concurrent
+	// large-profile traffic (most cached bodies are a few KB), and still
+	// leaves ~87% of the hard memory limit for the Go runtime, connection
+	// buffers, and the gateway's other in-memory caches.
+	maxTotalBytes = 32 << 20
 )
 
 // Extractor resolves the invalidation scope for a request: a positive
@@ -131,16 +148,18 @@ type entry struct {
 // *Cache is valid and inert (Wrap returns next unchanged, Broadcast is a
 // no-op), so callers can wire it unconditionally and disable via config.
 type Cache struct {
-	ttl    time.Duration
-	max    int
-	log    *slog.Logger
-	now    func() time.Time
-	flight singleflight.Group
+	ttl      time.Duration
+	max      int
+	maxBytes int64
+	log      *slog.Logger
+	now      func() time.Time
+	flight   singleflight.Group
 
-	mu   sync.Mutex
-	keys map[string]*list.Element // key -> element (holds *entry)
-	lru  *list.List               // front = most recently used
-	byID map[int64]map[string]struct{}
+	mu         sync.Mutex
+	keys       map[string]*list.Element // key -> element (holds *entry)
+	lru        *list.List               // front = most recently used
+	byID       map[int64]map[string]struct{}
+	totalBytes int64 // sum of len(entry.body) for all stored entries
 }
 
 // New returns a Cache with the given staleness backstop, or nil (disabled)
@@ -149,18 +168,19 @@ func New(ttl time.Duration, log *slog.Logger) *Cache {
 	if ttl <= 0 {
 		return nil
 	}
-	return newCache(ttl, maxEntries, log)
+	return newCache(ttl, maxEntries, maxTotalBytes, log)
 }
 
-func newCache(ttl time.Duration, max int, log *slog.Logger) *Cache {
+func newCache(ttl time.Duration, max int, maxBytes int64, log *slog.Logger) *Cache {
 	return &Cache{
-		ttl:  ttl,
-		max:  max,
-		log:  log,
-		now:  time.Now,
-		keys: make(map[string]*list.Element),
-		lru:  list.New(),
-		byID: make(map[int64]map[string]struct{}),
+		ttl:      ttl,
+		max:      max,
+		maxBytes: maxBytes,
+		log:      log,
+		now:      time.Now,
+		keys:     make(map[string]*list.Element),
+		lru:      list.New(),
+		byID:     make(map[int64]map[string]struct{}),
 	}
 }
 
@@ -312,34 +332,93 @@ func (c *Cache) Wrap(next http.Handler, rule Rule) http.Handler {
 	})
 }
 
-// Invalidate drops every cached response for the tournament, returning how
-// many entries were removed.
-func (c *Cache) Invalidate(tournamentID int64) int {
+// Invalidate drops cached responses for the tournament whose key contains any
+// of patterns, or every response for the tournament when patterns is nil.
+// Returns how many entries were removed.
+func (c *Cache) Invalidate(tournamentID int64, patterns []string) int {
 	if c == nil {
 		return 0
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	keys := c.byID[tournamentID]
-	// removeLocked deletes from this same set as we range (legal in Go), so
-	// the count must be taken before the loop empties it.
-	n := len(keys)
+	// removeLocked deletes from this same set as we range (legal in Go).
+	n := 0
 	for k := range keys {
+		if patterns != nil && !matchesAnyPattern(k, patterns) {
+			continue
+		}
 		if el, ok := c.keys[k]; ok {
 			c.removeLocked(el)
+			n++
 		}
 	}
 	return n
+}
+
+func matchesAnyPattern(key string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if strings.Contains(key, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// reasonPatterns returns the cached-entry URL substrings a reason can have
+// staled, or nil (invalidate everything) for a reason outside this table —
+// including results_changed/structure_changed (which can touch nearly
+// everything), and anything unparseable or missing entirely (e.g. the draft
+// topic's board-patch payloads carry no reason field at all).
+//
+// over-invalidation is a cache miss; under-invalidation is a stale page, so
+// unknown reasons default to invalidating everything for the tournament.
+func reasonPatterns(reason string, tournamentID int64) []string {
+	switch reason {
+	case "bracket_changed":
+		return []string{"/api/v1/encounters"}
+	case "registration_changed":
+		// The tournament-detail response embeds live participants_count/
+		// registrations_count (tournament/flows.py::get_read), which DO
+		// change on every registration write — teams/standings/encounters do
+		// not, so only these two entries need dropping. The id-qualified "?"
+		// suffix keeps this from also matching /stages or /standings, whose
+		// cache keys share the "/api/v1/tournaments/{id}" path prefix.
+		return []string{
+			"/registration/list",
+			fmt.Sprintf("/api/v1/tournaments/%d?", tournamentID),
+		}
+	default:
+		return nil
+	}
+}
+
+// eventFrameReason best-effort extracts the tournament realtime reason from a
+// worker event frame: {"op":"event","topic":...,"event":{"data":{"reason":...}}}
+// (see shared/schemas/realtime.py EventFrame/WorkspaceEventEnvelope). Returns
+// "" on any parse failure or a missing reason field — callers treat "" as
+// "scope unknown, invalidate everything".
+func eventFrameReason(payload []byte) string {
+	var frame struct {
+		Event struct {
+			Data struct {
+				Reason string `json:"reason"`
+			} `json:"data"`
+		} `json:"event"`
+	}
+	if err := json.Unmarshal(payload, &frame); err != nil {
+		return ""
+	}
+	return frame.Event.Data.Reason
 }
 
 // Broadcast implements the events.Broadcaster shape so the cache can ride the
 // existing realtime subscription (events.Fanout(hub, cache)). Any message on a
 // tournament's bracket or draft topic — the worker publishes
 // "tournament.updated" there from its tournament_changed consumer, and live
-// score/draft events ride the same topics — invalidates that tournament.
-// Over-invalidation is a cache miss; under-invalidation is a stale page, so
-// unknown payloads err on the side of dropping.
-func (c *Cache) Broadcast(topic string, _ []byte) {
+// score/draft events ride the same topics — invalidates that tournament,
+// scoped down by reasonPatterns when the payload names a recognized reason.
+func (c *Cache) Broadcast(topic string, payload []byte) {
 	if c == nil {
 		return
 	}
@@ -355,7 +434,8 @@ func (c *Cache) Broadcast(topic string, _ []byte) {
 	if !ok {
 		return
 	}
-	if n := c.Invalidate(id); n > 0 {
+	patterns := reasonPatterns(eventFrameReason(payload), id)
+	if n := c.Invalidate(id, patterns); n > 0 {
 		c.log.Debug("response cache invalidated", "tournament_id", id, "entries", n, "topic", topic)
 	}
 }
@@ -390,7 +470,7 @@ func (c *Cache) store(e *entry) {
 	if el, ok := c.keys[e.key]; ok {
 		c.removeLocked(el)
 	}
-	for len(c.keys) >= c.max {
+	for len(c.keys) >= c.max || (c.lru.Len() > 0 && c.totalBytes+int64(len(e.body)) > c.maxBytes) {
 		back := c.lru.Back()
 		if back == nil {
 			break
@@ -399,6 +479,7 @@ func (c *Cache) store(e *entry) {
 	}
 	el := c.lru.PushFront(e)
 	c.keys[e.key] = el
+	c.totalBytes += int64(len(e.body))
 	ids, ok := c.byID[e.tournamentID]
 	if !ok {
 		ids = make(map[string]struct{})
@@ -411,6 +492,7 @@ func (c *Cache) removeLocked(el *list.Element) {
 	e := el.Value.(*entry)
 	delete(c.keys, e.key)
 	c.lru.Remove(el)
+	c.totalBytes -= int64(len(e.body))
 	if ids, ok := c.byID[e.tournamentID]; ok {
 		delete(ids, e.key)
 		if len(ids) == 0 {

@@ -1,7 +1,7 @@
 """Typed-RPC handlers for the remaining parser-unique admin surface:
 
-- OverFast metadata sync: ``POST /heroes|maps|gamemodes/update`` (the public
-  reads of these entities are owned by app-service).
+- OverFast metadata sync: ``POST /heroes|maps|gamemodes/update`` (superuser; the
+  public reads of these entities are owned by app-service).
 - Global settings CRUD (superuser) — ``src/routes/admin/settings.py``.
 - Per-tournament Discord channel config — ``src/routes/admin/discord_channel.py``.
 """
@@ -30,26 +30,21 @@ _SF = db.async_session_maker
 
 
 def register(broker: Any, logger: Any) -> None:
-    # ── OverFast metadata sync (require_permission(<entity>, "sync")) ───────────
-    def _sync_handler(queue: str, resource: str, initial_create: Any, label: str) -> None:
+    # ── OverFast metadata sync (superuser: global game content) ─────────────────
+    def _sync_handler(queue: str, initial_create: Any, label: str) -> None:
         @broker.subscriber(queue)
         async def _sync(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
-                user = c.actor(data)
-                c.require_active(user)
-                if not user.has_permission(resource, "sync"):
-                    raise HTTPException(status_code=403, detail=f"Permission denied: {resource}.sync required")
+                c.require_superuser(c.actor(data))
                 await initial_create(session)
                 await session.commit()
                 return {"success": True}
 
             return await c.envelope(logger, label, op, session_factory=_SF)
 
-    _sync_handler("rpc.parser.metadata.sync_heroes", "hero", hero_flows.initial_create, "metadata.sync_heroes")
-    _sync_handler("rpc.parser.metadata.sync_maps", "map", map_flows.initial_create, "metadata.sync_maps")
-    _sync_handler(
-        "rpc.parser.metadata.sync_gamemodes", "gamemode", gamemode_flows.initial_create, "metadata.sync_gamemodes"
-    )
+    _sync_handler("rpc.parser.metadata.sync_heroes", hero_flows.initial_create, "metadata.sync_heroes")
+    _sync_handler("rpc.parser.metadata.sync_maps", map_flows.initial_create, "metadata.sync_maps")
+    _sync_handler("rpc.parser.metadata.sync_gamemodes", gamemode_flows.initial_create, "metadata.sync_gamemodes")
 
     # ── Global settings (superuser) ─────────────────────────────────────────────
     @broker.subscriber("rpc.parser.settings.list")
@@ -130,7 +125,6 @@ def register(broker: Any, logger: Any) -> None:
             if channel is None:
                 channel = models.TournamentDiscordChannel(tournament_id=tournament_id)
                 session.add(channel)
-            channel.guild_id = int(body.guild_id)
             channel.channel_id = int(body.channel_id)
             channel.channel_name = body.channel_name
             channel.is_active = body.is_active

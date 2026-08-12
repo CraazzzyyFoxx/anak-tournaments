@@ -1,27 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import {
   ArrowLeftRight,
-  Check,
-  ChevronsUpDown,
-  Minus,
   Plus,
   Pencil,
   Sparkles,
   Trash2
 } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
-import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import { TeamCombobox } from "@/components/admin/TeamCombobox";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
@@ -32,17 +30,10 @@ import { Player, Team } from "@/types/team.types";
 import { PlayerCreateInput, PlayerSubRole, PlayerUpdateInput } from "@/types/admin.types";
 import { formatSubRoleLabel } from "@/utils/player";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import {
   Select,
   SelectContent,
@@ -51,12 +42,16 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
+import {
+  PLAYER_ROLE_OPTIONS,
+  filterSubRoleOptions,
+  normalizePlayerRole,
+  type PlayerRoleOption
+} from "@/lib/player-role";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { MinimizedUser } from "@/types/user.types";
-import type { Tournament } from "@/types/tournament.types";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import { cn } from "@/lib/utils";
 import { getPlayerRowDivisionGrid } from "@/app/admin/players/playerRowDivisionGrid";
 
 const TOURNAMENT_QUERY_PARAM = "tournament";
@@ -71,54 +66,15 @@ interface PlayerFormData {
   rank: number;
   division: number;
   is_newcomer: boolean;
-  is_newcomer_role: boolean;
   is_substitution: boolean;
 }
 
 type PlayerRow = Player & { team: Team };
 
-type PlayerRoleOption = "Tank" | "Damage" | "Support";
-
-const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Support"];
-
-function normalizePlayerRole(role: string | null | undefined): PlayerRoleOption {
-  const normalized = role?.trim().toLowerCase();
-
-  if (normalized === "tank") {
-    return "Tank";
-  }
-
-  if (normalized === "dps" || normalized === "damage") {
-    return "Damage";
-  }
-
-  if (normalized === "support") {
-    return "Support";
-  }
-
-  return "Damage";
-}
-
-function normalizeSubRoleCatalogRole(role: string | null | undefined) {
-  const normalized = normalizePlayerRole(role);
-  if (normalized === "Damage") {
-    return "damage";
-  }
-  if (normalized === "Support") {
-    return "support";
-  }
-  return "tank";
-}
-
-function filterSubRoleOptions(subRoles: PlayerSubRole[] | undefined, role: string) {
-  const catalogRole = normalizeSubRoleCatalogRole(role);
-  return (subRoles ?? []).filter((subRole) => subRole.role === catalogRole);
-}
-
 function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
   return (
     <div className="flex items-center gap-2">
-      <PlayerRoleIcon role={role} size={18} />
+      <PlayerRoleIcon role={role} size={18} decorative />
       <span>{role}</span>
     </div>
   );
@@ -131,6 +87,7 @@ interface PlayerOption {
 }
 
 interface SearchableSelectProps {
+  id?: string;
   value: string;
   options: PlayerOption[];
   onChange: (value: string) => void;
@@ -141,6 +98,7 @@ interface SearchableSelectProps {
 }
 
 function SearchableSelect({
+  id,
   value,
   options,
   onChange,
@@ -150,147 +108,43 @@ function SearchableSelect({
   disabled = false
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
   const selected = options.find((option) => option.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
-        >
-          <span className="truncate" title={selected?.label ?? placeholder}>
-            {selected?.label ?? placeholder}
-          </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.meta ?? ""} ${option.value}`}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                    <span className="truncate">{option.label}</span>
-                    {option.meta ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
-                    ) : null}
-                  </div>
-                  <Check
-                    className={cn(
-                      "ml-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-interface PlayerNumberInputProps {
-  id: string;
-  value: number;
-  onChange: (value: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-}
-
-function clampNumber(value: number, min?: number, max?: number) {
-  if (typeof min === "number" && value < min) {
-    return min;
-  }
-  if (typeof max === "number" && value > max) {
-    return max;
-  }
-  return value;
-}
-
-function PlayerNumberInput({ id, value, onChange, min, max, step = 1 }: PlayerNumberInputProps) {
-  const [draft, setDraft] = useState(String(value));
-
-  useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
-
-  const commitValue = (nextDraft: string) => {
-    const nextValue = Number.parseInt(nextDraft, 10);
-    if (Number.isNaN(nextValue)) {
-      setDraft(String(value));
-      return;
-    }
-
-    const clamped = clampNumber(nextValue, min, max);
-    setDraft(String(clamped));
-    onChange(clamped);
-  };
-
-  const stepValue = (direction: -1 | 1) => {
-    const nextValue = clampNumber(value + step * direction, min, max);
-    setDraft(String(nextValue));
-    onChange(nextValue);
-  };
-
-  return (
-    <div className="flex h-10 rounded-md border border-input bg-background/80 shadow-sm focus-within:ring-1 focus-within:ring-ring">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-full w-10 shrink-0 rounded-r-none border-r"
-        onClick={() => stepValue(-1)}
-        disabled={typeof min === "number" && value <= min}
-        aria-label={`Decrease ${id}`}
-      >
-        <Minus className="h-3.5 w-3.5" />
-      </Button>
-      <Input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={draft}
-        onChange={(event) => {
-          const nextDraft = event.target.value.replace(/[^\d-]/g, "");
-          setDraft(nextDraft);
-          if (nextDraft && nextDraft !== "-") {
-            commitValue(nextDraft);
-          }
-        }}
-        onBlur={() => commitValue(draft)}
-        className="h-full rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
-      />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-full w-10 shrink-0 rounded-l-none border-l"
-        onClick={() => stepValue(1)}
-        disabled={typeof max === "number" && value >= max}
-        aria-label={`Increase ${id}`}
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </Button>
-    </div>
+    <AdminCombobox
+      id={id}
+      open={open}
+      onOpenChange={setOpen}
+      label={selected?.label ?? placeholder}
+      disabled={disabled}
+      searchValue={searchValue}
+      onSearchValueChange={setSearchValue}
+      searchPlaceholder={searchPlaceholder}
+      emptyMessage={emptyMessage}
+    >
+      <CommandGroup>
+        {options.map((option) => (
+          <CommandItem
+            key={option.value}
+            value={`${option.label} ${option.meta ?? ""} ${option.value}`}
+            onSelect={() => {
+              onChange(option.value);
+              setOpen(false);
+              setSearchValue("");
+            }}
+          >
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+              <span className="truncate">{option.label}</span>
+              {option.meta ? (
+                <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
+              ) : null}
+            </div>
+            <AdminComboboxCheck selected={value === option.value} />
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </AdminCombobox>
   );
 }
 
@@ -304,7 +158,6 @@ const defaultFormData: PlayerFormData = {
   rank: 0,
   division: 0,
   is_newcomer: false,
-  is_newcomer_role: false,
   is_substitution: false
 };
 
@@ -321,7 +174,6 @@ function getEditPlayerForm(player: Player): PlayerFormData {
     rank: player.rank,
     division: player.division,
     is_newcomer: player.is_newcomer,
-    is_newcomer_role: player.is_newcomer_role,
     is_substitution: player.is_substitution
   };
 }
@@ -345,7 +197,6 @@ function buildPlayerCreateInput(formData: PlayerFormData): PlayerCreateInput {
     rank: formData.rank,
     div: formData.division,
     is_newcomer: formData.is_newcomer,
-    is_newcomer_role: formData.is_newcomer_role,
     is_substitution: formData.is_substitution,
     ...(formData.sub_role ? { sub_role: formData.sub_role } : {})
   };
@@ -358,7 +209,6 @@ function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
     rank: formData.rank,
     div: formData.division,
     is_newcomer: formData.is_newcomer,
-    is_newcomer_role: formData.is_newcomer_role,
     is_substitution: formData.is_substitution,
     ...(formData.sub_role ? { sub_role: formData.sub_role } : {})
   };
@@ -387,6 +237,7 @@ export default function PlayersPage() {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
   const [selectedUserName, setSelectedUserName] = useState("");
+  const createHintId = useId();
 
   // Fetch tournaments and teams
   const { data: tournamentsData } = useQuery({
@@ -510,13 +361,13 @@ export default function PlayersPage() {
     }
   };
 
-  const handleTournamentFilterChange = (tournament: Tournament | undefined) => {
-    const nextTournamentId = tournament?.id ?? null;
+  const handleTournamentFilterChange = (value: string) => {
+    const nextTournamentId = value === "all" ? null : Number(value);
     const nextParams = new URLSearchParams(searchParams.toString());
     if (nextTournamentId == null) {
       nextParams.delete(TOURNAMENT_QUERY_PARAM);
     } else {
-      nextParams.set(TOURNAMENT_QUERY_PARAM, nextTournamentId.toString());
+      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
     }
 
     setFormData((current) => ({
@@ -537,15 +388,6 @@ export default function PlayersPage() {
   const subRoleOptions = filterSubRoleOptions(playerSubRoles, formData.role);
   const hasCurrentSubRoleOption = subRoleOptions.some(
     (subRole) => subRole.slug === formData.sub_role
-  );
-  const teamOptions = useMemo(
-    () =>
-      (teamsData?.results ?? []).map((team) => ({
-        value: team.id.toString(),
-        label: team.name,
-        meta: `${team.players?.length ?? 0} players`
-      })),
-    [teamsData?.results]
   );
   const subRoleSelectOptions = useMemo(() => {
     const options = [
@@ -589,13 +431,13 @@ export default function PlayersPage() {
     {
       accessorKey: "rank",
       header: "Rank",
-      cell: ({ row }) => <div>{row.getValue("rank")}</div>
+      cell: ({ row }) => <div className="tabular-nums">{row.getValue("rank")}</div>
     },
     {
       accessorKey: "sub_role",
       header: "Sub-role",
       cell: ({ row }) => (
-        <div>{formatSubRoleLabel(row.getValue<string | null>("sub_role")) ?? "-"}</div>
+        <div>{formatSubRoleLabel(row.getValue<string | null>("sub_role")) ?? "—"}</div>
       )
     },
     {
@@ -603,7 +445,7 @@ export default function PlayersPage() {
       header: "Div",
       cell: ({ row }) => (
         <div className="flex justify-start">
-          <PlayerDivisionIcon
+          <DivisionIcon
             division={row.getValue<number>("division")}
             tournamentGrid={getPlayerRowDivisionGrid(row.original.team)}
             width={28}
@@ -673,26 +515,24 @@ export default function PlayersPage() {
         description="Manage players across all teams"
         actions={
           canCreate ? (
-            <Button onClick={handleCreate} disabled={!selectedTournamentId}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Player
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {!selectedTournamentId ? (
+                <span id={createHintId} className="text-sm text-muted-foreground">
+                  Pick a tournament first — a player joins a team inside one tournament.
+                </span>
+              ) : null}
+              <Button
+                onClick={handleCreate}
+                disabled={!selectedTournamentId}
+                aria-describedby={!selectedTournamentId ? createHintId : undefined}
+              >
+                <Plus className="mr-2 h-4 w-4" aria-hidden />
+                Create player
+              </Button>
+            </div>
           ) : null
         }
       />
-
-      <div className="flex items-center gap-4">
-        <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
-        <div id="tournament-filter" className="w-full max-w-[360px]">
-          <TournamentCombobox
-            tournaments={tournamentsData?.results ?? []}
-            value={selectedTournamentId ?? undefined}
-            placeholder="All tournaments"
-            searchPlaceholder="Search tournament..."
-            onSelect={handleTournamentFilterChange}
-          />
-        </div>
-      </div>
 
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir) => [
@@ -716,8 +556,30 @@ export default function PlayersPage() {
           return paginateResults(sorted, page, pageSize);
         }}
         columns={columns}
-        searchPlaceholder="Search players..."
-        emptyMessage="No players found."
+        searchPlaceholder="Search players…"
+        emptyMessage={
+          selectedTournamentId
+            ? "No players in this tournament yet. Use “Create player” to add the first one."
+            : "No players yet. Pick a tournament to see or create its players."
+        }
+        actions={
+          <Select
+            value={selectedTournamentId?.toString() ?? "all"}
+            onValueChange={handleTournamentFilterChange}
+          >
+            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
+              <SelectValue placeholder="Filter by tournament" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tournaments</SelectItem>
+              {tournamentsData?.results.map((tournament) => (
+                <SelectItem key={tournament.id} value={tournament.id.toString()}>
+                  {tournament.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
 
@@ -725,8 +587,8 @@ export default function PlayersPage() {
       <EntityFormDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        title="Create Player"
-        description="Add a new player to a team"
+        title="Create player"
+        description="Add a new player to a team in the selected tournament"
         onSubmit={handleSubmitCreate}
         isSubmitting={createMutation.isPending}
         submittingLabel="Creating player…"
@@ -736,23 +598,21 @@ export default function PlayersPage() {
         <div className="space-y-4">
           <div>
             <Label htmlFor="team_id">Team *</Label>
-            <SearchableSelect
-              value={formData.team_id ? formData.team_id.toString() : ""}
-              options={teamOptions}
+            <TeamCombobox
+              id="team_id"
+              teams={teamsData?.results ?? []}
+              value={formData.team_id || null}
               placeholder={
-                selectedTournamentId ? "Search and select team" : "Select tournament first"
+                selectedTournamentId ? "Search and select team" : "Pick a tournament first"
               }
-              searchPlaceholder="Search team..."
-              emptyMessage="No teams found."
+              searchPlaceholder="Search team…"
               disabled={!selectedTournamentId}
-              onChange={(value) =>
-                setFormData({ ...formData, team_id: Number.parseInt(value, 10) })
-              }
+              onSelect={(team) => setFormData({ ...formData, team_id: team?.id ?? 0 })}
             />
           </div>
 
           <div>
-            <Label htmlFor="name">Player Name *</Label>
+            <Label htmlFor="name">Player name *</Label>
             <Input
               id="name"
               value={formData.name}
@@ -764,10 +624,11 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="user_id">User *</Label>
             <UserSearchCombobox
+              id="user_id"
               value={formData.user_id || undefined}
               selectedName={selectedUserName || undefined}
               placeholder="Search user by name"
-              searchPlaceholder="Search user by name..."
+              searchPlaceholder="Search user by name…"
               onSelect={(user: MinimizedUser | undefined) => {
                 setSelectedUserName(user?.name ?? "");
                 setFormData((current) => ({
@@ -785,7 +646,7 @@ export default function PlayersPage() {
               value={normalizePlayerRole(formData.role)}
               onValueChange={(value) => setFormData({ ...formData, role: value, sub_role: "" })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="role">
                 <RoleOptionContent role={normalizePlayerRole(formData.role)} />
               </SelectTrigger>
               <SelectContent>
@@ -801,11 +662,12 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="sub_role">Sub-role</Label>
             <SearchableSelect
+              id="sub_role"
               value={formData.sub_role || "none"}
               options={subRoleSelectOptions}
               placeholder="Select sub-role"
-              searchPlaceholder="Search sub-role..."
-              emptyMessage="No sub-roles found."
+              searchPlaceholder="Search sub-role…"
+              emptyMessage="No sub-roles match that search."
               onChange={(value) => {
                 const subRole = value === "none" ? "" : value;
                 setFormData({
@@ -819,21 +681,23 @@ export default function PlayersPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="rank">Rank</Label>
-              <PlayerNumberInput
+              <NumberInput
                 id="rank"
-                value={formData.rank}
+                integer
                 min={0}
-                onChange={(rank) => setFormData({ ...formData, rank })}
+                value={formData.rank}
+                onValueChange={(rank) => setFormData({ ...formData, rank: rank ?? 0 })}
               />
             </div>
 
             <div>
-              <Label htmlFor="div">Division</Label>
-              <PlayerNumberInput
-                id="div"
-                value={formData.division}
+              <Label htmlFor="division">Division</Label>
+              <NumberInput
+                id="division"
+                integer
                 min={0}
-                onChange={(division) => setFormData({ ...formData, division })}
+                value={formData.division}
+                onValueChange={(division) => setFormData({ ...formData, division: division ?? 0 })}
               />
             </div>
           </div>
@@ -872,7 +736,7 @@ export default function PlayersPage() {
       <EntityFormDialog
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        title="Edit Player"
+        title="Edit player"
         description="Update player details"
         onSubmit={handleSubmitUpdate}
         isSubmitting={updateMutation.isPending}
@@ -882,7 +746,7 @@ export default function PlayersPage() {
       >
         <div className="space-y-4">
           <div>
-            <Label htmlFor="edit-name">Player Name</Label>
+            <Label htmlFor="edit-name">Player name</Label>
             <Input
               id="edit-name"
               value={formData.name}
@@ -896,7 +760,7 @@ export default function PlayersPage() {
               value={normalizePlayerRole(formData.role)}
               onValueChange={(value) => setFormData({ ...formData, role: value, sub_role: "" })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="edit-role">
                 <RoleOptionContent role={normalizePlayerRole(formData.role)} />
               </SelectTrigger>
               <SelectContent>
@@ -912,11 +776,12 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="edit-sub_role">Sub-role</Label>
             <SearchableSelect
+              id="edit-sub_role"
               value={formData.sub_role || "none"}
               options={subRoleSelectOptions}
               placeholder="Select sub-role"
-              searchPlaceholder="Search sub-role..."
-              emptyMessage="No sub-roles found."
+              searchPlaceholder="Search sub-role…"
+              emptyMessage="No sub-roles match that search."
               onChange={(value) => {
                 const subRole = value === "none" ? "" : value;
                 setFormData({
@@ -930,21 +795,23 @@ export default function PlayersPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="edit-rank">Rank</Label>
-              <PlayerNumberInput
+              <NumberInput
                 id="edit-rank"
-                value={formData.rank}
+                integer
                 min={0}
-                onChange={(rank) => setFormData({ ...formData, rank })}
+                value={formData.rank}
+                onValueChange={(rank) => setFormData({ ...formData, rank: rank ?? 0 })}
               />
             </div>
 
             <div>
-              <Label htmlFor="edit-div">Division</Label>
-              <PlayerNumberInput
-                id="edit-div"
-                value={formData.division}
+              <Label htmlFor="edit-division">Division</Label>
+              <NumberInput
+                id="edit-division"
+                integer
                 min={0}
-                onChange={(division) => setFormData({ ...formData, division })}
+                value={formData.division}
+                onValueChange={(division) => setFormData({ ...formData, division: division ?? 0 })}
               />
             </div>
           </div>
@@ -985,8 +852,8 @@ export default function PlayersPage() {
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={handleConfirmDelete}
-          title="Delete Player"
-          description={`Are you sure you want to delete "${selectedPlayer?.name}"? This action cannot be undone.`}
+          title="Delete player"
+          description={`Deleting “${selectedPlayer?.name}” removes the player from their roster along with their match statistics. This cannot be undone.`}
           isDeleting={deleteMutation.isPending}
         />
       ) : null}

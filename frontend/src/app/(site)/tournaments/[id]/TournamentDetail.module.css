@@ -16,7 +16,7 @@
   min-width: 0;
   max-width: 100%;
   border-bottom: 1px solid var(--aqt-border);
-  background: hsl(220 21% 5% / 0.96);
+  background: color-mix(in srgb, var(--aqt-bg) 96%, transparent);
 }
 
 .railFrameWithControls {
@@ -119,7 +119,7 @@
 .navItem:hover,
 .navItem:focus-visible {
   color: var(--aqt-fg);
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   outline: none;
 }
 
@@ -153,7 +153,7 @@
   height: 0.375rem;
   border-radius: 999px;
   background: var(--aqt-rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aqt-rose) 16%, transparent);
   animation: navLivePulse 2s ease-in-out infinite;
 }
 
@@ -192,7 +192,7 @@
   border: 1px solid hsl(217 17% 21% / 0.45);
   border-radius: 0.45rem;
   background:
-    linear-gradient(105deg, transparent 32%, hsl(172 70% 49% / 0.07) 48%, transparent 64%),
+    linear-gradient(105deg, transparent 32%, color-mix(in srgb, var(--aqt-teal) 7%, transparent) 48%, transparent 64%),
     hsl(220 22% 11% / 0.72);
   background-size:
     240% 100%,
@@ -245,12 +245,6 @@
   border-bottom: 0;
 }
 
-.skeletonGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-
 .teamsSkeletonGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -292,39 +286,12 @@
   border-bottom: 1px solid var(--aqt-border);
 }
 
-.stateCard {
-  display: grid;
-  justify-items: start;
-  gap: 0.55rem;
-  padding: 1.25rem;
-  border: 1px solid var(--aqt-border);
-  border-left: 2px solid var(--aqt-teal);
-  border-radius: var(--aqt-radius-sm);
-  background: var(--aqt-card);
-}
-
-.stateCard h2,
-.stateCard p {
-  margin: 0;
-}
-
-.stateCard h2 {
-  font-family: var(--aqt-onest);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-}
-
-.stateCard p {
-  color: var(--aqt-fg-muted);
-  font-size: 0.8125rem;
-}
-
 .stateAction {
   min-height: 2.25rem;
   padding: 0.45rem 0.75rem;
   border: 1px solid var(--aqt-border-2);
   border-radius: 0.4rem;
-  background: hsl(172 70% 49% / 0.08);
+  background: color-mix(in srgb, var(--aqt-teal) 8%, transparent);
   color: var(--aqt-teal);
   font-family: var(--aqt-mono);
   font-size: 0.6875rem;
@@ -345,9 +312,9 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.7rem 0.85rem;
-  border: 1px solid hsl(36 88% 65% / 0.24);
+  border: 1px solid color-mix(in srgb, var(--aqt-amber) 24%, transparent);
   border-radius: 0.4rem;
-  background: hsl(36 88% 65% / 0.055);
+  background: color-mix(in srgb, var(--aqt-amber) 5.5%, transparent);
   color: var(--aqt-fg-muted);
   font-size: 0.75rem;
 }
@@ -386,6 +353,33 @@
   gap: 1rem;
 }
 
+/* Grid items default to `min-width: auto`, i.e. their min-content width, so any
+   intrinsically wide descendant (a bracket, a wide table) grows this grid past
+   the viewport and takes the whole document's horizontal scrollbar with it, no
+   matter how many `overflow: hidden` ancestors sit in between. Pinning items to
+   0 keeps every overflow owner local. */
+.publicDataPage > * {
+  min-width: 0;
+}
+
+/* The bracket canvas is intrinsically wider than any viewport. It owns its own
+   horizontal scroll so the page never scrolls sideways; the caller marks it as
+   a focusable labelled region so keyboard users can reach that scroll.
+   Deliberately no `contain`/`transform` here: the bracket's fullscreen mode is
+   `position: fixed` and a containment ancestor would clip it. */
+.bracketScroller {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.bracketScroller:focus-visible {
+  outline: 2px solid var(--aqt-teal);
+  outline-offset: 2px;
+}
+
 .controlRail,
 .stageNavigation {
   min-width: 0;
@@ -404,35 +398,6 @@
 
 .controlRail > * {
   flex: 0 0 auto;
-}
-
-.tableViewport,
-.standingsViewport {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: clip;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
-}
-
-.tableViewport {
-  overflow-x: auto;
-}
-
-.standingsViewport {
-  overflow-x: auto;
-}
-
-.tableViewport:focus-visible,
-.standingsViewport:focus-visible {
-  outline: 1px solid var(--aqt-teal);
-  outline-offset: -2px;
-}
-
-.matchesTable {
-  min-width: 58rem;
 }
 
 .heroList {
@@ -462,27 +427,6 @@
   display: grid;
   min-width: 0;
   gap: 1rem;
-}
-
-.standingsViewport {
-  position: relative;
-}
-
-.standingsTable {
-  min-width: 46rem;
-}
-
-.stickyTeamColumn {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  background: var(--aqt-card, var(--card)) !important;
-  box-shadow: 1px 0 var(--aqt-border);
-}
-
-thead .stickyTeamColumn {
-  z-index: 3;
-  background: hsl(220 22% 10%) !important;
 }
 
 .stageEmpty {
@@ -519,7 +463,7 @@ thead .stickyTeamColumn {
 .participantHeaderRow {
   min-height: 2.55rem;
   border-bottom: 1px solid var(--aqt-border);
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
 }
 
 .participantHeaderCell {
@@ -546,13 +490,24 @@ thead .stickyTeamColumn {
   top: 0;
   left: 0;
   width: 100%;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   background: var(--aqt-card);
   contain: layout style;
 }
 
+/* Find-in-page mode: every row is mounted in normal flow so the browser's own
+   search can reach it, while offscreen rows skip layout and paint. */
+.participantStaticRow {
+  position: static;
+  content-visibility: auto;
+  /* 55px content + 1px border-bottom keeps an unrendered row at the
+     ESTIMATED_ROW_HEIGHT the virtualizer used, so switching modes while
+     scrolled does not move the page. */
+  contain-intrinsic-size: auto 55px;
+}
+
 .participantVirtualRow:hover {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 
 .participantSummaryRow {
@@ -570,6 +525,12 @@ thead .stickyTeamColumn {
 
 .participantCellCenter {
   text-align: center;
+}
+
+/* Badge and icon tracks are narrow by design, so the 0.85rem gutter would eat
+   more of them than the content does. Centred content keeps the rhythm. */
+.participantCompactCell {
+  padding-inline: 0.5rem;
 }
 
 .participantCellValue {
@@ -641,7 +602,7 @@ thead .stickyTeamColumn {
   padding: 0.85rem;
   border: 1px solid var(--aqt-border);
   border-radius: 0.5rem;
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
 }
 
 .participantHiddenField {
@@ -692,12 +653,6 @@ thead .stickyTeamColumn {
   }
 }
 
-@media (max-width: 900px) {
-  .skeletonGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
   .navItem {
     padding-inline: 0.7rem;
@@ -710,14 +665,6 @@ thead .stickyTeamColumn {
 
   .heroList {
     padding: 0.85rem;
-  }
-
-  .matchesTable {
-    min-width: 52rem;
-  }
-
-  .skeletonGrid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .skeletonRow {
@@ -757,7 +704,7 @@ thead .stickyTeamColumn {
 
   .participantVirtualRow {
     border: 1px solid var(--aqt-border);
-    border-left: 2px solid hsl(172 70% 49% / 0.4);
+    border-left: 2px solid color-mix(in srgb, var(--aqt-teal) 40%, transparent);
     border-radius: 0.55rem;
     background: hsl(220 22% 9% / 0.96);
   }
@@ -832,7 +779,7 @@ thead .stickyTeamColumn {
   .participantExpander {
     min-width: 5.4rem;
     border-color: var(--aqt-border-2);
-    background: hsl(0 0% 100% / 0.025);
+    background: var(--aqt-overlay-2);
     color: var(--aqt-fg-muted);
     font-family: var(--aqt-mono);
     font-size: 0.625rem;

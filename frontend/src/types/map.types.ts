@@ -7,6 +7,9 @@ export interface MapRead {
   name: string;
   image_path: string;
   gamemode_id: number;
+  in_competitive: boolean;
+  /** Names this map appears under in match logs; maintained by hand. */
+  aliases: string[];
 
   gamemode: Gamemode;
 }

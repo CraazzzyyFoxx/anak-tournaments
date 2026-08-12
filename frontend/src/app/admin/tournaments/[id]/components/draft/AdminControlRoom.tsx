@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, ArrowUpRight, Clock3, Radio, ShieldAlert, Users } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Radio, ShieldAlert, UserRound, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { DraftClock } from "@/app/(site)/tournaments/[id]/draft/_components/DraftClock";
+import { DraftClock } from "@/components/draft/DraftClock";
 import {
   useDraftFeasibilityQuery,
   useDraftPickOptionsQuery,
   useDraftRealtime
-} from "@/app/(site)/tournaments/[id]/draft/_hooks/useDraftData";
+} from "@/hooks/useDraftData";
 import { Button } from "@/components/ui/button";
 import { HeroCoord, HeroFrame, HeroStat, HeroStamp } from "@/components/site/PageHero";
 import type { DraftBoard } from "@/types/draft.types";
@@ -59,7 +59,7 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
             </p>
             <div className="mt-6 flex flex-wrap gap-7">
               <HeroStamp label={t("format")} value={session.format} />
-              <HeroStamp label={t("teamSize")} value={session.team_size} />
+              <HeroStamp label={t("teamSize")} value={session.roster_shape.team_size} />
               <HeroStamp label={t("connection")} value={t(`connectionState.${connectionState}`)} />
             </div>
           </div>
@@ -81,8 +81,14 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
       </HeroFrame>
 
       {session.blocked_reason && (
-        <div className="flex items-start gap-3 border-y border-[color:var(--aqt-live)]/30 bg-[color:var(--aqt-live)]/8 px-4 py-3">
-          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--aqt-live)]" />
+        <div
+          role="alert"
+          className="flex items-start gap-3 border-y border-[color:var(--aqt-live)]/30 bg-[color:var(--aqt-live)]/8 px-4 py-3"
+        >
+          <ShieldAlert
+            className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--aqt-live)]"
+            aria-hidden
+          />
           <div className="flex-1">
             <p className="font-medium">{t("systemPause")}</p>
             <p className="mt-1 text-sm text-[color:var(--aqt-fg-muted)]">
@@ -101,12 +107,12 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
         <main className="space-y-5">
           <section className="border-b border-[color:var(--aqt-border)] pb-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
+              <div role="status">
                 <HeroCoord>{t("currentPick")}</HeroCoord>
                 <h3 className="mt-2 font-onest text-2xl font-semibold">
                   {currentTeam?.name ?? t("noCurrentPick")}
                 </h3>
-                <p className="mt-1 text-sm text-[color:var(--aqt-fg-muted)]">
+                <p className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
                   {currentPick
                     ? t("currentPickMeta", {
                         pick: currentPick.overall_no,
@@ -117,8 +123,9 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
                 </p>
               </div>
               <Button asChild variant="outline">
-                <Link href={`/draft/${tournamentId}`} target="_blank">
-                  {t("openBoard")}<ArrowUpRight className="ml-2 h-4 w-4" />
+                <Link href={`/draft/${tournamentId}`} target="_blank" rel="noreferrer">
+                  {t("openBoard")}
+                  <ArrowUpRight className="ml-2 h-4 w-4" aria-hidden />
                 </Link>
               </Button>
             </div>
@@ -131,9 +138,15 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
             </div>
           </section>
 
+          {/* No role="status": the viewer count ticks on its own and would
+              re-announce the team and player metrics with it. */}
           <section className="grid gap-5 sm:grid-cols-3">
             <AdminMetric icon={Users} label={t("teams")} value={board.teams.length} />
-            <AdminMetric icon={Clock3} label={t("availablePlayers")} value={board.players.filter((player) => player.status === "available").length} />
+            <AdminMetric
+              icon={UserRound}
+              label={t("availablePlayers")}
+              value={board.players.filter((player) => player.status === "available").length}
+            />
             <AdminMetric icon={Radio} label={t("viewers")} value={presence.anonymous_viewer_count} />
           </section>
         </main>
@@ -141,7 +154,8 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
           <FeasibilityStatus feasibility={feasibility} loading={feasibilityQuery.isLoading} />
           {!session.blocked_reason && shouldResolve && (
             <Button variant="outline" className="w-full" onClick={() => setRoleDialogOpen(true)}>
-              <AlertTriangle className="mr-2 h-4 w-4" />{t("resolveRoles")}
+              <AlertTriangle className="mr-2 h-4 w-4" aria-hidden />
+              {t("resolveRoles")}
             </Button>
           )}
           <CaptainPresence teams={board.teams} presence={presence} />
@@ -159,10 +173,18 @@ export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps)
   );
 }
 
-function AdminMetric({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: number }) {
+function AdminMetric({
+  icon: Icon,
+  label,
+  value
+}: {
+  icon: typeof Users;
+  label: string;
+  value: number;
+}) {
   return (
     <div className="flex items-center gap-3 border-t border-[color:var(--aqt-border)] pt-3">
-      <Icon className="h-4 w-4 text-[color:var(--aqt-teal)]" />
+      <Icon className="h-4 w-4 text-[color:var(--aqt-teal)]" aria-hidden />
       <span className="flex-1 text-sm text-[color:var(--aqt-fg-muted)]">{label}</span>
       <strong className="font-mono tabular-nums">{value}</strong>
     </div>

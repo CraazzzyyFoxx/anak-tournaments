@@ -89,7 +89,7 @@ const HeroCompareHero = ({ selectedHero, rows }: HeroCompareHeroProps) => {
           <Link href="/users" className="transition-colors hover:text-[color:var(--aqt-teal)]">
             {t("users.heroesCompare.hero.usersBreadcrumb")}
           </Link>
-          <ChevronRight className="h-3 w-3 opacity-50" />
+          <ChevronRight aria-hidden className="h-3 w-3 opacity-50" />
           <span>{t("users.heroesCompare.hero.breadcrumb")}</span>
         </HeroCoord>
       }

@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core import draft_state
 from shared.core.enums import (
     DraftCaptainOrder,
@@ -26,6 +27,7 @@ from shared.core.enums import (
     TournamentStatus,
 )
 from shared.core.errors import ApiExc, ApiHTTPException
+from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import (
     DraftPick,
     DraftPlayer,
@@ -36,6 +38,7 @@ from shared.models.balancer.draft import (
 )
 from shared.models.registration.registration import (
     BalancerRegistration,
+    BalancerRegistrationForm,
     BalancerRegistrationRole,
     BalancerRegistrationRoleHero,
 )
@@ -89,11 +92,13 @@ def _err(code: str, msg: str, status_code: int = 409) -> ApiHTTPException:
     return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
 
 
-def validate_roster_shape(*, rounds: int, team_size: int) -> None:
-    if rounds != team_size - 1:
+def validate_draft_rounds(*, rounds: int, shape: RosterShape) -> None:
+    """A draft has exactly one pick per roster slot the captain does not fill."""
+    if rounds != shape.draft_rounds:
         raise _err(
             "invalid_roster_shape",
-            "rounds must equal team_size - 1 because the captain already fills one roster slot",
+            f"rounds must be {shape.draft_rounds}: the roster shape {shape.slots} has "
+            f"{shape.team_size} slots and the captain already fills one",
             status_code=422,
         )
 
@@ -183,26 +188,24 @@ async def create_session(
     *,
     tournament_id: int,
     workspace_id: int,
+    shape: RosterShape,
     pool_source: str = "balancer_balance",
     source_balance_id: int | None = None,
     fmt: DraftFormat = DraftFormat.SNAKE,
-    rounds: int = 4,
     pick_time_seconds: int = 45,
-    team_size: int = 5,
     autopick_strategy: str = "best_fit",
     allow_admin_override: bool = True,
     settings: dict | None = None,
 ) -> DraftSession:
-    validate_roster_shape(rounds=rounds, team_size=team_size)
+    # `rounds` is derived, never passed: the shape owns the roster size.
     await assert_no_active_draft(session, tournament_id)
     draft = DraftSession(
         tournament_id=tournament_id,
         workspace_id=workspace_id,
         status=DraftStatus.SETUP.value,
         format=fmt.value,
-        rounds=rounds,
+        rounds=shape.draft_rounds,
         pick_time_seconds=pick_time_seconds,
-        team_size=team_size,
         pool_source=pool_source,
         source_balance_id=source_balance_id,
         autopick_strategy=autopick_strategy,
@@ -433,14 +436,47 @@ def _registration_player_id(reg: BalancerRegistration) -> int | None:
     return member.player_id if member is not None else None
 
 
-def _map_registration(reg: BalancerRegistration) -> dict:
+def _all_roles_required(form: BalancerRegistrationForm | None) -> bool:
+    """Whether the tournament makes every role playable by everyone.
+
+    True for ``flex_role.mode`` in ``("all_roles", "forced")``. Mirror of
+    ``tournament-service`` ``registration/_common.all_roles_required``: the two
+    live in different services with no shared module between them, so the
+    contract is pinned by ``tests/test_draft_forced_flex.py`` and the parity
+    fixtures.
+
+    ``all_roles`` still lets the registrant name a priority role, so ``is_flex``
+    stays false for them and their non-priority roles keep carrying discomfort.
+    Only the max-rank policy is shared between the two modes, and it is shared
+    because eligibility demands it: the balancer needs a rating for every role.
+
+    Reads fail closed — an unreadable form is optional.
+    """
+    if form is None:
+        return False
+    config = (getattr(form, "built_in_fields_json", None) or {}).get("flex_role")
+    if not isinstance(config, dict):
+        return False
+    if config.get("enabled", True) is False:
+        return False
+    return config.get("mode") in ("all_roles", "forced")
+
+
+def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> dict:
     """Derive draft role/rank fields from a tournament registration's roles.
 
     The registration-based pool is the balancer source of truth (3NF). Active
     role rows sorted by priority -> primary (preferring is_primary) + secondaries;
     rank/sub-role come from the primary role.
+
+    Under ``all_roles`` role stops being a constraint: every role is playable
+    and the player's strength is the maximum rank across all their roles. The
+    ``is_active`` filter is deliberately bypassed there -- a Google-Sheets row
+    whose rank did not parse arrives with ``is_active=False`` and would
+    otherwise silently lose a playable role.
     """
-    active = sorted((r for r in (reg.roles or []) if r.is_active), key=lambda r: r.priority)
+    entries = sorted((reg.roles or []), key=lambda r: r.priority)
+    active = entries if all_roles else [r for r in entries if r.is_active]
     roles: list[DraftRole] = []
     for r in active:
         role = _to_draft_role(r.role)
@@ -450,9 +486,15 @@ def _map_registration(reg: BalancerRegistration) -> dict:
     if primary_entry is None and active:
         primary_entry = active[0]
     primary = (_to_draft_role(primary_entry.role) if primary_entry else None) or (roles[0] if roles else DraftRole.DPS)
+    if all_roles:
+        roles = [primary, *(role for role in DraftRole if role != primary)]
     secondary = [r for r in roles if r != primary]
     ranks = [r.rank_value for r in active if r.rank_value is not None]
-    rank_value = (primary_entry.rank_value if primary_entry else None) or (max(ranks) if ranks else None)
+    effective_rank = max(ranks) if ranks else None
+    if all_roles:
+        rank_value = effective_rank
+    else:
+        rank_value = (primary_entry.rank_value if primary_entry else None) or effective_rank
     sub_role = primary_entry.subrole if primary_entry else None
 
     # Per-role rank catalogue and top heroes, keyed by role.value, promoted to
@@ -485,6 +527,12 @@ def _map_registration(reg: BalancerRegistration) -> dict:
         if heroes:
             role_top_heroes[role.value] = heroes
 
+    if all_roles:
+        # Every role playable at the same strength. Keyed off DraftRole rather
+        # than the rows so a registration written before the mode was switched
+        # on (fewer than three role rows) still comes out fully flex.
+        role_ranks = {} if effective_rank is None else {role.value: effective_rank for role in DraftRole}
+
     return {
         "primary_role": primary,
         "secondary_roles": secondary,
@@ -502,8 +550,10 @@ async def load_pool(session: AsyncSession, tournament_id: int) -> list[BalancerR
     """Load the balancer pool = registrations included in the balancer.
 
     Mirrors the panel's ``isRegistrationIncludedInBalancer``: approved, not
-    deleted, not excluded, and not flagged not_in_balancer.
+    deleted, and the current balancer_status doesn't exclude it (not_in_balancer
+    / excluded / a workspace custom status configured to exclude).
     """
+    workspace_id_expr = sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id).scalar_subquery()
     return list(
         await session.scalars(
             sa.select(BalancerRegistration)
@@ -511,8 +561,7 @@ async def load_pool(session: AsyncSession, tournament_id: int) -> list[BalancerR
                 BalancerRegistration.tournament_id == tournament_id,
                 BalancerRegistration.status == "approved",
                 BalancerRegistration.deleted_at.is_(None),
-                BalancerRegistration.exclude_from_balancer.is_(False),
-                BalancerRegistration.balancer_status != "not_in_balancer",
+                balancer_pool_included_clause(BalancerRegistration.balancer_status, workspace_id_expr),
             )
             .options(
                 selectinload(BalancerRegistration.roles)
@@ -582,6 +631,15 @@ async def seed_from_pool(
     the registration.
     """
     pool = await load_pool(session, draft_session.tournament_id)
+    # First read of the registration form from balancer-service. One query per
+    # seed; the mode decides whether role is a constraint at all.
+    all_roles = _all_roles_required(
+        await session.scalar(
+            sa.select(BalancerRegistrationForm).where(
+                BalancerRegistrationForm.tournament_id == draft_session.tournament_id
+            )
+        )
+    )
     by_id = {reg.id: reg for reg in pool}
     if not captain_registration_ids:
         raise _err("draft_no_captains", "Select at least one captain from the pool")
@@ -596,7 +654,7 @@ async def seed_from_pool(
                 f"Captain registration {rid} is not in the balancer pool for this tournament",
                 status_code=422,
             )
-        mapped_by_id[rid] = _map_registration(reg)
+        mapped_by_id[rid] = _map_registration(reg, all_roles=all_roles)
 
     ordered_ids = order_captain_ids(
         [(rid, mapped_by_id[rid]["rank_value"]) for rid in captain_registration_ids],
@@ -631,7 +689,7 @@ async def seed_from_pool(
     for reg in pool:
         if reg.id in captain_ids:
             continue
-        mapped = _map_registration(reg)
+        mapped = _map_registration(reg, all_roles=all_roles)
         players.append(
             PlayerSeed(
                 primary_role=mapped["primary_role"],
@@ -737,6 +795,36 @@ async def cancel(session: AsyncSession, draft_session: DraftSession) -> DraftSes
     draft_session.blocked_reason = None
     await session.flush()
     return draft_session
+
+
+_DELETABLE_STATUSES = (
+    DraftStatus.SETUP.value,
+    DraftStatus.READY.value,
+    DraftStatus.COMPLETED.value,
+    DraftStatus.CANCELLED.value,
+)
+
+
+async def delete_session(session: AsyncSession, draft_session: DraftSession) -> None:
+    """Erase a draft session and everything hanging off it.
+
+    A LIVE/PAUSED draft has captains on a clock, so it must be cancelled first;
+    every other status is erasable. Teams already exported to the tournament are
+    NOT removed: the export is a separate artifact and ``exported_team_id`` is
+    only a back-reference into it.
+    """
+    if draft_session.status not in _DELETABLE_STATUSES:
+        raise _err("draft_in_flight", "Cancel the draft before deleting it")
+    # Drop the session -> current pick reference before the cascade removes that
+    # pick, so no flush can write a dangling FK.
+    draft_session.current_pick_id = None
+    await session.flush()
+    # One statement: teams, players, roles, heroes, picks and audit rows all
+    # hang off the session with ON DELETE CASCADE, so the ORM cascade would only
+    # buy hundreds of round-trips. Expunge keeps the deleted row out of any
+    # later flush.
+    await session.execute(sa.delete(DraftSession).where(DraftSession.id == draft_session.id))
+    session.expunge(draft_session)
 
 
 async def rollback(session: AsyncSession, draft_session: DraftSession) -> DraftSession:

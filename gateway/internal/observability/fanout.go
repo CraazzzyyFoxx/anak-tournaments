@@ -64,19 +64,30 @@ func (h *fanoutHandler) WithGroup(name string) slog.Handler {
 	return &fanoutHandler{handlers: subs}
 }
 
-// accessLogFilter wraps the Sentry slog.Handler and drops any record tagging
-// itself as an access log (httplog.AccessLogAttr). The per-request access log is
-// operational telemetry already shipped to stdout/Loki: as a Sentry Issue every
-// edge 5xx — including internet vuln-scanner probes against the public IP —
-// would open a noise issue grouped under "request completed", and as a Sentry
-// Log it would flood ingest at edge throughput. Genuine faults are logged
-// elsewhere (panics via sentryhttp, explicit .Error() calls) without the attr,
-// so they still reach Sentry. Only stdout/Loki keeps the access log.
+// accessLogFilter wraps the Sentry slog.Handler and drops records that are pure
+// operational noise: the per-request access log, and errors whose cause is the
+// client (or an in-flight request context) going away.
+//
+// The per-request access log is telemetry already shipped to stdout/Loki: as a
+// Sentry Issue every edge 5xx — including internet vuln-scanner probes against
+// the public IP — would open a noise issue grouped under "request completed",
+// and as a Sentry Log it would flood ingest at edge throughput.
+//
+// Client-disconnect errors are the same story from the RPC side: every
+// `log.Error("rpc failed", "err", ...)` site (edge/dispatch, app/balancer/
+// identity/parser binary handlers, ws) reports a context.Canceled the moment a
+// browser navigates away mid-request. Nothing is broken and nothing is
+// actionable, but each distinct queue name opens its own Sentry group.
+//
+// Genuine faults are logged elsewhere (panics via sentryhttp, explicit .Error()
+// calls with a real cause) and still reach Sentry. Only stdout/Loki keeps the
+// full record in both cases.
 type accessLogFilter struct {
 	inner slog.Handler
 }
 
-// dropAccessLogs wraps inner so access-log records never reach it.
+// dropAccessLogs wraps inner so access-log and client-disconnect records never
+// reach it.
 func dropAccessLogs(inner slog.Handler) slog.Handler {
 	return &accessLogFilter{inner: inner}
 }
@@ -86,18 +97,33 @@ func (h *accessLogFilter) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *accessLogFilter) Handle(ctx context.Context, record slog.Record) error {
-	access := false
+	drop := false
 	record.Attrs(func(a slog.Attr) bool {
 		if a.Key == httplog.AccessLogAttr {
-			access = true
+			drop = true
+			return false
+		}
+		if a.Key == "err" && isClientGone(a.Value) {
+			drop = true
 			return false
 		}
 		return true
 	})
-	if access {
+	if drop {
 		return nil
 	}
 	return h.inner.Handle(ctx, record)
+}
+
+// isClientGone reports whether an "err" log attribute carries a cancelled or
+// expired request context — i.e. the caller went away rather than the gateway
+// or an upstream service failing.
+func isClientGone(v slog.Value) bool {
+	err, ok := v.Resolve().Any().(error)
+	if !ok {
+		return false
+	}
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (h *accessLogFilter) WithAttrs(attrs []slog.Attr) slog.Handler {

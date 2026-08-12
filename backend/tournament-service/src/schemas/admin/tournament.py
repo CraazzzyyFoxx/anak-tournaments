@@ -4,6 +4,7 @@ from pydantic import BaseModel, model_validator
 
 from shared.core import tournament_state
 from shared.core.enums import TournamentStatus
+from shared.schemas.roster_slots import RosterSlotsField
 
 __all__ = (
     "TournamentCreate",
@@ -18,7 +19,6 @@ class TournamentCreate(BaseModel):
     """Schema for creating a tournament"""
 
     workspace_id: int
-    number: int | None = None
     name: str
     description: str | None = None
     is_league: bool = False
@@ -33,12 +33,14 @@ class TournamentCreate(BaseModel):
     draw_points: float = 0.5
     loss_points: float = 0.0
     division_grid_version_id: int | None = None
+    # None = inherit (workspace default -> built-in 5v5). Normalized by
+    # RosterSlotsField, so the column never stores a zero count.
+    roster_slots_json: RosterSlotsField = None
 
 
 class TournamentUpdate(BaseModel):
     """Schema for updating a tournament"""
 
-    number: int | None = None
     name: str | None = None
     description: str | None = None
     challonge_slug: str | None = None
@@ -54,6 +56,7 @@ class TournamentUpdate(BaseModel):
     draw_points: float | None = None
     loss_points: float | None = None
     division_grid_version_id: int | None = None
+    roster_slots_json: RosterSlotsField = None
 
 
 class TournamentStatusTransition(BaseModel):
@@ -89,8 +92,6 @@ class TournamentScheduleSet(BaseModel):
             if entry.ends_at is not None and entry.ends_at <= entry.starts_at:
                 raise ValueError(f"Phase '{entry.status.value}' must end after it starts")
             if previous is not None and entry.starts_at <= previous.starts_at:
-                raise ValueError(
-                    f"Phase '{entry.status.value}' must start after phase '{previous.status.value}'"
-                )
+                raise ValueError(f"Phase '{entry.status.value}' must start after phase '{previous.status.value}'")
             previous = entry
         return self

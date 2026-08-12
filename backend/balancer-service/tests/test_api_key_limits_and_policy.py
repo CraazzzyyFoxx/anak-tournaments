@@ -101,9 +101,11 @@ def _api_key_user(**overrides):
     values.update(overrides)
     return SimpleNamespace(
         **values,
+        # Mirrors the grant validate_api_key puts on a real key: team.create,
+        # which is what every balancer job path checks.
         has_workspace_permission=lambda workspace_id, resource, action: workspace_id == 11
         and resource == "team"
-        and action == "import",
+        and action == "create",
     )
 
 
@@ -226,7 +228,7 @@ def test_admin_workspace_dependencies_reject_api_key_principals() -> None:
                 _api_key_user(),
                 workspace_id=11,
                 resource="team",
-                action="import",
+                action="create",
             )
         )
 

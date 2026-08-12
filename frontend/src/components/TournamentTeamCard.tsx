@@ -1,11 +1,14 @@
+"use client";
+
 import React from "react";
+import { useTranslations } from "next-intl";
 import { sortTeamPlayers, type TeamRosterPlayer } from "@/utils/player";
 import { CircleMinus, CirclePlus, CornerDownRight } from "lucide-react";
 import PlayerName from "@/components/PlayerName";
 import { Team } from "@/types/team.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Skeleton } from "@/components/ui/skeleton";
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
@@ -18,9 +21,9 @@ function NewMark({ active }: { active: boolean }) {
   return (
     <div className="flex justify-center">
       {active ? (
-        <CirclePlus className="h-5 w-5" style={{ color: "hsl(0 80% 65%)" }} />
+        <CirclePlus className="h-5 w-5 text-[color:var(--aqt-rose)]" />
       ) : (
-        <CircleMinus className="h-5 w-5 text-white/30" />
+        <CircleMinus className="h-5 w-5 text-[color:var(--aqt-fg-faint)]" />
       )}
     </div>
   );
@@ -36,53 +39,48 @@ function avgMvpColor(value: number): string {
 export const TournamentTeamTable = ({
   players,
   tournamentGrid,
-  highlightUserId,
-  youLabel,
-  avgMvpLabel,
-  heroesLabel,
-  signatureHeroesLabel
+  highlightUserId
 }: {
   players: TeamRosterPlayer[];
   tournamentGrid?: DivisionGridVersion | null;
   /** When a roster row belongs to this user id, it gets a "you" tag. */
   highlightUserId?: number;
-  /** Localized label for the "you" tag (supplied by i18n-aware callers). */
-  youLabel?: string;
-  /** Localized header for the Avg MVP column (falls back to English). */
-  avgMvpLabel?: string;
-  /** Localized header for the Heroes column (falls back to English). */
-  heroesLabel?: string;
-  /** Localized title/aria for the signature-heroes strip (falls back to English). */
-  signatureHeroesLabel?: string;
 }) => {
+  const t = useTranslations();
   const sortedPlayers = sortTeamPlayers(players);
 
   // Only render the dossier columns when at least one row carries the data;
   // other callers (team cards) pass rosters without these fields and render
   // exactly as before.
   const showExtra = players.some((p) => p.avg_mvp != null || (p.heroes?.length ?? 0) > 0);
-  const signatureTitle = signatureHeroesLabel ?? "Signature heroes";
+  const signatureTitle = t("users.tournaments.roster.signatureHeroes");
 
   return (
     <div className="roster-scroll">
       <table className="roster">
         <thead>
           <tr>
-            <th style={{ width: 48 }}>Role</th>
-            <th>Battle tag</th>
-            <th className="c" style={{ width: 60 }}>
-              Div
+            <th scope="col" style={{ width: 48 }}>
+              {t("teams.roster.role")}
             </th>
-            <th className="c" style={{ width: 48 }}>
-              New
+            <th scope="col">{t("teams.roster.battleTag")}</th>
+            <th scope="col" className="c" style={{ width: 60 }}>
+              {t("teams.roster.division")}
             </th>
-            <th className="c" style={{ width: 48 }}>
-              Role
+            <th scope="col" className="c" style={{ width: 48 }}>
+              {t("teams.roster.newcomer")}
+            </th>
+            <th scope="col" className="c" style={{ width: 48 }}>
+              {t("teams.roster.newcomerRole")}
             </th>
             {showExtra ? (
               <>
-                <th style={{ width: 64, textAlign: "right" }}>{avgMvpLabel ?? "Avg MVP"}</th>
-                <th style={{ width: 100 }}>{heroesLabel ?? "Heroes"}</th>
+                <th scope="col" style={{ width: 64, textAlign: "right" }}>
+                  {t("users.tournaments.roster.avgMvp")}
+                </th>
+                <th scope="col" style={{ width: 100 }}>
+                  {t("users.tournaments.roster.heroes")}
+                </th>
               </>
             ) : null}
           </tr>
@@ -92,7 +90,7 @@ export const TournamentTeamTable = ({
             <tr key={player.id}>
               <td>
                 {player.is_substitution ? (
-                  <CornerDownRight className="ml-1.5 h-4 w-4 text-white/40" />
+                  <CornerDownRight className="ml-1.5 h-4 w-4 text-[color:var(--aqt-fg-dim)]" />
                 ) : (
                   <PlayerRoleIcon role={player.role} />
                 )}
@@ -100,23 +98,23 @@ export const TournamentTeamTable = ({
               <td>
                 <div className="flex items-center gap-2">
                   <PlayerName player={player} includeSpecialization={true} />
-                  {youLabel && highlightUserId != null && player.user_id === highlightUserId ? (
+                  {highlightUserId != null && player.user_id === highlightUserId ? (
                     <span
                       className="aqt-mono rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em]"
                       style={{
-                        background: "hsl(172 70% 49% / 0.12)",
-                        border: "1px solid hsl(172 70% 49% / 0.3)",
+                        background: "color-mix(in srgb, var(--aqt-teal) 12%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--aqt-teal) 30%, transparent)",
                         color: "var(--aqt-teal)"
                       }}
                     >
-                      {youLabel}
+                      {t("users.tournaments.you")}
                     </span>
                   ) : null}
                 </div>
               </td>
               <td className="c">
                 <div className="flex justify-center">
-                  <PlayerDivisionIcon
+                  <DivisionIcon
                     division={player.division}
                     width={32}
                     height={32}
@@ -133,7 +131,7 @@ export const TournamentTeamTable = ({
               {showExtra ? (
                 <>
                   <td
-                    className="aqt-mono"
+                    className="aqt-mono tabular-nums"
                     style={{
                       textAlign: "right",
                       color:
@@ -229,6 +227,8 @@ export const TournamentTeamCardFrame = ({
 };
 
 export const TournamentTeamCard = ({ team }: { team: Team }) => {
+  const t = useTranslations();
+
   return (
     <TournamentTeamCardFrame
       id={team.id.toString()}
@@ -236,7 +236,7 @@ export const TournamentTeamCard = ({ team }: { team: Team }) => {
       leadingTag={
         team.group?.name ? (
           <span className={cn("group-chip", groupChipClass(team.group.name))}>
-            Group {team.group.name}
+            {t("teams.groupLabel", { name: team.group.name })}
           </span>
         ) : (
           <span />
@@ -244,11 +244,13 @@ export const TournamentTeamCard = ({ team }: { team: Team }) => {
       }
       positionTag={
         team.placement != null ? (
-          <span className={cn("placement", placementClass(team.placement))}>#{team.placement}</span>
+          <span className={cn("placement tabular-nums", placementClass(team.placement))}>
+            #{team.placement}
+          </span>
         ) : null
       }
-      metricLabel="Avg. SR"
-      metricValue={team.avg_sr.toFixed(0)}
+      metricLabel={t("teams.roster.avgSr")}
+      metricValue={<span className="tabular-nums">{team.avg_sr.toFixed(0)}</span>}
     >
       <TournamentTeamTable
         players={team.players}

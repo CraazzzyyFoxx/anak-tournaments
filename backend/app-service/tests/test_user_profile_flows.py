@@ -186,7 +186,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             standings=[standing],
             tournament=SimpleNamespace(
                 id=3,
-                number=12,
                 name="Tournament Example",
                 is_league=False,
                 division_grid_version=tournament_grid_version,
@@ -277,7 +276,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         )
         tournament = SimpleNamespace(
             id=3,
-            number=12,
             name="Tournament Example",
             is_league=False,
             division_grid_version=tournament_grid_version,
@@ -338,7 +336,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             ],
             tournament=SimpleNamespace(
                 id=3,
-                number=12,
                 name="Tournament Example",
                 is_league=False,
                 division_grid_version=None,
@@ -396,3 +393,100 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(1, len(tournaments))
         self.assertEqual(3, tournaments[0].placement)
+
+    async def test_get_tournaments_never_calls_encounter_matches_repository(self) -> None:
+        """`get_tournaments` (the list endpoint) must never populate
+        `encounters` — that data now comes from the lazy
+        `get_tournament_encounters` endpoint. Regression guard against
+        reintroducing the per-history encounter/match query that made this
+        endpoint's payload exceed 1 MB for veteran players (see
+        gateway/internal/respcache maxBodyBytes)."""
+        session = SimpleNamespace()
+        user = SimpleNamespace(id=42)
+        player = SimpleNamespace(
+            id=91,
+            name="Player Example",
+            role=enums.HeroClass.damage,
+            sub_role=None,
+            rank=1500,
+            workspace_member=SimpleNamespace(player_id=42),
+            is_substitution=False,
+            is_newcomer=False,
+            is_newcomer_role=False,
+            related_player_id=None,
+        )
+        standing = SimpleNamespace(overall_position=2, win=3, lose=1, draw=0)
+        team = SimpleNamespace(
+            id=9,
+            name="Team Example",
+            tournament_id=3,
+            players=[player],
+            standings=[standing],
+            tournament=SimpleNamespace(
+                id=3,
+                name="Tournament Example",
+                is_league=False,
+                division_grid_version=None,
+            ),
+        )
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("get_tournaments must not call get_user_encounter_matches_unpaginated")
+
+        with (
+            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(
+                user_flows.service,
+                "get_tournaments_with_stats",
+                AsyncMock(return_value=[(team, 4, 2, 0.75)]),
+            ),
+            patch.object(user_flows._repositories, "count_teams_by_tournament_bulk", AsyncMock(return_value={3: 8})),
+            patch.object(user_flows._repositories, "get_roster_avg_mvp_bulk", AsyncMock(return_value={})),
+            patch.object(user_flows._repositories, "get_roster_top_heroes_bulk", AsyncMock(return_value={})),
+            patch.object(
+                user_flows._repositories,
+                "get_user_encounter_matches_unpaginated",
+                AsyncMock(side_effect=_boom),
+            ),
+        ):
+            tournaments = await user_flows.get_tournaments(session, 42, workspace_id=5, grid=division_grid.DEFAULT_GRID)
+
+        self.assertEqual(1, len(tournaments))
+        self.assertEqual([], tournaments[0].encounters)
+
+    async def test_get_tournament_encounters_scopes_repository_call_and_groups_matches(self) -> None:
+        """`get_tournament_encounters` — the lazy dossier detail split out of
+        `get_tournaments` — must scope the repository call to the requested
+        tournament and assemble one encounter per distinct id, with its
+        matches grouped in query order."""
+        session = SimpleNamespace()
+        user = SimpleNamespace(id=42)
+        team = SimpleNamespace(id=9)
+        encounter_a = SimpleNamespace(id=101)
+        encounter_b = SimpleNamespace(id=102)
+        match_1 = SimpleNamespace(id=201)
+        match_2 = SimpleNamespace(id=202)
+
+        rows = [
+            (team, encounter_a, match_1, 1, [], 1, 10.0, 5.0, 1),
+            (team, encounter_a, match_2, 2, [], 2, 8.0, 4.0, 2),
+            (team, encounter_b, None, None, None, None, None, None, None),
+        ]
+        repo_mock = AsyncMock(return_value=rows)
+        match_mapper = Mock(side_effect=lambda match, **kwargs: SimpleNamespace(id=match.id))
+        encounter_mapper = Mock(
+            side_effect=lambda encounter, matches, **kwargs: SimpleNamespace(id=encounter.id, matches=matches)
+        )
+
+        with (
+            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(user_flows._repositories, "get_user_encounter_matches_unpaginated", repo_mock),
+            patch.object(user_flows._mappers, "to_match_with_user_stats", match_mapper),
+            patch.object(user_flows._mappers, "to_encounter_with_user_stats", encounter_mapper),
+        ):
+            result = await user_flows.get_tournament_encounters(session, 42, 7)
+
+        repo_mock.assert_awaited_once_with(session, user.id, tournament_id=7)
+        self.assertEqual([101, 102], [enc.id for enc in result])
+        self.assertEqual([201, 202], [m.id for m in result[0].matches])
+        self.assertEqual([], result[1].matches)

@@ -10,7 +10,7 @@ class WorkspaceAccessPolicy:
         workspace_id: int | None,
         *,
         resource: str = "team",
-        action: str = "import",
+        action: str = "create",
         api_key_id: int | None = None,
         require_api_key_job_match: bool = False,
     ) -> None:

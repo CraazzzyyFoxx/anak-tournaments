@@ -26,9 +26,7 @@ class PublishPatchTests(IsolatedAsyncioTestCase):
     async def test_tags_payload_with_resource_and_delegates(self) -> None:
         session = MagicMock()
         redis = MagicMock()
-        with patch.object(
-            realtime_publisher, "publish_event", AsyncMock(return_value="envelope")
-        ) as publish_event:
+        with patch.object(realtime_publisher, "publish_event", AsyncMock(return_value="envelope")) as publish_event:
             result = await realtime_publisher.publish_patch(
                 session,
                 redis,

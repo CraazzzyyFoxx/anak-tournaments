@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,7 +23,11 @@ from shared.rbac import assign_workspace_system_role
 from shared.repository import get_or_create_workspace_member
 from shared.services import social_identity
 from shared.services.profile_visibility import resolve_profiles_open
+from shared.services.subscription_wiring import build_resolver
 from src import models
+from src.core.broker import optional_broker
+from src.core.config import settings
+from src.core.redis import get_realtime_redis
 from src.schemas.registration import (
     RegistrationCreate,
     RegistrationFormUpsert,
@@ -35,6 +40,13 @@ from src.schemas.registration_build import (
     _reg_to_read,
     _resolve_top_heroes_config,
     _resolve_tournament_workspace,
+)
+from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
+from src.services.registration.subscription_reads import (
+    RegistrationSubscription,
+    build_subscription_reads,
+    load_auth_user_ids_by_registration,
+    serialize_verdicts,
 )
 from src.services.registration.validation import validate_registration_input, validate_verified_identity
 from src.services.registration.windows import is_check_in_window_active, is_registration_open
@@ -108,6 +120,7 @@ def build_registration_roles(
     *,
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
+    mode: FlexRoleMode = "optional",
 ) -> list[models.BalancerRegistrationRole]:
     """Build normalized role entries, mirroring the admin write path.
 
@@ -141,6 +154,8 @@ def build_registration_roles(
                 max_heroes=resolved_max,
             )
         entries.append(entry)
+    if mode in ("all_roles", "forced"):
+        entries = apply_all_roles(entries, force_primary=mode == "forced")
     return entries
 
 
@@ -442,6 +457,7 @@ async def create_registration(
     smurf_tags: list[str] | None,
     discord_nick: str | None,
     twitch_nick: str | None,
+    boosty_nick: str | None,
     stream_pov: bool,
     notes: str | None,
     custom_fields: dict[str, Any] | None,
@@ -479,11 +495,11 @@ async def create_registration(
         smurf_tags_json=cleaned_smurf_tags or None,
         discord_nick=discord_nick,
         twitch_nick=twitch_nick,
+        boosty_nick=boosty_nick,
         stream_pov=stream_pov,
         notes=notes,
         custom_fields_json=custom_fields,
         status="approved" if auto_approve else "pending",
-        exclude_from_balancer=False,
         submitted_at=datetime.now(UTC),
         reviewed_at=datetime.now(UTC) if auto_approve else None,
     )
@@ -534,10 +550,28 @@ async def create_registration(
     if auto_approve:
         await enqueue_registration_approved(session, registration)
     else:
-        register_tournament_realtime_update(session, tournament_id, "structure_changed")
+        register_tournament_realtime_update(session, tournament_id, "registration_changed")
     await session.commit()
     await session.refresh(registration)
     return registration
+
+
+# ``RegistrationUpdate`` field -> ORM column for the public self-service PATCH.
+#
+# Explicit because the previous implementation did ``setattr(registration, key,
+# value)`` straight off the payload keys: every key whose name did not happen to
+# match a mapped column landed in the instance ``__dict__`` and died with the
+# session. ``custom_fields`` (the column is ``custom_fields_json``) and the long
+# removed ``primary_role`` were both silently dropped that way.
+_SELF_UPDATE_COLUMNS: dict[str, str] = {
+    "battle_tag": "battle_tag",
+    "discord_nick": "discord_nick",
+    "twitch_nick": "twitch_nick",
+    "boosty_nick": "boosty_nick",
+    "stream_pov": "stream_pov",
+    "notes": "notes",
+    "custom_fields": "custom_fields_json",
+}
 
 
 async def update_registration(
@@ -546,16 +580,23 @@ async def update_registration(
     **kwargs: Any,
 ) -> models.BalancerRegistration:
     for key, value in kwargs.items():
-        if value is not None:
-            if key == "battle_tag":
-                value = _clean_battle_tag(value)
-            elif key == "smurf_tags":
-                cleaned_smurf_tags = [_clean_battle_tag(tag) for tag in value]
-                value = [tag for tag in cleaned_smurf_tags if tag] or None
-            setattr(registration, key, value)
-    if "battle_tag" in kwargs and kwargs["battle_tag"] is not None:
-        registration.battle_tag_normalized = _normalize_battle_tag(registration.battle_tag)
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+        column = _SELF_UPDATE_COLUMNS.get(key)
+        if column is None:
+            # A schema field with no column mapping is a bug in this module, not
+            # a client error — raise instead of dropping the value on the floor.
+            raise ValueError(f"update_registration: unmapped payload field {key!r}")
+        if value is None:
+            continue
+        if key == "battle_tag":
+            value = _clean_battle_tag(value)
+            registration.battle_tag_normalized = _normalize_battle_tag(value)
+        elif key == "custom_fields":
+            # Merged, not replaced: ``_validate_custom_field`` skips definitions
+            # the payload omits when ``partial=True``, i.e. a subset is a legal
+            # PATCH body — replacing wholesale would wipe the omitted answers.
+            value = {**(registration.custom_fields_json or {}), **value}
+        setattr(registration, column, value)
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
     await session.commit()
     await session.refresh(registration)
     return registration
@@ -597,8 +638,15 @@ async def withdraw_registration(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
+    # Check-in is the point where the attendee list becomes load-bearing: the
+    # balancer and the draft are run against it. Letting a participant drop
+    # themselves afterwards silently invalidates a composed roster, so
+    # self-withdrawal is final here. Organizers can still withdraw them through
+    # the admin path (lifecycle.withdraw_registration), which owns that call.
+    if registration.checked_in:
+        raise HTTPException(status_code=409, detail="Cannot withdraw after check-in")
     registration.status = "withdrawn"
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
     await session.commit()
 
 
@@ -617,7 +665,7 @@ async def check_in_registration(
     registration.checked_in = True
     registration.checked_in_at = datetime.now(UTC)
     registration.checked_in_by = checked_in_by
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
     await session.commit()
     await session.refresh(registration)
     return registration
@@ -682,6 +730,7 @@ async def submit_public_registration(
         body.roles,
         hero_catalog=hero_catalog,
         max_heroes=max_heroes,
+        mode=flex_role_mode(form),
     )
 
     try:
@@ -694,6 +743,7 @@ async def submit_public_registration(
             smurf_tags=body.smurf_tags,
             discord_nick=body.discord_nick,
             twitch_nick=body.twitch_nick,
+            boosty_nick=body.boosty_nick,
             stream_pov=body.stream_pov,
             notes=body.notes,
             custom_fields=body.custom_fields,
@@ -730,6 +780,43 @@ async def submit_public_registration(
     )
 
 
+async def resolve_admission_signals(
+    session: AsyncSession,
+    registrations: Sequence[Any],
+    *,
+    form: models.BalancerRegistrationForm | None,
+) -> tuple[dict[int, bool | None], dict[int, RegistrationSubscription]]:
+    """Profile-open verdicts + subscription reads for a whole registration list.
+
+    Shared by the public participants list and the admin registrations table so
+    both surfaces answer "is this player admitted" from the same resolution.
+    Each half is gated on the form flag that turns the requirement on and costs
+    nothing when it is off. Batched deliberately: resolving per registration
+    would fan out behind Discord's per-guild rate-limit bucket. ``force_refresh``
+    stays False here -- only check-in forces a fresh look.
+    """
+    profiles_open: dict[int, bool | None] = (
+        await resolve_profiles_open(session, registrations, scope=form.open_profile_scope)
+        if form is not None and form.require_open_profile
+        else {}
+    )
+    subscriptions = await build_subscription_reads(
+        form=form,
+        auth_user_id_by_registration=await load_auth_user_ids_by_registration(session, registrations)
+        if form is not None and form.require_subscription
+        else {},
+        resolver=build_resolver(
+            session,
+            discord_bot_token=settings.discord_token,
+            twitch_client_id=settings.twitch_client_id,
+            broker=optional_broker(),
+            proxy=settings.proxy_url,
+            redis=get_realtime_redis(),
+        ),
+    )
+    return profiles_open, subscriptions
+
+
 async def build_public_registration_list(
     session: AsyncSession,
     *,
@@ -738,9 +825,12 @@ async def build_public_registration_list(
     """Anonymous participants-list read model.
 
     The registration list must always reflect live data. Every read below is a
-    plain ``session.execute`` (or a helper that itself only runs raw ORM reads:
-    get_status_metas_map / get_registration_form / resolve_profiles_open) — none
-    of them go through the cashews cache, so no cache bypass is needed here.
+    plain ``session.execute`` or a helper that only runs raw ORM reads, with one
+    exception: ``get_status_metas_map`` is cashews-backed per workspace. That is
+    safe because it caches the status *catalog*, not registrations, and all five
+    catalog writes invalidate it after commit (see
+    ``shared.balancer_registration_statuses``) — but it does mean this function
+    is no longer cache-free, so re-check that helper before assuming freshness.
     NB: do NOT reintroduce ``cache.disabling(...)`` — it flips a *process-global*
     flag on the shared cashews backend and races with every concurrent request
     on this worker (see lesson_cashews_disabling_shared_cache).
@@ -769,11 +859,7 @@ async def build_public_registration_list(
     status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
 
     form = await get_registration_form(session, tournament_id)
-    profiles_open_map: dict[int, bool | None] = (
-        await resolve_profiles_open(session, registrations, scope=form.open_profile_scope)
-        if form is not None and form.require_open_profile
-        else {}
-    )
+    profiles_open_map, subscription_reads = await resolve_admission_signals(session, registrations, form=form)
     show_ranks = form.show_ranks if form is not None else False
 
     history_map, history_count_map, division_grids = await _build_tournament_history(
@@ -790,11 +876,11 @@ async def build_public_registration_list(
                 workspace_id=workspace_id,
                 status_meta_map=status_meta_map,
                 show_ranks=show_ranks,
-                # Anonymous endpoint: strip custom fields (may hold PII,
-                # admin-only). Notes and smurf tags stay public — see
-                # _reg_to_read.
-                include_private=False,
                 profiles_open=profiles_open_map.get(r.id),
+                subscription_outcome=(subscription_reads[r.id].outcome.value if r.id in subscription_reads else None),
+                subscription_verdicts=(
+                    serialize_verdicts(subscription_reads[r.id].verdicts) if r.id in subscription_reads else None
+                ),
             ).model_dump(),
             tournament_history=history_map.get(r.id, []),
             tournament_history_count=history_count_map.get(r.id, 0),
@@ -818,6 +904,10 @@ async def upsert_registration_form(
 
     ``workspace_id`` is the tournament's already-resolved workspace (the RPC
     handler resolves it for the permission check anyway).
+
+    ``require_subscription`` is written here because the toggle is the tournament's
+    decision; the rule itself belongs to the workspace and is written through
+    ``subscription_config.upsert_workspace_requirement``.
     """
     form = await get_registration_form(session, tournament_id)
     built_in_fields_json = {key: value.model_dump(exclude_none=True) for key, value in body.built_in_fields.items()}
@@ -832,6 +922,8 @@ async def upsert_registration_form(
             require_open_profile=body.require_open_profile,
             open_profile_scope=body.open_profile_scope,
             show_ranks=body.show_ranks,
+            require_subscription=body.require_subscription,
+            subscription_stage=body.subscription_stage.value,
             built_in_fields_json=built_in_fields_json,
             custom_fields_json=custom_fields_json,
         )
@@ -842,6 +934,8 @@ async def upsert_registration_form(
         form.require_open_profile = body.require_open_profile
         form.open_profile_scope = body.open_profile_scope
         form.show_ranks = body.show_ranks
+        form.require_subscription = body.require_subscription
+        form.subscription_stage = body.subscription_stage.value
         form.built_in_fields_json = built_in_fields_json
         form.custom_fields_json = custom_fields_json
 

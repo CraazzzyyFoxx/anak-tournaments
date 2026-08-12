@@ -68,8 +68,11 @@ describe("getTokenMaxAgeSeconds", () => {
     expect(maxAge).toBeLessThanOrEqual(1000);
   });
 
-  it("clamps expired tokens to 0", () => {
-    expect(getTokenMaxAgeSeconds(makeToken({ exp: Math.floor(Date.now() / 1000) - 100 }), 99)).toBe(0);
+  // `maxAge: 0` is a cookie DELETE instruction, so an already-expired token must
+  // never produce one: a server clock ahead of the issuer would otherwise answer
+  // a successful login with a Set-Cookie that erases the new session.
+  it("falls back instead of emitting maxAge 0 for an already-expired token", () => {
+    expect(getTokenMaxAgeSeconds(makeToken({ exp: Math.floor(Date.now() / 1000) - 100 }), 99)).toBe(99);
   });
 
   it("falls back when exp can't be decoded", () => {

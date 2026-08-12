@@ -50,9 +50,7 @@ def tournament_user_cache_patterns() -> tuple[str, ...]:
     users. Wipe every user read cache; staleness is bounded by
     ``users_cache_ttl`` regardless.
     """
-    return tuple(
-        f"backend:{prefix}:*" for prefix in (*USER_CACHE_KEY_PREFIXES, *USER_COMPARE_KEY_PREFIXES)
-    )
+    return tuple(f"backend:{prefix}:*" for prefix in (*USER_CACHE_KEY_PREFIXES, *USER_COMPARE_KEY_PREFIXES))
 
 
 def user_cache_patterns(user_id: int) -> tuple[str, ...]:

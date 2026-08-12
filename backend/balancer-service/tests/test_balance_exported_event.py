@@ -153,3 +153,39 @@ class BalanceExportedEventTests(IsolatedAsyncioTestCase):
 
         self.assertIsNone(result)
         enqueue.assert_not_awaited()
+
+
+class ExportBalanceLoaderTests(IsolatedAsyncioTestCase):
+    async def test_export_query_eager_loads_teams_and_variants(self) -> None:
+        """``enqueue_balance_exported_event`` reads ``balance.variants``.
+
+        A lazy load there raises ``MissingGreenlet`` — and it would raise *after*
+        ``bulk_create_from_balancer`` already committed the tournament teams, so the
+        export 500s with the teams half-created. Both relationships must therefore be
+        eager-loaded by the query that fetches the balance.
+        """
+
+        from src.services.admin import balancer as balancer_service
+
+        class Stop(Exception):
+            pass
+
+        statements: list[object] = []
+
+        async def execute(statement: object) -> None:
+            statements.append(statement)
+            raise Stop
+
+        session = MagicMock()
+        session.execute = execute
+
+        with self.assertRaises(Stop):
+            await balancer_service.export_balance(session, 1)
+
+        eager_loaded = {
+            entity.key
+            for option in statements[0]._with_options  # type: ignore[attr-defined]
+            for entity in option.path
+            if getattr(entity, "key", None)
+        }
+        self.assertEqual({"teams", "variants"}, eager_loaded)

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { revalidateTag } from "next/cache";
-import { authService } from "@/services/auth.service";
+import { authService, OAuthLinkFailedError } from "@/services/auth.service";
 import { getAccessToken } from "@/lib/auth-cookies";
 import { safeRedirectTarget } from "@/lib/oauth-callback";
 import { publicOrigin } from "@/lib/request-origin";
@@ -41,9 +41,12 @@ function clearGuardCookie(response: NextResponse): void {
   response.cookies.delete({ name: GUARD_COOKIE, path: "/" });
 }
 
-function errorRedirect(origin: string, errorCode: string): NextResponse {
+function errorRedirect(origin: string, errorCode: string, provider?: string | null): NextResponse {
   const errorUrl = new URL("/", origin);
   errorUrl.searchParams.set("auth_error", errorCode);
+  if (provider) {
+    errorUrl.searchParams.set("auth_error_provider", provider);
+  }
   const response = NextResponse.redirect(errorUrl);
   clearGuardCookie(response);
   return response;
@@ -110,6 +113,14 @@ export async function GET(request: Request) {
     return response;
   } catch (err) {
     console.error("Link ticket exchange error:", err);
+    // A refusal identity-svc can explain (409: the provider account is already
+    // linked to another account here) carries its own code, so the user gets
+    // the actual reason and the way out. No provider name on this path: unlike
+    // the apex callback, this route never sees the signed state — only an
+    // opaque ticket — so the toast falls back to a generic provider label.
+    if (err instanceof OAuthLinkFailedError) {
+      return errorRedirect(currentOrigin, err.code);
+    }
     return errorRedirect(currentOrigin, "exchange_failed");
   }
 }

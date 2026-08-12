@@ -73,9 +73,6 @@ class EncounterRead(BaseRead):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     current_map_index: int | None = None
-    submitted_by_id: int | None = None
-    submitted_at: datetime | None = None
-    confirmed_by_id: int | None = None
     confirmed_at: datetime | None = None
 
     stage: StageSummaryRead | None
@@ -90,11 +87,15 @@ class MatchRead(BaseRead):
     home_team_id: int | None = None
     away_team_id: int | None = None
     score: Score
-    time: float
-    log_name: str
+    time: float | None
+    log_name: str | None
+    source: str
 
     encounter_id: int
     map_id: int
+    # 1-based position in the series, NULL when unknown (every parsed log). Read
+    # by the pre-game room to tell two plays of the SAME map apart.
+    map_index: int | None = None
     code: str | None = None
 
     home_team: TeamRead | None
@@ -264,3 +265,9 @@ class MatchSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     tournament_id: int | None = None
     home_team_id: int | None = None
     away_team_id: int | None = None
+
+
+# EncounterRead.matches forward-references MatchRead, defined below it; see the
+# note at the tail of schemas/team.py for why the lazy rebuild is not enough.
+EncounterRead.model_rebuild()
+MatchRead.model_rebuild()

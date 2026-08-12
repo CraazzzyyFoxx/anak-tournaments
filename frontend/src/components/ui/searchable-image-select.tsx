@@ -1,0 +1,155 @@
+"use client";
+
+import React, { useState } from "react";
+import Image from "next/image";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { useTranslations } from "next-intl";
+
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+export interface SearchableImageOption {
+  value: string;
+  label: string;
+  imageSrc?: string | null;
+}
+
+interface SearchableImageSelectProps {
+  /** Currently selected value, or undefined when "all" / cleared. */
+  value?: string;
+  /** Called with the new value, or undefined when cleared. */
+  onValueChange: (nextValue: string | undefined) => void;
+  /** Full list of selectable items. */
+  options: SearchableImageOption[];
+  /** Placeholder text shown when nothing is selected. Also used as the clear-option label. */
+  placeholder: string;
+  /** Placeholder for the search input inside the popover. */
+  searchPlaceholder?: string;
+  /** Whether the selector is in a loading state. */
+  isLoading?: boolean;
+  /** Whether the selector is disabled (loading or error). */
+  disabled?: boolean;
+  /** Override the trigger's appearance (border/background). Layout is fixed. */
+  triggerClassName?: string;
+}
+
+const SearchableImageSelect = ({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  searchPlaceholder,
+  isLoading = false,
+  disabled = false,
+  triggerClassName,
+}: SearchableImageSelectProps) => {
+  const t = useTranslations();
+  const [open, setOpen] = useState(false);
+
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("common.search");
+  const selected = options.find((o) => o.value === value);
+
+  const handleSelect = (nextValue: string | undefined) => {
+    onValueChange(nextValue);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={placeholder}
+          disabled={disabled}
+          className={cn(
+            "h-10 w-full justify-between font-normal",
+            triggerClassName ??
+              "border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
+          )}
+        >
+          <div className="flex items-center gap-2 overflow-hidden">
+            {selected?.imageSrc ? (
+              <Image
+                src={selected.imageSrc}
+                alt=""
+                width={22}
+                height={22}
+                className="h-5.5 w-5.5 shrink-0 select-none object-contain"
+              />
+            ) : null}
+            {isLoading ? (
+              <Skeleton className="h-4 w-28" />
+            ) : (
+              <span className="truncate">{selected ? selected.label : placeholder}</span>
+            )}
+          </div>
+          <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="liquid-glass-panel p-0"
+        style={{ width: "var(--radix-popover-trigger-width)" }}
+      >
+        <Command className="liquid-glass-surface">
+          <CommandInput placeholder={resolvedSearchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{t("common.noResults")}</CommandEmpty>
+            <CommandGroup>
+              {/* Clear / "All" option */}
+              <CommandItem
+                value={`__clear__ ${placeholder}`}
+                onSelect={() => handleSelect(undefined)}
+              >
+                <span>{placeholder}</span>
+                <Check
+                  aria-hidden
+                  className={`ml-auto h-4 w-4 ${value === undefined ? "opacity-100" : "opacity-0"}`}
+                />
+              </CommandItem>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={`${option.label} ${option.value}`}
+                  onSelect={() => handleSelect(option.value)}
+                >
+                  <div className="flex items-center gap-2">
+                    {option.imageSrc ? (
+                      <Image
+                        src={option.imageSrc}
+                        alt=""
+                        width={20}
+                        height={20}
+                        className="h-5 w-5 select-none object-contain"
+                      />
+                    ) : null}
+                    <span>{option.label}</span>
+                  </div>
+                  <Check
+                    aria-hidden
+                    className={`ml-auto h-4 w-4 ${value === option.value ? "opacity-100" : "opacity-0"}`}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+export default SearchableImageSelect;

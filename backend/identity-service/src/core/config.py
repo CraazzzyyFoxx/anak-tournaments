@@ -25,6 +25,12 @@ class Settings(BaseServiceSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    # Grace period during which the immediately-previous refresh token of a still
+    # active session may be rotated once more instead of being treated as a reuse
+    # attack. A client whose rotation response is lost (VPN/network switch drops
+    # the in-flight request) holds only that dead token; without the grace its
+    # retry revokes the whole session family and forces a re-login.
+    REFRESH_ROTATION_GRACE_SECONDS: int = 60
 
     # Service-to-service (client credentials)
     SERVICE_CLIENTS: dict[str, str] = {}

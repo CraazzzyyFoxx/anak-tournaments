@@ -51,12 +51,25 @@ from src.services import rbac_flows  # noqa: E402
 
 
 def _current_user(user_id: int = 1) -> SimpleNamespace:
-    return SimpleNamespace(id=user_id, is_superuser=True, has_permission=lambda _r, _a: True)
+    return SimpleNamespace(
+        id=user_id,
+        username="root",
+        email="root@example.com",
+        is_superuser=True,
+        has_permission=lambda _r, _a: True,
+    )
 
 
 class _AllResult:
     """Fakes the ``Result`` object returned by ``session.execute(select(...))`` for
-    the ``.all()`` (row-tuple) access pattern used by ``list_user_denies``."""
+    the ``.all()`` (row-tuple) access pattern used by ``list_user_denies``.
+
+    ``rowcount`` is the DELETE-result attribute ``remove_user_deny`` reads to tell
+    a real removal from an idempotent no-op; 0 keeps these SQL-shape tests off the
+    audit path they do not assert on.
+    """
+
+    rowcount = 0
 
     def __init__(self, rows: list[tuple]) -> None:
         self._rows = rows
@@ -170,7 +183,7 @@ def test_list_user_denies_returns_workspace_id_per_row(monkeypatch: pytest.Monke
 
 
 def test_add_user_deny_scopes_new_row_to_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
-    user = SimpleNamespace(id=9)
+    user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
     permission = SimpleNamespace(
         id=3,
         name="registration.self_register",
@@ -194,7 +207,8 @@ def test_add_user_deny_scopes_new_row_to_workspace(monkeypatch: pytest.MonkeyPat
     result = asyncio.run(rbac_flows.add_user_deny(session, _current_user(), 9, 3, workspace_id=7))
 
     assert session.commit_called is True
-    assert len(session.added) == 1
+    # One deny row plus its audit row.
+    assert len(session.added) == 2
     created = session.added[0]
     assert created.user_id == 9
     assert created.permission_id == 3
@@ -212,7 +226,7 @@ def test_add_user_deny_scopes_new_row_to_workspace(monkeypatch: pytest.MonkeyPat
 
 
 def test_add_user_deny_defaults_to_global_scope(monkeypatch: pytest.MonkeyPatch) -> None:
-    user = SimpleNamespace(id=9)
+    user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
     permission = SimpleNamespace(id=4, name="account.social", resource="account", action="social", description=None)
 
     async def fake_invalidate_rbac(_user_id):
@@ -231,7 +245,7 @@ def test_add_user_deny_defaults_to_global_scope(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_add_user_deny_raises_404_for_unknown_workspace() -> None:
-    user = SimpleNamespace(id=9)
+    user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
     permission = SimpleNamespace(
         id=3,
         name="registration.self_register",

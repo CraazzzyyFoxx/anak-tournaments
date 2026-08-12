@@ -7,7 +7,6 @@ from typing import Any
 from sqlalchemy import BigInteger, ColumnCollection, DateTime, Uuid, event, func
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.pool import NullPool
 
 from shared.core import errors
 
@@ -155,10 +154,15 @@ def create_database(
         statement_timeout: Query timeout in milliseconds (0 to disable).
         pgbouncer: Configure for connecting through pgBouncer in transaction
             pooling mode. Disables asyncpg prepared-statement caching, uses
-            unique prepared-statement names, hands pooling over to pgBouncer
-            (NullPool), and applies ``statement_timeout`` per-transaction via
-            ``SET LOCAL`` instead of as a startup parameter. The client-side
-            pool tuning options are ignored in this mode.
+            unique prepared-statement names, and applies ``statement_timeout``
+            per-transaction via ``SET LOCAL`` instead of as a startup parameter.
+            The client-side pool is still kept: pgBouncer caps *server* backends,
+            while a connection-per-request client (NullPool) burns a pgBouncer
+            client slot and a full connect round-trip per message, and leaves
+            SQLAlchemy no stale connection to pre-ping — so a pooler-dropped
+            connection surfaces as an error instead of a transparent reconnect.
+            Size the pool so replicas x (pool_size + max_overflow) stays under
+            pgBouncer's ``max_client_conn``.
 
     Returns:
         A DatabaseEngines instance with engine and session maker attributes.
@@ -167,21 +171,19 @@ def create_database(
     if connect_timeout > 0:
         connect_args["timeout"] = connect_timeout
 
-    engine_kwargs: dict[str, Any] = {}
+    engine_kwargs: dict[str, Any] = {
+        "pool_size": pool_size,
+        "max_overflow": max_overflow,
+        "pool_timeout": pool_timeout,
+        "pool_recycle": pool_recycle,
+        "pool_pre_ping": pool_pre_ping,
+        "pool_use_lifo": pool_use_lifo,
+    }
     if pgbouncer:
-        # pgBouncer owns the connection pool; SQLAlchemy keeps none of its own.
-        engine_kwargs["poolclass"] = NullPool
         connect_args["prepared_statement_cache_size"] = 0
         connect_args["prepared_statement_name_func"] = _unique_prepared_statement_name
-    else:
-        engine_kwargs["pool_size"] = pool_size
-        engine_kwargs["max_overflow"] = max_overflow
-        engine_kwargs["pool_timeout"] = pool_timeout
-        engine_kwargs["pool_recycle"] = pool_recycle
-        engine_kwargs["pool_pre_ping"] = pool_pre_ping
-        engine_kwargs["pool_use_lifo"] = pool_use_lifo
-        if statement_timeout > 0:
-            connect_args["server_settings"] = {"statement_timeout": str(statement_timeout)}
+    elif statement_timeout > 0:
+        connect_args["server_settings"] = {"statement_timeout": str(statement_timeout)}
 
     async_engine = create_async_engine(
         url=async_url,

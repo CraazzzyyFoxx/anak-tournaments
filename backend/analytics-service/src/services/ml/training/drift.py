@@ -1,10 +1,19 @@
 """Feature-distribution drift monitoring.
 
-For each numeric feature column in the training frame, compute the
-:func:`scipy.stats.wasserstein_distance` between the last 3 tournaments'
-distribution and the rest of the training set. Distances larger than
-``threshold`` are flagged via the returned report (the APScheduler hook in
-:mod:`src.scheduler` forwards flagged drifts to Sentry).
+For each numeric feature column in the training frame, compare the last 3
+tournaments' distribution against the rest of the training set using
+:func:`scipy.stats.wasserstein_distance`, **normalised by the baseline's own
+scale**. Distances larger than ``threshold`` are flagged via the returned report
+(the APScheduler hook in :mod:`src.scheduler` forwards flagged drifts to Sentry).
+
+The normalisation matters: raw Wasserstein distance is expressed in the feature's
+own units, so a fixed threshold is meaningless across features measured in SR
+(thousands), damage (tens of thousands), and win rate (0..1). With the raw
+distance every wide-range feature clears 0.25 permanently — the nightly job
+reported "50 features above threshold" for all 50 features it measured, every
+night, which is noise rather than a signal. Dividing by the baseline standard
+deviation makes the score dimensionless ("shifted by a quarter of a standard
+deviation") and comparable across features.
 """
 
 from __future__ import annotations
@@ -20,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 __all__ = ("compute_drift_report",)
 
+# Below this baseline standard deviation a feature is treated as constant and
+# skipped: normalising by it would turn rounding noise into infinite drift.
+_MIN_SCALE = 1e-9
+
 
 def compute_drift_report(
     df: pd.DataFrame,
@@ -27,10 +40,12 @@ def compute_drift_report(
     threshold: float = 0.25,
     recent_window: int = 3,
 ) -> dict[str, typing.Any]:
-    """Return ``{feature: wasserstein_distance}`` plus a flagged list.
+    """Return ``{feature: scale-normalised distance}`` plus a flagged list.
 
     ``df`` must contain a ``tournament_id`` column. Features compared are all
-    numeric columns excluding identifiers.
+    numeric columns excluding identifiers. Each distance is expressed in baseline
+    standard deviations, so ``threshold`` is unit-free; features whose baseline is
+    effectively constant are omitted entirely rather than flagged.
     """
     if df.empty or "tournament_id" not in df.columns:
         return {"flags": [], "distances": {}, "threshold": threshold}
@@ -68,6 +83,12 @@ def compute_drift_report(
             d = float(wasserstein_distance(a, b))
         except Exception:  # pragma: no cover
             continue
+        scale = float(np.std(b))
+        if not np.isfinite(scale) or scale <= _MIN_SCALE:
+            # A (near-)constant baseline has no meaningful spread to normalise
+            # against; any movement would divide by ~0 and flag spuriously.
+            continue
+        d /= scale
         if not np.isfinite(d):
             continue
         distances[col] = d

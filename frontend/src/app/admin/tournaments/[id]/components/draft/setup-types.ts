@@ -6,8 +6,8 @@ import type {
   DraftRole
 } from "@/types/draft.types";
 
+/** The roster shape is NOT here: it belongs to the tournament, not the wizard. */
 export interface DraftSetupConfig {
-  teamSize: number;
   teamCount: number;
   pickTimeSeconds: number;
   format: DraftFormat;
@@ -30,12 +30,7 @@ export interface DraftRegistrationSummary {
 }
 
 export function isInDraftPool(registration: AdminRegistration): boolean {
-  return (
-    registration.status === "approved" &&
-    !registration.deleted_at &&
-    !registration.exclude_from_balancer &&
-    registration.balancer_status !== "not_in_balancer"
-  );
+  return !registration.deleted_at && !registration.balancer_status_meta.excludes_from_balancer;
 }
 
 export function summarizeRegistration(registration: AdminRegistration): DraftRegistrationSummary {

@@ -75,8 +75,8 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
                 onClick={() => setMetric(name)}
                 className="rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors"
                 style={{
-                  borderColor: active ? "hsl(172 70% 49% / 0.35)" : "var(--aqt-border)",
-                  background: active ? "hsl(172 70% 49% / 0.12)" : "hsl(0 0% 100% / 0.02)",
+                  borderColor: active ? "color-mix(in srgb, var(--aqt-teal) 35%, transparent)" : "var(--aqt-border)",
+                  background: active ? "color-mix(in srgb, var(--aqt-teal) 12%, transparent)" : "var(--aqt-overlay-2)",
                   color: active ? "var(--aqt-teal)" : "var(--aqt-fg-muted)"
                 }}
               >
@@ -102,7 +102,7 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
               tick={{ fill: "var(--aqt-fg-muted)", fontSize: 11 }}
             />
             <Tooltip
-              cursor={{ fill: "hsl(0 0% 100% / 0.04)" }}
+              cursor={{ fill: "var(--aqt-overlay-3)" }}
               contentStyle={{
                 backgroundColor: "var(--aqt-card-2)",
                 border: "1px solid var(--aqt-border-2)",

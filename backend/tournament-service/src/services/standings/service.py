@@ -94,12 +94,12 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
 
 
 async def get_by_tournament(
-    session: AsyncSession, tournament: models.Tournament, entities: list[str]
+    session: AsyncSession, tournament_id: int, entities: list[str]
 ) -> typing.Sequence[models.Standing]:
     query = (
         sa.select(models.Standing)
         .options(*standing_entities(entities))
-        .where(sa.and_(models.Standing.tournament_id == tournament.id))
+        .where(sa.and_(models.Standing.tournament_id == tournament_id))
         .order_by(
             models.Standing.overall_position.desc(),
             models.Standing.stage_id.asc().nullslast(),
@@ -109,7 +109,7 @@ async def get_by_tournament(
     )
     result = await session.execute(query)
     standings = result.scalars().all()
-    logger.debug(f"Retrieved {len(standings)} standings for tournament {tournament.id}")
+    logger.debug(f"Retrieved {len(standings)} standings for tournament {tournament_id}")
     return standings
 
 
@@ -123,10 +123,8 @@ async def get_completed_match_history_by_tournament(
             models.Encounter.tournament_id == tournament_id,
             models.Encounter.home_team_id.isnot(None),
             models.Encounter.away_team_id.isnot(None),
-            sa.or_(
-                models.Encounter.status == enums.EncounterStatus.COMPLETED,
-                models.Encounter.result_status == enums.EncounterResultStatus.CONFIRMED,
-            ),
+            # Single form (encres0001 pins it to result_status == CONFIRMED).
+            models.Encounter.status == enums.EncounterStatus.COMPLETED,
         )
         .order_by(
             models.Encounter.stage_id.asc().nullslast(),
@@ -970,4 +968,4 @@ async def calculate_for_tournament(
     else:
         await session.flush()
     logger.info(f"Stage-first standings calculated for tournament {tournament.id}")
-    return await get_by_tournament(session, tournament, ["team", "stage", "stage_item"])
+    return await get_by_tournament(session, tournament.id, ["team", "stage", "stage_item"])

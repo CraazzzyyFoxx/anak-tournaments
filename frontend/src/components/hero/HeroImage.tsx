@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { Hero } from "@/types/hero.types";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarImage, AvatarFallback, AvatarStack } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { heroVariantFromRole, heroInitials } from "@/components/hero/heroRole";
+import { useHoverIntent } from "@/hooks/useHoverIntent";
 
 export type HeroImageSize = "sm" | "md" | "lg";
 
@@ -33,7 +34,7 @@ interface HeroImageProps {
    */
   bare?: boolean;
   /**
-   * Optional content shown in a hover popover (e.g. <HeroStatsPopover/>).
+   * Optional content shown in a hover popover (e.g. <HeroUserStatsPopover/>).
    * When provided, the avatar becomes an interactive trigger.
    */
   popover?: React.ReactNode;
@@ -42,7 +43,7 @@ interface HeroImageProps {
 /**
  * Canonical single-hero renderer. Hero icons across the app MUST go through
  * this component (Avatar-based: image with an initials fallback). Attach
- * stats via `popover` — see HeroStatsPopover and the Maps tab for the pattern.
+ * stats via `popover` — see HeroUserStatsPopover and the Maps tab for the pattern.
  */
 const HeroImage = ({ hero, size = "md", className, title, rounded = "full", popover }: HeroImageProps) => {
   const px = resolveHeroPx(size);
@@ -56,7 +57,7 @@ const HeroImage = ({ hero, size = "md", className, title, rounded = "full", popo
         className={cn("aqt-display font-extrabold", radiusClass)}
         style={{
           fontSize: Math.max(9, Math.round(px * 0.4)),
-          color: "hsl(220 30% 8%)",
+          color: "var(--aqt-bg)",
           background: `var(--aqt-${variant})`
         }}
       >
@@ -75,7 +76,7 @@ interface HeroStripProps {
   /** Max avatars shown before a "+N" bubble. Default 5. */
   limit?: number;
   className?: string;
-  /** Optional per-hero stats popover (e.g. (hero, i) => <HeroStatsPopover/>). */
+  /** Optional per-hero stats popover (e.g. (hero, i) => <HeroUserStatsPopover/>). */
   renderPopover?: (hero: HeroLike, index: number) => React.ReactNode;
 }
 
@@ -98,23 +99,11 @@ export const HeroStrip = ({ heroes, size = "sm", limit = 5, className, renderPop
 
 /**
  * Popover with mouse hover-intent (opens on hover, stays open while the cursor
- * moves into the content, closes after a short delay on leave).
+ * moves into the content, closes after a short delay on leave). The timer logic
+ * lives in `useHoverIntent`, shared with the workspace switcher.
  */
 const HoverPopover = ({ trigger, content }: { trigger: React.ReactNode; content: React.ReactNode }) => {
-  const [open, setOpen] = useState(false);
-  const closeRef = useRef<number | null>(null);
-
-  const clearClose = () => {
-    if (closeRef.current === null) return;
-    window.clearTimeout(closeRef.current);
-    closeRef.current = null;
-  };
-  const scheduleClose = (delayMs = 120) => {
-    clearClose();
-    closeRef.current = window.setTimeout(() => setOpen(false), delayMs);
-  };
-
-  useEffect(() => clearClose, []);
+  const { open, setOpen, cancel, scheduleOpen, scheduleClose } = useHoverIntent({ closeDelay: 120 });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -124,21 +113,18 @@ const HoverPopover = ({ trigger, content }: { trigger: React.ReactNode; content:
           className="inline-flex transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           onPointerEnter={(e) => {
             if (e.pointerType !== "mouse") return;
-            clearClose();
+            cancel();
           }}
           onPointerMove={(e) => {
             if (e.pointerType !== "mouse") return;
-            clearClose();
-            if (!open) setOpen(true);
+            if (!open) scheduleOpen();
+            else cancel();
           }}
           onPointerLeave={(e) => {
             if (e.pointerType !== "mouse") return;
             scheduleClose();
           }}
-          onFocus={() => {
-            clearClose();
-            setOpen(true);
-          }}
+          onFocus={() => scheduleOpen(0)}
           onBlur={() => scheduleClose(0)}
         >
           {trigger}
@@ -149,7 +135,7 @@ const HoverPopover = ({ trigger, content }: { trigger: React.ReactNode; content:
         onOpenAutoFocus={(e) => e.preventDefault()}
         onPointerEnter={(e) => {
           if (e.pointerType !== "mouse") return;
-          clearClose();
+          cancel();
         }}
         onPointerLeave={(e) => {
           if (e.pointerType !== "mouse") return;

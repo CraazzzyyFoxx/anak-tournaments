@@ -20,6 +20,7 @@ import sentry_sdk
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from shared.observability import observe_scheduled_job
 from src.core import db
 
 from .services.ml.features.aggregations import build_match_features_with_strength
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 async def _nightly_drift_check() -> None:
     """Compute feature drift and alert when over threshold."""
-    async with db.async_session_maker() as session:
+    async with observe_scheduled_job("nightly_drift_check"), db.async_session_maker() as session:
         latest = await session.scalar(
             __import__("sqlalchemy").select(__import__("sqlalchemy").func.max(__import__("src").models.Tournament.id))
         )

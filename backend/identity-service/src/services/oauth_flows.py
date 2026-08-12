@@ -497,23 +497,37 @@ async def unlink(
     (a user may have several of the same provider); otherwise unlinks every
     connection for the provider. Drops the verified mark from the matching
     social account(s); the account row itself is kept (re-verify by re-linking).
-    """
-    if not user.hashed_password:
-        result = await session.execute(select(OAuthConnection).where(OAuthConnection.auth_user_id == user.id))
-        if len(result.scalars().all()) <= 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot unlink last OAuth provider. Set a password first.",
-            )
-    del_query = delete(OAuthConnection).where(
-        OAuthConnection.auth_user_id == user.id, OAuthConnection.provider == provider
-    )
-    if provider_user_id is not None:
-        del_query = del_query.where(OAuthConnection.provider_user_id == provider_user_id)
-    result = await session.execute(del_query)
-    if result.rowcount == 0:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{provider.title()} account not linked")
 
+    A social account can carry a verified mark with no surviving OAuth
+    connection behind it — admin profile merges move verified rows between
+    players without moving connections, and deleting an auth user cascades its
+    connections while the player survives. Unlinking such a provider clears the
+    now-unprovable mark and never trips the last-provider guard: nothing you can
+    sign in with is being removed.
+    """
+    conns = (
+        (await session.execute(select(OAuthConnection).where(OAuthConnection.auth_user_id == user.id))).scalars().all()
+    )
+    targeted = [
+        conn
+        for conn in conns
+        if conn.provider == provider and (provider_user_id is None or conn.provider_user_id == provider_user_id)
+    ]
+    if targeted and not user.hashed_password and len(targeted) == len(conns):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot unlink last OAuth provider. Set a password first.",
+        )
+
+    if targeted:
+        del_query = delete(OAuthConnection).where(
+            OAuthConnection.auth_user_id == user.id, OAuthConnection.provider == provider
+        )
+        if provider_user_id is not None:
+            del_query = del_query.where(OAuthConnection.provider_user_id == provider_user_id)
+        await session.execute(del_query)
+
+    unverified = 0
     provider_social = OAUTH_TO_SOCIAL.get(provider)
     if provider_social is not None:
         player = await session.scalar(select(models.User).where(models.User.auth_user_id == user.id))
@@ -525,6 +539,9 @@ async def unlink(
             )
             if provider_user_id is not None:
                 unverify = unverify.where(SocialAccount.provider_user_id == provider_user_id)
-            await session.execute(unverify.values(is_verified=False, provider_user_id=None))
+            unverified = (await session.execute(unverify.values(is_verified=False, provider_user_id=None))).rowcount
+
+    if not targeted and not unverified:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{provider.title()} account not linked")
 
     await session.commit()

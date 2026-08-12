@@ -41,6 +41,30 @@ PROXY_CONF = settings.proxy_url
 _OAUTH_STATE_KEY = key_derivation.oauth_state_key(settings.JWT_SECRET_KEY)
 
 
+# One pooled client per process: OAuth token/userinfo calls are short and bursty, so a
+# fresh TCP+TLS handshake (through the SOCKS proxy) per request dominates their latency.
+# All provider calls share the same proxy and 30s timeout, so a single client suffices.
+_HTTP_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+_HTTP_TIMEOUT = httpx.Timeout(30.0)
+
+_client: httpx.AsyncClient | None = None
+
+
+def _http_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(proxy=PROXY_CONF, limits=_HTTP_LIMITS, timeout=_HTTP_TIMEOUT)
+    return _client
+
+
+async def close_http_client() -> None:
+    """Release pooled provider connections on worker shutdown."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
+
 class OAuthProviderBase(ABC):
     """Base class for OAuth providers"""
 
@@ -89,19 +113,16 @@ class DiscordOAuthProvider(OAuthProviderBase):
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(settings.DISCORD_TOKEN_URL, data=data, headers=headers, timeout=30.0)
+            response = await _http_client().post(settings.DISCORD_TOKEN_URL, data=data, headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning(
-                        "Discord token exchange failed",
-                        status_code=response.status_code,
-                    )
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Discord code"
-                    )
+            if response.status_code != 200:
+                logger.warning(
+                    "Discord token exchange failed",
+                    status_code=response.status_code,
+                )
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Discord code")
 
-                return response.json()
+            return response.json()
         except httpx.TimeoutException as exc:
             logger.error("Discord API timeout")
             raise HTTPException(
@@ -120,31 +141,28 @@ class DiscordOAuthProvider(OAuthProviderBase):
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{settings.DISCORD_API_URL}/users/@me", headers=headers, timeout=30.0)
+            response = await _http_client().get(f"{settings.DISCORD_API_URL}/users/@me", headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning(
-                        "Discord user info request failed",
-                        status_code=response.status_code,
-                    )
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord user info"
-                    )
-
-                user_data = response.json()
-
-                return schemas.OAuthUserInfo(
-                    provider=schemas.OAuthProvider.DISCORD,
-                    provider_user_id=str(user_data["id"]),
-                    email=user_data.get("email"),
-                    username=user_data["username"],
-                    display_name=user_data.get("global_name") or user_data["username"],
-                    avatar_url=f"https://cdn.discordapp.com/avatars/{user_data['id']}/{user_data['avatar']}.png"
-                    if user_data.get("avatar")
-                    else None,
-                    raw_data=user_data,
+            if response.status_code != 200:
+                logger.warning(
+                    "Discord user info request failed",
+                    status_code=response.status_code,
                 )
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord user info")
+
+            user_data = response.json()
+
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.DISCORD,
+                provider_user_id=str(user_data["id"]),
+                email=user_data.get("email"),
+                username=user_data["username"],
+                display_name=user_data.get("global_name") or user_data["username"],
+                avatar_url=f"https://cdn.discordapp.com/avatars/{user_data['id']}/{user_data['avatar']}.png"
+                if user_data.get("avatar")
+                else None,
+                raw_data=user_data,
+            )
         except httpx.TimeoutException as exc:
             logger.error("Discord API timeout")
             raise HTTPException(
@@ -164,12 +182,19 @@ class TwitchOAuthProvider(OAuthProviderBase):
 
     provider_name = "twitch"
 
+    # ``user:read:subscriptions`` lets the subscription-entitlement module call
+    # Helix ``GET /subscriptions/user`` with this user's own token. Newly added:
+    # connections created before this change carry only ``user:read:email``, so
+    # the Twitch provider resolves them as ``unknown`` (fails open) with
+    # ``evidence.reason == "missing_scope"`` and the UI offers a reconnect.
+    SCOPES = "user:read:email user:read:subscriptions"
+
     def get_authorization_url(self, state: str) -> str:
         params = {
             "client_id": settings.TWITCH_CLIENT_ID,
             "redirect_uri": settings.OAUTH_REDIRECT,
             "response_type": "code",
-            "scope": "user:read:email",
+            "scope": self.SCOPES,
             "state": state,
         }
         return f"{settings.TWITCH_OAUTH_URL}?{urlencode(params)}"
@@ -185,15 +210,14 @@ class TwitchOAuthProvider(OAuthProviderBase):
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(settings.TWITCH_TOKEN_URL, data=data, headers=headers, timeout=30.0)
-                if response.status_code != 200:
-                    logger.warning("Twitch token exchange failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to exchange Twitch code",
-                    )
-                return response.json()
+            response = await _http_client().post(settings.TWITCH_TOKEN_URL, data=data, headers=headers)
+            if response.status_code != 200:
+                logger.warning("Twitch token exchange failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to exchange Twitch code",
+                )
+            return response.json()
         except httpx.TimeoutException as exc:
             logger.error("Twitch API timeout")
             raise HTTPException(
@@ -216,41 +240,40 @@ class TwitchOAuthProvider(OAuthProviderBase):
         }
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{settings.TWITCH_API_URL}/users", headers=headers, timeout=30.0)
+            response = await _http_client().get(f"{settings.TWITCH_API_URL}/users", headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning("Twitch user info request failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to get Twitch user info",
-                    )
-
-                payload = response.json()
-                users = payload.get("data") or []
-                if not users:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Twitch user profile is empty",
-                    )
-
-                user_data = users[0]
-                username = user_data.get("login") or user_data.get("display_name")
-                if not username:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Twitch username is missing",
-                    )
-
-                return schemas.OAuthUserInfo(
-                    provider=schemas.OAuthProvider.TWITCH,
-                    provider_user_id=str(user_data["id"]),
-                    email=user_data.get("email"),
-                    username=username,
-                    display_name=user_data.get("display_name") or username,
-                    avatar_url=user_data.get("profile_image_url"),
-                    raw_data=user_data,
+            if response.status_code != 200:
+                logger.warning("Twitch user info request failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to get Twitch user info",
                 )
+
+            payload = response.json()
+            users = payload.get("data") or []
+            if not users:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Twitch user profile is empty",
+                )
+
+            user_data = users[0]
+            username = user_data.get("login") or user_data.get("display_name")
+            if not username:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Twitch username is missing",
+                )
+
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.TWITCH,
+                provider_user_id=str(user_data["id"]),
+                email=user_data.get("email"),
+                username=username,
+                display_name=user_data.get("display_name") or username,
+                avatar_url=user_data.get("profile_image_url"),
+                raw_data=user_data,
+            )
         except httpx.TimeoutException as exc:
             logger.error("Twitch API timeout")
             raise HTTPException(
@@ -296,23 +319,21 @@ class BattleNetOAuthProvider(OAuthProviderBase):
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(
-                    f"{self._oauth_base_url()}/token",
-                    data=data,
-                    headers=headers,
-                    auth=(settings.BATTLENET_CLIENT_ID, settings.BATTLENET_CLIENT_SECRET),
-                    timeout=30.0,
+            response = await _http_client().post(
+                f"{self._oauth_base_url()}/token",
+                data=data,
+                headers=headers,
+                auth=(settings.BATTLENET_CLIENT_ID, settings.BATTLENET_CLIENT_SECRET),
+            )
+
+            if response.status_code != 200:
+                logger.warning("Battle.net token exchange failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to exchange Battle.net code",
                 )
 
-                if response.status_code != 200:
-                    logger.warning("Battle.net token exchange failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to exchange Battle.net code",
-                    )
-
-                return response.json()
+            return response.json()
         except httpx.TimeoutException as exc:
             logger.error("Battle.net API timeout")
             raise HTTPException(
@@ -332,40 +353,39 @@ class BattleNetOAuthProvider(OAuthProviderBase):
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{self._oauth_base_url()}/userinfo", headers=headers, timeout=30.0)
+            response = await _http_client().get(f"{self._oauth_base_url()}/userinfo", headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning("Battle.net user info request failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to get Battle.net user info",
-                    )
-
-                user_data = response.json()
-                provider_user_id = str(user_data.get("sub") or "")
-                if not provider_user_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Battle.net user id is missing",
-                    )
-
-                battletag = (
-                    user_data.get("battletag")
-                    or user_data.get("battle_tag")
-                    or user_data.get("preferred_username")
-                    or provider_user_id
+            if response.status_code != 200:
+                logger.warning("Battle.net user info request failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to get Battle.net user info",
                 )
 
-                return schemas.OAuthUserInfo(
-                    provider=schemas.OAuthProvider.BATTLENET,
-                    provider_user_id=provider_user_id,
-                    email=user_data.get("email"),
-                    username=battletag,
-                    display_name=battletag,
-                    avatar_url=None,
-                    raw_data=user_data,
+            user_data = response.json()
+            provider_user_id = str(user_data.get("sub") or "")
+            if not provider_user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Battle.net user id is missing",
                 )
+
+            battletag = (
+                user_data.get("battletag")
+                or user_data.get("battle_tag")
+                or user_data.get("preferred_username")
+                or provider_user_id
+            )
+
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.BATTLENET,
+                provider_user_id=provider_user_id,
+                email=user_data.get("email"),
+                username=battletag,
+                display_name=battletag,
+                avatar_url=None,
+                raw_data=user_data,
+            )
         except httpx.TimeoutException as exc:
             logger.error("Battle.net API timeout")
             raise HTTPException(
@@ -831,31 +851,82 @@ class OAuthService:
         session: AsyncSession,
         auth_user: models.AuthUser,
         oauth_info: schemas.OAuthUserInfo,
+        *,
+        claim_subject: bool = False,
     ) -> None:
         """Mark the player's social identity for this provider as OAuth-verified.
 
         Targets the player owning the handle (or, failing that, the auth user's
         linked player). No-op when the auth user has no linked player yet.
+
+        ``claim_subject=True`` is the explicit link flow
+        (``link_oauth_to_existing_user``), which has already rejected the only
+        case where another account can legitimately hold this provider subject:
+        a surviving ``OAuthConnection`` on a different auth user. Any pin of the
+        subject left on another player is therefore unprovable leftover -- a
+        deleted account, an admin unlink, a profile merge -- while the caller
+        just cryptographically proved ownership of it. So the leftover is
+        released (verified mark and pin cleared, handle row kept, exactly as
+        ``oauth_flows.unlink`` does) and the identity is attached to THIS auth
+        user's own player. Without that release the leftover captured the
+        verification instead: the link reported success while the linking user's
+        profile gained nothing, with no error anywhere to explain it.
         """
         provider = OAUTH_TO_SOCIAL.get(oauth_info.provider.value)
         if provider is None:
             return
 
-        player = await cls._find_player_by_provider_record(session, oauth_info)
-        if player is None:
-            result = await session.execute(select(models.User).where(models.User.auth_user_id == auth_user.id))
-            player = result.scalar_one_or_none()
+        if claim_subject:
+            player = await session.scalar(select(models.User).where(models.User.auth_user_id == auth_user.id))
             if player is None:
                 return
+            released = (
+                await session.execute(
+                    sa.update(SocialAccount)
+                    .where(
+                        SocialAccount.provider == provider,
+                        SocialAccount.provider_user_id == oauth_info.provider_user_id,
+                        SocialAccount.user_id != player.id,
+                    )
+                    .values(is_verified=False, provider_user_id=None)
+                )
+            ).rowcount
+            if released:
+                logger.info(
+                    "Released stale {} verification from another player on explicit link",
+                    provider,
+                    player_id=player.id,
+                    released=released,
+                )
+        else:
+            player = await cls._find_player_by_provider_record(session, oauth_info)
+            if player is None:
+                player = await session.scalar(select(models.User).where(models.User.auth_user_id == auth_user.id))
+                if player is None:
+                    return
 
-        await social_identity.upsert_social_account(
-            session,
-            user_id=player.id,
-            provider=provider,
-            username=cls._oauth_handle(oauth_info),
-            provider_user_id=oauth_info.provider_user_id,
-            is_verified=True,
-        )
+        try:
+            await social_identity.upsert_social_account(
+                session,
+                user_id=player.id,
+                provider=provider,
+                username=cls._oauth_handle(oauth_info),
+                provider_user_id=oauth_info.provider_user_id,
+                is_verified=True,
+            )
+        except social_identity.SocialHandleConflict:
+            # LOGIN path: this provider_user_id is verified on a different player
+            # (a shared/reassigned OAuth account). Marking verification is
+            # best-effort here -- the login itself must not fail over it. Under
+            # ``claim_subject`` the release above already cleared every foreign
+            # pin, so this is unreachable defence rather than a real outcome.
+            logger.warning(
+                "OAuth verify skipped: {} account already linked to another player",
+                provider,
+                player_id=player.id,
+            )
+            await session.rollback()
+            return
         await session.commit()
 
     @classmethod
@@ -1147,8 +1218,15 @@ class OAuthService:
         oauth_info: schemas.OAuthUserInfo,
         token_data: dict[str, Any],
     ) -> OAuthConnection:
-        """
-        Link OAuth provider to existing authenticated user
+        """Attach a proven provider identity to an already-authenticated account.
+
+        Idempotent for a re-link of the SAME provider account to the SAME
+        account (tokens are refreshed). Rejected with 409 only when a surviving
+        connection for this exact provider subject belongs to a DIFFERENT
+        account -- the detail spells out the way out, because there is no
+        self-service way to break someone else's link from here: sign in with
+        that provider (it lands on that other account), delete it in account
+        settings, then link again.
         """
         # Check if this OAuth account is already linked to another user
         result = await session.execute(
@@ -1175,11 +1253,14 @@ class OAuthService:
                 await session.commit()
                 await session.refresh(existing_conn)
                 return existing_conn
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"This {oauth_info.provider} account is already linked to another user",
-                )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"This {oauth_info.provider.value.title()} account ({cls._oauth_handle(oauth_info)}) is "
+                    "already linked to a different account here. Sign in with it to reach that account, "
+                    "delete the account in Account settings, then link it again."
+                ),
+            )
 
         # Create new OAuth connection
         oauth_conn = OAuthConnection(
@@ -1204,5 +1285,5 @@ class OAuthService:
 
         logger.success(f"{oauth_info.provider.value.title()} account linked to user {auth_user.username}")
 
-        await cls._attach_verified_social_account(session, auth_user, oauth_info)
+        await cls._attach_verified_social_account(session, auth_user, oauth_info, claim_subject=True)
         return oauth_conn

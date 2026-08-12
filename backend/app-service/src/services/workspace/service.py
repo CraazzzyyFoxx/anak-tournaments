@@ -12,7 +12,6 @@ from shared.models.identity.rbac import user_roles
 from shared.rbac import (
     WORKSPACE_SYSTEM_ROLE_NAMES,
     ensure_workspace_system_roles,
-    legacy_workspace_role_name_for_user,
     replace_user_workspace_roles,
     user_has_only_workspace_owner_role,
 )
@@ -23,7 +22,6 @@ from shared.repository import (
     WorkspaceRepository,
     get_or_create_workspace_member,
 )
-from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_default_division_grid_version_id
 from shared.tenancy.hostnames import normalize_custom_domain
 from src import models
@@ -173,40 +171,41 @@ async def get_all(session: AsyncSession) -> typing.Sequence[models.Workspace]:
     return await _workspace_repo.list_ordered(session)
 
 
-async def get_user_workspaces(
-    session: AsyncSession, auth_user_id: int
-) -> typing.Sequence[tuple[models.Workspace, str]]:
-    """Workspaces ``auth_user_id`` belongs to, with the RBAC-derived legacy role name.
-
-    ``workspace_member`` no longer stores a denormalized ``role`` column; the
-    role string is computed per-workspace from ``user_roles`` (RBAC), which
-    stays keyed on ``auth_user_id``.
-    """
-    result = await session.execute(
-        sa.select(models.Workspace)
+async def validate_default_division_grid_version(
+    session: AsyncSession,
+    *,
+    workspace_id: int | None,
+    version_id: int,
+) -> None:
+    owner_id = await session.scalar(
+        sa.select(sa.func.coalesce(models.DivisionGrid.workspace_id, -1))
         .join(
-            models.WorkspaceMember,
-            models.WorkspaceMember.workspace_id == models.Workspace.id,
+            models.DivisionGridVersion,
+            models.DivisionGridVersion.grid_id == models.DivisionGrid.id,
         )
-        .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-        .where(models.User.auth_user_id == auth_user_id)
-        .order_by(models.Workspace.id)
+        .where(models.DivisionGridVersion.id == version_id)
     )
-    workspaces = result.scalars().all()
-    return [
-        (
-            workspace,
-            await legacy_workspace_role_name_for_user(session, user_id=auth_user_id, workspace_id=workspace.id),
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="Division grid version not found")
+    if owner_id != -1 and owner_id != workspace_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Default division grid version must belong to the workspace or be global",
         )
-        for workspace in workspaces
-    ]
 
 
 async def _resolve_default_division_grid_version_id(
     session: AsyncSession,
     version_id: int | None,
+    *,
+    workspace_id: int | None = None,
 ) -> int:
     if version_id is not None:
+        await validate_default_division_grid_version(
+            session,
+            workspace_id=workspace_id,
+            version_id=version_id,
+        )
         return version_id
 
     resolved_version_id = await get_default_division_grid_version_id(session)
@@ -227,20 +226,12 @@ async def create(session: AsyncSession, **kwargs) -> models.Workspace:
 
 
 async def update(session: AsyncSession, workspace: models.Workspace, data: dict) -> models.Workspace:
-    resolved_data = dict(data)
-    if "default_division_grid_version_id" in resolved_data:
-        resolved_data["default_division_grid_version_id"] = await _resolve_default_division_grid_version_id(
-            session,
-            resolved_data["default_division_grid_version_id"],
+    if "default_division_grid_version_id" in data:
+        raise HTTPException(
+            status_code=400,
+            detail="Activate division grid versions through the division-grid activation endpoint",
         )
-
-    should_invalidate_grid = (
-        "default_division_grid_version_id" in resolved_data
-        and resolved_data["default_division_grid_version_id"] != workspace.default_division_grid_version_id
-    )
-    await _workspace_repo.update_fields(session, workspace, resolved_data)
-    if should_invalidate_grid:
-        await division_grid_cache.invalidate_workspace(workspace.id)
+    await _workspace_repo.update_fields(session, workspace, dict(data))
     return workspace
 
 
@@ -454,7 +445,6 @@ async def add_member_with_roles(
     auth_user_id: int,
     *,
     role_ids: list[int],
-    legacy_role: str = "member",
 ) -> models.WorkspaceMember:
     member = await add_member(session, workspace_id, auth_user_id)
     await replace_user_workspace_roles(

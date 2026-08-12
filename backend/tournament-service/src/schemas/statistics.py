@@ -13,7 +13,7 @@ __all__ = (
 
 class TournamentStatistics(BaseModel):
     id: int
-    number: int
+    name: str
     players_count: int
     avg_sr: float
     avg_closeness: float | None
@@ -21,7 +21,7 @@ class TournamentStatistics(BaseModel):
 
 class DivisionStatistics(BaseModel):
     id: int
-    number: int
+    name: str
     tank_avg_div: float | None
     damage_avg_div: float | None
     support_avg_div: float | None

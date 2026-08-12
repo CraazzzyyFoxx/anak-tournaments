@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw, Search } from "lucide-react";
 
-import UserRankHistory from "@/components/UserRankHistory";
+import RankHistory from "@/components/RankHistory";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import rankService from "@/services/rank.service";
 import userService from "@/services/user.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { CurrentRank } from "@/types/rank.types";
 
 import { StatusBadge, formatDate } from "./rank-shared";
@@ -63,9 +64,13 @@ export function RankPlayerSearch({ onSelect }: { onSelect: SelectUser }) {
 
   return (
     <div ref={containerRef} className="relative w-full sm:w-72">
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Search
+        aria-hidden
+        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+      />
       <Input
         className="pl-8"
+        aria-label="Search player by battle tag"
         placeholder="Search player by battle tag…"
         value={term}
         onChange={(event) => {
@@ -95,7 +100,9 @@ export function RankPlayerSearch({ onSelect }: { onSelect: SelectUser }) {
               ))}
             </div>
           ) : (
-            <p className="px-3 py-2 text-sm text-muted-foreground">No players found.</p>
+            <p className="px-3 py-2 text-sm text-muted-foreground">
+              No player matches “{debounced}”. Try the full battle tag, including the #tag.
+            </p>
           )}
         </div>
       )}
@@ -148,10 +155,12 @@ interface RankPlayerDetailProps {
 
 export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailProps) {
   const queryClient = useQueryClient();
+  // Scoped server-side to the injected workspace; see `admin.service.ts`.
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
 
   const statusQuery = useQuery({
-    queryKey: ["admin", "rank", "collection", userId],
+    queryKey: ["admin", "rank", "collection", workspaceId, userId],
     queryFn: () => adminService.getRankCollectionStatus(userId)
   });
   const rows = statusQuery.data ?? [];
@@ -162,9 +171,10 @@ export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailPro
     onSuccess: (result) => {
       notify.success(`Queued ${result.enqueued} rank fetch(es)`);
       setSelectedTagIds(new Set());
-      queryClient.invalidateQueries({ queryKey: ["admin", "rank", "collection", userId] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "rank"] });
     },
-    onError: (error) => notify.apiError(error, { title: "Failed to queue" })
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not queue the rank fetch — try again" })
   });
 
   const toggleTag = (id: number) =>
@@ -196,14 +206,16 @@ export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailPro
                     disabled={triggerMutation.isPending}
                     onClick={() => triggerMutation.mutate([...selectedTagIds])}
                   >
-                    Collect selected ({selectedTagIds.size})
+                    <span className="tabular-nums">
+                      Collect selected ({selectedTagIds.size})
+                    </span>
                   </Button>
                 )}
                 <Button size="sm" disabled={triggerMutation.isPending} onClick={() => triggerMutation.mutate(null)}>
                   {triggerMutation.isPending ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    <Loader2 aria-hidden className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                    <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
                   )}
                   Collect all
                 </Button>
@@ -213,7 +225,10 @@ export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailPro
             {statusQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No battle tags linked to this player.</p>
+              <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+                No battle tags linked to this player. Ask them to connect a Battle.net account
+                before rank collection can run.
+              </p>
             ) : (
               <Table>
                 <TableHeader>
@@ -223,7 +238,7 @@ export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailPro
                     <TableHead>Status</TableHead>
                     <TableHead>Last checked</TableHead>
                     <TableHead>Last success</TableHead>
-                    <TableHead>Fails</TableHead>
+                    <TableHead className="text-right">Failures</TableHead>
                     <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -241,17 +256,18 @@ export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailPro
                       <TableCell title={row.last_error ?? undefined}>
                         <StatusBadge status={row.status} />
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(row.last_checked_at)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(row.last_success_at)}</TableCell>
-                      <TableCell className="text-sm tabular-nums">{row.consecutive_failures || "—"}</TableCell>
+                      <TableCell className="text-sm tabular-nums text-muted-foreground">{formatDate(row.last_checked_at)}</TableCell>
+                      <TableCell className="text-sm tabular-nums text-muted-foreground">{formatDate(row.last_success_at)}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">{row.consecutive_failures || "—"}</TableCell>
                       <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="sm"
                           disabled={triggerMutation.isPending}
                           onClick={() => triggerMutation.mutate([row.social_account_id])}
+                          aria-label={`Collect rank for ${row.battle_tag}`}
                         >
-                          <RefreshCw className="mr-1 h-3 w-3" />
+                          <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
                           Collect
                         </Button>
                       </TableCell>
@@ -262,7 +278,7 @@ export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailPro
             )}
           </section>
 
-          <UserRankHistory userId={userId} title="Rank history" />
+          <RankHistory userId={userId} title="Rank history" />
         </div>
       </DialogContent>
     </Dialog>

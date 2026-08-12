@@ -24,7 +24,9 @@ from src.rpc import (
     _clients,
     achievements,
     admin_crud,
+    audit,
     binary,
+    catalog_aliases,
     gamemodes,
     heroes,
     maps,
@@ -70,8 +72,14 @@ admin_crud.register(broker, logger)
 # Game-metadata admin CRUD (hero/map/gamemode), relocated from parser-service.
 metadata_admin.register(broker, logger)
 
+# Alias-miss queue: unresolved log names + one-click attach (superuser only).
+catalog_aliases.register(broker, logger)
+
 # User + identity admin CRUD, profile merge, avatar, CSV import (from parser-service).
 users_admin.register(broker, logger)
+
+# Platform audit log (read-only feed + per-entity trail), gated by audit.read.
+audit.register(broker, logger)
 
 # Phase 3 — binary/multipart endpoints (icons, assets, match-log) over base64.
 binary.register(broker, logger)
@@ -90,7 +98,7 @@ async def start_worker() -> None:
         logs_level=config.settings.sentry_logs_level,
         enable_metrics=config.settings.sentry_enable_metrics,
         environment=config.settings.environment,
-        release=config.settings.version,
+        release=config.settings.sentry_release,
         http_proxy=config.settings.sentry_http_proxy_url,
         https_proxy=config.settings.sentry_https_proxy_url,
     )
@@ -100,6 +108,9 @@ async def start_worker() -> None:
         enabled=config.settings.tracing_enabled,
         sampler_name=config.settings.otel_traces_sampler,
         sampler_arg=config.settings.otel_traces_sampler_arg,
+        environment=config.settings.environment,
+        release=config.settings.sentry_release,
+        engine=db.async_engine,
     )
     if config.settings.worker_metrics_port is not None:
         start_worker_metrics_server(config.settings.worker_metrics_port)

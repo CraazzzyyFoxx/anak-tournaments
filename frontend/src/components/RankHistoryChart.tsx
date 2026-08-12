@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import {
   ChartConfig,
@@ -20,11 +20,11 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LineChart as ChartIcon, Compass } from "lucide-react";
+import { LineChart as ChartIcon, Compass, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 
-type Granularity = "date" | "hour" | "raw";
+import type { Granularity } from "@/hooks/useRankHistory";
+import { cn } from "@/lib/utils";
 
 type GroupBy = "role" | "battle_tag";
 
@@ -39,6 +39,12 @@ const ROLE_COLORS: Record<string, string> = {
 
 const PALETTE = ["#2563eb", "#a855f7", "#06b6d4", "#f59e0b", "#ec4899", "#14b8a6"];
 
+const TRIGGER_CLASS =
+  "h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] text-xs";
+
+const CARD_CLASS =
+  "relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4 shadow-inner";
+
 interface LineDef {
   key: string;
   label: string;
@@ -50,9 +56,56 @@ interface RankHistoryChartProps {
   /** Default grouping mode. */
   defaultGroupBy?: GroupBy;
   className?: string;
-  /** Controlled granularity — when provided the chart becomes a controlled component. */
-  granularity?: Granularity;
-  onGranularityChange?: (g: Granularity) => void;
+  granularity: Granularity;
+  onGranularityChange: (g: Granularity) => void;
+}
+
+/**
+ * The "nothing to draw" surface for rank-history cards.
+ *
+ * Deliberately not `<PageStateCard>`: that is a page-level surface (px-6 py-10,
+ * section type scale) whereas these states render *inside* a chart card — a
+ * 300px sheet column and a table's expanded row — where it would dwarf the
+ * chart it stands in for. It also keeps the per-state iconography that tells
+ * "no history at all" apart from "nothing for this filter".
+ */
+export function ChartEmptyState({
+  icon: Icon,
+  title,
+  body,
+  tone = "neutral",
+  className
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+  /** `error` announces assertively and accents the icon. */
+  tone?: "neutral" | "error";
+  className?: string;
+}) {
+  const isError = tone === "error";
+  return (
+    <div
+      role={isError ? "alert" : "status"}
+      className={cn(
+        "flex flex-col items-center justify-center rounded-xl border p-6 text-center",
+        isError
+          ? "border-[color:var(--aqt-rose)]/25 bg-[color:var(--aqt-rose)]/5"
+          : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)]",
+        className
+      )}
+    >
+      <Icon
+        aria-hidden
+        className={cn(
+          "mb-2 h-5 w-5",
+          isError ? "text-[color:var(--aqt-rose)]" : "text-[color:var(--aqt-fg-faint)]"
+        )}
+      />
+      <h4 className="mb-1 text-xs font-semibold text-[color:var(--aqt-fg)]">{title}</h4>
+      <p className="max-w-xs text-[11px] leading-normal text-[color:var(--aqt-fg-muted)]">{body}</p>
+    </div>
+  );
 }
 
 function uniqueBy<T, K>(items: T[], keyOf: (item: T) => K): T[] {
@@ -72,21 +125,12 @@ export default function RankHistoryChart({
   series,
   defaultGroupBy = "role",
   className,
-  granularity: granularityProp,
+  granularity,
   onGranularityChange
 }: RankHistoryChartProps) {
   const platforms = useMemo(() => uniqueBy(series.map((s) => s.platform), (p) => p), [series]);
   const [platform, setPlatform] = useState<string>(platforms.includes("pc") ? "pc" : platforms[0] ?? "pc");
   const [groupBy, setGroupBy] = useState<GroupBy>(defaultGroupBy);
-  const [localGranularity, setLocalGranularity] = useLocalStorageState<Granularity>(
-    "rank-history-granularity",
-    "date"
-  );
-  const granularity = granularityProp ?? localGranularity;
-  const setGranularity = (g: Granularity) => {
-    setLocalGranularity(g);
-    onGranularityChange?.(g);
-  };
 
   const platformSeries = useMemo(
     () => series.filter((s) => s.platform === platform),
@@ -123,7 +167,7 @@ export default function RankHistoryChart({
       const key = groupBy === "role" ? s.role : `bt${s.social_account_id}`;
       for (const p of s.points) {
         if (!p.is_ranked || p.rank_value == null) continue;
-        
+
         let dateKey = p.captured_at;
         if (granularity === "date") {
           dateKey = p.captured_at.split("T")[0] || p.captured_at;
@@ -134,7 +178,7 @@ export default function RankHistoryChart({
             dateKey = p.captured_at.substring(0, 13) + ":00";
           }
         }
-        
+
         const row = rows.get(dateKey) ?? { ts: dateKey };
         row[key] = p.rank_value;
         rows.set(dateKey, row);
@@ -188,15 +232,12 @@ export default function RankHistoryChart({
 
   if (series.length === 0) {
     return (
-      <div className={`flex flex-col items-center justify-center text-center p-6 rounded-xl border border-white/[0.06] bg-zinc-950/20 ${className || ""}`}>
-        <ChartIcon className="h-5 w-5 text-white/30 mb-2" />
-        <h4 className="text-xs font-semibold text-white/70 mb-1">
-          {t("rankHistory.emptyTitle")}
-        </h4>
-        <p className="text-[11px] text-white/45 max-w-xs leading-normal">
-          {t("rankHistory.emptyBody")}
-        </p>
-      </div>
+      <ChartEmptyState
+        className={className}
+        icon={ChartIcon}
+        title={t("rankHistory.emptyTitle")}
+        body={t("rankHistory.emptyBody")}
+      />
     );
   }
 
@@ -204,7 +245,7 @@ export default function RankHistoryChart({
     <div className={className}>
       <div className="flex flex-wrap items-center gap-3 mb-3">
         <Select value={groupBy} onValueChange={(val) => setGroupBy(val as GroupBy)}>
-          <SelectTrigger className="w-[130px] h-8 text-xs bg-background/50 border-white/[0.08]">
+          <SelectTrigger aria-label={t("rankHistory.groupByLabel")} className={cn(TRIGGER_CLASS, "w-[130px]")}>
             <SelectValue placeholder={t("rankHistory.groupByPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
@@ -218,7 +259,7 @@ export default function RankHistoryChart({
             value={effectiveBattleTagId != null ? String(effectiveBattleTagId) : undefined}
             onValueChange={(val) => setFixedBattleTagId(Number(val))}
           >
-            <SelectTrigger className="w-[170px] h-8 text-xs bg-background/50 border-white/[0.08]">
+            <SelectTrigger aria-label={t("rankHistory.accountLabel")} className={cn(TRIGGER_CLASS, "w-[170px]")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -234,7 +275,7 @@ export default function RankHistoryChart({
             value={effectiveRole}
             onValueChange={(val) => setFixedRole(val)}
           >
-            <SelectTrigger className="w-[110px] h-8 text-xs bg-background/50 border-white/[0.08] capitalize">
+            <SelectTrigger aria-label={t("rankHistory.roleLabel")} className={cn(TRIGGER_CLASS, "w-[110px] capitalize")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -247,8 +288,11 @@ export default function RankHistoryChart({
           </Select>
         )}
 
-        <Select value={granularity} onValueChange={(val) => setGranularity(val as Granularity)}>
-          <SelectTrigger className="w-[120px] h-8 text-xs bg-background/50 border-white/[0.08]">
+        <Select value={granularity} onValueChange={(val) => onGranularityChange(val as Granularity)}>
+          <SelectTrigger
+            aria-label={t("rankHistory.granularityPlaceholder")}
+            className={cn(TRIGGER_CLASS, "w-[120px]")}
+          >
             <SelectValue placeholder={t("rankHistory.granularityPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
@@ -263,7 +307,7 @@ export default function RankHistoryChart({
             value={platform}
             onValueChange={(val) => setPlatform(val)}
           >
-            <SelectTrigger className="w-[80px] h-8 text-xs bg-background/50 border-white/[0.08] uppercase">
+            <SelectTrigger aria-label={t("rankHistory.platformLabel")} className={cn(TRIGGER_CLASS, "w-[80px] uppercase")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -278,24 +322,22 @@ export default function RankHistoryChart({
       </div>
 
       {data.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center p-6 rounded-xl border border-white/[0.06] bg-zinc-950/20">
-          <Compass className="h-5 w-5 text-white/30 mb-2" />
-          <h4 className="text-xs font-semibold text-white/70 mb-1">
-            {t("rankHistory.noDataTitle")}
-          </h4>
-          <p className="text-[11px] text-white/45 max-w-xs leading-normal">
-            {t("rankHistory.noDataBody")}
-          </p>
-        </div>
+        <ChartEmptyState
+          icon={Compass}
+          title={t("rankHistory.noDataTitle")}
+          body={t("rankHistory.noDataBody")}
+        />
       ) : (
-        <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-zinc-950/40 p-4 shadow-inner backdrop-blur-xs">
+        <div className={cn(CARD_CLASS, "backdrop-blur-xs")}>
           {/* Glow effect */}
           <div className="absolute -left-12 -top-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
           <div className="absolute -right-12 -bottom-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
 
           <ChartContainer config={chartConfig} className="h-[180px] w-full aspect-auto">
             <LineChart accessibilityLayer data={data} margin={{ left: 2, right: 2, top: 4, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="rgba(255, 255, 255, 0.05)" strokeDasharray="3 3" />
+              {/* No `stroke`: recharts' `#ccc` default is what ChartContainer
+                  restyles to the themed `stroke-border/50`. */}
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis
                 dataKey="ts"
                 tickLine={false}
@@ -358,6 +400,7 @@ export default function RankHistoryChart({
                       return (
                         <>
                           <div
+                            aria-hidden
                             className="shrink-0 rounded-xs border h-2.5 w-2.5"
                             style={{
                               backgroundColor: item.color,
@@ -365,8 +408,8 @@ export default function RankHistoryChart({
                             }}
                           />
                           <div className="flex flex-1 justify-between items-center leading-none text-xs gap-4">
-                            <span className="text-muted-foreground">{chartConfig[name as string]?.label || name}</span>
-                            <span className="font-mono font-medium text-foreground ml-2">{label}</span>
+                            <span className="text-[color:var(--aqt-fg-muted)]">{chartConfig[name as string]?.label || name}</span>
+                            <span className="font-mono font-medium tabular-nums text-[color:var(--aqt-fg)] ml-2">{label}</span>
                           </div>
                         </>
                       );
@@ -398,13 +441,13 @@ export default function RankHistoryChart({
 
 export function RankHistorySkeleton({ className }: { className?: string }) {
   return (
-    <div className={`space-y-3 ${className || ""}`}>
+    <div className={cn("space-y-3", className)}>
       <div className="flex flex-wrap items-center gap-3">
-        <Skeleton className="w-[130px] h-8 bg-white/[0.04]" />
-        <Skeleton className="w-[170px] h-8 bg-white/[0.04]" />
+        <Skeleton className="w-[130px] h-8 bg-[color:var(--aqt-overlay-2)]" />
+        <Skeleton className="w-[170px] h-8 bg-[color:var(--aqt-overlay-2)]" />
       </div>
-      <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-zinc-950/40 p-4 shadow-inner">
-        <Skeleton className="h-[180px] w-full bg-white/[0.03]" />
+      <div className={CARD_CLASS}>
+        <Skeleton className="h-[180px] w-full bg-[color:var(--aqt-overlay-1)]" />
       </div>
     </div>
   );

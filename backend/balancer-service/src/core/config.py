@@ -9,7 +9,7 @@ from shared.core.config import BaseServiceSettings
 
 class Settings(BaseServiceSettings):
     # Balancer-specific fields
-    project_name: str = "Anak Tournaments"
+    project_name: str = "OWT"
     description: str = "Tournament team balancing service"
     debug: bool = False
     port: int = 8005

@@ -119,7 +119,14 @@ class AuthUser(db.TimeStampIntegerMixin):
         cached = getattr(self, "_cached_workspaces", None)
         if cached is not None:
             return [w["workspace_id"] for w in cached if "workspace_id" in w]
-        return []
+        ws_rbac = getattr(self, "_cached_workspace_rbac", None) or {}
+        if ws_rbac:
+            return list(ws_rbac.keys())
+        ws_ids = set()
+        for role in getattr(self, "roles", []):
+            if role.workspace_id is not None:
+                ws_ids.add(role.workspace_id)
+        return list(ws_ids)
 
     def is_workspace_member(self, workspace_id: int) -> bool:
         """Check if user is a member of a specific workspace."""
@@ -127,28 +134,41 @@ class AuthUser(db.TimeStampIntegerMixin):
             return True
         return workspace_id in self.get_workspace_ids()
 
-    def get_workspace_role(self, workspace_id: int) -> str | None:
-        """Get user's role in a specific workspace."""
-        if self.is_superuser:
-            return "owner"
-        cached = getattr(self, "_cached_workspaces", None)
-        if cached is not None:
-            for w in cached:
-                if w.get("workspace_id") == workspace_id:
-                    return w.get("role")
-        return None
-
     def is_workspace_admin(self, workspace_id: int) -> bool:
-        """Check if user has workspace-scoped wildcard access."""
+        """Workspace-scoped admin privileges: an owner/admin RBAC role, or a wildcard.
+
+        Answered from RBAC alone. There is deliberately no "what is this user's
+        role here?" accessor to consult first: a member holds a SET of roles, and
+        the single name a previous version derived from that set (first match of
+        owner>admin>member>player) was both lossy and, once it was cached from a
+        token payload, able to shadow the RBAC data below it.
+        """
         if self.is_superuser:
             return True
-        return self.has_workspace_permission(workspace_id, "*", "*")
+        ws_rbac = getattr(self, "_cached_workspace_rbac", None) or {}
+        ws_data = ws_rbac.get(workspace_id)
+        if ws_data:
+            roles = ws_data.get("roles", [])
+            if any(r in ("owner", "admin") for r in roles):
+                return True
+            for p in ws_data.get("permissions", []):
+                pr, pa = p.get("resource", ""), p.get("action", "")
+                if (pr == "*" or pr == "admin") and pa == "*":
+                    return True
+        for r in getattr(self, "roles", []):
+            if r.workspace_id == workspace_id:
+                if r.name in ("owner", "admin"):
+                    return True
+                for p in r.permissions:
+                    if (p.resource == "*" or p.resource == "admin") and p.action == "*":
+                        return True
+        return False
 
     def has_workspace_permission(self, workspace_id: int, resource: str, action: str) -> bool:
         """Check permission within a specific workspace context.
 
         Checks: superuser -> global admin role -> global permissions
-        -> workspace-scoped permissions.
+        -> workspace-scoped admin roles -> workspace-scoped permissions.
         """
         if self.is_denied(resource, action, workspace_id):
             return False
@@ -157,6 +177,13 @@ class AuthUser(db.TimeStampIntegerMixin):
 
         # Check global permissions first
         if self.has_permission(resource, action):
+            return True
+
+        # Workspace owner or admin role grants all non-denied workspace operations
+        # except governance (role/permission) and workspace/member deletion
+        if self.is_workspace_admin(workspace_id) and not (
+            resource in ("role", "permission") or (resource in ("workspace", "workspace_member") and action == "delete")
+        ):
             return True
 
         # Check workspace-scoped permissions
@@ -168,7 +195,7 @@ class AuthUser(db.TimeStampIntegerMixin):
                 if (pr == resource or pr == "*") and (pa == action or pa == "*"):
                     return True
 
-        for role in self.roles:
+        for role in getattr(self, "roles", []):
             if role.workspace_id != workspace_id:
                 continue
             for permission in role.permissions:

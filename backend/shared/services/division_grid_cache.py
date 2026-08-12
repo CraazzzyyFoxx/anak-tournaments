@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -163,6 +164,10 @@ def _version_key(version_id: int) -> str:
     return f"{CACHE_KEY_PREFIX}division_grid:version:{version_id}"
 
 
+def _version_read_key(version_id: int) -> str:
+    return f"{CACHE_KEY_PREFIX}division_grid:version:{version_id}:read"
+
+
 def _workspace_default_key(workspace_id: int) -> str:
     return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version"
 
@@ -209,6 +214,76 @@ async def set_grid_version_snapshot(snapshot: DivisionGridVersionSnapshot) -> No
     await _set(_version_key(snapshot.id), snapshot.to_payload())
 
 
+async def get_grid_version_snapshots(version_ids: Sequence[int]) -> dict[int, DivisionGridVersionSnapshot]:
+    """Batch counterpart of ``get_grid_version_snapshot``: one round trip for many ids.
+
+    Missing ids (cache miss, or the backend being down) are simply absent from
+    the result -- callers resolve those from the database and write them back
+    with ``set_grid_version_snapshots``.
+    """
+    ids = list(dict.fromkeys(version_ids))
+    if not cache.is_setup() or not ids:
+        return {}
+    try:
+        payloads = await cache.get_many(*(_version_key(vid) for vid in ids))
+    except Exception as exc:
+        logger.debug("Division grid cache batch get failed for versions %s: %s", ids, exc)
+        return {}
+    return {
+        vid: DivisionGridVersionSnapshot.from_payload(payload)
+        for vid, payload in zip(ids, payloads, strict=True)
+        if payload is not None
+    }
+
+
+async def set_grid_version_snapshots(snapshots: Mapping[int, DivisionGridVersionSnapshot]) -> None:
+    if not cache.is_setup() or not snapshots:
+        return
+    try:
+        await cache.set_many(
+            {_version_key(vid): snapshot.to_payload() for vid, snapshot in snapshots.items()},
+            expire=GRID_CACHE_TTL_SECONDS,
+        )
+    except Exception as exc:
+        logger.debug("Division grid cache batch set failed for versions %s: %s", list(snapshots), exc)
+
+
+async def get_grid_version_read_payloads(version_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+    """Batch get of the full read-model payload for grid versions.
+
+    Separate cache namespace from ``get_grid_version_snapshot(s)``: that one
+    only carries what rank resolution needs (id, tiers' rank bounds); this
+    carries the full shape every service's own ``DivisionGridVersionRead``
+    pydantic schema expects (each service defines an identical copy -- this
+    module has no pydantic dependency on any of them), so a caller does
+    ``Read.model_validate(payload)`` with no per-field mapping. Kept as its
+    own key rather than folded into the resolution snapshot so extending this
+    shape can never make an old, already-cached resolution snapshot fail to
+    parse.
+    """
+    ids = list(dict.fromkeys(version_ids))
+    if not cache.is_setup() or not ids:
+        return {}
+    try:
+        payloads = await cache.get_many(*(_version_read_key(vid) for vid in ids))
+    except Exception as exc:
+        logger.debug("Division grid cache batch get failed for version reads %s: %s", ids, exc)
+        return {}
+    return {vid: payload for vid, payload in zip(ids, payloads, strict=True) if payload is not None}
+
+
+async def set_grid_version_read_payloads(payloads: Mapping[int, dict[str, Any]]) -> None:
+    if not cache.is_setup() or not payloads:
+        return
+    try:
+        await cache.set_many(
+            {_version_read_key(vid): payload for vid, payload in payloads.items()},
+            expire=GRID_CACHE_TTL_SECONDS,
+        )
+    except Exception as exc:
+        logger.debug("Division grid cache batch set failed for version reads %s: %s", list(payloads), exc)
+
+
 async def get_workspace_default_version_id(workspace_id: int) -> int | None:
     value = await _get(_workspace_default_key(workspace_id))
     return int(value) if value is not None else None
@@ -225,6 +300,36 @@ async def get_tournament_effective_version_id(tournament_id: int) -> int | None:
 
 async def set_tournament_effective_version_id(tournament_id: int, version_id: int | None) -> None:
     await _set(_tournament_effective_key(tournament_id), version_id)
+
+
+async def get_tournament_effective_version_ids(tournament_ids: Sequence[int]) -> dict[int, int | None]:
+    """Batch counterpart of ``get_tournament_effective_version_id``: one round trip for many ids.
+
+    A cached "no grid at all" (``None``) is indistinguishable from a plain
+    cache miss -- same ambiguity as the single-item getter -- so both are
+    simply absent from the result and left for the caller to resolve.
+    """
+    ids = list(dict.fromkeys(tournament_ids))
+    if not cache.is_setup() or not ids:
+        return {}
+    try:
+        values = await cache.get_many(*(_tournament_effective_key(tid) for tid in ids))
+    except Exception as exc:
+        logger.debug("Division grid cache batch get failed for tournaments %s: %s", ids, exc)
+        return {}
+    return {tid: int(value) for tid, value in zip(ids, values, strict=True) if value is not None}
+
+
+async def set_tournament_effective_version_ids(values: Mapping[int, int | None]) -> None:
+    if not cache.is_setup() or not values:
+        return
+    try:
+        await cache.set_many(
+            {_tournament_effective_key(tid): version_id for tid, version_id in values.items()},
+            expire=GRID_CACHE_TTL_SECONDS,
+        )
+    except Exception as exc:
+        logger.debug("Division grid cache batch set failed for tournaments %s: %s", list(values), exc)
 
 
 async def get_mapping_snapshot(
@@ -260,6 +365,7 @@ async def invalidate_grid_version(version_id: int) -> None:
         return
     try:
         await cache.delete(_version_key(version_id))
+        await cache.delete(_version_read_key(version_id))
         await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:mapping:{version_id}:*")
         await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:mapping:*:{version_id}")
     except Exception as exc:

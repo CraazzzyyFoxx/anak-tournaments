@@ -4,14 +4,8 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import TournamentClientLayout from "./_components/TournamentClientLayout";
-import { TournamentShellSkeleton } from "./_components/TournamentSkeletons";
-import {
-  getTournamentOverviewState,
-  getTournamentOwnerWorkspace,
-  parseCanonicalTournamentId,
-} from "./_data";
+import { getTournamentOverviewState, parseCanonicalTournamentId } from "./_data";
 import TournamentOverviewBoundary from "./TournamentOverviewBoundary";
-import { TournamentThemeScope } from "@/components/TournamentThemeScope";
 import { resolveSiteMetadata } from "@/lib/site-metadata";
 
 export const dynamic = "force-dynamic";
@@ -70,14 +64,12 @@ export default async function TournamentLayout({
     notFound();
   }
 
-  const ownerWorkspace = await getTournamentOwnerWorkspace(tournamentId);
-
   return (
-    <Suspense fallback={<TournamentShellSkeleton />}>
-      <TournamentThemeScope workspace={ownerWorkspace} />
-      <TournamentOverviewBoundary tournamentId={tournamentId}>
-        <TournamentClientLayout tournamentId={tournamentId}>{children}</TournamentClientLayout>
-      </TournamentOverviewBoundary>
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <TournamentOverviewBoundary tournamentId={tournamentId} />
+      </Suspense>
+      <TournamentClientLayout tournamentId={tournamentId}>{children}</TournamentClientLayout>
+    </>
   );
 }

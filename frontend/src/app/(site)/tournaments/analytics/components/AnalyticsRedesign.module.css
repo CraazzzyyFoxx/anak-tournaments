@@ -861,8 +861,8 @@
 .cRoot {
   --c-surface: var(--aqt-card);
   --c-surface-2: var(--aqt-card-2);
-  --c-surface-3: hsl(215 20% 14%);
-  --c-bg-grad: hsl(215 24% 9%);
+  --c-surface-3: color-mix(in srgb, var(--aqt-card-2) 95%, white);
+  --c-bg-grad: color-mix(in srgb, var(--aqt-card) 98%, white);
   --c-line: var(--aqt-border);
   --c-line-2: var(--aqt-border-2);
   --c-text: var(--aqt-fg);
@@ -871,15 +871,15 @@
   /* Positive/up green: match the design's established win/positive tone
      (trendPositive/deltaUp/wins) instead of the brighter, yellower emerald. */
   --c-up: hsl(146 60% 58%);
-  --c-up-dim: hsl(146 60% 58% / 0.16);
+  --c-up-dim: color-mix(in srgb, var(--c-up) 16%, transparent);
   --c-down: var(--aqt-rose);
-  --c-down-dim: hsl(340 75% 58% / 0.15);
+  --c-down-dim: color-mix(in srgb, var(--c-down) 15%, transparent);
   --c-warn: var(--aqt-amber);
-  --c-warn-dim: hsl(38 95% 55% / 0.14);
+  --c-warn-dim: color-mix(in srgb, var(--c-warn) 14%, transparent);
   --c-info: var(--aqt-blue);
-  --c-info-dim: hsl(210 80% 60% / 0.15);
+  --c-info-dim: color-mix(in srgb, var(--c-info) 15%, transparent);
   --c-accent: var(--aqt-teal);
-  --c-accent-dim: hsl(172 70% 49% / 0.14);
+  --c-accent-dim: color-mix(in srgb, var(--aqt-teal) 14%, transparent);
   --c-r: 14px;
   --c-r-sm: 8px;
   --c-disp: var(--aqt-display);
@@ -956,7 +956,7 @@
   gap: 7px;
   border: 1px solid var(--c-line-2);
   border-radius: 8px;
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   padding: 6px 11px;
   color: var(--c-muted);
   font-size: 12px;
@@ -1049,6 +1049,13 @@
   border-color: var(--c-line-2);
   background: var(--c-surface-2);
 }
+/* Both .cKpiClickable and .cInfoDot opt into the tab order and handle
+   Enter/Space, but the stylesheet had no outline rule at all — a keyboard user
+   could activate a KPI without ever seeing which one was focused. */
+.cKpiClickable:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
 .cKpiLabel {
   display: flex;
   align-items: center;
@@ -1106,6 +1113,12 @@
 }
 .cInfoDot:hover {
   border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+.cInfoDot:focus-visible {
+  border-color: var(--c-accent);
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
   color: var(--c-accent);
 }
 .cTerm {

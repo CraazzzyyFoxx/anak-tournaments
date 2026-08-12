@@ -10,6 +10,7 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { PROVIDER_META, ProviderBadge } from "@/components/admin/OAuthProviderBadge";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,7 +65,7 @@ export default function OAuthConnectionsAdminPage() {
     },
     {
       id: "provider_user",
-      header: "Provider Account",
+      header: "Provider account",
       cell: ({ row }) => {
         const conn = row.original;
         return (
@@ -90,12 +91,14 @@ export default function OAuthConnectionsAdminPage() {
       accessorKey: "provider_user_id",
       header: "Provider ID",
       cell: ({ row }) => (
-        <code className="text-xs text-muted-foreground">{row.original.provider_user_id}</code>
+        <code className="font-mono text-xs tabular-nums text-muted-foreground">
+          {row.original.provider_user_id}
+        </code>
       )
     },
     {
       id: "auth_user",
-      header: "Auth User",
+      header: "Auth user",
       cell: ({ row }) => {
         const conn = row.original;
         const nick = conn.auth_user_username ?? conn.auth_user_email ?? "";
@@ -108,7 +111,7 @@ export default function OAuthConnectionsAdminPage() {
               <span className="truncate text-sm font-medium text-foreground">
                 {conn.auth_user_username}
               </span>
-              <ExternalLink className="h-3 w-3 shrink-0" />
+              <ExternalLink aria-hidden className="h-3 w-3 shrink-0" />
             </a>
             <p className="truncate text-xs text-muted-foreground">{conn.auth_user_email}</p>
           </div>
@@ -125,12 +128,7 @@ export default function OAuthConnectionsAdminPage() {
         }
         const expired = isTokenExpired(expiresAt);
         return (
-          <Badge
-            variant="outline"
-            className={
-              expired ? "border-red-500/30 text-red-400" : "border-green-500/30 text-green-400"
-            }
-          >
+          <Badge variant="outline" className={TONE_CLASS[expired ? "danger" : "success"]}>
             {expired ? "Expired" : "Active"}
           </Badge>
         );
@@ -140,7 +138,9 @@ export default function OAuthConnectionsAdminPage() {
       accessorKey: "created_at",
       header: "Connected",
       cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">{formatDate(row.original.created_at)}</span>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {formatDate(row.original.created_at)}
+        </span>
       )
     },
     ...(canDeleteConnections
@@ -152,10 +152,10 @@ export default function OAuthConnectionsAdminPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={`Delete ${row.original.provider} connection for ${row.original.username}`}
+                aria-label={`Remove ${PROVIDER_META[row.original.provider]?.label ?? row.original.provider} connection for ${row.original.username}`}
                 onClick={() => setDeletingConnection(row.original)}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 aria-hidden className="h-4 w-4" />
               </Button>
             )
           }
@@ -167,44 +167,10 @@ export default function OAuthConnectionsAdminPage() {
     <>
       <div className="space-y-6">
         <AdminPageHeader
-          title="OAuth Connections"
+          title="OAuth connections"
           description="View all OAuth provider connections linked to user accounts."
           meta={<Badge variant="secondary">Auth</Badge>}
         />
-
-        <div className="flex items-center gap-4">
-          <Select value={providerFilter} onValueChange={setProviderFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by provider" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Providers</SelectItem>
-              {(
-                Object.entries(PROVIDER_META) as [
-                  OAuthProvider,
-                  (typeof PROVIDER_META)[OAuthProvider]
-                ][]
-              ).map(([key, meta]) => (
-                <SelectItem key={key} value={key}>
-                  <span className="flex items-center gap-2">
-                    {meta.icon ? (
-                      <Image
-                        src={meta.icon}
-                        alt={meta.label}
-                        width={14}
-                        height={14}
-                        className={meta.iconClass ?? ""}
-                      />
-                    ) : (
-                      <Globe className="h-3.5 w-3.5" />
-                    )}
-                    {meta.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
 
         <AdminDataTable
           initialPageSize={PAGE_SIZE}
@@ -230,8 +196,41 @@ export default function OAuthConnectionsAdminPage() {
             })
           }
           columns={columns}
-          searchPlaceholder="Search by username, email, or provider ID..."
-          emptyMessage="No OAuth connections found."
+          searchPlaceholder="Search by username, email, or provider ID…"
+          emptyMessage="No OAuth connections match these filters. Try another search or switch the provider filter to all providers."
+          actions={
+            <Select value={providerFilter} onValueChange={setProviderFilter}>
+              <SelectTrigger className="w-48" aria-label="Filter by provider">
+                <SelectValue placeholder="Filter by provider" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All providers</SelectItem>
+                {(
+                  Object.entries(PROVIDER_META) as [
+                    OAuthProvider,
+                    (typeof PROVIDER_META)[OAuthProvider]
+                  ][]
+                ).map(([key, meta]) => (
+                  <SelectItem key={key} value={key}>
+                    <span className="flex items-center gap-2">
+                      {meta.icon ? (
+                        <Image
+                          src={meta.icon}
+                          alt=""
+                          width={14}
+                          height={14}
+                          className={meta.iconClass ?? ""}
+                        />
+                      ) : (
+                        <Globe aria-hidden className="h-3.5 w-3.5" />
+                      )}
+                      {meta.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
         />
       </div>
 
@@ -241,8 +240,10 @@ export default function OAuthConnectionsAdminPage() {
           onOpenChange={(open) => !open && setDeletingConnection(null)}
           onConfirm={() => deleteConnectionMutation.mutate(deletingConnection.id)}
           isDeleting={deleteConnectionMutation.isPending}
-          title={`Remove ${PROVIDER_META[deletingConnection.provider]?.label ?? deletingConnection.provider} link?`}
-          description={`This will detach ${deletingConnection.display_name ?? deletingConnection.username} from auth user ${deletingConnection.auth_user_username ?? `#${deletingConnection.auth_user_id}`}.`}
+          title={`Remove ${PROVIDER_META[deletingConnection.provider]?.label ?? deletingConnection.provider} connection`}
+          description={`This detaches ${deletingConnection.display_name ?? deletingConnection.username} from auth user ${deletingConnection.auth_user_username ?? `#${deletingConnection.auth_user_id}`}. That user can no longer sign in with ${PROVIDER_META[deletingConnection.provider]?.label ?? deletingConnection.provider} until they reconnect it themselves.`}
+          confirmLabel="Remove connection"
+          confirmingLabel="Removing…"
         />
       ) : null}
     </>

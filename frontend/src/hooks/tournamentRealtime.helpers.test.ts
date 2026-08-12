@@ -8,7 +8,6 @@ import {
   createTrailingCoalescer,
   getTournamentRealtimeCatchUpPlan,
   getTournamentRealtimeUpdatePlan,
-  parseTournamentRealtimeMessage,
   strongerTournamentReason,
 } from "@/hooks/tournamentRealtime.helpers";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -31,24 +30,6 @@ function expectInvalidated(
 }
 
 describe("tournament realtime helpers", () => {
-  it("parses tournament update websocket messages for the active tournament", () => {
-    const message = parseTournamentRealtimeMessage(
-      JSON.stringify({
-        type: "tournament:updated",
-        data: {
-          tournament_id: 42,
-          reason: "results_changed",
-        },
-      }),
-      42,
-    );
-
-    expect(message).toEqual({
-      tournamentId: 42,
-      reason: "results_changed",
-    });
-  });
-
   it("maps bracket changes to the encounter prefix only", () => {
     expect(getTournamentRealtimeUpdatePlan(42, 7, "bracket_changed")).toEqual({
       workspaceScope: "bracket",
@@ -97,6 +78,27 @@ describe("tournament realtime helpers", () => {
       tournamentQueryKeys.encounters(42),
       tournamentQueryKeys.teams(42),
     ]);
+  });
+
+  it("maps registration changes to detail and participant prefixes, not bracket/standings/teams", () => {
+    expect(getTournamentRealtimeUpdatePlan(42, 7, "registration_changed")).toEqual({
+      workspaceScope: "registration",
+      queryKeys: [
+        tournamentQueryKeys.detail(42),
+        tournamentQueryKeys.registration(7, 42),
+        tournamentQueryKeys.registrationsList(7, 42),
+        tournamentQueryKeys.registrationForm(7, 42),
+      ],
+      shouldRefreshRoute: false,
+    });
+  });
+
+  it("still invalidates the detail key for registration_changed before the workspace is known", () => {
+    expect(getTournamentRealtimeUpdatePlan(42, null, "registration_changed")).toEqual({
+      workspaceScope: "registration",
+      queryKeys: [tournamentQueryKeys.detail(42)],
+      shouldRefreshRoute: false,
+    });
   });
 
   it("invalidates workspace-aware variants through their public prefixes without broad bracket invalidation", () => {
@@ -259,6 +261,21 @@ describe("tournament realtime helpers", () => {
           ["standings-table", 42],
         ],
         untouched: [],
+      },
+      {
+        // A registration write stales the admin metadata read (it embeds
+        // participants_count/registrations_count) but nothing in the
+        // stages/standings/encounters/teams cascade — the metadata key is
+        // invalidated exactly so its children stay put.
+        reason: "registration_changed" as const,
+        invalidated: [["admin", "tournament", 42]],
+        untouched: [
+          ["admin", "stages", 42],
+          ["admin", "tournament", 42, "teams"],
+          ["admin", "tournament", 42, "standings"],
+          ["admin", "tournament", 42, "encounters"],
+          ["standings-table", 42],
+        ],
       },
     ];
 

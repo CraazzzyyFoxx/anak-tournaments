@@ -1,0 +1,78 @@
+name: CI Frontend
+
+# The frontend had no CI at all: 140 test files, a typechecker and eslint, none
+# of it gated. A vitest suite that had silently stopped collecting nine files
+# stayed green for as long as nobody read vitest.config.ts, and a bun:test file
+# whose first line threw never ran anywhere.
+#
+# Paths-filtered: nothing here is affected by a backend-only change, and a job
+# that always runs is a job people learn to ignore.
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "frontend/**"
+      - ".github/workflows/ci-frontend.yml"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    paths:
+      - "frontend/**"
+      - ".github/workflows/ci-frontend.yml"
+  # Callable so the release deploy gates on this exact job. Path filters do not
+  # apply to a workflow_call, so a release always runs the whole thing.
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  ci-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      # bun is the app's own runtime (both Dockerfiles are oven/bun) AND one of
+      # its two test runners, so the same toolchain installs deps and runs tests.
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+      # Node is needed for the vitest half: its environment is happy-dom under
+      # Node, and the split script shells out to the vitest bin with process.execPath.
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Lint
+        run: bun run lint
+      # The two runners split the 140 test files between them and the split is
+      # derived, not maintained: vitest's own collection defines its half and bun
+      # gets the exact complement. This asserts each file speaks the runner whose
+      # half it landed in — a mismatch fails loudly for bun but SILENTLY for
+      # vitest, which is how nine files came to never run.
+      - name: Test files are paired with a runner
+        run: bun run test:split
+      - name: Vitest suite
+        run: bun run test:vitest
+      - name: bun:test suite
+        run: bun run test:bun
+      # Last, and only on the branch: a Next production build is the slowest step
+      # here and the only one needing app env, so PRs get the fast signal and
+      # master gets the guarantee that the thing still builds. `.env` is
+      # gitignored, so the checked-in example supplies the same keys a deploy
+      # would; every route is server-rendered on demand, so no page fetches data
+      # at build time and none of these values is contacted.
+      - name: Production build
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          set -a
+          . ./.env.example
+          set +a
+          bun run build

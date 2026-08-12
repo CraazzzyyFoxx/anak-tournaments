@@ -170,7 +170,7 @@ def test_validate_api_key_returns_api_key_payload_and_updates_last_used(monkeypa
     assert payload.api_key.workspace_id == 11
     assert payload.api_key.scopes == ["balancer.jobs"]
     assert payload.workspaces[0].workspace_id == 11
-    assert payload.workspaces[0].role == "api_key"
+    assert payload.workspaces[0].rbac_permissions == [{"resource": "team", "action": "create"}]
     assert row.last_used_at is not None
     assert session.commit_calls == 1
 
@@ -217,3 +217,41 @@ def test_validate_api_key_rejects_when_owner_loses_workspace_access(monkeypatch:
 
     assert payload is None
     assert session.commit_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("role_name", "permissions"),
+    [
+        ("admin", [{"resource": "team", "action": "create"}]),
+        # Workspace owner holds ``admin.*``, stored as the wildcard pair.
+        ("owner", [{"resource": "*", "action": "*"}]),
+    ],
+)
+def test_workspace_admin_and_owner_manage_api_keys_via_rbac_alone(
+    monkeypatch: pytest.MonkeyPatch,
+    role_name: str,
+    permissions: list[dict[str, str]],
+) -> None:
+    """Guards the removal of the legacy role-name shortcut in
+    ``_has_workspace_import_access``: authorization must come from the
+    workspace RBAC permission set, with no name-based fast path.
+    """
+    session = _FakeSession()
+
+    async def get_workspace(_session, workspace_id: int) -> models.Workspace:
+        assert workspace_id == 11
+        return _workspace()
+
+    async def get_member(_session, *, workspace_id: int, auth_user_id: int) -> models.WorkspaceMember:
+        assert (workspace_id, auth_user_id) == (11, 7)
+        return models.WorkspaceMember(workspace_id=workspace_id, player_id=42)
+
+    async def workspace_rbac(_session, _user_id, _workspace_ids) -> dict:
+        return {11: ([role_name], permissions)}
+
+    monkeypatch.setattr(api_key_service._workspace_repo, "get", get_workspace)
+    monkeypatch.setattr(api_key_service._workspace_member_repo, "get_member", get_member)
+    monkeypatch.setattr(api_key_service.AuthService, "get_workspace_roles_and_permissions_db", workspace_rbac)
+
+    # Raises HTTPException(403) on denial; returning None is the pass signal.
+    assert asyncio.run(api_key_service.ensure_can_manage_api_keys(session, user=_user(), workspace_id=11)) is None

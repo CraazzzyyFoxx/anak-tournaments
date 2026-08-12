@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
@@ -96,7 +96,7 @@ export default function StandingsPage() {
   const queryClient = useQueryClient();
   const canUpdate = canAccessPermission("standing.update", workspaceId);
   const canDelete = canAccessPermission("standing.delete", workspaceId);
-  const canRecalculate = canAccessPermission("standing.recalculate", workspaceId);
+  const canRecalculate = canAccessPermission("standing.update", workspaceId);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -104,6 +104,7 @@ export default function StandingsPage() {
   const [selectedStanding, setSelectedStanding] = useState<Standings | null>(null);
   const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
   const [selectedScopeFilter, setSelectedScopeFilter] = useState<string>("all");
+  const recalculateHintId = useId();
 
   useTournamentRealtime({
     tournamentId: selectedTournamentId,
@@ -256,8 +257,10 @@ export default function StandingsPage() {
       header: "Pos",
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
-          {row.getValue<number>("position") === 1 && <Trophy className="h-4 w-4 text-yellow-500" />}
-          <span className="font-bold">{row.getValue("position")}</span>
+          {row.getValue<number>("position") === 1 && (
+            <Trophy className="h-4 w-4 text-warning" aria-hidden />
+          )}
+          <span className="font-bold tabular-nums">{row.getValue("position")}</span>
         </div>
       )
     },
@@ -279,28 +282,36 @@ export default function StandingsPage() {
     {
       accessorKey: "matches",
       header: "MP",
-      cell: ({ row }) => <div className="text-center">{row.getValue("matches")}</div>
+      cell: ({ row }) => <div className="text-center tabular-nums">{row.getValue("matches")}</div>
     },
     {
       accessorKey: "win",
       header: "W",
-      cell: ({ row }) => <div className="text-center text-green-500">{row.getValue("win")}</div>
+      cell: ({ row }) => (
+        <div className="text-center tabular-nums text-success">{row.getValue("win")}</div>
+      )
     },
     {
       accessorKey: "draw",
       header: "D",
-      cell: ({ row }) => <div className="text-center text-yellow-500">{row.getValue("draw")}</div>
+      cell: ({ row }) => (
+        <div className="text-center tabular-nums text-warning">{row.getValue("draw")}</div>
+      )
     },
     {
       accessorKey: "lose",
       header: "L",
-      cell: ({ row }) => <div className="text-center text-red-500">{row.getValue("lose")}</div>
+      cell: ({ row }) => (
+        <div className="text-center tabular-nums text-danger">{row.getValue("lose")}</div>
+      )
     },
     {
       accessorKey: "points",
       header: "Pts",
       cell: ({ row }) => (
-        <div className="font-bold text-center">{row.getValue<number>("points").toFixed(1)}</div>
+        <div className="font-bold text-center tabular-nums">
+          {row.getValue<number>("points").toFixed(1)}
+        </div>
       )
     },
     {
@@ -309,7 +320,7 @@ export default function StandingsPage() {
       cell: ({ row }) => {
         const bh = row.getValue<number | null | undefined>("buchholz");
         return bh != null ? (
-          <div className="text-center text-sm">{bh.toFixed(2)}</div>
+          <div className="text-center text-sm tabular-nums">{bh.toFixed(2)}</div>
         ) : (
           <div className="text-center">—</div>
         );
@@ -321,7 +332,7 @@ export default function StandingsPage() {
       cell: ({ row }) => {
         const tb = row.getValue<number | null | undefined>("tb");
         return tb != null ? (
-          <div className="text-center text-sm">{tb}</div>
+          <div className="text-center text-sm tabular-nums">{tb}</div>
         ) : (
           <div className="text-center">—</div>
         );
@@ -358,10 +369,6 @@ export default function StandingsPage() {
     }
   ];
 
-  const selectedTournament = tournamentsData?.results.find(
-    (tournament) => tournament.id === selectedTournamentId
-  );
-
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
@@ -369,42 +376,24 @@ export default function StandingsPage() {
         description="Manage tournament standings and rankings"
         actions={
           canRecalculate ? (
-            <Button onClick={handleRecalculate} disabled={!selectedTournamentId}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Recalculate Standings
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {!selectedTournamentId ? (
+                <span id={recalculateHintId} className="text-sm text-muted-foreground">
+                  Pick a tournament first — standings are recalculated per tournament.
+                </span>
+              ) : null}
+              <Button
+                onClick={handleRecalculate}
+                disabled={!selectedTournamentId}
+                aria-describedby={!selectedTournamentId ? recalculateHintId : undefined}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
+                Recalculate standings
+              </Button>
+            </div>
           ) : null
         }
       />
-
-      <div className="flex items-center gap-4">
-        <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
-        <Select
-          value={selectedTournamentId?.toString() || "all"}
-          onValueChange={handleTournamentFilterChange}
-        >
-          <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="All Tournaments" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Tournaments</SelectItem>
-            {tournamentsData?.results.map((tournament) => (
-              <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {selectedTournamentId ? (
-        <div className="rounded-md border p-4 bg-muted/50">
-          <p className="text-sm text-muted-foreground">
-            Showing standings for{" "}
-            <span className="font-semibold">{selectedTournament?.name ?? "—"}</span>
-          </p>
-        </div>
-      ) : null}
 
       {selectedTournamentId && scopeTabs.length > 0 ? (
         <Tabs value={selectedScopeFilter} onValueChange={setSelectedScopeFilter}>
@@ -462,11 +451,29 @@ export default function StandingsPage() {
           return paginateResults(sorted, page, pageSize);
         }}
         columns={columns}
-        searchPlaceholder="Search by team name..."
+        searchPlaceholder="Search by team name…"
         emptyMessage={
           selectedTournamentId
-            ? "No standings found. Click 'Recalculate Standings' to generate them."
-            : "Select a tournament to view standings."
+            ? "No standings yet. Use “Recalculate standings” to build them from encounter results."
+            : "No standings yet. Pick a tournament to see its table."
+        }
+        actions={
+          <Select
+            value={selectedTournamentId?.toString() ?? "all"}
+            onValueChange={handleTournamentFilterChange}
+          >
+            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
+              <SelectValue placeholder="Filter by tournament" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tournaments</SelectItem>
+              {tournamentsData?.results.map((tournament) => (
+                <SelectItem key={tournament.id} value={tournament.id.toString()}>
+                  {tournament.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         }
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
@@ -475,7 +482,7 @@ export default function StandingsPage() {
       <EntityFormDialog
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        title="Edit Standing"
+        title="Edit standing"
         description="Update standing details"
         onSubmit={handleSubmitUpdate}
         isSubmitting={updateMutation.isPending}
@@ -551,7 +558,7 @@ export default function StandingsPage() {
             </div>
 
             <div>
-              <Label htmlFor="tb">Head-to-Head (TB)</Label>
+              <Label htmlFor="tb">Head-to-head (TB)</Label>
               <NumberInput
                 id="tb"
                 integer
@@ -569,8 +576,8 @@ export default function StandingsPage() {
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         onConfirm={handleConfirmDelete}
-        title="Delete Standing"
-        description="Are you sure you want to delete this standing entry? This action cannot be undone."
+        title="Delete standing"
+        description="Deleting this standing removes the team's row from this table. Recalculating the tournament will rebuild it from encounter results."
         isDeleting={deleteMutation.isPending}
       />
 
@@ -578,7 +585,7 @@ export default function StandingsPage() {
       <AlertDialog open={recalculateDialogOpen} onOpenChange={setRecalculateDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Recalculate Standings?</AlertDialogTitle>
+            <AlertDialogTitle>Recalculate standings?</AlertDialogTitle>
             <AlertDialogDescription>
               This will recalculate all standings for the selected tournament based on encounter
               results. Any manual changes will be overwritten.
@@ -587,7 +594,7 @@ export default function StandingsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmRecalculate}>
-              {recalculateMutation.isPending ? "Calculating..." : "Recalculate"}
+              {recalculateMutation.isPending ? "Calculating…" : "Recalculate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

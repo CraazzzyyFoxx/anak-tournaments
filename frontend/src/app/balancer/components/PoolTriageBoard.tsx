@@ -2,9 +2,9 @@
 
 import { useMemo } from "react";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { Check, Circle, GripVertical, Pencil, PlusCircle, ShieldX } from "lucide-react";
+import { Check, GripVertical, Pencil, PlusCircle, ShieldX } from "lucide-react";
 
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,17 +25,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode, StatusMeta } from "@/types/balancer-admin.types";
+import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
 import {
   POOL_LANES,
   POOL_LANE_LABELS,
@@ -50,10 +42,7 @@ import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from ".
 import { ROLE_LABELS, isRoleEntryActive } from "./workspace-helpers";
 import { IssueChip, issueChipKey } from "./IssueChip";
 
-type StatusOptionGroups = {
-  system: StatusMeta[];
-  custom: StatusMeta[];
-};
+import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
 
 type PoolTriageBoardProps = {
   open: boolean;
@@ -100,102 +89,6 @@ function splitBattleTag(battleTag: string): { name: string; suffix: string | nul
     return { name: battleTag, suffix: null };
   }
   return { name: battleTag.slice(0, hashIndex), suffix: battleTag.slice(hashIndex) };
-}
-
-function flattenStatusOptions(statusOptions?: StatusOptionGroups): StatusMeta[] {
-  return statusOptions ? [...statusOptions.system, ...statusOptions.custom] : [];
-}
-
-function getStatusName(statusOptions: StatusOptionGroups | undefined, value: string | null | undefined): string {
-  if (!value) {
-    return "No status";
-  }
-  return flattenStatusOptions(statusOptions).find((option) => option.value === value)?.name ?? value;
-}
-
-function CompactStatusMenu({
-  value,
-  statusOptions,
-  disabled,
-  onChange,
-}: {
-  value: string | null | undefined;
-  statusOptions?: StatusOptionGroups;
-  disabled?: boolean;
-  onChange?: (status: string) => void;
-}) {
-  if (!statusOptions || !onChange) {
-    return null;
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={disabled}
-          className="h-7 max-w-[128px] justify-start rounded-lg border border-[color:var(--aqt-border)] bg-black/15 px-2 text-[11px] text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
-        >
-          <span className="truncate">{getStatusName(statusOptions, value)}</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Balancer status</DropdownMenuLabel>
-        {statusOptions.system.map((option) => (
-          <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </DropdownMenuItem>
-        ))}
-        {statusOptions.custom.length > 0 ? <DropdownMenuSeparator /> : null}
-        {statusOptions.custom.map((option) => (
-          <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function StatusContextMenuItems({
-  value,
-  statusOptions,
-  disabled,
-  onChange,
-}: {
-  value: string | null | undefined;
-  statusOptions?: StatusOptionGroups;
-  disabled?: boolean;
-  onChange?: (status: string) => void;
-}) {
-  if (!statusOptions || !onChange) {
-    return null;
-  }
-
-  return (
-    <ContextMenuSub>
-      <ContextMenuSubTrigger disabled={disabled}>Set balancer status</ContextMenuSubTrigger>
-      <ContextMenuSubContent className="w-52">
-        {statusOptions.system.map((option) => (
-          <ContextMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </ContextMenuItem>
-        ))}
-        {statusOptions.custom.length > 0 ? <ContextMenuSeparator /> : null}
-        {statusOptions.custom.map((option) => (
-          <ContextMenuItem key={option.value} onClick={() => onChange(option.value)}>
-            {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            {option.name}
-          </ContextMenuItem>
-        ))}
-      </ContextMenuSubContent>
-    </ContextMenuSub>
-  );
 }
 
 function isCardActionTarget(target: EventTarget | null): boolean {
@@ -309,7 +202,7 @@ function TriagePlayerCard({
 
             <div className="flex shrink-0 items-center gap-1">
               {primaryEntry?.division_number != null ? (
-                <PlayerDivisionIcon division={primaryEntry.division_number} width={20} height={20} />
+                <DivisionIcon division={primaryEntry.division_number} width={20} height={20} />
               ) : null}
               {primaryEntry?.rank_value != null ? (
                 <span className={cn("min-w-10 text-right text-[13px] font-semibold tabular-nums text-cyan-300", primaryRole && ROLE_TEXT_ACCENTS[primaryRole])}>
@@ -322,7 +215,8 @@ function TriagePlayerCard({
           </div>
 
           <div className="mt-2 flex items-center justify-between gap-2" data-card-action>
-            <CompactStatusMenu
+            <BalancerStatusMenu
+              size="compact"
               value={registration?.balancer_status}
               statusOptions={statusOptions}
               disabled={actionsDisabled}
@@ -361,7 +255,7 @@ function TriagePlayerCard({
             </ContextMenuItem>
           </>
         ) : null}
-        <StatusContextMenuItems
+        <BalancerStatusContextMenuItems
           value={registration?.balancer_status}
           statusOptions={statusOptions}
           disabled={actionsDisabled}

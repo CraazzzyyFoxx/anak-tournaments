@@ -31,8 +31,11 @@ from shared.core.social import SocialProvider
 from src import models
 from src.schemas.registration import CustomFieldDefinition
 from src.services.registration._common import (
+    FlexRoleMode,
     ensure_tournament_exists,
+    flex_role_mode,
     get_form_custom_field_defs,
+    get_registration_form,
     get_tournament_grid,
     replace_registration_roles,
     sync_included_balancer_status,
@@ -401,6 +404,7 @@ def apply_sheet_fields_to_registration(
     parsed_fields: dict[str, Any],
     *,
     allow_balancer_overwrite: bool,
+    mode: FlexRoleMode = "optional",
 ) -> None:
     registration.display_name = (
         parsed_fields.get("display_name") or parsed_fields.get("battle_tag") or registration.display_name
@@ -411,6 +415,7 @@ def apply_sheet_fields_to_registration(
     registration.smurf_tags_json = parsed_fields.get("smurf_tags") or None
     registration.discord_nick = parsed_fields.get("discord_nick")
     registration.twitch_nick = parsed_fields.get("twitch_nick")
+    registration.boosty_nick = parsed_fields.get("boosty_nick")
     registration.stream_pov = bool(parsed_fields.get("stream_pov", False))
     registration.notes = parsed_fields.get("notes")
 
@@ -422,7 +427,11 @@ def apply_sheet_fields_to_registration(
 
     if allow_balancer_overwrite:
         registration.admin_notes = parsed_fields.get("admin_notes")
-        replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+        replace_registration_roles(
+            registration,
+            build_registration_role_payloads(parsed_fields),
+            mode=mode,
+        )
         sync_included_balancer_status(registration)
 
 
@@ -448,6 +457,10 @@ async def sync_google_sheet_feed(
     grid = await get_tournament_grid(session, tournament_id)
     tournament = await ensure_tournament_exists(session, tournament_id)
     custom_fields = await get_form_custom_field_defs(session, tournament_id)
+    # The sheet sync is the one role-write path that never read the form. In a
+    # non-optional flex mode a sheet row must land with the same role set as any
+    # other, so the mode is resolved once per sync rather than per row.
+    mode = flex_role_mode(await get_registration_form(session, tournament_id))
     now = datetime.now(UTC)
 
     try:
@@ -562,15 +575,19 @@ async def sync_google_sheet_feed(
                     smurf_tags_json=parsed_fields.get("smurf_tags") or None,
                     discord_nick=parsed_fields.get("discord_nick"),
                     twitch_nick=parsed_fields.get("twitch_nick"),
+                    boosty_nick=parsed_fields.get("boosty_nick"),
                     stream_pov=bool(parsed_fields.get("stream_pov", False)),
                     notes=parsed_fields.get("notes"),
                     admin_notes=parsed_fields.get("admin_notes"),
                     custom_fields_json=parsed_fields.get("custom_fields") or None,
                     status="approved",
-                    exclude_from_balancer=False,
                     submitted_at=parsed_fields.get("submitted_at") or now,
                 )
-                replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+                replace_registration_roles(
+                    registration,
+                    build_registration_role_payloads(parsed_fields),
+                    mode=mode,
+                )
                 session.add(registration)
                 await session.flush()
                 if registration.battle_tag_normalized:
@@ -582,6 +599,7 @@ async def sync_google_sheet_feed(
                     registration,
                     parsed_fields,
                     allow_balancer_overwrite=allow_balancer_overwrite,
+                    mode=mode,
                 )
                 if registration.status == "withdrawn":
                     registration.status = "approved"
@@ -639,7 +657,7 @@ async def sync_google_sheet_feed(
         else:
             feed.last_error = None
         if created or updated or withdrawn:
-            register_tournament_realtime_update(session, tournament_id, "structure_changed")
+            register_tournament_realtime_update(session, tournament_id, "registration_changed")
         await session.commit()
         await session.refresh(feed)
         return SheetSyncResult(

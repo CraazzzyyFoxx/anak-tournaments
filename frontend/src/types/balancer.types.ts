@@ -20,6 +20,8 @@ export const SUPPORTED_BALANCER_CONFIG_KEYS = [
   "intra_team_std_weight",
   "internal_role_spread_weight",
   "sub_role_collision_weight",
+  "low_rank_threshold",
+  "low_rank_collision_weight",
   "tank_impact_weight",
   "dps_impact_weight",
   "support_impact_weight",
@@ -51,6 +53,8 @@ export interface PlayerData {
   is_flex?: boolean;
   role_preferences: string[];
   all_ratings: Record<string, number>;
+  /** Per-role discomfort snapshot from the solver; keyed like `all_ratings`. */
+  all_discomforts?: Record<string, number>;
   sub_role?: string | null;
 }
 
@@ -124,6 +128,8 @@ export interface BalancerConfig {
   intra_team_std_weight?: number;
   internal_role_spread_weight?: number;
   sub_role_collision_weight?: number;
+  low_rank_threshold?: number;
+  low_rank_collision_weight?: number;
   tank_impact_weight?: number;
   dps_impact_weight?: number;
   support_impact_weight?: number;

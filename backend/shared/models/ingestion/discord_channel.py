@@ -20,7 +20,6 @@ class TournamentDiscordChannel(db.TimeStampIntegerMixin):
     tournament_id: Mapped[int] = mapped_column(
         ForeignKey("tournament.tournament.id", ondelete="CASCADE"), nullable=False, unique=True
     )
-    guild_id: Mapped[int] = mapped_column(BigInteger(), nullable=False)
     channel_id: Mapped[int] = mapped_column(BigInteger(), nullable=False, unique=True, index=True)
     channel_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)

@@ -1,478 +1,310 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import FlexIcon from "@/components/icons/FlexIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { cn } from "@/lib/utils";
 import {
-  MAIN_ROLE_LAYOUT_ORDER,
   REGISTRATION_TO_CANONICAL,
-  ROLE_ACCENTS,
   ROLES,
-  getRoleIconName,
+  ROLE_ACCENTS,
   getSubroleOptions,
   type RoleCode,
 } from "@/lib/roles";
 import type { Hero } from "@/types/hero.types";
 import type { RegistrationForm } from "@/types/registration.types";
 
-import type { AdditionalRole } from "./types";
-import { SelectionCard } from "./role-step/SelectionCard";
-import { SpecializationBlock } from "./role-step/SpecializationBlock";
-import { SecondaryRolesEmptyState } from "./role-step/SecondaryRolesEmptyState";
-import { HeroPickerBlock } from "./role-step/HeroPickerBlock";
-
-import { useTranslations } from "next-intl";
+import {
+  isFlexSelection,
+  priorityChoice,
+  type FlexMode,
+  type RolePriority,
+  type RoleSelections,
+} from "./types";
+import { RoleMatrixRow } from "./role-step/RoleMatrixRow";
+import { SegmentedRadio, type SegmentedOption } from "./role-step/SegmentedRadio";
 
 interface RoleStepProps {
-  isFlex: boolean;
-  primaryRole: string;
-  subrole: string;
-  additionalRoles: AdditionalRole[];
-  onSetFlex: (isFlex: boolean) => void;
-  onSetPrimaryRole: (role: string) => void;
-  onSetSubrole: (subrole: string) => void;
-  onSetAdditionalRoles: (roles: AdditionalRole[]) => void;
-  primaryRoleError?: string | null;
-  secondaryRolesError?: string | null;
+  selections: RoleSelections;
+  onChange: (next: RoleSelections) => void;
+  /** Step-level role error, shown once above the matrix. */
+  error?: string | null;
   form: RegistrationForm;
   hideHelperText?: boolean;
-  // Top-heroes picker
   allHeroes: Hero[];
   topHeroesEnabled: boolean;
   maxHeroes: number;
-  flexEnabled: boolean;
-  primaryRoleHeroes: string[];
-  onSetPrimaryRoleHeroes: (heroes: string[]) => void;
-  flexHeroes: string[];
-  onSetFlexHeroes: (heroes: string[]) => void;
+  /**
+   * `off` — flex banned by the form. `optional` — the preset is offered.
+   * `all_roles` — every role mandatory; one radiogroup asks for a single
+   * priority role or flex, and the per-row priority disappears.
+   * `forced` — role does not matter at all: no choice, every role permanently
+   * main.
+   */
+  flexMode: FlexMode;
 }
 
+/**
+ * Role step, laid out as a fixed matrix: one row per role, always showing the
+ * same four cells (role, priority, specialization, top heroes).
+ *
+ * It used to be three stacked sections — primary roles, secondary roles, top
+ * heroes — where the last two only appeared once a primary role was chosen and
+ * the hero section grew one full roster grid per selected role. Selecting a role
+ * took the step from 17 to 69 focusable controls. Here the selection only
+ * changes control *state*, never the set of rendered controls.
+ */
 export default function RoleStep({
-  isFlex,
-  primaryRole,
-  subrole,
-  additionalRoles,
-  onSetFlex,
-  onSetPrimaryRole,
-  onSetSubrole,
-  onSetAdditionalRoles,
-  primaryRoleError = null,
-  secondaryRolesError = null,
+  selections,
+  onChange,
+  error = null,
   form,
   hideHelperText = false,
   allHeroes,
   topHeroesEnabled,
   maxHeroes,
-  flexEnabled,
-  primaryRoleHeroes,
-  onSetPrimaryRoleHeroes,
-  flexHeroes,
-  onSetFlexHeroes,
+  flexMode,
 }: RoleStepProps) {
   const t = useTranslations();
+  const isForced = flexMode === "forced";
+  const isAllRoles = flexMode === "all_roles";
+  const showPriority = !isForced && !isAllRoles;
+  const isFlex = isForced || isFlexSelection(selections);
   const isAdditionalRolesRequired =
-    form.built_in_fields?.additional_roles?.enabled !== false
-    && form.built_in_fields?.additional_roles?.required === true;
-  const canEditSecondaryRoles = !!primaryRole && !isFlex;
-  const selectableSecondaryRoles = primaryRole ? ROLES.filter((role) => role.code !== primaryRole) : [];
-  const areAllAdditionalSelected =
-    canEditSecondaryRoles
-    && selectableSecondaryRoles.length > 0
-    && selectableSecondaryRoles.every((role) => additionalRoles.some((entry) => entry.code === role.code));
-  const secondaryRolesDescription = !primaryRole
-    ? t("registration.roles.secondary.descEmptyPrimary")
-    : isFlex
-      ? t("registration.roles.secondary.descFlex")
-      : t("registration.roles.secondary.descFallback");
-  const roleLayout = flexEnabled
-    ? MAIN_ROLE_LAYOUT_ORDER
-    : MAIN_ROLE_LAYOUT_ORDER.filter((code) => code !== "flex");
-  const primaryRoleDef = ROLES.find((role) => role.code === primaryRole);
+    form.built_in_fields?.additional_roles?.enabled !== false &&
+    form.built_in_fields?.additional_roles?.required === true;
 
+  /**
+   * The roster offered for one row, always filtered to that row's role.
+   *
+   * Flex used to widen this to the full roster, which made sense while flex
+   * rendered a *single* hero block (pre-matrix `RoleStep`): the picker was not
+   * attached to a role. Here every row IS a role and its picks are submitted
+   * under that role's `top_heroes`, so the full roster would offer Ana as a tank
+   * pick — and the backend only tolerates that while the submission stays flex
+   * (`_validate_role_heroes`), rejecting it the moment it does not.
+   *
+   * Already-selected slugs stay in the roster whatever their class: an existing
+   * flex registration may carry a cross-class pick, and a tile that is not
+   * offered cannot be deselected — the registrant would be stuck with a hero the
+   * backend rejects as soon as they stop being flex.
+   */
   const heroesForRole = (roleCode: string): Hero[] => {
     const canonical = REGISTRATION_TO_CANONICAL[roleCode as RoleCode];
     if (!canonical) {
       return allHeroes;
     }
-    return allHeroes.filter((hero) => (hero.role || hero.type || "").toLowerCase() === canonical);
-  };
-
-  const handlePrimaryRoleSelect = (roleCode: string) => {
-    if (isFlex || primaryRole !== roleCode) {
-      onSetFlex(false);
-      onSetPrimaryRole(roleCode);
-      onSetSubrole("");
-      onSetAdditionalRoles(additionalRoles.filter((entry) => entry.code !== roleCode));
-    }
-  };
-
-  const handleFlexSelect = () => {
-    if (!isFlex) {
-      onSetFlex(true);
-    }
-  };
-
-  const toggleAdditionalRole = (roleCode: string) => {
-    if (!canEditSecondaryRoles || roleCode === primaryRole) {
-      return;
-    }
-
-    const exists = additionalRoles.some((entry) => entry.code === roleCode);
-
-    if (exists) {
-      onSetAdditionalRoles(additionalRoles.filter((entry) => entry.code !== roleCode));
-      return;
-    }
-
-    onSetAdditionalRoles([...additionalRoles, { code: roleCode, subrole: "", topHeroes: [] }]);
-  };
-
-  const setAdditionalSubrole = (roleCode: string, nextSubrole: string) => {
-    if (!canEditSecondaryRoles || roleCode === primaryRole) {
-      return;
-    }
-
-    const exists = additionalRoles.some((entry) => entry.code === roleCode);
-    if (!exists) {
-      onSetAdditionalRoles([...additionalRoles, { code: roleCode, subrole: nextSubrole, topHeroes: [] }]);
-      return;
-    }
-
-    onSetAdditionalRoles(
-      additionalRoles.map((entry) =>
-        entry.code === roleCode ? { ...entry, subrole: nextSubrole } : entry,
-      ),
+    const selected = selections[roleCode as RoleCode].topHeroes;
+    return allHeroes.filter(
+      (hero) =>
+        (hero.role || hero.type || "").toLowerCase() === canonical || selected.includes(hero.slug),
     );
   };
 
-  const setAdditionalHeroes = (roleCode: string, heroes: string[]) => {
-    onSetAdditionalRoles(
-      additionalRoles.map((entry) =>
-        entry.code === roleCode ? { ...entry, topHeroes: heroes } : entry,
-      ),
+  const subroleOptionsFor = (roleCode: string, priority: RolePriority) =>
+    getSubroleOptions(form, roleCode, priority === "main" ? "primary_role" : "additional_roles");
+
+  /**
+   * Exactly one role may be `main`, unless every role is (which is how the
+   * backend derives a flex registration). Anything in between is normalized by
+   * demoting the mains the registrant did not just touch.
+   *
+   * All three mains survive in every mode that permits flex, not just
+   * `optional`: `all_roles` expresses flex the same way, and since
+   * `setSubrole`/`setHeroes` route through here, trimming it would turn picking
+   * a specialization into "that role is now my main".
+   *
+   * In the forced mode three mains ARE the target state, so this is the
+   * identity. Combined with the absent priority control that makes `off`
+   * unreachable: `setSubrole`/`setHeroes` only ever promote.
+   */
+  const normalize = (next: RoleSelections, changed: RoleCode): RoleSelections => {
+    if (isForced) {
+      return next;
+    }
+    const mains = ROLES.filter((role) => next[role.code].priority === "main");
+    if (mains.length <= 1 || (mains.length === ROLES.length && flexMode !== "off")) {
+      return next;
+    }
+    // A promotion names its own winner. A demotion does not: crowning a survivor
+    // hands the registrant a main role they never picked, so leaving flex leaves
+    // the step with no main at all and the validation asks for one.
+    const keep: RoleCode | null = next[changed].priority === "main" ? changed : null;
+    for (const role of mains) {
+      if (role.code !== keep) {
+        next[role.code] = { ...next[role.code], priority: "fallback" };
+      }
+    }
+    return next;
+  };
+
+  const setPriority = (roleCode: RoleCode, priority: RolePriority) => {
+    const next: RoleSelections = { ...selections, [roleCode]: { ...selections[roleCode], priority } };
+    // The allowed specializations differ between a main and a fallback role
+    // (the backend keys the allowlist on `is_primary`), so drop a value the new
+    // priority no longer offers instead of submitting something invalid.
+    const allowed = subroleOptionsFor(roleCode, priority).map((option) => option.slug);
+    if (next[roleCode].subrole && !allowed.includes(next[roleCode].subrole)) {
+      next[roleCode] = { ...next[roleCode], subrole: "" };
+    }
+    onChange(normalize(next, roleCode));
+  };
+
+  const setSubrole = (roleCode: RoleCode, subrole: string) => {
+    // Choosing a specialization for a role marked "off" is a clear intent to
+    // play it; promote instead of dropping the input on the floor.
+    const priority = selections[roleCode].priority === "off" ? "fallback" : selections[roleCode].priority;
+    onChange(
+      normalize({ ...selections, [roleCode]: { ...selections[roleCode], subrole, priority } }, roleCode),
     );
   };
 
-  const handleSelectAllAdditionalRoles = () => {
-    if (!canEditSecondaryRoles) {
-      return;
-    }
-
-    if (areAllAdditionalSelected) {
-      onSetAdditionalRoles([]);
-      return;
-    }
-
-    onSetAdditionalRoles(
-      selectableSecondaryRoles.map((role) => {
-        const existing = additionalRoles.find((entry) => entry.code === role.code);
-        return existing ?? { code: role.code, subrole: "", topHeroes: [] };
-      }),
+  const setHeroes = (roleCode: RoleCode, topHeroes: string[]) => {
+    const priority =
+      selections[roleCode].priority === "off" && topHeroes.length > 0
+        ? "fallback"
+        : selections[roleCode].priority;
+    onChange(
+      normalize({ ...selections, [roleCode]: { ...selections[roleCode], topHeroes, priority } }, roleCode),
     );
   };
 
-  const showTopHeroes = topHeroesEnabled && (isFlex || Boolean(primaryRoleDef));
+  const toggleFlex = () => {
+    const next = { ...selections };
+    if (isFlex) {
+      const [first, ...rest] = ROLES;
+      next[first.code] = { ...next[first.code], priority: "main" };
+      for (const role of rest) {
+        next[role.code] = { ...next[role.code], priority: "fallback" };
+      }
+    } else {
+      for (const role of ROLES) {
+        next[role.code] = { ...next[role.code], priority: "main" };
+      }
+    }
+    onChange(next);
+  };
+
+  /**
+   * The `all_roles` choice: one priority role, or flex. Every role stays
+   * playable either way — only comfort changes, so the non-chosen roles become
+   * `fallback` rather than `off`.
+   */
+  const setPriorityChoice = (choice: RoleCode | "flex") => {
+    const next = { ...selections };
+    for (const role of ROLES) {
+      next[role.code] = {
+        ...next[role.code],
+        priority: choice === "flex" || role.code === choice ? "main" : "fallback",
+      };
+    }
+    onChange(next);
+  };
+
+  const columnClass = showPriority
+    ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]"
+    : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]";
+
+  const priorityOptions: readonly SegmentedOption<RoleCode | "flex">[] = [
+    ...ROLES.map((role) => ({
+      value: role.code as RoleCode | "flex",
+      label: role.display,
+      selectedClassName: (ROLE_ACCENTS[role.code] ?? ROLE_ACCENTS.flex).tile,
+    })),
+    {
+      value: "flex" as const,
+      label: t("registration.roles.matrix.choiceFlex"),
+      selectedClassName: ROLE_ACCENTS.flex.tile,
+    },
+  ];
 
   return (
-    <div className="grid gap-5">
-      {!hideHelperText ? (
-        <div className="space-y-1">
-          <h3 className="text-xs font-medium text-[color:var(--aqt-fg)]">{t("registration.roles.title")}</h3>
-          <p className="max-w-[40rem] text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-            {t("registration.roles.desc")}
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {hideHelperText ? (
+          <span />
+        ) : (
+          <p className="max-w-[38rem] text-xs leading-5 text-[color:var(--aqt-fg-muted)]">
+            {isForced
+              ? t("registration.roles.matrix.hintForced")
+              : isAllRoles
+                ? t("registration.roles.matrix.hintAllRoles")
+                : isAdditionalRolesRequired
+                  ? t("registration.roles.matrix.hintRequired")
+                  : t("registration.roles.matrix.hint")}
           </p>
-        </div>
-      ) : null}
-
-      <section className="space-y-2.5">
-        <div className="space-y-0.5">
-          <h4 className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
-            {t("registration.roles.primary.title")}
-          </h4>
-          {!hideHelperText ? (
-            <p className="text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-              {t("registration.roles.primary.desc")}
-            </p>
-          ) : null}
-        </div>
-
-        {primaryRoleError && (
-          <div className="rounded-lg border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2 text-xs leading-5 text-amber-100/90">
-            {primaryRoleError}
-          </div>
         )}
 
-        <div className="grid items-start gap-2 md:grid-cols-2">
-          {roleLayout.map((roleCode) => {
-            if (roleCode === "flex") {
-              return (
-                <SelectionCard
-                  key="flex"
-                  roleCode="flex"
-                  label="Flex"
-                  selected={isFlex}
-                  reserveHintSpace
-                  type="radio"
-                  onClick={handleFlexSelect}
-                  hint={isFlex ? t("registration.roles.flex.desc") : undefined}
-                  icon={<FlexIcon width={16} height={16} />}
-                />
-              );
-            }
-
-            const role = ROLES.find((entry) => entry.code === roleCode);
-            if (!role) {
-              return null;
-            }
-
-            const selected = !isFlex && primaryRole === role.code;
-            const subroles = getSubroleOptions(form, role.code).map((option) => ({
-              value: option.slug,
-              label: option.label,
-            }));
-
-            return (
-              <SelectionCard
-                key={role.code}
-                roleCode={role.code}
-                label={role.display}
-                selected={selected}
-                detailsSelectsCard={!selected}
-                reserveHintSpace
-                type="radio"
-                onClick={() => handlePrimaryRoleSelect(role.code)}
-              >
-                {subroles.length > 0 && (
-                  <SpecializationBlock
-                    label={t("registration.roles.specialization")}
-                    value={selected ? subrole : ""}
-                    options={subroles}
-                    disabled={!selected}
-                    onDisabledSelect={(nextValue) => {
-                      handlePrimaryRoleSelect(role.code);
-                      onSetSubrole(nextValue);
-                    }}
-                    onChange={(nextValue) => onSetSubrole(nextValue)}
-                  />
-                )}
-              </SelectionCard>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="space-y-2.5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <h4 className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
-                {t("registration.roles.secondary.title")}
-              </h4>
-              <span
-                className={cn(
-                  "rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
-                  isAdditionalRolesRequired
-                    ? "border-amber-400/20 bg-amber-500/[0.08] text-amber-200/90"
-                    : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-dim)]",
-                )}
-              >
-                {isAdditionalRolesRequired
-                  ? t("registration.roles.secondary.required")
-                  : t("registration.roles.secondary.optional")}
-              </span>
-            </div>
-            {!hideHelperText ? (
-              <p className="max-w-[40rem] text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-                {secondaryRolesDescription}
-              </p>
-            ) : null}
-          </div>
-
+        {flexMode === "optional" && (
           <button
             type="button"
-            disabled={!canEditSecondaryRoles}
-            onClick={handleSelectAllAdditionalRoles}
+            aria-pressed={isFlex}
+            onClick={toggleFlex}
             className={cn(
-              "shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
-              !canEditSecondaryRoles && "cursor-default border-[color:var(--aqt-border-2)] bg-white/[0.02] text-[color:var(--aqt-fg-dim)]",
-              canEditSecondaryRoles
-                && (areAllAdditionalSelected
-                  ? "border-violet-400/50 bg-violet-500/12 text-violet-200"
-                  : "border-[color:var(--aqt-border-2)] bg-white/[0.03] text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.06] hover:text-[color:var(--aqt-fg-muted)]"),
+              "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              isFlex
+                ? cn(ROLE_ACCENTS.flex.selectedCard, "text-[color:var(--aqt-fg)]")
+                : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)]",
             )}
           >
-            {areAllAdditionalSelected
-              ? t("registration.roles.secondary.clearAll")
-              : t("registration.roles.secondary.selectAll")}
+            <FlexIcon width={14} height={14} />
+            {t("registration.roles.matrix.flexPreset")}
           </button>
-        </div>
-
-        {secondaryRolesError && (
-          <div className="rounded-lg border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2 text-xs leading-5 text-amber-100/90">
-            {secondaryRolesError}
-          </div>
         )}
-
-        {canEditSecondaryRoles ? (
-          <div className="grid items-start gap-2 sm:grid-cols-2">
-            {selectableSecondaryRoles.map((role) => {
-              const selected = additionalRoles.some((entry) => entry.code === role.code);
-              const entry = additionalRoles.find((additionalRole) => additionalRole.code === role.code);
-              const subroles = getSubroleOptions(form, role.code, "additional_roles").map((option) => ({
-                value: option.slug,
-                label: option.label,
-              }));
-
-              return (
-                <SelectionCard
-                  key={role.code}
-                  roleCode={role.code}
-                  label={role.display}
-                  selected={selected}
-                  detailsSelectsCard={!selected}
-                  reserveDetailsSpace={subroles.length === 0}
-                  type="checkbox"
-                  compact
-                  onClick={() => toggleAdditionalRole(role.code)}
-                >
-                  {subroles.length > 0 && (
-                    <SpecializationBlock
-                      label={t("registration.roles.roleSpecialization", {
-                        role: role.display,
-                      })}
-                      value={selected ? entry?.subrole ?? "" : ""}
-                      options={subroles}
-                      disabled={!selected}
-                      onDisabledSelect={(nextValue) => setAdditionalSubrole(role.code, nextValue)}
-                      onChange={(nextValue) => setAdditionalSubrole(role.code, nextValue)}
-                    />
-                  )}
-                </SelectionCard>
-              );
-            })}
-          </div>
-        ) : (
-          <SecondaryRolesEmptyState isFlex={isFlex} />
-        )}
-      </section>
-
-      {showTopHeroes && (
-        <section className="space-y-2.5">
-          <div className="space-y-0.5">
-            <h4 className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
-              {t("registration.roles.topHeroes.title")}
-            </h4>
-            {!hideHelperText ? (
-              <p className="max-w-[40rem] text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-                {t("registration.roles.topHeroes.desc", { max: maxHeroes })}
-              </p>
-            ) : null}
-          </div>
-
-          {isFlex ? (
-            <HeroPickerGroup
-              roleCode="flex"
-              label={t("registration.roles.topHeroes.anyRole")}
-              icon={<FlexIcon width={14} height={14} />}
-              heroes={allHeroes}
-              selected={flexHeroes}
-              max={maxHeroes}
-              countLabel={t("registration.roles.topHeroes.count", { count: flexHeroes.length, max: maxHeroes })}
-              onChange={onSetFlexHeroes}
-            />
-          ) : (
-            <div className="space-y-2.5">
-              {primaryRoleDef && (
-                <HeroPickerGroup
-                  roleCode={primaryRoleDef.code}
-                  label={primaryRoleDef.display}
-                  icon={<PlayerRoleIcon role={getRoleIconName(primaryRoleDef.code)} size={16} />}
-                  heroes={heroesForRole(primaryRoleDef.code)}
-                  selected={primaryRoleHeroes}
-                  max={maxHeroes}
-                  countLabel={t("registration.roles.topHeroes.count", {
-                    count: primaryRoleHeroes.length,
-                    max: maxHeroes,
-                  })}
-                  onChange={onSetPrimaryRoleHeroes}
-                />
-              )}
-              {additionalRoles.map((entry) => {
-                const def = ROLES.find((role) => role.code === entry.code);
-                if (!def) {
-                  return null;
-                }
-                return (
-                  <HeroPickerGroup
-                    key={entry.code}
-                    roleCode={def.code}
-                    label={def.display}
-                    icon={<PlayerRoleIcon role={getRoleIconName(def.code)} size={16} />}
-                    heroes={heroesForRole(def.code)}
-                    selected={entry.topHeroes}
-                    max={maxHeroes}
-                    countLabel={t("registration.roles.topHeroes.count", {
-                      count: entry.topHeroes.length,
-                      max: maxHeroes,
-                    })}
-                    onChange={(heroes) => setAdditionalHeroes(def.code, heroes)}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
-      )}
-    </div>
-  );
-}
-
-function HeroPickerGroup({
-  roleCode,
-  label,
-  icon,
-  heroes,
-  selected,
-  max,
-  countLabel,
-  onChange,
-}: {
-  roleCode: string;
-  label: string;
-  icon: ReactNode;
-  heroes: Hero[];
-  selected: string[];
-  max: number;
-  countLabel: string;
-  onChange: (slugs: string[]) => void;
-}) {
-  return (
-    <div className="space-y-2 rounded-xl border border-[color:var(--aqt-border-2)] bg-white/[0.02] p-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "flex size-7 shrink-0 items-center justify-center rounded-xl",
-              ROLE_ACCENTS[roleCode]?.tile,
-            )}
-          >
-            {icon}
-          </span>
-          <span className="text-[12px] font-semibold text-[color:var(--aqt-fg)]">{label}</span>
-        </div>
-        <span className="rounded-full border border-[color:var(--aqt-border-2)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[color:var(--aqt-fg-dim)]">
-          {countLabel}
-        </span>
       </div>
-      <HeroPickerBlock
-        heroes={heroes}
-        selected={selected}
-        max={max}
-        roleCode={roleCode}
-        onChange={onChange}
-      />
+
+      {error && (
+        <p className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-xs leading-5 text-warning">
+          {error}
+        </p>
+      )}
+
+      {isAllRoles && (
+        <div className="grid gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+            {t("registration.roles.matrix.choiceLabel")}
+          </span>
+          <SegmentedRadio
+            label={t("registration.roles.matrix.choiceLabel")}
+            value={priorityChoice(selections)}
+            options={priorityOptions}
+            onChange={setPriorityChoice}
+          />
+        </div>
+      )}
+
+      <div
+        aria-hidden
+        className={cn(
+          "hidden gap-2 px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)] sm:grid",
+          columnClass,
+        )}
+      >
+        <span>{t("registration.roles.matrix.columnRole")}</span>
+        {showPriority && <span>{t("registration.roles.matrix.columnPriority")}</span>}
+        <span>{t("registration.roles.specialization")}</span>
+        <span>{topHeroesEnabled ? t("registration.roles.topHeroes.title") : ""}</span>
+      </div>
+
+      <div className="grid gap-2">
+        {ROLES.map((role) => (
+          <RoleMatrixRow
+            key={role.code}
+            roleCode={role.code}
+            roleLabel={role.display}
+            selection={selections[role.code]}
+            subroleOptions={subroleOptionsFor(role.code, selections[role.code].priority)}
+            heroes={heroesForRole(role.code)}
+            topHeroesEnabled={topHeroesEnabled}
+            maxHeroes={maxHeroes}
+            showPriority={showPriority}
+            onPriorityChange={(priority) => setPriority(role.code, priority)}
+            onSubroleChange={(subrole) => setSubrole(role.code, subrole)}
+            onHeroesChange={(heroes) => setHeroes(role.code, heroes)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

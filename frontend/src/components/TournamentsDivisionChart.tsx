@@ -14,20 +14,20 @@ import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { TournamentDivisionStatistics } from "@/types/statistics.types";
 
 const chartConfig = {
-  number: {
+  name: {
     label: "Tournament"
   },
   tank_avg_div: {
     label: "Tank",
-    color: "#7d92cc"
+    color: "var(--aqt-tank)"
   },
   damage_avg_div: {
     label: "Damage",
-    color: "#f28e1c"
+    color: "var(--aqt-damage)"
   },
   support_avg_div: {
     label: "Support",
-    color: "#f7a0cc"
+    color: "var(--aqt-support)"
   }
 } satisfies ChartConfig;
 
@@ -42,7 +42,7 @@ const TournamentsDivisionChart = ({ data }: { data: TournamentDivisionStatistics
   const chartData = useMemo(() => {
     return data.map((item) => {
       return {
-        number: item.number.toString(),
+        name: item.name,
         tank_avg_div: normalizeDivision(item.tank_avg_div),
         damage_avg_div: normalizeDivision(item.damage_avg_div),
         support_avg_div: normalizeDivision(item.support_avg_div)
@@ -80,17 +80,8 @@ const TournamentsDivisionChart = ({ data }: { data: TournamentDivisionStatistics
         <ChartContainer config={chartConfig}>
           <LineChart accessibilityLayer data={chartData}>
             <CartesianGrid vertical={false} />
-            <XAxis dataKey="number" tickLine={false} tickMargin={10} axisLine={false} />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  className="w-37.5"
-                  labelFormatter={(value) => {
-                    return `Tournament ${value}`;
-                  }}
-                />
-              }
-            />
+            <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} />
+            <ChartTooltip content={<ChartTooltipContent className="w-37.5" />} />
             <YAxis
               tickLine={false}
               axisLine={false}

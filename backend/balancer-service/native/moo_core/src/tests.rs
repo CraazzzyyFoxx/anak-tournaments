@@ -24,6 +24,8 @@ fn regression_config() -> ConfigSpec {
         team_max_pain_weight: 1.0,
         role_line_balance_weight: 1.0,
         sub_role_collision_weight: 24.0,
+        low_rank_threshold: 0.0,
+        low_rank_collision_weight: 250.0,
         use_captains: false,
         tank_impact_weight: 1.4,
         dps_impact_weight: 1.0,
@@ -300,11 +302,11 @@ fn optimizer_output_snapshot_guard() {
     );
 }
 
-// Re-baseline 2026-06-11 (Фаза 4): апгрейд rand 0.8→0.9 — сырой поток ChaCha12
-// идентичен (пиннинг), но rand 0.9 изменил алгоритм сэмплирования random_range,
-// поэтому розыгрыши отличаются (эквивалентно смене seed, семантика не менялась).
-// Предыдущие re-baseline: Фаза 3 (поиск), Фаза 2 (objective).
-const SNAPSHOT_FINGERPRINT: u64 = 3838046900446554683;
+// Re-baseline 2026-07-29: добавлено поле avg_low_rank_pairs в сериализуемый
+// ObjectiveBreakdown (low_rank_threshold=0 в фикстуре — поиск не менялся,
+// изменился только wire-формат ответа).
+// Предыдущие re-baseline: 2026-06-11 rand 0.8→0.9, Фаза 3 (поиск), Фаза 2 (objective).
+const SNAPSHOT_FINGERPRINT: u64 = 1273610128389254711;
 
 // --- Валидация входа -------------------------------------------------
 
@@ -463,6 +465,74 @@ fn objectives_match_hand_computed_two_team_case() {
     );
 }
 
+#[test]
+fn low_rank_pairs_penalize_balance_when_threshold_enabled() {
+    // 2 команды × 2 Tank. Команда 1: два игрока ≤ порога (1 пара),
+    // команда 2: два сильных (0 пар). У low-2 есть вторая роль 1200 > порога
+    // — он НЕ низкоранговый по максимуму, поэтому убираем: рейтинг всех ролей
+    // ниже порога только у low-1 и low-2.
+    let mut config = regression_config();
+    config.low_rank_threshold = 1000.0;
+    config.low_rank_collision_weight = 250.0;
+    let request = NativeRequest {
+        players: vec![
+            player("low-1", "Tank", &[("Tank", 800)], &["Tank"]),
+            player("low-2", "Tank", &[("Tank", 900), ("Damage", 950)], &["Tank"]),
+            player("high-1", "Tank", &[("Tank", 2800)], &["Tank"]),
+            player("mixed", "Tank", &[("Tank", 900), ("Damage", 2400)], &["Tank"]),
+        ],
+        num_teams: 2,
+        seed: 1,
+        mask: [("Tank".to_string(), 2usize)].into_iter().collect(),
+        config,
+    };
+    let ctx = Context::from_request(request).expect("valid");
+    // Игрок 3 (mixed): Tank 900 ≤ порога, но max по всем ролям 2400 → не низкоранговый.
+    assert!(ctx.players[0].is_low_rank);
+    assert!(ctx.players[1].is_low_rank);
+    assert!(!ctx.players[2].is_low_rank);
+    assert!(!ctx.players[3].is_low_rank);
+
+    let stacked: Solution = vec![
+        TeamState { id: 1, roster: vec![vec![0, 1]] },
+        TeamState { id: 2, roster: vec![vec![2, 3]] },
+    ];
+    let spread: Solution = vec![
+        TeamState { id: 1, roster: vec![vec![0, 2]] },
+        TeamState { id: 2, roster: vec![vec![1, 3]] },
+    ];
+
+    let b_stacked = calculate_objective_breakdown(&stacked, &ctx);
+    let b_spread = calculate_objective_breakdown(&spread, &ctx);
+    // stacked: 1 пара на 2 команды → avg 0.5; spread: 0.
+    assert!((b_stacked.avg_low_rank_pairs - 0.5).abs() < 1e-9);
+    assert_eq!(b_spread.avg_low_rank_pairs, 0.0);
+
+    // При выключенном пороге (0) пары не считаются вовсе.
+    let mut off_request_config = regression_config();
+    off_request_config.low_rank_threshold = 0.0;
+    let off_request = NativeRequest {
+        players: vec![
+            player("low-1", "Tank", &[("Tank", 800)], &["Tank"]),
+            player("low-2", "Tank", &[("Tank", 900), ("Damage", 950)], &["Tank"]),
+            player("high-1", "Tank", &[("Tank", 2800)], &["Tank"]),
+            player("mixed", "Tank", &[("Tank", 900), ("Damage", 2400)], &["Tank"]),
+        ],
+        num_teams: 2,
+        seed: 1,
+        mask: [("Tank".to_string(), 2usize)].into_iter().collect(),
+        config: off_request_config,
+    };
+    let off_ctx = Context::from_request(off_request).expect("valid");
+    assert!(off_ctx.players.iter().all(|p| !p.is_low_rank));
+    let stacked_off: Solution = vec![
+        TeamState { id: 1, roster: vec![vec![0, 1]] },
+        TeamState { id: 2, roster: vec![vec![2, 3]] },
+    ];
+    let b_off = calculate_objective_breakdown(&stacked_off, &off_ctx);
+    assert_eq!(b_off.avg_low_rank_pairs, 0.0);
+}
+
 /// Инвариант breakdown: взвешенная сумма сырых членов точно равна
 /// итоговым balance/comfort.
 #[test]
@@ -480,7 +550,8 @@ fn breakdown_terms_sum_to_objectives() {
             + b.internal_role_spread_avg * cfg.internal_role_spread_weight
             + b.tank_adjacent_gap_penalty * cfg.tank_gap_weight
             + b.tank_std * cfg.tank_std_weight
-            + b.effective_total_std * cfg.effective_total_std_weight;
+            + b.effective_total_std * cfg.effective_total_std_weight
+            + b.avg_low_rank_pairs * cfg.low_rank_collision_weight;
         let comfort = b.avg_discomfort * cfg.role_discomfort_weight
             + b.global_max_pain * cfg.max_role_discomfort_weight
             + b.avg_team_max_pain * cfg.team_max_pain_weight

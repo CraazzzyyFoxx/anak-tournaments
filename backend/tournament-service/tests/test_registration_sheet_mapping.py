@@ -44,6 +44,7 @@ LEGACY_BUILTIN_TARGETS = {
     "smurf_tags",
     "discord_nick",
     "twitch_nick",
+    "boosty_nick",
     "stream_pov",
     "notes",
     "source_roles.primary",

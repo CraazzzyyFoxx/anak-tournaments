@@ -27,6 +27,14 @@ interface DateTimePickerProps {
   timeLabel?: string;
   timeId?: string;
   value?: string | null;
+  /**
+   * Extra classes for the two field labels — pass `lg:sr-only` to hide them
+   * visually above a breakpoint while keeping them for assistive tech. For a
+   * grid of pickers where one header row already names the columns: repeating
+   * "Starts at / Time" on every row is noise on screen, but it is the only
+   * accessible name each control has.
+   */
+  labelClassName?: string;
 }
 
 function formatDisplay(date: Date | undefined): string {
@@ -150,7 +158,8 @@ export function DateTimePicker({
   placeholder = "Select date",
   timeLabel = "Time",
   timeId,
-  value
+  value,
+  labelClassName
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => parseDateTimeValue(value), [value]);
@@ -160,7 +169,9 @@ export function DateTimePicker({
     <div className="flex items-end gap-2 w-full">
       <div className="flex flex-1 flex-col gap-2 sm:flex-row min-w-0">
         <Field className="min-w-0 flex-1 gap-1.5" data-disabled={disabled}>
-          <FieldLabel htmlFor={id}>{dateLabel}</FieldLabel>
+          <FieldLabel htmlFor={id} className={labelClassName}>
+            {dateLabel}
+          </FieldLabel>
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -200,7 +211,9 @@ export function DateTimePicker({
           </Popover>
         </Field>
         <Field className="gap-1.5 sm:w-32 sm:shrink-0" data-disabled={disabled}>
-          <FieldLabel htmlFor={timeId}>{timeLabel}</FieldLabel>
+          <FieldLabel htmlFor={timeId} className={labelClassName}>
+            {timeLabel}
+          </FieldLabel>
           <TimeInput
             id={timeId}
             value={timeValue}

@@ -370,6 +370,7 @@ def parse_sheet_row_detailed(
         "smurf_tags": flat_values.get("smurf_tags") or [],
         "discord_nick": flat_values.get("discord_nick"),
         "twitch_nick": flat_values.get("twitch_nick"),
+        "boosty_nick": flat_values.get("boosty_nick"),
         "stream_pov": bool(flat_values.get("stream_pov", False)),
         "notes": flat_values.get("notes"),
         "source_roles": {

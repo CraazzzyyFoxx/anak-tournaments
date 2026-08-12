@@ -130,11 +130,16 @@ class HeroesCacheTests(_CacheTestBase):
         params = pagination.PaginationParams(page=1, per_page=10)
         with get_user, svc:
             await flows.get_heroes(
-                object(), 101, params,
-                [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations], workspace_id=1,
+                object(),
+                101,
+                params,
+                [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations],
+                workspace_id=1,
             )
             await flows.get_heroes(
-                object(), 101, params,
+                object(),
+                101,
+                params,
                 [enums.LogStatsName.Eliminations, enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations],
                 workspace_id=1,
             )
@@ -144,8 +149,12 @@ class HeroesCacheTests(_CacheTestBase):
         get_user, svc, compute = self._patch_deps()
         stats = [enums.LogStatsName.Deaths]
         with get_user, svc:
-            await flows.get_heroes(object(), 101, pagination.PaginationParams(page=1, per_page=10), stats, workspace_id=1)
-            await flows.get_heroes(object(), 101, pagination.PaginationParams(page=2, per_page=10), stats, workspace_id=1)
+            await flows.get_heroes(
+                object(), 101, pagination.PaginationParams(page=1, per_page=10), stats, workspace_id=1
+            )
+            await flows.get_heroes(
+                object(), 101, pagination.PaginationParams(page=2, per_page=10), stats, workspace_id=1
+            )
         self.assertEqual(2, compute.await_count)
 
 

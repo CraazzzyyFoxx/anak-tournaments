@@ -14,9 +14,12 @@ from __future__ import annotations
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
+from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas import registration as reg_schemas
 from src.schemas.admin import balancer as admin_balancer
 from src.schemas.admin import encounter as admin_encounter
+from src.schemas.admin import encounter_reports as admin_reports
+from src.schemas.admin import matches as admin_matches
 from src.schemas.admin import player_sub_role as admin_player_sub_role
 from src.schemas.admin import stage as admin_stage
 from src.schemas.admin import standing as admin_standing
@@ -130,6 +133,11 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.stage_seed": Op(request=admin_stage.SeedTeamsRequest, response=schemas.StageRead),
     # ── integrations: division grids ───────────────────────────────────────
     "rpc.tournament.grid_workspace_create": Op(request=schemas.DivisionGridCreate, response=schemas.DivisionGridRead),
+    "rpc.tournament.grid_update": Op(request=schemas.DivisionGridUpdate, response=schemas.DivisionGridRead),
+    "rpc.tournament.grid_portable_export": Op(response=schemas.DivisionGridPortableDocument),
+    "rpc.tournament.grid_portable_import": Op(
+        request=schemas.DivisionGridPortableImportRequest, response=schemas.DivisionGridRead
+    ),
     "rpc.tournament.grid_version_get": Op(response=schemas.DivisionGridVersionRead),
     "rpc.tournament.grid_version_create": Op(
         request=schemas.DivisionGridVersionCreate, response=schemas.DivisionGridVersionRead
@@ -138,12 +146,25 @@ OPERATIONS: dict[str, Op] = {
         request=schemas.DivisionGridVersionUpdate, response=schemas.DivisionGridVersionRead
     ),
     "rpc.tournament.grid_version_publish": Op(response=schemas.DivisionGridVersionRead),
+    "rpc.tournament.grid_version_readiness": Op(response=schemas.DivisionGridActivationReadiness),
+    "rpc.tournament.grid_version_activate": Op(response=schemas.DivisionGridVersionRead),
     "rpc.tournament.grid_version_clone": Op(response=schemas.DivisionGridVersionRead),
+    "rpc.tournament.grid_save": Op(request=schemas.DivisionGridSaveRequest, response=schemas.DivisionGridSaveResult),
     "rpc.tournament.grid_mapping_put": Op(
         request=schemas.DivisionGridMappingWrite, response=schemas.DivisionGridMappingRead
     ),
+    "rpc.tournament.grid_marketplace_preflight": Op(
+        request=schemas.DivisionGridMarketplaceImportRequest,
+        response=schemas.DivisionGridMarketplacePreflightResult,
+    ),
     "rpc.tournament.grid_marketplace_import": Op(
-        request=schemas.DivisionGridMarketplaceImportRequest, response=schemas.DivisionGridMarketplaceImportResult
+        request=schemas.DivisionGridMarketplaceImportRequest, response=schemas.DivisionGridImportJobRead
+    ),
+    "rpc.tournament.grid_import_job_get": Op(response=schemas.DivisionGridImportJobRead),
+    "rpc.tournament.grid_import_jobs_list": Op(
+        response=schemas.DivisionGridImportJobRead,
+        response_array=True,
+        query_params=(_WS, QueryParam("active_only", "boolean"), QueryParam("limit", "integer")),
     ),
     # ── integrations: Challonge fetch (reads) ──────────────────────────────
     "rpc.tournament.challonge_fetch_tournament": Op(response=schemas.ChallongeTournament),
@@ -179,9 +200,7 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.tournament.reg_approve": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_reject": Op(response=admin_balancer.BalancerRegistrationRead),
-    "rpc.tournament.reg_exclusion": Op(
-        request=admin_balancer.BalancerRegistrationExclusionRequest, response=admin_balancer.BalancerRegistrationRead
-    ),
+    "rpc.tournament.reg_include_balancer": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_withdraw": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_restore": Op(response=admin_balancer.BalancerRegistrationRead),
     "rpc.tournament.reg_bulk_approve": Op(response=admin_balancer.BulkApproveResponse),
@@ -189,8 +208,8 @@ OPERATIONS: dict[str, Op] = {
         request=admin_balancer.SetBalancerStatusRequest, response=admin_balancer.BalancerRegistrationRead
     ),
     "rpc.tournament.reg_bulk_add_balancer": Op(response=admin_balancer.BulkBalancerStatusResponse),
-    "rpc.tournament.reg_bulk_exclusion": Op(
-        request=admin_balancer.BulkExclusionRequest, response=admin_balancer.BulkExclusionResponse
+    "rpc.tournament.reg_bulk_set_balancer_status": Op(
+        request=admin_balancer.BulkSetBalancerStatusRequest, response=admin_balancer.BulkBalancerStatusResponse
     ),
     "rpc.tournament.reg_rank_autofill_preview": Op(
         request=admin_balancer.BalancerRegistrationRankAutofillRequest,
@@ -217,6 +236,18 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.regstatus_builtin_upsert": Op(
         request=admin_balancer.BalancerRegistrationStatusUpdate, response=admin_balancer.BalancerRegistrationStatusRead
     ),
+    # ── workspace subscription provider config ─────────────────────────────
+    "rpc.tournament.sub_config_list": Op(response=reg_schemas.SubscriptionProviderConfigListResponse),
+    "rpc.tournament.sub_config_upsert": Op(
+        request=reg_schemas.SubscriptionProviderConfigUpsert,
+        response=reg_schemas.SubscriptionProviderConfigRead,
+    ),
+    # ── workspace subscription requirement ─────────────────────────────────
+    "rpc.tournament.sub_requirement_get": Op(response=reg_schemas.WorkspaceSubscriptionRequirementRead),
+    "rpc.tournament.sub_requirement_upsert": Op(
+        request=reg_schemas.WorkspaceSubscriptionRequirementUpsert,
+        response=reg_schemas.WorkspaceSubscriptionRequirementRead,
+    ),
     # ── public registration (captain/self-service) ─────────────────────────
     "rpc.tournament.reg_pub_create": Op(request=reg_schemas.RegistrationCreate, response=reg_schemas.RegistrationRead),
     "rpc.tournament.reg_pub_update_me": Op(
@@ -224,8 +255,42 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.tournament.reg_pub_withdraw_me": Op(response=reg_schemas.RegistrationStatusResponse),
     "rpc.tournament.reg_pub_check_in": Op(response=reg_schemas.RegistrationRead),
+    "rpc.tournament.sub_me": Op(response=reg_schemas.SubscriptionStatusRead),
+    "rpc.tournament.sub_redeem_code": Op(
+        request=reg_schemas.SubscriptionRedeemRequest,
+        response=reg_schemas.SubscriptionStatusRead,
+    ),
     # ── encounter saved-view write ─────────────────────────────────────────
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
+    # ── match report form (per-tournament captain-report config) ───────────
+    "rpc.tournament.report_form_get": Op(response=report_form_schemas.MatchReportFormRead),
+    "rpc.tournament.report_form_upsert": Op(
+        request=report_form_schemas.MatchReportFormUpsert, response=report_form_schemas.MatchReportFormRead
+    ),
+    # captain_reports is deliberately absent: it answers the ad-hoc envelope
+    # {reports, form} rather than a bare CaptainReportRead array, and this module
+    # maps whole request/response models only (see the module docstring).
+    # ── encounter result (the single admin write + its audit trail) ────────
+    "rpc.tournament.encounter_set_result": Op(
+        request=admin_encounter.EncounterSetResultInput, response=admin_encounter.EncounterResultRead
+    ),
+    "rpc.tournament.encounter_reopen_result": Op(response=admin_encounter.EncounterResultRead),
+    "rpc.tournament.encounter_result_audit": Op(response=admin_encounter.EncounterResultAuditRead, response_array=True),
+    # ── captain reports admin list (cross-tournament, workspace-scoped) ────
+    "rpc.tournament.admin_encounter_reports_list": Op(
+        response=Paginated[admin_reports.EncounterReportsRow],
+        query=admin_reports.EncounterReportsQueryParams,
+    ),
+    "rpc.tournament.admin_encounter_reports_stats": Op(
+        response=admin_reports.EncounterReportsStats,
+        query=admin_reports.EncounterReportsQueryParams,
+    ),
+    # ── parsed matches (one row per played map) ────────────────────────────
+    "rpc.tournament.admin_matches_list": Op(
+        response=Paginated[admin_matches.AdminMatchRow],
+        query=admin_matches.AdminMatchesQueryParams,
+    ),
+    "rpc.tournament.admin_match_get": Op(response=admin_matches.AdminMatchDetail),
 }

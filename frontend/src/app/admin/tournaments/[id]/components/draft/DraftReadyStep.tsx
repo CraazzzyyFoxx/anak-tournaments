@@ -1,11 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { ArrowUpRight, CheckCircle2, Play, RefreshCw, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { TONE_CLASS } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
 import type { DraftFeasibility, DraftSession } from "@/types/draft.types";
 
 interface DraftReadyStepProps {
@@ -27,22 +41,19 @@ export function DraftReadyStep({
 }: DraftReadyStepProps) {
   const t = useTranslations("draftAdmin");
   const ready = feasibility?.is_feasible === true;
+  // Going live is the one setup transition captains see instantly and that the
+  // wizard cannot walk back, so it is confirmed instead of fired on one click.
+  const [startDialogOpen, setStartDialogOpen] = useState(false);
 
   return (
     <div className="space-y-6">
-      <div
-        className={
-          ready
-            ? "rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6"
-            : "rounded-2xl border border-destructive/30 bg-destructive/10 p-6"
-        }
-      >
+      <div className={cn("rounded-2xl border p-6", TONE_CLASS[ready ? "success" : "danger"])}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex gap-3">
             {ready ? (
-              <CheckCircle2 className="mt-0.5 h-6 w-6 text-emerald-600" />
+              <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden />
             ) : (
-              <ShieldAlert className="mt-0.5 h-6 w-6 text-destructive" />
+              <ShieldAlert className="mt-0.5 h-6 w-6 shrink-0" aria-hidden />
             )}
             <div>
               <h3 className="text-lg font-semibold">
@@ -59,36 +70,53 @@ export function DraftReadyStep({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <ReadyMetric label={t("teamSize")} value={session.team_size} />
-        <ReadyMetric label={t("rounds")} value={session.rounds} />
-        <ReadyMetric label={t("pickTime")} value={`${session.pick_time_seconds}s`} />
-      </div>
+      <StatTileGrid className="sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3">
+        <StatTile label={t("teamSize")} value={session.roster_shape.team_size} />
+        <StatTile label={t("rounds")} value={session.rounds} />
+        <StatTile label={t("pickTime")} value={`${session.pick_time_seconds}s`} />
+      </StatTileGrid>
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button size="lg" disabled={pending || !ready} onClick={onStart}>
-          {pending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+        <Button size="lg" disabled={pending || !ready} onClick={() => setStartDialogOpen(true)}>
+          {pending ? (
+            <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Play className="mr-2 h-4 w-4" aria-hidden />
+          )}
           {t("startDraft")}
         </Button>
         <Button asChild size="lg" variant="outline">
-          <Link href={`/draft/${tournamentId}`} target="_blank">
+          <Link href={`/draft/${tournamentId}`} target="_blank" rel="noreferrer">
             {t("openLiveBoard")}
-            <ArrowUpRight className="ml-2 h-4 w-4" />
+            <ArrowUpRight className="ml-2 h-4 w-4" aria-hidden />
           </Link>
         </Button>
         <Button size="lg" variant="ghost" disabled={pending} onClick={onReseed}>
-          {t("changeAndReseed")}
+          {t("editSetup")}
         </Button>
       </div>
-    </div>
-  );
-}
 
-function ReadyMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-card p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+      <AlertDialog open={startDialogOpen} onOpenChange={setStartDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("startConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("startConfirmDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>{t("keepEditing")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={(event) => {
+                event.preventDefault();
+                setStartDialogOpen(false);
+                onStart();
+              }}
+            >
+              {t("startDraft")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

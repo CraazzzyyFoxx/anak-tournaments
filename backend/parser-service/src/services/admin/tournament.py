@@ -13,6 +13,7 @@ from shared.core.enums import StageType, TournamentStatus
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_division_grid_version_id
+from shared.services.draft_guards import assert_no_active_draft_session
 from shared.services.tournament_computation import request_bracket_job
 from src import models
 from src.schemas.admin import tournament as admin_schemas
@@ -135,21 +136,20 @@ async def get_tournament(session: AsyncSession, tournament_id: int) -> models.To
 
 async def create_tournament(session: AsyncSession, data: admin_schemas.TournamentCreate) -> models.Tournament:
     """Create a new tournament"""
-    if data.number is not None:
-        result = await session.execute(
-            select(models.Tournament).where(
-                models.Tournament.workspace_id == data.workspace_id,
-                models.Tournament.number == data.number,
-                models.Tournament.is_league == data.is_league,
-            )
+    result = await session.execute(
+        select(models.Tournament).where(
+            models.Tournament.workspace_id == data.workspace_id,
+            models.Tournament.name == data.name,
+            models.Tournament.is_league == data.is_league,
         )
-        existing_tournament = result.scalar_one_or_none()
+    )
+    existing_tournament = result.scalar_one_or_none()
 
-        if existing_tournament:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Tournament with this number already exists in this workspace",
-            )
+    if existing_tournament:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tournament with this name already exists in this workspace",
+        )
 
     payload = data.model_dump()
     payload["division_grid_version_id"] = await _resolve_division_grid_version_id(
@@ -188,6 +188,9 @@ async def update_tournament(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
+    if "team_formation" in update_data and update_data["team_formation"] != tournament.team_formation:
+        await assert_no_active_draft_session(session, tournament_id)
+
     if "challonge_slug" in update_data:
         raw_slug = update_data.pop("challonge_slug")
         if raw_slug:

@@ -28,16 +28,15 @@ __all__ = (
 def is_completed_encounter(encounter: Encounter) -> bool:
     """Canonical "this encounter counts toward standings" predicate.
 
-    Phase B: the single source of truth is ``status == COMPLETED``.
-    ``result_status == CONFIRMED`` also counts (captain submission flow).
-    Non-zero scores alone do NOT — that rule previously masked state desyncs.
+    ``status == COMPLETED`` is the single form. Since encres0001 a CHECK
+    constraint makes it equivalent to ``result_status == CONFIRMED``, so the
+    old OR of both was redundant — and the risk was never the OR itself but
+    three call sites each free to phrase the question their own way. Non-zero
+    scores alone do NOT count: that rule previously masked state desyncs.
     """
     if encounter.home_team_id is None or encounter.away_team_id is None:
         return False
-    return (
-        encounter.status == enums.EncounterStatus.COMPLETED
-        or encounter.result_status == enums.EncounterResultStatus.CONFIRMED
-    )
+    return encounter.status == enums.EncounterStatus.COMPLETED
 
 
 def completed_encounters(

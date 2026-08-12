@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { UserProfile, UserTournament } from "@/types/user.types";
+import { EncounterWithUserStats, UserProfile, UserTournament } from "@/types/user.types";
+import userService from "@/services/user.service";
 import {
   type TournamentGroup,
-  groupMaxNumber,
+  groupMaxId,
   groupRepId,
   groupTournamentIds,
-  groupTournamentsByLeague
+  groupTournamentsByLeague,
+  isLeagueGroup
 } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
 import TournamentsKpiStrip from "@/app/(site)/users/components/tournaments/TournamentsKpiStrip";
 import TournamentsPlacementTimeline from "@/app/(site)/users/components/tournaments/TournamentsPlacementTimeline";
@@ -22,14 +24,14 @@ interface Props {
   profile?: UserProfile | null;
 }
 
-/** Rep-id of the most-recent event group (greatest tournament number). */
+/** Rep-id of the most-recent event group (greatest tournament id). */
 const mostRecentKey = (groups: TournamentGroup[]): number | null => {
   let best: number | null = null;
-  let bestNumber = -Infinity;
+  let bestId = -Infinity;
   for (const group of groups) {
-    const number = groupMaxNumber(group);
-    if (number > bestNumber) {
-      bestNumber = number;
+    const id = groupMaxId(group);
+    if (id > bestId) {
+      bestId = id;
       best = groupRepId(group);
     }
   }
@@ -62,12 +64,62 @@ const TournamentsHistory = ({ tournaments, selfUserId, profile = null }: Props) 
   // group — e.g. the tournaments prop changed.
   const validKeys = useMemo(() => groups.map(groupRepId), [groups]);
   const effectiveKey = selectedKey != null && validKeys.includes(selectedKey) ? selectedKey : initialKey;
-
   const selectedGroup = useMemo(
     () => groups.find((group) => groupRepId(group) === effectiveKey) ?? null,
     [groups, effectiveKey]
   );
   const selectedIds = useMemo(() => (selectedGroup ? groupTournamentIds(selectedGroup) : []), [selectedGroup]);
+
+  // Lazy dossier detail: the list endpoint never populates `encounters` (see
+  // UserTournament.encounters) — fetch them per tournament id in the
+  // selected group only, and merge the results in before handing the group
+  // to the dossier. Mirrors LobbyLeaderboardModal's reset-on-param-change
+  // pattern: a synchronous state adjustment during render, not an effect.
+  const [selectionKey, setSelectionKey] = useState<number | null>(effectiveKey);
+  const [encountersByTournamentId, setEncountersByTournamentId] = useState<
+    Map<number, EncounterWithUserStats[]>
+  >(new Map());
+  const [encountersStatus, setEncountersStatus] = useState<"idle" | "loading" | "error">(
+    selectedIds.length > 0 ? "loading" : "idle"
+  );
+
+  if (effectiveKey !== selectionKey) {
+    setSelectionKey(effectiveKey);
+    setEncountersByTournamentId(new Map());
+    setEncountersStatus(selectedIds.length > 0 ? "loading" : "idle");
+  }
+
+  useEffect(() => {
+    if (selectedIds.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      selectedIds.map((id) =>
+        userService.getUserTournamentEncounters(selfUserId, id).then((list) => [id, list] as const)
+      )
+    )
+      .then((pairs) => {
+        if (cancelled) return;
+        setEncountersByTournamentId(new Map(pairs));
+        setEncountersStatus("idle");
+      })
+      .catch(() => {
+        if (!cancelled) setEncountersStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // effectiveKey (not selectedIds) is the selection identity this fetch is
+    // for; selectedIds is memoized off the same selection so it never drifts.
+  }, [effectiveKey, selfUserId, selectedIds]);
+
+  const detailedGroup: TournamentGroup | null = useMemo(() => {
+    if (!selectedGroup) return null;
+    const attach = (t: UserTournament): UserTournament => ({
+      ...t,
+      encounters: encountersByTournamentId.get(t.id) ?? []
+    });
+    return isLeagueGroup(selectedGroup) ? selectedGroup.map(attach) : attach(selectedGroup);
+  }, [selectedGroup, encountersByTournamentId]);
 
   const syncUrl = (id: number) => {
     if (typeof window === "undefined") return;
@@ -98,7 +150,11 @@ const TournamentsHistory = ({ tournaments, selfUserId, profile = null }: Props) 
       <TournamentsPlacementTimeline tournaments={tournaments} selectedIds={selectedIds} onSelect={selectEvent} />
       <div className="grid grid-cols-1 gap-3.5 min-[1081px]:grid-cols-[minmax(0,1fr)_404px]">
         <div ref={dossierRef} className="order-2 min-w-0 scroll-mt-4 min-[1081px]:order-1">
-          <TournamentDossier group={selectedGroup} selfUserId={selfUserId} />
+          <TournamentDossier
+            group={detailedGroup}
+            selfUserId={selfUserId}
+            loadingEncounters={encountersStatus === "loading"}
+          />
         </div>
         <div className="order-1 min-[1081px]:order-2">
           <TournamentList groups={groups} selectedKey={effectiveKey} onSelect={selectEvent} />

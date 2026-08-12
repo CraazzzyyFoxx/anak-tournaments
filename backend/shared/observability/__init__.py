@@ -30,7 +30,7 @@ from .logging import get_logger, setup_logging
 from .sentry import setup_sentry
 from .time_middleware import TimeMiddleware
 from .tracing import instrument_sqlalchemy, setup_tracing
-from .worker import observe_message_processing, publish_message, start_worker_metrics_server
+from .worker import observe_message_processing, observe_scheduled_job, publish_message, start_worker_metrics_server
 
 __all__ = [
     "make_rabbit_broker",
@@ -54,6 +54,7 @@ __all__ = [
     "make_health_response",
     "TimeMiddleware",
     "observe_message_processing",
+    "observe_scheduled_job",
     "publish_message",
     "start_worker_metrics_server",
 ]

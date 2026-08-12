@@ -25,6 +25,7 @@ var PublicDocRoutes = []edge.RouteSpec{
 	// current user
 	{Method: "GET", Pattern: "/api/auth/me", Queue: "rpc.identity.get_me", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/auth/me", Queue: "rpc.identity.update_me", Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/auth/me", Queue: "rpc.identity.delete_me", Auth: edge.AuthRequired, Success: 204},
 	{Method: "POST", Pattern: "/api/auth/set-password", Queue: "rpc.identity.set_password", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/auth/me/avatar", Queue: "rpc.identity.me.avatar_set", Auth: edge.AuthRequired},      // multipart upload
 	{Method: "DELETE", Pattern: "/api/auth/me/avatar", Queue: "rpc.identity.me.avatar_delete", Auth: edge.AuthRequired}, // multipart upload

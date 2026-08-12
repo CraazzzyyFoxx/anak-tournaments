@@ -9,6 +9,11 @@
         "--mcp"
       ],
       "enabled": true
+    },
+    "sentry": {
+      "type": "remote",
+      "url": "https://mcp.sentry.dev/mcp",
+      "enabled": true
     }
   }
 }

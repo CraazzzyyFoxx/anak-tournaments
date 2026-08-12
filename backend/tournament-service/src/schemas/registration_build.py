@@ -8,16 +8,18 @@ envelope. This module must NOT import fastapi.
 
 from __future__ import annotations
 
+from typing import Any
+
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
 from shared.services.division_grid_access import (
-    get_effective_division_grid_version_id,
-    load_division_grid_snapshot,
+    get_effective_division_grid_version_ids,
+    load_division_grid_snapshots,
+    load_division_grid_version_read_payloads,
 )
 from src import models
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -93,7 +95,14 @@ def _form_to_read(
     form: models.BalancerRegistrationForm,
     *,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    subscription_requirement: dict[str, Any] | None = None,
 ) -> RegistrationFormRead:
+    """``subscription_requirement`` is the WORKSPACE's rule, passed in by the caller.
+
+    An argument rather than a lookup because this stays sync and must not issue a
+    second round trip per call; the async RPC handler already has the session and
+    fetches it once alongside the sub-role catalog.
+    """
     return RegistrationFormRead(
         id=form.id,
         tournament_id=form.tournament_id,
@@ -103,6 +112,9 @@ def _form_to_read(
         require_open_profile=form.require_open_profile,
         open_profile_scope=form.open_profile_scope,
         show_ranks=form.show_ranks,
+        require_subscription=form.require_subscription,
+        subscription_stage=form.subscription_stage,
+        subscription_requirement_json=subscription_requirement or {},
         built_in_fields=form.built_in_fields_json or {},
         custom_fields=form.custom_fields_json or [],
         subrole_catalog=subrole_catalog or {},
@@ -115,20 +127,22 @@ def _reg_to_read(
     workspace_id: int,
     status_meta_map: dict[str, dict[str, dict[str, object]]] | None = None,
     show_ranks: bool = False,
-    include_private: bool = True,
     profiles_open: bool | None = None,
+    subscription_outcome: str | None = None,
+    subscription_verdicts: dict[str, Any] | None = None,
 ) -> RegistrationRead:
     """Serialize a registration for public API responses.
 
-    ``include_private=False`` is for anonymous/list contexts: it strips
-    organizer-defined custom fields, which may contain PII and are only meant
-    for the registrant themselves and admins. Free-text ``notes`` stay public:
-    they are the participant-facing "anything you'd like organizers to know"
-    form field and are rendered as a column on the public participants roster.
-    Smurf tags stay public too: they are declared alternate battle tags, the
-    same anti-smurf transparency class as ``battle_tag``/``discord_nick``/
-    ``twitch_nick`` (all already public), and the participants roster exists
-    precisely to surface them.
+    Everything the registration form collects is roster data: the participants
+    table renders a column per built-in field and per organizer-defined custom
+    field, and the organizer chooses what to ask. ``custom_fields_json`` used to
+    be stripped here for anonymous callers, which left every custom column on
+    the public roster permanently empty while the header advertised it.
+
+    Free-text ``notes`` and smurf tags are public for the same reason: notes are
+    the participant-facing "anything you'd like organizers to know" field, and
+    declared alternate battle tags are the anti-smurf transparency the roster
+    exists to surface.
     """
     roles = (
         [
@@ -157,10 +171,11 @@ def _reg_to_read(
         smurf_tags_json=reg.smurf_tags_json,
         discord_nick=reg.discord_nick,
         twitch_nick=reg.twitch_nick,
+        boosty_nick=getattr(reg, "boosty_nick", None),
         stream_pov=reg.stream_pov,
         roles=roles,
         notes=reg.notes,
-        custom_fields_json=reg.custom_fields_json if include_private else None,
+        custom_fields_json=reg.custom_fields_json,
         status=reg.status,
         status_meta=(status_meta_map["registration"].get(reg.status) if status_meta_map is not None else None)
         or build_unknown_status_meta("registration", reg.status),
@@ -171,6 +186,8 @@ def _reg_to_read(
         or build_unknown_status_meta("balancer", reg.balancer_status),
         checked_in=reg.checked_in,
         profiles_open=profiles_open,
+        subscription_outcome=subscription_outcome,
+        subscription_verdicts=subscription_verdicts,
         submitted_at=reg.submitted_at,
         reviewed_at=reg.reviewed_at,
     )
@@ -249,34 +266,33 @@ async def _build_tournament_history(
     )
     rows = result.all()
 
-    # --- Step 3: resolve division-grid versions (Redis-cached, batched) ---
-    # ``get_effective_division_grid_version_id`` is Redis-backed, so the many past
-    # tournaments collapse to a handful of distinct version ids cheaply.
+    # --- Step 3: resolve division-grid versions for every distinct historical
+    # tournament in one batch -- a constant number of Redis/DB round trips no
+    # matter how many distinct tournaments this player's history spans (was a
+    # sequential per-tournament await; see get_effective_division_grid_version_ids's
+    # docstring for why that can't just be asyncio.gather'd instead).
     tournament_ids_with_rank = {tournament_id for tournament_id, _uid, _role, rank, _name in rows if rank is not None}
-    tournament_to_version: dict[int, int | None] = {}
-    for tid in tournament_ids_with_rank:
-        tournament_to_version[tid] = await get_effective_division_grid_version_id(
-            session, workspace_id, tournament_id=tid
-        )
+    tournament_to_version = await get_effective_division_grid_version_ids(
+        session, workspace_id, tournament_ids_with_rank
+    )
 
     distinct_version_ids = {vid for vid in tournament_to_version.values() if vid is not None}
 
-    # Runtime grids (for division-number resolution) come from the cached snapshot.
-    runtime_grid_by_version: dict[int, DivisionGrid] = {}
-    for vid in distinct_version_ids:
-        snapshot = await load_division_grid_snapshot(session, vid)
-        runtime_grid_by_version[vid] = snapshot.to_runtime_grid() if snapshot is not None else load_runtime_grid(None)
+    # Runtime grids (for division-number resolution) come from the cached snapshots.
+    snapshot_by_version = await load_division_grid_snapshots(session, distinct_version_ids)
+    runtime_grid_by_version: dict[int, DivisionGrid] = {
+        vid: (snapshot_by_version[vid].to_runtime_grid() if vid in snapshot_by_version else load_runtime_grid(None))
+        for vid in distinct_version_ids
+    }
 
-    # Full version metadata for the response map — ONE batched query, validated once.
+    # Full version metadata for the response map — cached (see
+    # load_division_grid_version_read_payloads's docstring): a query only runs
+    # for the versions this cache hasn't seen yet, not on every rebuild.
     version_read_by_id: dict[int, DivisionGridVersionRead] = {}
     if distinct_version_ids:
-        version_rows = await session.scalars(
-            sa.select(models.DivisionGridVersion)
-            .options(selectinload(models.DivisionGridVersion.tiers))
-            .where(models.DivisionGridVersion.id.in_(distinct_version_ids))
-        )
-        for version in version_rows:
-            version_read_by_id[int(version.id)] = DivisionGridVersionRead.model_validate(version, from_attributes=True)
+        version_payloads = await load_division_grid_version_read_payloads(session, distinct_version_ids)
+        for vid, payload in version_payloads.items():
+            version_read_by_id[vid] = DivisionGridVersionRead.model_validate(payload)
 
     # --- Step 4: build per-registration history (deduped by tournament, capped) ---
     history_map: dict[int, list[TournamentHistoryEntry]] = {}

@@ -15,7 +15,7 @@ const feasible = (matched: number, isFeasible = false): DraftFeasibility => ({
   total_open_slots: 3,
   matched_slots: matched,
   unmatched_slots: [],
-  role_deficits: [],
+  slot_deficits: [],
   blocking_player_ids: [],
   reason_code: isFeasible ? null : "role_shortage"
 });

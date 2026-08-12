@@ -7,9 +7,9 @@ that everyone with the balancer page open refetches the live list.
 Mirrors ``services.tournament.realtime_pubsub``: the event is persisted and
 broadcast from a short-lived session, decoupled from the admin mutation that
 already committed. The publish is scheduled as a fire-and-forget task so the
-mutation response never waits on the extra DB session + Redis round-trip, and
-the Redis client is a module-level singleton (its connection pool is reused
-across events) instead of a fresh TCP connection per mutation. Failures are
+mutation response never waits on the extra DB session + Redis round-trip, and the
+Redis client is the service's single pooled realtime client (``core.redis``)
+instead of a fresh TCP connection per mutation. Failures are
 swallowed — clients self-heal via the reconnect safety-refetch on the frontend.
 """
 
@@ -19,27 +19,19 @@ import asyncio
 from typing import Any
 
 from loguru import logger
-from redis.asyncio import Redis
 
 from shared.services.balancer_realtime import (
     BALANCER_REGISTRATIONS_CHANGED,
     publish_balancer_event,
 )
-from src.core import config, db
+from src.core import db
+from src.core.redis import get_realtime_redis
 
 __all__ = ("emit_balancer_registrations_changed",)
 
-_redis_client: Redis | None = None
 # Strong references so fire-and-forget publish tasks are not garbage-collected
 # mid-flight (asyncio only keeps weak refs to running tasks).
 _pending_publishes: set[asyncio.Task[None]] = set()
-
-
-def _get_redis() -> Redis:
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = Redis.from_url(str(config.settings.redis_url), decode_responses=True)
-    return _redis_client
 
 
 async def _publish(
@@ -54,7 +46,7 @@ async def _publish(
             async with session.begin():
                 await publish_balancer_event(
                     session,
-                    _get_redis(),
+                    get_realtime_redis(),
                     tournament_id=tournament_id,
                     workspace_id=workspace_id,
                     event_type=BALANCER_REGISTRATIONS_CHANGED,

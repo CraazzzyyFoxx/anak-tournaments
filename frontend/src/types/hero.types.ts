@@ -11,6 +11,8 @@ export interface Hero {
   type?: string;
   role: string;
   color: string;
+  /** Names this hero appears under in match logs — OverFast locales + manual. */
+  aliases: string[];
 }
 
 export interface HeroPlaytime {

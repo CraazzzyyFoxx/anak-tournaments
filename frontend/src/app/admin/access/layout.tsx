@@ -7,7 +7,7 @@ import {
   accessPermissionsPermissions,
   accessRolesPermissions,
   accessUsersPermissions,
-} from "@/components/admin/admin-navigation";
+} from "@/lib/admin-permissions";
 import { cn } from "@/lib/utils";
 import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
 
@@ -23,10 +23,10 @@ const accessNavItems: AccessNavItem[] = [
   { href: "/admin/access/users", label: "Users", permissions: accessUsersPermissions },
   { href: "/admin/access/roles", label: "Roles", permissions: accessRolesPermissions },
   { href: "/admin/access/permissions", label: "Permissions", permissions: accessPermissionsPermissions },
-  { href: "/admin/access/oauth", label: "OAuth Connections", permissions: accessUsersPermissions },
+  { href: "/admin/access/oauth", label: "OAuth connections", permissions: accessUsersPermissions },
   {
     href: "/admin/access/api-keys",
-    label: "API Keys",
+    label: "API keys",
     permissions: accessApiKeysPermissions,
     workspaceAdminVisible: true,
   },
@@ -54,13 +54,17 @@ export default function AccessAdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-card/60 p-2">
+      <nav
+        aria-label="Access sections"
+        className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-card/60 p-2"
+      >
         {visibleNavItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
                 "rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
                 isActive && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
@@ -70,7 +74,7 @@ export default function AccessAdminLayout({ children }: { children: React.ReactN
             </Link>
           );
         })}
-      </div>
+      </nav>
       {children}
     </div>
   );

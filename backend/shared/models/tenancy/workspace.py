@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -55,11 +56,22 @@ class Workspace(db.TimeStampIntegerMixin):
     custom_domain: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     custom_domain_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     custom_domain_verification_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The organizer's Discord guild. ONE per workspace: the server where Boosty's
+    # bot assigns patron roles and the server holding match-log channels are the
+    # same one. String, not BigInteger: there is no arithmetic, no range query and
+    # no FK, while both consumers (DiscordRoleResolver, the HTTP boundary) want
+    # `str` -- a numeric column would only buy a conversion at every edge.
+    discord_guild_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     default_division_grid_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("division_grid_version.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
+    # Workspace-wide default per-team roster shape, e.g.
+    # ``{"tank": 1, "dps": 2, "support": 2}``. NULL means "inherit the built-in
+    # 5v5 default", NOT "an empty roster" — the resolution chain lives in
+    # ``shared.domain.roster_shape.resolve_roster_shape``.
+    default_roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
     members: Mapped[list["WorkspaceMember"]] = relationship(back_populates="workspace", passive_deletes=True)
     default_division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
         foreign_keys=[default_division_grid_version_id],

@@ -5,6 +5,9 @@ body (``content_b64`` + ``content_type``); the match-log read returns
 ``{content_b64, media_type, filename}`` which the gateway decodes back to raw
 bytes. Permission is enforced here (workspace.update for icons, superuser for
 assets). S3 access uses the worker's module-level client (started in serve.py).
+
+The two icon writes mutate the workspace, so each appends one ``audit_log`` row in
+the same transaction as the write.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from faststream.rabbit import RabbitMessage
 from shared.clients.s3.upload import upload_asset, upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.audit import record_audit
 from src import models, schemas
 from src.core import db
 from src.rpc import _common as c
@@ -70,7 +74,23 @@ def register(broker: Any, logger: Any) -> None:
             )
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error)
+            icon_before = workspace.icon_url
             workspace = await workspace_service.update(session, workspace, {"icon_url": result.public_url})
+            await record_audit(
+                session,
+                action="workspace.branding_update",
+                source="admin",
+                actor=user,
+                actor_label=user.username,
+                # The workspace the permission check above ran against, reused rather
+                # than re-derived: the audit scope must be the authorization scope.
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.slug,
+                before={"icon_url": icon_before},
+                after={"icon_url": workspace.icon_url},
+            )
             await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
@@ -87,7 +107,24 @@ def register(broker: Any, logger: Any) -> None:
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
             await s3_client.delete_prefix(f"avatars/workspaces/{workspace_id}/")
+            icon_before = workspace.icon_url
             workspace = await workspace_service.update(session, workspace, {"icon_url": None})
+            # The S3 objects are already gone by now; a rollback here would leave the
+            # row pointing at a dead URL, and the audit row would vanish with it -- so
+            # the trail matches the database, which is what the journal claims to show.
+            await record_audit(
+                session,
+                action="workspace.branding_update",
+                source="admin",
+                actor=user,
+                actor_label=user.username,
+                workspace_id=workspace_id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.slug,
+                before={"icon_url": icon_before},
+                after={"icon_url": None},
+            )
             await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 

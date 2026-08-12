@@ -10,6 +10,8 @@ from __future__ import annotations
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS
+
 
 class AlgorithmConfig(BaseSettings):
     """Configuration for balancer solver parameters."""
@@ -19,10 +21,12 @@ class AlgorithmConfig(BaseSettings):
         extra="ignore",
     )
 
-    # Role configuration
+    # Role configuration. Not an editable setting: every run overwrites it with
+    # the tournament's resolved roster shape (see ``algorithm/runtime.py``).
+    # This default is only the fallback for a run with no shape behind it.
     role_mask: dict[str, int] = Field(
-        default={"Tank": 1, "Damage": 2, "Support": 2},
-        description="Default role mask defining required players per role",
+        default_factory=lambda: dict(DEFAULT_ROSTER_SLOTS),
+        description="Per-team slot counts the solver fills; a projection of the tournament roster shape",
     )
 
     # Shared optimizer parameters
@@ -49,6 +53,25 @@ class AlgorithmConfig(BaseSettings):
             "Penalty weight per subclass-collision pair in a team, normalized "
             "per team count (e.g., two players with the same subclass on the "
             "same role)."
+        ),
+    )
+    low_rank_threshold: int = Field(
+        default=0,
+        ge=0,
+        le=10000,
+        description=(
+            "Rating threshold (canonical scale, see rating_scale_ceiling) below "
+            "or at which a player counts as low-rank; a player is low-rank when "
+            "their best role rating is <= this value. 0 disables the mechanic."
+        ),
+    )
+    low_rank_collision_weight: float = Field(
+        default=250.0,
+        ge=0.0,
+        description=(
+            "Penalty weight per pair of low-rank players in the same team, "
+            "normalized per team count. Discourages stacking two low-rank "
+            "players together."
         ),
     )
     team_max_pain_weight: float = Field(

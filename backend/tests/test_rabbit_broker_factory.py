@@ -24,9 +24,7 @@ def test_extra_middlewares_are_kept() -> None:
     class Extra:  # noqa: B903 - sentinel only
         pass
 
-    broker = make_rabbit_broker(
-        "amqp://guest:guest@localhost:5672", logger=logger, middlewares=(Extra,)
-    )
+    broker = make_rabbit_broker("amqp://guest:guest@localhost:5672", logger=logger, middlewares=(Extra,))
     mws = list(broker.config.broker_middlewares)
     assert DeadlineDropMiddleware in mws
     assert Extra in mws

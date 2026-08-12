@@ -1,32 +1,78 @@
-export type AdditionalRole = {
-  code: string;
-  subrole: string;
-  /** Ordered hero slugs (top picks) for this additional role. */
-  topHeroes: string[];
-};
+import type { RoleCode } from "@/lib/roles";
 
-export interface WizardState {
-  step: number;
-  values: Record<string, string>;
-  smurfTags: string[];
-  isFlex: boolean;
-  primaryRole: string;
+/**
+ * How willing the registrant is to play a role.
+ *
+ * `main` is what the backend calls `is_primary`; a submission where every role
+ * is `main` is what it derives as a flex registration
+ * (`_is_flex_submission`, tournament-service `validation.py`).
+ */
+export type RolePriority = "off" | "fallback" | "main";
+
+export interface RoleSelection {
+  priority: RolePriority;
   subrole: string;
-  /** Ordered hero slugs (top picks) for the primary role. */
-  primaryRoleHeroes: string[];
-  /** Ordered hero slugs (top picks) for a flex registration (any class). */
-  flexHeroes: string[];
-  additionalRoles: AdditionalRole[];
+  /** Ordered hero slugs (top picks) for this role. */
+  topHeroes: string[];
 }
 
-export type WizardAction =
-  | { type: "SET_STEP"; step: number }
-  | { type: "SET_VALUE"; key: string; value: string }
-  | { type: "SET_SMURF_TAGS"; tags: string[] }
-  | { type: "SET_FLEX"; isFlex: boolean }
-  | { type: "SET_PRIMARY_ROLE"; role: string }
-  | { type: "SET_SUBROLE"; subrole: string }
-  | { type: "SET_ADDITIONAL_ROLES"; roles: AdditionalRole[] }
-  | { type: "SET_PRIMARY_ROLE_HEROES"; heroes: string[] }
-  | { type: "SET_FLEX_HEROES"; heroes: string[] }
-  | { type: "INIT_VALUES"; values: Record<string, string> };
+/**
+ * One entry per role, always present.
+ *
+ * The wizard used to model roles as `primaryRole` + `additionalRoles[]` +
+ * three separate hero lists, so choosing a role had to *reveal* the controls
+ * that belonged to it. A fixed per-role map makes the role step a matrix whose
+ * shape never changes with the selection.
+ */
+export type RoleSelections = Record<RoleCode, RoleSelection>;
+
+export const EMPTY_ROLE_SELECTION: RoleSelection = {
+  priority: "off",
+  subrole: "",
+  topHeroes: [],
+};
+
+/** How the tournament presents the flex/priority choice. */
+export type FlexMode = "off" | "optional" | "all_roles" | "forced";
+
+/**
+ * One entry per role, all `off` by default.
+ *
+ * The starting priority is the mode's, and it is load-bearing: the wizard only
+ * submits roles whose priority is not `off`.
+ *
+ * - `optional` — nothing selected; the registrant opts roles in.
+ * - `all_roles` — every role `fallback`: all three are submitted and playable,
+ *   but no priority is chosen yet. The backend rejects a submission that names
+ *   neither a priority nor flex, which is exactly the state this starts in.
+ * - `forced` — every role `main`, which is both the target state and the only
+ *   state, since that mode renders no choice at all.
+ */
+export function createRoleSelections(mode: FlexMode = "optional"): RoleSelections {
+  const priority: RolePriority =
+    mode === "forced" ? "main" : mode === "all_roles" ? "fallback" : "off";
+  return {
+    tank: { ...EMPTY_ROLE_SELECTION, priority },
+    dps: { ...EMPTY_ROLE_SELECTION, priority },
+    support: { ...EMPTY_ROLE_SELECTION, priority },
+  };
+}
+
+/**
+ * The single choice an `all_roles` tournament asks for: one priority role, or
+ * flex. `null` means the registrant has not chosen yet.
+ */
+export function priorityChoice(selections: RoleSelections): RoleCode | "flex" | null {
+  const mains = (Object.keys(selections) as RoleCode[]).filter(
+    (code) => selections[code].priority === "main",
+  );
+  if (mains.length === 0) return null;
+  if (mains.length === 1) return mains[0];
+  return "flex";
+}
+
+/** A flex registration is every role marked `main` — mirrors the backend rule. */
+export function isFlexSelection(selections: RoleSelections): boolean {
+  const active = Object.values(selections).filter((entry) => entry.priority !== "off");
+  return active.length > 1 && active.every((entry) => entry.priority === "main");
+}

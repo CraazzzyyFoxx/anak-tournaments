@@ -6,7 +6,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Stri
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from shared.core import db
+from shared.core import db, enums
 
 if TYPE_CHECKING:
     from shared.models.catalog.hero import Hero
@@ -47,6 +47,30 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     require_open_profile: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     open_profile_scope: Mapped[str] = mapped_column(String(8), nullable=False, server_default="main", default="main")
     show_ranks: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    # Subscription admission gate. ``require_subscription`` is the per-tournament
+    # decision and stays here; the RULE it enforces does not. That moved to
+    # ``subscriptions.requirement`` (one row per workspace) so a new tournament no
+    # longer re-asks for it -- see the 2026-08-05 workspace-subscription-requirement
+    # design. Resolve it through ``SubscriptionResolver.load_requirement``, never by
+    # reading a column here.
+    #
+    # The former ``subscription_requirement_json`` attribute is gone from the mapper
+    # deliberately, and BEFORE ``wsreq0002`` drops the column: SQLAlchemy emits every
+    # mapped column in every SELECT, so leaving it would break every form query the
+    # moment that migration lands.
+    require_subscription: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    #: WHEN the requirement bites, once ``require_subscription`` is on. Ordered, not
+    #: a set -- ``registration`` implies check-in as well; see
+    #: ``enums.SubscriptionEnforcementStage``. Plain String like
+    #: ``open_profile_scope`` above, matching this schema's convention of storing
+    #: enum-like values as their StrEnum text rather than a PG enum type (which
+    #: would need a migration to add a value).
+    subscription_stage: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default=enums.SubscriptionEnforcementStage.check_in.value,
+        default=enums.SubscriptionEnforcementStage.check_in.value,
+    )
 
     tournament: Mapped[Tournament] = relationship()
     workspace: Mapped[Workspace] = relationship()
@@ -82,6 +106,22 @@ class BalancerRegistrationStatus(db.TimeStampIntegerMixin):
     icon_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    # Only meaningful for scope == "balancer" and kind == "custom": whether a
+    # registration currently holding this status counts as part of the
+    # balancer pool (mirrors the hardcoded semantics of the builtin
+    # not_in_balancer/excluded statuses). Ignored for registration-scope rows
+    # and for builtin overrides -- builtin inclusion semantics are fixed in
+    # BUILTIN_STATUS_META, not admin-editable.
+    excludes_from_balancer: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, server_default="false", default=False
+    )
+    # Only meaningful for scope == "balancer" and kind == "custom": whether a
+    # registration currently holding this status is treated as blocked from
+    # the balancer pool's "ready" state, regardless of role-rank
+    # completeness -- forces the "Need Fix" lane and the frontend's
+    # exclude-from-run gate. Same non-editable-for-builtins rule as
+    # excludes_from_balancer.
+    excludes_from_ready: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
 
     workspace: Mapped[Workspace] = relationship()
 
@@ -104,13 +144,6 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
             "battle_tag_normalized",
             unique=True,
             postgresql_where="battle_tag_normalized IS NOT NULL AND deleted_at IS NULL",
-        ),
-        Index(
-            "ix_balancer_registration_tournament_active",
-            "tournament_id",
-            "status",
-            "exclude_from_balancer",
-            postgresql_where="deleted_at IS NULL",
         ),
         Index(
             "ix_balancer_registration_tournament_balancer_status",
@@ -137,11 +170,11 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     smurf_tags_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     discord_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
     twitch_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    boosty_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stream_pov: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    exclude_from_balancer: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default="false", default=False
-    )
+    # Reason note for the current status, populated when balancer_status ==
+    # "excluded" (why the registration was manually pulled from the pool).
     exclude_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     admin_notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     custom_fields_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)

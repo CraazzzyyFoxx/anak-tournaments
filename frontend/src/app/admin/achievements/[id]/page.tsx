@@ -33,7 +33,7 @@ import {
 
 import { AchievementCombobox } from "@/components/admin/achievements/AchievementCombobox";
 import { ConditionFlowEditor } from "@/components/admin/achievements/ConditionFlowEditor";
-// ConditionTreeGraph removed — using ConditionFlowEditor in read-only mode
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
@@ -50,6 +50,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -146,7 +147,7 @@ function SortableHead({
 }) {
   const isActive = currentSort === field;
   return (
-    <TableHead>
+    <TableHead aria-sort={isActive ? (currentOrder === "asc" ? "ascending" : "descending") : "none"}>
       <button
         type="button"
         className="flex items-center gap-1 hover:text-foreground transition-colors"
@@ -155,12 +156,12 @@ function SortableHead({
         {label}
         {isActive ? (
           currentOrder === "asc" ? (
-            <ArrowUp className="h-3.5 w-3.5" />
+            <ArrowUp aria-hidden className="h-3.5 w-3.5" />
           ) : (
-            <ArrowDown className="h-3.5 w-3.5" />
+            <ArrowDown aria-hidden className="h-3.5 w-3.5" />
           )
         ) : (
-          <ArrowUp className="h-3.5 w-3.5 opacity-0 group-hover:opacity-30" />
+          <ArrowUp aria-hidden className="h-3.5 w-3.5 opacity-0 group-hover:opacity-30" />
         )}
       </button>
     </TableHead>
@@ -225,7 +226,8 @@ export default function AchievementDetailPage() {
     data: usersData,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage
+    isFetchingNextPage,
+    isError: usersError
   } = useInfiniteQuery({
     queryKey: [
       "admin",
@@ -433,65 +435,82 @@ export default function AchievementDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/admin/achievements">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          {rule.image_url && (
-            <img
-              src={rule.image_url}
-              alt={rule.name}
-              className="h-12 w-12 rounded-lg object-cover border"
-            />
-          )}
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">{rule.name}</h1>
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="icon" asChild aria-label="Back to achievements">
+          <Link href="/admin/achievements">
+            <ArrowLeft aria-hidden className="h-4 w-4" />
+          </Link>
+        </Button>
+        {rule.image_url && (
+          <img
+            src={rule.image_url}
+            alt={rule.name}
+            className="h-12 w-12 rounded-lg object-cover border"
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <AdminPageHeader
+            title={rule.name}
+            description={rule.slug}
+            meta={
               <Badge variant={rule.enabled ? "default" : "secondary"}>
                 {rule.enabled ? "Enabled" : "Disabled"}
               </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">{rule.slug}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => testMutation.mutate(undefined)}>
-            <TestTube className="mr-2 h-4 w-4" />
-            Test
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => evaluateMutation.mutate(undefined)}>
-            <Play className={`mr-2 h-4 w-4 ${evaluateMutation.isPending ? "animate-spin" : ""}`} />
-            Evaluate
-          </Button>
-          {canUpdate && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => toggleMutation.mutate(!rule.enabled)}
-            >
-              {rule.enabled ? (
-                <EyeOff className="mr-2 h-4 w-4" />
-              ) : (
-                <Eye className="mr-2 h-4 w-4" />
-              )}
-              {rule.enabled ? "Disable" : "Enable"}
-            </Button>
-          )}
-          {canUpdate && (
-            <Button size="sm" onClick={openEditDialog}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
-          )}
-          {canDelete && (
-            <Button variant="destructive" size="sm" onClick={() => setDeletingRule(true)}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </Button>
-          )}
+            }
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => testMutation.mutate(undefined)}
+                >
+                  <TestTube aria-hidden className="mr-2 h-4 w-4" />
+                  Test conditions
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => evaluateMutation.mutate(undefined)}
+                >
+                  <Play
+                    aria-hidden
+                    className={`mr-2 h-4 w-4 ${evaluateMutation.isPending ? "animate-spin" : ""}`}
+                  />
+                  {evaluateMutation.isPending ? "Evaluating…" : "Run evaluation"}
+                </Button>
+                {canUpdate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleMutation.mutate(!rule.enabled)}
+                  >
+                    {rule.enabled ? (
+                      <EyeOff aria-hidden className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Eye aria-hidden className="mr-2 h-4 w-4" />
+                    )}
+                    {rule.enabled ? "Disable achievement" : "Enable achievement"}
+                  </Button>
+                )}
+                {canUpdate && (
+                  <Button size="sm" onClick={openEditDialog}>
+                    <Pencil aria-hidden className="mr-2 h-4 w-4" />
+                    Edit achievement
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeletingRule(true)}
+                  >
+                    <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                    Delete achievement
+                  </Button>
+                )}
+              </>
+            }
+          />
         </div>
       </div>
 
@@ -609,7 +628,7 @@ export default function AchievementDetailPage() {
                   onClick={() => saveTreeMutation.mutate(treeData)}
                   disabled={saveTreeMutation.isPending}
                 >
-                  {saveTreeMutation.isPending ? "Saving..." : "Save Condition Tree"}
+                  {saveTreeMutation.isPending ? "Saving…" : "Save condition tree"}
                 </Button>
               </div>
             </div>
@@ -721,17 +740,18 @@ export default function AchievementDetailPage() {
               )}
             </TableBody>
           </Table>
-          {hasNextPage && (
-            <div className="flex justify-center mt-4">
-              <Button
-                variant="outline"
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-              >
-                {isFetchingNextPage ? "Loading..." : "Load More"}
-              </Button>
-            </div>
-          )}
+          {totalUsers > 0 ? (
+            <InfiniteScrollFooter
+              className="mt-4"
+              loaded={usersData?.pages.reduce((count, page) => count + page.results.length, 0) ?? 0}
+              total={totalUsers}
+              unit="users"
+              hasNextPage={hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              fetchNextPage={fetchNextPage}
+              isError={usersError}
+            />
+          ) : null}
         </CardContent>
       </Card>
 
@@ -772,9 +792,10 @@ export default function AchievementDetailPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Delete ${ov.action} override`}
                         onClick={() => deleteOverrideMutation.mutate(ov.id)}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 aria-hidden className="h-4 w-4 text-destructive" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -853,7 +874,7 @@ export default function AchievementDetailPage() {
               disabled={!overrideUserId || !overrideReason || overrideMutation.isPending}
             >
               {overrideMutation.isPending
-                ? "Saving..."
+                ? "Saving…"
                 : overrideAction === "grant"
                   ? "Grant"
                   : "Revoke"}
@@ -875,7 +896,7 @@ export default function AchievementDetailPage() {
           updateMutation.mutate(formData);
         }}
         isSubmitting={updateMutation.isPending}
-        submittingLabel="Updating..."
+        submittingLabel="Updating…"
         errorMessage={
           updateMutation.error instanceof Error ? updateMutation.error.message : undefined
         }
@@ -1033,8 +1054,8 @@ export default function AchievementDetailPage() {
         onOpenChange={setDeletingRule}
         onConfirm={() => deleteMutation.mutate()}
         isDeleting={deleteMutation.isPending}
-        title={`Delete "${rule.slug}"?`}
-        cascadeInfo={["All evaluation results and overrides for this achievement will be deleted"]}
+        title={`Delete achievement "${rule.slug}"`}
+        cascadeInfo={["Every evaluation result and manual override for this achievement"]}
       />
     </div>
   );

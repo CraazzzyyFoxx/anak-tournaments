@@ -4,6 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.catalog_aliases import normalize_aliases
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import GamemodeRepository, MapRepository
@@ -55,7 +56,12 @@ async def create_map(session: AsyncSession, data: admin_schemas.MapCreate) -> mo
             detail=f"Map with name '{data.name}' already exists",
         )
 
-    map_obj = models.Map(name=data.name, gamemode_id=data.gamemode_id)
+    map_obj = models.Map(
+        name=data.name,
+        gamemode_id=data.gamemode_id,
+        in_competitive=data.in_competitive,
+        aliases=normalize_aliases(data.aliases or [], canonical=data.name),
+    )
 
     await _map_repo.create(session, map_obj)
     await session.commit()
@@ -90,6 +96,10 @@ async def update_map(session: AsyncSession, map_id: int, data: admin_schemas.Map
             )
 
     update_data = data.model_dump(exclude_unset=True)
+    if "aliases" in update_data:
+        update_data["aliases"] = normalize_aliases(
+            update_data["aliases"] or [], canonical=update_data.get("name") or map_obj.name
+        )
     await _map_repo.update_fields(session, map_obj, update_data)
     await session.commit()
     await session.refresh(map_obj, ["gamemode"])

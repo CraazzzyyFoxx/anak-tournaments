@@ -85,7 +85,6 @@ def _build_workspace_cache(
         workspace_payload = {
             "workspace_id": workspace_id,
             "slug": _safe_str(item.get("slug")),
-            "role": _safe_str(item.get("role")),
             "rbac_roles": rbac_roles,
             "rbac_permissions": rbac_permissions,
         }

@@ -119,8 +119,96 @@ export interface RankCollectionStats {
   rate_limit_per_minute: number;
 }
 
+// ─── Subscription collection (parser admin) ────────────────────────────────────
+
+export interface SubscriptionStateCounts {
+  active: number;
+  inactive: number;
+  unknown: number;
+  /** Log-only: the check itself failed (provider outage), no verdict persisted. */
+  error: number;
+}
+
+export interface SubscriptionCollectionStats {
+  /** Entitlement rows tracked (workspace × user × provider). */
+  total: number;
+  tracked_users: number;
+  never_checked: number;
+  by_state: SubscriptionStateCounts;
+  by_provider: Record<string, number>;
+  coverage_24h: number;
+  coverage_7d: number;
+  last_success_at: string | null;
+  last_check_at: string | null;
+  checks_24h: SubscriptionStateCounts;
+  checks_24h_total: number;
+  error_rate_24h: number;
+  active_tournaments: number;
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+}
+
+export interface SubscriptionCheckLogRow {
+  id: number;
+  workspace_id: number | null;
+  auth_user_id: number | null;
+  /** Owning player id, resolved via auth_user_id; null when there is no profile. */
+  user_id: number | null;
+  user_name: string | null;
+  provider: string;
+  state: string;
+  tier_rank: number | null;
+  tier_label: string | null;
+  /** What triggered the check: scheduled / registration / check_in / manual / redeem. */
+  source: string;
+  /** How it was proven: discord_role / twitch_helix / challenge_code / resolver. */
+  mechanism: string | null;
+  reason: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface SubscriptionCheckLogQuery {
+  state?: string;
+  source?: string;
+  provider?: string;
+  user_id?: number;
+  before_id?: number;
+  limit?: number;
+}
+
+export interface SubscriptionUserCollectionRow {
+  workspace_id: number | null;
+  workspace_name: string | null;
+  provider: string;
+  state: string;
+  tier_rank: number | null;
+  tier_label: string | null;
+  source: string | null;
+  checked_at: string | null;
+  expires_at: string | null;
+  reason: string | null;
+}
+
+export interface SubscriptionCollectTriggerInput {
+  user_id?: number | null;
+  providers?: string[] | null;
+}
+
+export interface SubscriptionCollectTriggerResult {
+  checked: number;
+}
+
+export interface SubscriptionCollectionConfig {
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+}
+
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
+import type { RosterSlotMap } from "@/lib/roster-shape";
 import type {
   StageItemType,
   StageType,
@@ -131,9 +219,10 @@ import type {
 export interface TournamentCreateInput {
   workspace_id: number;
   name: string;
-  number?: number;
   description?: string;
   is_league: boolean;
+  /** Lazy wizard drafts (D4) are created Unpublished and published later. */
+  is_hidden?: boolean;
   status?: TournamentStatus;
   start_date: string;
   end_date: string;
@@ -146,7 +235,6 @@ export interface TournamentCreateInput {
 }
 
 export interface TournamentUpdateInput {
-  number?: number | null;
   name?: string;
   description?: string | null;
   challonge_slug?: string | null;
@@ -162,6 +250,8 @@ export interface TournamentUpdateInput {
   draw_points?: number;
   loss_points?: number;
   division_grid_version_id?: number | null;
+  /** Roster shape override; `null` clears it back to the workspace default. */
+  roster_slots_json?: RosterSlotMap | null;
 }
 
 export interface TournamentPhaseScheduleEntryInput {
@@ -189,6 +279,41 @@ export interface TournamentStatusTransitionInput {
   force?: boolean;
 }
 
+/**
+ * Readiness aggregate for the hub living checklist (D13, §7.1).
+ * Mirrors backend/app-service/src/services/dashboard/readiness.py. Field
+ * groups are masked by the caller's permissions: `tournament.read` gates the
+ * setup/bracket/logs group, `team.read` gates the registration/pool/balance/
+ * draft group — a masked group arrives as `null` and the checklist renders
+ * "no-access" instead of zeros (D16).
+ */
+export interface TournamentReadiness {
+  tournament_id: number;
+  status: string;
+  team_formation: string;
+  // visible with tournament.read:
+  schedule_configured: boolean | null;
+  grid_selected: boolean | null;
+  stages_total: number | null;
+  stage_slots_filled: boolean | null;
+  bracket_generated: boolean | null;
+  encounters_total: number | null;
+  encounters_with_logs: number | null;
+  logs_used: boolean | null;
+  // visible with team.read:
+  registration_form_configured: boolean | null;
+  registration_open: boolean | null;
+  registrations_pending: number | null;
+  registrations_approved: number | null;
+  registrations_checked_in: number | null;
+  registrations_ranked: number | null;
+  pool_ready: number | null;
+  pool_need_fix: number | null;
+  balance_saved: boolean | null;
+  balance_exported_at: string | null;
+  draft_session_status: string | null;
+}
+
 // ─── Stage Admin ────────────────────────────────────────────────────────────
 
 export interface StageCreateInput {
@@ -211,6 +336,12 @@ export interface StageUpdateInput {
   split_lower_bracket?: boolean;
   order?: number;
   settings_json?: Record<string, unknown> | null;
+}
+
+export interface StageBestOfConfig {
+  default?: number;
+  by_round?: Record<string, number>;
+  final?: number | null;
 }
 
 export interface StageItemCreateInput {
@@ -372,6 +503,202 @@ export interface PlayerSubRoleUpdateInput {
 
 // ─── Encounter ───────────────────────────────────────────────────────────────
 
+/**
+ * Statuses a plain field edit may set. Completion moves score, status,
+ * result_status and the audit row together, so it has its own endpoint.
+ */
+export type EncounterEditableStatus = "OPEN" | "PENDING";
+
+export interface EncounterSetResultInput {
+  home_score?: number;
+  away_score?: number;
+  /** 1..10; defaults to the mean of the captain reports when omitted. */
+  closeness?: number;
+  /** Resolve a dispute by taking this team's report as the truth. */
+  adopt_report_team_id?: number;
+}
+
+export interface EncounterResultRead {
+  id: number;
+  status: string;
+  result_status: string;
+  home_score: number;
+  away_score: number;
+  closeness: number | null;
+  confirmed_at: string | null;
+}
+
+export type EncounterResultAuditAction =
+  | "confirm"
+  | "reopen"
+  | "auto_confirm"
+  | "auto_dispute"
+  | "import"
+  | "cascade_reset";
+
+export interface EncounterResultAuditRead {
+  id: number;
+  encounter_id: number;
+  /** null = a machine actor (Challonge import, bracket cascade). */
+  actor_user_id: number | null;
+  actor_name: string | null;
+  action: EncounterResultAuditAction;
+  from_result_status: string | null;
+  to_result_status: string;
+  home_score_before: number | null;
+  away_score_before: number | null;
+  home_score_after: number;
+  away_score_after: number;
+  adopted_team_id: number | null;
+  source: string;
+  created_at: string;
+}
+
+/**
+ * One captain's report inside an admin reports row. Mirrors the backend
+ * `CaptainReportRead` — the same shape the public encounter read returns, plus
+ * `reporter_name`.
+ */
+export interface AdminCaptainReport {
+  id: number;
+  encounter_id: number;
+  team_id: number;
+  side: "home" | "away" | null;
+  reporter_user_id: number | null;
+  reporter_name: string | null;
+  home_score: number;
+  away_score: number;
+  /** `null` when the tournament disables or does not require match quality. */
+  closeness: number | null;
+  map_codes: Array<{ id: number; map_index: number; map_id: number | null; code: string }>;
+  /** Free-form note from the captain; never part of dispute derivation. */
+  comment: string | null;
+  /** Organizer-defined text answers, keyed by the report form's field keys. */
+  custom_fields: Record<string, string>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface EncounterReportsRow {
+  id: number;
+  name: string;
+  tournament_id: number;
+  tournament_name: string | null;
+  stage_name: string | null;
+  /** Lets the resolve dialog refuse a draw the finalizer would reject with a 400. */
+  stage_type: string | null;
+  round: number;
+  best_of: number;
+  status: string;
+  result_status: string;
+  scheduled_at: string | null;
+  home_team: { id: number; name: string | null } | null;
+  away_team: { id: number; name: string | null } | null;
+  home_report: AdminCaptainReport | null;
+  away_report: AdminCaptainReport | null;
+  reported_count: number;
+  /**
+   * Three-valued on purpose: `null` until both sides have reported. "They
+   * disagree" and "only one answered" call for different actions, so the UI
+   * must not collapse them into a boolean.
+   */
+  scores_match: boolean | null;
+  /** Advisory — reports predate per-round best-of, so a mismatch is a hint. */
+  series_score_valid: boolean;
+  last_resolution: {
+    action: EncounterResultAuditAction;
+    actor_user_id: number | null;
+    actor_name: string | null;
+    created_at: string;
+  } | null;
+}
+
+export interface EncounterReportsStats {
+  by_result_status: Record<string, number>;
+  mismatch_count: number;
+  awaiting_second_count: number;
+}
+
+/**
+ * Filters shared by the list and its counters. The server applies the scope
+ * fields to both but the chip fields only to the list, so a chip reports how
+ * many rows it would select rather than how many it already has.
+ */
+export interface EncounterReportsQuery {
+  workspace_id: number;
+  page?: number;
+  per_page?: number;
+  query?: string;
+  tournament_id?: number | null;
+  stage_id?: number | null;
+  result_status?: string[];
+  mismatch_only?: boolean;
+  reported_count?: number | null;
+}
+
+/**
+ * The ingestion record a parsed match came from. Deliberately thinner than the
+ * log console's own row: this is provenance for one map, not the log's
+ * lifecycle.
+ */
+export interface LogRecordRef {
+  id: number;
+  filename: string;
+  status: LogProcessingStatus;
+  source: string | null;
+  uploader_id: number | null;
+  attempts: number;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** One parsed match — a single played map, as the log parser produced it. */
+export interface AdminMatchRow {
+  id: number;
+  encounter_id: number;
+  encounter_name: string;
+  tournament_id: number;
+  tournament_name: string;
+  map_id: number;
+  map_name: string;
+  home_team: { id: number; name: string | null };
+  away_team: { id: number; name: string | null };
+  home_score: number;
+  away_score: number;
+  /** Map duration in seconds. */
+  time: number;
+  log_name: string;
+  code: string | null;
+  created_at: string;
+  /**
+   * `null` means provenance is unresolved. That is the normal state for the
+   * bulk of the history — the ingestion table postdates most parsed matches —
+   * so the UI must present it as unknown, never as a failure.
+   */
+  log_record: LogRecordRef | null;
+}
+
+export interface AdminMatchDetail extends AdminMatchRow {
+  rounds: number;
+  statistics_count: number;
+  kill_feed_count: number;
+  event_count: number;
+}
+
+export interface AdminMatchesQuery {
+  workspace_id: number;
+  page?: number;
+  per_page?: number;
+  query?: string;
+  tournament_id?: number | null;
+  encounter_id?: number | null;
+  map_id?: number | null;
+  log_status?: LogProcessingStatus[];
+  unlinked_only?: boolean;
+}
+
 export interface EncounterCreateInput {
   tournament_id: number;
   tournament_group_id?: number | null;
@@ -382,7 +709,9 @@ export interface EncounterCreateInput {
   round: number;
   home_score?: number;
   away_score?: number;
-  status?: string;
+  /** COMPLETED is rejected: completion goes through setEncounterResult. */
+  status?: EncounterEditableStatus;
+  best_of?: number;
   name?: string;
 }
 
@@ -394,10 +723,12 @@ export interface EncounterUpdateInput {
   away_team_id?: number | null;
   home_score?: number;
   away_score?: number;
-  status?: string;
+  /** COMPLETED is rejected: completion goes through setEncounterResult. */
+  status?: EncounterEditableStatus;
   round?: number;
   name?: string;
   closeness?: number | null;
+  best_of?: number;
 }
 
 export interface MatchUpdateInput {
@@ -527,6 +858,7 @@ export interface HeroCreateInput {
   role: string;
   color?: string;
   image_path?: string;
+  aliases?: string[];
 }
 
 export interface HeroUpdateInput {
@@ -534,6 +866,7 @@ export interface HeroUpdateInput {
   role?: string;
   color?: string;
   image_path?: string;
+  aliases?: string[];
 }
 
 // ─── Gamemode ────────────────────────────────────────────────────────────────
@@ -543,14 +876,17 @@ export interface Gamemode {
   created_at: Date;
   updated_at?: Date | null;
   name: string;
+  aliases: string[];
 }
 
 export interface GamemodeCreateInput {
   name: string;
+  aliases?: string[];
 }
 
 export interface GamemodeUpdateInput {
   name?: string;
+  aliases?: string[];
 }
 
 // ─── Map ─────────────────────────────────────────────────────────────────────
@@ -558,11 +894,50 @@ export interface GamemodeUpdateInput {
 export interface MapCreateInput {
   name: string;
   gamemode_id: number;
+  in_competitive?: boolean;
+  aliases?: string[];
 }
 
 export interface MapUpdateInput {
   name?: string;
   gamemode_id?: number;
+  in_competitive?: boolean;
+  aliases?: string[];
+}
+
+// ─── Catalog aliases ─────────────────────────────────────────────────────────
+
+/** Catalog entity an alias (or an unresolved log name) belongs to. */
+export type CatalogEntityType = "hero" | "map" | "gamemode";
+
+/**
+ * A name the log parser could not resolve. Upserted per `(entity_type,
+ * raw_name)`, so `occurrences` counts how often the gap actually bites.
+ */
+export interface CatalogAliasMissRead {
+  id: number;
+  entity_type: CatalogEntityType;
+  raw_name: string;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_log_record_id: number | null;
+  /** Owning tournament of `last_log_record_id`; null once the record is gone. */
+  last_log_tournament_id: number | null;
+  resolved_at: string | null;
+}
+
+export interface CatalogAliasMissQuery {
+  page?: number;
+  per_page?: number;
+  entity_type?: CatalogEntityType;
+  include_resolved?: boolean;
+}
+
+export interface CatalogAliasAttachInput {
+  entity_type: CatalogEntityType;
+  entity_id: number;
+  alias: string;
 }
 
 // ─── Achievement ─────────────────────────────────────────────────────────────
@@ -802,14 +1177,12 @@ export interface ChallongeSyncLogEntry {
 export interface DiscordChannelRead {
   id: number;
   tournament_id: number;
-  guild_id: string;
   channel_id: string;
   channel_name: string | null;
   is_active: boolean;
 }
 
 export interface DiscordChannelInput {
-  guild_id: string;
   channel_id: string;
   channel_name?: string | null;
   is_active: boolean;
@@ -831,6 +1204,8 @@ export interface LogProcessingRecord {
   source: LogProcessingSource;
   uploader_name: string | null;
   error_message: string | null;
+  /** Times the record entered processing; >1 means the stall reaper requeued it. */
+  attempts: number;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -839,6 +1214,17 @@ export interface LogProcessingRecord {
 export interface LogHistoryResponse {
   items: LogProcessingRecord[];
   total: number;
+}
+
+/** Aggregate over the whole scope, not the page the console happens to show. */
+export interface LogProcessingStats {
+  total: number;
+  pending: number;
+  processing: number;
+  done: number;
+  failed: number;
+  avg_duration_seconds: number | null;
+  last_created_at: string | null;
 }
 
 export interface LogUploadItem {
@@ -855,20 +1241,6 @@ export interface LogUploadError {
 export interface LogUploadResponse {
   uploaded: LogUploadItem[];
   errors: LogUploadError[];
-}
-
-export interface QueueDepth {
-  name: string;
-  messages_ready: number;
-  messages_unacknowledged: number;
-  consumers: number;
-  status: "ok" | "not_found" | "error";
-}
-
-export interface LogStreamEvent {
-  timestamp: string;
-  queues: QueueDepth[];
-  recent_logs: LogProcessingRecord[];
 }
 
 // ─── Bulk Operations ─────────────────────────────────────────────────────────
@@ -922,4 +1294,62 @@ export interface CsvUserImportParams {
   has_smurf?: boolean;
   has_twitch?: boolean;
   sheet_url?: string;
+}
+
+// ─── Platform audit log ──────────────────────────────────────────────────────
+
+/** Curated set the backend writes today. `source` stays a `string` on the wire. */
+export type AuditSource = "admin" | "challonge" | "discord" | "scheduler" | "system";
+
+export interface AuditLogRead {
+  id: number;
+  created_at: string;
+  /** `null` is a platform-level action with no owning workspace — superuser only. */
+  workspace_id: number | null;
+  /** `null` is a machine actor, not a missing one (FR3). */
+  actor_auth_user_id: number | null;
+  actor_label: string | null;
+  /** `String(16)` from the whole platform, so an unrecognised value must render. */
+  source: string;
+  /** `String(64)`, not a closed enum — always render through `describeAuditAction`. */
+  action: string;
+  entity_type: string | null;
+  entity_id: number | null;
+  entity_label: string | null;
+  /** Named domain fields the writer chose, never a raw request payload. */
+  before_json: Record<string, unknown> | null;
+  after_json: Record<string, unknown> | null;
+  reason: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  correlation_id: string | null;
+}
+
+/** Whitelisted server-side; anything else is a 422 from the query model. */
+export type AuditSortField =
+  | "created_at"
+  | "id"
+  | "action"
+  | "source"
+  | "actor_label"
+  | "entity_type";
+
+export interface AuditLogQuery {
+  workspace_id?: number | null;
+  entity_type?: string | null;
+  entity_id?: number | null;
+  action?: string | null;
+  actor_user_id?: number | null;
+  page?: number;
+  /** 1..200 server-side. */
+  per_page?: number;
+  sort?: AuditSortField | null;
+  order?: "asc" | "desc";
+  search?: string | null;
+  /**
+   * Client-side only (hence camelCase, unlike the wire params above): drops the
+   * ambient `workspace_id` injection. The only way to reach platform rows
+   * (`workspace_id IS NULL`), and a 422 for anyone but a superuser.
+   */
+  allWorkspaces?: boolean;
 }

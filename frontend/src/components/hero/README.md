@@ -24,14 +24,19 @@ group of heroes → `HeroStrip` (an overlapping `AvatarStack`).
 ## Attaching statistics
 
 Pass `popover` to `HeroImage` (or `renderPopover` to `HeroStrip`). For the
-standard hero-on-map stats card use **`HeroStatsPopover`**
-(`@/components/hero/HeroStatsPopover`) — this is the pattern used on the Maps tab:
+standard hero stats card use **`HeroUserStatsPopover`**
+(`@/components/hero/HeroUserStatsPopover`) — it renders whichever stats are
+actually present and is fully localized:
 
 ```tsx
-<HeroImage hero={hs.hero} size="sm" popover={<HeroStatsPopover stats={hs} />} />
+// Per-hero user aggregates (winrate / KDA / dmg-10) + playtime share:
+<HeroImage hero={h.hero} size="sm" popover={<HeroUserStatsPopover hero={h.hero} stats={h.stats} />} />
+
+// Map-scoped stats (winrate / games / record + share of that map) — the Maps tab:
+<HeroImage hero={hs.hero} size="sm" popover={<HeroUserStatsPopover hero={hs.hero} mapStats={hs} />} />
 
 // or a whole strip with stats on each avatar:
-<HeroStrip heroes={heroes} renderPopover={(h, i) => <HeroStatsPopover stats={statsFor(h)} />} />
+<HeroStrip heroes={heroes} renderPopover={(h) => <HeroUserStatsPopover hero={h} stats={statsFor(h)} />} />
 ```
 
 ## Rules
@@ -39,4 +44,4 @@ standard hero-on-map stats card use **`HeroStatsPopover`**
 1. Single hero → `HeroImage`; group → `HeroStrip` / `AvatarStack`.
 2. Default collapse threshold is **5**; override via `limit` (HeroStrip) / `max` (AvatarStack).
 3. Never render a hero portrait with a raw `<img>` / `next/image`.
-4. To show stats on hover, attach `HeroStatsPopover` (or any node) via `popover`.
+4. To show stats on hover, attach `HeroUserStatsPopover` (or any node) via `popover`.

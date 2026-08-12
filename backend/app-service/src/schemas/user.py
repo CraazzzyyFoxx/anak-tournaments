@@ -88,7 +88,6 @@ class UserTournamentSummary(BaseModel):
     """
 
     id: int
-    number: int | None
     name: str
     is_league: bool
     is_finished: bool = False
@@ -130,7 +129,6 @@ class UserEncounterTournament(BaseModel):
 
     id: int
     name: str
-    number: int | None = None
     is_league: bool
     is_finished: bool = False
     status: enums.TournamentStatus | None = None
@@ -179,8 +177,8 @@ class MatchReadWithUserStats(BaseModel):
     home_team_id: int | None = None
     away_team_id: int | None = None
     score: Score
-    time: float
-    log_name: str
+    time: float | None
+    log_name: str | None
     encounter_id: int
     map_id: int
     code: str | None = None
@@ -219,7 +217,6 @@ class EncounterReadWithUserStats(BaseModel):
 
 class UserTournament(BaseModel):
     id: int
-    number: int | None
     name: str
     is_league: bool
     team_id: int
@@ -238,7 +235,11 @@ class UserTournament(BaseModel):
     role: enums.HeroClass | None = None
     division: int | None = None
     division_grid_version: DivisionGridVersionRead | None = None
-    encounters: list[EncounterReadWithUserStats]
+    # Populated only by `get_tournament_encounters` (the lazy per-tournament
+    # dossier detail); `get_tournaments` (the list endpoint) leaves this `[]`
+    # so the list response doesn't ship every tournament's full encounter/
+    # match history up front — see services/user/flows.py::get_tournaments.
+    encounters: list[EncounterReadWithUserStats] = Field(default_factory=list)
 
 
 class UserTournamentStat(BaseModel):
@@ -249,7 +250,6 @@ class UserTournamentStat(BaseModel):
 
 class UserTournamentWithStats(BaseModel):
     id: int
-    number: int | None
     name: str
     division: int
     # `division` is resolved against the tournament's own grid (see

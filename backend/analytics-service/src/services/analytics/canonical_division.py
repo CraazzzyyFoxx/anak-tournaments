@@ -22,7 +22,7 @@ import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DEFAULT_GRID, DivisionGrid
-from shared.services.division_grid_access import load_division_grid_snapshot
+from shared.services.division_grid_access import load_division_grid_snapshots
 
 __all__ = (
     "canonical_division_number",
@@ -58,13 +58,15 @@ async def load_source_grids(
 
     Missing versions are omitted; callers fall back to ``DEFAULT_GRID`` for
     those (and for ``None`` version ids) via :func:`canonical_div_for`.
+
+    Batched: one Redis round trip (plus at most one DB query for whatever
+    misses it) for the WHOLE set instead of one round trip per version id --
+    callers here pass every distinct grid version across a tournament's, or
+    the platform's full, history, which routinely spans dozens of ids.
     """
-    grids: dict[int, DivisionGrid] = {}
-    for version_id in {int(v) for v in version_ids}:
-        snapshot = await load_division_grid_snapshot(session, version_id)
-        if snapshot is not None:
-            grids[version_id] = snapshot.to_runtime_grid()
-    return grids
+    ids = {int(v) for v in version_ids}
+    snapshots = await load_division_grid_snapshots(session, ids)
+    return {version_id: snapshot.to_runtime_grid() for version_id, snapshot in snapshots.items()}
 
 
 def _grid_for(grids: dict[int, DivisionGrid], version_id: int | float | None) -> DivisionGrid:

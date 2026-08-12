@@ -17,8 +17,8 @@ func TestRegistrationAdminRouteContracts(t *testing.T) {
 		body    bool
 		timeout time.Duration
 	}{
-		"/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-exclusion": {
-			method: "POST", queue: "rpc.tournament.reg_bulk_exclusion", body: true,
+		"/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-set-balancer-status": {
+			method: "POST", queue: "rpc.tournament.reg_bulk_set_balancer_status", body: true,
 		},
 		"/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-add-to-balancer": {
 			method: "POST", queue: "rpc.tournament.reg_bulk_add_balancer", body: true,

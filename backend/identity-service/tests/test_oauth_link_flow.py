@@ -151,7 +151,7 @@ def test_link_custom_origin_issues_ticket_and_never_links(monkeypatch: pytest.Mo
     monkeypatch.setattr(pending_link_tickets, "get_redis", lambda: fake_redis)
 
     _guard, guard_hash = _guard_pair()
-    state = _link_state(origin="https://anakq.gg", guard_hash=guard_hash)
+    state = _link_state(origin="https://tenant.example.com", guard_hash=guard_hash)
 
     result = asyncio.run(
         oauth_flows.link(session=None, user=None, provider="discord", code="code", state=state, csrf="raw-csrf-token")
@@ -162,7 +162,7 @@ def test_link_custom_origin_issues_ticket_and_never_links(monkeypatch: pytest.Mo
     assert result.message is None
     assert result.provider is None
     assert result.username is None
-    assert result.origin == "https://anakq.gg"
+    assert result.origin == "https://tenant.example.com"
     link_mock.assert_not_awaited()
 
     # The ticket itself must carry the guard hash -- inspect it the same way
@@ -188,7 +188,7 @@ def test_link_custom_origin_without_guard_hash_never_issues_ticket(monkeypatch: 
     issue_mock = AsyncMock(side_effect=AssertionError("must not issue an unbound ticket"))
     monkeypatch.setattr(pending_link_tickets, "issue", issue_mock)
 
-    state = _link_state(origin="https://anakq.gg")  # no guard_hash
+    state = _link_state(origin="https://tenant.example.com")  # no guard_hash
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -216,7 +216,7 @@ def test_link_custom_origin_ignores_any_resolved_user(monkeypatch: pytest.Monkey
 
     unrelated_apex_user = SimpleNamespace(id=99, username="someone-else-entirely")
     _guard, guard_hash = _guard_pair()
-    state = _link_state(origin="https://anakq.gg", guard_hash=guard_hash)
+    state = _link_state(origin="https://tenant.example.com", guard_hash=guard_hash)
 
     result = asyncio.run(
         oauth_flows.link(
@@ -386,9 +386,7 @@ def test_link_complete_rejects_when_ticket_has_no_guard_hash_at_all(monkeypatch:
     bearer_user = SimpleNamespace(id=42, username="bearer-owner")
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            oauth_flows.link_complete(session=None, user=bearer_user, ticket=ticket, guard="any-guard-value")
-        )
+        asyncio.run(oauth_flows.link_complete(session=None, user=bearer_user, ticket=ticket, guard="any-guard-value"))
 
     assert exc_info.value.status_code == 400
     link_mock.assert_not_awaited()

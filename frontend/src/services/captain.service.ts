@@ -3,63 +3,53 @@ import type {
   EncounterMapPoolEntry,
   EncounterMapPoolState,
 } from "@/types/tournament.types";
-import type {
-  ResultSubmissionInput,
-  DisputeInput,
-  VetoActionInput,
-} from "@/types/admin.types";
+import type { CaptainReport, CaptainReportsResponse } from "@/types/encounter.types";
+import type { VetoActionInput } from "@/types/admin.types";
 
-export interface CaptainMatchReportInput {
+export interface CaptainMapCodeInput {
+  map_index: number;
+  code: string;
+}
+
+export interface CaptainReportInput {
   home_score: number;
   away_score: number;
-  closeness: number; // 1..10 score
+  /** 1..10, or null when the tournament disables/does not require match quality. */
+  closeness: number | null;
+  map_codes: CaptainMapCodeInput[];
+  comment?: string | null;
+  custom_fields?: Record<string, string>;
+}
+
+export interface CaptainReportSubmitResult {
+  id: number;
+  result_status: string;
+  status: string;
+  home_score: number;
+  away_score: number;
+  closeness: number | null;
+  reports: CaptainReport[];
 }
 
 class CaptainService {
-  async submitResult(
+  async submitReport(
     encounterId: number,
-    data: ResultSubmissionInput
-  ): Promise<{ id: number; result_status: string; home_score: number; away_score: number }> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/submit-result`, {
+    data: CaptainReportInput
+  ): Promise<CaptainReportSubmitResult> {
+    const response = await apiFetch(`/api/v1/encounters/${encounterId}/report`, {
       method: "POST",
       body: data,
     });
     return response.json();
   }
 
-  async submitMatchReport(
-    encounterId: number,
-    data: CaptainMatchReportInput
-  ): Promise<{
-    id: number;
-    result_status: string;
-    home_score: number;
-    away_score: number;
-    closeness: number | null;
-  }> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/submit-match-report`,
-      { method: "POST", body: data }
-    );
-    return response.json();
-  }
-
-  async confirmResult(
-    encounterId: number
-  ): Promise<{ id: number; result_status: string; status: string }> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/confirm-result`, {
-      method: "POST",
-    });
-    return response.json();
-  }
-
-  async disputeResult(
-    encounterId: number,
-    data?: DisputeInput
-  ): Promise<{ id: number; result_status: string }> {
-    const response = await apiFetch(`/api/v1/encounters/${encounterId}/dispute-result`, {
-      method: "POST",
-      body: data ?? {},
-    });
+  /**
+   * Returns the reports *and* the tournament's report-form config: the config
+   * rides this envelope so the dialog needs no second round trip and can never
+   * render rules that disagree with the reports shown beside them.
+   */
+  async getReports(encounterId: number): Promise<CaptainReportsResponse> {
+    const response = await apiFetch(`/api/v1/encounters/${encounterId}/reports`);
     return response.json();
   }
 
@@ -77,9 +67,9 @@ class CaptainService {
 
   /**
    * Fetch the full map-pool veto state. The backend now answers 200 with
-   * `session: null` + `reason` ("not_configured" | "teams_unknown") when the
-   * room can't exist yet; reads also lazily create the session when the
-   * encounter is ready. `null` is kept only for hard failures (404 encounter).
+   * `session: null` + a `reason` (see `VetoUnavailableReason`) when the room
+   * can't exist yet; reads also lazily create the session when the encounter is
+   * ready. `null` is kept only for hard failures (404 encounter).
    */
   async getMapPoolState(
     encounterId: number,

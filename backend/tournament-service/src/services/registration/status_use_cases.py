@@ -30,6 +30,8 @@ class CreateCustomStatus:
             icon_color=payload.icon_color,
             name=payload.name,
             description=payload.description,
+            excludes_from_balancer=payload.excludes_from_balancer,
+            excludes_from_ready=payload.excludes_from_ready,
         )
 
 
@@ -46,6 +48,8 @@ class UpdateCustomStatus:
             icon_color=payload.icon_color,
             name=payload.name,
             description=payload.description,
+            excludes_from_balancer=payload.excludes_from_balancer,
+            excludes_from_ready=payload.excludes_from_ready,
         )
 
 

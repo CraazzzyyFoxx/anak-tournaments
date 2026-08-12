@@ -9,6 +9,8 @@ type BalancerActionsPanelProps = {
   canRunBalance: boolean;
   isSavePending: boolean;
   isExportPending: boolean;
+  isBalanceSaved: boolean;
+  isBalanceExported: boolean;
   tournamentId: number;
   onRunBalance: () => void;
   onSaveBalance: () => void;
@@ -22,6 +24,8 @@ export function BalancerActionsPanel({
   canRunBalance,
   isSavePending,
   isExportPending,
+  isBalanceSaved,
+  isBalanceExported,
   tournamentId,
   onRunBalance,
   onSaveBalance,
@@ -51,6 +55,8 @@ export function BalancerActionsPanel({
         canRunBalance={canRunBalance}
         isSavePending={isSavePending}
         isExportPending={isExportPending}
+        isBalanceSaved={isBalanceSaved}
+        isBalanceExported={isBalanceExported}
         onRunBalance={onRunBalance}
         onSaveBalance={onSaveBalance}
         onExportBalance={onExportBalance}

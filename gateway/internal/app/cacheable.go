@@ -46,5 +46,6 @@ var PublicCacheableReads = map[string]respcache.Rule{
 	// Per-tournament user reads have a real tournament id in the path -> full
 	// event-driven invalidation, same as the tournament page routes.
 	"/api/v1/users/{id}/tournaments/{tournament_id}":             {Extract: respcache.FromPathValue("tournament_id")},
+	"/api/v1/users/{id}/tournaments/{tournament_id}/encounters":  {Extract: respcache.FromPathValue("tournament_id")},
 	"/api/v1/users/{id}/tournaments/{tournament_id}/leaderboard": {Extract: respcache.FromPathValue("tournament_id")},
 }

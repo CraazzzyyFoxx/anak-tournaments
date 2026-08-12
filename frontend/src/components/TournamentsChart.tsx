@@ -19,15 +19,15 @@ const chartConfig = {
   },
   avg_sr: {
     label: "Avg. team value",
-    color: "#2563eb"
+    color: "var(--aqt-teal)"
   },
   players_count: {
     label: "Players count",
-    color: "#f28e1c"
+    color: "var(--aqt-amber)"
   },
   avg_closeness: {
     label: "Avg. match balance",
-    color: "#6d398b"
+    color: "var(--aqt-violet)"
   }
 } satisfies ChartConfig;
 
@@ -35,7 +35,7 @@ const TournamentsChart = ({ data }: { data: TournamentStatistics[] }) => {
   const chartData = useMemo(() => {
     return data.map((item) => {
       return {
-        number: item.number.toString(),
+        name: item.name,
         players_count: item.players_count,
         avg_sr: item.avg_sr,
         avg_closeness: item.avg_closeness * 100
@@ -51,7 +51,7 @@ const TournamentsChart = ({ data }: { data: TournamentStatistics[] }) => {
       <CardContent>
         <ChartContainer config={chartConfig}>
           <ComposedChart accessibilityLayer data={chartData}>
-            <XAxis dataKey="number" tickLine={true} tickMargin={10} axisLine={true} />
+            <XAxis dataKey="name" tickLine={true} tickMargin={10} axisLine={true} />
             <YAxis
               yAxisId="left"
               dataKey="players_count"
@@ -67,16 +67,7 @@ const TournamentsChart = ({ data }: { data: TournamentStatistics[] }) => {
               axisLine={true}
               tickCount={3}
             />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  className="w-[150px]"
-                  labelFormatter={(value) => {
-                    return `Tournament ${value}`;
-                  }}
-                />
-              }
-            />
+            <ChartTooltip content={<ChartTooltipContent className="w-[150px]" />} />
             <Bar
               dataKey="players_count"
               yAxisId="left"

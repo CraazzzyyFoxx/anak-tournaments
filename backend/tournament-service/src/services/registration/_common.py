@@ -10,17 +10,17 @@ is re-exported by the ``admin`` facade.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import get_builtin_status_values
+from shared.balancer_registration_statuses import get_builtin_status_values, is_balancer_status_excluded
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_sub_role
 from shared.hero_catalog import HeroCatalog
 from src import models
 from src.schemas.registration import CustomFieldDefinition
@@ -30,12 +30,20 @@ from src.services.tournament.realtime_commit import register_tournament_realtime
 VALID_REGISTRATION_STATUSES = get_builtin_status_values("registration")
 VALID_BALANCER_STATUSES = get_builtin_status_values("balancer")
 
+# The only two balancer statuses the system derives from role/rank
+# completeness -- every other status (not_in_balancer, excluded, any custom
+# slug) is exclusively admin-managed and must never be touched by
+# `sync_included_balancer_status`.
+AUTO_MANAGED_BALANCER_STATUSES = frozenset({"incomplete", "ready"})
+NOT_ADDED_BALANCER_STATUS = "not_in_balancer"
+EXCLUDED_BALANCER_STATUS = "excluded"
+
 
 def _register_registration_changed(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
-    register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
+    register_tournament_realtime_update(session, registration.tournament_id, "registration_changed")
 
 
 BATTLE_TAG_RE = re.compile(r"[\w][\w ]{0,30}#[0-9]{3,}", re.UNICODE)
@@ -118,12 +126,106 @@ async def get_form_custom_field_defs(
     return form_custom_field_defs(form)
 
 
+FlexRoleMode = Literal["optional", "all_roles", "forced"]
+
+
+def flex_role_mode(form: Any | None) -> FlexRoleMode:
+    """The tournament's ``flex_role.mode``, normalized.
+
+    - ``optional``  — the registrant picks which roles they play at all; flex is
+      an opt-in preset.
+    - ``all_roles`` — every role is mandatory; the registrant names exactly one
+      priority role, or declares flex (no preference).
+    - ``forced``    — every role is mandatory AND flex; there is no choice.
+
+    Absent key, ``None`` and an unknown string all read as ``optional``, so every
+    existing form keeps its behaviour. ``enabled: false`` bans flex outright (see
+    ``validation.py``) and therefore wins over the mode.
+
+    Reads fail closed. Guessing anything but ``optional`` would silently inflate
+    every player's effective rank, since the other two modes rate a player by
+    their highest rank across all roles.
+    """
+    if form is None:
+        return "optional"
+    config = (getattr(form, "built_in_fields_json", None) or {}).get("flex_role")
+    if not isinstance(config, dict):
+        return "optional"
+    if config.get("enabled", True) is False:
+        return "optional"
+    mode = config.get("mode")
+    return mode if mode in ("all_roles", "forced") else "optional"
+
+
+def all_roles_required(form: Any | None) -> bool:
+    """Whether role stops being a constraint: every role playable by everyone.
+
+    True for ``all_roles`` and ``forced``. This is the fact that drives the
+    max-rank policy on the read side: if the tournament requires readiness to
+    play anything, the balancer must hold a rating for every role, because
+    eligibility there is the presence of a rating (``role in ratings``), not the
+    flex flag.
+    """
+    return flex_role_mode(form) in ("all_roles", "forced")
+
+
+def forced_flex_enabled(form: Any | None) -> bool:
+    """Whether the flex choice is made FOR the registrant (``forced`` only).
+
+    Distinct from ``all_roles_required``: under ``all_roles`` the registrant
+    still names a priority role, so their non-priority roles carry discomfort and
+    the solver keeps a real balance-versus-comfort trade-off. Under ``forced``
+    every role is primary, discomfort is nil, and that trade-off collapses.
+    """
+    return flex_role_mode(form) == "forced"
+
+
+def apply_all_roles(
+    entries: list[models.BalancerRegistrationRole],
+    *,
+    force_primary: bool,
+) -> list[models.BalancerRegistrationRole]:
+    """Backfill the role set to all three, optionally forcing every role primary.
+
+    Both non-optional modes need the SET normalized, whichever path produced the
+    entries — public form, admin panel, API key or Google Sheets sync.
+    Normalizing here rather than rejecting an incomplete payload is what makes
+    that hold for a stale client and for the sheet sync, neither of which knows
+    about the mode.
+
+    ``force_primary`` separates the two modes: ``forced`` marks every role
+    primary (yielding ``is_flex_computed``), ``all_roles`` leaves the registrant's
+    own choice alone and backfills the missing roles as non-primary. It cannot
+    invent that choice, so a payload naming no priority stays invalid — see
+    ``validation.py``.
+
+    Only the role SET and (under ``force_primary``) ``is_primary`` are touched.
+    ``is_active`` and ``rank_value`` stay exactly as the calling path set them:
+    the max-rank policy is derived at read time, because the public form submits
+    no ranks at all and ``rank_autofill`` would overwrite anything flattened
+    into the rows.
+    """
+    present = {entry.role for entry in entries}
+    result = list(entries)
+    result.extend(
+        models.BalancerRegistrationRole(role=role_code)
+        for role_code in REGISTRATION_ROLE_CODES
+        if role_code not in present
+    )
+    for priority, entry in enumerate(result):
+        if force_primary:
+            entry.is_primary = True
+        entry.priority = priority
+    return result
+
+
 def replace_registration_roles(
     registration: models.BalancerRegistration,
     roles: list[dict[str, Any]],
     *,
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
+    mode: FlexRoleMode = "optional",
 ) -> None:
     existing_by_role = {existing.role: existing for existing in registration.roles}
     next_roles: list[models.BalancerRegistrationRole] = []
@@ -159,6 +261,9 @@ def replace_registration_roles(
 
         next_roles.append(registration_role)
 
+    if mode in ("all_roles", "forced"):
+        next_roles = apply_all_roles(next_roles, force_primary=mode == "forced")
+
     registration.roles[:] = next_roles
 
 
@@ -180,10 +285,38 @@ def included_balancer_status(registration: models.BalancerRegistration | Any) ->
 
 
 def sync_included_balancer_status(registration: models.BalancerRegistration | Any) -> None:
+    """Recompute `ready`/`incomplete` from role ranks -- the only two
+    balancer statuses a role edit is allowed to change. `not_in_balancer`,
+    `excluded` and any custom status are exclusively admin-managed: they can
+    no longer be picked FOR ready/incomplete (see `set_balancer_status`), so
+    there is nothing left for a role-driven resync to fight over.
+    """
     current_balancer_status = getattr(registration, "balancer_status", None)
     if (
         getattr(registration, "status", None) == "approved"
-        and current_balancer_status in VALID_BALANCER_STATUSES
-        and current_balancer_status != "not_in_balancer"
+        and current_balancer_status in AUTO_MANAGED_BALANCER_STATUSES
     ):
         registration.balancer_status = included_balancer_status(registration)
+
+
+def is_included_in_balancer(
+    registration: models.BalancerRegistration | Any,
+    status_meta_map: dict[str, dict[str, Any]] | None = None,
+) -> bool:
+    """Whether `registration` currently counts as part of the balancer pool.
+
+    Single source of truth: the *current status's* `excludes_from_balancer`
+    flag -- true for the builtin `not_in_balancer`/`excluded` statuses, false
+    for `ready`/`incomplete`, and workspace-configurable for a custom status.
+    Pass the resolved `status_meta_map` (see `get_status_metas_map`) when one
+    is already in hand -- callers without it (no custom-status catalog
+    loaded) still get the correct answer for every builtin status.
+    """
+    if getattr(registration, "deleted_at", None) is not None:
+        return False
+    balancer_status = getattr(registration, "balancer_status", None)
+    if status_meta_map is not None:
+        meta = status_meta_map.get("balancer", {}).get(balancer_status)
+        if meta is not None:
+            return not meta["excludes_from_balancer"]
+    return not is_balancer_status_excluded(balancer_status)

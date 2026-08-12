@@ -1,11 +1,13 @@
 import { useTranslations } from "next-intl";
 
-import type { RegistrationForm } from "@/types/registration.types";
+import type { RegistrationForm, SubscriptionStatus } from "@/types/registration.types";
 import type { SocialAccount } from "@/types/user.types";
 import AccountCombobox from "./AccountCombobox";
 import VerifiedAccountSelect from "./VerifiedAccountSelect";
 import SmurfTagsInput from "./SmurfTagsInput";
-import FieldLabel from "./FieldLabel";
+import FormField from "./FormField";
+import SubscriptionRow from "./SubscriptionRow";
+import SubscriptionRuleNotice from "./SubscriptionRuleNotice";
 import { ArrowRight, Link2, UserRound } from "lucide-react";
 
 interface AccountStepProps {
@@ -18,6 +20,7 @@ interface AccountStepProps {
   battleTagSuggestions: string[];
   discordSuggestions: string[];
   twitchSuggestions: string[];
+  boostySuggestions?: string[];
   mode?: "public" | "admin";
   displayName?: string;
   onDisplayNameChange?: (v: string) => void;
@@ -27,6 +30,13 @@ interface AccountStepProps {
   verifiedErrors?: Record<string, string | null>;
   /** Public mode only: open profile settings so the user can link accounts. */
   onLinkAccounts?: () => void;
+  /** Server-resolved subscription standing; drives the per-row chips.
+   *
+   *  Read-only here on purpose: proving a subscription by pasting a phrase is a
+   *  check-in step, not a signup step. Signup only shows what was decided
+   *  automatically, so a patron cannot be asked for a secret before they even
+   *  have a registration. */
+  subscription?: SubscriptionStatus | null;
 }
 
 export default function AccountStep({
@@ -39,12 +49,14 @@ export default function AccountStep({
   battleTagSuggestions,
   discordSuggestions,
   twitchSuggestions,
+  boostySuggestions = [],
   mode = "public",
   displayName,
   onDisplayNameChange,
   accounts = [],
   verifiedErrors = {},
   onLinkAccounts,
+  subscription,
 }: AccountStepProps) {
   const t = useTranslations();
   const fields = form.built_in_fields;
@@ -52,6 +64,7 @@ export default function AccountStep({
   const showSmurfTags = fields?.smurf_tags?.enabled !== false;
   const showDiscord = fields?.discord_nick?.enabled !== false;
   const showTwitch = fields?.twitch_nick?.enabled !== false;
+  const showBoosty = fields?.boosty_nick?.enabled !== false;
   // ``require_verified`` only applies to public self-registration (it gates on
   // the registrant's own OAuth-verified accounts); admin editing is unconstrained.
   const requireVerified = (key: string) =>
@@ -59,22 +72,13 @@ export default function AccountStep({
 
   return (
     <div className="grid gap-4">
-      <div className="space-y-1">
-        <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
-          {mode === "admin" ? "Identity and Contact Handles" : t("registration.accounts.title")}
-        </h3>
-        <p className="text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-          {mode === "admin"
-            ? "Only the registration identity fields that matter in admin editing."
-            : t("registration.accounts.desc")}
-        </p>
-      </div>
+      <SubscriptionRuleNotice subscription={subscription} />
 
       {mode === "public" && accounts.length === 0 && onLinkAccounts && (
         <button
           type="button"
           onClick={onLinkAccounts}
-          className="flex w-full items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 p-3 text-left transition-colors hover:bg-white/6"
+          className="flex w-full items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3 text-left transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
         >
           <Link2 className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-fg-muted)]" />
           <div className="space-y-0.5">
@@ -93,16 +97,13 @@ export default function AccountStep({
       )}
 
       {mode === "admin" && onDisplayNameChange && (
-        <div className="space-y-1.5">
-          <FieldLabel label="Display Name" icon={<UserRound className="size-3.5 opacity-50" />} />
-          <input
-            type="text"
-            placeholder="Display name"
-            value={displayName ?? ""}
-            onChange={(e) => onDisplayNameChange(e.target.value)}
-            className="h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm text-[color:var(--aqt-fg)] placeholder-white/30 outline-none transition-colors focus:border-[color:var(--aqt-border-2)]"
-          />
-        </div>
+        <FormField
+          label="Display Name"
+          icon={<UserRound className="size-3.5 opacity-50" />}
+          placeholder="Display name"
+          value={displayName ?? ""}
+          onChange={onDisplayNameChange}
+        />
       )}
 
 
@@ -173,30 +174,66 @@ export default function AccountStep({
       )}
 
       {showTwitch && (
-        requireVerified("twitch_nick") ? (
-          <VerifiedAccountSelect
-            label={t("registration.accounts.twitch")}
+        <div className="grid gap-1.5">
+          {requireVerified("twitch_nick") ? (
+            <VerifiedAccountSelect
+              label={t("registration.accounts.twitch")}
+              provider="twitch"
+              accounts={accounts}
+              value={values.twitch_nick ?? ""}
+              onChange={(v) => onUpdate("twitch_nick", v)}
+              required
+              error={verifiedErrors.twitch_nick}
+            />
+          ) : (
+            <AccountCombobox
+              label={t("registration.accounts.twitch")}
+              placeholder={t("registration.accounts.twitchPlaceholder")}
+              value={values.twitch_nick ?? ""}
+              onChange={(v) => onUpdate("twitch_nick", v)}
+              suggestions={twitchSuggestions}
+              icon="/twitch.png"
+              required={fields?.twitch_nick?.required === true}
+              fieldKey="twitch_nick"
+              config={fields?.twitch_nick}
+              onValidationChange={(error) => onBuiltInValidationChange("twitch_nick", error)}
+            />
+          )}
+          {/* Twitch has a real API, so no challenge code here — only the chip and,
+              when the stored token predates the subscriptions scope, a reconnect. */}
+          <SubscriptionRow
             provider="twitch"
-            accounts={accounts}
-            value={values.twitch_nick ?? ""}
-            onChange={(v) => onUpdate("twitch_nick", v)}
-            required
-            error={verifiedErrors.twitch_nick}
+            providerLabel="Twitch"
+            subscription={subscription}
+            onLinkAccounts={onLinkAccounts}
           />
-        ) : (
+        </div>
+      )}
+
+      {showBoosty && (
+        <div className="grid gap-1.5">
           <AccountCombobox
-            label={t("registration.accounts.twitch")}
-            placeholder={t("registration.accounts.twitchPlaceholder")}
-            value={values.twitch_nick ?? ""}
-            onChange={(v) => onUpdate("twitch_nick", v)}
-            suggestions={twitchSuggestions}
-            icon="/twitch.png"
-            required={fields?.twitch_nick?.required === true}
-            fieldKey="twitch_nick"
-            config={fields?.twitch_nick}
-            onValidationChange={(error) => onBuiltInValidationChange("twitch_nick", error)}
+            label={t("registration.accounts.boosty")}
+            placeholder={t("registration.accounts.boostyPlaceholder")}
+            value={values.boosty_nick ?? ""}
+            onChange={(v) => onUpdate("boosty_nick", v)}
+            suggestions={boostySuggestions}
+            icon="/boosty.svg"
+            required={fields?.boosty_nick?.required === true}
+            fieldKey="boosty_nick"
+            config={fields?.boosty_nick}
+            onValidationChange={(error) => onBuiltInValidationChange("boosty_nick", error)}
           />
-        )
+          {/* The nickname above is self-declared — Boosty has no OAuth and neither
+              viable path reveals the handle. What is actually verified is the
+              SUBSCRIPTION, shown here. */}
+          <SubscriptionRow
+            provider="boosty"
+            providerLabel="Boosty"
+            subscription={subscription}
+            onLinkAccounts={onLinkAccounts}
+          />
+        </div>
       )}
     </div>
   );

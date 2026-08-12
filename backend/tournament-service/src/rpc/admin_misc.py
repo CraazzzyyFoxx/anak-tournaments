@@ -13,9 +13,10 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["query"][key] = [values]``, and the JSON body as ``data["payload"]``.
 
 Commit semantics: every write service called here commits internally
-(bulk_update_encounters, update_match, admin_confirm_result, initialize_map_pool,
-toggle_finished, transition_status, recalculate_standings), so the handlers add no
-extra commit. job_get/job_list are read-only.
+(update_match, set_encounter_result, toggle_finished, transition_status,
+recalculate_standings, upsert_report_form), so the handlers add no extra
+commit. job_get/job_list, report_form_get and the encounter-reports /
+parsed-matches reads are read-only.
 """
 
 from __future__ import annotations
@@ -24,57 +25,59 @@ from typing import Any
 
 import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
-from pydantic import BaseModel
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
+from shared.rpc.query import build_query_model
 from src import models
 from src.core import auth
-from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
+from src.rpc._helpers import (
+    _bool,
+    _dump,
+    _identity,
+    _path_int,
+    _payload,
+    _q1,
+    _require_id,
+    _require_q1,
+    _run,
+)
+from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas.admin import encounter as enc_schemas
+from src.schemas.admin import encounter_reports as reports_schemas
+from src.schemas.admin import matches as matches_schemas
 from src.schemas.admin import tournament as tournament_schemas
 from src.schemas.admin.computation import TournamentComputationJobRead
 from src.services.admin import encounter as enc_service
+from src.services.admin import encounter_reports as reports_service
+from src.services.admin import matches as matches_service
 from src.services.admin import preview_access as preview_access_service
 from src.services.admin import standing as standing_service
 from src.services.admin import tournament as tournament_service
 from src.services.computation import jobs as computation_jobs
 from src.services.encounter import captain as captain_service
-from src.services.encounter import map_veto as map_veto_service
+from src.services.encounter import report_form as report_form_service
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament import schedule as schedule_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
 
 
-class AdminMapPoolAssign(BaseModel):
-    """Body for the admin map-pool assignment route."""
-
-    map_ids: list[int]
-
-
-# --- helpers -----------------------------------------------------------------
+def _serialize_result(encounter: models.Encounter) -> dict:
+    """The settled result state both result endpoints return."""
+    return enc_schemas.EncounterResultRead(
+        id=encounter.id,
+        status=encounter.status,
+        result_status=encounter.result_status,
+        home_score=encounter.home_score,
+        away_score=encounter.away_score,
+        closeness=encounter.closeness,
+        confirmed_at=encounter.confirmed_at,
+    ).model_dump(mode="json")
 
 
 def register(broker: Any, logger: Any) -> None:
     # ── encounters ────────────────────────────────────────────────────────
-
-    @broker.subscriber("rpc.tournament.encounter_bulk_update")
-    async def _encounter_bulk_update(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            user = _identity(data)
-            body = enc_schemas.BulkEncounterUpdate.model_validate(_payload(data))
-            await auth.require_encounter_ids_permission(
-                session,
-                user,
-                encounter_ids=body.encounter_ids,
-                resource="match",
-                action="update",
-            )
-            # bulk_update_encounters commits internally; returns a custom dict.
-            return await enc_service.bulk_update_encounters(session, body)
-
-        return await _run(logger, op)
 
     @broker.subscriber("rpc.tournament.encounter_update_match")
     async def _encounter_update_match(data: dict, msg: RabbitMessage) -> dict:
@@ -101,34 +104,82 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-    @broker.subscriber("rpc.tournament.encounter_confirm_result")
-    async def _encounter_confirm_result(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.tournament.encounter_set_result")
+    async def _encounter_set_result(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            # admin_confirm_result commits internally; route returns a custom dict.
-            encounter = await captain_service.admin_confirm_result(session, encounter_id)
-            return {
-                "id": encounter.id,
-                "result_status": encounter.result_status,
-                "status": encounter.status,
-            }
+            body = enc_schemas.EncounterSetResultInput.model_validate(_payload(data))
+            # set_encounter_result commits internally; route returns the settled state.
+            encounter = await captain_service.set_encounter_result(
+                session,
+                encounter_id,
+                actor_user_id=user.id,
+                home_score=body.home_score,
+                away_score=body.away_score,
+                closeness=body.closeness,
+                adopt_report_team_id=body.adopt_report_team_id,
+            )
+            return _serialize_result(encounter)
 
         return await _run(logger, op)
 
-    @broker.subscriber("rpc.tournament.encounter_assign_map_pool")
-    async def _encounter_assign_map_pool(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.tournament.encounter_reopen_result")
+    async def _encounter_reopen_result(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            body = AdminMapPoolAssign.model_validate(_payload(data))
-            # initialize_map_pool commits internally; route returns {"assigned": N}.
-            entries = await map_veto_service.initialize_map_pool(session, encounter_id, body.map_ids)
-            return {"assigned": len(entries)}
+            encounter = await captain_service.reopen_encounter_result(session, encounter_id, actor_user_id=user.id)
+            return _serialize_result(encounter)
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.encounter_result_audit")
+    async def _encounter_result_audit(data: dict, msg: RabbitMessage) -> Any:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
+            ensure_workspace_permission(user, ws_id, "match", "read")
+            return await captain_service.get_result_audit(session, encounter_id)
+
+        return await _run(logger, op)
+
+    # ── match report form (per-tournament captain-report config) ──────────
+
+    # GET /admin/tournaments/{tournament_id}/report-form -> match.read
+    @broker.subscriber("rpc.tournament.report_form_get")
+    async def _report_form_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _require_id(data)
+            ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
+            ensure_workspace_permission(user, ws_id, "match", "read")
+            # Always a full defaults-merged config, never null — deliberately
+            # unlike rpc.tournament.reg_form_get. "No row yet" is the normal
+            # state (rows are created lazily on first save), so the client gets
+            # a config to render instead of an empty branch to special-case.
+            # resolve_report_form is read-only: it never materializes the row.
+            return _dump(await report_form_service.resolve_report_form(session, tournament_id))
+
+        return await _run(logger, op)
+
+    # PUT /admin/tournaments/{tournament_id}/report-form -> match.update
+    @broker.subscriber("rpc.tournament.report_form_upsert")
+    async def _report_form_upsert(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _require_id(data)
+            ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
+            ensure_workspace_permission(user, ws_id, "match", "update")
+            body = report_form_schemas.MatchReportFormUpsert.model_validate(_payload(data))
+            # get_tournament_workspace_id above already 404s on a missing
+            # tournament; upsert_report_form commits internally.
+            return _dump(await report_form_service.upsert_report_form(session, tournament_id, body))
 
         return await _run(logger, op)
 
@@ -256,7 +307,7 @@ def register(broker: Any, logger: Any) -> None:
                 user,
                 tournament_id=tournament_id,
                 resource="standing",
-                action="recalculate",
+                action="update",
             )
             # recalculate_standings commits internally; returns a job.
             job = await standing_service.recalculate_standings(
@@ -283,7 +334,7 @@ def register(broker: Any, logger: Any) -> None:
                 user,
                 tournament_id=job.tournament_id,
                 resource="standing" if job.kind == "standings" else "stage",
-                action="recalculate" if job.kind == "standings" else "update",
+                action="update",
             )
             return _dump(TournamentComputationJobRead.model_validate(job, from_attributes=True))
 
@@ -328,5 +379,77 @@ def register(broker: Any, logger: Any) -> None:
                 limit=limit,
             )
             return [_dump(TournamentComputationJobRead.model_validate(job, from_attributes=True)) for job in jobs_list]
+
+        return await _run(logger, op)
+
+    # ── captain reports (cross-tournament, workspace-scoped) ──────────────
+
+    def _reports_params(data: dict) -> tuple[int, Any]:
+        """Resolve the workspace and parse the shared filter set.
+
+        The workspace is an explicit query param rather than inferred: this list
+        spans every tournament in it, so there is no single tournament to derive
+        the scope from.
+        """
+        user = _identity(data)
+        workspace_id = _require_q1(data, "workspace_id", int)
+        ensure_workspace_permission(user, workspace_id, "match", "read")
+        qp = build_query_model(reports_schemas.EncounterReportsQueryParams, data.get("query"))
+        return workspace_id, reports_schemas.EncounterReportsSearchParams.from_query_params(qp)
+
+    @broker.subscriber("rpc.tournament.admin_encounter_reports_list")
+    async def _admin_encounter_reports_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id, params = _reports_params(data)
+            return _dump(
+                await reports_service.list_encounter_reports(session, workspace_id=workspace_id, params=params)
+            )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.admin_encounter_reports_stats")
+    async def _admin_encounter_reports_stats(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id, params = _reports_params(data)
+            return _dump(await reports_service.get_reports_stats(session, workspace_id=workspace_id, params=params))
+
+        return await _run(logger, op)
+
+    # ── parsed matches (cross-tournament, workspace-scoped) ───────────────
+
+    def _matches_workspace(data: dict) -> int:
+        """The scope both match reads are gated on.
+
+        An explicit query param, never derived from the row: deriving it would
+        scope the read to whatever tenant already owns the id, which is the check
+        inverted.
+        """
+        user = _identity(data)
+        workspace_id = _require_q1(data, "workspace_id", int)
+        ensure_workspace_permission(user, workspace_id, "match", "read")
+        return workspace_id
+
+    def _matches_params(data: dict) -> tuple[int, Any]:
+        """Same shape as ``_reports_params``: the list spans every tournament in
+        the workspace, so there is no single tournament to derive the scope from.
+        """
+        workspace_id = _matches_workspace(data)
+        qp = build_query_model(matches_schemas.AdminMatchesQueryParams, data.get("query"))
+        return workspace_id, matches_schemas.AdminMatchesSearchParams.from_query_params(qp)
+
+    @broker.subscriber("rpc.tournament.admin_matches_list")
+    async def _admin_matches_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id, params = _matches_params(data)
+            return _dump(await matches_service.list_admin_matches(session, workspace_id=workspace_id, params=params))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.admin_match_get")
+    async def _admin_match_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id = _matches_workspace(data)
+            match_id = _require_id(data)
+            return _dump(await matches_service.get_admin_match(session, workspace_id=workspace_id, match_id=match_id))
 
         return await _run(logger, op)

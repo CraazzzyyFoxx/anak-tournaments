@@ -21,6 +21,7 @@ var UsersAdminRoutes = []edge.RouteSpec{
 	// Social identities (unified) — all return the refreshed UserRead (200 + body)
 	{Method: "POST", Pattern: "/api/v1/admin/users/{id}/social", Queue: "rpc.app.users.social_add", IDParam: "id", Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/users/{id}/social/{account_id}", Queue: "rpc.app.users.social_update", IDParam: "id", Path: []string{"account_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/users/{id}/social/{account_id}/verify", Queue: "rpc.app.users.social_verify", IDParam: "id", Path: []string{"account_id"}, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/users/{id}/social/{account_id}", Queue: "rpc.app.users.social_delete", IDParam: "id", Path: []string{"account_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/users/{id}/social/{account_id}/primary", Queue: "rpc.app.users.social_set_primary", IDParam: "id", Path: []string{"account_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/users/{id}/social/{account_id}/visibility", Queue: "rpc.app.users.social_set_visibility", IDParam: "id", Path: []string{"account_id"}, Body: true, Auth: edge.AuthRequired},

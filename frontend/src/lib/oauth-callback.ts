@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { authService, OAuthLinkAuthRequiredError } from "@/services/auth.service";
+import { authService, OAuthLinkAuthRequiredError, OAuthLinkFailedError } from "@/services/auth.service";
 import { getForwardedClientHeaders } from "@/lib/forward-client-headers";
 import { getTokenMaxAgeSeconds } from "@/lib/jwt";
 import { resolveHost, PLATFORM_ZONE } from "@/lib/host";
@@ -183,11 +183,17 @@ function clearCsrfCookie(response: NextResponse): void {
   });
 }
 
-function errorRedirect(errorCode: string, description?: string | null): NextResponse {
+// `provider` is echoed as `auth_error_provider` so the toast can name the
+// provider the user was actually linking ("This Discord account is already
+// linked…") — the error page has no other way to know which one it was.
+function errorRedirect(errorCode: string, description?: string | null, provider?: string | null): NextResponse {
   const errorUrl = new URL("/", SITE_URL);
   errorUrl.searchParams.set("auth_error", errorCode);
   if (description) {
     errorUrl.searchParams.set("auth_error_description", description);
+  }
+  if (provider) {
+    errorUrl.searchParams.set("auth_error_provider", provider);
   }
   const response = NextResponse.redirect(errorUrl);
   clearCsrfCookie(response);
@@ -290,6 +296,13 @@ export async function handleOAuthCallback(request: Request): Promise<NextRespons
           const response = NextResponse.redirect(loginUrl);
           clearCsrfCookie(response);
           return response;
+        }
+        if (err instanceof OAuthLinkFailedError) {
+          // identity-svc refused the link for a reason the user can act on
+          // (most often: this provider account is already linked to another
+          // account here). Surface the specific code, not "exchange_failed".
+          console.error(`OAuth link refused (${err.code}):`, err.message);
+          return errorRedirect(err.code, null, provider);
         }
         throw err;
       }

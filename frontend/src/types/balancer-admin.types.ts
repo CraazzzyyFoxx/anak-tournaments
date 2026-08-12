@@ -1,4 +1,11 @@
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
+import type {
+  StatusKind,
+  StatusMeta,
+  StatusScope,
+  SubscriptionOutcome,
+  SubscriptionRequirement,
+} from "@/types/registration.types";
 
 export type BalancerRoleCode = "tank" | "dps" | "support";
 export type BalancerRosterKey = "Tank" | "Damage" | "Support";
@@ -30,6 +37,8 @@ export interface BalancerPlayerRecord {
   role_entries_json: BalancerPlayerRoleEntry[];
   is_flex: boolean;
   is_in_pool: boolean;
+  /** True when the registration's current custom status has excludes_from_ready set -- blocks the "ready" lane regardless of role-rank completeness. */
+  ready_blocked: boolean;
   admin_notes: string | null;
 }
 
@@ -145,6 +154,14 @@ export interface BalancerTournamentConfig {
 
 export interface BalancerTournamentConfigUpsertInput {
   config_json?: Record<string, unknown> | null;
+}
+
+/** Response of `GET /api/balancer/tournaments/{id}/summary` (D29 tool-context resolver). */
+export interface BalancerTournamentSummary {
+  id: number;
+  name: string;
+  status: string;
+  workspace_id: number;
 }
 
 export interface TournamentSheetUpsertInput {
@@ -266,7 +283,6 @@ export interface RegistrationRankAutofillResponse {
 
 export interface BalancerRegistrationRankHistoryEntry {
   tournament_id: number;
-  tournament_number: number | null;
   tournament_name: string | null;
   role: BalancerRoleCode;
   rank_value: number;
@@ -318,6 +334,11 @@ export interface BuiltInFieldConfig {
    * submitted handle to match one of the registrant's OAuth-verified accounts.
    */
   require_verified?: boolean;
+  /**
+   * `flex_role` field only. "forced" makes every registration full flex and
+   * drives the max-rank policy in the balancer pool. Absent/null == "optional".
+   */
+  mode?: "optional" | "all_roles" | "forced" | null;
 }
 
 export interface SubroleOption {
@@ -337,6 +358,14 @@ export interface AdminRegistrationForm {
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
+  require_subscription?: boolean;
+  /** WHEN the requirement blocks: `registration` refuses sign-up too, `check_in`
+   *  (the default) only refuses at check-in. Ordered — `registration` implies both. */
+  subscription_stage?: "registration" | "check_in";
+  /** Server-resolved from the workspace requirement and read-only: the rule now
+   *  lives on the workspace, so the upsert below deliberately has no counterpart.
+   *  Still returned because the check-in dialog renders the composed rule. */
+  subscription_requirement_json?: SubscriptionRequirement;
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: AdminCustomFieldDef[];
   subrole_catalog?: SubroleCatalog;
@@ -348,6 +377,8 @@ export interface AdminRegistrationFormUpsert {
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
+  require_subscription?: boolean;
+  subscription_stage?: "registration" | "check_in";
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: AdminCustomFieldDef[];
 }
@@ -365,23 +396,6 @@ export interface AdminRegistrationRole {
 }
 
 export type BalancerStatus = string;
-export type StatusScope = "registration" | "balancer";
-export type StatusKind = "builtin" | "custom";
-
-export interface StatusMeta {
-  value: string;
-  scope: StatusScope;
-  is_builtin: boolean;
-  kind: StatusKind;
-  is_override: boolean;
-  can_edit: boolean;
-  can_delete: boolean;
-  can_reset: boolean;
-  icon_slug: string | null;
-  icon_color: string | null;
-  name: string;
-  description: string | null;
-}
 
 export interface BalancerCustomStatus {
   id: number;
@@ -396,6 +410,10 @@ export interface BalancerCustomStatus {
   icon_color: string | null;
   name: string;
   description: string | null;
+  /** Only meaningful for scope === "balancer": whether a registration holding this status counts as part of the balancer pool. */
+  excludes_from_balancer: boolean;
+  /** Only meaningful for scope === "balancer": whether a registration holding this status is blocked from counting as "ready", independent of excludes_from_balancer. */
+  excludes_from_ready: boolean;
   created_at: string;
   updated_at: string | null;
 }
@@ -406,6 +424,8 @@ export interface BalancerCustomStatusCreateInput {
   icon_color?: string | null;
   name: string;
   description?: string | null;
+  excludes_from_balancer?: boolean;
+  excludes_from_ready?: boolean;
 }
 
 export interface BalancerCustomStatusUpdateInput {
@@ -413,6 +433,8 @@ export interface BalancerCustomStatusUpdateInput {
   icon_color?: string | null;
   name?: string | null;
   description?: string | null;
+  excludes_from_balancer?: boolean | null;
+  excludes_from_ready?: boolean | null;
 }
 
 export interface AdminRegistration {
@@ -428,6 +450,7 @@ export interface AdminRegistration {
   smurf_tags_json: string[];
   discord_nick: string | null;
   twitch_nick: string | null;
+  boosty_nick?: string | null;
   stream_pov: boolean;
   roles: AdminRegistrationRole[];
   notes: string | null;
@@ -438,7 +461,9 @@ export interface AdminRegistration {
   status_meta: StatusMeta;
   balancer_status: BalancerStatus;
   balancer_status_meta: StatusMeta;
-  exclude_from_balancer: boolean;
+  /** Reason note for the current status, populated when balancer_status === "excluded".
+   *  Whether the registration is actually excluded is read from
+   *  balancer_status_meta.excludes_from_balancer, not a separate flag. */
   exclude_reason: string | null;
   checked_in: boolean;
   checked_in_at: string | null;
@@ -448,7 +473,10 @@ export interface AdminRegistration {
   reviewed_at: string | null;
   reviewed_by_username: string | null;
   balancer_profile_overridden_at: string | null;
+  /** Admission signals: sent by the registrations LIST read only, and only when
+   *  the tournament's form requires them. Mutation responses omit them. */
   profiles_open?: boolean | null;
+  subscription_outcome?: SubscriptionOutcome | null;
 }
 
 export interface AdminRegistrationCreateInput {
@@ -457,9 +485,14 @@ export interface AdminRegistrationCreateInput {
   smurf_tags_json?: string[] | null;
   discord_nick?: string | null;
   twitch_nick?: string | null;
+  boosty_nick?: string | null;
   stream_pov?: boolean;
   notes?: string | null;
   admin_notes?: string | null;
+  /** Answers to the tournament's custom field definitions, keyed by field key. */
+  custom_fields_json?: Record<string, string> | null;
+  status?: string | null;
+  balancer_status?: string | null;
   is_flex?: boolean;
   roles?: AdminRegistrationRole[];
   /** Site account to anchor this registration on (its player). */
@@ -472,23 +505,21 @@ export interface AdminRegistrationUpdateInput {
   smurf_tags_json?: string[] | null;
   discord_nick?: string | null;
   twitch_nick?: string | null;
-  stream_pov?: boolean | null;
+  boosty_nick?: string | null;
   notes?: string | null;
   admin_notes?: string | null;
+  stream_pov?: boolean | null;
+  /** Replaced wholesale when present; omit to leave the stored answers alone. */
+  custom_fields_json?: Record<string, string> | null;
   is_flex?: boolean | null;
   status?: string | null;
+  /** `ready`/`incomplete` are rejected server-side (computed from role ranks
+   *  only); use `not_in_balancer`, `excluded`, or a custom slug. */
   balancer_status?: string | null;
   roles?: AdminRegistrationRole[] | null;
   /** When set, (re)anchor the registration on this site account's player. */
   auth_user_id?: number | null;
-  /** When set, mirrors the exclusion endpoint semantics in a single PATCH. */
-  exclude_from_balancer?: boolean | null;
-  /** Applied only together with exclude_from_balancer. */
-  exclude_reason?: string | null;
-}
-
-export interface AdminRegistrationExclusionInput {
-  exclude_from_balancer: boolean;
+  /** Only meaningful together with balancer_status === "excluded". */
   exclude_reason?: string | null;
 }
 

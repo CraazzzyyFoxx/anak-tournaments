@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from loguru import logger
+from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import errors
@@ -149,7 +150,20 @@ async def run_evaluation(
                     total_removed += len(diff.to_delete)
 
                     logger.info(f"Rule '{rule.slug}': +{len(diff.to_insert)} -{len(diff.to_delete)}")
-            except Exception:
+            except Exception as exc:
+                if _is_connection_lost(exc):
+                    # The session (or its connection) is dead: Postgres restarted,
+                    # the pooler dropped us, or the outer transaction is stuck in a
+                    # pending rollback. Every remaining rule would fail the same
+                    # way, each one logging its own Sentry event — that is how a
+                    # single dead connection turned into thousands of duplicate
+                    # InterfaceError/ProgrammingError events. Abort the run and let
+                    # the message go to the DLQ instead.
+                    logger.error(
+                        f"Aborting evaluation run {run_id}: lost the database connection "
+                        f"while evaluating rule '{rule.slug}'"
+                    )
+                    raise
                 logger.exception(f"Failed to evaluate rule '{rule.slug}'")
                 continue
 
@@ -162,12 +176,7 @@ async def run_evaluation(
         await session.commit()
 
     except Exception as exc:
-        await session.rollback()
-        run.status = EvaluationRunStatus.failed
-        run.error_message = str(exc)[:1000]
-        run.finished_at = datetime.now(UTC)
-        session.add(run)
-        await session.commit()
+        await _mark_run_failed(session, run, exc)
         logger.exception(f"Evaluation run {run_id} failed")
         raise
 
@@ -175,6 +184,43 @@ async def run_evaluation(
         f"Evaluation run {run_id} done: {run.rules_evaluated} rules, +{run.results_created} -{run.results_removed}"
     )
     return run
+
+
+def _is_connection_lost(exc: BaseException) -> bool:
+    """True when the failure means the session can no longer be used at all.
+
+    A dead connection is not a rule-level problem: it invalidates the whole run.
+    ``connection_invalidated`` covers the pool marking the connection unusable;
+    ``InterfaceError`` is what asyncpg raises once the socket is gone; a
+    ``PendingRollbackError`` means an earlier statement already poisoned the
+    outer transaction, so every subsequent ``begin_nested`` fails too.
+    """
+    if isinstance(exc, sa_exc.PendingRollbackError):
+        return True
+    if isinstance(exc, sa_exc.DBAPIError):
+        return bool(exc.connection_invalidated) or isinstance(exc, sa_exc.InterfaceError)
+    return False
+
+
+async def _mark_run_failed(session: AsyncSession, run: EvaluationRun, exc: BaseException) -> None:
+    """Best-effort audit write recording why a run failed.
+
+    The failure is often a lost connection, in which case the session's own
+    ``rollback``/``commit`` raise as well. Those *secondary* errors are what
+    actually reached Sentry (``cannot call Transaction.rollback(): the underlying
+    connection is closed``), burying the real cause and inflating a single
+    incident into its own top-volume issue. Bookkeeping must never mask or
+    replace the original exception, so swallow its failure with a warning.
+    """
+    try:
+        await session.rollback()
+        run.status = EvaluationRunStatus.failed
+        run.error_message = str(exc)[:1000]
+        run.finished_at = datetime.now(UTC)
+        session.add(run)
+        await session.commit()
+    except Exception as bookkeeping_exc:
+        logger.warning(f"Could not persist failed status for evaluation run {run.id}: {bookkeeping_exc!r}")
 
 
 async def _get_rules(

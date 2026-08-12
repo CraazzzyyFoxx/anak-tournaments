@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Shuffle, Users } from "lucide-react";
-import { cn } from "@/lib/utils";
+import type { ImperativePanelHandle } from "react-resizable-panels";
 
 import {
   BalancingPoolSidebar,
@@ -32,6 +32,7 @@ import type { BalancerRoleCode } from "@/types/balancer-admin.types";
 import type { BalancerConfig } from "@/types/balancer.types";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 
 import { BalancerActionsPanel } from "./BalancerActionsPanel";
 import { BalancerEditorPanel } from "./BalancerEditorPanel";
@@ -65,8 +66,10 @@ import { PRESET_LABELS } from "./balancer-page-helpers";
 import {
   buildTeamNamesText,
   buildVariantFromSavedBalance,
+  createSyntheticPlayerFromRegistration,
   downloadPlayersExport,
   getPlayerValidationIssues,
+  ratesByMaxRank,
   type BalanceVariant
 } from "./workspace-helpers";
 
@@ -97,22 +100,37 @@ const IMPORT_JSON_STEPS: BalancerOperationStepDefinition[] = [
   {
     id: "read",
     label: "Read JSON file",
-    description: "Validate that the selected file contains JSON."
+    description: "Parse the file and check that it holds a balance payload."
   },
   {
-    id: "import",
-    label: "Import teams",
-    description: "Create tournament teams from the JSON payload."
-  },
-  {
-    id: "refresh",
-    label: "Refresh tournament data",
-    description: "Update cached tournament teams and public views."
+    id: "load",
+    label: "Load balance preview",
+    description: "Add it to the variant list so it can be reviewed, saved or exported."
   }
 ];
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+/**
+ * The Balancing Pool sidebar only sits beside the balance editor at desktop
+ * widths (Tailwind's `xl` breakpoint, 1280px); narrower viewports stack the
+ * two panels in a single column instead. Defaults to `true` (desktop-first)
+ * so the common case matches between server render and hydration.
+ */
+function useIsWideBalancerLayout(): boolean {
+  const [isWide, setIsWide] = useState(true);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 1280px)");
+    const sync = () => setIsWide(mql.matches);
+    sync();
+    mql.addEventListener("change", sync);
+    return () => mql.removeEventListener("change", sync);
+  }, []);
+
+  return isWide;
 }
 
 export function BalancerMainPageClient() {
@@ -124,6 +142,8 @@ export function BalancerMainPageClient() {
   const sidebarRef = useRef<BalancingPoolSidebarHandle>(null);
   const balanceEditorRef = useRef<HTMLDivElement | null>(null);
   const variantsRef = useRef<BalanceVariant[]>([]);
+  const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  const isWideLayout = useIsWideBalancerLayout();
 
   const [selectedPreset, setSelectedPreset] = useState("DEFAULT");
   const [jobState, dispatchJob] = useBalancerJob();
@@ -198,6 +218,15 @@ export function BalancerMainPageClient() {
     enabled: workspaceId !== null
   });
 
+  // Same query key as the registrations tab, so the cache is shared. Only the
+  // flex mode is read: in a forced-flex tournament role is not a constraint and
+  // every pool player is rated by their highest rank across all roles.
+  const registrationFormQuery = useQuery({
+    queryKey: ["balancer-admin", "registration-form", tournamentId],
+    queryFn: () => balancerAdminService.getRegistrationForm(tournamentId as number),
+    enabled: tournamentId !== null
+  });
+
   /* eslint-disable react-hooks/set-state-in-effect -- Local balancer state intentionally resets when the selected tournament or saved balance changes. */
   useEffect(() => {
     setVariants([]);
@@ -208,6 +237,7 @@ export function BalancerMainPageClient() {
     setPendingRankHistory(null);
     setExcludeInvalidPlayers(false);
     setIsPoolSidebarCollapsed(false);
+    sidebarPanelRef.current?.expand();
     setIsConfigDrawerOpen(false);
     setIsImageExportOpen(false);
     setIsTournamentExportOpen(false);
@@ -262,21 +292,20 @@ export function BalancerMainPageClient() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const registrations = registrationsQuery.data ?? [];
+  const allRoles = ratesByMaxRank(registrationFormQuery.data?.built_in_fields?.flex_role);
   const {
     registrationsById,
     applications,
     applicationsById,
     addableApplications,
     allPlayerValidationStates,
-    players,
     readyPlayers,
     poolPlayers,
     invalidPlayerStates,
-    missingRankPlayerStates,
     flexPoolCount
   } = useMemo(
-    () => buildBalancerPageCollections(registrations, divisionGrid),
-    [divisionGrid, registrations]
+    () => buildBalancerPageCollections(registrations, divisionGrid, allRoles),
+    [divisionGrid, registrations, allRoles]
   );
 
   const workspaceBalancerConfig = workspaceBalancerConfigQuery.data ?? null;
@@ -298,13 +327,26 @@ export function BalancerMainPageClient() {
     () => variants.find((variant) => variant.id === activeVariantId) ?? null,
     [activeVariantId, variants]
   );
-  const quickEditPlayer = useMemo(
-    () => players.find((player) => player.id === editingPlayerId) ?? null,
-    [editingPlayerId, players]
-  );
+  // The persisted balance is only "current" while the active variant is the saved
+  // one and nobody has edited it since. Any editor change or a regenerated variant
+  // is new work, so Save/Export become available again.
+  const isBalanceSaved = activeVariant?.source === "saved" && !activeVariant.dirty;
+  const isBalanceExported = isBalanceSaved && savedBalanceQuery.data?.exported_at != null;
   const quickEditRegistration = useMemo(
     () => (editingPlayerId !== null ? (registrationsById.get(editingPlayerId) ?? null) : null),
     [editingPlayerId, registrationsById]
+  );
+  // Edited on the registration's real per-role ranks, never the `allRoles`-flattened
+  // view `players` carries for the pool table/validation/solver (see
+  // `buildBalancerPageCollections`) — that max-rank flattening is a read-only
+  // computation aid for flex tournaments, not ground truth to save back over
+  // the player's actual ranks.
+  const quickEditPlayer = useMemo(
+    () =>
+      quickEditRegistration
+        ? createSyntheticPlayerFromRegistration(quickEditRegistration, divisionGrid)
+        : null,
+    [quickEditRegistration, divisionGrid]
   );
   const playerStatusOptions = useMemo(
     () => ({
@@ -428,7 +470,7 @@ export function BalancerMainPageClient() {
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
-    importTeamsMutation
+    importBalanceMutation
   } = useBalancerMutations({
     tournamentId,
     workspaceId,
@@ -477,6 +519,18 @@ export function BalancerMainPageClient() {
   const handleFocusBrowseAvailable = useCallback(() => {
     setIsPoolSidebarCollapsed(false);
     sidebarRef.current?.focusBrowseAvailable();
+  }, []);
+  const handleToggleSidebarCollapsed = useCallback(() => {
+    const panel = sidebarPanelRef.current;
+    if (panel) {
+      if (panel.isCollapsed()) {
+        panel.expand();
+      } else {
+        panel.collapse();
+      }
+      return;
+    }
+    setIsPoolSidebarCollapsed((current) => !current);
   }, []);
 
   const handleOpenPlayerEditor = useCallback((playerId: number | null) => {
@@ -579,19 +633,21 @@ export function BalancerMainPageClient() {
       setJsonImportSummary(null);
       setJsonImportError(null);
       setIsJsonImportOpen(true);
-      importTeamsMutation.mutate(
+      importBalanceMutation.mutate(
         { file, onStageChange: handleJsonImportStageChange },
         {
           onSuccess: (result) => {
-            setJsonImportSummary(`${result.imported_teams} teams imported from ${file.name}.`);
+            setJsonImportSummary(
+              `${result.teamCount} teams loaded from ${file.name}. Review the balance, then Save or Export to Tournament.`
+            );
           },
           onError: (error) => {
-            setJsonImportError(getErrorMessage(error, "Failed to import teams from JSON"));
+            setJsonImportError(getErrorMessage(error, "Failed to read the balance JSON"));
           }
         }
       );
     },
-    [handleJsonImportStageChange, importTeamsMutation]
+    [handleJsonImportStageChange, importBalanceMutation]
   );
 
   const quickPoolActionsPending =
@@ -626,12 +682,108 @@ export function BalancerMainPageClient() {
       <Alert>
         <AlertTitle>Select a tournament</AlertTitle>
         <AlertDescription>
-          Choose a tournament in the balancer header to work with registrations and the Balancing
+          Open a tournament from the tournament hub to work with registrations and the Balancing
           Pool.
         </AlertDescription>
       </Alert>
     );
   }
+
+  const sidebarElement = (
+    <BalancingPoolSidebar
+      ref={sidebarRef}
+      key={tournamentId}
+      collapsed={isPoolSidebarCollapsed}
+      onToggleCollapsed={handleToggleSidebarCollapsed}
+      allPlayerValidationStates={enrichedPlayerValidationStates}
+      applications={applications}
+      addableApplications={addableApplications}
+      registrationsById={registrationsById}
+      balancerStatusOptions={playerStatusOptions.balancer}
+      selectedPlayerId={selectedPlayerId}
+      onSelectPlayer={handleOpenPlayerEditor}
+      onAddFromApplication={(application) => addPlayerMutation.mutate(application)}
+      onSetPoolMembership={handleSetPoolMembership}
+      onSetBalancerStatus={handleSetBalancerStatus}
+      onBulkPoolMembership={handleBulkPoolMembership}
+      onBulkBalancerStatus={handleBulkBalancerStatus}
+      isAddingPlayer={addPlayerMutation.isPending}
+      actionsDisabled={quickPoolActionsPending}
+      workspaceId={workspaceId ?? undefined}
+      workspaceBalancerConfig={workspaceBalancerConfig}
+    />
+  );
+
+  const balancerContentElement = (
+    <div className="flex min-h-0 flex-col gap-3">
+      <PresetRunPanel
+        counters={[
+          { label: "Pool", value: poolPlayers.length, icon: Users },
+          { label: "Ready", value: readyPlayers.length, icon: CheckCircle2 },
+          { label: "Need Fix", value: invalidPlayerStates.length, icon: AlertTriangle },
+          { label: "Flex", value: flexPoolCount, icon: Shuffle }
+        ]}
+        presetOptions={visiblePresetOptions}
+        selectedPreset={selectedPreset}
+        onSelectPreset={handleSelectPreset}
+        invalidPlayerCount={invalidPlayerStates.length}
+        excludeInvalidPlayers={excludeInvalidPlayers}
+        onExcludeInvalidPlayersChange={setExcludeInvalidPlayers}
+        onOpenSettings={() => setIsConfigDrawerOpen(true)}
+        settingsDirty={isConfigDirty}
+        canRunBalance={canRunBalance}
+        onRunBalance={() => runBalanceMutation.mutate()}
+        isRunPending={runBalanceMutation.isPending}
+        onImportBalance={startJsonImport}
+        isImportPending={importBalanceMutation.isPending}
+        onExportPlayers={() => exportPlayersMutation.mutate()}
+        isExportPlayersPending={exportPlayersMutation.isPending}
+        jobStatus={jobState.status}
+        jobMessage={jobState.message}
+        jobProgress={jobState.progress}
+      />
+
+      {activeVariant ? (
+        <TeamDistributionPanel variant={activeVariant} variantSelector={variantSelector} />
+      ) : null}
+
+      <BalancerEditorPanel
+        activeVariant={activeVariant}
+        balanceEditorRef={balanceEditorRef}
+        divisionGrid={divisionGrid}
+        selectedPlayerId={selectedPlayerId}
+        collapsedTeamIds={collapsedTeamIds}
+        poolPlayerCount={poolPlayers.length}
+        invalidPlayerCount={invalidPlayerStates.length}
+        canRunBalance={canRunBalance}
+        isRunPending={runBalanceMutation.isPending}
+        realtimeTopic={balancerRealtimeTopic(tournamentId)}
+        currentUserId={currentUserId}
+        workspaceId={workspaceId}
+        onChangePayload={handleBalancePayloadChange}
+        onSelectPlayer={handleOpenPlayerEditor}
+        onToggleTeam={handleToggleTeam}
+        onBrowseAvailable={handleFocusBrowseAvailable}
+        onReviewConflicts={handleFocusNeedsFixView}
+        onRunBalance={() => runBalanceMutation.mutate()}
+      />
+
+      <BalancerActionsPanel
+        activeVariant={activeVariant}
+        canRunBalance={canRunBalance}
+        isSavePending={saveBalanceMutation.isPending}
+        isExportPending={exportToTournamentMutation.isPending}
+        isBalanceSaved={isBalanceSaved}
+        isBalanceExported={isBalanceExported}
+        tournamentId={tournamentId}
+        onRunBalance={() => runBalanceMutation.mutate()}
+        onSaveBalance={() => saveBalanceMutation.mutate()}
+        onExportBalance={startTournamentExport}
+        onCopyNames={handleCopyNames}
+        onScreenshot={handleScreenshot}
+      />
+    </div>
+  );
 
   return (
     <>
@@ -692,118 +844,51 @@ export function BalancerMainPageClient() {
         open={isJsonImportOpen}
         onOpenChange={setIsJsonImportOpen}
         title="Import JSON"
-        description="Import a previously downloaded balance JSON into the selected tournament."
+        description="Load a previously downloaded balance JSON as a preview variant. Nothing is written to the tournament until you save or export it."
         steps={jsonImportSteps}
-        isRunning={importTeamsMutation.isPending}
+        isRunning={importBalanceMutation.isPending}
         summary={jsonImportSummary}
         error={jsonImportError}
         retryLabel="Retry import"
         onRetry={lastJsonImportFile ? () => startJsonImport(lastJsonImportFile) : undefined}
       />
 
-      {/* Renders into the sidebar footer via a portal; returns null when nobody is viewing. */}
+      {/* Renders into the tool top-bar via a portal; returns null when nobody is viewing. */}
       <BalancerPresenceStack userIds={presenceUserIds} workspaceId={workspaceId} />
 
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-3 pb-4">
-        <div
-          className={cn(
-            "grid min-h-0 flex-1 gap-3",
-            isPoolSidebarCollapsed
-              ? "xl:grid-cols-[72px_minmax(0,1fr)]"
-              : "xl:grid-cols-[460px_minmax(0,1fr)]"
-          )}
-        >
-          <BalancingPoolSidebar
-            ref={sidebarRef}
-            key={tournamentId}
-            collapsed={isPoolSidebarCollapsed}
-            onToggleCollapsed={() => setIsPoolSidebarCollapsed((current) => !current)}
-            allPlayerValidationStates={enrichedPlayerValidationStates}
-            applications={applications}
-            addableApplications={addableApplications}
-            registrationsById={registrationsById}
-            balancerStatusOptions={playerStatusOptions.balancer}
-            selectedPlayerId={selectedPlayerId}
-            onSelectPlayer={handleOpenPlayerEditor}
-            onAddFromApplication={(application) => addPlayerMutation.mutate(application)}
-            onSetPoolMembership={handleSetPoolMembership}
-            onSetBalancerStatus={handleSetBalancerStatus}
-            onBulkPoolMembership={handleBulkPoolMembership}
-            onBulkBalancerStatus={handleBulkBalancerStatus}
-            isAddingPlayer={addPlayerMutation.isPending}
-            actionsDisabled={quickPoolActionsPending}
-            missingRankCount={missingRankPlayerStates.length}
-            workspaceId={workspaceId ?? undefined}
-            workspaceBalancerConfig={workspaceBalancerConfig}
-          />
-
-          <div className="flex min-h-0 flex-col gap-3">
-            <PresetRunPanel
-              counters={[
-                { label: "Pool", value: poolPlayers.length, icon: Users },
-                { label: "Ready", value: readyPlayers.length, icon: CheckCircle2 },
-                { label: "Need Fix", value: invalidPlayerStates.length, icon: AlertTriangle },
-                { label: "Flex", value: flexPoolCount, icon: Shuffle }
-              ]}
-              presetOptions={visiblePresetOptions}
-              selectedPreset={selectedPreset}
-              onSelectPreset={handleSelectPreset}
-              invalidPlayerCount={invalidPlayerStates.length}
-              excludeInvalidPlayers={excludeInvalidPlayers}
-              onExcludeInvalidPlayersChange={setExcludeInvalidPlayers}
-              onOpenSettings={() => setIsConfigDrawerOpen(true)}
-              settingsDirty={isConfigDirty}
-              canRunBalance={canRunBalance}
-              onRunBalance={() => runBalanceMutation.mutate()}
-              isRunPending={runBalanceMutation.isPending}
-              onImportTeams={startJsonImport}
-              isImportPending={importTeamsMutation.isPending}
-              onExportPlayers={() => exportPlayersMutation.mutate()}
-              isExportPlayersPending={exportPlayersMutation.isPending}
-              jobStatus={jobState.status}
-              jobMessage={jobState.message}
-              jobProgress={jobState.progress}
-            />
-
-            {activeVariant ? (
-              <TeamDistributionPanel variant={activeVariant} variantSelector={variantSelector} />
-            ) : null}
-
-            <BalancerEditorPanel
-              activeVariant={activeVariant}
-              balanceEditorRef={balanceEditorRef}
-              divisionGrid={divisionGrid}
-              selectedPlayerId={selectedPlayerId}
-              collapsedTeamIds={collapsedTeamIds}
-              poolPlayerCount={poolPlayers.length}
-              invalidPlayerCount={invalidPlayerStates.length}
-              canRunBalance={canRunBalance}
-              isRunPending={runBalanceMutation.isPending}
-              realtimeTopic={balancerRealtimeTopic(tournamentId)}
-              currentUserId={currentUserId}
-              workspaceId={workspaceId}
-              onChangePayload={handleBalancePayloadChange}
-              onSelectPlayer={handleOpenPlayerEditor}
-              onToggleTeam={handleToggleTeam}
-              onBrowseAvailable={handleFocusBrowseAvailable}
-              onReviewConflicts={handleFocusNeedsFixView}
-              onRunBalance={() => runBalanceMutation.mutate()}
-            />
-
-            <BalancerActionsPanel
-              activeVariant={activeVariant}
-              canRunBalance={canRunBalance}
-              isSavePending={saveBalanceMutation.isPending}
-              isExportPending={exportToTournamentMutation.isPending}
-              tournamentId={tournamentId}
-              onRunBalance={() => runBalanceMutation.mutate()}
-              onSaveBalance={() => saveBalanceMutation.mutate()}
-              onExportBalance={startTournamentExport}
-              onCopyNames={handleCopyNames}
-              onScreenshot={handleScreenshot}
-            />
+      {/* The shell already insets the tool with `p-3 md:p-4`; a second bottom pad just wasted space. */}
+      <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
+        {isWideLayout ? (
+          <ResizablePanelGroup
+            direction="horizontal"
+            autoSaveId="balancer-pool-panel-layout"
+            className="min-h-0 flex-1"
+          >
+            <ResizablePanel
+              ref={sidebarPanelRef}
+              id="balancer-pool-sidebar-panel"
+              defaultSize={27}
+              minSize={20}
+              maxSize={45}
+              collapsible
+              collapsedSize={5}
+              onCollapse={() => setIsPoolSidebarCollapsed(true)}
+              onExpand={() => setIsPoolSidebarCollapsed(false)}
+              className="grid min-h-0"
+            >
+              {sidebarElement}
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel id="balancer-pool-content-panel" minSize={45} className="grid min-h-0 pl-3">
+              {balancerContentElement}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <div className="grid min-h-0 flex-1 gap-3">
+            {sidebarElement}
+            {balancerContentElement}
           </div>
-        </div>
+        )}
       </div>
     </>
   );

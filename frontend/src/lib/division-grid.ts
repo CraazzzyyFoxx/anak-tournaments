@@ -7,7 +7,7 @@ import type {
 type DivisionGridLike = Pick<DivisionGrid, "tiers"> | Pick<DivisionGridVersion, "tiers">;
 
 const DEFAULT_DIVISION_ICON_BASE =
-  "https://minio.craazzzyyfoxx.me/aqt/assets/divisions";
+  "https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions";
 
 const DEFAULT_DIVISION_GRID_TIERS: DivisionTier[] = (() => {
   const divisions = ["champion", "grandmaster", "master", "diamond", "platinum", "gold", "silver", "bronze"];

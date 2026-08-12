@@ -21,6 +21,7 @@
     "participants": "Участники",
     "matches": "Матчи",
     "heroes": "Герои",
+    "maps": "Карты",
     "standings": "Таблица",
     "bracket": "Сетка",
     "rolesList": "Роли",
@@ -29,6 +30,7 @@
     "bracketFullscreen": "Во весь экран",
     "bracketExitFullscreen": "Выйти из полноэкранного режима (Esc)",
     "profile": "Профиль",
+    "subscriptionColumn": "Подписка",
     "accountSettings": "Настройки аккаунта",
     "logout": "Выход",
     "language": "Язык",
@@ -74,6 +76,7 @@
     "withdrawDesc": "Ваша заявка будет помечена как отозванная, и вы не сможете зарегистрироваться на этот турнир снова.",
     "confirmWithdraw": "Подтвердить отзыв",
     "checkingIn": "Выполняется чек-ин...",
+    "checkInFailed": "Чек-ин не выполнен",
     "withdrawing": "Отзыв регистрации...",
     "checkIn": "Чек-ин",
     "withdraw": "Отозвать регистрацию",
@@ -127,6 +130,23 @@
     "profileOpen": "Профиль открыт",
     "profileClosed": "Профиль закрыт",
     "profileNotChecked": "Профиль не проверен",
+    "subscription": {
+      "satisfied": "Подписка подтверждена",
+      "refused": "Нет подписки",
+      "undetermined": "Подписка не проверена",
+      "active": "подписка активна",
+      "none": "нет подписки",
+      "unchecked": "не проверено",
+      "requiredAny": "Нужна активная подписка: {rule}",
+      "requiredAll": "Нужны активные подписки: {rule}",
+      "codeLabel": "Код из закрытого поста",
+      "codePlaceholder": "Вставьте код",
+      "codeSubmit": "Активировать",
+      "codeAccepted": "Код принят",
+      "linkDiscordCta": "Привяжите Discord, чтобы подтвердить подписку Boosty",
+      "reconnectTwitchCta": "Переподключите Twitch, чтобы подтвердить подписку",
+      "registrationBlocked": "Пока нельзя подать заявку: нужна активная подписка ({rule}). Оформите её на аккаунте, привязанном к профилю, и обновите форму."
+    },
     "divisionWithId": "Дивизион {id}",
     "stageWithId": "Этап {id}",
     "showingRange": "Показано {start}–{end} из {total}",
@@ -134,6 +154,7 @@
     "smurfDesc": "Все зарегистрированные смурф BattleTags этого участника.",
     "history": "История",
     "status": "Статус",
+    "actions": "Действия",
     "balancer": "Балансировщик",
     "admission": "Допуск",
     "admissionStatus": {
@@ -190,15 +211,82 @@
       "flanker": "ФЛК",
       "flex_dps": "ФД",
       "flex_support": "ФС"
-    }
+    },
+    "clearFilters": "Сбросить фильтры",
+    "now": "Сейчас",
+    "unassignedStage": "Без этапа",
+    "save": "Сохранить",
+    "delete": "Удалить",
+    "previous": "Назад",
+    "pagination": {
+      "label": "Постраничная навигация",
+      "previous": "Предыдущая страница",
+      "next": "Следующая страница",
+      "goToPage": "Перейти на страницу {page}"
+    },
+    "pageState": {
+      "error": {
+        "title": "Не удалось загрузить раздел",
+        "description": "Запрос не выполнен. Проверьте соединение и попробуйте снова."
+      },
+      "empty": {
+        "title": "Пока пусто",
+        "description": "Раздел наполнится, когда пройдут турниры."
+      },
+      "filteredEmpty": {
+        "title": "Ничего не найдено",
+        "description": "Под текущие фильтры не подходит ни одна строка."
+      },
+      "notFound": {
+        "title": "Не найдено",
+        "description": "Такой страницы не существует или она была удалена."
+      }
+    },
+    "searchLabel": "Поиск",
+    "filters": "Фильтры",
+    "openMenu": "Открыть меню аккаунта",
+    "signIn": "Войти",
+    "homeLink": "На главную",
+    "sourceOnGithub": "Исходный код на GitHub",
+    "skipToContent": "Перейти к содержимому",
+    "footer": {
+      "disclaimer": "{siteName} не связан с Blizzard Entertainment, Inc. и не одобрен ею.",
+      "getWorkspace": "Получить свой воркспейс",
+      "sectionsHeading": "Разделы",
+      "resourcesHeading": "Ресурсы",
+      "apiDocs": "API документация",
+      "copyright": "© {year} {siteName}. Все права защищены."
+    },
+    "placementSpark": {
+      "label": "Места: {summary}"
+    },
+    "matchLogs": {
+      "none": "Нет логов",
+      "noneAvailable": "Логи недоступны",
+      "available": "Логи доступны",
+      "download": "Скачать лог: {label}",
+      "downloadAll": "Скачать логи ({count})",
+      "title": "Логи матча",
+      "map": "Карта {index}"
+    },
+    "duration": {
+      "h": "ч",
+      "m": "м",
+      "s": "с"
+    },
+    "heroStats": {
+      "winrate": "Винрейт",
+      "games": "Игры",
+      "record": "Счёт",
+      "playtimeOnMap": "Время игры на этой карте",
+      "countedNote": "Игра засчитывается, если время на герое больше 60 с."
+    },
+    "sortDirection": "Направление сортировки: {current}. Переключить на {next}."
   },
   "registration": {
     "wizard": {
       "title": "Регистрация",
       "titleFor": "Регистрация на {name}",
-      "step1Desc": "Шаг 1 - Подтвердите игровые аккаунты.",
-      "step2Desc": "Шаг 2 - Выберите предпочитаемую роль.",
-      "step3Desc": "Шаг 3 - Дополнительная информация для организаторов.",
       "steps": {
         "accounts": "Аккаунты",
         "roles": "Роли",
@@ -209,10 +297,11 @@
         "smurfTagsRequired": "Добавьте хотя бы один смурф-аккаунт.",
         "discordRequired": "Требуется Discord.",
         "twitchRequired": "Требуется Twitch.",
+        "boostyRequired": "Требуется Boosty.",
         "primaryRoleRequired": "Выберите основную роль или включите Flex перед продолжением.",
         "fallbackRoleRequired": "Для этого турнира требуется хотя бы одна запасная роль.",
         "topHeroesRequired": "Выберите хотя бы одного топ-героя перед продолжением.",
-        "notesRequired": "Обязательное поле.",
+        "notesRequired": "Заполните примечания.",
         "fieldRequired": "Заполните обязательное поле: {label}.",
         "invalidFormat": "Неверный формат: {label}.",
         "verifiedNoAccount": "Привяжите подтверждённый аккаунт {label} через OAuth, чтобы зарегистрироваться.",
@@ -221,14 +310,13 @@
       }
     },
     "accounts": {
-      "title": "Ваши аккаунты",
-      "desc": "Мы автоматически заполнили ваши привязанные аккаунты. Измените их при необходимости.",
       "battleTag": "BattleTag",
       "smurfs": "Смурф-аккаунты",
       "discord": "Discord",
       "twitch": "Twitch",
       "addSmurfPlaceholder": "Добавить смурф BattleTag",
       "addSmurfButton": "Добавить",
+      "removeSmurf": "Удалить {tag}",
       "verifiedHint": "Выберите один из ваших подтверждённых через OAuth аккаунтов.",
       "verifiedNone": "Подтверждённый аккаунт {label} не привязан.",
       "verifiedLink": "Привязать {label} через OAuth",
@@ -239,48 +327,45 @@
       "useValue": "Использовать «{value}»",
       "discordPlaceholder": "имя пользователя",
       "twitchPlaceholder": "название канала",
+      "boosty": "Boosty",
+      "boostyPlaceholder": "никнейм",
       "verified": "Подтверждён",
       "noAccountsHint": "У вас пока нет привязанных аккаунтов.",
       "noAccountsHintDesc": "Привяжите Battle.net, Discord или Twitch в настройках профиля, чтобы автозаполнить и подтвердить их.",
       "noAccountsHintCta": "Привязать в настройках профиля"
     },
     "roles": {
-      "title": "Выберите свою роль",
-      "desc": "Сначала укажите вашу основную роль. Затем выберите запасные роли, на которые мы сможем вас поставить, если во время балансировки команд возникнет их нехватка.",
       "primary": {
-        "title": "Основная роль",
-        "desc": "Это роль, на которую вы будете назначены по умолчанию."
+        "title": "Основная роль"
       },
-      "secondary": {
-        "title": "Запасные роли",
-        "required": "Обязательно",
-        "optional": "Опционально",
-        "clearAll": "Очистить все",
-        "selectAll": "Выбрать все",
-        "descEmptyPrimary": "Сначала выберите основную роль, чтобы увидеть доступные варианты запасных ролей.",
-        "descFlex": "Flex уже охватывает все роли, поэтому запасные роли не требуются.",
-        "descFallback": "Это запасные роли. Если в команде не будет хватать игроков на одну из них, мы можем распределить вас туда.",
-        "emptyStateFlex": "Flex уже охватывает все роли, поэтому запасные роли не нужны для этой регистрации.",
-        "emptyStateChoosePrimary": "Сначала выберите основную роль. После этого мы покажем две запасные роли, на которые вас также можно будет назначить."
-      },
-      "flex": {
-        "title": "Flex (Любая роль)",
-        "desc": "Все роли с равным приоритетом"
+      "matrix": {
+        "hint": "Отметьте роли, на которых можете играть. Запасные роли используются при балансировке, если команде не хватает игрока на такую роль.",
+        "hintRequired": "Отметьте основную роль и хотя бы одну запасную. Запасные роли используются при балансировке, если команде не хватает игрока на такую роль.",
+        "hintForced": "На этом турнире каждый играет на любой роли, поэтому приоритеты не выбираются. При желании укажите специализацию и топ-героев для каждой роли.",
+        "hintAllRoles": "На этом турнире играют все роли, поэтому выберите ту, на которой хотите играть в приоритете — или «Флекс», если вам всё равно. На остальные вас всё равно поставят, если команде не хватает игрока. При желании укажите специализацию и топ-героев для каждой роли.",
+        "choiceLabel": "Приоритет",
+        "choiceFlex": "Флекс",
+        "columnRole": "Роль",
+        "columnPriority": "Приоритет",
+        "off": "Не играю",
+        "fallback": "Запасная",
+        "main": "Основная",
+        "priorityLabel": "Приоритет роли {role}",
+        "flexPreset": "Играю на любой роли",
+        "heroesLabel": "Топ-герои для роли {role}: выбрано {count} из {max}",
+        "heroesPickerLabel": "Выбор топ-героев для роли {role}",
+        "heroesAtMax": "Выбран максимум — {max}. Снимите одного, чтобы заменить."
       },
       "specialization": "Специализация",
       "roleSpecialization": "Специализация {role}",
-      "any": "Любой",
+      "any": "Любая",
       "topHeroes": {
         "title": "Топ героев",
-        "desc": "Выберите до {max} героев на каждую роль, на которых играете лучше всего.",
-        "anyRole": "Любая роль",
+        "desc": "Выберите до {max} героев, на которых играете лучше всего в этой роли.",
         "count": "{count}/{max}"
       }
     },
     "details": {
-      "title": "Дополнительные детали",
-      "descWithFields": "Почти готово! Заполните дополнительную информацию.",
-      "descNoFields": "Дополнительные поля не требуются. Вы готовы отправить заявку!",
       "streamPov": "Трансляция POV",
       "streamPovLabel": "Я буду стримить свой POV",
       "notes": "Примечания",
@@ -354,7 +439,17 @@
       "disconnect": "Отключить этот аккаунт OAuth",
       "disconnectAria": "Отключить {name}",
       "disconnectConfirm": "Отключить аккаунт {provider}? Вы сможете снова привязать его через OAuth позже.",
-      "footnote": "Аккаунты можно добавить только через OAuth, что также подтверждает их. Отключение убирает связь с OAuth (аккаунт остаётся неподтверждённым, пока вы не привяжете его снова); скрытие убирает его из публичного профиля. Полностью удалить аккаунт может только администратор."
+      "footnote": "Аккаунты можно добавить только через OAuth, что также подтверждает их. Отключение убирает связь с OAuth (аккаунт остаётся неподтверждённым, пока вы не привяжете его снова); скрытие убирает его из публичного профиля. Полностью убрать привязанный аккаунт из профиля может только администратор."
+    },
+    "danger": {
+      "title": "Опасная зона",
+      "deleteDesc": "Безвозвратно удалить эту учётную запись. Сессии, привязанные OAuth-подключения и API-ключи будут удалены, и вы сразу выйдете из аккаунта. Отменить это нельзя.",
+      "deleteKeeps": "Турнирная история сохраняется: матчи, статистика, заявки и результаты команд остаются в профиле игрока — он просто снова становится непривязанным. Привязанные OAuth-аккаунты после удаления можно привязать к другой учётной записи.",
+      "delete": "Удалить аккаунт",
+      "confirmTitle": "Удалить вашу учётную запись?",
+      "confirmBody": "Учётная запись, сессии, привязанные OAuth-подключения и API-ключи будут удалены безвозвратно. Турнирная история и профиль игрока сохранятся, но без владельца. Вы сразу выйдете из аккаунта.",
+      "confirmCancel": "Оставить аккаунт",
+      "confirmDelete": "Удалить безвозвратно"
     },
     "sessions": {
       "title": "Сессии",
@@ -425,7 +520,9 @@
       "pauseCompact": "ПАУЗА",
       "paused": "пауза",
       "autoCompact": "АВТО",
-      "autopicking": "автопик…"
+      "autopicking": "автопик…",
+      "remaining": "На пик осталось {seconds, plural, one {# секунда} few {# секунды} many {# секунд} other {# секунды}}",
+      "idle": "Таймер пика не запущен"
     },
     "empty": {
       "title": "Драфта пока нет",
@@ -539,9 +636,11 @@
     "pendingConfirmation": "Ожидает подтверждения",
     "disputed": "Спор",
     "matchScore": "Счет матча",
+    "bestOf": "Формат серии",
     "manualEntry": "Ручной ввод результата",
     "resultPresets": "Быстрый выбор",
     "status": "Статус",
+    "statusLockedHint": "У завершённого матча статус меняется только через переоткрытие результата.",
     "matchCloseness": "Близость матча",
     "closenessHint": "Редактируется только общий результат. Карты появятся после обработки логов.",
     "cancel": "Отмена",
@@ -563,7 +662,16 @@
       "Away sweep": "Сухая победа гостей"
     },
     "starsAria": "{count, plural, one {# звезда} few {# звезды} many {# звёзд} other {# звёзд}}",
-    "notSet": "не задано"
+    "notSet": "не задано",
+    "statuses": {
+      "open": "Открыт",
+      "pending": "Ожидает",
+      "completed": "Завершён"
+    },
+    "reopenResult": "Переоткрыть результат",
+    "reopening": "Переоткрываем…",
+    "resultReopened": "Результат переоткрыт",
+    "reopenErrorMessage": "Не удалось переоткрыть результат"
   },
   "matchReport": {
     "title": "Репорт матча",
@@ -572,18 +680,29 @@
     "howClose": "Насколько близкой была серия",
     "submit": "Отправить",
     "submitting": "Отправка...",
-    "submittedForConfirmation": "Результат отправлен на подтверждение",
+    "submittedForConfirmation": "Репорт отправлен",
     "submitErrorMessage": "Не удалось отправить",
-    "alreadyConfirmedTitle": "Результат уже подтверждён",
-    "alreadyConfirmedBody": "Результат этого матча подтверждён и больше не может быть изменён. Обратитесь к администратору, если нужна правка.",
-    "pendingSubmissionTitle": "Результат ожидает подтверждения",
-    "pendingSubmissionBody": "Результат этого матча уже отправлен и ждёт подтверждения второго капитана. Если он неверный, оспорьте его на странице матча.",
-    "confirmedSuccess": "Результат подтверждён",
-    "confirmErrorMessage": "Не удалось подтвердить",
-    "cannotConfirmOwnTitle": "Нельзя подтвердить свой результат",
-    "cannotConfirmOwnBody": "Этот результат должен подтвердить капитан другой команды.",
-    "nothingToConfirmTitle": "Нечего подтверждать",
-    "nothingToConfirmBody": "У этого матча больше нет результата, ожидающего подтверждения.",
+    "autoConfirmed": "Репорты совпали — результат подтверждён",
+    "autoDisputed": "Репорты расходятся — результат оспорен",
+    "confirmedLockedTitle": "Результат уже подтверждён",
+    "confirmedLockedBody": "Результат этого матча подтверждён и может быть изменён только администратором.",
+    "mapCodes": "Коды реплеев по картам",
+    "mapCodePlaceholder": "Код реплея",
+    "mapLabel": "Карта {index}",
+    "bothReportsTitle": "Репорты капитанов",
+    "homeReport": "Репорт хозяев",
+    "awayReport": "Репорт гостей",
+    "noReportYet": "Репорта пока нет",
+    "avgCloseness": "Средняя близость",
+    "reportOrEdit": "Отправить / изменить мой репорт",
+    "comment": "Комментарий",
+    "commentPlaceholder": "Что организаторам стоит знать об этом матче",
+    "commentRequiredError": "Комментарий обязателен",
+    "customFields": "Дополнительно",
+    "mapCodesRequiredHint": "Код нужен для каждой сыгранной карты",
+    "mapCodesRequiredError": "Укажите код для каждой сыгранной карты",
+    "fieldRequiredError": "Поле «{label}» обязательно",
+    "optional": "Необязательно",
     "qualityDescriptions": {
       "1": "В одни ворота",
       "2": "Почти в одну калитку",
@@ -601,6 +720,42 @@
       "toTheEnd": "10 - до последнего"
     },
     "qualityAria": "Качество матча {score}/10: {description}"
+  },
+  "matchReportFormAdmin": {
+    "title": "Форма репорта",
+    "description": "Выберите, какие поля капитаны заполняют при отправке результата матча.",
+    "builtInHeading": "Стандартные поля",
+    "builtInDescription": "Счёт серии обязателен всегда и не отключается.",
+    "customHeading": "Свои текстовые поля",
+    "customDescription": "Добавьте до 20 текстовых вопросов для капитанов.",
+    "enabledLabel": "Включено",
+    "requiredLabel": "Обязательно",
+    "fields": {
+      "closeness": "Качество матча",
+      "closenessHint": "Оценка от 1 до 10, насколько близкой была серия.",
+      "mapCodes": "Коды матчей",
+      "mapCodesHint": "Если обязательно, код нужен для каждой сыгранной карты.",
+      "comment": "Комментарий",
+      "commentHint": "Свободный комментарий капитана, до 1000 символов."
+    },
+    "addField": "Добавить поле",
+    "removeField": "Удалить поле",
+    "labelLabel": "Название",
+    "keyLabel": "Ключ",
+    "keyHint": "Строчные латинские буквы, цифры и подчёркивания. Используется для хранения ответов.",
+    "placeholderLabel": "Подсказка в поле",
+    "noCustomFields": "Своих полей пока нет.",
+    "maxFieldsReached": "Достигнут предел в 20 своих полей.",
+    "save": "Сохранить форму",
+    "saving": "Сохранение...",
+    "saved": "Форма репорта сохранена",
+    "saveError": "Не удалось сохранить форму репорта",
+    "errors": {
+      "labelRequired": "Укажите название",
+      "keyInvalid": "Начните с буквы; используйте только строчные латинские буквы, цифры и подчёркивания",
+      "keyDuplicate": "Этот ключ уже используется"
+    },
+    "loadError": "Не удалось загрузить форму репорта"
   },
   "rankAutofill": {
     "title": "Автозаполнение рангов",
@@ -1156,7 +1311,7 @@
       "createdRelative": "создано {relative}"
     },
     "meta": {
-      "title": "Аналитика турниров | {siteName}",
+      "title": "Аналитика турниров",
       "description": "Смотрите аналитику турниров на {siteName}."
     }
   },
@@ -1166,7 +1321,11 @@
     },
     "heading": {
       "all": "Все турниры",
-      "total": "{count, plural, one {всего #} few {всего #} many {всего #} other {всего #}}"
+      "shown": "{count, plural, one {# показан} few {# показано} many {# показано} other {# показано}}"
+    },
+    "row": {
+      "bracketAria": "Сетка турнира {name}",
+      "openAria": "Открыть турнир {name}"
     },
     "empty": {
       "title": "Турниры не найдены",
@@ -1180,9 +1339,7 @@
       "liveNow": "В эфире",
       "matchesInFlight": "{count, plural, one {# матч в игре} few {# матча в игре} many {# матчей в игре} other {# матчей в игре}}",
       "noMatchesInFlight": "Нет активных матчей",
-      "totalTournaments": "Всего турниров",
-      "activeCount": "{count, plural, one {# активный} few {# активных} many {# активных} other {# активных}}",
-      "teamsBalanced": "{count, plural, one {сбалансирована # команда} few {сбалансировано # команды} many {сбалансировано # команд} other {сбалансировано # команды}}"
+      "teamsBalancedLabel": "Команд сбалансировано"
     },
     "filters": {
       "standard": "Обычные",
@@ -1192,10 +1349,6 @@
         "oldest": "Сначала старые",
         "participants": "Больше участников"
       }
-    },
-    "card": {
-      "viewBracket": "Смотреть сетку",
-      "participantsCount": "{count, plural, one {# участник} few {# участника} many {# участников} other {# участников}}"
     },
     "featured": {
       "liveRightNow": "Сейчас в эфире",
@@ -1229,7 +1382,17 @@
     "tournamentsLoadError": "Не удалось загрузить турниры",
     "loadingTournaments": "Загрузка турниров...",
     "selectTournament": "Выберите турнир",
-    "jumpToTeam": "Перейти к команде",
+    "findTeam": "Найти команду",
+    "sortValue": "{field} — {order}",
+    "groupLabel": "Группа {name}",
+    "roster": {
+      "role": "Роль",
+      "battleTag": "BattleTag",
+      "division": "Див",
+      "newcomer": "Новый",
+      "newcomerRole": "Новая роль",
+      "avgSr": "Средний SR"
+    },
     "sortAvgSr": "Средний SR",
     "sortPlacement": "Место",
     "sortGroup": "Группа",
@@ -1357,7 +1520,6 @@
       "shotsHit": "Попаданий",
       "shotsMissed": "Промахов"
     },
-    "unassignedStage": "Без этапа",
     "matchesTotal": "{count, plural, one {# матч всего} few {# матча всего} many {# матчей всего} other {# матчей всего}}",
     "allTournaments": "Все турниры",
     "noMatchesFound": "Матчи не найдены.",
@@ -1385,6 +1547,17 @@
       "earnedSub": "Всего выдач за всё время"
     },
     "searchPlaceholder": "Поиск достижений…",
+    "meta": {
+      "description": "Все достижения на {siteName}."
+    },
+    "rarityName": {
+      "mythic": "Мифическое",
+      "legendary": "Легендарное",
+      "epic": "Эпическое",
+      "rare": "Редкое",
+      "uncommon": "Необычное",
+      "common": "Обычное"
+    },
     "results": "{count, plural, one {# результат} few {# результата} many {# результатов} other {# результата}}",
     "sectionCount": "{count, plural, one {# значок} few {# значка} many {# значков} other {# значка}}",
     "category": {
@@ -1474,6 +1647,7 @@
     "metaTitleFallback": "Турнир",
     "metaDescriptionFallback": "Обзор турнира.",
     "sectionsNav": "Разделы турнира",
+    "bracketRegion": "Сетка — прокрутите по горизонтали, чтобы увидеть все раунды",
     "sortTeams": "Сортировать команды",
     "rankHistory": "История рангов",
     "allFieldsVisible": "Все поля видны в таблице",
@@ -1503,7 +1677,8 @@
         "participants": "Загружаем участников турнира",
         "matches": "Загружаем матчи турнира",
         "heroes": "Загружаем статистику героев",
-        "standings": "Загружаем турнирную таблицу"
+        "standings": "Загружаем турнирную таблицу",
+        "maps": "Загружаем пул карт турнира"
       }
     },
     "participants": {
@@ -1566,6 +1741,10 @@
     "byTheNumbers": "В цифрах",
     "workspaces": "Рабочие пространства",
     "communitiesOnPlatform": "Сообщества на платформе",
+    "getWorkspaceCard": {
+      "title": "Свой воркспейс",
+      "description": "Узнайте, как подключить своё сообщество"
+    },
     "seasonOverview": "Обзор сезона",
     "communityDashboard": "Панель сообщества",
     "avgDivisionDesc": "Средний дивизион по каждой роли за все турниры.",
@@ -1581,6 +1760,28 @@
     "standingsSnapshot": "Срез таблицы",
     "viewStandings": "Смотреть таблицу",
     "colDiff": "Разн."
+  },
+  "getWorkspace": {
+    "title": "Как получить свой воркспейс",
+    "lead": "Воркспейс — изолированная турнирная площадка, которую можно оформить под своё сообщество.",
+    "features": {
+      "domain": {
+        "title": "Свой адрес",
+        "description": "Поддомен или подключённый вами собственный домен."
+      },
+      "theme": {
+        "title": "Свой стиль",
+        "description": "Отдельная цветовая тема под брендинг вашего сообщества."
+      },
+      "content": {
+        "title": "Отдельный контент",
+        "description": "Ваши турниры и статистика изолированы от остальных воркспейсов."
+      }
+    },
+    "action": {
+      "title": "Без самостоятельной регистрации",
+      "description": "Сейчас воркспейсы создаются администратором платформы вручную. Свяжитесь с ним и опишите сообщество, которое хотите завести."
+    }
   },
   "workspace": {
     "eyebrow": "Рабочее пространство",
@@ -1620,6 +1821,8 @@
     "selectSeason": "Выберите сезон",
     "stacks": "Стаки",
     "searchUser": "Поиск игрока...",
+    "standingsTableLabel": "Таблица OWAL. Прокрутите по горизонтали, чтобы увидеть все дни и статистику.",
+    "stacksTableLabel": "Стаки OWAL. Прокрутите по горизонтали, чтобы увидеть все столбцы.",
     "only3Days": "Только 3+ дней",
     "playerOne": "Игрок 1",
     "playerTwo": "Игрок 2",
@@ -1635,7 +1838,8 @@
     "wins": "W",
     "losses": "L",
     "draws": "D",
-    "winRatio": "Винрейт"
+    "winRatio": "Винрейт",
+    "title": "OWAL"
   },
   "notConfigured": {
     "title": "Рабочее пространство не настроено",
@@ -1658,11 +1862,16 @@
     "round": "Раунд {n}",
     "lowerRound": "Нижняя R{n}",
     "viewMatch": "Посмотреть матч",
+    "viewMapPool": "Пул карт",
+    "pregameRoom": "Открыть предигровую комнату",
+    "mapPool": {
+      "title": "Пул карт",
+      "description": "{home} vs {away}"
+    },
     "pending": "Ожидает",
     "disputed": "Спор",
     "editMatch": "Редактировать матч",
     "reportMatch": "Репорт матча",
-    "confirmMatch": "Подтвердить результат",
     "doubleElimination": "Двойное выбывание",
     "singleElimination": "Одиночное выбывание"
   },
@@ -1682,7 +1891,11 @@
     "granularityPlaceholder": "Детализация",
     "daily": "По дням",
     "hourly": "По часам",
-    "allPoints": "Все точки"
+    "allPoints": "Все точки",
+    "groupByLabel": "Группировка",
+    "accountLabel": "Аккаунт Battle.net",
+    "roleLabel": "Роль",
+    "platformLabel": "Платформа"
   },
   "encounters": {
     "meta": {
@@ -1691,11 +1904,10 @@
     },
     "dataUnavailable": "Данные о встречах временно недоступны. Повторная попытка в фоновом режиме.",
     "views": "Виды",
-    "unassigned": "Не назначено",
-    "tournamentNumber": "Турнир {number}",
     "searchPlaceholder": "Поиск по команде, игроку или паре…",
     "roundNum": "Раунд {round}",
     "roundShort": "Р{round}",
+    "bestOfShort": "Bo{count}",
     "mapsCount": "{count, plural, one {# карта} few {# карты} many {# карт} other {# карт}}",
     "aria": {
       "views": "Виды встреч",
@@ -1753,7 +1965,10 @@
       "maps": "Карты",
       "closeness": "Напряжённость",
       "media": "Медиа",
-      "played": "Сыграно"
+      "played": "Сыграно",
+      "format": "Формат",
+      "when": "Когда",
+      "logs": "Логи"
     },
     "savedView": {
       "saved": "Вид сохранён",
@@ -1762,7 +1977,8 @@
       "promptDefault": "Текущий вид",
       "deleteAria": "Удалить сохранённый вид {name}",
       "confirmDelete": "Удалить сохранённый вид «{name}»?",
-      "saveCurrent": "Сохранить текущий вид"
+      "saveCurrent": "Сохранить текущий вид",
+      "deleteTitle": "Удалить сохранённый вид"
     },
     "insights": {
       "title": "Сводка",
@@ -1838,23 +2054,106 @@
       "tie": "Ничья",
       "winner": "Победитель",
       "loser": "Проигравший",
-      "vetoRoom": "Комната вето"
+      "pregameRoom": "Предигровая комната",
+      "heroTitle": "{home} <em>против</em> {away}",
+      "verdictWin": "Победа в серии: {team}",
+      "verdictDraw": "Серия сыграна вничью",
+      "verdictPending": "Серия не завершена",
+      "ledeWin": "{winner} выиграла серию {winnerScore}–{loserScore} у {loser} за {maps, plural, one {# карту} few {# карты} many {# карт} other {# карты}}.",
+      "ledeDraw": "Серия завершилась вничью после {maps, plural, one {# карты} few {# карт} many {# карт} other {# карты}}.",
+      "ledePending": "Серия Bo{format} ещё не доиграна.",
+      "placementShort": "Место",
+      "pipsAria": "Результаты карт: {summary}",
+      "pipUnplayed": "не сыграна",
+      "challonge": "Challonge",
+      "statMaps": "Сыграно карт",
+      "statMapsSub": "{format} · {home}–{away} по картам",
+      "statDuration": "Время серии",
+      "statDurationSub": "в среднем {value} на карту",
+      "statNoTiming": "Время карт не зафиксировано",
+      "statClosenessSub": "По отчётам капитанов",
+      "statNoCloseness": "Оценка не выставлена",
+      "scheduledAt": "Назначено",
+      "startedAt": "Начало",
+      "endedAt": "Окончание",
+      "confirmedAt": "Подтверждено",
+      "scoreboard": "Результат серии",
+      "mapsMeta": "Сыграно {played} из {slots} слотов",
+      "mapNotPlayed": "Не сыграна",
+      "mapNotPlayedHint": "Серия закончилась раньше этой карты",
+      "mapInProgress": "Идёт сейчас",
+      "mapInProgressHint": "Результат этой карты ещё не внесён",
+      "mapPendingHint": "Предусмотрена форматом, до неё ещё не дошли",
+      "mapScoreAria": "{home} {homeScore}, {away} {awayScore}",
+      "openScoreboard": "Статистика",
+      "rosters": "Ростеры",
+      "rostersMeta": "Замены — с отступом под заменённым игроком",
+      "rosterAria": "Ростер команды {team}",
+      "seriesStats": "Статистика серии",
+      "seriesStatsMeta": "Суммарно за {maps, plural, one {# карту} few {# карты} many {# карт} other {# карты}}",
+      "seriesStatsNoLogs": "Логи этой серии не разобраны, поэтому статистика по игрокам недоступна.",
+      "seriesTableTitle": "Итоги игроков",
+      "seriesTableSub": "Вся серия · те же колонки, что и на отдельной карте",
+      "statsMapsCounted": "Учтено карт",
+      "statsMapsCountedValue": "{counted} из {total}",
+      "statsScope": "Область",
+      "statsScopeValue": "Вся серия",
+      "statsRoster": "Игроков",
+      "statsPartial": "Показано {counted} из {total} карт — остальные не удалось загрузить.",
+      "colMaps": "КАРТЫ",
+      "colMapsTitle": "Карты, на которых играл этот игрок",
+      "reports": "Отчёты капитанов",
+      "reportsMeta": "Подано {count, plural, one {# отчёт} few {# отчёта} many {# отчётов} other {# отчёта}}",
+      "reportsDisagree": "Капитаны указали разный счёт. Официальный результат определяет организатор.",
+      "reportAria": "Отчёт команды {team}",
+      "reportBy": "Отправил",
+      "reportedScore": "Указанный счёт",
+      "reportedCloseness": "Качество матча",
+      "reportedClosenessValue": "{value} из 10",
+      "reportedCodes": "Коды лобби",
+      "reportedComment": "Комментарий",
+      "pregame": "Предигровая фаза",
+      "pregameMap": "Вето карт",
+      "pregameHero": "Баны героев",
+      "pregameProgress": "{done} из {total} шагов",
+      "pregameSteps": "Шаги",
+      "pregamePicked": "Выбрано",
+      "pregameBanned": "Забанено",
+      "pregameFirst": "Первый ход",
+      "pregameSeeds": "Посев (хозяева / гости)",
+      "pregameTurn": "Текущий ход",
+      "readinessHome": "Готовность хозяев",
+      "readinessAway": "Готовность гостей"
     },
     "match": {
-      "roundTab": "Раунд {round}",
       "mapAlt": "Карта",
       "gamemodeAlt": "Режим игры",
       "playtime": "Время игры",
-      "logName": "Имя лога",
       "openNewTab": "Открыть в новой вкладке",
-      "allMatch": "Весь матч"
+      "openStats": "Открыть статистику карты {map}",
+      "source": "Источник",
+      "sourceLogParser": "Лог игры",
+      "sourceCaptainReport": "Отчёт капитана",
+      "code": "Код",
+      "logName": "Лог",
+      "nonCompetitive": "Вне соревновательного пула"
     },
     "team": {
-      "placement": "Место: {value}",
       "colName": "Имя",
       "colDivision": "Дивизион",
+      "colDivisionShort": "ДИВ",
       "colNew": "Новый",
-      "colNewRole": "Новая роль"
+      "colNewShort": "НОВ",
+      "colNewTitle": "Первый турнир на платформе",
+      "colNewRole": "Новая роль",
+      "colNewRoleShort": "РОЛЬ",
+      "colNewRoleTitle": "Первый турнир на этой роли",
+      "newcomerYes": "Новичок",
+      "newcomerNo": "Не новичок",
+      "newRoleYes": "Новичок на этой роли",
+      "newRoleNo": "Не новичок на этой роли",
+      "captain": "Капитан",
+      "substitution": "Замена"
     },
     "chart": {
       "title": "Обзор убийств и ассистов",
@@ -1889,7 +2188,15 @@
           "notConfiguredTitle": "Вето не настроено",
           "notConfiguredHint": "Организатор ещё не задал правила вето для этого матча. Загляните позже.",
           "teamsUnknownTitle": "Команды ещё не определены",
-          "teamsUnknownHint": "Комната вето откроется, когда обе команды матча станут известны."
+          "teamsUnknownHint": "Комната вето откроется, когда обе команды матча станут известны.",
+          "slotCountMismatchTitle": "Пул карт не покрывает эту серию",
+          "slotCountMismatchHint": "В этом матче играется больше карт, чем слотов в настроенном пуле, поэтому вето не может открыться. Организатору нужно добавить недостающие слоты — ожидание тут не поможет.",
+          "slotUnderfilledTitle": "В слоте слишком мало карт",
+          "slotUnderfilledHint": "В одном из слотов этого матча меньше двух карт-кандидатов, банить там нечего. Организатору нужно его заполнить, чтобы вето открылось.",
+          "notReadyTitle": "Ожидание готовности капитанов",
+          "notReadyHint": "Комната вето откроется, когда оба капитана подтвердят готовность.",
+          "waitingMapTitle": "Ожидание карты этого раунда",
+          "waitingMapHint": "Эта фаза откроется, когда будет выбрана карта этого раунда серии."
         },
         "steps": {
           "title": "Шаги вето",
@@ -1911,7 +2218,8 @@
             "available": "Доступна",
             "banned": "Забанена",
             "picked": "Выбрана",
-            "played": "Сыграна"
+            "played": "Сыграна",
+            "remaining": "Осталась"
           },
           "by": {
             "home": "хозяева",
@@ -1953,6 +2261,15 @@
           "resetConfirmAction": "Сбросить",
           "resetSuccess": "Сессия вето сброшена",
           "resetFailed": "Не удалось сбросить сессию вето"
+        },
+        "slot": {
+          "label": "Слот {n}",
+          "current": "текущий слот",
+          "resolved": "определён",
+          "upcoming": "откроется позже",
+          "locked": "Слот {n} откроется, когда решатся предыдущие слоты.",
+          "inPlayCount": "{count, plural, one {# слот в игре} few {# слота в игре} many {# слотов в игре} other {# слота в игре}}",
+          "reserve": "Резерв по регламенту при ничьей: {map}"
         }
       }
     },
@@ -1961,16 +2278,410 @@
       "none": "Нет результата",
       "pendingConfirmation": "Ожидает подтверждения",
       "confirmed": "Подтверждён",
-      "disputed": "Оспорен",
-      "home": "Дома",
-      "away": "В гостях",
-      "submit": "Отправить результат",
-      "submitting": "Отправка...",
-      "submittedScore": "Отправленный счёт: {home} - {away}",
-      "confirm": "Подтвердить результат",
-      "confirming": "Подтверждение...",
-      "dispute": "Оспорить",
-      "disputedNotice": "Результат оспорен. Администратор рассмотрит спор."
+      "disputed": "Оспорен"
+    }
+  },
+  "pickBan": {
+    "room": {
+      "map": {
+        "title": "Пул карт",
+        "itemNumber": "Карта №{id}"
+      },
+      "hero": {
+        "title": "Пул героев",
+        "itemNumber": "Герой №{id}"
+      },
+      "title": "Предигровая комната",
+      "phase": {
+        "map": "Вето карт",
+        "hero": "Баны героев",
+        "current": "текущая фаза",
+        "done": "выполнено",
+        "report": "Результат карты",
+        "rail": "Ход раунда",
+        "next": "далее"
+      },
+      "board": {
+        "label": "Счёт матча",
+        "seed": "Посев",
+        "seedNone": "—",
+        "opens": "Открывает раунд",
+        "score": "Серия",
+        "bestOf": "Bo{n}",
+        "toWin": "до {n} побед"
+      },
+      "series": {
+        "label": "Карты этой серии",
+        "awaiting": "ждёт результат",
+        "upcoming": "ещё не сыграна"
+      },
+      "back": "Назад",
+      "loadError": "Не удалось загрузить состояние",
+      "retry": "Повторить",
+      "statusChip": {
+        "active": "Идёт",
+        "completed": "Завершено",
+        "cancelled": "Отменено"
+      },
+      "firstBanner": "Первым ходит {team}",
+      "seedBadge": "Посев #{seed}",
+      "seedUnknown": "Посев —",
+      "seedSource": {
+        "bracket_slot": "по сетке",
+        "standings": "по таблице",
+        "fallback_home": "по умолчанию (хозяева)",
+        "admin": "назначено админом"
+      },
+      "side": {
+        "home": "хозяева",
+        "away": "гости"
+      },
+      "notConfiguredTitle": "Не настроено",
+      "notConfiguredHint": "Организатор ещё не задал правила для этого матча. Загляните позже.",
+      "teamsUnknownTitle": "Команды ещё не определены",
+      "teamsUnknownHint": "Комната откроется, когда обе команды матча станут известны.",
+      "slotCountMismatchTitle": "Пул не покрывает эту серию",
+      "slotCountMismatchHint": "В этом матче больше раундов, чем слотов в настроенном пуле. Организатору нужно добавить недостающие слоты — ожидание тут не поможет.",
+      "slotUnderfilledTitle": "В слоте слишком мало кандидатов",
+      "slotUnderfilledHint": "В одном из слотов этого матча меньше двух кандидатов, банить там нечего. Организатору нужно его заполнить, чтобы комната открылась.",
+      "notReadyTitle": "Ожидание готовности капитанов",
+      "notReadyHint": "Комната откроется, когда оба капитана подтвердят готовность.",
+      "ready": {
+        "button": "Я готов",
+        "sending": "Подтверждение...",
+        "confirmed": "Вы готовы",
+        "waitingOpponent": "Ждём подтверждения от другого капитана",
+        "stateReady": "Готов",
+        "statePending": "Не готов",
+        "failed": "Не удалось подтвердить готовность"
+      },
+      "steps": {
+        "title": "Шаги",
+        "ban": "Бан",
+        "pick": "Пик",
+        "protect": "Защита",
+        "decider": "Решающий",
+        "done": "выполнено",
+        "current": "текущий шаг",
+        "pending": "ожидает"
+      },
+      "timer": {
+        "label": "Время на ход",
+        "expired": "Время вышло"
+      },
+      "status": {
+        "available": "Доступен",
+        "banned": "Забанен",
+        "picked": "Выбран",
+        "protected": "Защищён",
+        "played": "Сыгран",
+        "remaining": "Остался"
+      },
+      "by": {
+        "home": "хозяева",
+        "away": "гости",
+        "decider": "решающий",
+        "admin": "админ"
+      },
+      "protectedBy": {
+        "home": "защищено хозяевами",
+        "away": "защищено гостями"
+      },
+      "turn": "Ход: {side} — {action}",
+      "action": {
+        "ban": "забанить",
+        "pick": "выбрать",
+        "protect": "защитить"
+      },
+      "deciderResolving": "Определяется решающий",
+      "completedBanner": "Последовательность завершена",
+      "commandBar": "Панель управления пик-баном",
+      "captain": {
+        "yourTurn": "Ваш ход",
+        "selectHint": "Выберите элемент из пула",
+        "confirmBan": "Забанить {item}",
+        "confirmPick": "Выбрать {item}",
+        "confirmProtect": "Защитить {item}",
+        "cancel": "Отмена",
+        "sending": "Отправка...",
+        "actionFailed": "Не удалось выполнить действие"
+      },
+      "round": {
+        "label": "Раунд {n}",
+        "current": "текущий раунд",
+        "resolved": "определён",
+        "upcoming": "откроется позже",
+        "locked": "Раунд {n} откроется, когда решатся предыдущие раунды.",
+        "inPlayCount": "{count, plural, one {# раунд в игре} few {# раунда в игре} many {# раундов в игре} other {# раунда в игре}}",
+        "reserve": "Резерв по регламенту при ничьей: {item}"
+      },
+      "electOpener": {
+        "title": "Выберите, кто открывает следующий раунд",
+        "hint": "Ваша сторона проиграла предыдущую карту. Выберите, кто банит первым в этом раунде.",
+        "chooseHome": "Открывают хозяева",
+        "chooseAway": "Открывают гости",
+        "confirm": "Подтвердить",
+        "sending": "Отправка...",
+        "failed": "Не удалось отправить выбор"
+      },
+      "mapReport": {
+        "title": "Сообщить результат этой карты",
+        "yourScore": "Счёт вашей команды",
+        "opponentScore": "Счёт соперника",
+        "submit": "Отправить отчёт",
+        "sending": "Отправка...",
+        "failed": "Не удалось отправить отчёт",
+        "waitingOpponent": "Ожидание отчёта второго капитана",
+        "disputed": "Отчёты расходятся",
+        "disputedHint": "Ваш отчёт не совпадает с отчётом соперника. Администратор разрешит расхождение.",
+        "resolved": "Результат подтверждён — переход к следующей карте"
+      },
+      "admin": {
+        "title": "Управление пик-баном (админ)",
+        "sideLabel": "Сторона",
+        "actionLabel": "Действие",
+        "confirm": "Выполнить действие",
+        "selectItemFirst": "Сначала выберите элемент в пуле",
+        "actFailed": "Не удалось выполнить действие за сторону",
+        "reset": "Сбросить сессию",
+        "resetConfirmTitle": "Сбросить эту пик-бан сессию?",
+        "resetConfirmHint": "Сессия и пул будут удалены и пересозданы с заново определёнными посевами. Все выполненные действия будут потеряны.",
+        "resetConfirmAction": "Сбросить",
+        "resetSuccess": "Сессия сброшена",
+        "resetFailed": "Не удалось сбросить сессию"
+      },
+      "waitingMapTitle": "Ожидание карты этого раунда",
+      "waitingMapHint": "Баны героев откроются, когда будет выбрана карта этого раунда серии — героев банят под известную карту.",
+      "mapResult": {
+        "eyebrow": "Сыграйте и сообщите счёт",
+        "hint": "Оба капитана сообщают счёт независимо. Совпали — карта зачтена и открываются баны следующей; разошлись — решает администратор.",
+        "pending": "{team} ещё не сообщила результат",
+        "filed": "{team} сообщила результат",
+        "filedScore": "{team} сообщила {home}–{away}",
+        "claim": {
+          "waiting": "Нет отчёта",
+          "sealed": "Скрыт до второго",
+          "filed": "Отчёт отправлен"
+        },
+        "verdict": {
+          "waiting": "Ждём оба отчёта",
+          "agree": "Отчёты совпали — карта зачтена",
+          "disagree": "Отчёты разошлись — решает админ"
+        },
+        "report": "Сообщить результат",
+        "amend": "Изменить мой результат"
+      },
+      "heroBans": {
+        "eyebrow": "Баны героев на эту карту",
+        "hint": "Отключите этих героев в лобби до начала карты. Защищённые остаются в игре — их отмечает щит.",
+        "none": "Банов на эту карту нет",
+        "state": {
+          "ban": "Забанен:",
+          "protect": "Защищён:"
+        }
+      },
+      "undo": {
+        "label": "Отменить последнее действие — нужно согласие обоих капитанов",
+        "ask": "Предложить отмену",
+        "waiting": "Ждём согласия {team} на отмену",
+        "withdraw": "Отозвать",
+        "asked": "{team} предлагает отменить это",
+        "agree": "Согласиться",
+        "decline": "Отказать",
+        "failed": "Не удалось отменить последнее действие"
+      },
+      "rule": {
+        "blocked": "Эта сторона уже использовала своё действие на эту роль в этом раунде",
+        "pointless": "Оппонент уже забанил эту роль — защищать её бессмысленно",
+        "repeat": "Ваша сторона уже банила это ранее в серии"
+      },
+      "seriesDone": {
+        "title": "Решать больше нечего",
+        "hint": "Все карты серии выбраны, забаны и подтверждены. Дальше результат за организаторами."
+      },
+      "finalReport": {
+        "title": "Отчёт по матчу",
+        "hint": "Пики и баны закончены. Это турнирный отчёт по матчу: подтвердите счёт серии, укажите коды матчей и всё остальное, что просят организаторы. После отправки вернём вас туда, откуда вы пришли."
+      }
+    },
+    "admin": {
+      "title": "Предигровая фаза",
+      "intro": "Набор правил задаёт, что банят и выбирают капитаны перед матчем и в каком порядке. Это единая система конфигурации для двух каталогов — карт и героев — с независимыми наборами правил ниже для каждого. Матч берёт самый узкий набор, который его покрывает: правила раунда важнее правил стадии, а правила стадии — важнее общих для турнира.",
+      "readOnly": "У вас нет прав менять эти наборы правил.",
+      "loadFailed": "Не удалось загрузить наборы правил.",
+      "retry": "Повторить",
+      "kindMap": "Вето карт",
+      "kindHero": "Баны героев",
+      "addMapConfig": "Добавить правила карт",
+      "addHeroConfig": "Добавить правила героев",
+      "noConfigs": "Наборов правил пока нет",
+      "noConfigsMapHint": "Без него комната вето карт останется закрытой для всех матчей турнира.",
+      "noConfigsHeroHint": "Без него комната банов героев останется закрытой для всех матчей турнира.",
+      "tournamentLevel": "Весь турнир",
+      "scopeStage": "{stage} — все раунды",
+      "scopeStageRound": "{stage} — раунд {round}",
+      "unknownStage": "Стадия №{id}",
+      "editorNewMap": "Новые правила карт",
+      "editorNewHero": "Новые правила героев",
+      "editorEditMap": "Правила карт",
+      "editorEditHero": "Правила героев",
+      "catalogueLoading": "Загрузка каталога…",
+      "catalogueEmpty": "Ничего не найдено по этому названию.",
+      "pickerSearchLabel": "Название",
+      "scopeSection": "1 · Где действуют правила",
+      "scopeSectionHint": "Начните с правил для всего турнира и добавляйте узкие наборы только там, где стадия или раунд должны отличаться.",
+      "scopeLabel": "Действует для",
+      "scopeHint": "Все матчи турнира, если их не покрывает более узкий набор правил.",
+      "roundLabel": "Раунд",
+      "roundAll": "Все раунды этой стадии",
+      "roundNumber": "Раунд {n}",
+      "roundNumberLower": "Нижняя сетка, раунд {n}",
+      "roundHint": "Ограничить правила одним раундом стадии.",
+      "roundHintDisabled": "Доступно, когда правила действуют для одной стадии.",
+      "roundHintLoading": "Проверяем запланированную сетку стадии…",
+      "roundHintUnknown": "Сетка этой стадии ещё не построена, и команды в неё пока не вписаны — раунды пока не известны. Добавьте команды в стадию или пока ограничьте правила всей стадией.",
+      "scopeTaken": "Для этой области уже есть набор правил. Сохранение заменит его.",
+      "poolSection": "2 · Из чего выбирают капитаны",
+      "poolSectionHint": "Кандидаты, доступные матчу, и то, как они сгруппированы.",
+      "modeLabel": "Форма пула",
+      "modePool": "Один общий пул",
+      "modeSlots": "Своя группа на раунд",
+      "modePoolHint": "Один пул и один проход шагов на всю серию: капитаны банят и выбирают из одного списка.",
+      "modeSlotsHint": "Отдельная группа кандидатов на каждый раунд серии; каждая независимо банится до одного выжившего.",
+      "poolMapLabel": "Пул карт",
+      "poolHeroLabel": "Пул героев",
+      "poolCount": "{count, plural, =0 {ничего не выбрано} other {выбрано #}}",
+      "poolHint": "Порядок важен: в этом порядке комната покажет кандидатов.",
+      "poolAddMaps": "Добавить карты",
+      "poolAddHeroes": "Добавить героев",
+      "searchMaps": "Поиск карт…",
+      "searchHeroes": "Поиск героев…",
+      "poolRemove": "Убрать {item}",
+      "poolSelectAllVisible": "Выбрать все",
+      "poolClearVisible": "Снять все",
+      "groupFilterLabel": "Фильтр по группе",
+      "groupFilterAll": "Все",
+      "groupFilterUngrouped": "Без группы",
+      "slotCountMismatch": "Настроено {slots, plural, one {# группа} few {# группы} many {# групп} other {# группы}}, а в этой области играется {maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}}. Лишние группы игнорируются, из-за недостающих комната не откроется.",
+      "slotTitle": "Раунд {n}",
+      "slotCandidates": "{count, plural, =0 {нет кандидатов} one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
+      "slotRemove": "Убрать раунд {n}",
+      "addSlot": "Добавить раунд",
+      "slotReserve": "Резерв:",
+      "slotReserveAria": "Резерв для раунда {n}",
+      "slotReserveNone": "Нет",
+      "slotReserveHint": "Подменяет кандидатов этого раунда, если они закончились. Сам кандидатом быть не может.",
+      "orderSection": "3 · Порядок шагов",
+      "orderSectionHint": "Кто и когда ходит — от первого бана до последнего пика.",
+      "orderLabel": "Порядок шагов",
+      "orderBracket": "Из сетки",
+      "orderCustom": "Свой",
+      "orderBracketHint": "Строится для каждого матча по длине серии: два стартовых бана, затем поочерёдные пики, затем решающий, если длина нечётная.",
+      "orderCustomHint": "Ваш точный список шагов — применяется как есть ко всем матчам этой области, независимо от длины серии.",
+      "orderPreview": "Построенный порядок",
+      "orderSteps": "Шаги",
+      "orderRoundsPlayed": "{count, plural, one {играется # раунд} few {играется # раунда} many {играется # раундов} other {играется # раунда}}",
+      "orderNeedsPool": "Порядок строится по пулу — добавьте кандидатов выше, чтобы его увидеть.",
+      "orderCustomMismatch": "Этот порядок играет {played, plural, one {# раунд} few {# раунда} many {# раундов} other {# раунда}}, а матчи этой области играют {expected, plural, one {# раунд} few {# раунда} many {# раундов} other {# раунда}}.",
+      "seriesSource": {
+        "round": "В этом раунде играется Bo{bestOf}.",
+        "stage": "Во всех раундах этой стадии играется Bo{bestOf}.",
+        "variesByRound": "Длина серии различается по раундам стадии; в примере показан Bo{bestOf}. Каждый матч всё равно получит свой порядок.",
+        "variesByMatch": "Длина серии зависит от матча; в примере показан Bo{bestOf}. Каждый матч всё равно получит свой порядок."
+      },
+      "sequenceEmpty": "Шагов пока нет.",
+      "stepNumber": "Шаг {n}",
+      "stepActionLabel": "Действие шага {n}",
+      "stepSideLabel": "Команда шага {n}",
+      "stepMoveUp": "Переместить шаг {n} выше",
+      "stepMoveDown": "Переместить шаг {n} ниже",
+      "stepRemove": "Убрать шаг {n}",
+      "addStep": "Добавить шаг",
+      "deciderAuto": "Последний оставшийся кандидат",
+      "action": {
+        "ban": "Бан",
+        "pick": "Пик",
+        "protect": "Защита",
+        "decider": "Решающий"
+      },
+      "side": {
+        "first": "Команда 1",
+        "second": "Команда 2"
+      },
+      "rulesSection": "4 · Правила комнаты",
+      "rulesSectionHint": "Кто открывает, что переносится между раундами и сколько длится ход.",
+      "firstPickRule": "Открывает раунд 1",
+      "firstPickRuleHint": "Как выбирается открывающая сторона раунда 1, когда результатов ещё нет. Дальше действует ротация ниже.",
+      "firstPickRuleValue": {
+        "higher_seed": "Открывает старший посев"
+      },
+      "firstBanRotation": "Следующие раунды открывает",
+      "firstBanRotationHint": {
+        "fixed": "Сторона, открывшая раунд 1, открывает каждый раунд.",
+        "alternate": "Открывающая сторона меняется каждый раунд, независимо от результатов.",
+        "result_winner_first": "Следующий раунд открывает сторона, победившая в предыдущем.",
+        "result_loser_first": "Следующий раунд открывает сторона, проигравшая предыдущий.",
+        "result_loser_choice": "Сторона, проигравшая предыдущий раунд, сама выбирает, кто открывает следующий; комната ждёт её ответа."
+      },
+      "firstBanRotationValue": {
+        "fixed": "Та же сторона каждый раунд",
+        "alternate": "Стороны по очереди",
+        "result_winner_first": "Победитель предыдущего раунда",
+        "result_loser_first": "Проигравший предыдущий раунд",
+        "result_loser_choice": "Выбор проигравшего"
+      },
+      "noRepeatScope": "Повторы между раундами",
+      "noRepeatScopeHint": {
+        "none": "Ничего не переносится: ту же карту или героя можно забанить снова в следующем раунде.",
+        "encounter": "Как только любая сторона забанила или защитила кандидата, он выбывает для обеих сторон до конца серии.",
+        "encounter_same_side": "Как только сторона забанила или защитила кандидата, только она больше не может его брать; соперник — может."
+      },
+      "noRepeatScopeValue": {
+        "none": "Разрешены",
+        "encounter": "Запрещены для обеих сторон",
+        "encounter_same_side": "Запрещены только для той же стороны"
+      },
+      "turnTimer": "Таймер хода",
+      "turnTimerUnit": "секунд",
+      "turnTimerPlaceholder": "Без лимита",
+      "turnTimerClear": "Убрать лимит",
+      "turnTimerHint": "Обратный отсчёт, который видит капитан на своём ходу. Оставьте пустым — ограничения по времени не будет, капитаны думают столько, сколько нужно.",
+      "allowProtect": "Разрешить шаг защиты",
+      "allowProtectHint": "Позволяет стороне закрыть одного кандидата на раунд, чтобы соперник не смог его забанить. Работает только там, где шаг порядка — «Защита».",
+      "protectWithoutStep": "Шаг защиты включён, но ни один шаг этого порядка его не использует, поэтому ничего не изменится. Переключите порядок шагов на «Свой» и добавьте шаг «Защита».",
+      "uniqueRole": "По одному герою на роль для каждой стороны в раунде",
+      "uniqueRoleHint": "Не даёт стороне взять двух героев одной роли в одном раунде.",
+      "validationTitle": "Исправьте перед сохранением",
+      "validation": {
+        "emptyPool": "Добавьте в пул хотя бы одного кандидата.",
+        "emptySequence": "Добавьте в порядок хотя бы один шаг.",
+        "multipleDeciders": "Решающий шаг может быть только один.",
+        "deciderNotLast": "Решающий шаг должен быть последним.",
+        "noPickOrDecider": "В порядке нужен хотя бы один пик или решающий шаг.",
+        "sequenceLongerThanPool": "В порядке {steps} шагов, а в пуле только {items} кандидатов.",
+        "emptySlots": "Добавьте хотя бы одну группу раунда.",
+        "slotTooFewCandidates": "В раунде {slot} нужно минимум два кандидата.",
+        "heroDecider": "В порядке банов героев нет решающего шага: после банов решать уже нечего."
+      },
+      "save": "Сохранить правила",
+      "saving": "Сохранение…",
+      "saved": "Правила сохранены",
+      "saveFailed": "Не удалось сохранить правила",
+      "edit": "Изменить",
+      "cancel": "Отмена",
+      "delete": "Удалить правила",
+      "deleteConfigAria": "Удалить правила для {scope}",
+      "deleteConfirm": "Удалить этот набор правил?",
+      "deleteDescription": "Правила для «{scope}» будут удалены. Матчи этой области перейдут на следующий более широкий набор, а если его нет — потеряют комнату.",
+      "deleted": "Набор правил удалён",
+      "deleteFailed": "Не удалось удалить набор правил",
+      "summaryPool": "{count, plural, =0 {пул пуст} one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
+      "summarySlots": "{slots, plural, one {# раунд} few {# раунда} many {# раундов} other {# раунда}}, {candidates, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
+      "summaryOrderBracket": "Порядок из сетки",
+      "summaryOrderCustom": "Свой порядок",
+      "summaryTimerOff": "Без лимита хода",
+      "summaryTimerOn": "{seconds} с на ход",
+      "orderHeroHint": "Шаги одного раунда: баны героев повторяются для каждой карты серии, поэтому этот список проигрывается для каждой карты, а не растягивается на всю серию."
     }
   },
   "users": {
@@ -1998,7 +2709,9 @@
         "maps": "Карты",
         "avgPlace": "Ср. место",
         "playoffs": "Плей-офф {place}",
-        "deltaTitle": "Последний турнир против карьеры"
+        "deltaTitle": "Последний турнир против карьеры",
+        "trendUp": "Рост",
+        "trendDown": "Снижение"
       },
       "tabs": {
         "overview": "Обзор",
@@ -2023,6 +2736,30 @@
       "atoms": {
         "recentForm": "Недавняя форма",
         "mapsTitle": "{label}: {count, plural, one {# карта} few {# карты} many {# карт} other {# карты}}"
+      },
+      "empty": {
+        "eyebrow": "Карьера · не начата",
+        "title": "Пока ни одного <em>турнира</em>",
+        "description": "{name} ещё не участвовал ни в одном турнире, поэтому статистику показать нечего. После первого турнира профиль заполнится сам.",
+        "unlocks": {
+          "tournaments": "Места",
+          "matches": "История матчей",
+          "heroes": "Статистика героев",
+          "achievements": "Достижения"
+        },
+        "browseTournaments": "Смотреть турниры",
+        "browsePlayers": "Все игроки"
+      },
+      "share": {
+        "heading": "Карточка игрока OWT",
+        "rolePlayer": "Игрок",
+        "division": "Див {division}",
+        "events": "{count, plural, one {# турнир} few {# турнира} many {# турниров} other {# турнира}}",
+        "winrate": "Винрейт",
+        "avgPlace": "Ср. место",
+        "titles": "Титулы",
+        "mapsWon": "Карт выиграно",
+        "formLast": "Форма · последние {count}"
       }
     },
     "overview": {
@@ -2031,17 +2768,13 @@
       "loss": "L",
       "career": {
         "title": "Карьера",
-        "tournaments": "Турниры",
         "tournamentsWon": "Побед на турнирах",
-        "winrate": "Винрейт",
-        "maps": "Карты",
         "closeness": "Близость",
         "closenessGlossary": "Насколько равными были ваши матчи в среднем — выше значит более близкая игра.",
-        "avgPlacement": "Среднее место",
         "avgPlayoffPlace": "Среднее место в плей-офф",
         "avgGroupPlace": "Среднее место в группе",
         "finishes": "Распределение мест",
-        "events": "{count, plural, one {# ивент} few {# ивента} many {# ивентов} other {# ивента}}",
+        "placements": "{count, plural, one {# место} few {# места} many {# мест} other {# места}}",
         "finish": {
           "first": "1-е",
           "second": "2-е",
@@ -2049,14 +2782,14 @@
           "topHalf": "Верхняя половина",
           "bottom": "Нижняя половина"
         },
-        "verdictPodium": "Подиум в {pct}% случаев ({count, plural, one {# ивент} few {# ивента} many {# ивентов} other {# ивента}})."
+        "verdictPodium": "Подиум в {pct}% случаев ({count, plural, one {# зафиксированное место} few {# зафиксированных места} many {# зафиксированных мест} other {# зафиксированных места}})."
       },
       "mostPlayed": {
         "title": "Самые играемые герои"
       },
       "topHeroes": {
         "title": "Топ героев",
-        "played": "сыграно {count}",
+        "playedByTime": "сыграно {count} · топ по времени",
         "lowSample": "мало игр",
         "lowSampleTitle": "Скрыто при менее чем {games} играх",
         "vsAvgTitle": "Ваш % побед против среднего по всем игрокам на этом герое",
@@ -2064,6 +2797,7 @@
           "hero": "Герой",
           "role": "Роль",
           "games": "Игр",
+          "time": "Время",
           "winrate": "% побед",
           "kda": "KDA",
           "dmg10": "Урон/10",
@@ -2102,11 +2836,6 @@
         "subtitle": "{maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}} · {tournaments, plural, one {# турнир} few {# турнира} many {# турниров} other {# турнира}}",
         "main": "Основная",
         "ofPool": "от пула",
-        "short": {
-          "tank": "Т",
-          "damage": "Дамаг",
-          "support": "Сап"
-        },
         "signatureTitle": "Коронный герой по ролям",
         "games": "{count, plural, one {# игра} few {# игры} many {# игр} other {# игры}}",
         "kda": "KDA {value}"
@@ -2116,7 +2845,7 @@
         "dialogSubtitle": "{count, plural, one {# уникальный тиммейт} few {# уникальных тиммейта} many {# уникальных тиммейтов} other {# уникальных тиммейта}} · {maps, plural, one {# карта вместе} few {# карты вместе} many {# карт вместе} other {# карты вместе}}",
         "you": "Вы",
         "edgesHint": "Толщина связей — по числу совместных турниров",
-        "wrHint": "полоса — винрейт вместе",
+        "wrHint": "Полоса — винрейт вместе",
         "playedMaps": "{count}× · {maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
         "footer": "{count, plural, one {# уникальный} few {# уникальных} many {# уникальных} other {# уникальных}} · {maps, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
         "searchPlaceholder": "Поиск тиммейтов…",
@@ -2129,11 +2858,12 @@
           "wr": "WR",
           "kda": "KDA",
           "mvp": "MVP"
-        }
+        },
+        "searchLabel": "Поиск тиммейтов"
       },
       "leaderboard": {
         "open": "Открыть таблицу лобби · {stat}",
-        "vsLeader": "полоса = относительно лидера",
+        "vsLeader": "Полоса — относительно лидера",
         "lowerIsBetter": "меньше — лучше",
         "yourRank": "Твой ранг: #{rank} из {total} · топ {pct}%",
         "you": "ты"
@@ -2145,11 +2875,11 @@
         "playtimeNoHours": "{minutes}м в игре",
         "mapWinrate": "винрейт по картам",
         "lobbyRank": "Ранг в лобби",
-        "percentileHint": "полоса = перцентиль · полнее — лучше",
+        "percentileHint": "Полоса — ранг в лобби · полнее лучше",
         "rankTop": "Топ {pct}%",
         "players": "{count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}}",
         "mapResults": "Результаты карт",
-        "mapResultsAggregate": "агрегат · порядок карт не сохранён",
+        "mapResultsAggregate": "Суммарный итог · порядок карт не сохранён",
         "mapWon": "Карта выиграна",
         "mapLost": "Карта проиграна",
         "stat": {
@@ -2166,7 +2896,6 @@
     },
     "heroes": {
       "searchStats": "Поиск по статам…",
-      "recordLegend": "♔ = рекорд среди всех игроков",
       "recordTitle": "Рекорд среди всех игроков",
       "noStatsMatch": "Нет статов по запросу",
       "col": {
@@ -2175,7 +2904,8 @@
         "bestYou": "Лучший (вы)",
         "avg10": "Сред. /10",
         "bestAll": "Лучший (все)",
-        "global10": "Глоб. /10"
+        "global10": "Глоб. /10",
+        "delta": "Отклонение от среднего по всем"
       },
       "radar": {
         "dmg": "УРОН",
@@ -2225,7 +2955,9 @@
       },
       "played": "{time} наиграно",
       "poolShare": "{pct}% от пула",
-      "playtimeShare": "Доля тайма"
+      "playtimeShare": "Доля тайма",
+      "searchHeroes": "Поиск героев…",
+      "removeAxis": "Убрать ось {stat}"
     },
     "maps": {
       "overallWinrate": "Общий винрейт",
@@ -2257,7 +2989,8 @@
       "colWinrate": "Винрейт",
       "colRecord": "Счёт",
       "colGames": "Игры",
-      "noMaps": "Нет карт по заданным фильтрам"
+      "noMaps": "Нет карт по заданным фильтрам",
+      "searchLabel": "Поиск карт"
     },
     "matches": {
       "loadError": "Не удалось загрузить матчи. Повторите попытку позже.",
@@ -2279,7 +3012,6 @@
       "allOpponents": "Все соперники",
       "colOpponent": "Соперник",
       "colWinrate": "% побед",
-      "tTag": "T {number}",
       "mapLabel": "Карта {number}",
       "overperformanceBadge": "Сверх ожиданий",
       "mvp": {
@@ -2294,7 +3026,8 @@
       "colMvp": "MVP",
       "colCloseness": "Напр.",
       "colLogs": "Логи",
-      "noMatches": "Нет матчей по текущему фильтру"
+      "noMatches": "Нет матчей по текущему фильтру",
+      "searchOpponentLabel": "Поиск соперника"
     },
     "tournaments": {
       "title": "История турниров",
@@ -2385,7 +3118,7 @@
         "subtitle": "{count, plural, one {# турнир} few {# турнира} many {# турниров} other {# турнира}} · место относительно числа команд",
         "axisTop": "топ",
         "axisLast": "посл.",
-        "dotTitle": "Т#{number} · место {placement}/{count}",
+        "dotTitle": "{name} · место {placement}/{count}",
         "legend": {
           "first": "1-е место",
           "podium": "Подиум",
@@ -2442,7 +3175,8 @@
         "earnedIn": "Получено в",
         "earnedCount": "· получено ×{count}",
         "earnedNoDetails": "Получено {count}× — данные о турнире или матче не сохранены."
-      }
+      },
+      "searchLabel": "Поиск достижений"
     },
     "list": {
       "meta": {
@@ -2593,9 +3327,6 @@
       "playtime": "Время игры",
       "avgPlaytime": "Среднее время",
       "selectUserPrompt": "Выберите игрока выше, чтобы начать сравнение",
-      "durationH": "ч",
-      "durationM": "м",
-      "durationS": "с",
       "allRoles": "Все роли",
       "comparingAgainstUser": "Сравнение с {name}",
       "comparingAgainstSelected": "Сравнение с выбранным игроком",
@@ -2644,8 +3375,6 @@
     "heroesCompare": {
       "selectHeroPrompt": "Выберите героя выше, чтобы ранжировать всех игроков, кто на нём играл.",
       "allTournaments": "Все турниры",
-      "sortAscending": "Сортировать по возрастанию",
-      "sortDescending": "Сортировать по убыванию",
       "stat": {
         "elims": "Убийства / 10",
         "healing": "Хил / 10",
@@ -2683,7 +3412,10 @@
         "scope": "область",
         "playersCount": "<em>{count}</em> {count, plural, one {игрок} few {игрока} many {игроков} other {игроков}}",
         "noData": "Нет данных по этому герою.",
-        "noDataInTournament": "Нет данных по этому герою в этом турнире."
+        "noDataInTournament": "Нет данных по этому герою в этом турнире.",
+        "rank": "Место",
+        "player": "Игрок",
+        "selectStat": "Изменить статистику столбца: {stat}"
       },
       "hero": {
         "healing": "Хил",
@@ -2699,7 +3431,7 @@
         "usersBreadcrumb": "Игроки",
         "breadcrumb": "Сравнение героев",
         "title": "Кто играет <em>лучше</em> всех?",
-        "lede": "Выберите героя и ранжируйте всех игроков, кто на нём играл. Каждый столбец ранжирует один и тот же состав независимо — так что лидер по убийствам и лидер по хилу могут быть разными людьми, бок о бок."
+        "lede": "Выберите героя и ранжируйте всех игроков, кто на нём играл. Единый порядок строк во всех столбцах — нажмите заголовок любого столбца, чтобы отсортировать всю таблицу по нему."
       }
     }
   },
@@ -2760,6 +3492,7 @@
     },
     "workspaces": "Рабочие пространства",
     "switchWorkspace": "Сменить рабочее пространство",
+    "openWorkspace": "Открыть {name}",
     "activeEvents": {
       "title": "Активные события",
       "badge": "{count, plural, one {# активный} few {# активных} many {# активных} other {# активных}}",
@@ -2772,7 +3505,8 @@
       "minChars": "Введите минимум 2 символа.",
       "clear": "Очистить поиск",
       "resultsLabel": "Результаты поиска игроков"
-    }
+    },
+    "mobileMenuTitle": "Навигация по сайту"
   },
   "draftAdmin": {
     "title": "Управление драфтом",
@@ -2805,6 +3539,8 @@
     "sessionNumber": "Сессия №{id}",
     "configLocked": "Сессия уже создана, поэтому размер состава и формат зафиксированы. Чтобы изменить их, завершите или отмените эту сессию.",
     "teamSize": "Итоговый размер состава",
+    "rosterShapeHint": "Форма ростера и вытекающее из неё число раундов задаются в настройках турнира.",
+    "openTournamentSettings": "Открыть настройки турнира",
     "teamCount": "Количество команд",
     "teamCountHint": "Далее потребуется выбрать столько же капитанов.",
     "rounds": "Раунды",
@@ -2813,15 +3549,33 @@
     "customPickTime": "Произвольное время на пик в секундах",
     "format": "Формат драфта",
     "formats": {
-      "snake": { "title": "Змейка", "description": "После каждого раунда направление меняется." },
-      "linear": { "title": "Линейный", "description": "Во всех раундах сохраняется один порядок." },
-      "custom": { "title": "Свой", "description": "Для каждого раунда можно выбрать отдельное правило." }
+      "snake": {
+        "title": "Змейка",
+        "description": "После каждого раунда направление меняется."
+      },
+      "linear": {
+        "title": "Линейный",
+        "description": "Во всех раундах сохраняется один порядок."
+      },
+      "custom": {
+        "title": "Свой",
+        "description": "Для каждого раунда можно выбрать отдельное правило."
+      }
     },
     "autopick": "Стратегия автоматического пика",
     "autopicks": {
-      "best_fit": { "title": "Лучшее соответствие", "description": "Учитывает нужную роль и силу игрока, сохраняя возможность корректно завершить драфт." },
-      "role_need": { "title": "Нужная роль", "description": "В первую очередь закрывает самую важную для команды роль." },
-      "best_available": { "title": "Лучший доступный", "description": "Выбирает сильнейший безопасный вариант из оставшегося пула." }
+      "best_fit": {
+        "title": "Лучшее соответствие",
+        "description": "Учитывает нужную роль и силу игрока, сохраняя возможность корректно завершить драфт."
+      },
+      "role_need": {
+        "title": "Нужная роль",
+        "description": "В первую очередь закрывает самую важную для команды роль."
+      },
+      "best_available": {
+        "title": "Лучший доступный",
+        "description": "Выбирает сильнейший безопасный вариант из оставшегося пула."
+      }
     },
     "advanced": "Расширенные настройки",
     "allowOverride": "Разрешить вмешательство администратора",
@@ -2844,7 +3598,12 @@
     "missingAccounts": "Нет связанного аккаунта",
     "excludedPlayers": "Исключены / не одобрены",
     "roleCoverage": "Покрытие заявленных ролей",
-    "roles": { "tank": "Танк", "dps": "Урон", "support": "Поддержка" },
+    "roles": {
+      "tank": "Танк",
+      "dps": "Урон",
+      "support": "Поддержка",
+      "flex": "Флекс"
+    },
     "blocker": "Блокирующая проблема",
     "blocked": "Заблокировано",
     "ready": "Готово",
@@ -2860,25 +3619,43 @@
     "captainsSelected": "Выбрано капитанов",
     "searchCaptains": "Поиск по BattleTag или имени…",
     "roleFilter": "Фильтр по роли",
-    "allRoles": "Все роли",
+    "captainSort": "Сортировка капитанов",
+    "captainSorts": {
+      "rank_desc": "Рейтинг: по убыванию",
+      "rank_asc": "Рейтинг: по возрастанию",
+      "name": "Имя (А–Я)"
+    },
     "selectCaptain": "Выбрать {name} капитаном",
     "removeCaptain": "Убрать капитана {name}",
-    "noCaptainsFound": "Подходящие игроки не найдены.",
+    "noCaptainsFound": "Ни один игрок не подходит под этот поиск. Очистите поиск или снимите фильтр по роли.",
     "selectedTeams": "Выбранные команды",
     "selectCaptainsHint": "Выберите капитанов из пула, чтобы настроить команды.",
     "teamName": "Название команды (необязательно)",
     "captainOrder": "Порядок капитанов",
     "orders": {
-      "weakest_first": { "title": "Сначала слабейшие", "description": "Капитаны с меньшим рейтингом получают более ранние позиции." },
-      "strongest_first": { "title": "Сначала сильнейшие", "description": "Капитаны с большим рейтингом получают более ранние позиции." },
-      "random": { "title": "Случайно с seed", "description": "Сохранённый seed позволяет точно воспроизвести результат." },
-      "manual": { "title": "Вручную", "description": "Перетащите капитанов в нужном порядке." }
+      "weakest_first": {
+        "title": "Сначала слабейшие",
+        "description": "Капитаны с меньшим рейтингом получают более ранние позиции."
+      },
+      "strongest_first": {
+        "title": "Сначала сильнейшие",
+        "description": "Капитаны с большим рейтингом получают более ранние позиции."
+      },
+      "random": {
+        "title": "Случайно с seed",
+        "description": "Сохранённый seed позволяет точно воспроизвести результат."
+      },
+      "manual": {
+        "title": "Вручную",
+        "description": "Перетащите капитанов в нужном порядке."
+      }
     },
     "newRandomSeed": "Создать новый случайный seed",
     "moveCaptain": "Переместить капитана {name}",
     "schedulePreview": "Предпросмотр порядка по раундам",
     "validatingDraft": "Сервер выполняет dry-run и проверяет достижимость ролей…",
     "previewFailed": "Не удалось проверить драфт",
+    "previewFailedHint": "Проверьте пул и выбор капитанов, затем снова нажмите «Продолжить», чтобы повторить проверку.",
     "reviewChecks": {
       "pool": "Достаточно допущенных игроков",
       "captains": "Число капитанов совпадает с числом команд",
@@ -2902,14 +3679,16 @@
     "readyToStartHint": "Откройте доску капитанам и запускайте, когда все подключатся.",
     "notReadyToStartHint": "Вернитесь к настройке и устраните дефицит игроков или ролей.",
     "startDraft": "Запустить драфт",
+    "startConfirmTitle": "Запустить драфт",
+    "startConfirmDescription": "Доски всех капитанов станут активными, и таймер первого пика запустится сразу. Драфт можно будет поставить на паузу, но вернуть его в состояние готовности нельзя.",
     "openLiveBoard": "Открыть live-доску",
-    "changeAndReseed": "Изменить и пересобрать",
+    "editSetup": "Изменить настройку",
     "back": "Назад",
     "continue": "Продолжить",
-    "makeReady": "Посеять и подготовить",
-    "confirmReseed": "Подтвердить пересборку",
-    "cancel": "Отмена",
-    "reseedConfirmTitle": "Заменить текущий посев драфта?",
+    "seedDraft": "Посеять драфт",
+    "keepEditing": "Продолжить настройку",
+    "discardSetup": "Отменить настройку",
+    "reseedConfirmTitle": "Заменить текущий посев драфта",
     "reseedConfirmDescription": "Команды, игроки и будущие пики будут пересобраны по проверенной конфигурации. Драфт ещё не начался, поэтому завершённые live-пики не изменятся.",
     "fixStepErrors": "Исправьте параметры этого шага перед продолжением.",
     "captainCountError": "Выберите ровно {count} капитанов.",
@@ -2919,7 +3698,7 @@
     "draftSeeded": "Посев сохранён и проверен",
     "draftStarted": "Драфт запущен",
     "startFailed": "Не удалось запустить драфт",
-    "cancelSetupTitle": "Отменить настройку драфта?",
+    "cancelSetupTitle": "Отменить настройку драфта",
     "cancelSetupDescription": "Несохранённые параметры, порядок капитанов и предпросмотр будут очищены. Серверная сессия драфта ещё не создана.",
     "loadFailed": "Не удалось загрузить данные драфта",
     "loadFailedHint": "Проверьте соединение и повторите попытку.",
@@ -2929,24 +3708,50 @@
     "liveSummary": "Завершено пиков: {completed} из {total} · {seconds} сек. на пик",
     "systemPauseReason": "Драфт остановлен системой: {reason}",
     "realtimeActive": "Обновления в реальном времени активны",
-    "previousDraft": "Предыдущий драфт",
-    "previousDraftHint": "Эта сессия доступна только для чтения. Ниже можно создать новую.",
     "openBoard": "Открыть доску",
     "lifecycleSuccess": "Действие выполнено: {action}",
+    "roundsShort": "{rounds, plural, one {# раунд} few {# раунда} many {# раундов} other {# раунда}}",
+    "history": {
+      "title": "История драфтов",
+      "hint": "Все сессии, созданные для этого турнира. Ненужные можно удалить.",
+      "empty": "Для этого турнира ещё не создано ни одной сессии драфта.",
+      "loadFailed": "Не удалось загрузить историю драфтов.",
+      "delete": "Удалить сессию драфта №{id}",
+      "deleteConfirm": "Удалить навсегда",
+      "cancelFirst": "Сначала отмените драфт, потом удаляйте.",
+      "confirmTitle": "Удалить сессию драфта №{id}?",
+      "confirmDescription": "Команды, пул игроков, все пики и журнал действий этой сессии будут удалены безвозвратно. Команды, уже экспортированные в турнир, останутся.",
+      "deleted": "Сессия драфта №{id} удалена",
+      "deleteFailed": "Не удалось удалить сессию драфта"
+    },
     "controlRoom": {
       "title": "Пульт управления драфтом",
       "description": "Следите за выполнимостью, подключением капитанов и исключительными действиями организатора на одном экране.",
       "adminCoordinate": "ADMIN / DRAFT-{id}",
-      "status": { "live": "Идёт", "paused": "Пауза", "completed": "Завершён", "cancelled": "Отменён", "ready": "Готов", "setup": "Настройка" },
+      "status": {
+        "live": "Идёт",
+        "paused": "Пауза",
+        "completed": "Завершён",
+        "cancelled": "Отменён",
+        "ready": "Готов",
+        "setup": "Настройка"
+      },
       "format": "Формат",
       "teamSize": "Размер состава",
       "connection": "Realtime",
-      "connectionState": { "idle": "Ожидание", "connecting": "Подключение", "connected": "Подключено", "reconnecting": "Переподключение" },
+      "connectionState": {
+        "idle": "Ожидание",
+        "connecting": "Подключение",
+        "connected": "Подключено",
+        "reconnecting": "Переподключение"
+      },
       "pickProgress": "Прогресс пиков",
       "round": "Раунд",
       "clock": "Таймер",
       "systemPause": "Системная пауза",
-      "blockedReason": { "role_shortage": "Больше не существует корректного распределения ролей. Добавьте игроку недостающую роль, затем продолжите драфт вручную." },
+      "blockedReason": {
+        "role_shortage": "Больше не существует корректного распределения ролей. Добавьте игроку недостающую роль, затем продолжите драфт вручную."
+      },
       "resolveRoles": "Исправить нехватку ролей",
       "currentPick": "Текущая операция",
       "noCurrentPick": "Нет текущего пика",
@@ -2956,11 +3761,16 @@
       "teams": "Команды",
       "availablePlayers": "Доступные игроки",
       "viewers": "Анонимные зрители",
-      "feasibilityUnavailable": "Состояние выполнимости временно недоступно.",
+      "feasibilityUnavailable": "Состояние выполнимости временно недоступно. Оно обновляется само — перезагрузите страницу, если оно не появится.",
       "feasible": "Драфт можно корректно завершить",
       "infeasible": "Обнаружена нехватка ролей",
       "slotCoverage": "Закрыто ролевых слотов: {matched} из {total}",
-      "roles": { "tank": "Танк", "dps": "Урон", "support": "Поддержка" },
+      "roles": {
+        "tank": "Танк",
+        "dps": "Урон",
+        "support": "Поддержка",
+        "flex": "Флекс"
+      },
       "deficit": "не хватает {missing} · доступно {eligible}",
       "captainPresence": "Подключение капитанов",
       "captainPresenceCount": "Подключено {online} из {total}",
@@ -2976,10 +3786,22 @@
         "export": "Экспортировать команды"
       },
       "confirm": {
-        "autopick": { "title": "Выполнить автопик от администратора?", "description": "Сервер выберет лучший безопасный вариант и сразу завершит текущий пик." },
-        "rollback": { "title": "Откатить последний завершённый пик?", "description": "Игрок вернётся в пул, последующие состояния сбросятся, а драфт останется на паузе до ручного продолжения." },
-        "cancel": { "title": "Отменить этот драфт?", "description": "Сессия станет финальной, и её нельзя будет продолжить. Данные сохранятся для аудита." },
-        "export": { "title": "Экспортировать итоговые команды?", "description": "Составы драфта будут записаны в команды турнира. Повторный экспорт безопасен и идемпотентен." }
+        "autopick": {
+          "title": "Выполнить автопик от администратора",
+          "description": "Сервер выберет самый сильный безопасный вариант за текущего капитана и сразу закроет пик. Капитан не сможет это отменить."
+        },
+        "rollback": {
+          "title": "Откатить последний пик",
+          "description": "Выбранный игрок вернётся в пул, пик снова перейдёт капитану этой команды, а драфт останется на паузе до ручного продолжения."
+        },
+        "cancel": {
+          "title": "Отменить драфт",
+          "description": "Доски всех капитанов сразу закроются, собранные команды будут отброшены, и сессию нельзя будет продолжить. Завершённые пики останутся доступны для аудита."
+        },
+        "export": {
+          "title": "Экспортировать итоговые команды",
+          "description": "Каждый собранный состав будет записан в команды турнира и заменит их текущих игроков. Повторный экспорт даёт тот же результат."
+        }
       },
       "actionSuccess": {
         "pause": "Драфт поставлен на паузу",
@@ -2990,20 +3812,25 @@
         "cancel": "Драфт отменён",
         "export": "Команды экспортированы"
       },
-      "dismiss": "Назад",
-      "confirmAction": "Подтвердить действие",
+      "dismiss": "Оставить как есть",
       "overrideTitle": "Переопределить текущий пик",
       "overrideDescription": "Доступны только безопасные пары игрока и роли, подтверждённые сервером. Действие записывается в приватный аудит.",
       "overrideOption": "Игрок и роль",
       "overrideSelect": "Выберите безопасный вариант",
       "overrideReason": "Причина",
-      "overrideReasonPlaceholder": "Почему требуется вмешательство организатора?"
+      "overrideReasonPlaceholder": "Почему требуется вмешательство организатора?",
+      "overrideIncomplete": "Выберите безопасную пару игрока и роли и укажите причину перед переопределением пика."
     },
     "roleConflict": {
       "title": "Добавить игроку недостающую роль",
       "description": "Изменение применяется только к снимку драфта и не меняет исходную регистрацию. Перед сохранением проверьте выполнимость.",
       "unmatchedSlots": "Незакрытые слоты команд и ролей",
-      "roles": { "tank": "Танк", "dps": "Урон", "support": "Поддержка" },
+      "roles": {
+        "tank": "Танк",
+        "dps": "Урон",
+        "support": "Поддержка",
+        "flex": "Флекс"
+      },
       "player": "Оставшийся игрок",
       "selectPlayer": "Выберите игрока",
       "declaredRoles": "Заявленные роли",
@@ -3019,7 +3846,12 @@
       "commitFailed": "Не удалось сохранить роль игрока",
       "committed": "Роль добавлена. Драфт остался на паузе.",
       "previewOnly": "Предпросмотр",
-      "impact": { "resolved": "Нехватка ролей устранена", "improved": "Выполнимость улучшилась", "unchanged": "Выполнимость не изменилась", "worse": "Выполнимость ухудшилась" },
+      "impact": {
+        "resolved": "Нехватка ролей устранена",
+        "improved": "Выполнимость улучшилась",
+        "unchanged": "Выполнимость не изменилась",
+        "worse": "Выполнимость ухудшилась"
+      },
       "before": "До",
       "after": "После",
       "preview": "Проверить результат",
@@ -3048,14 +3880,26 @@
       "loadingName": "Загрузка турнира",
       "publicBoard": "Публичный экран"
     },
-    "status": { "setup": "Настройка", "ready": "Готов", "live": "Идёт", "paused": "Пауза", "completed": "Завершён", "cancelled": "Отменён" },
+    "status": {
+      "setup": "Настройка",
+      "ready": "Готов",
+      "live": "Идёт",
+      "paused": "Пауза",
+      "completed": "Завершён",
+      "cancelled": "Отменён"
+    },
     "format": "Формат",
     "rosterSize": "Состав",
     "teams": "Команды",
     "progress": "Прогресс",
     "onClock": "Сейчас выбирает",
     "onClockLabel": "Ходит сейчас",
-    "connection": { "idle": "Соединение не запущено", "connecting": "Подключение", "connected": "Онлайн", "reconnecting": "Переподключение" },
+    "connection": {
+      "idle": "Соединение не запущено",
+      "connecting": "Подключение",
+      "connected": "Онлайн",
+      "reconnecting": "Переподключение"
+    },
     "anonymousViewers": "Зрители: {count}",
     "onlineCount": "{n} из {total} онлайн",
     "you": "Вы",
@@ -3074,6 +3918,7 @@
     "draftOrder": "Порядок драфта",
     "round": "Раунд {n}",
     "pending": "Ожидает",
+    "pickDone": "Пик сделан",
     "unknownTeam": "Неизвестная команда",
     "myTeam": "Моя команда",
     "teamRosters": "Составы команд",
@@ -3081,7 +3926,12 @@
     "teamAverage": "Средний",
     "openSlot": "Свободный слот",
     "onTheClock": "Ходит сейчас",
-    "roles": { "tank": "Танк", "dps": "Урон", "support": "Поддержка" },
+    "roles": {
+      "tank": "Танк",
+      "dps": "Урон",
+      "support": "Поддержка",
+      "flex": "Флекс"
+    },
     "flex": "Флекс",
     "availablePool": "Пул игроков",
     "searchPlayers": "Поиск игроков",
@@ -3101,10 +3951,12 @@
     "unsafePlayerReason": "У игрока нет роли, при которой можно гарантированно заполнить все оставшиеся позиции.",
     "removeShortlist": "Убрать из списка",
     "addShortlist": "Добавить в список",
+    "selectPlayer": "Выбрать {player}",
     "inspectorEmptyTitle": "Выберите игрока",
     "inspectorEmptyHint": "Здесь появятся данные игрока и проверенные сервером варианты ролей.",
     "inspectorCoordinate": "Карточка игрока",
     "closeInspector": "Закрыть данные игрока",
+    "inspectorHelp": "Как работает карточка игрока",
     "captain": "Капитан",
     "secondaryRoles": "Дополнительные роли",
     "note": "Заметка",
@@ -3112,10 +3964,13 @@
     "chooseRole": "Выберите роль",
     "primaryRole": "Основная роль",
     "rank": "Рейтинг",
-    "optionReason": { "role_filled": "Эта позиция в составе уже занята.", "role_shortage": "После такого выбора другую обязательную роль будет некем заполнить." },
+    "optionReason": {
+      "slot_filled": "Эта позиция в составе уже занята.",
+      "role_shortage": "После такого выбора другую обязательную роль будет некем заполнить."
+    },
     "shortlist": "Короткий список",
     "shortlistEmpty": "Сохраняйте здесь игроков для сравнения. Список виден только в этом браузере.",
-    "howItWorks": "Как это работает?",
+    "shortlistHelp": "Как работает короткий список",
     "pickCommand": "Панель выбора",
     "selectionFor": "Выбор для команды {team}",
     "noSelection": "Выберите игрока и доступную роль, чтобы проверить пик.",
@@ -3128,7 +3983,11 @@
     "pickSuccess": "Игрок {player} успешно выбран.",
     "checkingSafeOptions": "Проверяем каждый вариант игрока и роли с учётом оставшейся части драфта…",
     "mobileViews": "Разделы драфта",
-    "mobileView": { "pool": "Игроки", "team": "Моя команда", "order": "Порядок" },
+    "mobileView": {
+      "pool": "Игроки",
+      "team": "Моя команда",
+      "order": "Порядок"
+    },
     "spectatorCompleted": "Драфт завершён. Ниже показаны итоговые составы и все зафиксированные пики.",
     "spectatorReadOnly": "Публичная страница обновляется в реальном времени. Управление выбором доступно только зарегистрированным капитанам.",
     "loadingTitle": "Загружаем драфт",
@@ -3144,6 +4003,692 @@
     "continueTo": "чтобы продолжить в {siteName}",
     "continueWith": "Продолжить через {provider}",
     "unavailable": "Вход через OAuth сейчас недоступен.",
-    "agreement": "Продолжая, вы соглашаетесь с <terms>Условиями использования</terms> и <privacy>Политикой конфиденциальности</privacy>"
+    "agreement": "Продолжая, вы соглашаетесь с <terms>Условиями использования</terms> и <privacy>Политикой конфиденциальности</privacy>",
+    "errors": {
+      "oauth_init_failed": "Не удалось начать вход. Попробуйте ещё раз.",
+      "invalid_state": "Попытка входа устарела или недействительна. Попробуйте ещё раз.",
+      "invalid_provider": "Неизвестный провайдер входа.",
+      "exchange_failed": "Не удалось завершить вход. Попробуйте ещё раз.",
+      "invalid_origin": "Вход с этого домена не разрешён.",
+      "link_taken": "Этот аккаунт {provider} уже привязан к другой учётной записи здесь. Войдите через {provider}, чтобы попасть в неё, удалите её в разделе «Настройки аккаунта → Опасная зона», затем привяжите снова.",
+      "linkProviderFallback": "OAuth",
+      "generic": "Не удалось войти. Попробуйте ещё раз."
+    }
+  },
+  "legal": {
+    "terms": {
+      "metaTitle": "Условия использования",
+      "metaDescription": "Условия, регулирующие использование {siteName}.",
+      "title": "Условия использования",
+      "intro": "Настоящие Условия использования («Условия») регулируют доступ к {siteName} и его использование. Создавая учётную запись или используя сайт, вы соглашаетесь с этими Условиями.",
+      "sections": {
+        "acceptance": {
+          "title": "Принятие условий",
+          "body": "Входя в систему или иным образом используя {siteName}, вы соглашаетесь соблюдать эти Условия и нашу Политику конфиденциальности. Если вы не согласны — не используйте сайт."
+        },
+        "service": {
+          "title": "О сервисе",
+          "body": "{siteName} — это созданная фанатами платформа для организации и учёта турниров по Overwatch: сетки, отчёты о матчах, драфты и статистика игроков. Проект не связан с компанией Blizzard Entertainment, Inc., не поддерживается и не спонсируется ей."
+        },
+        "eligibility": {
+          "title": "Возрастные требования",
+          "body": "Чтобы пользоваться {siteName}, вам должно быть не менее 13 лет, и вы должны соответствовать требованиям того OAuth-провайдера, через который вы входите. Если местное законодательство устанавливает более высокий минимальный возраст для онлайн-сервисов, применяется он."
+        },
+        "accounts": {
+          "title": "Учётная запись и вход",
+          "body": "Отдельного пароля нет: вход выполняется через Discord, Twitch или Battle.net OAuth, и {siteName} сохраняет данные профиля, которые предоставляет провайдер (имя пользователя, аватар и постоянный идентификатор), а также любые турнирные данные, связанные с вашей учётной записью. Вы несёте ответственность за безопасность своей учётной записи у OAuth-провайдера — кто угодно, кто может войти в неё, может войти и здесь от вашего имени."
+        },
+        "workspaces": {
+          "title": "Рабочие пространства",
+          "body": "Некоторые сообщества ведут собственное фирменное рабочее пространство на {siteName} — изолированный набор турниров, команд и статистики со своими администраторами. Администраторы рабочего пространства видят состав участников, роли и турнирную активность только внутри своего пространства. Новые рабочие пространства создаёт администратор платформы по запросу, самостоятельная регистрация не предусмотрена."
+        },
+        "conduct": {
+          "title": "Поведение на турнирах",
+          "body": "Регистрируясь на турнир или участвуя в нём, вы соглашаетесь точно сообщать результаты матчей, соблюдать правила турнира и принимать решения его организаторов по спорам. Фальсификация отчёта о матче, сговор по результатам или обход блокировки через регистрацию под другой личностью являются нарушением этих Условий."
+        },
+        "content": {
+          "title": "Ваш контент",
+          "body": "Всё, что вы отправляете — отчёты о матчах, скриншоты, логи, аватар, оформление рабочего пространства — остаётся вашим, но вы предоставляете {siteName} право хранить, отображать и обрабатывать это для целей проведения турниров и статистики, для которых это было отправлено. Не загружайте то, на что у вас нет прав."
+        },
+        "prohibited": {
+          "title": "Запрещённые действия",
+          "body": "Не пытайтесь обходить средства контроля доступа, собирать данные через API за пределами документированного использования или перегружать его, выдавать себя за другого игрока или организатора либо использовать платформу для преследования других пользователей. Мы можем удалить контент, аннулировать результаты турнира или заблокировать учётную запись, нарушающую этот раздел."
+        },
+        "suspension": {
+          "title": "Блокировка и прекращение доступа",
+          "body": "Мы можем заблокировать или прекратить доступ за нарушение этих Условий — на уровне платформы или, при нарушениях в конкретном рабочем пространстве, на уровне этого пространства силами его администраторов. Вы можете прекратить использование сервиса в любой момент; для удаления учётной записи и связанных с ней данных обратитесь к администратору платформы."
+        },
+        "thirdParty": {
+          "title": "Сторонние сервисы",
+          "body": "Вход и часть данных профиля зависят от Discord, Twitch и Battle.net; использование этих провайдеров регулируется их собственными условиями, отдельными от наших. {siteName} не отвечает за их доступность или поведение."
+        },
+        "liability": {
+          "title": "Отсутствие гарантий, ограничение ответственности",
+          "body": "{siteName} предоставляется «как есть», разрабатывается и поддерживается как открытый проект сообщества, без гарантий непрерывной работы, точности статистики или пригодности для конкретной цели. В пределах, допустимых законом, {siteName} и его разработчики не несут ответственности за убытки, связанные с использованием сайта."
+        },
+        "changes": {
+          "title": "Изменения условий",
+          "body": "Мы можем обновлять эти Условия по мере развития платформы. Продолжая использовать {siteName} после вступления изменений в силу, вы принимаете обновлённые Условия."
+        },
+        "contact": {
+          "title": "Контакты",
+          "body": "{siteName} разрабатывается в открытом режиме. Вопросы, запросы или сообщения об этих Условиях можно оставить как issue в репозитории проекта на GitHub."
+        }
+      }
+    },
+    "privacy": {
+      "metaTitle": "Политика конфиденциальности",
+      "metaDescription": "Как {siteName} собирает, использует и защищает ваши данные.",
+      "title": "Политика конфиденциальности",
+      "intro": "Настоящая Политика конфиденциальности объясняет, какие данные {siteName} собирает при использовании сайта, для чего они нужны и кто имеет к ним доступ. Она касается самой платформы; правила отдельных сообществ в рабочих пространствах устанавливаются ими самостоятельно.",
+      "sections": {
+        "collection": {
+          "title": "Какие данные мы собираем",
+          "body": "При входе OAuth-провайдер (Discord, Twitch или Battle.net) передаёт нам постоянный идентификатор учётной записи, ваше имя пользователя или отображаемое имя и аватар; некоторые провайдеры также передают адрес электронной почты. По мере использования сайта мы также сохраняем то, что вы создаёте сами: регистрации на турниры, отчёты о матчах и картах, выборы в драфте и назначенные вам роли доступа. Стандартные журналы веб-инфраструктуры (IP-адрес, user agent) хранятся недолго для безопасности и предотвращения злоупотреблений."
+        },
+        "use": {
+          "title": "Как мы используем данные",
+          "body": "Мы используем эти данные для проведения турниров и драфтов, привязки результатов матчей и статистики к нужному игроку, применения назначенных вам ролей и разрешений, а также для обеспечения безопасности сайта. Мы не используем их для рекламы и не продаём их."
+        },
+        "cookies": {
+          "title": "Cookie-файлы",
+          "body": "{siteName} устанавливает cookie сессии, чтобы сохранять вход, cookie активного рабочего пространства, чтобы пространство с собственным доменом показывало нужное оформление, и cookie языка интерфейса. Эти функциональные cookie необходимы для работы сайта. Cookie Google Analytics, которые показывают, как используются страницы, необязательны: они загружаются только после вашего согласия в уведомлении о cookie, а при отказе не загружаются вовсе. Изменить выбор можно в любой момент через «Настройки cookie» в подвале сайта; при отзыве согласия уже сохранённые аналитические cookie удаляются. Рекламные cookie не устанавливаются."
+        },
+        "sharing": {
+          "title": "Кто видит ваши данные",
+          "body": "Ваш публичный профиль (имя, аватар, история турниров и статистика) виден всем, кто может просматривать соответствующее рабочее пространство. Администраторы рабочего пространства видят состав участников и роли только в своём пространстве. Мы передаём данные учётной записи OAuth-провайдерам только в объёме, необходимом для аутентификации, и не передаём их третьим лицам иначе."
+        },
+        "retention": {
+          "title": "Хранение данных",
+          "body": "Данные учётной записи и турниров хранятся, пока существует учётная запись, поскольку история матчей и статистика остаются частью истории турнира даже после его завершения. Журналы инфраструктуры хранятся значительно меньший срок."
+        },
+        "rights": {
+          "title": "Ваши права",
+          "body": "Вы можете просмотреть данные профиля, привязанные к вашей учётной записи, в настройках учётной записи. Чтобы запросить исправление или удаление учётной записи и связанных с ней данных, обратитесь к администратору платформы через репозиторий проекта на GitHub; удаление учётной записи может привести к анонимизации, а не полному удалению исторических записей о матчах, если полное удаление нарушило бы турнирную историю других игроков."
+        },
+        "children": {
+          "title": "Данные детей",
+          "body": "{siteName} не предназначен для детей младше 13 лет, и мы не собираем их данные сверх того, что уже ограничено возрастными требованиями соответствующего OAuth-провайдера."
+        },
+        "security": {
+          "title": "Безопасность",
+          "body": "Мы используем аутентификацию через OAuth-провайдера вместо хранения собственного пароля, а доступ к административным данным ограничен теми же ролевыми разрешениями, что и остальная часть платформы. Ни один онлайн-сервис не может гарантировать абсолютную безопасность."
+        },
+        "changes": {
+          "title": "Изменения политики",
+          "body": "Мы можем обновлять эту Политику конфиденциальности по мере развития платформы. Продолжая использовать {siteName} после вступления изменений в силу, вы принимаете обновлённую Политику."
+        },
+        "contact": {
+          "title": "Контакты",
+          "body": "Вопросы об этой Политике конфиденциальности можно оставить как issue в репозитории проекта на GitHub."
+        }
+      }
+    },
+    "cookieConsent": {
+      "title": "Cookie-файлы",
+      "body": "{siteName} нужны функциональные cookie, чтобы сохранять вход и язык интерфейса. Аналитические cookie необязательны и только показывают, как используются страницы, — подробнее в <privacy>политике конфиденциальности</privacy>.",
+      "accept": "Принять аналитику",
+      "decline": "Отклонить аналитику",
+      "manage": "Настройки cookie",
+      "statusOn": "Аналитические cookie включены.",
+      "statusOff": "Аналитические cookie отключены."
+    }
+  },
+  "errors": {
+    "boundary": {
+      "title": "Что-то пошло не так",
+      "description": "Не удалось загрузить раздел. Попробуйте снова или вернитесь на главную.",
+      "digest": "Ошибка {digest}",
+      "retry": "Попробовать снова",
+      "home": "На главную"
+    }
+  },
+  "notFound": {
+    "eyebrow": "404 // маршрут недоступен",
+    "title": "Такого маршрута на карте нет.",
+    "description": "Страница переехала или никогда не существовала. Вернитесь на главную или выберите один из активных разделов ниже.",
+    "backHome": "На главную",
+    "browseTournaments": "К турнирам",
+    "quickRecovery": "Быстрый переход",
+    "links": {
+      "tournaments": {
+        "title": "Турниры",
+        "description": "Вернуться к полному списку турниров."
+      },
+      "players": {
+        "title": "Игроки",
+        "description": "Профили игроков и рейтинги."
+      },
+      "encounters": {
+        "title": "Встречи",
+        "description": "Разборы и результаты последних матчей."
+      }
+    }
+  },
+  "registrationFormAdmin": {
+    "builtInFields": {
+      "title": "Встроенные поля",
+      "description": "Выберите, какие стандартные поля показывать в форме регистрации. Саброли для полей с ролями настраиваются на вкладке «Саброли».",
+      "verifiedBadge": "Подтверждён",
+      "required": "Обязательное",
+      "mode": "Режим",
+      "modeOptional": "Выбирает игрок",
+      "modeAllRoles": "Все роли, один приоритет",
+      "modeForced": "Все флексы",
+      "settingsAria": "Настройки поля «{field}»",
+      "verifiedAccount": "Подтверждённый аккаунт",
+      "verifiedAccountHelp": "Требовать аккаунт, подтверждённый через OAuth: игрок выберет один из своих подтверждённых аккаунтов.",
+      "regexPattern": "Регулярное выражение",
+      "errorMessage": "Текст ошибки",
+      "errorMessagePlaceholder": "Показывается, если {field} заполнен неверно",
+      "maxHeroes": "Максимум героев на роль",
+      "defs": {
+        "battle_tag": {
+          "label": "BattleTag",
+          "description": "Тег Battle.net (например, Player#1234)"
+        },
+        "smurf_tags": {
+          "label": "Смурф-аккаунты",
+          "description": "Дополнительные аккаунты BattleTag (смурфы)"
+        },
+        "discord_nick": {
+          "label": "Discord",
+          "description": "Имя пользователя в Discord"
+        },
+        "twitch_nick": {
+          "label": "Twitch",
+          "description": "Название канала на Twitch"
+        },
+        "primary_role": {
+          "label": "Основная роль",
+          "description": "Основная роль (танк/дамаг/саппорт) с выбором сабролей"
+        },
+        "additional_roles": {
+          "label": "Дополнительные роли",
+          "description": "Дополнительные роли, на которых может играть игрок"
+        },
+        "flex_role": {
+          "label": "Флекс-роль",
+          "description": "«Выбирает игрок» — доступен пресет «Флекс». «Все роли, один приоритет» делает все роли обязательными и спрашивает у игрока одну приоритетную роль либо «Флекс»: остальные роли остаются играбельными, но менее комфортными, и trade-off баланс↔комфорт в балансере остаётся живым. «Все флексы» убирает выбор совсем. Оба последних режима оценивают игрока по его максимальному рангу среди всех ролей, и в обоих настройка сабролей у «Дополнительных ролей» перестаёт влиять, потому что все роли считаются основными."
+        },
+        "boosty_nick": {
+          "label": "Boosty",
+          "description": "Ник на Boosty (указывает сам игрок — у Boosty нет OAuth)"
+        },
+        "top_heroes": {
+          "label": "Топ героев",
+          "description": "Разрешить игрокам выбрать лучших героев для каждой роли"
+        },
+        "stream_pov": {
+          "label": "Stream POV",
+          "description": "Игрок будет стримить свой POV"
+        },
+        "notes": {
+          "label": "Заметки",
+          "description": "Произвольные заметки от игрока"
+        }
+      }
+    },
+    "customFields": {
+      "title": "Свои поля",
+      "description": "Добавьте свои поля: Boosty ник, ссылку на VK, YouTube и другие.",
+      "addField": "Добавить поле",
+      "emptyTitle": "Своих полей пока нет",
+      "emptyHint": "Свои поля собирают с игроков дополнительные данные — например, ник на Boosty или ссылку на VK.",
+      "label": "Название",
+      "labelPlaceholder": "например, Boosty ник",
+      "type": "Тип",
+      "types": {
+        "text": "Текст",
+        "number": "Число",
+        "url": "URL",
+        "select": "Список",
+        "checkbox": "Чекбокс"
+      },
+      "placeholder": "Подсказка",
+      "placeholderHint": "Текст подсказки…",
+      "required": "Обязательное",
+      "fieldFallback": "поле",
+      "settingsAria": "Настройки: {field}",
+      "removeAria": "Удалить {field}",
+      "options": "Варианты (по одному в строке)",
+      "optionsPlaceholder": "Вариант А\nВариант Б\nВариант В",
+      "regex": "Регулярное выражение",
+      "errorMessage": "Текст ошибки",
+      "errorMessagePlaceholder": "Показывается при ошибке в {field}",
+      "keyLabel": "ключ: {key}"
+    },
+    "subroles": {
+      "title": "Саброли",
+      "description": "Выберите, какие саброли игроки смогут выбрать для каждой роли. Выделенные варианты предлагаются на форме; оставьте все включёнными, чтобы предлагать любой.",
+      "editCatalog": "Изменить каталог",
+      "offeredCount": "{count}/{total} предлагается",
+      "chipOffered": "Предлагается на форме — нажмите, чтобы скрыть",
+      "chipHidden": "Скрыто — нажмите, чтобы предлагать",
+      "loading": "Загрузка…",
+      "emptyRole": "Сабролей для {role} в этом воркспейсе пока нет — добавьте их в каталоге."
+    },
+    "page": {
+      "title": "Настройка формы",
+      "description": "Настройте поля формы регистрации, правила допуска, саброли и свои поля.",
+      "backToRegistrations": "К регистрациям",
+      "tabs": {
+        "status": "Статус",
+        "fields": "Поля",
+        "subroles": "Саброли",
+        "custom": "Свои поля"
+      },
+      "admission": {
+        "title": "Допуск",
+        "requireOpenProfile": "Требовать открытый профиль Overwatch",
+        "scope": "Область",
+        "scopeAria": "Область проверки открытого профиля",
+        "scopeMain": "Только основной аккаунт",
+        "scopeAll": "Все аккаунты (включая смурфов)",
+        "hint": "Если включено, игроки с закрытым профилем Overwatch не допускаются (блокируются на чек-ине). Игроки без ранга исключаются отдельно."
+      },
+      "subscription": {
+        "title": "Подписка",
+        "require": "Требовать активную подписку",
+        "hint": "Где проверять требование — решаете вы. На чек-ине (по умолчанию) заявку может подать любой, отказывает только чек-ин: состав собирается там, и именно там ответ важен. На заявке и чек-ине отказывает ещё и в самой заявке — список остаётся только для подписчиков, но требование, которое игрок ещё успел бы выполнить, превращается в дедлайн. В любом случае, если результат определить нельзя (провайдер недоступен, аккаунт не привязан), проверка трактуется в пользу игрока и не блокирует; а на заявке не блокирует и провайдер, который подтверждается кодом из закрытого поста, — это поле есть только на чек-ине.",
+        "stage": "Проверять",
+        "stageAria": "Когда проверять подписку",
+        "stageCheckIn": "Только на чек-ине",
+        "stageRegistration": "На заявке и чек-ине",
+        "resolved": "Это рабочее пространство требует: {rule}",
+        "resolvedEmpty": "В этом рабочем пространстве правило подписки не настроено, поэтому переключатель выше ничего не проверяет.",
+        "resolvedUnknown": "У этого турнира ещё нет сохранённой формы, поэтому правило рабочего пространства не прочитано — сохраните форму, чтобы увидеть, что будет проверять переключатель.",
+        "manage": "Настроить правило рабочего пространства"
+      },
+      "display": {
+        "title": "Отображение",
+        "showRanks": "Показывать ранги игроков на странице участников",
+        "hint": "Если включено, ранги игроков показываются на публичной странице участников. Если выключено, ранги полностью скрыты и не передаются с бэкенда."
+      },
+      "unsavedChanges": "Несохранённые изменения",
+      "saveChanges": "Сохранить изменения",
+      "createForm": "Создать форму",
+      "savedToast": "Форма регистрации сохранена",
+      "noTournamentError": "Турнир не выбран",
+      "noTournament": {
+        "title": "Выберите турнир",
+        "description": "Выберите турнир в боковом меню, прежде чем настраивать форму регистрации."
+      },
+      "loadError": {
+        "title": "Не удалось загрузить форму регистрации",
+        "fallback": "Обновите страницу и попробуйте снова."
+      },
+      "loading": "Загрузка формы регистрации…"
+    },
+    "status": {
+      "title": "Статус регистрации",
+      "description": "Разрешите или запретите игрокам регистрироваться на турнир.",
+      "acceptLabel": "Приём заявок",
+      "acceptHint": "Если включено, форма регистрации будет видна на странице турнира.",
+      "autoApproveLabel": "Автоодобрение",
+      "autoApproveHint": "Без ручной проверки: заявки одобряются сразу, а игроки автоматически попадают в пул."
+    }
+  },
+  "subscriptionRequirement": {
+    "matchLabel": "Условие",
+    "modeAria": "Режим соответствия требований",
+    "modes": {
+      "all": "Все из перечисленного",
+      "any": "Любое из перечисленного"
+    },
+    "emptyHint": "Провайдеры не выбраны — проверка не работает, даже когда переключатель включён.",
+    "providerAria": "Провайдер",
+    "minTierAria": "Минимальный уровень",
+    "addProvider": "Добавить провайдера",
+    "removeAria": "Удалить {provider}",
+    "unconfiguredWarning": "{count, plural, one {{providers} не настроен для этого воркспейса. Его вердикт становится <em>неопределённым</em> и проходит по умолчанию — проверка молча перестаёт учитывать этого провайдера.} other {{providers} не настроены для этого воркспейса. Их вердикты становятся <em>неопределёнными</em> и проходят по умолчанию — проверка молча перестаёт учитывать этих провайдеров.}}",
+    "summary": "Игрокам нужна подписка: <hl>{rule}</hl>",
+    "tiers": {
+      "anyTier": "любой уровень",
+      "boosty": {
+        "any": "любой уровень",
+        "level2": "Уровень 2+",
+        "level3": "Уровень 3+"
+      },
+      "twitch": {
+        "tier1": "Tier 1+",
+        "tier2": "Tier 2+",
+        "tier3": "Tier 3+"
+      }
+    },
+    "rule": {
+      "clause": "{provider} уровень {tier}",
+      "clauseAnyTier": "{provider}",
+      "and": " и ",
+      "or": " или "
+    }
+  },
+  "subscriptionProviders": {
+    "title": "Провайдеры подписки",
+    "description": "Каждый провайдер подтверждает подписку по-своему. Выберите способ, а затем сопоставьте его ответ с уровнем.",
+    "loading": "Загрузка…",
+    "save": "Сохранить",
+    "saved": "Настройки {provider} сохранены",
+    "saveFailed": "Не удалось сохранить {provider}",
+    "status": {
+      "active": "Активен",
+      "disabled": "Отключён"
+    },
+    "methodLabel": "Чем подтверждается подписка",
+    "methodAria": "Способ подтверждения",
+    "methods": {
+      "live": {
+        "boosty": {
+          "label": "Роль в Discord",
+          "description": "Собственный бот Boosty выдаёт по роли на каждый уровень; мы читаем роли подписчика на вашем сервере. Нужен привязанный аккаунт Discord."
+        },
+        "twitch": {
+          "label": "Подписка на Twitch",
+          "description": "Читаем напрямую из Twitch. Только каналы Affiliate и Partner."
+        },
+        "generic": {
+          "label": "Сигнал провайдера",
+          "description": "Читаем напрямую у провайдера."
+        }
+      },
+      "code": {
+        "label": "Секретный код",
+        "description": "Вы публикуете секрет в посте для подписчиков, а игрок вставляет его. Работает без Discord, но код можно передать другому."
+      },
+      "any": {
+        "label": "Любой способ",
+        "description": "Что игрок сможет предъявить. Самый мягкий вариант."
+      }
+    },
+    "guild": {
+      "unset": "Для этого воркспейса Discord-сервер не задан.",
+      "missing": "Для живой проверки нужен Discord-сервер. Задайте его в настройках воркспейса.",
+      "hint": "Задаётся один раз на воркспейс, в его настройках. Бот Boosty выдаёт роли подписчиков на этом сервере; наш бот тоже должен быть его участником."
+    },
+    "roles": {
+      "label": "Роль → уровень",
+      "add": "Добавить роль",
+      "roleAria": "Роль в Discord",
+      "tierRankAria": "номер уровня",
+      "tierLabelPlaceholder": "Уровень 2",
+      "tierLabelAria": "название уровня",
+      "removeAria": "Удалить роль {number}"
+    },
+    "broadcaster": {
+      "idLabel": "ID канала",
+      "loginLabel": "Логин канала",
+      "loginPlaceholder": "channel_name",
+      "note": "Работает только для каналов Affiliate и Partner — для остальных у Twitch нет API подписок, и неподходящий канал даёт <em>неопределённый</em> вердикт, который проходит по умолчанию."
+    },
+    "codes": {
+      "label": "Секретные коды",
+      "addCode": "Добавить код",
+      "hint": "Опубликуйте секрет в посте для подписчиков, а игрок вставит его обратно. Меняйте коды для каждого турнира — код можно передать другому, поэтому он подтверждает доступ к уровню, а не личность.",
+      "stored": "Сейчас сохранено: {codes}. Коды хранятся в виде хешей и больше не могут быть показаны.",
+      "tierFallback": "уровень {rank}",
+      "codePlaceholder": "код из поста",
+      "codeAria": "секретный код",
+      "tierRankAria": "номер уровня",
+      "removeAria": "Удалить код {number}",
+      "replaceWarning": "{count, plural, one {При сохранении все хранящиеся коды будут заменены одним кодом выше.} few {При сохранении все хранящиеся коды будут заменены # кодами выше.} many {При сохранении все хранящиеся коды будут заменены # кодами выше.} other {При сохранении все хранящиеся коды будут заменены # кодами выше.}}"
+    },
+    "warnings": {
+      "duplicateRole": "Два уровня указывают на одну и ту же роль Discord. Сервер отклонит это — итоговый вердикт зависел бы от порядка.",
+      "rolesMissing": "Discord-сервер без сопоставления ролей даёт <em>неопределённый</em> вердикт, который проходит по умолчанию — проверка ничего не будет требовать.",
+      "codesMissing": "Режим «только код» без единого настроенного кода невыполним, поэтому вердикт становится <em>неопределённым</em> и проходит по умолчанию — никого не проверяют и никого не блокируют."
+    }
+  },
+  "discord": {
+    "role": {
+      "placeholder": "Выберите роль Discord",
+      "loading": "Загрузка ролей…",
+      "refresh": "Обновить роли из Discord",
+      "manual": "Ввести ID роли вручную",
+      "dropdown": "Выбрать из списка",
+      "managed": "служебная",
+      "idAria": "ID роли Discord",
+      "searchPlaceholder": "Поиск ролей…",
+      "searchLabel": "Поиск ролей Discord",
+      "empty": "Ни одна роль не подходит под запрос. Вставьте ID роли, чтобы найти её по идентификатору."
+    },
+    "channel": {
+      "placeholder": "Выберите канал Discord",
+      "loading": "Загрузка каналов…",
+      "refresh": "Обновить каналы из Discord",
+      "manual": "Ввести ID канала вручную",
+      "dropdown": "Выбрать из списка",
+      "uncategorized": "Без категории",
+      "idAria": "ID канала Discord",
+      "searchPlaceholder": "Поиск каналов…",
+      "searchLabel": "Поиск каналов Discord",
+      "empty": "Ни один канал не подходит под запрос. Вставьте ID канала, чтобы найти его по идентификатору."
+    },
+    "server": {
+      "checking": "Проверяем бота Discord…",
+      "fallbackName": "Сервер Discord",
+      "connected": "Подключён",
+      "disconnected": "Не подключён",
+      "members": "{count, plural, one {# участник} few {# участника} many {# участников} other {# участника}}",
+      "refresh": "Обновить состояние сервера Discord"
+    }
+  },
+  "subscriptionWorkspace": {
+    "title": "Требование подписки",
+    "description": "Одно правило на всё рабочее пространство. Каждый турнир решает только, применять его или нет — переключателем «Требовать активную подписку» в своей форме регистрации.",
+    "loading": "Загрузка…",
+    "loadError": "Не удалось загрузить требование. Проверьте соединение и обновите страницу.",
+    "save": "Сохранить",
+    "saving": "Сохранение…",
+    "unsavedChanges": "Несохранённые изменения",
+    "saved": "Требование подписки рабочего пространства сохранено",
+    "saveFailed": "Не удалось сохранить требование подписки",
+    "warning": {
+      "disarming": "{count, plural, =0 {Очистка правила отключает проверку во всём рабочем пространстве. Его не применяет ни один турнир, но любой, где переключатель «Требовать активную подписку» включён, начнёт пускать всех, не сообщая причины.} one {Очистка правила отключает проверку в # турнире, который его применяет, — он начнёт пускать всех, не сообщая причины, хотя переключатель останется включённым.} few {Очистка правила отключает проверку в # турнирах, которые его применяют, — они начнут пускать всех, не сообщая причины, хотя переключатели останутся включёнными.} many {Очистка правила отключает проверку в # турнирах, которые его применяют, — они начнут пускать всех, не сообщая причины, хотя переключатели останутся включёнными.} other {Очистка правила отключает проверку в # турнирах, которые его применяют, — они начнут пускать всех, не сообщая причины, хотя переключатели останутся включёнными.}}",
+      "changed": "{count, plural, =0 {Изменение правила меняет состав допущенных сразу во всём рабочем пространстве. Его не применяет ни один турнир.} one {Изменение правила меняет состав допущенных в # турнире, который его применяет, даже если он уже идёт: ужесточение задним числом откажет подписчикам, которых уже допустили.} few {Изменение правила меняет состав допущенных в # турнирах, которые его применяют, включая уже идущие: ужесточение задним числом откажет подписчикам, которых уже допустили.} many {Изменение правила меняет состав допущенных в # турнирах, которые его применяют, включая уже идущие: ужесточение задним числом откажет подписчикам, которых уже допустили.} other {Изменение правила меняет состав допущенных в # турнирах, которые его применяют, включая уже идущие: ужесточение задним числом откажет подписчикам, которых уже допустили.}}"
+    }
+  },
+  "mapVeto": {
+    "step": {
+      "banFirst": "Бан · 1-я команда",
+      "banSecond": "Бан · 2-я команда",
+      "pickFirst": "Пик · 1-я команда",
+      "pickSecond": "Пик · 2-я команда",
+      "decider": "Десайдер"
+    },
+    "preset": {
+      "bo1": "Bo1",
+      "bo2": "Bo2",
+      "bo3": "Bo3",
+      "bo5": "Bo5",
+      "custom": "Свой",
+      "bo7": "Bo7"
+    },
+    "scope": {
+      "tournamentDefault": "Дефолт турнира",
+      "stage": "Дефолт этапа «{stage}»",
+      "stageRound": "{stage} · Раунд {round}",
+      "unknownStage": "Этап №{id}"
+    },
+    "mapsInPool": "{count, plural, one {# карта в пуле} few {# карты в пуле} many {# карт в пуле} other {# карты в пуле}}",
+    "mapsPlayed": "{count, plural, one {# карта в серии} few {# карты в серии} many {# карт в серии} other {# карты в серии}}",
+    "notConfiguredTitle": "Организатор ещё не опубликовал пул карт",
+    "notConfiguredDescription": "Когда пул карт будет настроен, здесь появятся карты, доступные капитанам для бана и пика.",
+    "source": {
+      "exact": "Настроено для этого раунда",
+      "stage": "Наследуется от дефолта этапа «{stage}»",
+      "tournament": "Наследуется от дефолта турнира"
+    },
+    "roundGroupUpper": "Верхняя сетка",
+    "roundGroupLower": "Нижняя сетка",
+    "wholeStage": "Весь этап",
+    "roundPoolShared": "Вся серия",
+    "sequenceTitle": "Последовательность вето",
+    "sequenceDescription": "Порядок банов и пиков капитанов перед матчем.",
+    "sequenceStepAria": "Шаг {n}: {label}",
+    "bracketFormat": "Формат из сетки",
+    "bracketFormatVaries": "Зависит от раунда",
+    "bracketFormatUnknown": "Зависит от этапа",
+    "customOrder": "Свой порядок вето",
+    "customOrderMismatch": "Этот свой порядок играет {played, plural, one {# карту} few {# карты} many {# карт} other {# карты}}, а сетка требует {expected, plural, one {# карту} few {# карты} many {# карт} other {# карты}}.",
+    "slotPoolSize": "{slots, plural, one {# слот} few {# слота} many {# слотов} other {# слота}}, {candidates, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
+    "slotCandidates": "{count, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
+    "slotUnderfilled": "В слоте {n} меньше двух карт-кандидатов: банить там нечего, и вето не сможет открыться."
+  },
+  "mapVetoAdmin": {
+    "stats": {
+      "configured": "{count, plural, one {# настроенный уровень} few {# настроенных уровня} many {# настроенных уровней} other {# настроенных уровня}}"
+    },
+    "tournamentDefault": "Дефолт турнира",
+    "stageDefaultButton": "Весь этап",
+    "roundLabel": "Раунд {round}",
+    "roundGroupUpper": "Верхняя сетка",
+    "roundGroupLower": "Нижняя сетка",
+    "roundNotGenerated": "Не создан",
+    "roundInherits": "Наследует",
+    "roundUsesDefault": "Использует наследуемый пул",
+    "roundPoolSize": "{count, plural, one {# карта в пуле} few {# карты в пуле} many {# карт в пуле} other {# карты в пуле}}",
+    "roundSlotPoolSize": "{slots, plural, one {# слот} few {# слота} many {# слотов} other {# слота}}, {candidates, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
+    "hasOwnConfig": "Есть своя конфигурация",
+    "levelNew": "Новая конфигурация",
+    "levelExisting": "Своя конфигурация",
+    "deleteLevel": "Удалить этот уровень",
+    "turnTimerLabel": "Таймер на ход",
+    "turnTimerUnit": "секунд",
+    "turnTimerHint": "Обратный отсчёт для капитанов в комнате вето. Ход принудительно не завершается.",
+    "poolTitle": "Пул карт",
+    "poolSelected": "{count, plural, one {выбрана # карта} few {выбрано # карты} many {выбрано # карт} other {выбрано # карты}}",
+    "poolEmpty": "В этом игровом режиме нет карт.",
+    "poolSelectAll": "Выбрать все",
+    "poolClear": "Снять все",
+    "poolToggleAria": "{map}, {gamemode}",
+    "filterAll": "Все",
+    "filterLabel": "Фильтр пула по игровому режиму",
+    "filterOption": "{gamemode} ({count})",
+    "ungrouped": "Без режима",
+    "sequenceTitle": "Последовательность вето",
+    "sequenceDescription": "Порядок банов и пиков капитанов. Десайдер, если он есть, должен быть последним шагом.",
+    "sequenceEmpty": "Последовательность пуста.",
+    "sequenceStep": "Шаг {n}",
+    "addStep": "Добавить шаг",
+    "moveStepUp": "Переместить шаг {n} выше",
+    "moveStepDown": "Переместить шаг {n} ниже",
+    "removeStep": "Удалить шаг {n}",
+    "actionLabel": "Действие на шаге {n}",
+    "sideLabel": "Команда на шаге {n}",
+    "action": {
+      "ban": "Бан",
+      "pick": "Пик",
+      "decider": "Десайдер"
+    },
+    "side": {
+      "first": "1-я команда",
+      "second": "2-я команда"
+    },
+    "deciderAuto": "Последняя оставшаяся карта",
+    "validationTitle": "Исправьте перед сохранением",
+    "validation": {
+      "emptyPool": "Выберите хотя бы одну карту для пула.",
+      "emptySequence": "Последовательность должна содержать хотя бы один шаг.",
+      "multipleDeciders": "Допускается только один десайдер.",
+      "deciderNotLast": "Десайдер должен быть последним шагом.",
+      "noPickOrDecider": "В последовательности нужен хотя бы один пик или десайдер.",
+      "sequenceLongerThanPool": "В последовательности {steps} шагов, а в пуле только {maps} карт.",
+      "slotTooFewCandidates": "В слоте {slot} нужно минимум две карты-кандидата."
+    },
+    "save": "Сохранить конфигурацию",
+    "saving": "Сохранение…",
+    "saved": "Конфигурация вето сохранена",
+    "saveError": "Не удалось сохранить: {message}",
+    "deleted": "Конфигурация вето удалена — уровень снова наследует настройки",
+    "deleteTitle": "Удалить конфигурацию вето",
+    "deleteDescription": "Конфигурация для «{level}» будет удалена. Матчи в этой области унаследуют настройки уровнем выше.",
+    "readOnly": "У вас нет прав на изменение конфигурации вето.",
+    "formatSourceBracket": "Берётся из сетки",
+    "formatEditStage": "Изменить в настройках этапа",
+    "formatFinalRound": "Финальный раунд: {format}",
+    "orderModeTitle": "Порядок шагов вето",
+    "orderModeBracket": "Следовать сетке",
+    "orderModeBracketHint": "Баны и пики генерируются из best-of матча. Это то, что нужно почти любому турниру.",
+    "orderModeCustom": "Задать порядок вручную",
+    "orderModeCustomHint": "Выводит этот уровень из-под сетки. Шаги ниже используются дословно, что бы ни говорила сетка.",
+    "previewTitle": "Сгенерированные шаги",
+    "previewHint": "Предпросмотр для {format} при {count} картах в пуле.",
+    "previewStale": "Выберите карты, чтобы увидеть сгенерированные шаги.",
+    "mismatchTitle": "Этот порядок расходится с сеткой",
+    "mismatchBody": "Шаги играют {played, plural, one {# карту} few {# карты} many {# карт} other {# карты}}, а сетка требует {expected, plural, one {# карту} few {# карты} many {# карт} other {# карты}}. Побеждает свой порядок — исправьте одно из двух.",
+    "storedFallbackHint": "Сохраняется как резерв. Каждый матч пересобирает свои шаги из своего best-of.",
+    "poolShapeTitle": "Форма пула карт",
+    "poolShapeFlat": "Один пул на весь матч",
+    "poolShapeFlatHint": "Капитаны банят и пикают из одного пула карт в порядке вето ниже.",
+    "poolShapeSlots": "Свой пул на каждую карту серии",
+    "poolShapeSlotsHint": "У каждой карты серии свои кандидаты. Капитаны банят внутри слота, пока не останется одна карта, и переходят к следующему слоту.",
+    "poolShapeSlotsUnavailableStage": "Раунды этого этапа играют серии разной длины, поэтому число слотов здесь не определено. Выберите отдельный раунд.",
+    "poolShapeSlotsUnavailableTournament": "Дефолт турнира применяется ко всем этапам, поэтому длина серии здесь неизвестна. Выберите этап или отдельный раунд.",
+    "firstBanTitle": "Кто банит первым",
+    "firstBanFixed": "Всегда высший сид",
+    "firstBanAlternate": "По очереди",
+    "firstBanHint": "Либо высший сид открывает каждый слот, либо команды чередуются: высший сид открывает слоты с нечётными номерами, низший — с чётными.",
+    "slotsTitle": "Пул на каждую карту",
+    "slotsDescription": "По одному слоту на каждую карту серии. В каждом слоте нужно минимум две карты-кандидата; капитаны банят внутри него, пока не останется одна.",
+    "slotLabel": "Слот {n}",
+    "slotCandidates": "{count, plural, one {# кандидат} few {# кандидата} many {# кандидатов} other {# кандидата}}",
+    "slotReserveLabel": "Резервная карта для слота {slot}",
+    "slotReserveNone": "Без резерва",
+    "slotReserveHint": "По регламенту эта карта играется, если карта слота закончилась ничьей. Платформа только показывает её и никогда на неё не переключается.",
+    "slotsStageScopeWarning": "Эти слоты применяются ко всем {count, plural, one {# раунду} few {# раундам} many {# раундам} other {# раундам}} этого этапа. Регламенту со своим пулом на каждый раунд нужна отдельная конфигурация для каждого раунда.",
+    "slotCountMismatchWarning": "На этом уровне настроено {slots, plural, one {# слот} few {# слота} many {# слотов} other {# слота}}, а сетка сейчас требует {maps, plural, one {# карту} few {# карты} many {# карт} other {# карты}}. Лишние слоты отбрасываются с конца, а нехватка не даёт вето открыться.",
+    "tournamentUnconfigured": "Пул не настроен — матчам на этом уровне нечего наследовать, и вето не откроется.",
+    "addMaps": "Добавить карты",
+    "selectionEmpty": "Карты пока не выбраны.",
+    "poolPickerLabel": "Карты пула",
+    "slotPickerLabel": "Карты слота {slot}",
+    "pickerSearchLabel": "Найти карту",
+    "pickerSearchPlaceholder": "Название карты",
+    "pickerSearchEmpty": "Нет карт по запросу «{query}».",
+    "poolChipRemove": "Убрать {map} из пула",
+    "slotChipRemove": "Убрать {map} из слота {slot}",
+    "advancedTitle": "Дополнительно",
+    "reset": "Отменить изменения",
+    "unsaved": "Есть несохранённые изменения",
+    "slotReserveShort": "Резерв:",
+    "densityLabel": "Размер карт",
+    "densityNormal": "Обычный",
+    "densityCompact": "Компактный",
+    "inheritedFrom": "Наследуется от «{level}». Матчи здесь играют этот пул, пока у уровня нет своего.",
+    "forkLevel": "Задать свой пул для уровня",
+    "poolInheritedTitle": "Наследуемый пул карт"
+  },
+  "rosterShape": {
+    "title": "Форма ростера",
+    "description": "Сколько слотов каждого вида в одной команде. Драфт пикает ровно в эти слоты, а балансировщик их заполняет.",
+    "mode": "Форма",
+    "modes": {
+      "inherit": "Наследовать от воркспейса",
+      "ow5v5": "Overwatch 5v5 · 1/2/2",
+      "flex6": "6 флекс-слотов",
+      "custom": "Своя форма"
+    },
+    "slots": "Слотов в команде",
+    "slotCodes": {
+      "tank": "Танк",
+      "dps": "Урон",
+      "support": "Поддержка",
+      "flex": "Флекс"
+    },
+    "total": "{total, plural, one {# слот} few {# слота} many {# слотов} other {# слота}} · {rounds, plural, one {# раунд драфта} few {# раунда драфта} many {# раундов драфта} other {# раунда драфта}}",
+    "errors": {
+      "too_few": "В команде должно быть минимум 2 слота — при одном капитан и есть весь ростер, и драфтить нечего.",
+      "too_many": "В команде может быть максимум 12 слотов."
+    },
+    "preview": "Что будет заполнять капитан",
+    "previewEmpty": "Добавьте хотя бы один слот, чтобы увидеть, что заполнит капитан.",
+    "inherited": "Наследуется от {source}: {shape}.",
+    "inheritedSources": {
+      "workspace": "дефолта воркспейса",
+      "default": "встроенного дефолта Overwatch 5v5"
+    },
+    "overriding": "Этот турнир задаёт свою форму вместо формы воркспейса.",
+    "willInherit": "После сохранения турнир вернётся к форме воркспейса.",
+    "locked": "Сессия драфта уже создана, поэтому форма ростера зафиксирована. Чтобы изменить её, завершите или отмените сессию."
   }
 }

@@ -8,24 +8,18 @@ _gamemode_repo = GamemodeRepository()
 
 
 async def to_pydantic(session: AsyncSession, gamemode: models.Gamemode, entities: list[str]) -> schemas.GamemodeRead:
-    """
-    Converts a Gamemode model instance to a Pydantic schema (GamemodeRead).
+    """Serialize a Gamemode into ``GamemodeRead``.
 
-    Parameters:
-        session (AsyncSession): The SQLAlchemy async session.
-        gamemode (models.Gamemode): The Gamemode model instance to convert.
-        entities (list[str]): A list of related entities to include (currently unused in this function).
+    Spreads ``to_dict()`` rather than enumerating fields, matching the map and
+    hero serializers. The enumerated version silently dropped every column added
+    after it was written: `aliases` fell back to the schema default `[]`, so the
+    admin dialog rendered an empty editor over real data and saving it would have
+    wiped the aliases the log parser resolves names through.
 
-    Returns:
-        schemas.GamemodeRead: The Pydantic schema representing the gamemode.
+    ``entities`` is accepted for signature parity with the other catalog
+    serializers; a gamemode has no expandable relation in this payload.
     """
-    return schemas.GamemodeRead(
-        id=gamemode.id,
-        name=gamemode.name,
-        slug=gamemode.slug,
-        description=gamemode.description,
-        image_path=gamemode.image_path,
-    )
+    return schemas.GamemodeRead(**gamemode.to_dict())
 
 
 async def get(session: AsyncSession, gamemode_id: int, entities: list[str]) -> schemas.GamemodeRead:

@@ -161,11 +161,11 @@ export function getConfidenceBadgeClass(confidence: number): string {
   const clamped = clampConfidence(confidence);
 
   if (clamped >= 0.75) {
-    return "border-emerald-500/40 bg-emerald-500/12 text-emerald-200";
+    return "border-[color:color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_12%,transparent)] text-[color:var(--aqt-emerald)]";
   }
 
   if (clamped >= 0.45) {
-    return "border-amber-500/40 bg-amber-500/12 text-amber-100";
+    return "border-[color:color-mix(in_srgb,var(--aqt-amber)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_12%,transparent)] text-[color:var(--aqt-amber)]";
   }
 
   return "border-border/60 bg-muted/55 text-muted-foreground";

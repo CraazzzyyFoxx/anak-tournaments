@@ -193,9 +193,9 @@ const HeroBadge = ({
 }) => {
   const t = useTranslations();
   const durationUnits = {
-    h: t("users.compare.durationH"),
-    m: t("users.compare.durationM"),
-    s: t("users.compare.durationS")
+    h: t("common.duration.h"),
+    m: t("common.duration.m"),
+    s: t("common.duration.s")
   };
 
   return (

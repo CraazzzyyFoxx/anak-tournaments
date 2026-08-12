@@ -306,19 +306,6 @@ async def get_player_by_user_and_role(
     return result.unique().scalars().all()
 
 
-def construct_player(
-    **kwargs,
-) -> models.Player:
-    # NOTE (P5.2c): unreferenced anywhere in the codebase (no callers, no tests) and
-    # has no session/tournament in scope to resolve workspace_member_id, so it cannot
-    # be wired without a signature change. If this is ever revived as a real creation
-    # site, it MUST set workspace_member_id (see create_player / create_player_sync
-    # in this module for the resolution pattern) before it is safe to use.
-    return models.Player(
-        **kwargs,
-    )
-
-
 async def create_player(
     session: AsyncSession,
     *,

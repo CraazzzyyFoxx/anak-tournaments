@@ -8,9 +8,13 @@ class ConfigOverrides(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Accepted for backwards compatibility and then dropped: ``role_mask`` left
+    # ``PUBLIC_CONFIG_KEYS`` when the mask became a projection of the tournament
+    # roster shape, but saved configs still carry it and ``extra="forbid"``
+    # would reject them outright.
     role_mask: dict[str, int] | None = Field(
         None,
-        description="Role mask defining required players per role (e.g., {'Tank': 1, 'Damage': 2, 'Support': 2})",
+        description="Ignored legacy role mask, kept only so configs saved before roster shapes still validate",
     )
 
     population_size: int | None = Field(None, ge=10, le=1000, description="Population size for the moo solver")
@@ -51,6 +55,20 @@ class ConfigOverrides(BaseModel):
         description=(
             "Penalty weight per pair of players in the same team sharing the same role subclass. Use 0 to disable."
         ),
+    )
+    low_rank_threshold: int | None = Field(
+        None,
+        ge=0,
+        le=10000,
+        description=(
+            "Rating threshold (canonical scale) at or below which a player's best "
+            "role rating marks them low-rank. 0 disables the low-rank pair penalty."
+        ),
+    )
+    low_rank_collision_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Penalty weight per pair of low-rank players in the same team.",
     )
     team_max_pain_weight: float | None = Field(
         None,

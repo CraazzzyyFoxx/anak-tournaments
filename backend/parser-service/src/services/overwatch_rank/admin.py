@@ -19,18 +19,26 @@ from . import service, tasks
 _MANUAL_PRIORITY_TIER = 2
 
 
-async def get_user_collection_status(session: AsyncSession, user_id: int) -> list[dict[str, Any]]:
-    """Per-battle-tag collection state for a user (incl. tags never fetched)."""
+async def get_user_collection_status(
+    session: AsyncSession, user_id: int, *, workspace_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Per-battle-tag collection state for a user (incl. tags never fetched).
+
+    ``workspace_id`` is the caller's authorization scope: a workspace-scoped
+    admin only sees the tags of a player who is a member of their workspace, and
+    gets ``[]`` for anybody else.
+    """
     acc = models.SocialAccount
     state = models.BattleTagRankState
-    rows = (
-        await session.execute(
-            sa.select(acc, state)
-            .outerjoin(state, state.social_account_id == acc.id)
-            .where(acc.user_id == user_id, acc.provider == SocialProvider.BATTLENET)
-            .order_by(acc.username.asc())
-        )
-    ).all()
+    query = (
+        sa.select(acc, state)
+        .outerjoin(state, state.social_account_id == acc.id)
+        .where(acc.user_id == user_id, acc.provider == SocialProvider.BATTLENET)
+        .order_by(acc.username.asc())
+    )
+    if workspace_id is not None:
+        query = query.where(acc.id.in_(service.workspace_account_ids(workspace_id)))
+    rows = (await session.execute(query)).all()
 
     result: list[dict[str, Any]] = []
     for tag, st in rows:
@@ -53,6 +61,7 @@ async def get_user_collection_status(session: AsyncSession, user_id: int) -> lis
 async def list_fetch_log(
     session: AsyncSession,
     *,
+    workspace_id: int | None = None,
     status: str | None = None,
     source: str | None = None,
     before_id: int | None = None,
@@ -62,6 +71,11 @@ async def list_fetch_log(
 
     Resolves the owning ``user_id`` (LEFT JOIN — null when the account was
     deleted) so the admin log is clickable through to the player detail view.
+
+    ``workspace_id`` is the caller's authorization scope, not a user-supplied
+    filter: a workspace-scoped admin must never page into another tenant's
+    fetch history. Rows whose account was deleted (``social_account_id IS NULL``)
+    fall out of a scoped read — they can no longer be attributed to a workspace.
     """
     log = models.RankFetchLog
     acc = models.SocialAccount
@@ -70,6 +84,8 @@ async def list_fetch_log(
         .outerjoin(acc, acc.id == log.social_account_id)
         .order_by(log.id.desc())
     )
+    if workspace_id is not None:
+        query = query.where(log.social_account_id.in_(service.workspace_account_ids(workspace_id)))
     if status:
         query = query.where(log.status == status)
     if source:
@@ -94,9 +110,13 @@ async def list_fetch_log(
     ]
 
 
-async def get_collection_stats(session: AsyncSession) -> dict[str, Any]:
-    """Assemble the admin health dashboard: DB aggregates + current config echo."""
-    raw = await service.collection_stats(session)
+async def get_collection_stats(session: AsyncSession, *, workspace_id: int | None = None) -> dict[str, Any]:
+    """Assemble the admin health dashboard: DB aggregates + current config echo.
+
+    ``workspace_id`` scopes the aggregates to that workspace's players; the
+    config echo stays global because the collector is one per deployment.
+    """
+    raw = await service.collection_stats(session, workspace_id=workspace_id)
     cfg = await settings_provider.get_rank_collection_config(session)
     fetch = raw["fetch_24h"]
     fetch_total = sum(fetch.values())
@@ -127,6 +147,7 @@ async def _resolve_target_tags(
     *,
     user_id: int | None,
     social_account_ids: Sequence[int] | None,
+    workspace_id: int | None = None,
 ) -> list[models.SocialAccount]:
     acc = models.SocialAccount
     query = sa.select(acc).where(acc.provider == SocialProvider.BATTLENET)
@@ -138,6 +159,8 @@ async def _resolve_target_tags(
         query = query.where(acc.user_id == user_id)
     else:
         return []
+    if workspace_id is not None:
+        query = query.where(acc.id.in_(service.workspace_account_ids(workspace_id)))
     return list((await session.scalars(query)).all())
 
 
@@ -145,17 +168,20 @@ async def reenable_disabled(
     session: AsyncSession,
     *,
     only_previously_succeeded: bool = False,
+    workspace_id: int | None = None,
 ) -> int:
     """Requeue auto-disabled tags (admin recovery after a transient OverFast outage).
 
     Uses the configured collection interval to spread the re-enabled backlog.
-    Returns the number of tags re-enabled; commits.
+    Returns the number of tags re-enabled; commits. ``workspace_id`` limits the
+    recovery to that workspace's players.
     """
     cfg = await settings_provider.get_rank_collection_config(session)
     count = await service.reenable_disabled(
         session,
         interval_seconds=cfg.interval_seconds,
         only_previously_succeeded=only_previously_succeeded,
+        workspace_id=workspace_id,
     )
     await session.commit()
     return count
@@ -166,6 +192,7 @@ async def trigger_collection(
     *,
     user_id: int | None = None,
     social_account_ids: Sequence[int] | None = None,
+    workspace_id: int | None = None,
     broker: Any | None = None,
     redis: Any | None = None,
 ) -> int:
@@ -173,9 +200,13 @@ async def trigger_collection(
 
     Ensures a state row per tag (bumping priority), then enqueues a forced
     priority fetch (bypassing dedup) so "collect now" always runs. Returns the
-    number of fetches enqueued.
+    number of fetches enqueued. ``workspace_id`` is the caller's authorization
+    scope: tags of players outside that workspace are never touched, so an
+    explicit ``social_account_ids`` list cannot reach another tenant.
     """
-    tags = await _resolve_target_tags(session, user_id=user_id, social_account_ids=social_account_ids)
+    tags = await _resolve_target_tags(
+        session, user_id=user_id, social_account_ids=social_account_ids, workspace_id=workspace_id
+    )
     if not tags:
         return 0
 

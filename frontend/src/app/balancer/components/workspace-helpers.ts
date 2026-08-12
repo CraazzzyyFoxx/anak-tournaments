@@ -1,15 +1,19 @@
 import {
   AdminRegistration,
+  AdminRegistrationRole,
   BalancerApplication,
   BalancerPlayerExportResponse,
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
   BalancerRoleCode,
+  BalancerRosterKey,
+  BuiltInFieldConfig,
   InternalBalancePayload,
+  InternalBalancePlayer,
   RegistrationRankAutofillResponse,
   SavedBalance
 } from "@/types/balancer-admin.types";
-import { BalanceResponse, BalancerConfig } from "@/types/balancer.types";
+import { BalanceResponse, BalancerConfig, PlayerData } from "@/types/balancer.types";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 import { DEFAULT_DIVISION_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/division-grid";
@@ -28,10 +32,16 @@ export type BalanceVariant = {
   id: string;
   label: string;
   payload: InternalBalancePayload;
-  source: "saved" | "generated";
+  source: "saved" | "generated" | "imported";
   config?: BalancerConfig | null;
   /** Number of pool players excluded from this run due to validation issues */
   skippedCount?: number;
+  /**
+   * Payload edited in the editor since the variant was built. Only meaningful for
+   * `source: "saved"`, where it separates "this is exactly what is persisted" from
+   * "there is new work to save/export".
+   */
+  dirty?: boolean;
 };
 
 export type PlayerValidationIssue =
@@ -55,6 +65,10 @@ export type PlayerValidationIssue =
       owDivision: number | null;
       /** Absolute rank-point delta between the two. */
       delta: number;
+    }
+  | {
+      code: "status_blocks_ready";
+      message: string;
     };
 
 export type PlayerRankHistoryPreviewEntry = {
@@ -66,7 +80,6 @@ export type PlayerRankHistoryPreviewEntry = {
   original_division_number: number | null;
   tournament_id: number | null;
   tournament_name: string | null;
-  tournament_number: number | null;
   source_role: UserRoleType | null;
   tournament_grid_version: DivisionGridVersion | null;
   /** Where this entry came from: balancer history or analytics (getUserTournaments). */
@@ -292,6 +305,13 @@ export function getPlayerValidationIssues(
     });
   }
 
+  if (player.ready_blocked) {
+    issues.push({
+      code: "status_blocks_ready",
+      message: "Current status blocks Ready"
+    });
+  }
+
   if (application) {
     const playerRoleCodes = getPlayerRoleCodes(player);
     const applicationRoleCodes = getApplicationRoleCodes(application);
@@ -356,25 +376,78 @@ export function buildVariantFromSavedBalance(balance: SavedBalance): BalanceVari
   };
 }
 
+/**
+ * Solver role spelling -> the editor's roster key.
+ *
+ * A balance response is keyed by the canonical roster slot codes of
+ * `shared/domain/roster_shape.py` (`tank`/`dps`/`support`), because the solver's
+ * role mask is now a projection of the tournament roster shape. The editor and
+ * every persisted `result_json` are keyed by the display names, so the response
+ * is re-keyed on the way in. Both spellings are accepted: runs and saved
+ * balances produced before the roster shape landed carry the display names.
+ *
+ * `flex` is deliberately absent — the three-column editor has no bucket for it,
+ * so a flex roster shape is unsupported here rather than half-rendered.
+ */
+const ROSTER_KEY_BY_SOLVER_ROLE: Record<string, BalancerRosterKey> = {
+  ...API_ROLE_KEYS,
+  Tank: "Tank",
+  Damage: "Damage",
+  Support: "Support"
+};
+
+/**
+ * A response player carries three role-keyed fields besides its bucket, and all
+ * three are compared against roster keys downstream (drop eligibility, off-role
+ * badges, re-rating on move), so they are re-keyed together with the bucket.
+ */
+function normalizeBalanceResponsePlayer(player: PlayerData): InternalBalancePlayer {
+  const normalized: InternalBalancePlayer = {
+    ...player,
+    role_preferences: player.role_preferences.map(
+      (role) => ROSTER_KEY_BY_SOLVER_ROLE[role] ?? role
+    )
+  };
+  for (const field of ["all_ratings", "all_discomforts"] as const) {
+    const map = player[field];
+    if (map) {
+      normalized[field] = Object.fromEntries(
+        Object.entries(map).map(([role, value]) => [ROSTER_KEY_BY_SOLVER_ROLE[role] ?? role, value])
+      );
+    }
+  }
+  return normalized;
+}
+
 export function convertBalanceResponseToInternalPayload(
   response: BalanceResponse
 ): InternalBalancePayload {
   return normalizeInternalPayload({
-    teams: response.teams.map((team) => ({
-      id: team.id,
-      name: team.name,
-      average_mmr: team.average_mmr,
-      rating_variance: team.rating_variance,
-      total_discomfort: team.total_discomfort,
-      max_discomfort: team.max_discomfort,
-      roster: {
-        Tank: team.roster.Tank ?? [],
-        Damage: team.roster.Damage ?? [],
-        Support: team.roster.Support ?? []
+    teams: response.teams.map((team) => {
+      const roster: Record<BalancerRosterKey, InternalBalancePlayer[]> = {
+        Tank: [],
+        Damage: [],
+        Support: []
+      };
+      for (const [role, players] of Object.entries(team.roster)) {
+        const rosterKey = ROSTER_KEY_BY_SOLVER_ROLE[role];
+        if (rosterKey === undefined) {
+          continue;
+        }
+        roster[rosterKey].push(...players.map(normalizeBalanceResponsePlayer));
       }
-    })),
+      return {
+        id: team.id,
+        name: team.name,
+        average_mmr: team.average_mmr,
+        rating_variance: team.rating_variance,
+        total_discomfort: team.total_discomfort,
+        max_discomfort: team.max_discomfort,
+        roster
+      };
+    }),
     statistics: response.statistics,
-    benched_players: response.benched_players ?? []
+    benched_players: (response.benched_players ?? []).map(normalizeBalanceResponsePlayer)
   });
 }
 
@@ -425,21 +498,108 @@ function isRegistrationFlex(registration: AdminRegistration): boolean {
 }
 
 export function isRegistrationIncludedInBalancer(registration: AdminRegistration): boolean {
-  return (
-    registration.status === "approved" &&
-    !registration.deleted_at &&
-    !registration.exclude_from_balancer &&
-    registration.balancer_status !== "not_in_balancer"
-  );
+  return !registration.deleted_at && !registration.balancer_status_meta.excludes_from_balancer;
+}
+
+/** Whether the registration's current custom status blocks it from counting as "ready", independent of pool inclusion. */
+export function isRegistrationReadyBlocked(registration: AdminRegistration): boolean {
+  return registration.balancer_status_meta.excludes_from_ready;
 }
 
 export function isRegistrationAvailableForBalancer(registration: AdminRegistration): boolean {
   return registration.status === "approved" && !registration.deleted_at;
 }
 
+/** Options for `createSyntheticPlayerFromRegistration`. */
+export interface SyntheticPlayerOptions {
+  /**
+   * `flex_role.mode` is `all_roles` or `forced`: rate the player by their
+   * highest rank across all roles.
+   */
+  allRoles?: boolean;
+}
+
+/**
+ * Whether a form's `flex_role` config rates players by their highest rank across
+ * all roles — true for `all_roles` and `forced`, false otherwise.
+ *
+ * Fails closed on an unreadable config: an unloaded or failed form read is
+ * treated as `optional`, because guessing an every-role mode would silently
+ * inflate every player's effective rank.
+ *
+ * Mirrors `_all_roles_required` in balancer-service and `all_roles_required` in
+ * tournament-service. Pinned by `forced-flex-parity.test.ts`.
+ */
+export function ratesByMaxRank(config: BuiltInFieldConfig | null | undefined): boolean {
+  if (!config || config.enabled === false) return false;
+  return config.mode === "all_roles" || config.mode === "forced";
+}
+
+/**
+ * Effective per-role entries for a registrant on a tournament where every role
+ * is playable: one rank for all three roles, the maximum across the roles that
+ * carry one.
+ *
+ * This is what makes those modes work. In the balancer, eligibility for a role is
+ * the presence of a rating for it — `isActive && rank > 0` in the payload,
+ * `role in ratings` in the solver — not the `isFullFlex` flag, which only zeroes
+ * discomfort. Without flattening, a player ranked on DPS alone could never be
+ * placed as tank however flex they declared themselves.
+ *
+ * `ow_rank_value` is NOT replicated across the three entries. One effective rank
+ * against one effective OW rank is a single comparison, so it is attached to the
+ * role that actually produced the OW maximum and left null on the other two.
+ * `computeRankDeltasByRole` needs both values, so the admin gets exactly one
+ * `rank_delta_warning` carrying the meaningful number — replicating the OW rank
+ * would emit the same chip three times, and leaving it per-role would compare an
+ * effective rank against an unrelated role's OW rank and fire a spurious one. A
+ * player carrying any issue is refused by the balance run (`runBalanceMutation`),
+ * so getting this wrong does not just clutter the UI.
+ *
+ * `is_active` is unconditionally true, mirroring the `all_roles` branch of
+ * `_map_registration` in balancer-service, which bypasses the flag outright. The
+ * mode declares every role mandatory and playable, so nothing about the
+ * registrant's rows may take one away: a Google-Sheets row whose rank did not
+ * parse and a public-form submission (which carries no ranks at all) both arrive
+ * with roles that would otherwise render disabled and drop out of the pool.
+ * Deriving the flag from `effRank` did exactly that for every `all_roles`
+ * registration until an admin filled the ranks by hand — and the autofill that
+ * would have filled them only looks at active roles.
+ *
+ * Keeping the roles active does not sneak a rankless player into a balance run:
+ * `playerHasRankedRole` still requires a rank, so `missing_ranked_role` fires and
+ * `buildBalancerInput` drops the player.
+ */
+export function flattenRolesToMaxRank(
+  roles: AdminRegistrationRole[],
+  grid: DivisionGrid
+): BalancerPlayerRoleEntry[] {
+  const maxOf = (pick: (role: AdminRegistrationRole) => number | null | undefined) => {
+    const values = roles.map(pick).filter((value): value is number => value != null);
+    return values.length > 0 ? Math.max(...values) : null;
+  };
+  const effRank = maxOf((role) => role.rank_value);
+  const effOwRank = maxOf((role) => role.ow_rank_value);
+  const owSourceRole = roles.find((role) => role.ow_rank_value === effOwRank)?.role ?? null;
+
+  return ROLE_ORDER.map((code, index) => {
+    const source = roles.find((role) => role.role === code);
+    return {
+      role: code,
+      subtype: source?.subrole ?? null,
+      priority: source?.priority ?? index,
+      division_number: resolveDivisionFromRankHelper(effRank, grid),
+      rank_value: effRank,
+      is_active: true,
+      ow_rank_value: code === owSourceRole ? effOwRank : null
+    };
+  });
+}
+
 export function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+  options: SyntheticPlayerOptions = {}
 ): BalancerPlayerRecord {
   const battleTag = getRegistrationDisplayName(registration);
   const isFlex = isRegistrationFlex(registration);
@@ -450,17 +610,20 @@ export function createSyntheticPlayerFromRegistration(
     battle_tag: battleTag,
     battle_tag_normalized: registration.battle_tag_normalized ?? battleTag.toLowerCase(),
     user_id: registration.user_id,
-    role_entries_json: registration.roles.map((role) => ({
-      role: role.role,
-      subtype: role.subrole,
-      priority: role.priority,
-      division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
-      rank_value: role.rank_value,
-      is_active: role.is_active,
-      ow_rank_value: role.ow_rank_value ?? null
-    })),
+    role_entries_json: options.allRoles
+      ? flattenRolesToMaxRank(registration.roles, grid)
+      : registration.roles.map((role) => ({
+          role: role.role,
+          subtype: role.subrole,
+          priority: role.priority,
+          division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
+          rank_value: role.rank_value,
+          is_active: role.is_active,
+          ow_rank_value: role.ow_rank_value ?? null
+        })),
     is_flex: isFlex,
     is_in_pool: isRegistrationIncludedInBalancer(registration),
+    ready_blocked: isRegistrationReadyBlocked(registration),
     admin_notes: registration.admin_notes
   };
 }
@@ -616,7 +779,6 @@ export async function fetchPlayerRankHistoryPreview(
             original_division_number: null,
             tournament_id: entry.tournament_id,
             tournament_name: entry.tournament_name,
-            tournament_number: entry.tournament_number,
             source_role: null,
             tournament_grid_version: null,
             source: "balancer"
@@ -628,12 +790,12 @@ export async function fetchPlayerRankHistoryPreview(
     }
 
     // Step 2: Analytics fallback — past tournament ranks for roles not found in step 1,
-    // ordered by tournament number DESC.
+    // most recent tournaments first.
     const missingRoles = ROLE_ORDER.filter((role) => !latestPerRole.has(role));
     if (missingRoles.length > 0) {
       const tournaments = await userService.getUserTournaments(user.id, workspaceId);
       if (tournaments?.length) {
-        const sorted = [...tournaments].sort((a, b) => b.number - a.number);
+        const sorted = [...tournaments].sort((a, b) => b.id - a.id);
 
         const sourceVersionsById = new Map<number, DivisionGridVersion>();
         for (const tournament of sorted) {
@@ -675,7 +837,6 @@ export async function fetchPlayerRankHistoryPreview(
               original_division_number: originalDivisionNumber,
               tournament_id: tournament.id,
               tournament_name: tournament.name,
-              tournament_number: tournament.number,
               source_role: roleName,
               tournament_grid_version: tournament.division_grid_version ?? null,
               source: "analytics"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import {
   Building2,
@@ -23,6 +23,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +53,7 @@ import {
 } from "@/components/ui/table";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
@@ -182,13 +184,14 @@ export default function AccessAdminRolesPage() {
     (ws) =>
       isSuperuser ||
       canAccessAnyPermission(
-        ["role.read", "role.create", "role.update", "role.delete", "role.assign"],
+        ["role.read", "role.create", "role.update", "role.delete"],
         ws.id
       )
   );
 
   // Scope selector: "global" or a workspace id
   const [selectedScope, setSelectedScope] = useState<RoleScope>("global");
+  const scopeSelectId = useId();
   const canReadGlobalRoles = isSuperuser || hasPermission("role.read");
   const effectiveScope =
     selectedScope === "global" && !canReadGlobalRoles && adminWorkspaces[0]
@@ -301,14 +304,14 @@ export default function AccessAdminRolesPage() {
           const ws = workspaces.find((w) => w.id === role.workspace_id);
           return (
             <div className="flex items-center gap-1.5">
-              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+              <Building2 aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-sm">{ws?.name ?? `#${role.workspace_id}`}</span>
             </div>
           );
         }
         return (
           <div className="flex items-center gap-1.5">
-            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+            <Globe aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-sm">Global</span>
           </div>
         );
@@ -334,7 +337,7 @@ export default function AccessAdminRolesPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button aria-label={`Open actions for role ${role.name}`} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal aria-hidden className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -347,8 +350,8 @@ export default function AccessAdminRolesPage() {
                   setIsReadOnly(true);
                 }}
               >
-                <Eye className="mr-2 h-4 w-4" />
-                View
+                <Eye aria-hidden className="mr-2 h-4 w-4" />
+                View role
               </DropdownMenuItem>
               {canUpdateRole && (
                 <>
@@ -362,8 +365,8 @@ export default function AccessAdminRolesPage() {
                       setIsReadOnly(false);
                     }}
                   >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
+                    <Pencil aria-hidden className="mr-2 h-4 w-4" />
+                    Edit role
                   </DropdownMenuItem>
                 </>
               )}
@@ -375,8 +378,8 @@ export default function AccessAdminRolesPage() {
                     disabled={role.is_system}
                     onClick={() => setDeletingRole(role)}
                   >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
+                    <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                    Delete role
                   </DropdownMenuItem>
                 </>
               )}
@@ -552,43 +555,12 @@ export default function AccessAdminRolesPage() {
                 setCreateDialogOpen(true);
               }}
             >
-              <Plus className="mr-2 h-4 w-4" />
-              Create Role
+              <Plus aria-hidden className="mr-2 h-4 w-4" />
+              Create role
             </Button>
           ) : undefined
         }
       />
-
-      {/* Workspace scope selector */}
-      <div className="flex items-center gap-3">
-        <Label className="text-sm text-muted-foreground">Scope:</Label>
-        <Select
-          value={String(effectiveScope)}
-          onValueChange={(value) => setSelectedScope(value === "global" ? "global" : Number(value))}
-        >
-          <SelectTrigger className="w-[220px]">
-            <SelectValue placeholder="Select scope" />
-          </SelectTrigger>
-          <SelectContent>
-            {canReadGlobalRoles && (
-              <SelectItem value="global">
-                <div className="flex items-center gap-2">
-                  <Globe className="h-3.5 w-3.5" />
-                  Global
-                </div>
-              </SelectItem>
-            )}
-            {adminWorkspaces.map((ws) => (
-              <SelectItem key={ws.id} value={String(ws.id)}>
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-3.5 w-3.5" />
-                  {ws.name}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
 
       <AdminDataTable
         initialPageSize={PAGE_SIZE}
@@ -615,8 +587,43 @@ export default function AccessAdminRolesPage() {
           });
         }}
         columns={columns}
-        searchPlaceholder="Search roles..."
-        emptyMessage="No roles found."
+        searchPlaceholder="Search roles…"
+        emptyMessage="No roles exist in this scope yet. Switch scope, or create a role to bundle permissions."
+        actions={
+          <div className="flex items-center gap-2">
+            <Label htmlFor={scopeSelectId} className="text-sm text-muted-foreground">
+              Scope
+            </Label>
+            <Select
+              value={String(effectiveScope)}
+              onValueChange={(value) =>
+                setSelectedScope(value === "global" ? "global" : Number(value))
+              }
+            >
+              <SelectTrigger id={scopeSelectId} className="w-56">
+                <SelectValue placeholder="Select scope" />
+              </SelectTrigger>
+              <SelectContent>
+                {canReadGlobalRoles && (
+                  <SelectItem value="global">
+                    <div className="flex items-center gap-2">
+                      <Globe aria-hidden className="h-3.5 w-3.5" />
+                      Global
+                    </div>
+                  </SelectItem>
+                )}
+                {adminWorkspaces.map((ws) => (
+                  <SelectItem key={ws.id} value={String(ws.id)}>
+                    <div className="flex items-center gap-2">
+                      <Building2 aria-hidden className="h-3.5 w-3.5" />
+                      {ws.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        }
         onRowDoubleClick={(row) => {
           updateRoleMutation.reset();
           setFormOverride(null);
@@ -637,10 +644,10 @@ export default function AccessAdminRolesPage() {
         }}
         title={
           isReadOnly
-            ? `View Role: ${roleDetail?.name ?? ""}`
+            ? `Role ${roleDetail?.name ?? ""}`
             : isEditing
-              ? "Edit Role"
-              : `Create Role (${scopeLabel})`
+              ? "Edit role"
+              : `Create role (${scopeLabel})`
         }
         description={
           isReadOnly
@@ -651,7 +658,7 @@ export default function AccessAdminRolesPage() {
         }
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
-        submittingLabel={isEditing ? "Updating role..." : "Creating role..."}
+        submittingLabel={isEditing ? "Updating role…" : "Creating role…"}
         errorMessage={
           (isEditing ? updateRoleMutation.error : createRoleMutation.error) instanceof Error
             ? (isEditing ? updateRoleMutation.error : createRoleMutation.error)?.message
@@ -663,8 +670,13 @@ export default function AccessAdminRolesPage() {
       >
         <div className="space-y-5">
           {roleDetail?.is_system ? (
-            <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <div
+              className={cn(
+                "flex items-start gap-3 rounded-md border p-3 text-sm",
+                TONE_CLASS.warning
+              )}
+            >
+              <ShieldAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 {isReadOnly
                   ? "System roles are system-defined and cannot be modified."
@@ -703,8 +715,8 @@ export default function AccessAdminRolesPage() {
           <div className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
-                <Label>Permission Matrix</Label>
-                <Badge variant="outline">
+                <h3 className="text-sm font-medium">Permission matrix</h3>
+                <Badge variant="outline" className="tabular-nums">
                   {formData.permission_ids.length}/{permissionMatrix.allPermissionIds.length}{" "}
                   selected
                 </Badge>
@@ -717,7 +729,7 @@ export default function AccessAdminRolesPage() {
                   onClick={() => setPermissions(permissionMatrix.allPermissionIds)}
                   disabled={isReadOnly || permissionMatrix.allPermissionIds.length === 0}
                 >
-                  <CheckSquare className="h-4 w-4" />
+                  <CheckSquare aria-hidden className="h-4 w-4" />
                   Grant all
                 </Button>
                 <Button
@@ -727,7 +739,7 @@ export default function AccessAdminRolesPage() {
                   onClick={() => setPermissions([])}
                   disabled={isReadOnly || formData.permission_ids.length === 0}
                 >
-                  <XSquare className="h-4 w-4" />
+                  <XSquare aria-hidden className="h-4 w-4" />
                   Revoke all
                 </Button>
               </div>
@@ -737,14 +749,14 @@ export default function AccessAdminRolesPage() {
               <Table wrapperClassName="min-w-[900px] overflow-visible">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="sticky left-0 z-20 w-[240px] bg-background">
+                    <TableHead className="sticky left-0 z-20 w-60 bg-background">
                       Resource
                     </TableHead>
                     {permissionMatrix.columns.map((column) => {
                       return (
                         <TableHead
                           key={column.action}
-                          className="min-w-[96px] bg-background text-center"
+                          className="min-w-24 bg-background text-center"
                         >
                           <div className="flex flex-col items-center gap-1.5">
                             <MatrixCheckbox
@@ -789,7 +801,7 @@ export default function AccessAdminRolesPage() {
                               <p className="truncate text-sm font-medium">
                                 {formatPermissionLabel(row.resource)}
                               </p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs tabular-nums text-muted-foreground">
                                 {rowSelectedCount}/{row.permissionIds.length}
                               </p>
                             </div>
@@ -801,9 +813,10 @@ export default function AccessAdminRolesPage() {
                             return (
                               <TableCell
                                 key={column.action}
-                                className="text-center text-muted-foreground/40"
+                                className="text-center text-muted-foreground"
                               >
-                                -
+                                <span aria-hidden>—</span>
+                                <span className="sr-only">Not applicable</span>
                               </TableCell>
                             );
                           }
@@ -837,8 +850,9 @@ export default function AccessAdminRolesPage() {
           onOpenChange={(open) => !open && setDeletingRole(null)}
           onConfirm={() => deleteRoleMutation.mutate(deletingRole.id)}
           isDeleting={deleteRoleMutation.isPending}
-          title={`Delete role ${deletingRole.name}?`}
-          description="This removes the role definition. Users currently assigned to it will lose the access granted by this role."
+          title={`Delete role ${deletingRole.name}`}
+          description={`This removes the ${deletingRole.name} role definition permanently. Every user currently assigned to it immediately loses the access it granted. This cannot be undone.`}
+          confirmLabel="Delete role"
         />
       ) : null}
     </div>

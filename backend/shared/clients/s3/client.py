@@ -1,5 +1,7 @@
 """Async S3 client with lifecycle management for MinIO/S3-compatible storage."""
 
+import base64
+import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -7,6 +9,28 @@ from typing import Any
 from aiobotocore.session import AioSession, get_session
 from botocore.exceptions import ClientError
 from loguru import logger
+
+
+def _add_content_md5(request: Any, **_kwargs: Any) -> None:
+    """Attach the legacy ``Content-MD5`` header ``DeleteObjects`` needs.
+
+    botocore >=1.36 marks ``DeleteObjects`` as ``requestChecksumRequired`` but
+    always satisfies that with the *new* flexible-checksum scheme (an
+    ``x-amz-checksum-crc32`` header/trailer) — ``Config(request_checksum_
+    calculation=...)`` has no effect here, it only toggles checksums for
+    operations where one is optional. MinIO/S3-compatible endpoints that
+    still hard-require the old ``Content-MD5`` header (not the new one)
+    reject the request with "MissingContentMD5" regardless. Computing and
+    setting it ourselves on ``before-sign`` — so it lands in the SigV4
+    signature — restores the legacy behavior for this one operation.
+    """
+    body = request.body
+    if body is None:
+        return
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    digest = hashlib.md5(body, usedforsecurity=False).digest()
+    request.headers["Content-MD5"] = base64.b64encode(digest).decode("ascii")
 
 
 class S3Client:
@@ -59,6 +83,7 @@ class S3Client:
         if self._session is None:
             raise RuntimeError("S3Client not started. Call await client.start() first.")
         async with self._session.create_client("s3", **self._config) as client:
+            client.meta.events.register_first("before-sign.s3.DeleteObjects", _add_content_md5)
             yield client
 
     # ── Core operations ──────────────────────────────────────────────────
@@ -103,6 +128,24 @@ class S3Client:
                 return True
         except ClientError:
             logger.exception(f"Error uploading object '{key}'")
+            return False
+
+    async def copy_object(self, source_key: str, target_key: str, *, public: bool = False) -> bool:
+        """Copy an object inside the configured bucket without downloading it."""
+        try:
+            async with self._client() as client:
+                kwargs: dict[str, Any] = {
+                    "Bucket": self.bucket_name,
+                    "Key": target_key,
+                    "CopySource": {"Bucket": self.bucket_name, "Key": source_key},
+                }
+                if public:
+                    kwargs["ACL"] = "public-read"
+                await client.copy_object(**kwargs)
+                logger.info(f"Copied object '{source_key}' to '{target_key}'")
+                return True
+        except ClientError:
+            logger.exception(f"Error copying object '{source_key}' to '{target_key}'")
             return False
 
     async def delete_object(self, key: str) -> bool:

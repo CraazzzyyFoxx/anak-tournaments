@@ -1,13 +1,12 @@
 import { describe, expect, it } from "bun:test";
 
 import type { Encounter } from "@/types/encounter.types";
+import { getEncounterState, getEncounterWinner } from "@/lib/encounter-status";
 import {
   DEFAULT_FILTERS,
   filtersToApiFilters,
   filtersToSearchParams,
   formatDuration,
-  getEncounterStateLabel,
-  getMediaSlots,
   normalizeEncounterFilters,
 } from "./encounters-redesign.helpers";
 
@@ -36,9 +35,6 @@ function encounter(overrides: Partial<Encounter>): Encounter {
     started_at: null,
     ended_at: null,
     current_map_index: null,
-    submitted_by_id: null,
-    submitted_at: null,
-    confirmed_by_id: null,
     confirmed_at: null,
     matches: [],
     home_team: null as never,
@@ -94,17 +90,24 @@ describe("encounters redesign helpers", () => {
   it("labels live, upcoming, and final encounters", () => {
     const now = new Date("2026-05-18T12:00:00Z");
 
-    expect(getEncounterStateLabel(encounter({ started_at: "2026-05-18T11:00:00Z" }), now)).toBe("Live");
-    expect(getEncounterStateLabel(encounter({ scheduled_at: "2026-05-18T13:00:00Z" }), now)).toBe("Upcoming");
-    expect(getEncounterStateLabel(encounter({ status: "completed" }), now)).toBe("Final");
+    expect(getEncounterState(encounter({ started_at: "2026-05-18T11:00:00Z" }), now)).toBe("Live");
+    expect(getEncounterState(encounter({ scheduled_at: "2026-05-18T13:00:00Z" }), now)).toBe(
+      "Upcoming"
+    );
+    expect(getEncounterState(encounter({ status: "completed" }), now)).toBe("Final");
   });
 
-  it("keeps VOD and cast as disabled Twitch placeholders", () => {
-    expect(getMediaSlots(true)).toEqual([
-      { key: "logs", label: "Game logs available", enabled: true },
-      { key: "vod", label: "Coming with Twitch integration", enabled: false },
-      { key: "cast", label: "Coming with Twitch integration", enabled: false },
-    ]);
+  it("resolves a winner only once the series is completed", () => {
+    expect(getEncounterWinner(encounter({ score: { home: 2, away: 1 } }))).toBeNull();
+    expect(
+      getEncounterWinner(encounter({ status: "completed", score: { home: 2, away: 1 } }))
+    ).toBe("home");
+    expect(
+      getEncounterWinner(encounter({ status: "completed", score: { home: 1, away: 2 } }))
+    ).toBe("away");
+    expect(
+      getEncounterWinner(encounter({ status: "completed", score: { home: 2, away: 2 } }))
+    ).toBeNull();
   });
 
   it("formats aggregate seconds for pulse cards", () => {

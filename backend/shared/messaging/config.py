@@ -30,6 +30,73 @@ DISCORD_COMMANDS_DLQ = RabbitQueue(
 )
 
 # ============================================================================
+# Discord Member Roles Queue (RPC)
+# ============================================================================
+
+DISCORD_MEMBER_ROLES_QUEUE = RabbitQueue(
+    "discord_member_roles",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_member_roles.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_MEMBER_ROLES_DLQ = RabbitQueue(
+    "discord_member_roles.dlq",
+    durable=True,
+)
+# ============================================================================
+# Discord Guild Entities Queues (RPC)
+# ============================================================================
+
+DISCORD_GUILD_ROLES_QUEUE = RabbitQueue(
+    "discord_guild_roles",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_guild_roles.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_GUILD_ROLES_DLQ = RabbitQueue(
+    "discord_guild_roles.dlq",
+    durable=True,
+)
+
+DISCORD_GUILD_CHANNELS_QUEUE = RabbitQueue(
+    "discord_guild_channels",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_guild_channels.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_GUILD_CHANNELS_DLQ = RabbitQueue(
+    "discord_guild_channels.dlq",
+    durable=True,
+)
+
+DISCORD_GUILD_INFO_QUEUE = RabbitQueue(
+    "discord_guild_info",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_guild_info.dlq",
+        "x-message-ttl": 60000,  # 1 minute
+    },
+)
+
+DISCORD_GUILD_INFO_DLQ = RabbitQueue(
+    "discord_guild_info.dlq",
+    durable=True,
+)
+
+# ============================================================================
 # Process Match Log Queue
 # ============================================================================
 
@@ -159,6 +226,21 @@ TOURNAMENT_STANDINGS_JOBS_QUEUE = RabbitQueue(
 
 TOURNAMENT_STANDINGS_JOBS_DLQ = RabbitQueue(
     "tournament_standings_jobs.dlq",
+    durable=True,
+)
+
+DIVISION_GRID_IMPORT_JOBS_QUEUE = RabbitQueue(
+    "division_grid_import_jobs",
+    durable=True,
+    routing_key="tournament.compute.division-grid-import",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "division_grid_import_jobs.dlq",
+    },
+)
+
+DIVISION_GRID_IMPORT_JOBS_DLQ = RabbitQueue(
+    "division_grid_import_jobs.dlq",
     durable=True,
 )
 

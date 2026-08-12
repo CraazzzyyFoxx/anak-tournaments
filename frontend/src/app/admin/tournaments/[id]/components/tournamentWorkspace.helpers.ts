@@ -4,6 +4,8 @@ import type { Team } from "@/types/team.types";
 import type { Stage, Standings, Tournament } from "@/types/tournament.types";
 import type { TournamentPhaseScheduleEntryInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
+import type { RosterSlotMap } from "@/lib/roster-shape";
+import { normalizeSlots } from "@/components/admin/tournaments/roster-shape-editor.model";
 
 export const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;
 
@@ -15,7 +17,6 @@ export type PhaseScheduleFormState = Record<
 >;
 
 export type TournamentFormState = {
-  number: number | null;
   name: string;
   description: string;
   challonge_slug: string;
@@ -32,11 +33,11 @@ export type TournamentFormState = {
   phase_schedule: PhaseScheduleFormState;
   division_grid_version_id: number | null;
   team_formation: string;
-};
-
-export type TeamFormState = {
-  name: string;
-  captain_id: number;
+  /**
+   * Roster shape override; `null` = inherit. Normalized on the way in so the
+   * tab's `JSON.stringify` dirty check does not trip over key order.
+   */
+  roster_slots_json: RosterSlotMap | null;
 };
 
 export type EncounterFormState = {
@@ -138,7 +139,6 @@ export function getPhaseSchedulePayload(
 
 export function getTournamentForm(tournament: Tournament, timezone: string): TournamentFormState {
   return {
-    number: tournament.number ?? null,
     name: tournament.name,
     description: tournament.description ?? "",
     challonge_slug: tournament.challonge_slug ?? "",
@@ -154,21 +154,10 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
     allow_late_registration: tournament.allow_late_registration ?? false,
     phase_schedule: getPhaseScheduleForm(tournament, timezone),
     division_grid_version_id: tournament.division_grid_version_id ?? null,
-    team_formation: tournament.team_formation ?? "balancer"
-  };
-}
-
-export function getEmptyTeamForm(): TeamFormState {
-  return {
-    name: "",
-    captain_id: 0
-  };
-}
-
-export function getTeamForm(team: Team): TeamFormState {
-  return {
-    name: team.name,
-    captain_id: team.captain_id
+    team_formation: tournament.team_formation ?? "balancer",
+    roster_slots_json: tournament.roster_slots_json
+      ? normalizeSlots(tournament.roster_slots_json)
+      : null
   };
 }
 

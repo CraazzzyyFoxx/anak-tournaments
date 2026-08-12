@@ -33,6 +33,12 @@ export interface DivisionGridEntity {
   name: string;
   description: string | null;
   versions: DivisionGridVersion[];
+  source_workspace_id: number | null;
+  source_grid_id: number | null;
+  source_key: string | null;
+  source_fingerprint: string | null;
+  imported_at: string | null;
+  archived_at: string | null;
 }
 
 export interface DivisionGridMappingRule {
@@ -83,8 +89,10 @@ export interface DivisionGridMarketplaceGrid {
 
 export interface DivisionGridMarketplaceImportRequest {
   source_workspace_id: number;
-  source_grid_ids: number[];
-  set_default?: boolean;
+  source_grid_id: number;
+  source_version_id: number;
+  include_icons: boolean;
+  include_ow_rank_mappings: boolean;
 }
 
 export interface DivisionGridMarketplaceImportedGrid {
@@ -109,6 +117,95 @@ export interface DivisionGridMarketplaceImportResult {
   copied_mappings: number;
   imported_grids: DivisionGridMarketplaceImportedGrid[];
   warnings: DivisionGridMarketplaceImportWarning[];
+}
+
+export interface DivisionGridMarketplacePreflightResult {
+  source_workspace_id: number;
+  grids_count: number;
+  versions_count: number;
+  tiers_count: number;
+  mappings_count: number;
+  assets_to_copy: number;
+  assets_to_reuse: number;
+  external_assets: number;
+  conflicts: string[];
+  warnings: DivisionGridMarketplaceImportWarning[];
+  source_fingerprint: string;
+}
+
+export interface DivisionGridImportJob {
+  id: number;
+  workspace_id: number;
+  requested_by_user_id: number | null;
+  source_workspace_id: number | null;
+  status: "pending" | "running" | "completed" | "failed";
+  progress: number;
+  result: DivisionGridMarketplaceImportResult | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface DivisionGridReadinessConflictTier {
+  source_tier_id: number;
+  slug: string;
+  name: string;
+}
+
+export interface DivisionGridReadinessSource {
+  version_id: number;
+  version_label: string;
+  grid_name: string;
+  tournament_count: number;
+  tournament_names: string[];
+  status: "ok" | "missing" | "incomplete";
+  conflict_tiers: DivisionGridReadinessConflictTier[];
+}
+
+export interface DivisionGridActivationReadiness {
+  target_version_id: number;
+  is_ready: boolean;
+  used_source_version_ids: number[];
+  missing_mapping_version_ids: number[];
+  incomplete_mapping_version_ids: number[];
+  sources: DivisionGridReadinessSource[];
+}
+
+export interface DivisionGridSaveResult {
+  mode: "in_place" | "new_version_activated" | "new_version_pending";
+  grid: DivisionGridEntity;
+  active_version_id: number | null;
+  saved_version_id: number;
+  readiness: DivisionGridActivationReadiness;
+}
+
+export interface DivisionGridPortableMappingRule {
+  source_tier_slug: string;
+  target_tier_slug: string;
+  weight: number;
+  is_primary: boolean;
+}
+
+export interface DivisionGridPortableMapping {
+  source_version: number;
+  target_version: number;
+  name: string;
+  rules: DivisionGridPortableMappingRule[];
+}
+
+export interface DivisionGridPortableDocument {
+  schema_version: "division-grid/v1";
+  slug: string;
+  name: string;
+  description: string | null;
+  versions: Array<{
+    version: number;
+    label: string;
+    status: "draft" | "published";
+    tiers: DivisionTier[];
+  }>;
+  mappings: DivisionGridPortableMapping[];
 }
 
 export interface Workspace {
@@ -140,6 +237,8 @@ export interface Workspace {
   custom_domain_verified_at: string | null;
   /** Required value of the `_owt-verify.<custom_domain>` TXT record; not secret. */
   custom_domain_verification_token: string | null;
+  /** The one Discord guild this workspace runs in — Boosty patron roles and match-log channels alike. */
+  discord_guild_id: string | null;
   default_division_grid_version_id: number | null;
   default_division_grid_version: DivisionGridVersion | null;
 }
@@ -169,8 +268,6 @@ export interface WorkspaceMember {
   id: number;
   workspace_id: number;
   auth_user_id: number;
-  /** Highest system role held (owner > admin > member > player). */
-  role: WorkspaceSystemRole;
   username?: string | null;
   email?: string | null;
   first_name?: string | null;
@@ -183,12 +280,4 @@ export interface WorkspaceMember {
     is_system: boolean;
     workspace_id?: number | null;
   }>;
-}
-
-export interface WorkspaceMembership {
-  workspace_id: number;
-  slug: string;
-  role: string;
-  rbac_roles: string[];
-  rbac_permissions: string[];
 }

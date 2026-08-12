@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 
-import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
+import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +26,9 @@ import {
 import { notify } from "@/lib/notify";
 import { useTranslations } from "next-intl";
 import adminService from "@/services/admin.service";
-import type { EncounterUpdateInput } from "@/types/admin.types";
+import captainService from "@/services/captain.service";
+import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
+import type { EncounterEditableStatus, EncounterUpdateInput } from "@/types/admin.types";
 import { Encounter } from "@/types/encounter.types";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +38,23 @@ interface EncounterEditDialogProps {
   encounter: Encounter;
 }
 
-const ENCOUNTER_STATUSES = ["open", "pending", "completed"] as const;
+// Editable statuses only. Completion moves score, status, result_status and
+// the audit row together, so it belongs to the result action below.
+const ENCOUNTER_STATUSES = ["open", "pending"] as const;
+const COMPLETED_STATUS = "completed";
+const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
+
+type EncounterStatusOption = (typeof ENCOUNTER_STATUSES)[number] | typeof COMPLETED_STATUS;
+
+/** A completed encounter keeps `completed` so the select has something to show;
+ * anything unrecognised falls back to `open` instead of rendering blank. */
+function normalizeStatus(status: string | null | undefined): EncounterStatusOption {
+  const value = (status ?? "").toLowerCase();
+  if (value === COMPLETED_STATUS) return COMPLETED_STATUS;
+  return ENCOUNTER_STATUSES.includes(value as (typeof ENCOUNTER_STATUSES)[number])
+    ? (value as (typeof ENCOUNTER_STATUSES)[number])
+    : "open";
+}
 
 function closenessFloatToStars(closeness: number | null | undefined): number {
   if (closeness == null || closeness <= 0) return 0;
@@ -72,8 +90,18 @@ function EncounterEditDialogBody({
 
   const [homeScore, setHomeScore] = useState(() => encounter.score?.home ?? 0);
   const [awayScore, setAwayScore] = useState(() => encounter.score?.away ?? 0);
-  const [status, setStatus] = useState<string>(() => encounter.status ?? "open");
+  const [status, setStatus] = useState<EncounterStatusOption>(() => normalizeStatus(encounter.status));
   const [stars, setStars] = useState<number>(() => closenessFloatToStars(encounter.closeness));
+  const [bestOf, setBestOf] = useState<number>(() => encounter.best_of ?? 3);
+  // `completed` is rejected by the field update (completion goes through the
+  // result endpoint), so it is shown read-only and left out of the payload.
+  const isCompleted = normalizeStatus(encounter.status) === COMPLETED_STATUS;
+  const statusOptions: readonly EncounterStatusOption[] = isCompleted ? [COMPLETED_STATUS] : ENCOUNTER_STATUSES;
+
+  const reportsQuery = useQuery({
+    queryKey: ["encounter", encounter.id, "reports"],
+    queryFn: () => captainService.getReports(encounter.id)
+  });
 
   const refreshEncounterViews = async () => {
     await Promise.all([
@@ -97,8 +125,9 @@ function EncounterEditDialogBody({
       const encounterPayload: EncounterUpdateInput = {
         home_score: homeScore,
         away_score: awayScore,
-        status,
-        closeness: stars > 0 ? stars / 10 : null
+        closeness: stars > 0 ? stars / 10 : null,
+        best_of: bestOf,
+        ...(isCompleted ? {} : { status: status as EncounterEditableStatus })
       };
       await adminService.updateEncounter(encounter.id, encounterPayload);
     },
@@ -109,41 +138,64 @@ function EncounterEditDialogBody({
     }
   });
 
+  // Confirming takes the numbers currently on screen, so "fix the score and
+  // confirm it" is one request instead of an edit racing a confirm.
   const confirmMutation = useMutation({
-    mutationFn: () => adminService.confirmEncounterResult(encounter.id),
+    mutationFn: () =>
+      adminService.setEncounterResult(encounter.id, {
+        home_score: homeScore,
+        away_score: awayScore,
+        ...(stars > 0 ? { closeness: stars } : {})
+      }),
     onSuccess: async () => {
       notify.success(t("matchEdit.resultConfirmed"));
       await refreshEncounterViews();
       onOpenChange(false);
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: t("matchEdit.confirmErrorMessage") });
+    }
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: () => adminService.reopenEncounterResult(encounter.id),
+    onSuccess: async () => {
+      notify.success(t("matchEdit.resultReopened"));
+      await refreshEncounterViews();
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: t("matchEdit.reopenErrorMessage") });
     }
   });
 
   return (
-    <DialogContent className="max-w-md bg-[#0c0d0f] border-zinc-800/80 text-white rounded-2xl p-6 shadow-2xl [&>button]:text-zinc-400 [&>button]:hover:text-white [&>button]:hover:bg-zinc-900">
+    <DialogContent className="max-w-md">
       <DialogHeader className="space-y-1">
-        <DialogTitle className="flex items-center gap-2 text-white text-lg font-bold tracking-tight">
+        <DialogTitle className="flex items-center gap-2 text-[color:var(--aqt-fg)] text-lg font-bold tracking-tight">
           {t("matchEdit.title")}
           {encounter.result_status === "pending_confirmation" && (
-            <Badge className="bg-amber-500/80 text-white border-0">
+            <Badge className="border-0 bg-warning text-warning-foreground">
               {t("matchEdit.pendingConfirmation")}
             </Badge>
           )}
           {encounter.result_status === "disputed" && (
-            <Badge className="bg-red-500/80 text-white border-0">{t("matchEdit.disputed")}</Badge>
+            <Badge className="border-0 bg-destructive text-destructive-foreground">{t("matchEdit.disputed")}</Badge>
           )}
         </DialogTitle>
-        <DialogDescription className="text-zinc-400 text-sm font-semibold mt-1">
+        <DialogDescription className="text-[color:var(--aqt-fg-muted)] text-sm font-semibold mt-1">
           {encounter.home_team?.name} vs {encounter.away_team?.name}
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4 mt-2">
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1 mt-2">
         <EncounterScoreControls
           idPrefix={`encounter-edit-${encounter.id}`}
           homeScore={homeScore}
           awayScore={awayScore}
           homeLabel={homeTeamLabel}
           awayLabel={awayTeamLabel}
+          bestOf={bestOf}
           onScoreChange={(score) => {
             setHomeScore(score.homeScore);
             setAwayScore(score.awayScore);
@@ -151,24 +203,23 @@ function EncounterEditDialogBody({
           onPresetSelect={(score) => {
             setHomeScore(score.homeScore);
             setAwayScore(score.awayScore);
-            setStatus("completed");
           }}
         />
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-zinc-300">{t("matchEdit.status")}</Label>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-full bg-zinc-950 border-zinc-800/85 text-white font-semibold rounded-lg focus:ring-0 focus:ring-offset-0 focus:border-zinc-300">
+          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.bestOf")}</Label>
+          <Select value={String(bestOf)} onValueChange={(value) => setBestOf(Number(value))}>
+            <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-[#0c0d0f] border-zinc-800 text-white">
-              {ENCOUNTER_STATUSES.map((item) => (
+            <SelectContent>
+              {BEST_OF_OPTIONS.map((n) => (
                 <SelectItem
-                  key={item}
-                  value={item}
-                  className="focus:bg-zinc-800 focus:text-white hover:bg-zinc-800 text-zinc-200 cursor-pointer"
+                  key={n}
+                  value={String(n)}
+                  className="cursor-pointer"
                 >
-                  {item}
+                  {`BO${n}`}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -176,7 +227,32 @@ function EncounterEditDialogBody({
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-zinc-300">
+          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.status")}</Label>
+          <Select value={status} onValueChange={(value) => setStatus(normalizeStatus(value))} disabled={isCompleted}>
+            <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {statusOptions.map((item) => (
+                <SelectItem
+                  key={item}
+                  value={item}
+                  className="cursor-pointer"
+                >
+                  {t(`matchEdit.statuses.${item}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isCompleted && (
+            <p className="text-[11px] text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
+              {t("matchEdit.statusLockedHint")}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">
             {t("matchEdit.matchCloseness")}
           </Label>
           <div className="flex items-center gap-1.5">
@@ -185,45 +261,64 @@ function EncounterEditDialogBody({
                 key={n}
                 type="button"
                 onClick={() => setStars(n === stars ? 0 : n)}
-                className="p-0.5 hover:scale-110 transition-transform focus-visible:outline-none"
+                aria-pressed={n <= stars}
                 aria-label={t("matchEdit.starsAria", { count: n })}
+                className="rounded p-0.5 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <Star
+                  aria-hidden
                   className={cn(
                     "h-5 w-5 transition-colors duration-150",
                     n <= stars
-                      ? "fill-yellow-400 text-yellow-400"
-                      : "text-zinc-700 hover:text-zinc-600"
+                      ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
+                      : "text-[color:var(--aqt-fg-faint)]"
                   )}
                 />
               </button>
             ))}
-            <span className="ml-2 text-xs font-bold text-zinc-400">
+            <span className="ml-2 text-xs font-bold text-[color:var(--aqt-fg-muted)]">
               {stars > 0 ? `${stars}/10` : t("matchEdit.notSet")}
             </span>
           </div>
-          <p className="text-[11px] text-zinc-500 font-medium leading-normal mt-1">
+          <p className="text-[11px] text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
             {t("matchEdit.closenessHint")}
           </p>
         </div>
 
-        {validationError && <p className="text-sm text-red-500 font-semibold">{validationError}</p>}
+        {(reportsQuery.data?.reports?.length ?? 0) > 0 && (
+          <CaptainReportsView
+            encounter={encounter}
+            reports={reportsQuery.data?.reports ?? []}
+            form={reportsQuery.data?.form}
+          />
+        )}
+
+        {validationError && <p className="text-sm text-destructive font-semibold">{validationError}</p>}
       </div>
 
-      <DialogFooter className="mt-6 flex flex-row items-center justify-end gap-2">
+      <DialogFooter className="mt-6 flex flex-row flex-wrap items-center justify-end gap-2">
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
-          className="border-zinc-800 bg-transparent text-white font-semibold rounded-lg hover:bg-zinc-900 hover:text-white transition-colors h-10 px-5"
+          className="h-10 px-5 font-semibold"
         >
           {t("matchEdit.cancel")}
         </Button>
-        {encounter.result_status === "pending_confirmation" && (
+        {encounter.result_status === "confirmed" ? (
+          <Button
+            variant="secondary"
+            onClick={() => reopenMutation.mutate()}
+            disabled={reopenMutation.isPending}
+            className="h-10 px-5 font-semibold"
+          >
+            {reopenMutation.isPending ? t("matchEdit.reopening") : t("matchEdit.reopenResult")}
+          </Button>
+        ) : (
           <Button
             variant="secondary"
             onClick={() => confirmMutation.mutate()}
             disabled={confirmMutation.isPending}
-            className="bg-zinc-800 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors h-10 px-5"
+            className="h-10 px-5 font-semibold"
           >
             {confirmMutation.isPending ? t("matchEdit.confirming") : t("matchEdit.confirmResult")}
           </Button>
@@ -231,7 +326,7 @@ function EncounterEditDialogBody({
         <Button
           onClick={() => saveMutation.mutate()}
           disabled={!!validationError || saveMutation.isPending}
-          className="bg-white text-zinc-950 font-bold rounded-lg hover:bg-zinc-200 transition-colors h-10 px-5"
+          className="h-10 px-5 font-bold"
         >
           {saveMutation.isPending ? t("matchEdit.saving") : t("matchEdit.save")}
         </Button>

@@ -116,7 +116,7 @@ const GRAIN_ICONS: Record<string, LucideIcon> = {
 function IconLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
-      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
       <span className="capitalize">{label}</span>
     </span>
   );
@@ -177,6 +177,9 @@ export default function AchievementsPage() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const jsonImportInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<AchievementRuleImportResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [hardResetOpen, setHardResetOpen] = useState(false);
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
   const [librarySourceWorkspaceId, setLibrarySourceWorkspaceId] = useState<number | undefined>(undefined);
   const [librarySelectedSlugs, setLibrarySelectedSlugs] = useState<Set<string>>(new Set());
@@ -195,6 +198,7 @@ export default function AchievementsPage() {
   const [overrideAction, setOverrideAction] = useState<"grant" | "revoke">("grant");
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideTournamentId, setOverrideTournamentId] = useState<number | undefined>(undefined);
+  const [overrideFormError, setOverrideFormError] = useState<string | null>(null);
 
   const canCreate = canAccessPermission("achievement.create", workspaceId);
   const canUpdate = canAccessPermission("achievement.update", workspaceId);
@@ -348,6 +352,7 @@ export default function AchievementsPage() {
       setOverrideRuleId(undefined);
       setOverrideReason("");
       setOverrideTournamentId(undefined);
+      setOverrideFormError(null);
     },
   });
 
@@ -373,6 +378,21 @@ export default function AchievementsPage() {
     });
   };
 
+  // Validated on submit rather than by disabling the button, so the reader can
+  // read what is missing instead of guessing why nothing happens.
+  const handleOverrideSubmit = () => {
+    const missing: string[] = [];
+    if (!overrideUserId) missing.push("a user");
+    if (!overrideRuleId) missing.push("an achievement");
+    if (!overrideReason.trim()) missing.push("a reason");
+    if (missing.length > 0) {
+      setOverrideFormError(`Pick ${missing.join(", ")} before saving the override.`);
+      return;
+    }
+    setOverrideFormError(null);
+    overrideMutation.mutate();
+  };
+
   const handleExport = async () => {
     const { blob, filename } = await adminService.exportAchievementRules(workspaceId!);
     const objectUrl = URL.createObjectURL(blob);
@@ -387,12 +407,15 @@ export default function AchievementsPage() {
 
   const handleJsonImportFile = async (file: File | null) => {
     if (!file) return;
+    setImportError(null);
     const text = await file.text();
     let parsed: AchievementRuleExportEnvelope;
     try {
       parsed = JSON.parse(text) as AchievementRuleExportEnvelope;
     } catch {
-      window.alert("Invalid JSON file");
+      setImportError(
+        `“${file.name}” is not valid JSON. Import a file produced by Export JSON on this page, unedited.`,
+      );
       if (jsonImportInputRef.current) {
         jsonImportInputRef.current.value = "";
       }
@@ -452,7 +475,12 @@ export default function AchievementsPage() {
   // --- Columns ---
 
   const columns: ColumnDef<AchievementRule>[] = [
-    { accessorKey: "id", header: "ID", size: 60 },
+    {
+      accessorKey: "id",
+      header: "ID",
+      size: 60,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
+    },
     {
       accessorKey: "enabled",
       header: "Status",
@@ -489,11 +517,16 @@ export default function AchievementsPage() {
         <IconLabel icon={GRAIN_ICONS[row.original.grain] ?? User} label={row.original.grain.replace("_", " + ")} />
       ),
     },
-    { accessorKey: "rule_version", header: "Ver", size: 50 },
+    {
+      accessorKey: "rule_version",
+      header: "Ver",
+      size: 50,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.rule_version}</span>,
+    },
     {
       id: "conditions_count",
-      header: "Rules",
-      size: 70,
+      header: "Conditions",
+      size: 90,
       accessorFn: (row) => countLeafConditions(row.condition_tree),
       cell: ({ getValue }) => <span className="tabular-nums">{getValue<number>()}</span>,
     },
@@ -506,14 +539,14 @@ export default function AchievementsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button aria-label={`Actions for ${rule.slug}`} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => router.push(`/admin/achievements/${rule.id}`)}>
-                <Eye className="mr-2 h-4 w-4" />
-                View
+                <Eye className="mr-2 h-4 w-4" aria-hidden />
+                View details
               </DropdownMenuItem>
               {canUpdate && (
                 <DropdownMenuItem
@@ -523,13 +556,13 @@ export default function AchievementsPage() {
                     setFormData(getFormData(rule));
                   }}
                 >
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit
+                  <Pencil className="mr-2 h-4 w-4" aria-hidden />
+                  Edit achievement
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => testMutation.mutate(rule.id)}>
-                <TestTube className="mr-2 h-4 w-4" />
-                Test (dry-run)
+                <TestTube className="mr-2 h-4 w-4" aria-hidden />
+                Test (dry run)
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
@@ -538,25 +571,25 @@ export default function AchievementsPage() {
                   setEvaluateDialogOpen(true);
                 }}
               >
-                <Play className="mr-2 h-4 w-4" />
-                Evaluate this
+                <Play className="mr-2 h-4 w-4" aria-hidden />
+                Evaluate this achievement
               </DropdownMenuItem>
               {canUpdate && (
                 <DropdownMenuItem
                   onClick={() => toggleMutation.mutate({ id: rule.id, enabled: !rule.enabled })}
                 >
                   {rule.enabled ? (
-                    <><EyeOff className="mr-2 h-4 w-4" />Disable</>
+                    <><EyeOff className="mr-2 h-4 w-4" aria-hidden />Disable</>
                   ) : (
-                    <><Eye className="mr-2 h-4 w-4" />Enable</>
+                    <><Eye className="mr-2 h-4 w-4" aria-hidden />Enable</>
                   )}
                 </DropdownMenuItem>
               )}
               {canUpdate && canDelete && <DropdownMenuSeparator />}
               {canDelete && (
                 <DropdownMenuItem onClick={() => setDeletingRule(rule)} className="text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
+                  <Trash2 className="mr-2 h-4 w-4" aria-hidden />
+                  Delete achievement
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -567,14 +600,24 @@ export default function AchievementsPage() {
   ];
 
   if (!workspaceId) {
-    return <div className="p-6 text-muted-foreground">Select a workspace first.</div>;
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader
+          title="Achievements"
+          description="Condition-tree rules, evaluation runs and manual overrides."
+        />
+        <p className="rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
+          Pick a workspace in the sidebar to load its achievement catalog.
+        </p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Achievements"
-        description="Manage achievements with condition tree evaluation engine"
+        description="Condition-tree rules, evaluation runs and manual overrides."
         actions={
           <div className="flex gap-2">
             <input
@@ -585,7 +628,7 @@ export default function AchievementsPage() {
               onChange={(e) => void handleJsonImportFile(e.target.files?.[0] ?? null)}
             />
             <Button variant="outline" onClick={() => void handleExport()}>
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2 h-4 w-4" aria-hidden />
               Export JSON
             </Button>
             <Button
@@ -595,8 +638,8 @@ export default function AchievementsPage() {
                 setLibrarySelectedSlugs(new Set());
               }}
             >
-              <LibraryBig className="mr-2 h-4 w-4" />
-              Library
+              <LibraryBig className="mr-2 h-4 w-4" aria-hidden />
+              Browse library
             </Button>
             {(canCreate || canUpdate) && (
               <Button
@@ -604,7 +647,7 @@ export default function AchievementsPage() {
                 onClick={() => jsonImportInputRef.current?.click()}
                 disabled={importMutation.isPending}
               >
-                <Upload className={`mr-2 h-4 w-4 ${importMutation.isPending ? "animate-spin" : ""}`} />
+                <Upload className={`mr-2 h-4 w-4 ${importMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
                 Import JSON
               </Button>
             )}
@@ -616,18 +659,19 @@ export default function AchievementsPage() {
                 setEvaluateDialogOpen(true);
               }}
             >
-              <Play className="mr-2 h-4 w-4" />
-              Evaluate
+              <Play className="mr-2 h-4 w-4" aria-hidden />
+              Evaluate achievements
             </Button>
             <Button
               variant="outline"
               onClick={() => {
                 overrideMutation.reset();
+                setOverrideFormError(null);
                 setOverrideDialogOpen(true);
               }}
             >
-              <UserPlus className="mr-2 h-4 w-4" />
-              Manual Override
+              <UserPlus className="mr-2 h-4 w-4" aria-hidden />
+              Add manual override
             </Button>
             {canCreate && (
               <Button
@@ -635,23 +679,18 @@ export default function AchievementsPage() {
                 onClick={() => seedMutation.mutate()}
                 disabled={seedMutation.isPending}
               >
-                <Sprout className={`mr-2 h-4 w-4 ${seedMutation.isPending ? "animate-spin" : ""}`} />
-                Seed Defaults
+                <Sprout className={`mr-2 h-4 w-4 ${seedMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
+                Seed defaults
               </Button>
             )}
             {canCreate && (
               <Button
                 variant="destructive"
-                onClick={() => {
-                  if (!window.confirm("Hard reset achievements for this workspace? This will replace the rule catalog, clear current results, and run a full reevaluation.")) {
-                    return;
-                  }
-                  hardResetMutation.mutate();
-                }}
+                onClick={() => setHardResetOpen(true)}
                 disabled={hardResetMutation.isPending}
               >
-                <RotateCcw className={`mr-2 h-4 w-4 ${hardResetMutation.isPending ? "animate-spin" : ""}`} />
-                Hard Reset
+                <RotateCcw className={`mr-2 h-4 w-4 ${hardResetMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
+                Hard reset
               </Button>
             )}
             {canCreate && (
@@ -663,8 +702,8 @@ export default function AchievementsPage() {
                   setCreateDialogOpen(true);
                 }}
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Create Achievement
+                <Plus className="mr-2 h-4 w-4" aria-hidden />
+                Create achievement
               </Button>
             )}
           </div>
@@ -676,25 +715,48 @@ export default function AchievementsPage() {
         <div className="rounded-lg border p-4 bg-muted/50 space-y-1">
           <div className="flex items-center justify-between">
             <p className="font-medium">
-              Evaluation Run: <Badge variant={evaluationResult.status === "done" ? "default" : "destructive"}>{evaluationResult.status}</Badge>
+              Evaluation run:{" "}
+              <Badge variant={evaluationResult.status === "done" ? "default" : "destructive"}>
+                {evaluationResult.status}
+              </Badge>
               {evaluationResult.tournament_id && (
-                <span className="ml-2 text-sm text-muted-foreground">
-                  (Tournament #{evaluationResult.tournament_id})
+                <span className="ml-2 text-sm text-muted-foreground tabular-nums">
+                  (tournament #{evaluationResult.tournament_id})
                 </span>
               )}
             </p>
-            <Button variant="ghost" size="icon" onClick={() => setEvaluationResult(null)}>
-              <X className="h-4 w-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setEvaluationResult(null)}
+              aria-label="Dismiss the evaluation summary"
+            >
+              <X className="h-4 w-4" aria-hidden />
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Evaluated: {evaluationResult.rules_evaluated} |
-            Created: +{evaluationResult.results_created} |
-            Removed: -{evaluationResult.results_removed}
-            {evaluationResult.error_message && (
-              <span className="text-destructive ml-2">{evaluationResult.error_message}</span>
-            )}
+          <p className="text-sm text-muted-foreground tabular-nums">
+            Evaluated {evaluationResult.rules_evaluated} · created +{evaluationResult.results_created} ·
+            removed −{evaluationResult.results_removed}
           </p>
+          {evaluationResult.error_message && (
+            <p className="text-sm text-danger">
+              The run stopped early: {evaluationResult.error_message}
+            </p>
+          )}
+        </div>
+      )}
+
+      {importError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-danger/40 bg-danger/10 p-4">
+          <p className="text-sm text-danger">{importError}</p>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setImportError(null)}
+            aria-label="Dismiss the import error"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </Button>
         </div>
       )}
 
@@ -702,13 +764,18 @@ export default function AchievementsPage() {
         <div className="rounded-lg border p-4 bg-muted/50 space-y-3">
           <div className="flex items-center justify-between">
             <p className="font-medium">
-              Import Result
-              <span className="ml-2 text-sm text-muted-foreground">
-                Created: +{importResult.created} | Updated: {importResult.updated}
+              Import result
+              <span className="ml-2 text-sm text-muted-foreground tabular-nums">
+                created +{importResult.created} · updated {importResult.updated}
               </span>
             </p>
-            <Button variant="ghost" size="icon" onClick={() => setImportResult(null)}>
-              <X className="h-4 w-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setImportResult(null)}
+              aria-label="Dismiss the import summary"
+            >
+              <X className="h-4 w-4" aria-hidden />
             </Button>
           </div>
           {importResult.warnings.length > 0 && (
@@ -760,8 +827,8 @@ export default function AchievementsPage() {
           };
         }}
         columns={columns}
-        searchPlaceholder="Search achievements..."
-        emptyMessage="No achievements found. Click 'Seed Defaults' to create the standard set."
+        searchPlaceholder="Search achievements…"
+        emptyMessage="No achievements found. Use “Seed defaults” to create the standard set, or “Create achievement” to start from scratch."
         onRowClick={(row) => {
           router.push(`/admin/achievements/${row.original.id}`);
         }}
@@ -771,15 +838,19 @@ export default function AchievementsPage() {
       {overrides && overrides.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Manual Overrides</CardTitle>
-            <CardDescription>Manually granted or revoked achievements</CardDescription>
+            <CardTitle asChild>
+              <h2>Manual overrides</h2>
+            </CardTitle>
+            <CardDescription>
+              Achievements granted or revoked by hand, outside the evaluation engine.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Achievement</TableHead>
-                  <TableHead>User ID</TableHead>
+                  <TableHead>User</TableHead>
                   <TableHead>Action</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Tournament</TableHead>
@@ -792,22 +863,26 @@ export default function AchievementsPage() {
                     <TableCell>
                       {allRules?.find((r) => r.id === ov.achievement_rule_id)?.slug ?? ov.achievement_rule_id}
                     </TableCell>
-                    <TableCell>{ov.user_id}</TableCell>
+                    <TableCell className="tabular-nums">#{ov.user_id}</TableCell>
                     <TableCell>
                       <Badge variant={ov.action === "grant" ? "default" : "destructive"}>
                         {ov.action}
                       </Badge>
                     </TableCell>
                     <TableCell className="max-w-48 truncate">{ov.reason}</TableCell>
-                    <TableCell>{ov.tournament_id ?? "-"}</TableCell>
+                    <TableCell className="tabular-nums">{ov.tournament_id ?? "—"}</TableCell>
                     <TableCell>
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => deleteOverrideMutation.mutate(ov.id)}
                         disabled={deleteOverrideMutation.isPending}
+                        aria-label={`Remove the ${ov.action} override on ${
+                          allRules?.find((r) => r.id === ov.achievement_rule_id)?.name ??
+                          `achievement #${ov.achievement_rule_id}`
+                        } for user #${ov.user_id}`}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -818,7 +893,7 @@ export default function AchievementsPage() {
         </Card>
       )}
 
-      {/* ─── Evaluate Dialog ──────────────────────────────────────────────── */}
+      {/* ─── Library Dialog ───────────────────────────────────────────────── */}
       <Dialog
         open={libraryDialogOpen}
         onOpenChange={(open) => {
@@ -830,7 +905,7 @@ export default function AchievementsPage() {
       >
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Achievement Library</DialogTitle>
+            <DialogTitle>Achievement library</DialogTitle>
             <DialogDescription>
               Import achievements from another workspace into the current workspace.
             </DialogDescription>
@@ -838,7 +913,7 @@ export default function AchievementsPage() {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Source workspace</Label>
+              <Label htmlFor="library-source-workspace">Source workspace</Label>
               <Select
                 value={librarySourceWorkspaceId ? String(librarySourceWorkspaceId) : ""}
                 onValueChange={(value) => {
@@ -846,7 +921,7 @@ export default function AchievementsPage() {
                   setLibrarySelectedSlugs(new Set());
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger id="library-source-workspace">
                   <SelectValue placeholder="Select workspace" />
                 </SelectTrigger>
                 <SelectContent>
@@ -861,9 +936,12 @@ export default function AchievementsPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>
-                  Achievements ({librarySelectedSlugs.size > 0 ? `${librarySelectedSlugs.size} selected` : "none selected"})
-                </Label>
+                <p className="text-sm font-medium">
+                  Achievements{" "}
+                  <span className="tabular-nums text-muted-foreground">
+                    ({librarySelectedSlugs.size > 0 ? `${librarySelectedSlugs.size} selected` : "none selected"})
+                  </span>
+                </p>
                 <div className="flex gap-2">
                   <Button
                     variant="ghost"
@@ -885,10 +963,14 @@ export default function AchievementsPage() {
               </div>
               <ScrollArea className="h-[40vh] rounded border p-3">
                 {!librarySourceWorkspaceId && (
-                  <p className="text-sm text-muted-foreground">Select a source workspace to load achievements.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Pick a source workspace above to list the achievements you can copy.
+                  </p>
                 )}
                 {librarySourceWorkspaceId && (libraryRules?.length ?? 0) === 0 && (
-                  <p className="text-sm text-muted-foreground">No achievements found in the selected workspace.</p>
+                  <p className="text-sm text-muted-foreground">
+                    That workspace has no achievements to copy. Choose another source workspace.
+                  </p>
                 )}
                 <div className="space-y-2">
                   {(libraryRules ?? []).map((rule) => (
@@ -900,11 +982,12 @@ export default function AchievementsPage() {
                         <Checkbox
                           checked={librarySelectedSlugs.has(rule.slug)}
                           onCheckedChange={(checked) => toggleLibrarySlug(rule.slug, !!checked)}
+                          aria-label={`Copy ${rule.name}`}
                         />
                         <div className="min-w-0">
                           <p className="font-medium truncate">{rule.name}</p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {rule.slug} - {rule.category}
+                            {rule.slug} · {rule.category}
                           </p>
                         </div>
                       </div>
@@ -931,8 +1014,8 @@ export default function AchievementsPage() {
                 !(canCreate || canUpdate)
               }
             >
-              <LibraryBig className={`mr-2 h-4 w-4 ${libraryImportMutation.isPending ? "animate-spin" : ""}`} />
-              {libraryImportMutation.isPending ? "Importing..." : "Import Selected"}
+              <LibraryBig className={`mr-2 h-4 w-4 ${libraryImportMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
+              {libraryImportMutation.isPending ? "Importing…" : "Import selected"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -941,18 +1024,19 @@ export default function AchievementsPage() {
       <Dialog open={evaluateDialogOpen} onOpenChange={setEvaluateDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Evaluate Achievements</DialogTitle>
+            <DialogTitle>Evaluate achievements</DialogTitle>
             <DialogDescription>
-              Select a tournament and/or specific achievements to evaluate.
-              Leave empty to evaluate all achievements across all tournaments.
+              Pick a tournament, specific achievements, or both. Leave everything untouched to
+              re-evaluate every achievement across every tournament.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Tournament selector */}
             <div className="space-y-2">
-              <Label>Tournament (optional)</Label>
+              <Label htmlFor="eval-tournament">Tournament (optional)</Label>
               <TournamentCombobox
+                id="eval-tournament"
                 tournaments={tournaments?.results ?? []}
                 value={evalTournamentId}
                 onSelect={(t) => setEvalTournamentId(t?.id)}
@@ -963,7 +1047,12 @@ export default function AchievementsPage() {
             {/* Achievement selection by category */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Achievements ({evalSelectedRuleIds.size > 0 ? `${evalSelectedRuleIds.size} selected` : "all"})</Label>
+                <p className="text-sm font-medium">
+                  Achievements{" "}
+                  <span className="tabular-nums text-muted-foreground">
+                    ({evalSelectedRuleIds.size > 0 ? `${evalSelectedRuleIds.size} selected` : "all"})
+                  </span>
+                </p>
                 <div className="flex gap-2">
                   <Button
                     variant="ghost"
@@ -992,9 +1081,10 @@ export default function AchievementsPage() {
                           <Checkbox
                             checked={allChecked ? true : someChecked ? "indeterminate" : false}
                             onCheckedChange={(checked) => toggleCategory(category, !!checked)}
+                            aria-label={`Select every ${category} achievement`}
                           />
-                          <Label className="text-sm font-medium capitalize">{category}</Label>
-                          <Badge variant="secondary" className="text-xs">{rules.length}</Badge>
+                          <span className="text-sm font-medium capitalize">{category}</span>
+                          <Badge variant="secondary" className="text-xs tabular-nums">{rules.length}</Badge>
                         </div>
                         <div className="ml-6 grid grid-cols-2 gap-1">
                           {rules.map((rule) => (
@@ -1002,6 +1092,7 @@ export default function AchievementsPage() {
                               <Checkbox
                                 checked={evalSelectedRuleIds.has(rule.id)}
                                 onCheckedChange={(checked) => toggleRule(rule.id, !!checked)}
+                                aria-label={`Evaluate ${rule.name}`}
                               />
                               <span className="truncate">{rule.slug}</span>
                             </label>
@@ -1020,8 +1111,8 @@ export default function AchievementsPage() {
               Cancel
             </Button>
             <Button onClick={handleEvaluate} disabled={evaluateMutation.isPending}>
-              <Play className={`mr-2 h-4 w-4 ${evaluateMutation.isPending ? "animate-spin" : ""}`} />
-              {evaluateMutation.isPending ? "Evaluating..." : "Evaluate"}
+              <Play className={`mr-2 h-4 w-4 ${evaluateMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
+              {evaluateMutation.isPending ? "Evaluating…" : "Run evaluation"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1031,16 +1122,18 @@ export default function AchievementsPage() {
       <Dialog open={overrideDialogOpen} onOpenChange={setOverrideDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Manual Achievement Override</DialogTitle>
+            <DialogTitle>Manual achievement override</DialogTitle>
             <DialogDescription>
-              Grant or revoke an achievement for a specific user.
+              Grant or revoke an achievement for one player. The override survives future
+              evaluation runs, so record why it was needed.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>User</Label>
+              <Label htmlFor="override-user">User</Label>
               <UserSearchCombobox
+                id="override-user"
                 value={overrideUserId}
                 selectedName={overrideUserName}
                 onSelect={(user) => {
@@ -1052,8 +1145,9 @@ export default function AchievementsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Achievement</Label>
+              <Label htmlFor="override-achievement">Achievement</Label>
               <AchievementCombobox
+                id="override-achievement"
                 rules={allRules ?? []}
                 value={overrideRuleId}
                 onSelect={(rule) => setOverrideRuleId(rule?.id)}
@@ -1063,9 +1157,9 @@ export default function AchievementsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Action</Label>
+                <Label htmlFor="override-action">Action</Label>
                 <Select value={overrideAction} onValueChange={(v) => setOverrideAction(v as "grant" | "revoke")}>
-                  <SelectTrigger>
+                  <SelectTrigger id="override-action">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1075,8 +1169,9 @@ export default function AchievementsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Tournament (optional)</Label>
+                <Label htmlFor="override-tournament">Tournament (optional)</Label>
                 <TournamentCombobox
+                  id="override-tournament"
                   tournaments={tournaments?.results ?? []}
                   value={overrideTournamentId}
                   onSelect={(t) => setOverrideTournamentId(t?.id)}
@@ -1086,17 +1181,20 @@ export default function AchievementsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Reason</Label>
+              <Label htmlFor="override-reason">Reason</Label>
               <Textarea
+                id="override-reason"
                 value={overrideReason}
                 onChange={(e) => setOverrideReason(e.target.value)}
-                placeholder="Why is this being granted/revoked manually?"
-                required
+                placeholder="Why is this being granted or revoked by hand?"
               />
             </div>
 
+            {overrideFormError && <p className="text-sm text-danger">{overrideFormError}</p>}
             {overrideMutation.error instanceof Error && (
-              <p className="text-sm text-destructive">{overrideMutation.error.message}</p>
+              <p className="text-sm text-danger">
+                The override could not be saved: {overrideMutation.error.message}
+              </p>
             )}
           </div>
 
@@ -1104,11 +1202,12 @@ export default function AchievementsPage() {
             <Button variant="outline" onClick={() => setOverrideDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={() => overrideMutation.mutate()}
-              disabled={!overrideUserId || !overrideRuleId || !overrideReason || overrideMutation.isPending}
-            >
-              {overrideMutation.isPending ? "Saving..." : overrideAction === "grant" ? "Grant Achievement" : "Revoke Achievement"}
+            <Button onClick={handleOverrideSubmit} disabled={overrideMutation.isPending}>
+              {overrideMutation.isPending
+                ? "Saving…"
+                : overrideAction === "grant"
+                  ? "Grant achievement"
+                  : "Revoke achievement"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1126,11 +1225,15 @@ export default function AchievementsPage() {
             setImagePreview(null);
           }
         }}
-        title={editingRule ? `Edit: ${editingRule.slug}` : "Create Achievement"}
-        description={editingRule ? "Update achievement configuration and condition tree" : "Define a new achievement"}
+        title={editingRule ? `Edit ${editingRule.slug}` : "Create achievement"}
+        description={
+          editingRule
+            ? "Update the achievement metadata. The condition tree is edited on its detail page."
+            : "Define a new achievement. Add its condition tree once it exists."
+        }
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
-        submittingLabel={editingRule ? "Updating..." : "Creating..."}
+        submittingLabel={editingRule ? "Updating…" : "Creating…"}
         errorMessage={
           (editingRule ? updateMutation.error : createMutation.error) instanceof Error
             ? (editingRule ? updateMutation.error : createMutation.error)?.message
@@ -1187,36 +1290,36 @@ export default function AchievementsPage() {
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Category</Label>
+                <Label htmlFor="rule-category">Category</Label>
                 <Select
                   value={formData.category ?? "overall"}
                   onValueChange={(v) => setFormData({ ...formData, category: v as AchievementCategory })}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rule-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Scope</Label>
+                <Label htmlFor="rule-scope">Scope</Label>
                 <Select
                   value={formData.scope ?? "global"}
                   onValueChange={(v) => setFormData({ ...formData, scope: v as AchievementScope })}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rule-scope"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {SCOPES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Grain</Label>
+                <Label htmlFor="rule-grain">Grain</Label>
                 <Select
                   value={formData.grain ?? "user"}
                   onValueChange={(v) => setFormData({ ...formData, grain: v as AchievementGrain })}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rule-grain"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {GRAINS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                   </SelectContent>
@@ -1226,12 +1329,12 @@ export default function AchievementsPage() {
 
             {/* Image upload */}
             <div className="space-y-2">
-              <Label>Image</Label>
+              <p className="text-sm font-medium">Image</p>
               <div className="flex items-center gap-4">
                 {(imagePreview || formData.image_url) && (
                   <Image
                     src={imagePreview ?? (formData.image_url as string) ?? ""}
-                    alt="Achievement"
+                    alt={formData.name ? `${formData.name} badge` : "Achievement badge"}
                     width={64}
                     height={64}
                     className="h-16 w-16 rounded-lg object-cover border"
@@ -1247,9 +1350,12 @@ export default function AchievementsPage() {
                       const file = e.target.files?.[0];
                       if (!file) return;
                       if (file.size > 5 * 1024 * 1024) {
-                        alert("File too large (max 5 MB)");
+                        setImageError(
+                          `“${file.name}” is ${(file.size / 1024 / 1024).toFixed(1)} MB. Pick an image under 5 MB.`,
+                        );
                         return;
                       }
+                      setImageError(null);
                       setImageFile(file);
                       setImagePreview(URL.createObjectURL(file));
                     }}
@@ -1260,8 +1366,8 @@ export default function AchievementsPage() {
                     size="sm"
                     onClick={() => imageInputRef.current?.click()}
                   >
-                    <Upload className="mr-2 h-4 w-4" />
-                    {imagePreview ? "Change Image" : "Upload Image"}
+                    <Upload className="mr-2 h-4 w-4" aria-hidden />
+                    {imagePreview ? "Change image" : "Upload image"}
                   </Button>
                   {imagePreview && (
                     <Button
@@ -1271,14 +1377,16 @@ export default function AchievementsPage() {
                       onClick={() => {
                         setImageFile(null);
                         setImagePreview(null);
+                        setImageError(null);
                       }}
                     >
-                      <X className="mr-2 h-4 w-4" />
-                      Remove
+                      <X className="mr-2 h-4 w-4" aria-hidden />
+                      Remove image
                     </Button>
                   )}
                 </div>
               </div>
+              {imageError && <p className="text-sm text-danger">{imageError}</p>}
             </div>
           </div>
         </ScrollArea>
@@ -1291,8 +1399,29 @@ export default function AchievementsPage() {
           onOpenChange={(open) => !open && setDeletingRule(null)}
           onConfirm={() => deleteMutation.mutate(deletingRule.id)}
           isDeleting={deleteMutation.isPending}
-          title={`Delete "${deletingRule.slug}"?`}
-          cascadeInfo={["All evaluation results for this achievement will also be deleted"]}
+          title="Delete achievement"
+          description={`“${deletingRule.name}” (${deletingRule.slug}) is removed from this workspace. Players keep nothing from it.`}
+          cascadeInfo={[
+            "Every evaluation result awarding this achievement",
+            "Manual grant and revoke overrides referencing it",
+          ]}
+        />
+      )}
+
+      {canCreate && (
+        <DeleteConfirmDialog
+          open={hardResetOpen}
+          onOpenChange={setHardResetOpen}
+          onConfirm={() => {
+            setHardResetOpen(false);
+            hardResetMutation.mutate();
+          }}
+          isDeleting={hardResetMutation.isPending}
+          title="Hard reset achievements"
+          description="The rule catalog for this workspace is replaced with the defaults, every current result is cleared, and a full re-evaluation runs immediately."
+          cascadeInfo={["Custom achievements that are not part of the default set"]}
+          confirmLabel="Hard reset"
+          confirmingLabel="Resetting…"
         />
       )}
 
@@ -1300,15 +1429,21 @@ export default function AchievementsPage() {
       <Dialog open={!!testResult} onOpenChange={(open) => !open && setTestResult(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dry-Run Result: {testResult?.slug}</DialogTitle>
+            <DialogTitle>Dry-run result: {testResult?.slug}</DialogTitle>
             <DialogDescription>
-              {testResult?.count} users qualify for this achievement
+              <span className="tabular-nums">{testResult?.count ?? 0}</span> users qualify for this
+              achievement right now. Nothing was awarded.
             </DialogDescription>
           </DialogHeader>
           {testResult && testResult.sample.length > 0 && (
             <div className="text-sm">
-              <p className="font-medium mb-2">Sample (first 20):</p>
-              <div className="max-h-48 overflow-auto rounded border p-2 bg-muted/50 font-mono text-xs">
+              <p className="font-medium mb-2" id="dry-run-sample">Sample (first 20)</p>
+              <div
+                className="max-h-48 overflow-auto rounded border p-2 bg-muted/50 font-mono text-xs tabular-nums"
+                tabIndex={0}
+                role="group"
+                aria-labelledby="dry-run-sample"
+              >
                 {testResult.sample.map((tuple, i) => (
                   <div key={i}>
                     user={tuple[0]}

@@ -40,9 +40,7 @@ _MAP_PICK_SIDE_ENUM = postgresql.ENUM(name="mappickside", schema="tournament", c
 
 def upgrade() -> None:
     op.execute("CREATE TYPE tournament.mapvetosessionstatus AS ENUM ('active', 'completed', 'cancelled')")
-    op.execute(
-        "CREATE TYPE tournament.vetoseedsource AS ENUM ('bracket_slot', 'standings', 'fallback_home', 'admin')"
-    )
+    op.execute("CREATE TYPE tournament.vetoseedsource AS ENUM ('bracket_slot', 'standings', 'fallback_home', 'admin')")
     op.execute("CREATE TYPE tournament.firstpickrule AS ENUM ('higher_seed')")
 
     # -- map_veto_config: cascade + rule columns ------------------------------
@@ -52,9 +50,7 @@ def upgrade() -> None:
         sa.Column("first_pick_rule", _FIRST_PICK_RULE_ENUM, nullable=False, server_default="higher_seed"),
         schema="tournament",
     )
-    op.add_column(
-        "map_veto_config", sa.Column("turn_timer_seconds", sa.Integer(), nullable=True), schema="tournament"
-    )
+    op.add_column("map_veto_config", sa.Column("turn_timer_seconds", sa.Integer(), nullable=True), schema="tournament")
     op.add_column("map_veto_config", sa.Column("preset", sa.String(32), nullable=True), schema="tournament")
     op.create_check_constraint(
         "ck_map_veto_config_round_requires_stage",
@@ -96,9 +92,7 @@ def upgrade() -> None:
     )
 
     # -- encounter_map_pool: action timeline ----------------------------------
-    op.add_column(
-        "encounter_map_pool", sa.Column("action_index", sa.Integer(), nullable=True), schema="tournament"
-    )
+    op.add_column("encounter_map_pool", sa.Column("action_index", sa.Integer(), nullable=True), schema="tournament")
 
     # -- encounter_veto_session ------------------------------------------------
     op.create_table(

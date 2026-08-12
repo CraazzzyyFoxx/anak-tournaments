@@ -8,6 +8,7 @@ from src.core import enums, pagination
 from src.schemas import UserRead
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
+from src.schemas.roster_shape import RosterShapeRead
 from src.schemas.stage import StageSummaryRead
 
 __all__ = (
@@ -41,7 +42,6 @@ class TournamentPhaseScheduleRead(BaseModel):
 
 class TournamentRead(BaseRead):
     workspace_id: int
-    number: int | None
     name: str
     description: str | None
     challonge_id: int | None
@@ -66,6 +66,15 @@ class TournamentRead(BaseRead):
     teams_count: int | None = None
     division_grid_version_id: int | None
     division_grid_version: DivisionGridVersionRead | None = None
+    roster_slots_json: dict[str, int] | None = None
+    # Opt-in entities (D16): TournamentRead is nested in six other schemas that
+    # are built from ORM rows without a session, so neither of these can be
+    # required -- filling them unconditionally would cost a query per nested row.
+    roster_shape: RosterShapeRead | None = None
+    # `True` while a draft session is in flight, i.e. while the write-path guard
+    # would reject a roster-shape change. Lets the admin form disable the editor
+    # up front instead of surfacing the block as a 400 on save.
+    roster_locked_by_draft: bool | None = None
 
 
 class OwalStandingDay(BaseModel):
@@ -101,7 +110,7 @@ class OwalStandings(BaseModel):
 
 class TournamentPaginationSortSearchQueryParams(
     pagination.PaginationSortSearchQueryParams[
-        typing.Literal["id", "name", "number", "start_date", "end_date", "similarity:name"]
+        typing.Literal["id", "name", "start_date", "end_date", "similarity:name"]
     ]
 ):
     is_league: bool | None = None

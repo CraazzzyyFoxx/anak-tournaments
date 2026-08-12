@@ -442,35 +442,6 @@ async def update_encounter_logs(
     return encounter
 
 
-async def update_encounter_result(
-    session: AsyncSession,
-    encounter_id: int,
-    *,
-    home_score: int | None = None,
-    away_score: int | None = None,
-    status: enums.EncounterStatus | None = None,
-    result_status: enums.EncounterResultStatus | None = None,
-) -> models.Encounter:
-    result = await session.execute(
-        sa.select(models.Encounter).where(models.Encounter.id == encounter_id).with_for_update(nowait=False)
-    )
-    encounter = result.scalar_one_or_none()
-    if encounter is None:
-        raise ValueError(f"Encounter {encounter_id} not found")
-
-    if home_score is not None:
-        encounter.home_score = home_score
-    if away_score is not None:
-        encounter.away_score = away_score
-    if status is not None:
-        encounter.status = status
-    if result_status is not None:
-        encounter.result_status = result_status
-
-    await session.commit()
-    return encounter
-
-
 async def create_match(
     session: AsyncSession,
     encounter: models.Encounter,
@@ -482,11 +453,13 @@ async def create_match(
     away_team_id: int,
     home_score: int,
     away_score: int,
+    log_record_id: int | None = None,
     commit: bool = True,
 ) -> models.Match:
     match = models.Match(
         time=time,
         log_name=log_name,
+        log_record_id=log_record_id,
         home_team_id=home_team_id,
         away_team_id=away_team_id,
         home_score=home_score,

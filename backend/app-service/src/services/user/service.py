@@ -83,6 +83,7 @@ async def get_compare_catalog_entities(
     row = (await session.execute(statement)).one()
     return row[0], row[1], row[2]
 
+
 COMPARE_METRIC_DEFINITIONS: tuple[tuple[str, str, bool], ...] = (
     ("tournaments_count", "Tournaments", True),
     ("achievements_count", "Achievements", True),
@@ -1466,9 +1467,7 @@ def _compare_metrics_query_v2(
     if user_ids is not None:
         candidates_query = candidates_query.where(models.User.id.in_(user_ids))
     elif has_scope_filter:
-        candidates_query = candidates_query.where(
-            models.User.id.in_(sa.select(scoped_players.c.user_id).distinct())
-        )
+        candidates_query = candidates_query.where(models.User.id.in_(sa.select(scoped_players.c.user_id).distinct()))
     candidates = candidates_query.cte("compare_candidates")
 
     tournament_counts = (
@@ -2097,9 +2096,7 @@ def _users_hero_compare_query_v2(
 
     requested_stats = stats or list(DEFAULT_HERO_COMPARE_STATS)
     candidates = (
-        sa.select(models.User.id.label("user_id"))
-        .where(models.User.id.in_(user_ids))
-        .cte("compare_hero_candidates")
+        sa.select(models.User.id.label("user_id")).where(models.User.id.in_(user_ids)).cte("compare_hero_candidates")
     )
     scoped_players = _compare_scoped_players_cte(
         role=role,
@@ -2149,11 +2146,9 @@ def _users_hero_compare_query_v2(
         sa.select(
             models.MatchStatistics.user_id,
             models.MatchStatistics.name,
-            (
-                sa.func.sum(models.MatchStatistics.value)
-                / sa.func.nullif(sa.func.sum(models.Match.time), 0)
-                * 600
-            ).label("avg_10"),
+            (sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600).label(
+                "avg_10"
+            ),
         )
         .select_from(models.MatchStatistics)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)

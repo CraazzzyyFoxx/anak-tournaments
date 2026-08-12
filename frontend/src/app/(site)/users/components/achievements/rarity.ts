@@ -45,3 +45,13 @@ export const rarityRanges = (t: Translate): Record<Rarity, string> => ({
   uncommon: t("users.achievements.rarity.uncommon.range"),
   common: t("users.achievements.rarity.common.range")
 });
+
+// Achievements carry a paired `*_ru` / `*_en` text field. Picking `ru || en`
+// unconditionally served Russian copy to English readers whenever the RU field
+// was filled, so the variant is chosen from the active locale and only falls
+// back to the other language when the preferred one is empty.
+export const localizedText = (
+  locale: string,
+  ru: string | null | undefined,
+  en: string | null | undefined
+): string => (locale.startsWith("ru") ? ru || en : en || ru) || "";

@@ -1,16 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import {
+  CatalogToolbarActions,
+  entityFormError,
+  onEntityDialogClose
+} from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
@@ -24,32 +31,45 @@ import {
 import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
-const emptyGamemodeForm: GamemodeCreateInput = { name: "" };
+// Key order matters: `hasUnsavedChanges` compares JSON, so the edit form below
+// must list the same fields in the same order or every dialog opens dirty.
+const emptyGamemodeForm: GamemodeCreateInput = { name: "", aliases: [] };
+
+function getGamemodeForm(gamemode: Gamemode | null): GamemodeCreateInput | GamemodeUpdateInput {
+  if (!gamemode) {
+    return { ...emptyGamemodeForm };
+  }
+
+  return { name: gamemode.name, aliases: gamemode.aliases ?? [] };
+}
 
 export default function GamemodesAdminPage() {
   const queryClient = useQueryClient();
-  const { canAccessPermission } = usePermissions();
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isSuperuser } = usePermissions();
+  const formId = useId();
+  const nameFieldId = `${formId}-name`;
+  const aliasesFieldId = `${formId}-aliases`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingGamemode, setEditingGamemode] = useState<Gamemode | null>(null);
   const [deletingGamemode, setDeletingGamemode] = useState<Gamemode | null>(null);
   const [formData, setFormData] = useState<GamemodeCreateInput | GamemodeUpdateInput>({
     ...emptyGamemodeForm,
   });
-  const canCreate = canAccessPermission("gamemode.create", workspaceId);
-  const canUpdate = canAccessPermission("gamemode.update", workspaceId);
-  const canDelete = canAccessPermission("gamemode.delete", workspaceId);
-  const canSync = canAccessPermission("gamemode.sync", workspaceId);
+
+  const closeForm = () => {
+    setCreateDialogOpen(false);
+    setEditingGamemode(null);
+    setFormData({ ...emptyGamemodeForm });
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: GamemodeCreateInput) => adminService.createGamemode(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-      setCreateDialogOpen(false);
-      setFormData({ ...emptyGamemodeForm });
+      closeForm();
     },
   });
 
@@ -58,8 +78,7 @@ export default function GamemodesAdminPage() {
       adminService.updateGamemode(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-      setEditingGamemode(null);
-      setFormData({ ...emptyGamemodeForm });
+      closeForm();
     },
   });
 
@@ -87,7 +106,7 @@ export default function GamemodesAdminPage() {
     }
   };
 
-  const formInitial = editingGamemode ? { name: editingGamemode.name } : emptyGamemodeForm;
+  const formInitial = getGamemodeForm(editingGamemode);
   const isFormDirty = (createDialogOpen || !!editingGamemode) && hasUnsavedChanges(formData, formInitial);
 
   const columns: ColumnDef<Gamemode>[] = [
@@ -95,51 +114,62 @@ export default function GamemodesAdminPage() {
       accessorKey: "id",
       header: "ID",
       size: 80,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
     },
     {
       accessorKey: "name",
       header: "Name",
     },
     {
+      id: "aliases",
+      header: "Aliases",
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const count = row.original.aliases?.length ?? 0;
+        return count > 0 ? (
+          <Badge variant="secondary">{count}</Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
       id: "actions",
       size: 50,
       cell: ({ row }) => {
         const gamemode = row.original;
-        if (!canUpdate && !canDelete) {
+        if (!isSuperuser) {
           return null;
         }
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button aria-label={`Open actions for ${gamemode.name}`} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal aria-hidden className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-               {canUpdate ? (
-                 <DropdownMenuItem
-                   onClick={() => {
-                     updateMutation.reset();
-                     setEditingGamemode(gamemode);
-                     setFormData({ name: gamemode.name });
-                   }}
-                 >
-                   <Pencil className="mr-2 h-4 w-4" />
-                   Edit
-                 </DropdownMenuItem>
-               ) : null}
-               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
-               {canDelete ? (
-                 <DropdownMenuItem
-                   onClick={() => setDeletingGamemode(gamemode)}
-                   className="text-destructive"
-                 >
-                   <Trash2 className="mr-2 h-4 w-4" />
-                   Delete
-                 </DropdownMenuItem>
-               ) : null}
-             </DropdownMenuContent>
+              <DropdownMenuLabel className="truncate">{gamemode.name}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => {
+                  updateMutation.reset();
+                  setEditingGamemode(gamemode);
+                  setFormData(getGamemodeForm(gamemode));
+                }}
+              >
+                <Pencil aria-hidden className="mr-2 h-4 w-4" />
+                Edit gamemode
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDeletingGamemode(gamemode)}
+                className="text-destructive"
+              >
+                <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                Delete gamemode
+              </DropdownMenuItem>
+            </DropdownMenuContent>
            </DropdownMenu>
          );
       },
@@ -152,35 +182,19 @@ export default function GamemodesAdminPage() {
         title="Gamemodes"
         description="Manage game modes"
         actions={
-          canSync || canCreate ? (
-            <div className="flex gap-2">
-              {canSync ? (
-                <Button
-                  variant="outline"
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
-                  />
-                  Sync from Game
-                </Button>
-              ) : null}
-              {canCreate ? (
-                <Button
-                  onClick={() => {
-                    createMutation.reset();
-                    updateMutation.reset();
-                    setFormData({ ...emptyGamemodeForm });
-                    setCreateDialogOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Gamemode
-                </Button>
-              ) : null}
-            </div>
-          ) : null
+          <CatalogToolbarActions
+            canSync={isSuperuser}
+            isSyncing={syncMutation.isPending}
+            onSync={() => syncMutation.mutate()}
+            syncLabel="Sync gamemodes from game"
+            onCreate={() => {
+              createMutation.reset();
+              updateMutation.reset();
+              setFormData({ ...emptyGamemodeForm });
+              setCreateDialogOpen(true);
+            }}
+            createLabel="Create gamemode"
+          />
         }
       />
 
@@ -190,15 +204,15 @@ export default function GamemodesAdminPage() {
           adminService.getGamemodes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
         }
         columns={columns}
-        searchPlaceholder="Search gamemodes..."
-        emptyMessage="No gamemodes found."
+        searchPlaceholder="Search gamemodes…"
+        emptyMessage="No gamemodes yet. Use “Create gamemode” to add the first one."
         onRowDoubleClick={
-          canUpdate
+          isSuperuser
             ? (row) => {
                 const gamemode = row.original;
                 updateMutation.reset();
                 setEditingGamemode(gamemode);
-                setFormData({ name: gamemode.name });
+                setFormData(getGamemodeForm(gamemode));
               }
             : undefined
         }
@@ -207,50 +221,60 @@ export default function GamemodesAdminPage() {
       {/* Create/Edit Dialog */}
       <EntityFormDialog
         open={createDialogOpen || !!editingGamemode}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCreateDialogOpen(false);
-            setEditingGamemode(null);
-            setFormData({ ...emptyGamemodeForm });
-          }
-        }}
-        title={editingGamemode ? "Edit Gamemode" : "Create Gamemode"}
+        onOpenChange={onEntityDialogClose(closeForm)}
+        title={editingGamemode ? "Edit gamemode" : "Create gamemode"}
         description={
           editingGamemode ? "Update gamemode information" : "Create a new gamemode in the game"
         }
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         submittingLabel={editingGamemode ? "Updating gamemode…" : "Creating gamemode…"}
-        errorMessage={
-          (editingGamemode ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingGamemode ? updateMutation.error : createMutation.error)?.message
-            : undefined
-        }
+        errorMessage={entityFormError(
+          "gamemode",
+          !!editingGamemode,
+          updateMutation.error,
+          createMutation.error
+        )}
         isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor={nameFieldId}>Name *</Label>
             <Input
-              id="name"
+              id={nameFieldId}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Gamemode name"
               required
             />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={aliasesFieldId}>Aliases</Label>
+            <Textarea
+              id={aliasesFieldId}
+              value={formatAliasesInput(formData.aliases ?? [])}
+              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
+              placeholder={"Контроль\nコントロール"}
+              rows={5}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              One alias per line — names as they appear in match logs.
+            </p>
+          </div>
         </div>
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {canDelete && deletingGamemode && (
+      {deletingGamemode && (
         <DeleteConfirmDialog
           open={!!deletingGamemode}
           onOpenChange={(open) => !open && setDeletingGamemode(null)}
           onConfirm={() => deleteMutation.mutate(deletingGamemode.id)}
           isDeleting={deleteMutation.isPending}
-          title={`Delete ${deletingGamemode.name}?`}
-          cascadeInfo={["All maps using this gamemode will also be affected"]}
+          title="Delete gamemode"
+          description={`“${deletingGamemode.name}” will be permanently removed. Reassign any maps still using it first, otherwise the delete will fail.`}
         />
       )}
     </div>

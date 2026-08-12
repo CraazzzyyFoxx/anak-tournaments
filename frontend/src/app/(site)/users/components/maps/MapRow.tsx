@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { UserMapRead } from "@/types/user.types";
 import HeroImage from "@/components/hero/HeroImage";
-import HeroStatsPopover from "@/components/hero/HeroStatsPopover";
+import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
 import { AvatarStack } from "@/components/ui/avatar";
 
 const MapRow = ({ row }: { row: UserMapRead }) => {
@@ -32,7 +32,7 @@ const MapRow = ({ row }: { row: UserMapRead }) => {
         <div className="aqt-track">
           <div className="aqt-fill" style={{ width: `${wr}%` }} />
         </div>
-        <span className={cn("aqt-num", wrCls)}>{wr.toFixed(0)}%</span>
+        <span className={cn("aqt-num tabular-nums", wrCls)}>{wr.toFixed(0)}%</span>
       </div>
       {heroStats.length > 0 ? (
         <AvatarStack max={8} size={26}>
@@ -41,7 +41,7 @@ const MapRow = ({ row }: { row: UserMapRead }) => {
               key={`${row.map.id}:${hs.hero.id}`}
               hero={hs.hero}
               size="sm"
-              popover={<HeroStatsPopover stats={hs} />}
+              popover={<HeroUserStatsPopover hero={hs.hero} mapStats={hs} />}
             />
           ))}
         </AvatarStack>

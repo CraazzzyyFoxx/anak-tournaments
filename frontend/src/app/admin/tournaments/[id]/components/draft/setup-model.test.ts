@@ -1,20 +1,40 @@
 import { describe, expect, it } from "vitest";
 
+import type { RosterShape } from "@/lib/roster-shape";
+
 import {
   buildDraftSchedule,
   canCancelDraftSetup,
   canNavigateToSetupStep,
   derivePoolReadiness,
+  filterCaptainRows,
   moveCaptain,
   orderCaptainIds,
   previousSetupStep,
-  roundsForTeamSize,
   SETUP_STEPS,
-  validateSetupStep
+  validateSetupStep,
+  type DraftCaptainRow
 } from "./setup-model";
 
+const CAPTAIN_ROWS: DraftCaptainRow[] = [
+  { id: 1, label: "Baida#21855", roles: ["tank", "dps", "support"], rank: null },
+  { id: 2, label: "agoNy4#2362", roles: ["support", "tank"], rank: 2600 },
+  { id: 3, label: "sleepdarya#2298", roles: ["support"], rank: 3800 },
+  { id: 4, label: "Zish#2101", roles: ["dps"], rank: 3100 }
+];
+
+/** A `roster_shape` payload as the server sends it, for a 3-slot roster. */
+const SHAPE: RosterShape = {
+  slots: { tank: 1, dps: 2 },
+  team_size: 3,
+  flex_slots: 0,
+  has_role_slots: true,
+  draft_rounds: 2,
+  source: null
+};
+
 describe("draft setup model", () => {
-  it("defines the six-step flow and links rounds to roster size", () => {
+  it("defines the six-step flow", () => {
     expect(SETUP_STEPS).toEqual([
       "config",
       "pool",
@@ -23,8 +43,6 @@ describe("draft setup model", () => {
       "review",
       "ready"
     ]);
-    expect(roundsForTeamSize(5)).toBe(4);
-    expect(roundsForTeamSize(3)).toBe(2);
   });
 
   it("allows the setup flow to move back to configuration", () => {
@@ -52,7 +70,7 @@ describe("draft setup model", () => {
         { id: 4, roles: ["support"], rank: 2700, hasAccount: true, excluded: true }
       ],
       2,
-      3
+      SHAPE
     );
 
     expect(readiness.requiredPlayers).toBe(6);
@@ -90,7 +108,6 @@ describe("draft setup model", () => {
   it("blocks advancing until each step has its required data", () => {
     expect(
       validateSetupStep("config", {
-        teamSize: 5,
         pickTimeSeconds: 5,
         captainIds: [],
         poolReady: false,
@@ -99,7 +116,6 @@ describe("draft setup model", () => {
     ).toContain("pick_time_out_of_range");
     expect(
       validateSetupStep("captains", {
-        teamSize: 5,
         pickTimeSeconds: 45,
         captainIds: [],
         poolReady: true,
@@ -108,12 +124,48 @@ describe("draft setup model", () => {
     ).toEqual(["captains_required"]);
     expect(
       validateSetupStep("review", {
-        teamSize: 5,
         pickTimeSeconds: 45,
         captainIds: [1, 2],
         poolReady: true,
         previewFeasible: true
       })
     ).toEqual([]);
+  });
+
+  it("sorts captains by rank in both directions and keeps unranked players last", () => {
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "rank_desc" }).map((r) => r.id)
+    ).toEqual([3, 4, 2, 1]);
+    // An unranked captain is unknown, not weakest: it stays last ascending too.
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "rank_asc" }).map((r) => r.id)
+    ).toEqual([2, 4, 3, 1]);
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "name" }).map((r) => r.id)
+    ).toEqual([2, 1, 3, 4]);
+  });
+
+  it("ORs the role filter and treats an empty selection as every role", () => {
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: ["dps"], sort: "rank_desc" }).map(
+        (r) => r.id
+      )
+    ).toEqual([4, 1]);
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: ["dps", "support"], sort: "rank_desc" })
+        .map((r) => r.id)
+    ).toEqual([3, 4, 2, 1]);
+    expect(filterCaptainRows(CAPTAIN_ROWS, { query: "", roles: [], sort: "rank_desc" })).toHaveLength(
+      CAPTAIN_ROWS.length
+    );
+  });
+
+  it("matches the search case-insensitively and never mutates the input order", () => {
+    expect(
+      filterCaptainRows(CAPTAIN_ROWS, { query: "  DARYA ", roles: [], sort: "rank_desc" }).map(
+        (r) => r.id
+      )
+    ).toEqual([3]);
+    expect(CAPTAIN_ROWS.map((row) => row.id)).toEqual([1, 2, 3, 4]);
   });
 });

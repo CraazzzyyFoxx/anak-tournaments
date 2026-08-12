@@ -1,6 +1,6 @@
 export interface TournamentStatistics {
   id: number;
-  number: number;
+  name: string;
   players_count: number;
   avg_sr: number;
   avg_closeness: number;
@@ -8,7 +8,7 @@ export interface TournamentStatistics {
 
 export interface TournamentDivisionStatistics {
   id: number;
-  number: number;
+  name: string;
   tank_avg_div: number | null;
   damage_avg_div: number | null;
   support_avg_div: number | null;

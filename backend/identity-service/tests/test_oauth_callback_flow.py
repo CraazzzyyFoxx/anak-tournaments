@@ -146,7 +146,7 @@ def test_callback_custom_origin_issues_ticket_bound_to_guard_hash(monkeypatch: p
     monkeypatch.setattr(sso_tickets, "get_redis", lambda: fake_redis)
 
     _guard, guard_hash = _guard_pair()
-    state = _login_state(origin="https://anakq.gg", guard_hash=guard_hash)
+    state = _login_state(origin="https://tenant.example.com", guard_hash=guard_hash)
 
     result = asyncio.run(
         oauth_flows.callback(
@@ -164,7 +164,7 @@ def test_callback_custom_origin_issues_ticket_bound_to_guard_hash(monkeypatch: p
     assert result.ticket
     assert result.access_token is None
     assert result.refresh_token is None
-    assert result.origin == "https://anakq.gg"
+    assert result.origin == "https://tenant.example.com"
 
     # The ticket itself must carry the guard hash -- inspect it the same way
     # redemption will (sso_tickets.redeem), against the SAME fake Redis this
@@ -186,7 +186,7 @@ def test_callback_custom_origin_without_guard_hash_never_issues_ticket(monkeypat
     issue_mock = AsyncMock(side_effect=AssertionError("must not issue an unbound ticket"))
     monkeypatch.setattr(sso_tickets, "issue", issue_mock)
 
-    state = _login_state(origin="https://anakq.gg")  # no guard_hash
+    state = _login_state(origin="https://tenant.example.com")  # no guard_hash
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(

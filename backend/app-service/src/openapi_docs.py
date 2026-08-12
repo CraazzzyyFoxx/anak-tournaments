@@ -123,6 +123,10 @@ DOCS: dict[str, dict] = {
         "summary": "User tournament stats",
         "description": "Returns a player's participation and stats for one tournament, resolved against that tournament's division grid (public).",
     },
+    "rpc.app.users.tournament_encounters": {
+        "summary": "User tournament encounters",
+        "description": "Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI (public).",
+    },
     "rpc.app.users.tournament_leaderboard": {
         "summary": "Tournament stat leaderboard",
         "description": "Returns every player in a tournament ranked by a single stat — the full ranked list behind a user's per-stat rank/total on the tournament-stats page. Inverse stats like Deaths rank ascending. The `stat` must be one of the ranked tournament stats (public).",
@@ -214,6 +218,19 @@ DOCS: dict[str, dict] = {
         "summary": "Clear workspace custom domain",
         "description": "Removes the custom domain, its verification token, and verified_at; requires workspace.update, 404 if workspace missing.",
     },
+    # ── workspace discord entities ──────────────────────────────────────────────────
+    "rpc.app.workspaces.discord_roles": {
+        "summary": "List workspace Discord roles",
+        "description": "Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
+    },
+    "rpc.app.workspaces.discord_channels": {
+        "summary": "List workspace Discord channels",
+        "description": "Returns text channels of the workspace's linked Discord server with names and categories.",
+    },
+    "rpc.app.workspaces.discord_guild": {
+        "summary": "Workspace Discord server status",
+        "description": "Returns connection status, server name, icon URL, and member count of the workspace's linked Discord server.",
+    },
     # ── workspace icon (binary) ────────────────────────────────────────────────────
     "rpc.app.workspaces.icon_upload": {
         "summary": "Upload workspace icon",
@@ -240,53 +257,77 @@ DOCS: dict[str, dict] = {
     # ── metadata admin: heroes ─────────────────────────────────────────────────────────
     "rpc.app.heroes.admin_list": {
         "summary": "Admin list heroes",
-        "description": "Returns a paginated admin list of heroes; requires the global hero.read permission.",
+        "description": "Returns a paginated admin list of heroes (superuser only).",
     },
     "rpc.app.heroes.admin_create": {
         "summary": "Create hero",
-        "description": "Creates a hero; requires the global hero.create permission.",
+        "description": "Creates a hero (superuser only).",
     },
     "rpc.app.heroes.admin_update": {
         "summary": "Update hero",
-        "description": "Updates a hero by id; requires the global hero.update permission.",
+        "description": "Updates a hero by id (superuser only).",
     },
     "rpc.app.heroes.admin_delete": {
         "summary": "Delete hero",
-        "description": "Deletes a hero by id; requires the global hero.delete permission, returns 204.",
+        "description": "Deletes a hero by id (superuser only), returns 204.",
     },
     # ── metadata admin: maps ────────────────────────────────────────────────────────────
     "rpc.app.maps.admin_list": {
         "summary": "Admin list maps",
-        "description": "Returns a paginated admin list of maps; requires the global map.read permission.",
+        "description": "Returns a paginated admin list of maps (superuser only).",
     },
     "rpc.app.maps.admin_create": {
         "summary": "Create map",
-        "description": "Creates a map; requires the global map.create permission.",
+        "description": "Creates a map (superuser only).",
     },
     "rpc.app.maps.admin_update": {
         "summary": "Update map",
-        "description": "Updates a map by id; requires the global map.update permission.",
+        "description": "Updates a map by id (superuser only).",
     },
     "rpc.app.maps.admin_delete": {
         "summary": "Delete map",
-        "description": "Deletes a map by id; requires the global map.delete permission, returns 204.",
+        "description": "Deletes a map by id (superuser only), returns 204.",
     },
     # ── metadata admin: gamemodes ─────────────────────────────────────────────────────────
     "rpc.app.gamemodes.admin_list": {
         "summary": "Admin list gamemodes",
-        "description": "Returns a paginated admin list of gamemodes; requires the global gamemode.read permission.",
+        "description": "Returns a paginated admin list of gamemodes (superuser only).",
     },
     "rpc.app.gamemodes.admin_create": {
         "summary": "Create gamemode",
-        "description": "Creates a gamemode; requires the global gamemode.create permission.",
+        "description": "Creates a gamemode (superuser only).",
     },
     "rpc.app.gamemodes.admin_update": {
         "summary": "Update gamemode",
-        "description": "Updates a gamemode by id; requires the global gamemode.update permission.",
+        "description": "Updates a gamemode by id (superuser only).",
     },
     "rpc.app.gamemodes.admin_delete": {
         "summary": "Delete gamemode",
-        "description": "Deletes a gamemode by id; requires the global gamemode.delete permission, returns 204.",
+        "description": "Deletes a gamemode by id (superuser only), returns 204.",
+    },
+    # ── metadata admin: catalog alias-miss queue ──────────────────────────────────────────
+    "rpc.app.catalog_aliases.misses_list": {
+        "summary": "List catalog alias misses",
+        "description": "Returns a paginated queue of hero/map/gamemode names from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true (superuser only).",
+    },
+    "rpc.app.catalog_aliases.attach": {
+        "summary": "Attach a catalog alias",
+        "description": "Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing (superuser only).",
+    },
+    "rpc.app.catalog_aliases.dismiss": {
+        "summary": "Dismiss a catalog alias miss",
+        "description": "Marks an alias miss resolved without attaching it; the row reopens if the same name reappears in a log. 404 if the miss is missing (superuser only).",
+    },
+    # ── platform audit log ────────────────────────────────────────────────────────────────
+    "rpc.app.audit_list": {
+        "summary": "List audit log entries",
+        "description": (
+            "Returns a paginated slice of the platform audit log, newest first (created_at then id, both "
+            "descending). workspace_id is required for everyone but a superuser and is enforced as a hard "
+            "scope: entity_type/entity_id and actor_user_id narrow within it and never reach a row outside "
+            "it. A superuser may omit workspace_id to see every workspace plus the platform-level rows that "
+            "belong to none. Requires audit.read in the requested workspace."
+        ),
     },
     # ── users admin (CRUD) ───────────────────────────────────────────────────────────────
     "rpc.app.users.admin_list": {
@@ -365,6 +406,6 @@ DOCS: dict[str, dict] = {
     # ── user bulk import (binary CSV / Google Sheets) ──────────────────────────────────────────────────
     "rpc.app.users.csv_import": {
         "summary": "Bulk import users",
-        "description": "Bulk-creates players from an uploaded CSV file or a Google Sheets URL using the given row/delimiter/flag params; requires the global admin role.",
+        "description": "Bulk-creates players from an uploaded CSV file or a Google Sheets URL using the given row/delimiter/flag params; requires the global user.create permission.",
     },
 }

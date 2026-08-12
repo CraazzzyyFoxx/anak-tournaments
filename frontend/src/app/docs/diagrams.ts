@@ -1,4 +1,4 @@
-// Ground truth for this page is docs/database_erd.md (Alembic head: dbarch06).
+// Ground truth for this page is docs/database_erd.md (Alembic head: wsreq0002).
 // The `mermaid` strings below are copied VERBATIM from that file's per-domain
 // ```mermaid erDiagram``` blocks — do not hand-edit them. If the schema changes,
 // regenerate database_erd.md and re-copy the blocks here.
@@ -115,6 +115,12 @@ export const schemaOverview: SchemaOverviewRow[] = [
     domain: "Журнал realtime-событий",
     keyTables: "workspace_event",
     owner: "gateway (Go)"
+  },
+  {
+    schema: "subscriptions",
+    domain: "Подписки и энтайтлменты",
+    keyTables: "provider_config, requirement, entitlement, check_log",
+    owner: "tournament / parser"
   }
 ];
 
@@ -151,6 +157,7 @@ export const domainMapMermaid = `flowchart TB
         PLAYERS["players<br/>(игроки, соц-аккаунты)"]
         WS["public.workspace<br/>+ workspace_member"]
         GRID["public.division_grid*<br/>(сетки дивизионов)"]
+        SUBS["subscriptions<br/>(провайдеры, правило, вердикты)"]
     end
 
     subgraph COMPETITION["Соревнование"]
@@ -181,6 +188,8 @@ export const domainMapMermaid = `flowchart TB
     WS --> PLAYERS
     AUTH -. "1:0..1" .-> PLAYERS
     WS --> GRID
+    SUBS --> WS
+    SUBS --> AUTH
 
     TOUR --> WS
     TOUR --> GRID
@@ -356,6 +365,7 @@ export const domains: DiagramDomain[] = [
         string slug UK
         string name
         bool is_active
+        string discord_guild_id "nullable"
         int default_division_grid_version_id FK "nullable"
     }
     WORKSPACE_MEMBER {
@@ -590,9 +600,36 @@ export const domains: DiagramDomain[] = [
         int round
         int best_of
         string status
-        string result_status
-        int submitted_by_id FK "nullable → players.user"
-        int confirmed_by_id FK "nullable → players.user"
+        string result_status "confirmed ⟺ status=COMPLETED (CHECK, encres0001)"
+        timestamp confirmed_at "nullable — единственный провенанс на строке"
+    }
+    ENCOUNTER_CAPTAIN_REPORT {
+        int id PK
+        int encounter_id FK "UK(encounter, team)"
+        int team_id FK
+        int reporter_user_id FK "nullable → players.user"
+        int home_score
+        int away_score
+        int closeness "1..10"
+    }
+    ENCOUNTER_MAP_CODE {
+        int id PK
+        int report_id FK "UK(report, map_index)"
+        int map_index "1-based"
+        int map_id FK "nullable — мягкая ссылка на пик вето"
+        string code
+    }
+    ENCOUNTER_RESULT_AUDIT {
+        int id PK
+        int encounter_id FK
+        int actor_user_id FK "nullable = машинный актор"
+        string action "confirm/reopen/auto_confirm/auto_dispute/import/cascade_reset"
+        string from_result_status "nullable"
+        string to_result_status
+        int home_score_after
+        int away_score_after
+        int adopted_team_id FK "nullable — чей репорт приняли"
+        string source
     }
     ENCOUNTER_LINK {
         int id PK
@@ -672,6 +709,11 @@ export const domains: DiagramDomain[] = [
     ENCOUNTER ||--o{ ENCOUNTER_LINK : "источник продвижения"
     ENCOUNTER ||--o{ ENCOUNTER_LINK : "цель продвижения"
     ENCOUNTER ||--o{ ENCOUNTER_MAP_POOL : "пул карт"
+    ENCOUNTER ||--o{ ENCOUNTER_CAPTAIN_REPORT : "репорты капитанов (по одному на команду)"
+    TOURNAMENT_TEAM ||--o{ ENCOUNTER_CAPTAIN_REPORT : "чей репорт"
+    ENCOUNTER_CAPTAIN_REPORT ||--o{ ENCOUNTER_MAP_CODE : "коды карт"
+    MAP |o--o{ ENCOUNTER_MAP_CODE : "карта пика"
+    ENCOUNTER ||--o{ ENCOUNTER_RESULT_AUDIT : "история решений по результату"
     MAP ||--o{ ENCOUNTER_MAP_POOL : "карта"
     TOURNAMENT ||--o{ MAP_VETO_CONFIG : "конфиг вето"
     MAP_VETO_CONFIG ||--o{ MAP_VETO_CONFIG_MAP : "пул карт (нормализован)"
@@ -691,20 +733,22 @@ export const domains: DiagramDomain[] = [
     title: "Матч-логи и справочник Overwatch",
     schemaLabel: "matches + overwatch",
     schemas: ["matches", "overwatch"],
-    tableCount: 7,
+    tableCount: 8,
     description:
-      "Разобранные лог-файлы: match, per-round statistics, kill_feed, события/ассисты. Справочник — hero/map/gamemode. mv_hero_global_stats — materialized view.",
+      "Разобранные лог-файлы: match, per-round statistics, kill_feed, события/ассисты. Справочник — hero/map/gamemode, каждый несёт aliases (имена из логов на локали клиента). Нераспознанные имена копятся в catalog_alias_miss — очередь «добавьте алиас» в админке. mv_hero_global_stats — materialized view.",
     mermaid: `erDiagram
     GAMEMODE {
         int id PK
         string slug UK
         string name UK
+        json aliases "JSONB list[str], default '[]' — ручные"
     }
     MAP {
         int id PK
         int gamemode_id FK
         string name UK
         string image_path
+        json aliases "JSONB list[str], default '[]' — ручные"
     }
     HERO {
         int id PK
@@ -712,6 +756,17 @@ export const domains: DiagramDomain[] = [
         string name UK
         string type "tank/damage/support"
         string color
+        json aliases "JSONB list[str], default '[]' — 13 локалей OverFast"
+    }
+    CATALOG_ALIAS_MISS {
+        int id PK
+        string entity_type "enum: hero/map/gamemode; UK(entity_type, raw_name)"
+        string raw_name "имя из лога, 128"
+        int occurrences "инкремент на повторном промахе"
+        datetime first_seen_at
+        datetime last_seen_at
+        int last_log_record_id FK "nullable → log_processing.record (ON DELETE SET NULL)"
+        datetime resolved_at "nullable; сбрасывается при повторном промахе"
     }
     MATCH {
         int id PK
@@ -722,7 +777,8 @@ export const domains: DiagramDomain[] = [
         int home_score
         int away_score
         float time
-        string log_name
+        string log_name "имя файла; из него всё ещё строится ключ S3"
+        int log_record_id FK "nullable → log_processing.record (mtchlog001, ON DELETE SET NULL)"
     }
     MATCH_STATISTICS {
         int id PK
@@ -860,8 +916,8 @@ export const domains: DiagramDomain[] = [
         string battle_tag_normalized "UK(tournament, tag) активные"
         string status
         string balancer_status
+        string exclude_reason "nullable; заполняется когда balancer_status = excluded"
         bool checked_in
-        bool exclude_from_balancer
         timestamp submitted_at
         timestamp deleted_at "soft-delete"
     }
@@ -886,6 +942,8 @@ export const domains: DiagramDomain[] = [
         string scope
         string slug
         string name
+        bool excludes_from_balancer "только scope=balancer; кастомный статус исключает из пула"
+        bool excludes_from_ready "только scope=balancer; кастомный статус блокирует Ready"
     }
     BAL_SHEET_FEED {
         int id PK
@@ -1367,11 +1425,11 @@ export const domains: DiagramDomain[] = [
         string status "pending/processing/done/failed"
         string source "upload/discord/manual"
         string content_hash
+        int attempts "logretry0001 — бюджет повторов reaper'а, живёт на строке"
     }
     DISCORD_CHANNEL {
         int id PK
         int tournament_id FK "UNIQUE"
-        int guild_id
         int channel_id UK
         bool is_active
     }
@@ -1409,12 +1467,78 @@ export const domains: DiagramDomain[] = [
     TOURNAMENT ||--o{ LOG_RECORD : "логи турнира"
     PLAYERS_USER |o--o{ LOG_RECORD : "загрузивший"
     ENCOUNTER |o--o{ LOG_RECORD : "привязка к встрече"
+    LOG_RECORD |o--o{ MATCH : "провенанс распаршенной карты (mtchlog001)"
     TOURNAMENT |o--o| DISCORD_CHANNEL : "канал сбора (1:0..1)"
     TOURNAMENT ||--o{ COMPUTATION_JOB : "джобы вычисления"
     STAGE |o--o{ COMPUTATION_JOB : "по стадии"
     TOURNAMENT |o--o| RECALCULATION_STATE : "счётчик поколений (1:1)"
     AUTH_USER |o--o{ SETTINGS : "кто менял"
     AUTH_USER |o--o{ COMPUTATION_JOB : "инициатор"`
+  },
+  {
+    key: "subscriptions",
+    section: "§13",
+    title: "Подписки и энтайтлменты",
+    schemaLabel: "subscriptions",
+    schemas: ["subscriptions"],
+    tableCount: 4,
+    description:
+      "Проверка подписок как условие допуска: provider_config (как верифицируем), requirement (правило воркспейса, общее для всех его турниров), entitlement (последний вердикт, unknown = fail-open), check_log (append-only история обращений к провайдеру).",
+    mermaid: `erDiagram
+    SUBSCRIPTION_PROVIDER_CONFIG {
+        int id PK
+        int workspace_id FK "UK(workspace, provider)"
+        string provider "discord_role / challenge_code / twitch_helix"
+        bool enabled "server_default false — создание конфига не включает проверку"
+        json config_json "снежинка гильдии тут не хранится — инжектится из workspace"
+    }
+    SUBSCRIPTION_REQUIREMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, name) + частичный unique на дефолт"
+        string name "server_default 'default'"
+        json requirement_json "{mode, requirements: [{provider, min_tier_rank}]}"
+        bool is_default
+    }
+    SUBSCRIPTION_ENTITLEMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, auth_user, provider)"
+        int auth_user_id FK "→ auth.user"
+        string provider
+        string state "active/inactive/unknown (default unknown, fail-open)"
+        int tier_rank "nullable — подписка без доказанного уровня читается как 1"
+        string tier_label "nullable"
+        string source "nullable — чем доказано"
+        timestamp checked_at "nullable"
+        timestamp expires_at "nullable"
+        json evidence_json "nullable"
+    }
+    SUBSCRIPTION_CHECK_LOG {
+        int id PK
+        int workspace_id FK "nullable (SET NULL)"
+        int auth_user_id FK "nullable (SET NULL) — история переживает удаление аккаунта"
+        string provider
+        string state
+        int tier_rank "nullable"
+        string tier_label "nullable"
+        string source "что запустило проверку (scheduled/manual/…)"
+        string mechanism "nullable — чем доказано, в отличие от source"
+        string reason "nullable — причина вердикта (not_subscribed, missing_scope, …)"
+        string error "nullable"
+        timestamp created_at "время завершения проверки; ничего не обновляется"
+    }
+    WORKSPACE {
+        int id PK
+    }
+    AUTH_USER {
+        int id PK
+    }
+
+    WORKSPACE ||--o{ SUBSCRIPTION_PROVIDER_CONFIG : "как верифицируем (UK по provider)"
+    WORKSPACE ||--o{ SUBSCRIPTION_REQUIREMENT : "правило допуска (один дефолт)"
+    WORKSPACE ||--o{ SUBSCRIPTION_ENTITLEMENT : "вердикты воркспейса"
+    AUTH_USER ||--o{ SUBSCRIPTION_ENTITLEMENT : "владелец подписки"
+    WORKSPACE |o--o{ SUBSCRIPTION_CHECK_LOG : "скоуп (SET NULL)"
+    AUTH_USER |o--o{ SUBSCRIPTION_CHECK_LOG : "проверяемый (SET NULL)"`
   }
 ];
 
@@ -1469,11 +1593,15 @@ export const changeLog: DocEntry[] = [
   {
     term: "Гигиена индексов/FK (dbarch01)",
     body: "Индексы на `auth.user_roles`/`auth.role_permissions`; новые FK: `achievements.evaluation_result.run_id → evaluation_run`, `players.user_merge_audit.source_user_id`/`target_user_id → players.user`, `auth.user_permission_deny.created_by → auth.user`; перенос типа `encounterstatus` `public` → `tournament`; частичный unique-индекс на `players.social_account` для NULL-хендлов."
+  },
+  {
+    term: "Правило подписки на воркспейсе (wsreq0001 + wsreq0002)",
+    body: "Новая таблица `subscriptions.requirement` (`workspace_id`, `name`, `requirement_json`, `is_default`; UK `(workspace_id, name)` плюс частичный unique на дефолтную строку) — единственный источник правила допуска, общего для всех турниров воркспейса. Пара expand/contract, порядок обязателен: `wsreq0001` создаёт таблицу и бэкфиллит её из форм (до раскатки кода, потому что новый `load_requirement` селектит эту таблицу), затем `wsreq0002` удаляет столбец с правилом из `balancer.registration_form` (после раскатки, потому что старая ORM всё ещё маппит его и SQLAlchemy эмитит его в каждом `SELECT`). Бэкфилл не выбирает правило за организатора: если у воркспейса больше одного различного правила, `wsreq0001` падает и откатывается. Тумблер `require_subscription` остался на форме — он и есть пер-турнирное решение."
   }
 ];
 
 /** Alembic head reflected by this documentation. */
-export const ALEMBIC_HEAD = "dbarch06";
+export const ALEMBIC_HEAD = "wsreq0002";
 
 /** Total domain-owned tables across all diagrams (for the topbar subtitle). */
 export const TOTAL_TABLES = domains.reduce((sum, d) => sum + d.tableCount, 0);

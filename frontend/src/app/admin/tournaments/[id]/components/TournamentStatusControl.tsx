@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -12,46 +14,54 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
+import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import adminService from "@/services/admin.service";
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
+import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
+/**
+ * `tone` replaces the previous raw-palette fills. `bg-yellow-500 text-white`
+ * measured APCA |Lc| 40.7 (WCAG 1.92:1) and `bg-green-500 text-white` 49.2
+ * (2.28:1) — both far below the 60 floor for non-body text, on the workspace's
+ * primary status indicator.
+ */
 const STATUS_CONFIG: Record<
   TournamentStatus,
-  { label: string; color: string; next: TournamentStatus[] }
+  { label: string; tone: Tone; next: TournamentStatus[] }
 > = {
   registration: {
     label: "Registration",
-    color: "bg-blue-500",
-    next: ["draft"]
-  },
-  draft: {
-    label: "Draft",
-    color: "bg-yellow-500",
-    next: ["check_in", "live"]
+    tone: "info",
+    next: ["check_in"]
   },
   check_in: {
     label: "Check-in",
-    color: "bg-orange-500",
+    tone: "warning",
+    next: ["draft", "live"]
+  },
+  draft: {
+    label: "Draft",
+    tone: "warning",
     next: ["live"]
   },
   live: {
     label: "Live",
-    color: "bg-green-500",
+    tone: "success",
     next: ["playoffs", "completed"]
   },
   playoffs: {
     label: "Playoffs",
-    color: "bg-purple-500",
+    tone: "accent",
     next: ["completed"]
   },
   completed: {
     label: "Completed",
-    color: "bg-gray-500",
+    tone: "neutral",
     next: ["archived"]
   },
   archived: {
     label: "Archived",
-    color: "bg-gray-700",
+    tone: "neutral",
     next: ["completed"]
   }
 };
@@ -65,48 +75,54 @@ export function TournamentStatusControl({ tournament }: TournamentStatusControlP
   const { isSuperuser } = usePermissions();
   const config = STATUS_CONFIG[tournament.status];
   const [overrideStatus, setOverrideStatus] = useState<TournamentStatus | null>(null);
+  const overrideId = useId();
 
   const mutation = useMutation({
     mutationFn: ({ status, force = false }: { status: TournamentStatus; force?: boolean }) =>
       adminService.transitionTournamentStatus(tournament.id, { status, force }),
     onSuccess: () => {
       setOverrideStatus(null);
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "tournament", tournament.id]
-      });
+      invalidateTournamentWorkspace(queryClient, tournament.id);
     }
   });
 
+  const overrideBlocked = !overrideStatus || overrideStatus === tournament.status;
+
   return (
-    <div className="flex items-center gap-3">
-      <Badge className={`${config.color} text-white`}>{config.label}</Badge>
+    <div className="flex flex-wrap items-center gap-3">
+      <Badge variant="outline" className={TONE_CLASS[config.tone]}>
+        {config.label}
+      </Badge>
 
       {config.next.length > 0 && (
         <div className="flex gap-2">
-          {config.next.map((nextStatus) => {
-            const nextConfig = STATUS_CONFIG[nextStatus];
-            return (
-              <Button
-                key={nextStatus}
-                size="sm"
-                variant="outline"
-                disabled={mutation.isPending}
-                onClick={() => mutation.mutate({ status: nextStatus })}
-              >
-                {mutation.isPending ? "..." : `\u2192 ${nextConfig.label}`}
-              </Button>
-            );
-          })}
+          {config.next.map((nextStatus) => (
+            <Button
+              key={nextStatus}
+              size="sm"
+              variant="outline"
+              disabled={mutation.isPending}
+              onClick={() => mutation.mutate({ status: nextStatus })}
+            >
+              {mutation.isPending ? (
+                <Loader2 className="mr-1.5 size-3 animate-spin" aria-hidden />
+              ) : null}
+              {`\u2192 ${STATUS_CONFIG[nextStatus].label}`}
+            </Button>
+          ))}
         </div>
       )}
 
       {isSuperuser ? (
         <div className="flex items-center gap-2">
+          <Label htmlFor={overrideId} className="sr-only">
+            Override tournament status
+          </Label>
           <Select
             value={overrideStatus ?? tournament.status}
             onValueChange={(value) => setOverrideStatus(value as TournamentStatus)}
           >
-            <SelectTrigger className="h-8 w-[180px]">
+            <SelectTrigger id={overrideId} className="h-8 w-[180px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -120,19 +136,24 @@ export function TournamentStatusControl({ tournament }: TournamentStatusControlP
           <Button
             size="sm"
             variant="secondary"
-            disabled={mutation.isPending || !overrideStatus || overrideStatus === tournament.status}
+            disabled={mutation.isPending || overrideBlocked}
             onClick={() => {
               if (!overrideStatus || overrideStatus === tournament.status) return;
               mutation.mutate({ status: overrideStatus, force: true });
             }}
           >
-            {mutation.isPending ? "..." : "Set status"}
+            {mutation.isPending ? (
+              <Loader2 className="mr-1.5 size-3 animate-spin" aria-hidden />
+            ) : null}
+            Set status
           </Button>
         </div>
       ) : null}
 
       {mutation.isError && (
-        <span className="text-sm text-red-500">{(mutation.error as Error).message}</span>
+        <span role="alert" className="text-sm text-danger">
+          Unable to change the status: {(mutation.error as Error).message}
+        </span>
       )}
     </div>
   );

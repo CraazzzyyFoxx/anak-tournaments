@@ -69,9 +69,7 @@ def maximum_bipartite_matching(
     return BipartiteMatching(
         slot_to_candidate={slot: slot_to_candidate[slot] for slot in slot_order if slot in slot_to_candidate},
         candidate_to_slot={
-            candidate: candidate_to_slot[candidate]
-            for candidate in candidate_order
-            if candidate in candidate_to_slot
+            candidate: candidate_to_slot[candidate] for candidate in candidate_order if candidate in candidate_to_slot
         },
         unmatched_slots=tuple(slot for slot in slot_order if slot not in slot_to_candidate),
         unmatched_candidates=tuple(candidate for candidate in candidate_order if candidate not in candidate_to_slot),

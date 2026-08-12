@@ -40,7 +40,7 @@ var RegistrationAdminRoutes = []edge.RouteSpec{
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}", Queue: "rpc.tournament.reg_update", IDParam: "registration_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/approve", Queue: "rpc.tournament.reg_approve", IDParam: "registration_id", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/reject", Queue: "rpc.tournament.reg_reject", IDParam: "registration_id", Auth: edge.AuthRequired},
-	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/exclusion", Queue: "rpc.tournament.reg_exclusion", IDParam: "registration_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/include", Queue: "rpc.tournament.reg_include_balancer", IDParam: "registration_id", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/withdraw", Queue: "rpc.tournament.reg_withdraw", IDParam: "registration_id", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/restore", Queue: "rpc.tournament.reg_restore", IDParam: "registration_id", Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}", Queue: "rpc.tournament.reg_delete", IDParam: "registration_id", Auth: edge.AuthRequired, Success: 204},
@@ -48,7 +48,7 @@ var RegistrationAdminRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-approve", Queue: "rpc.tournament.reg_bulk_approve", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/balancer-status", Queue: "rpc.tournament.reg_set_balancer_status", IDParam: "registration_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-add-to-balancer", Queue: "rpc.tournament.reg_bulk_add_balancer", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-exclusion", Queue: "rpc.tournament.reg_bulk_exclusion", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-set-balancer-status", Queue: "rpc.tournament.reg_bulk_set_balancer_status", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	// rank-autofill preview/apply.
 	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/rank-autofill/preview", Queue: "rpc.tournament.reg_rank_autofill_preview", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/rank-autofill/apply", Queue: "rpc.tournament.reg_rank_autofill_apply", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
@@ -68,4 +68,15 @@ var RegistrationAdminRoutes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/admin/ws/{workspace_id}/balancer-statuses/custom/{status_id}", Queue: "rpc.tournament.regstatus_delete", Path: []string{"workspace_id", "status_id"}, Auth: edge.AuthRequired, Success: 204},
 	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/balancer-statuses/system/{scope}/{slug}", Queue: "rpc.tournament.regstatus_builtin_upsert", Path: []string{"workspace_id", "scope", "slug"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/ws/{workspace_id}/balancer-statuses/system/{scope}/{slug}", Queue: "rpc.tournament.regstatus_builtin_reset", Path: []string{"workspace_id", "scope", "slug"}, Auth: edge.AuthRequired, Success: 204},
+
+	// Workspace subscription provider config — raw ids for now (guild id, role
+	// mapping, broadcaster). A Discord-backed role picker is a later refinement.
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-providers", Queue: "rpc.tournament.sub_config_list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: regReadTimeout},
+	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-providers", Queue: "rpc.tournament.sub_config_upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+
+	// Workspace subscription requirement — the admission rule every tournament in
+	// the workspace inherits. Replaced wholesale (PUT, no PATCH): a partial merge of
+	// an admission rule would be a silent policy change.
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-requirement", Queue: "rpc.tournament.sub_requirement_get", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: regReadTimeout},
+	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-requirement", Queue: "rpc.tournament.sub_requirement_upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }

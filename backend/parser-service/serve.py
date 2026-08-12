@@ -7,16 +7,25 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.messaging.config import (
+    ACHIEVEMENT_EVALUATE_DLQ,
     ACHIEVEMENT_EVALUATE_QUEUE,
+    PROCESS_MATCH_LOG_DLQ,
     PROCESS_MATCH_LOG_QUEUE,
+    PROCESS_TOURNAMENT_LOGS_DLQ,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
+    RANK_FETCH_DLQ,
+    RANK_FETCH_PRIORITY_DLQ,
     RANK_FETCH_PRIORITY_QUEUE,
     RANK_FETCH_QUEUE,
+    TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
     TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE,
     TOURNAMENT_EVENTS_EXCHANGE,
+    TOURNAMENT_REGISTRATION_APPROVED_DLQ,
     TOURNAMENT_REGISTRATION_APPROVED_QUEUE,
+    UPLOAD_MATCH_LOG_DLQ,
     UPLOAD_MATCH_LOG_QUEUE,
 )
+from shared.messaging.topology import declare_dead_letter_queue
 from shared.models.ingestion.log_processing import LogProcessingSource
 from shared.observability import (
     make_rabbit_broker,
@@ -60,14 +69,20 @@ from src.rpc import (
 from src.rpc import (
     rank as rpc_rank,
 )
+from src.rpc import (
+    subscription as rpc_subscription,
+)
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
+from src.services.challonge import sync as challonge_sync
 from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import realtime as logs_realtime
+from src.services.match_logs import reaper as logs_reaper
 from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.result_events import publish_match_log_result
 from src.services.overwatch_rank import scheduler as rank_scheduler
 from src.services.overwatch_rank import tasks as rank_tasks
 from src.services.s3 import service as s3_service
+from src.services.subscription_collection import scheduler as subscription_scheduler
 
 logger = setup_logging(
     service_name="parser-svc",
@@ -81,10 +96,33 @@ broker = make_rabbit_broker(
 )
 app = FastStream(broker)
 
-# Match-log processing is minutes-long; keep it off the RPC channel QoS.
+# Background jobs stay off the RPC channel QoS.
 _JOBS_CHANNEL = Channel(prefetch_count=2)
+# process_match_log is the one minutes-long handler here, and a delivery that
+# outlives RabbitMQ's consumer_timeout (30 minutes by default) gets its whole
+# channel closed — taking every consumer sharing it down with it. Its own channel
+# keeps that blast radius to itself: upload_match_log, process_tournament_logs
+# and achievement_evaluate stay live.
+_MATCH_LOG_CHANNEL = Channel(prefetch_count=2)
 # OverFast-protective prefetch (existing setting, previously unwired).
 _RANK_FETCH_CHANNEL = Channel(prefetch_count=config.settings.rank_fetch_worker_prefetch)
+
+# Dead-letter queues this worker owns. Every queue it consumes carries
+# x-dead-letter-exchange=dlx plus an x-message-ttl, but nothing declared these or
+# bound them to the DLX — so an expired job (a batch upload the worker could not
+# chew inside the 5-minute process_match_log TTL) was routed to `dlx` with a
+# routing key nothing was bound to and dropped without a trace. The log row kept
+# saying "Queued" and there was no DLQ to prove why.
+_OWNED_DLQS = (
+    UPLOAD_MATCH_LOG_DLQ,
+    PROCESS_MATCH_LOG_DLQ,
+    PROCESS_TOURNAMENT_LOGS_DLQ,
+    ACHIEVEMENT_EVALUATE_DLQ,
+    RANK_FETCH_DLQ,
+    RANK_FETCH_PRIORITY_DLQ,
+    TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
+    TOURNAMENT_REGISTRATION_APPROVED_DLQ,
+)
 
 # Expose the worker broker to publishers that don't thread one through (the
 # APScheduler rank tick, the admin "collect now" RPC, the Challonge-import
@@ -106,10 +144,14 @@ rpc_achievements.register(broker, logger)
 rpc_misc.register(broker, logger)
 rpc_bootstrap.register(broker, logger)
 rpc_impact.register(broker, logger)
+rpc_subscription.register(broker, logger)
 
 
 @app.on_startup
 async def start_worker() -> None:
+    await broker.connect()
+    for dlq in _OWNED_DLQS:
+        await declare_dead_letter_queue(broker, dlq)
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,
@@ -119,7 +161,7 @@ async def start_worker() -> None:
         logs_level=config.settings.sentry_logs_level,
         enable_metrics=config.settings.sentry_enable_metrics,
         environment=config.settings.environment,
-        release=config.settings.version,
+        release=config.settings.sentry_release,
         http_proxy=config.settings.sentry_http_proxy_url,
         https_proxy=config.settings.sentry_https_proxy_url,
     )
@@ -129,6 +171,9 @@ async def start_worker() -> None:
         enabled=config.settings.tracing_enabled,
         sampler_name=config.settings.otel_traces_sampler,
         sampler_arg=config.settings.otel_traces_sampler_arg,
+        environment=config.settings.environment,
+        release=config.settings.sentry_release,
+        engine=db.async_engine,
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
     await s3_client.start()
@@ -137,15 +182,25 @@ async def start_worker() -> None:
     # replicas, admin-settings-gated — no-ops while collection is disabled). Lives
     # in the worker now that the HTTP service is decommissioned.
     rank_scheduler.start_scheduler()
+    # Requeue match-log records the queue dropped (expired ProcessMatchLogEvent,
+    # worker killed mid-parse). Redis leader-locked across worker replicas.
+    logs_reaper.start_scheduler(redis=_clients.realtime_redis, broker=broker)
+    subscription_scheduler.start_scheduler()
     logger.info("Parser worker started")
 
 
 @app.on_shutdown
 async def stop_worker() -> None:
     rank_scheduler.shutdown_scheduler()
+    logs_reaper.shutdown_scheduler()
+    subscription_scheduler.shutdown_scheduler()
     await s3_client.close()
     await rank_tasks.rank_client.close()
     await rank_tasks.close_redis()
+    # challonge/sync.py keeps its own module-level Redis client for the sync job
+    # lock (_get_redis). It was never closed here, so every worker shutdown leaked
+    # the connection.
+    await challonge_sync.close_redis()
     await _clients.realtime_redis.aclose()
 
 
@@ -202,7 +257,7 @@ async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
         log.info("Uploaded match log ingested and queued for processing")
 
 
-@broker.subscriber(PROCESS_MATCH_LOG_QUEUE, channel=_JOBS_CHANNEL)
+@broker.subscriber(PROCESS_MATCH_LOG_QUEUE, channel=_MATCH_LOG_CHANNEL)
 async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=PROCESS_MATCH_LOG_QUEUE,
@@ -278,9 +333,22 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
                 )
                 if tournament_exists is None:
                     raise RuntimeError(f"Tournament {event.tournament_id} not found")
-                for log in await s3_service.get_logs_by_tournament(s3_client, event.tournament_id):
-                    await logs_flows.process_match_log(session, event.tournament_id, log, s3_client, is_raise=False)
-            logger.info(f"All logs for tournament {event.tournament_id} are queued for processing.")
+                filenames = await s3_service.get_logs_by_tournament(s3_client, event.tournament_id)
+
+            # Fan out instead of parsing the whole tournament inline: an inline
+            # loop holds one session (and one unacked delivery) for as long as it
+            # takes to chew every file, which outruns RabbitMQ's consumer_timeout
+            # and gets the delivery requeued — then dropped, because its 10-minute
+            # TTL has long expired. Per-log messages ride the normal
+            # process_match_log path, which is deduped, retried and reaped.
+            for filename in filenames:
+                await publish_message(
+                    broker,
+                    ProcessMatchLogEvent(tournament_id=event.tournament_id, filename=filename).model_dump(),
+                    PROCESS_MATCH_LOG_QUEUE,
+                    logger=logger.bind(tournament_id=event.tournament_id, filename=filename),
+                )
+            logger.info(f"Queued {len(filenames)} logs for tournament {event.tournament_id}.")
         except Exception:
             logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
             raise

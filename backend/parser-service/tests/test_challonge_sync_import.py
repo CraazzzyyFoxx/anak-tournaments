@@ -511,6 +511,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
             stage_id=None,
             stage_item_id=None,
             status=enums.EncounterStatus.OPEN,
+            result_status=enums.EncounterResultStatus.NONE,
         )
         session = SimpleNamespace(
             execute=AsyncMock(

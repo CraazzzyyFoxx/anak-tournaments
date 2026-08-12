@@ -19,7 +19,9 @@ import {
   getBuiltInValueValidationError,
   normalizeBuiltInFieldValue,
 } from "./validation";
+import { Input } from "@/components/ui/input";
 import FieldLabel from "./FieldLabel";
+import { fieldControlClass, fieldInvalidClass } from "./FormField";
 
 interface AccountComboboxProps {
   label: string;
@@ -52,6 +54,8 @@ export default function AccountCombobox({
   const [contentWidth, setContentWidth] = useState<number>();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
+  const controlId = useId();
+  const errorId = `${controlId}-error`;
   const validationError = fieldKey
     ? getBuiltInValueValidationError(fieldKey, inputValue, config)
     : null;
@@ -120,24 +124,28 @@ export default function AccountCombobox({
 
   return (
     <div className="space-y-1.5">
-      <FieldLabel label={label} required={required} icon={iconEl} />
+      <FieldLabel label={label} htmlFor={controlId} required={required} icon={iconEl} />
       {hasSuggestions ? (
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <button
               ref={triggerRef}
+              id={controlId}
               type="button"
               role="combobox"
               aria-controls={listboxId}
               aria-expanded={open}
+              aria-invalid={Boolean(validationError)}
+              aria-describedby={validationError ? errorId : undefined}
               className={cn(
-                "flex h-9 w-full items-center justify-between rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm transition-colors hover:border-[color:var(--aqt-border-2)]",
+                fieldControlClass,
+                "flex h-9 items-center justify-between",
                 value ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]",
-                validationError && "border-red-500/70 text-red-100 hover:border-red-500/70",
+                validationError && fieldInvalidClass,
               )}
             >
               <span className="truncate">{value || placeholder}</span>
-              <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-[color:var(--aqt-fg-dim)]" />
+              <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden />
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -162,7 +170,7 @@ export default function AccountCombobox({
                   {filtered.map((s) => (
                     <CommandItem key={s} value={s} onSelect={() => handleSelect(s)}>
                       <span className="flex-1 truncate">{s}</span>
-                      <Check className={cn("ml-2 size-4", value === s ? "opacity-100" : "opacity-0")} />
+                      <Check className={cn("ml-2 size-4", value === s ? "opacity-100" : "opacity-0")} aria-hidden />
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -178,19 +186,19 @@ export default function AccountCombobox({
           </PopoverContent>
         </Popover>
       ) : (
-        <input
+        <Input
+          id={controlId}
           type="text"
           placeholder={placeholder}
           value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
-          className={cn(
-            "h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm text-[color:var(--aqt-fg)] placeholder-white/30 outline-none transition-colors focus:border-[color:var(--aqt-border-2)]",
-            validationError && "border-red-500/70 text-red-100 placeholder:text-red-200/60 focus:border-red-500/70",
-          )}
+          aria-invalid={Boolean(validationError)}
+          aria-describedby={validationError ? errorId : undefined}
+          className={cn(fieldControlClass, "h-9", validationError && fieldInvalidClass)}
         />
       )}
       {validationError && (
-        <p className="text-xs text-red-400">{validationError}</p>
+        <p id={errorId} className="text-xs text-destructive">{validationError}</p>
       )}
     </div>
   );

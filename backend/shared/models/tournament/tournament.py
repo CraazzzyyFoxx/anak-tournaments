@@ -2,6 +2,7 @@ import typing
 from datetime import datetime
 
 from sqlalchemy import Boolean, CheckConstraint, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
@@ -34,7 +35,6 @@ class Tournament(db.TimeStampIntegerMixin):
     __table_args__ = ({"schema": "tournament"},)
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey(Workspace.id, ondelete="CASCADE"), index=True)
-    number: Mapped[int] = mapped_column(Integer(), nullable=True)
     name: Mapped[str] = mapped_column(String())
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     is_league: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false", nullable=False)
@@ -79,6 +79,10 @@ class Tournament(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
+    # Per-team roster shape override, e.g. ``{"tank": 1, "dps": 2, "support": 2}``.
+    # NULL means "inherit from the workspace default", NOT "an empty roster" — the
+    # resolution chain lives in ``shared.domain.roster_shape.resolve_roster_shape``.
+    roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
 
     workspace: Mapped[Workspace] = relationship()
     division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(

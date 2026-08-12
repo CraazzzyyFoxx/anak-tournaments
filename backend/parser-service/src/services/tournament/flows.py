@@ -63,7 +63,6 @@ async def to_pydantic(
         workspace_id=tournament.workspace_id,
         start_date=tournament.start_date,
         end_date=tournament.end_date,
-        number=tournament.number,
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
         status=tournament.status,
@@ -145,38 +144,6 @@ async def get_read(session: AsyncSession, id: int, entities: list[str]) -> schem
     )
 
 
-async def get_by_number(session: AsyncSession, number: int, entities: list[str]) -> models.Tournament:
-    tournament = await service.get_by_number(session, number, entities)
-    if tournament is None:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="tournament_not_found",
-                    msg="Tournament with this number not found",
-                )
-            ],
-        )
-    return tournament
-
-
-async def get_by_number_and_league(
-    session: AsyncSession, number: int, is_league: bool, entities: list[str]
-) -> models.Tournament:
-    tournament = await service.get_by_number_and_league(session, number, is_league, entities)
-    if tournament is None:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="tournament_not_found",
-                    msg="Tournament with this number not found",
-                )
-            ],
-        )
-    return tournament
-
-
 async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Tournament:
     tournament = await service.get_by_name(session, name, entities)
     if tournament is None:
@@ -215,7 +182,7 @@ async def create_groups(
     challonge_tournament: schemas.ChallongeTournament,
 ) -> models.Tournament:
     # Release the DB connection before the Challonge round-trip: under
-    # pgBouncer/NullPool an open transaction pins a backend slot for the whole
+    # pgBouncer transaction pooling an open transaction pins a backend slot for the whole
     # network wait. expire_on_commit=False keeps ``tournament`` usable.
     await session.commit()
     matches = await challonge_service.fetch_matches(challonge_tournament.id)
@@ -247,24 +214,12 @@ async def create_groups(
 async def create_with_groups(
     session: AsyncSession,
     workspace_id: int,
-    number: int,
     is_league: bool,
     start_date: date,
     end_date: date,
     challonge_slug: str,
     division_grid_version_id: int | None = None,
 ) -> models.Tournament:
-    if await service.get_by_number(session, number, []) is not None:
-        raise errors.ApiHTTPException(
-            status_code=400,
-            detail=[
-                errors.ApiExc(
-                    code="tournament_exists",
-                    msg="Tournament with this number already exists",
-                )
-            ],
-        )
-
     resolved_division_grid_version_id = division_grid_version_id
     if resolved_division_grid_version_id is None:
         resolved_division_grid_version_id = await get_workspace_division_grid_version_id(session, workspace_id)
@@ -293,10 +248,22 @@ async def create_with_groups(
                 )
             ],
         )
+    if (
+        await service.get_by_name_and_league(session, workspace_id, challonge_tournament.name, is_league, [])
+        is not None
+    ):
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[
+                errors.ApiExc(
+                    code="tournament_exists",
+                    msg="Tournament with this name already exists",
+                )
+            ],
+        )
     tournament = await service.create(
         session,
         workspace_id=workspace_id,
-        number=number,
         is_league=is_league,
         name=challonge_tournament.name,
         description=challonge_tournament.description,
@@ -322,20 +289,20 @@ async def create_with_groups(
 
 async def create(
     session: AsyncSession,
-    number: int,
+    name: str,
     is_league: bool,
     start_date: date,
     end_date: date,
     groups_challonge_slugs: list[str],
     playoffs_challonge_slug: str,
 ) -> models.Tournament:
-    if await service.get_by_number_and_league(session, number, is_league, []) is not None:
+    if await service.get_by_name_and_league(session, 1, name, is_league, []) is not None:
         raise errors.ApiHTTPException(
             status_code=400,
             detail=[
                 errors.ApiExc(
                     code="tournament_exists",
-                    msg="Tournament with this number already exists",
+                    msg="Tournament with this name already exists",
                 )
             ],
         )
@@ -359,8 +326,7 @@ async def create(
     tournament = await service.create(
         session,
         workspace_id=1,
-        number=number,
-        name=f"Турнир Сабов Anakq #{number}",
+        name=name,
         is_league=is_league,
         start_date=start_date,
         end_date=end_date,

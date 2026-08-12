@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
@@ -20,7 +20,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
+import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { buildEncounterName } from "@/components/admin/encounter-name";
 import { isGroupStageScoreContext } from "@/components/admin/encounter-score";
@@ -31,7 +31,7 @@ import tournamentService from "@/services/tournament.service";
 import teamService from "@/services/team.service";
 import adminService from "@/services/admin.service";
 import { Encounter } from "@/types/encounter.types";
-import { EncounterCreateInput, EncounterUpdateInput } from "@/types/admin.types";
+import { EncounterCreateInput, EncounterEditableStatus, EncounterUpdateInput } from "@/types/admin.types";
 import { StageItem } from "@/types/tournament.types";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
@@ -47,21 +47,30 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
-const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING", "COMPLETED"] as const;
+// Editable statuses only. COMPLETED is set by the result endpoint, which moves
+// score, status, result_status and the audit row together.
+const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING"] as const;
 const TOURNAMENT_QUERY_PARAM = "tournament";
 
-function normalizeEncounterStatus(status?: string | null): string {
+/** What the table shows — the encounter's real status, COMPLETED included. */
+function displayEncounterStatus(status?: string | null): string {
+  return status?.toUpperCase() ?? "OPEN";
+}
+
+/** What a form may submit. COMPLETED is not editable: it belongs to the result
+ * endpoint, which moves score, status, result_status and the audit row together. */
+function normalizeEncounterStatus(status?: string | null): EncounterEditableStatus {
   const normalizedStatus = status?.toUpperCase();
   return ENCOUNTER_STATUS_OPTIONS.includes(
     normalizedStatus as (typeof ENCOUNTER_STATUS_OPTIONS)[number]
   )
-    ? normalizedStatus!
+    ? (normalizedStatus as EncounterEditableStatus)
     : "OPEN";
 }
 
 function formatEncounterStatus(status?: string | null) {
-  const normalizedStatus = normalizeEncounterStatus(status);
-  return normalizedStatus.charAt(0) + normalizedStatus.slice(1).toLowerCase();
+  const shown = displayEncounterStatus(status);
+  return shown.charAt(0) + shown.slice(1).toLowerCase();
 }
 
 function closenessFloatToStars(closeness: number | null | undefined): number {
@@ -79,7 +88,7 @@ function getEncounterTeamsError(data: Pick<EncounterCreateInput, "home_team_id" 
     data.away_team_id != null &&
     data.home_team_id === data.away_team_id
   ) {
-    return "Home and away teams must be different.";
+    return "Pick two different teams.";
   }
 
   return null;
@@ -154,6 +163,7 @@ export default function EncountersPage() {
   const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
   const formTournamentId =
     editDialogOpen && selectedEncounter ? selectedEncounter.tournament_id : selectedTournamentId;
+  const createHintId = useId();
 
   // Fetch tournaments and teams
   const { data: tournamentsData } = useQuery({
@@ -249,7 +259,7 @@ export default function EncountersPage() {
     e.preventDefault();
     const teamsError = getEncounterTeamsError(formData as EncounterCreateInput);
     if (teamsError) {
-      notify.error("Error", { description: teamsError });
+      notify.error("Can't create the encounter", { description: teamsError });
       return;
     }
     createMutation.mutate(formData as EncounterCreateInput);
@@ -263,7 +273,7 @@ export default function EncountersPage() {
         away_team_id: (formData as EncounterUpdateInput).away_team_id ?? null
       });
       if (teamsError) {
-        notify.error("Error", { description: teamsError });
+        notify.error("Can't update the encounter", { description: teamsError });
         return;
       }
       updateMutation.mutate({
@@ -306,17 +316,12 @@ export default function EncountersPage() {
   const selectedFormStageItem =
     selectedFormStage?.items.find((item) => item.id === formData.stage_item_id) ?? null;
   const isGroupStageForm = isGroupStageScoreContext(selectedFormStage, selectedFormStageItem);
-
-  const getStatusIcon = (status: string) => {
-    switch (normalizeEncounterStatus(status)) {
-      case "COMPLETED":
-        return <CheckCircle className="h-3 w-3" />;
-      case "PENDING":
-        return <Clock className="h-3 w-3" />;
-      default:
-        return <AlertCircle className="h-3 w-3" />;
-    }
-  };
+  const createBlockedReason =
+    selectedTournamentId == null
+      ? "Pick a tournament first — an encounter belongs to one tournament."
+      : stagesData.length === 0
+        ? "This tournament has no stages yet. Add a stage before creating encounters."
+        : null;
 
   const columns: ColumnDef<Encounter>[] = [
     {
@@ -348,7 +353,7 @@ export default function EncountersPage() {
     {
       accessorKey: "round",
       header: "Round",
-      cell: ({ row }) => <div>Round {row.getValue("round")}</div>
+      cell: ({ row }) => <div className="tabular-nums">Round {row.getValue("round")}</div>
     },
     {
       accessorKey: "score",
@@ -369,7 +374,9 @@ export default function EncountersPage() {
       cell: ({ row }) => {
         const closeness = row.getValue<number | null>("closeness");
         return closeness ? (
-          <div className="text-sm text-muted-foreground">{(closeness * 100).toFixed(0)}%</div>
+          <div className="text-sm tabular-nums text-muted-foreground">
+            {(closeness * 100).toFixed(0)}%
+          </div>
         ) : (
           "—"
         );
@@ -379,7 +386,7 @@ export default function EncountersPage() {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => {
-        const status = normalizeEncounterStatus(row.getValue<string>("status"));
+        const status = displayEncounterStatus(row.getValue<string>("status"));
 
         if (status === "COMPLETED")
           return <StatusIcon icon={CheckCircle} label="Completed" variant="success" />;
@@ -440,36 +447,24 @@ export default function EncountersPage() {
         description="Manage tournament encounters and matches"
         actions={
           canCreate ? (
-            <Button
-              onClick={handleCreate}
-              disabled={!selectedTournamentId || stagesData.length === 0}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Create Encounter
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {createBlockedReason ? (
+                <span id={createHintId} className="text-sm text-muted-foreground">
+                  {createBlockedReason}
+                </span>
+              ) : null}
+              <Button
+                onClick={handleCreate}
+                disabled={createBlockedReason != null}
+                aria-describedby={createBlockedReason ? createHintId : undefined}
+              >
+                <Plus className="mr-2 h-4 w-4" aria-hidden />
+                Create encounter
+              </Button>
+            </div>
           ) : null
         }
       />
-
-      <div className="flex items-center gap-4">
-        <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
-        <Select
-          value={selectedTournamentId?.toString() || "all"}
-          onValueChange={handleTournamentFilterChange}
-        >
-          <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="All Tournaments" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Tournaments</SelectItem>
-            {tournamentsData?.results.map((tournament) => (
-              <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
 
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir) => [
@@ -492,8 +487,30 @@ export default function EncountersPage() {
           );
         }}
         columns={columns}
-        searchPlaceholder="Search encounters..."
-        emptyMessage="No encounters found."
+        searchPlaceholder="Search encounters…"
+        emptyMessage={
+          selectedTournamentId
+            ? "No encounters yet. Use “Create encounter” to schedule the first match."
+            : "No encounters yet. Pick a tournament to see its bracket."
+        }
+        actions={
+          <Select
+            value={selectedTournamentId?.toString() ?? "all"}
+            onValueChange={handleTournamentFilterChange}
+          >
+            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
+              <SelectValue placeholder="Filter by tournament" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tournaments</SelectItem>
+              {tournamentsData?.results.map((tournament) => (
+                <SelectItem key={tournament.id} value={tournament.id.toString()}>
+                  {tournament.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
         onRowClick={(row) => router.push(`/encounters/${row.original.id}`)}
       />
 
@@ -501,8 +518,8 @@ export default function EncountersPage() {
       <EntityFormDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        title="Create Encounter"
-        description="Create a new encounter between two teams"
+        title="Create encounter"
+        description="Schedule a new encounter between two teams"
         onSubmit={handleSubmitCreate}
         isSubmitting={createMutation.isPending}
         submittingLabel="Creating encounter…"
@@ -511,7 +528,7 @@ export default function EncountersPage() {
       >
         <div className="space-y-4">
           <div>
-            <Label htmlFor="name">Encounter Name *</Label>
+            <Label htmlFor="name">Encounter name *</Label>
             <Input
               id="name"
               value={(formData as EncounterCreateInput).name}
@@ -534,7 +551,7 @@ export default function EncountersPage() {
                 });
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger id="stage_id">
                 <SelectValue placeholder="Select stage" />
               </SelectTrigger>
               <SelectContent>
@@ -548,7 +565,7 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="stage_item_id">Stage Item</Label>
+            <Label htmlFor="stage_item_id">Stage item</Label>
             <Select
               value={(formData as EncounterCreateInput).stage_item_id?.toString() ?? "none"}
               onValueChange={(value) =>
@@ -566,7 +583,7 @@ export default function EncountersPage() {
                 })
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id="stage_item_id">
                 <SelectValue placeholder="Select stage item" />
               </SelectTrigger>
               <SelectContent>
@@ -584,7 +601,7 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="home_team_id">Home Team</Label>
+            <Label htmlFor="home_team_id">Home team</Label>
             <TeamCombobox
               id="home_team_id"
               teams={teamsData?.results ?? []}
@@ -608,7 +625,7 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="away_team_id">Away Team</Label>
+            <Label htmlFor="away_team_id">Away team</Label>
             <TeamCombobox
               id="away_team_id"
               teams={teamsData?.results ?? []}
@@ -659,8 +676,7 @@ export default function EncountersPage() {
               setFormData({
                 ...formData,
                 home_score: score.homeScore,
-                away_score: score.awayScore,
-                status: "COMPLETED"
+                away_score: score.awayScore
               })
             }
           />
@@ -669,15 +685,14 @@ export default function EncountersPage() {
             <Label htmlFor="status">Status</Label>
             <Select
               value={(formData as EncounterCreateInput).status}
-              onValueChange={(value) => setFormData({ ...formData, status: value })}
+              onValueChange={(value) => setFormData({ ...formData, status: value as EncounterEditableStatus })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="OPEN">Open</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -688,7 +703,7 @@ export default function EncountersPage() {
       <EntityFormDialog
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        title="Edit Encounter"
+        title="Edit encounter"
         description="Update encounter details"
         onSubmit={handleSubmitUpdate}
         isSubmitting={updateMutation.isPending}
@@ -698,7 +713,7 @@ export default function EncountersPage() {
       >
         <div className="space-y-4">
           <div>
-            <Label htmlFor="edit-name">Encounter Name</Label>
+            <Label htmlFor="edit-name">Encounter name</Label>
             <Input
               id="edit-name"
               value={(formData as EncounterUpdateInput).name}
@@ -719,7 +734,7 @@ export default function EncountersPage() {
                 });
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger id="edit-stage_id">
                 <SelectValue placeholder="Select stage" />
               </SelectTrigger>
               <SelectContent>
@@ -733,7 +748,7 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="edit-stage_item_id">Stage Item</Label>
+            <Label htmlFor="edit-stage_item_id">Stage item</Label>
             <Select
               value={(formData as EncounterUpdateInput).stage_item_id?.toString() ?? "none"}
               onValueChange={(value) =>
@@ -751,7 +766,7 @@ export default function EncountersPage() {
                 })
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id="edit-stage_item_id">
                 <SelectValue placeholder="Select stage item" />
               </SelectTrigger>
               <SelectContent>
@@ -779,7 +794,7 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="edit-home_team_id">Home Team</Label>
+            <Label htmlFor="edit-home_team_id">Home team</Label>
             <TeamCombobox
               id="edit-home_team_id"
               teams={teamsData?.results ?? []}
@@ -803,7 +818,7 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="edit-away_team_id">Away Team</Label>
+            <Label htmlFor="edit-away_team_id">Away team</Label>
             <TeamCombobox
               id="edit-away_team_id"
               teams={teamsData?.results ?? []}
@@ -843,8 +858,7 @@ export default function EncountersPage() {
               setFormData({
                 ...formData,
                 home_score: score.homeScore,
-                away_score: score.awayScore,
-                status: "COMPLETED"
+                away_score: score.awayScore
               })
             }
           />
@@ -853,28 +867,28 @@ export default function EncountersPage() {
             <Label htmlFor="edit-status">Status</Label>
             <Select
               value={(formData as EncounterUpdateInput).status}
-              onValueChange={(value) => setFormData({ ...formData, status: value })}
+              onValueChange={(value) => setFormData({ ...formData, status: value as EncounterEditableStatus })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="edit-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="OPEN">Open</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div>
-            <Label>Match Closeness</Label>
+          <div role="group" aria-label="Match closeness">
+            <p className="text-sm font-medium leading-none">Match closeness</p>
             <div className="mt-2 flex items-center gap-1">
               {[1, 2, 3, 4, 5].map((stars) => (
                 <button
                   key={stars}
                   type="button"
                   className="p-1"
-                  aria-label={`${stars} stars`}
+                  aria-label={`Rate closeness ${stars} of 5`}
+                  aria-pressed={stars <= editClosenessStars}
                   onClick={() =>
                     setFormData({
                       ...formData,
@@ -883,15 +897,16 @@ export default function EncountersPage() {
                   }
                 >
                   <Star
+                    aria-hidden
                     className={`h-6 w-6 ${
                       stars <= editClosenessStars
-                        ? "fill-yellow-400 text-yellow-400"
+                        ? "fill-warning text-warning"
                         : "text-muted-foreground"
                     }`}
                   />
                 </button>
               ))}
-              <span className="ml-2 text-sm text-muted-foreground">
+              <span className="ml-2 text-sm tabular-nums text-muted-foreground">
                 {editClosenessStars > 0 ? `${editClosenessStars}/5` : "Not set"}
               </span>
             </div>
@@ -905,8 +920,8 @@ export default function EncountersPage() {
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={handleConfirmDelete}
-          title="Delete Encounter"
-          description={`Are you sure you want to delete "${selectedEncounter?.name}"? This action cannot be undone.`}
+          title="Delete encounter"
+          description={`Deleting “${selectedEncounter?.name}” removes the encounter and every match, log and statistic recorded under it. This cannot be undone.`}
           cascadeInfo={["All matches in this encounter", "All match statistics and logs"]}
           isDeleting={deleteMutation.isPending}
         />

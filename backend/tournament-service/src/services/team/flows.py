@@ -281,7 +281,7 @@ async def get_player_by_user_and_tournament(
             detail=[
                 errors.ApiExc(
                     code="not_found",
-                    msg=f"Player with user [id={user_id}] not found in tournament [number={tournament_id}].",
+                    msg=f"Player with user [id={user_id}] not found in tournament [id={tournament_id}].",
                 )
             ],
         )

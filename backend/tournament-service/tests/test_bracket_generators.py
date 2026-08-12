@@ -32,7 +32,7 @@ from shared.services.bracket import (  # noqa: E402
     single_elimination,
     swiss,
 )
-from shared.services.bracket.engine import generate_bracket  # noqa: E402
+from shared.services.bracket.engine import generate_bracket, predict_rounds  # noqa: E402
 
 
 def _local_ids(skeleton) -> set[int]:
@@ -420,3 +420,58 @@ class EngineDispatchInvariants(TestCase):
             swiss_round_number=1,
         )
         self.assertEqual(2, len(s.pairings))
+
+
+class PredictRoundsInvariants(TestCase):
+    """`predict_rounds` must never drift from what `generate_bracket` actually
+    produces for the same team count -- it exists so a cascade config can be
+    scoped to a round correctly before a bracket's real team ids are known.
+    """
+
+    def test_matches_generate_bracket_for_single_elimination(self) -> None:
+        for team_count in (2, 3, 4, 5, 7, 8, 16):
+            actual = generate_bracket(StageType.SINGLE_ELIMINATION, list(range(team_count)))
+            expected = sorted({p.round_number for p in actual.pairings})
+            self.assertEqual(expected, predict_rounds(StageType.SINGLE_ELIMINATION, team_count))
+
+    def test_matches_generate_bracket_for_double_elimination(self) -> None:
+        for team_count in (2, 3, 4, 5, 7, 8, 16):
+            actual = generate_bracket(StageType.DOUBLE_ELIMINATION, list(range(team_count)))
+            expected = sorted({p.round_number for p in actual.pairings})
+            self.assertEqual(expected, predict_rounds(StageType.DOUBLE_ELIMINATION, team_count))
+
+    def test_double_elimination_has_both_positive_and_negative_rounds(self) -> None:
+        rounds = predict_rounds(StageType.DOUBLE_ELIMINATION, 8)
+        self.assertTrue(any(round_number < 0 for round_number in rounds))
+        self.assertTrue(any(round_number > 0 for round_number in rounds))
+
+    def test_fewer_than_two_teams_predicts_nothing(self) -> None:
+        self.assertEqual([], predict_rounds(StageType.SINGLE_ELIMINATION, 1))
+        self.assertEqual([], predict_rounds(StageType.SINGLE_ELIMINATION, 0))
+        self.assertEqual([], predict_rounds(StageType.DOUBLE_ELIMINATION, 1))
+
+    def test_rejects_a_stage_type_with_no_bracket_shape(self) -> None:
+        with self.assertRaises(ValueError):
+            predict_rounds(StageType.ROUND_ROBIN, 4)
+        with self.assertRaises(ValueError):
+            predict_rounds(StageType.SWISS, 4)
+
+    def test_split_lower_bracket_matches_generate_with_the_same_split(self) -> None:
+        # `stage.py` splits an even-sized single bracket item in half when
+        # `split_lower_bracket` is on and there is no separate lower-bracket
+        # item; mirror that split exactly rather than assume it changes
+        # nothing -- an upper bracket seeded from only half the teams is a
+        # different (smaller) bracket than one seeded from all of them.
+        team_count = 8
+        half = team_count // 2
+        all_ids = list(range(team_count))
+        actual = generate_bracket(
+            StageType.DOUBLE_ELIMINATION,
+            all_ids[:half],
+            lower_bracket_team_ids=all_ids[half:],
+        )
+        expected = sorted({p.round_number for p in actual.pairings})
+        self.assertEqual(
+            expected,
+            predict_rounds(StageType.DOUBLE_ELIMINATION, team_count, split_lower_bracket=True),
+        )

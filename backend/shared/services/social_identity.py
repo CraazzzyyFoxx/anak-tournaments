@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.core.social import normalize_social_handle
+from shared.core.social import OAUTH_PROVIDERS, SocialProvider, normalize_social_handle
 
 __all__ = (
     "list_social_accounts",
@@ -29,7 +29,9 @@ __all__ = (
     "delete_social_account",
     "set_primary",
     "set_visibility",
+    "verify_social_account",
     "SocialHandleConflict",
+    "SocialAccountNotOAuthLinked",
 )
 
 
@@ -130,9 +132,32 @@ async def upsert_social_account(
     visibility row is seeded on creation (shown on the profile by default) unless
     ``ensure_global_visibility`` is False. Only non-None optional fields overwrite
     existing values, so callers can update verification without clobbering data.
+
+    When ``provider_user_id`` is given, the existing account is looked up by
+    ``(provider, provider_user_id)`` first -- that pair is what
+    ``uq_social_account_provider_subject`` actually enforces, and it is stable
+    even when the display handle changes (Discord/Twitch usernames aren't).
+    A handle-only lookup misses that rename and re-inserts, colliding on the
+    constraint (Sentry OWT-TOURNAMENTS-20D: UniqueViolationError). Raises
+    ``SocialHandleConflict`` if that ``provider_user_id`` is already linked to
+    a *different* user -- silently retargeting someone else's account would be
+    worse than the crash this replaces.
     """
     normalized = normalize_social_handle(provider, username)
-    account = await find_by_handle(session, provider=provider, username=username, user_id=user_id)
+    account = None
+    if provider_user_id is not None:
+        account = (
+            await session.execute(
+                sa.select(models.SocialAccount).where(
+                    models.SocialAccount.provider == provider,
+                    models.SocialAccount.provider_user_id == provider_user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if account is not None and account.user_id != user_id:
+            raise SocialHandleConflict(f"{provider} account is already linked to a different user")
+    if account is None:
+        account = await find_by_handle(session, provider=provider, username=username, user_id=user_id)
 
     if account is None:
         is_first = not await _has_any_for_provider(session, user_id, provider)
@@ -150,6 +175,7 @@ async def upsert_social_account(
         await session.flush()
     else:
         account.username = username  # refresh display casing
+        account.username_normalized = normalized
         if url is not None:
             account.url = url
         if provider_user_id is not None:
@@ -275,6 +301,100 @@ async def set_primary(session: AsyncSession, *, account_id: int, user_id: int) -
         .values(is_primary=False)
     )
     account.is_primary = True
+    await session.flush()
+    return account
+
+
+class SocialAccountNotOAuthLinked(Exception):
+    """Raised by ``verify_social_account`` when no real OAuth connection backs
+    the verification claim (see that function's docstring for the cases)."""
+
+
+def _oauth_handle_candidates(provider: str, connection: models.OAuthConnection) -> set[str]:
+    """Every handle-shaped string this OAuth connection's provider response could
+    have named the account by, normalized for direct comparison against
+    ``social_account.username_normalized``.
+
+    Mirrors the per-provider field shapes ``OAuthService`` actually populates
+    (``oauth_service.py``'s Discord/BattleNet/Twitch providers): a display
+    username/display_name plus provider-specific raw fields stashed in
+    ``provider_data``.
+    """
+    data = connection.provider_data or {}
+    raw: set[str | None] = {connection.username, connection.display_name}
+    if provider == SocialProvider.BATTLENET:
+        raw |= {data.get("battletag"), data.get("battle_tag"), data.get("preferred_username")}
+    elif provider == SocialProvider.DISCORD:
+        raw |= {data.get("username"), data.get("global_name")}
+    elif provider == SocialProvider.TWITCH:
+        raw |= {data.get("login")}
+    return {normalize_social_handle(provider, value) for value in raw if value}
+
+
+async def verify_social_account(session: AsyncSession, *, account_id: int, user_id: int) -> models.SocialAccount | None:
+    """Manually mark an OAuth-eligible account verified -- but only when a real
+    ``auth.oauth_connections`` row for the player's linked auth user actually
+    proves this handle.
+
+    Exists for accounts the automatic sync (``OAuthService._attach_verified_social_account``,
+    identity-service) missed: it runs best-effort at login time and no-ops when
+    the player isn't linked yet or the stored handle doesn't match the OAuth
+    response verbatim, leaving a legitimately-owned account stuck unverified.
+    This re-derives the same proof instead of trusting an admin's say-so
+    blindly, so it can never fabricate a verification that OAuth never granted.
+
+    Returns None if the account doesn't exist / isn't owned by ``user_id``.
+    Already-verified accounts are returned unchanged (idempotent). Raises
+    ``SocialAccountNotOAuthLinked`` (message describes the gap) when the
+    provider can't be OAuth-verified, the player has no linked auth account, or
+    none of its OAuth connections for this provider match the handle.
+    """
+    account = (
+        await session.execute(
+            sa.select(models.SocialAccount).where(
+                models.SocialAccount.id == account_id,
+                models.SocialAccount.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if account is None:
+        return None
+    if account.is_verified:
+        return account
+
+    if account.provider not in OAUTH_PROVIDERS:
+        raise SocialAccountNotOAuthLinked(f"{account.provider} accounts cannot be OAuth-verified")
+
+    player = await session.get(models.User, user_id)
+    auth_user_id = player.auth_user_id if player is not None else None
+    if auth_user_id is None:
+        raise SocialAccountNotOAuthLinked("Player has no linked account; link an OAuth account first")
+
+    connections = (
+        (
+            await session.execute(
+                sa.select(models.OAuthConnection).where(
+                    models.OAuthConnection.auth_user_id == auth_user_id,
+                    models.OAuthConnection.provider == account.provider,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    match = next(
+        (
+            conn
+            for conn in connections
+            if account.username_normalized in _oauth_handle_candidates(account.provider, conn)
+        ),
+        None,
+    )
+    if match is None:
+        raise SocialAccountNotOAuthLinked(f"No linked {account.provider} OAuth connection matches this handle")
+
+    account.is_verified = True
+    account.provider_user_id = match.provider_user_id
     await session.flush()
     return account
 

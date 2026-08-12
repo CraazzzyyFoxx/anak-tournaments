@@ -18,9 +18,12 @@ MONITORING_COMPOSE = docker compose -f docker-compose.monitoring.yml
 # each live draft); kept out of the default because each replica reserves ~4 CPU.
 # Do NOT scale analytics-worker: it starts an APScheduler on every replica
 # (scheduled jobs would multi-fire) and its jobs aren't idempotent — it needs
-# leader-election first. Override on the CLI, e.g.
-#   make prod-scale PROD_SCALE='app-svc=3 balancer-svc=2'
-PROD_SCALE ?= app-svc=2 identity-svc=2
+# leader-election first.
+# `prod-up` applies this scale-out itself on every start (auth/identity +
+# tournament run replicated from boot, no separate `prod-scale` call needed).
+# Override on the CLI, e.g.
+#   make prod-up PROD_SCALE='app-svc=3 balancer-svc=2'
+PROD_SCALE ?= app-svc=2 identity-svc=2 tournament-svc=2
 
 help:
 	@echo "Available commands:"
@@ -34,10 +37,10 @@ help:
 	@echo "  make dev-rebuild    - Rebuild and restart core dev stack"
 	@echo ""
 	@echo "  make prod-build     - Build production images"
-	@echo "  make prod-up        - Start production stack (app only, no monitoring)"
+	@echo "  make prod-up        - Start production stack, replicating auth+tournament (PROD_SCALE)"
 	@echo "  make prod-down      - Stop production stack"
 	@echo "  make prod-logs      - Follow production logs"
-	@echo "  make prod-scale     - Scale stateless RPC workers (PROD_SCALE='app-svc=3 ...')"
+	@echo "  make prod-scale     - Re-apply replica counts (PROD_SCALE='app-svc=3 ...')"
 	@echo ""
 	@echo "  make monitoring-up  - Start monitoring stack (requires prod-up first)"
 	@echo "  make monitoring-down- Stop monitoring stack"
@@ -78,8 +81,15 @@ dev-rebuild:
 prod-build:
 	$(PROD_COMPOSE) build
 
+# Starts the production stack with the workers in $(PROD_SCALE) replicated
+# from the first boot (auth/identity + tournament by default) — no separate
+# `prod-scale` call needed. RabbitMQ competing-consumers distribute RPC calls
+# across replicas with no extra config.
+# PREREQUISITE: enable pgBouncer first (DB_PGBOUNCER=true, see
+# backend/env/common.env.example) or the replicas will exhaust Postgres
+# connections.
 prod-up:
-	$(PROD_COMPOSE) up -d --wait
+	$(PROD_COMPOSE) up -d --wait $(foreach s,$(PROD_SCALE),--scale $(s))
 
 prod-down:
 	$(PROD_COMPOSE) down --remove-orphans
@@ -87,13 +97,9 @@ prod-down:
 prod-logs:
 	$(PROD_COMPOSE) logs -f
 
-# Horizontally scale the stateless RPC workers in $(PROD_SCALE). RabbitMQ
-# competing-consumers distribute RPC calls across replicas with no extra config.
-# PREREQUISITE: enable pgBouncer first (DB_PGBOUNCER=true, see
-# backend/env/common.env.example) or the replicas will exhaust Postgres
-# connections. Scale back down by passing =1, e.g. PROD_SCALE='app-svc=1'.
-prod-scale:
-	$(PROD_COMPOSE) up -d --wait $(foreach s,$(PROD_SCALE),--scale $(s))
+# Re-apply/adjust replica counts on an already-running stack (same knob as
+# `prod-up`). Scale back down by passing =1, e.g. PROD_SCALE='app-svc=1'.
+prod-scale: prod-up
 
 migrate:
 	$(COMPOSE) exec app-svc alembic upgrade head

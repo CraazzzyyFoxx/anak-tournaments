@@ -55,51 +55,67 @@ def _row(
     return (tournament_id, user_id, role_obj, rank, name or f"Tournament {tournament_id}")
 
 
-def _fake_version(version_id: int) -> SimpleNamespace:
-    """A DivisionGridVersion-shaped object for ``model_validate(..., from_attributes=True)``."""
-    return SimpleNamespace(
-        id=version_id,
-        grid_id=1,
-        version=1,
-        label=f"v{version_id}",
-        status="published",
-        created_from_version_id=None,
-        published_at=datetime(2026, 1, 1),
-        tiers=[],
-    )
+def _fake_version_payload(version_id: int) -> dict:
+    """A ``DivisionGridVersionRead``-shaped payload, as the cached batch loader returns."""
+    return {
+        "id": version_id,
+        "grid_id": 1,
+        "version": 1,
+        "label": f"v{version_id}",
+        "status": "published",
+        "created_from_version_id": None,
+        "published_at": datetime(2026, 1, 1),
+        "tiers": [],
+    }
 
 
-def _fake_session(rows: list[tuple], versions: list[SimpleNamespace]) -> SimpleNamespace:
-    """Session whose history ``execute`` returns ``rows`` and ``scalars`` returns ``versions``."""
+def _fake_session(rows: list[tuple]) -> SimpleNamespace:
+    """Session whose history ``execute`` returns ``rows``.
+
+    Nothing else is reachable: every grid lookup ``_build_tournament_history``
+    performs is a batch helper, and all three are patched out in ``_patches``.
+    """
     history_result = SimpleNamespace(all=lambda: rows)
-    return SimpleNamespace(
-        execute=AsyncMock(return_value=history_result),
-        scalars=AsyncMock(return_value=versions),
-    )
+    return SimpleNamespace(execute=AsyncMock(return_value=history_result))
 
 
 def _patches(*, version_map: dict[int, int | None], division: int = 4):
-    """Patch the Redis-cached grid helpers used by ``_build_tournament_history``."""
+    """Patch the Redis-cached grid helpers used by ``_build_tournament_history``.
 
-    async def fake_version_id(_session, _workspace_id, tournament_id):
-        return version_map.get(tournament_id)
+    These are the BATCH helpers -- the builder resolves every historical
+    tournament in a constant number of round trips rather than one await per
+    tournament. Patching the singular ``get_effective_division_grid_version_id``
+    / ``load_division_grid_snapshot`` here silently stopped matching the module
+    and the tests died on ``patch.object``'s missing-attribute check.
+    """
+
+    async def fake_version_ids(_session, _workspace_id, tournament_ids):
+        return {tid: version_map.get(tid) for tid in tournament_ids}
 
     grid = SimpleNamespace(resolve_division_number=lambda _rank: division)
     snapshot = SimpleNamespace(to_runtime_grid=lambda: grid)
 
-    async def fake_snapshot(_session, _version_id):
-        return snapshot
+    async def fake_snapshots(_session, version_ids):
+        return dict.fromkeys(version_ids, snapshot)
+
+    async def fake_version_payloads(_session, version_ids):
+        return {vid: _fake_version_payload(vid) for vid in version_ids}
 
     return (
         patch.object(
             registration,
-            "get_effective_division_grid_version_id",
-            AsyncMock(side_effect=fake_version_id),
+            "get_effective_division_grid_version_ids",
+            AsyncMock(side_effect=fake_version_ids),
         ),
         patch.object(
             registration,
-            "load_division_grid_snapshot",
-            AsyncMock(side_effect=fake_snapshot),
+            "load_division_grid_snapshots",
+            AsyncMock(side_effect=fake_snapshots),
+        ),
+        patch.object(
+            registration,
+            "load_division_grid_version_read_payloads",
+            AsyncMock(side_effect=fake_version_payloads),
         ),
     )
 
@@ -111,10 +127,10 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
         rows = [_row(tid, 100, rank=2000) for tid in range(12, 0, -1)]
         version_map = dict.fromkeys(range(1, 13), 5)
 
-        ver_patch, snap_patch = _patches(version_map=version_map, division=4)
-        with ver_patch, snap_patch:
+        ver_patch, snap_patch, read_patch = _patches(version_map=version_map, division=4)
+        with ver_patch, snap_patch, read_patch:
             history_map, count_map, division_grids = await registration._build_tournament_history(
-                _fake_session(rows, [_fake_version(5)]),
+                _fake_session(rows),
                 [reg],
                 current_tournament_id=999,
                 workspace_id=1,
@@ -139,10 +155,10 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
             _row(40, 100, rank=None),
         ]
 
-        ver_patch, snap_patch = _patches(version_map={})
-        with ver_patch, snap_patch:
+        ver_patch, snap_patch, read_patch = _patches(version_map={})
+        with ver_patch, snap_patch, read_patch:
             history_map, count_map, division_grids = await registration._build_tournament_history(
-                _fake_session(rows, []),
+                _fake_session(rows),
                 [reg],
                 current_tournament_id=999,
                 workspace_id=1,
@@ -162,10 +178,10 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
         version_map = dict.fromkeys(range(2, 13), 5)
         version_map[1] = 7
 
-        ver_patch, snap_patch = _patches(version_map=version_map, division=3)
-        with ver_patch, snap_patch:
+        ver_patch, snap_patch, read_patch = _patches(version_map=version_map, division=3)
+        with ver_patch, snap_patch, read_patch:
             history_map, count_map, division_grids = await registration._build_tournament_history(
-                _fake_session(rows, [_fake_version(5), _fake_version(7)]),
+                _fake_session(rows),
                 [reg],
                 current_tournament_id=999,
                 workspace_id=1,
@@ -179,7 +195,7 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
     async def test_no_resolvable_players_returns_empty(self) -> None:
         # Registration without a workspace_member -> no player identity at all.
         reg = SimpleNamespace(id=1, workspace_member=None)
-        session = SimpleNamespace(execute=AsyncMock(), scalars=AsyncMock())
+        session = SimpleNamespace(execute=AsyncMock())
 
         history_map, count_map, division_grids = await registration._build_tournament_history(
             session, [reg], current_tournament_id=999, workspace_id=1
@@ -196,10 +212,10 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
         reg = SimpleNamespace(id=1, workspace_member=SimpleNamespace(player_id=100))
         rows = [_row(50, 100, rank=None)]
 
-        ver_patch, snap_patch = _patches(version_map={})
-        with ver_patch, snap_patch:
+        ver_patch, snap_patch, read_patch = _patches(version_map={})
+        with ver_patch, snap_patch, read_patch:
             history_map, count_map, division_grids = await registration._build_tournament_history(
-                _fake_session(rows, []),
+                _fake_session(rows),
                 [reg],
                 current_tournament_id=999,
                 workspace_id=1,

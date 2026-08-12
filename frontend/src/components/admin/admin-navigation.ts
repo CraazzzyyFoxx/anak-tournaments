@@ -1,17 +1,21 @@
 import {
   Activity,
   Award,
+  BadgeCheck,
   BarChart3,
   Building2,
+  ClipboardCheck,
   Gamepad2,
-  KeyRound,
+  History,
   Layers,
   LayoutDashboard,
   Map,
   type LucideIcon,
   Settings2,
+  Shapes,
   Shield,
   Swords,
+  Tags,
   Trophy,
   UserCircle,
   UserCog,
@@ -19,12 +23,23 @@ import {
 } from "lucide-react";
 
 import type { AppPermission } from "@/hooks/usePermissions";
+import {
+  accessAdminPermissions,
+  accessApiKeysPermissions,
+  accessPermissionsPermissions,
+  accessRolesPermissions,
+  accessUsersPermissions,
+  adminEntryPermissions,
+  overviewPermissions,
+} from "@/lib/admin-permissions";
 
 export type AdminNavItem = {
   title: string;
   href: string;
   icon: LucideIcon;
   description: string;
+  /** Extra search terms for the command palette (D11). */
+  aliases?: string[];
   permissions?: AppPermission[];
   superuserOnly?: boolean;
   workspaceAdminVisible?: boolean;
@@ -36,36 +51,6 @@ export type AdminNavGroup = {
   items: AdminNavItem[];
   superuserOnly?: boolean;
 };
-
-export const overviewPermissions: AppPermission[] = [
-  "tournament.read",
-  "team.read",
-  "player.read",
-  "match.read",
-  "standing.read",
-  "user.read",
-  "hero.read",
-  "gamemode.read",
-  "map.read",
-  "analytics.read",
-];
-
-export const accessUsersPermissions: AppPermission[] = ["auth_user.read"];
-export const accessRolesPermissions: AppPermission[] = ["role.read"];
-export const accessPermissionsPermissions: AppPermission[] = ["permission.read"];
-export const accessApiKeysPermissions: AppPermission[] = ["team.import"];
-export const accessAdminPermissions: AppPermission[] = [
-  ...accessUsersPermissions,
-  ...accessRolesPermissions,
-  ...accessPermissionsPermissions,
-  ...accessApiKeysPermissions,
-];
-
-export const adminEntryPermissions: AppPermission[] = [
-  ...overviewPermissions,
-  ...accessAdminPermissions,
-  "achievement.read",
-];
 
 export const adminNavigationGroups: AdminNavGroup[] = [
   {
@@ -82,7 +67,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     ],
   },
   {
-    title: "Competition",
+    title: "Tournaments",
     items: [
       {
         title: "Tournaments",
@@ -91,6 +76,11 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Manage tournament lifecycle, stages, and schedules.",
         permissions: ["tournament.read"],
       },
+    ],
+  },
+  {
+    title: "Data browser",
+    items: [
       {
         title: "Teams",
         href: "/admin/teams",
@@ -113,26 +103,31 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         permissions: ["match.read"],
       },
       {
+        title: "Match reports",
+        href: "/admin/match-reports",
+        icon: ClipboardCheck,
+        description: "Captain-submitted results and the disputes between them.",
+        permissions: ["match.read"],
+      },
+      {
+        title: "Parsed matches",
+        href: "/admin/matches",
+        icon: Map,
+        description: "Played maps from the log parser, and the upload each came from.",
+        permissions: ["match.read"],
+      },
+      {
         title: "Standings",
         href: "/admin/standings",
         icon: BarChart3,
         description: "Audit bracket health and ranking outputs.",
         permissions: ["standing.read"],
       },
-      {
-        title: "Player Identities",
-        href: "/admin/users",
-        icon: UserCircle,
-        description: "Resolve Discord, BattleTag, and Twitch identities.",
-        permissions: ["user.read"],
-      },
-      {
-        title: "Rank Collection",
-        href: "/admin/rank",
-        icon: Activity,
-        description: "OverFast rank collection status and manual re-fetch per player.",
-        permissions: ["user.read"],
-      },
+    ],
+  },
+  {
+    title: "Workspace",
+    items: [
       {
         title: "Divisions",
         href: "/admin/divisions",
@@ -141,37 +136,67 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         workspaceAdminVisible: true,
       },
       {
+        title: "Balancer statuses",
+        href: "/admin/balancer",
+        icon: Settings2,
+        description: "Manage workspace-specific registration and balancer statuses.",
+        permissions: ["team.read"],
+      },
+      {
+        title: "Sub-roles",
+        href: "/admin/sub-roles",
+        icon: Shapes,
+        description: "Manage the workspace sub-role catalog used by forms, rosters, and balancer.",
+        aliases: ["subroles", "main tank", "off tank", "flex"],
+        permissions: ["player.read"],
+      },
+      {
         title: "Achievements",
         href: "/admin/achievements",
         icon: Award,
         description: "Manage achievements with condition tree evaluation engine.",
         permissions: ["achievement.read"],
       },
+      {
+        title: "Members",
+        href: "/admin/workspaces/members",
+        icon: UserCog,
+        description: "Manage workspace member access and roles.",
+        workspaceAdminVisible: true,
+      },
     ],
   },
   {
-    title: "Game Content",
+    title: "Game content",
     items: [
       {
         title: "Heroes",
         href: "/admin/heroes",
         icon: Shield,
         description: "Curate hero inventory used by analytics and admin tools.",
-        permissions: ["hero.read"],
+        superuserOnly: true,
       },
       {
         title: "Gamemodes",
         href: "/admin/gamemodes",
         icon: Gamepad2,
         description: "Maintain mode metadata and competitive rulesets.",
-        permissions: ["gamemode.read"],
+        superuserOnly: true,
       },
       {
         title: "Maps",
         href: "/admin/maps",
         icon: Map,
         description: "Manage map pool coverage for tournaments and stats.",
-        permissions: ["map.read"],
+        superuserOnly: true,
+      },
+      {
+        title: "Aliases",
+        href: "/admin/aliases",
+        icon: Tags,
+        description: "Attach unresolved match-log names to the hero, map or mode they mean.",
+        aliases: ["unresolved names", "log names", "translations", "alias queue"],
+        superuserOnly: true,
       },
     ],
   },
@@ -179,51 +204,44 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     title: "Administration",
     items: [
       {
-        title: "Users",
-        href: "/admin/access/users",
-        icon: Users,
-        description: "Admin account access and assignments.",
-        permissions: accessUsersPermissions,
-        globalOnly: true,
-      },
-      {
-        title: "Roles",
-        href: "/admin/access/roles",
+        title: "Staff access",
+        href: "/admin/access",
         icon: Shield,
-        description: "Role catalog and permission bundles.",
-        permissions: accessRolesPermissions,
+        description: "Staff accounts, roles, permissions, API keys, and sessions.",
+        permissions: accessAdminPermissions,
         workspaceAdminVisible: true,
+        aliases: ["staff", "roles", "permissions", "api keys", "sessions"],
       },
       {
-        title: "Permissions",
-        href: "/admin/access/permissions",
-        icon: Shield,
-        description: "Permission visibility and governance.",
-        permissions: accessPermissionsPermissions,
+        title: "Player identities",
+        href: "/admin/users",
+        icon: UserCircle,
+        description: "Resolve Discord, BattleTag, and Twitch identities.",
+        permissions: ["user.read"],
+        // Players are global entities, so the backend gate (`users_admin.py`
+        // `_gate`) demands a GLOBAL `user.<action>` grant. A workspace owner
+        // holds none, so without `globalOnly` they would see the link and then
+        // get a 403 from every request behind it.
         globalOnly: true,
+        aliases: ["identities", "discord", "battletag", "twitch"],
       },
       {
-        title: "OAuth Connections",
-        href: "/admin/access/oauth",
-        icon: KeyRound,
-        description: "View OAuth provider connections linked to user accounts.",
-        permissions: accessUsersPermissions,
-        globalOnly: true,
+        title: "Rank collection",
+        href: "/admin/rank",
+        icon: Activity,
+        description: "OverFast rank collection status and manual re-fetch per player.",
+        permissions: ["rank.read"],
+        aliases: ["settings"],
       },
       {
-        title: "API Keys",
-        href: "/admin/access/api-keys",
-        icon: KeyRound,
-        description: "Manage workspace-scoped public API credentials.",
-        permissions: accessApiKeysPermissions,
-        workspaceAdminVisible: true,
-      },
-      {
-        title: "Sessions",
-        href: "/admin/access/sessions",
-        icon: Shield,
-        description: "Inspect logical auth sessions across all users.",
-        superuserOnly: true,
+        title: "Subscription collection",
+        href: "/admin/subscriptions",
+        icon: BadgeCheck,
+        description: "Boosty/Twitch subscription check health, history and per-player re-check.",
+        permissions: ["subscription.read"],
+        // `twitch` deliberately omitted: /admin/users already claims it, and the
+        // palette requires every alias to resolve to exactly one entry.
+        aliases: ["subscriptions", "boosty", "entitlements"],
       },
       {
         title: "Workspaces",
@@ -233,18 +251,13 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         workspaceAdminVisible: true,
       },
       {
-        title: "Workspace Members",
-        href: "/admin/workspaces/members",
-        icon: UserCog,
-        description: "Manage workspace member access and roles.",
+        title: "Audit log",
+        href: "/admin/audit",
+        icon: History,
+        description: "Who changed what, and when — roles, API keys, tournaments, workspace settings.",
+        permissions: ["audit.read"],
         workspaceAdminVisible: true,
-      },
-      {
-        title: "Settings",
-        href: "/admin/settings",
-        icon: Settings2,
-        description: "System-level settings for the admin workspace.",
-        superuserOnly: true,
+        aliases: ["audit", "who changed this", "change log", "trail"],
       },
     ],
   },
@@ -266,19 +279,25 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/access", permissions: accessAdminPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
-  { prefix: "/admin/settings", permissions: [], superuserOnly: true },
-  { prefix: "/admin/balancer", permissions: ["team.import"] },
+  { prefix: "/admin/balancer", permissions: ["team.read"] },
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
   { prefix: "/admin/teams", permissions: ["team.read"] },
   { prefix: "/admin/players", permissions: ["player.read"] },
+  { prefix: "/admin/sub-roles", permissions: ["player.read"] },
   { prefix: "/admin/encounters", permissions: ["match.read"] },
+  { prefix: "/admin/match-reports", permissions: ["match.read"] },
+  { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/standings", permissions: ["standing.read"] },
-  { prefix: "/admin/users", permissions: ["user.read"] },
-  { prefix: "/admin/heroes", permissions: ["hero.read"] },
-  { prefix: "/admin/gamemodes", permissions: ["gamemode.read"] },
-  { prefix: "/admin/maps", permissions: ["map.read"] },
+  { prefix: "/admin/users", permissions: ["user.read"], globalOnly: true },
+  { prefix: "/admin/rank", permissions: ["rank.read"] },
+  { prefix: "/admin/subscriptions", permissions: ["subscription.read"] },
+  { prefix: "/admin/heroes", permissions: [], superuserOnly: true },
+  { prefix: "/admin/gamemodes", permissions: [], superuserOnly: true },
+  { prefix: "/admin/maps", permissions: [], superuserOnly: true },
+  { prefix: "/admin/aliases", permissions: [], superuserOnly: true },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
   { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },
+  { prefix: "/admin/audit", permissions: ["audit.read"], workspaceAdminVisible: true },
   { prefix: "/admin", permissions: adminEntryPermissions, workspaceAdminVisible: true },
 ];
 
@@ -290,14 +309,6 @@ export function getMatchingAdminRoute(pathname: string) {
 
     return pathname === route.prefix || pathname.startsWith(`${route.prefix}/`);
   });
-}
-
-export function isAdminNavItemActive(pathname: string, href: string) {
-  if (href === "/admin") {
-    return pathname === "/admin";
-  }
-
-  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 /**
@@ -338,14 +349,9 @@ export function getVisibleAdminNavigationGroups(
     .filter((group) => group.items.length > 0);
 }
 
-export function getActiveAdminNavigation(pathname: string, groups: AdminNavGroup[]) {
-  for (const group of groups) {
-    for (const item of group.items) {
-      if (isAdminNavItemActive(pathname, item.href)) {
-        return { group, item };
-      }
-    }
-  }
-
-  return null;
+/** Search haystack for the admin command palette: title + description + aliases (D11). */
+export function adminNavItemSearchValue(
+  item: Pick<AdminNavItem, "title" | "description" | "aliases">,
+): string {
+  return [item.title, item.description, ...(item.aliases ?? [])].join(" ");
 }

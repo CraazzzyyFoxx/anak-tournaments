@@ -8,7 +8,7 @@ caller within the same transaction so WorkspaceEvent ids preserve pick order.
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -24,6 +24,7 @@ from shared.core.enums import (
     DraftStatus,
 )
 from shared.core.errors import ApiExc, ApiHTTPException
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.workspace import get_or_create_workspace_member
 from src.services.draft import feasibility, loaders, ranks
@@ -174,19 +175,20 @@ async def _apply_won(
     return DraftResult(pick=pick, next_pick=next_pick, completed=next_pick is None)
 
 
-def role_targets(team_size: int) -> dict[DraftRole, int]:
-    return feasibility.role_targets_for_team_size(team_size)
-
-
-def _team_role_counts(
+def _team_slot_counts(
     players: Collection[DraftPlayer],
     picks: Collection[DraftPick],
     team_id: int,
-) -> dict[DraftRole, int]:
-    """Filled-role counts for one team, computed from the request snapshot.
+    shape: RosterShape,
+) -> dict[str, int]:
+    """Filled-slot counts for one team, computed from the request snapshot.
 
-    A resolved pick's frozen ``target_role`` wins over the player's
-    ``primary_role`` (off-role picks count against the drafted role).
+    Role slots are filled by the drafted role -- a resolved pick's frozen
+    ``target_role`` wins over the player's ``primary_role``, so off-role picks
+    count against the drafted role. Every remaining picked player occupies a flex
+    slot: a role slot that is already full, a role the shape has no slot for, and
+    a player with no usable role all land there, which is exactly the spill rule
+    ``feasibility._remaining_capacity`` applies to the same rows.
     """
     pick_by_player_id = {
         pk.picked_player_id: pk
@@ -195,18 +197,36 @@ def _team_role_counts(
         and pk.draft_team_id == team_id
         and pk.status in (DraftPickStatus.COMPLETED.value, DraftPickStatus.AUTOPICKED.value)
     }
-    counts = dict.fromkeys(DraftRole, 0)
+    role_slot_targets = shape.role_slots
+    counts = dict.fromkeys(shape.slots, 0)
+    taken = 0
     for p in players:
         if p.drafted_by_team_id != team_id or p.status != DraftPlayerStatus.PICKED.value:
             continue
+        taken += 1
         pk = pick_by_player_id.get(p.id)
-        role_str = pk.target_role if (pk and pk.target_role) else p.primary_role
-        if role_str:
-            try:
-                counts[DraftRole(role_str)] += 1
-            except ValueError:
-                pass
+        code = pk.target_role if (pk and pk.target_role) else p.primary_role
+        if code in role_slot_targets and counts[code] < role_slot_targets[code]:
+            counts[code] += 1
+    if FLEX_SLOT_CODE in counts:
+        counts[FLEX_SLOT_CODE] = min(
+            shape.flex_slots,
+            max(0, taken - sum(counts[code] for code in role_slot_targets)),
+        )
     return counts
+
+
+def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftRole, int]:
+    """How many more slots each role can still take on this team.
+
+    A role lands either in its own remaining role slot or in any free flex slot,
+    so the two capacities add up. ``suggestions`` only asks whether a role is
+    still open and the ``slot_filled`` guard only asks whether it is zero, so one
+    number serves both.
+    """
+    targets = shape.slots
+    free_flex = max(0, targets.get(FLEX_SLOT_CODE, 0) - counts.get(FLEX_SLOT_CODE, 0))
+    return {role: max(0, targets.get(role.value, 0) - counts.get(role.value, 0)) + free_flex for role in DraftRole}
 
 
 async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int) -> dict[int, float]:
@@ -251,11 +271,6 @@ async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int) -
     return {tid: sums[tid] / counts[tid] for tid in sums}
 
 
-def _role_capacity(team_size: int, counts: dict[DraftRole, int]) -> dict[DraftRole, int]:
-    targets = role_targets(team_size)
-    return {role: max(0, targets.get(role, 0) - counts.get(role, 0)) for role in DraftRole}
-
-
 async def _validate_current_pick(draft_session: DraftSession, pick: DraftPick) -> None:
     if draft_session.status != DraftStatus.LIVE.value:
         raise _err("draft_not_live", "Draft is not live")
@@ -288,6 +303,46 @@ def _playable_roles(player: DraftPlayer) -> frozenset[DraftRole]:
     if player.is_flex:
         return frozenset(DraftRole)
     return frozenset(DraftRole(role) for role in {player.primary_role, *(player.secondary_roles_json or [])})
+
+
+@dataclass(frozen=True)
+class SlotDecision:
+    """What a pick resolves to against the roster shape.
+
+    ``role`` is the role the pick is scored and matched as; ``recorded_role`` is
+    what lands in ``DraftPick.target_role`` -- ``None`` on a role-less roster,
+    where a role would be a value the shape gives no meaning to.
+    """
+
+    role: DraftRole
+    recorded_role: str | None
+
+
+def resolve_pick_slot(
+    shape: RosterShape,
+    counts: Mapping[str, int],
+    player: DraftPlayer,
+    target_role: DraftRole | None,
+) -> SlotDecision:
+    """Validate one pick against the shape and this team's already filled slots.
+
+    Shared by select, autopick and override so the three cannot drift. Raises
+    ``illegal_role`` when the player cannot play the requested role, and
+    ``slot_filled`` when neither a matching role slot nor a flex slot is left.
+    """
+    # A role-less roster has no role to validate against, so a requested role
+    # carries no meaning: drop it instead of rejecting the request.
+    requested = target_role if shape.has_role_slots else None
+    if not _role_is_legal(player, requested):
+        raise _err("illegal_role", "Player cannot play the requested role", status_code=422)
+    role = requested or DraftRole(player.primary_role)
+    if _role_openings(shape, counts).get(role, 0) <= 0:
+        raise _err(
+            "slot_filled",
+            f"No roster slot left for {role.value} on this team",
+            status_code=422,
+        )
+    return SlotDecision(role=role, recorded_role=role.value if shape.has_role_slots else None)
 
 
 def _unsafe_pick_error(report: feasibility.DraftFeasibilityReport) -> ApiHTTPException:
@@ -354,24 +409,19 @@ async def select(
     ):
         raise _err("not_your_pick", "Only the on-clock captain may pick", status_code=403)
     snapshot = await feasibility.load_snapshot(session, draft_session)
+    shape = await feasibility.resolve_shape(session, draft_session)
     player = _available_player_from(snapshot, player_id)
-    if not _role_is_legal(player, target_role):
-        raise _err("illegal_role", "Player cannot play the requested role", status_code=422)
-
-    chosen_role = target_role or DraftRole(player.primary_role)
-    counts = _team_role_counts(snapshot.players, snapshot.picks, pick.draft_team_id)
-    targets = role_targets(draft_session.team_size)
-    if counts.get(chosen_role, 0) >= targets.get(chosen_role, 0):
-        raise _err("role_filled", f"Role {chosen_role.value} is already filled for this team", status_code=422)
+    counts = _team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape)
+    decision = resolve_pick_slot(shape, counts, player, target_role)
 
     feasibility_report = await feasibility.analyze_session(
         session,
         draft_session,
-        state=feasibility.state_from_snapshot(draft_session, snapshot),
+        state=await feasibility.state_from_snapshot(session, draft_session, snapshot),
         hypothetical=feasibility.DraftAssignment(
             player_id=player.id,
             team_id=pick.draft_team_id,
-            role=chosen_role,
+            slot_code=decision.role.value,
         ),
     )
     if not feasibility_report.is_feasible:
@@ -390,9 +440,10 @@ async def select(
     if not won:
         raise _err("pick_already_resolved", "Pick was already resolved")
     # Always record the resolved decision (role + its rank) on the pick, so the
-    # pick is a complete (player, role, rank) record regardless of off-role.
-    pick.target_role = chosen_role.value
-    pick.target_rank_value = ranks.role_rank(player, chosen_role)
+    # pick is a complete (player, role, rank) record regardless of off-role. A
+    # role-less roster records no role: recorded_role is None there.
+    pick.target_role = decision.recorded_role
+    pick.target_rank_value = ranks.role_rank(player, decision.role)
     return await _apply_won(session, draft_session, pick, player)
 
 
@@ -406,11 +457,12 @@ async def autopick(
 ) -> DraftResult:
     await _validate_current_pick(draft_session, pick)
     snapshot = await feasibility.load_snapshot(session, draft_session)
+    shape = await feasibility.resolve_shape(session, draft_session)
     # Fit construction reads secondary_roles_json/user_id/role_ranks; snapshot
     # players carry loaders.player_options() so those never lazy-load.
     available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
-    counts = _team_role_counts(snapshot.players, snapshot.picks, pick.draft_team_id)
-    capacity = _role_capacity(draft_session.team_size, counts)
+    counts = _team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape)
+    capacity = _role_openings(shape, counts)
 
     fit_players = [
         sug.FitPlayer(
@@ -428,7 +480,7 @@ async def autopick(
         session,
         draft_session,
         team_id=pick.draft_team_id,
-        state=feasibility.state_from_snapshot(draft_session, snapshot),
+        state=await feasibility.state_from_snapshot(session, draft_session, snapshot),
     )
     safe_options = {(option.player_id, option.role) for option in options if option.is_safe}
     choice = sug.best_fit(
@@ -462,7 +514,7 @@ async def autopick(
     # from the snapshot's eager-loaded players, so no re-fetch is needed.
     player = next(p for p in available if p.id == chosen_id)
     resolved_role = chosen_role or DraftRole(player.primary_role)
-    pick.target_role = resolved_role.value
+    pick.target_role = resolved_role.value if shape.has_role_slots else None
     pick.target_rank_value = ranks.role_rank(player, resolved_role)
     return await _apply_won(session, draft_session, pick, player)
 
@@ -483,22 +535,18 @@ async def override(
     if player_id is None:
         raise _err("override_needs_player", "Override requires a player_id", status_code=422)
     snapshot = await feasibility.load_snapshot(session, draft_session)
+    shape = await feasibility.resolve_shape(session, draft_session)
     player = _available_player_from(snapshot, player_id)
-    if not _role_is_legal(player, target_role):
-        raise _err("illegal_role", "Player cannot play the requested role", status_code=422)
-    resolved_role = target_role or DraftRole(player.primary_role)
-    counts = _team_role_counts(snapshot.players, snapshot.picks, pick.draft_team_id)
-    targets = role_targets(draft_session.team_size)
-    if counts.get(resolved_role, 0) >= targets.get(resolved_role, 0):
-        raise _err("role_filled", f"Role {resolved_role.value} is already filled for this team", status_code=422)
+    counts = _team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape)
+    decision = resolve_pick_slot(shape, counts, player, target_role)
     feasibility_report = await feasibility.analyze_session(
         session,
         draft_session,
-        state=feasibility.state_from_snapshot(draft_session, snapshot),
+        state=await feasibility.state_from_snapshot(session, draft_session, snapshot),
         hypothetical=feasibility.DraftAssignment(
             player_id=player.id,
             team_id=pick.draft_team_id,
-            role=resolved_role,
+            slot_code=decision.role.value,
         ),
     )
     if not feasibility_report.is_feasible:
@@ -516,6 +564,6 @@ async def override(
     )
     if not won:
         raise _err("pick_already_resolved", "Pick was already resolved")
-    pick.target_role = resolved_role.value
-    pick.target_rank_value = ranks.role_rank(player, resolved_role)
+    pick.target_role = decision.recorded_role
+    pick.target_rank_value = ranks.role_rank(player, decision.role)
     return await _apply_won(session, draft_session, pick, player)

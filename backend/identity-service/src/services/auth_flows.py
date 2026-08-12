@@ -11,15 +11,22 @@ from __future__ import annotations
 from uuid import UUID
 
 import sqlalchemy as sa
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.rbac import legacy_workspace_role_name_for_user
+from shared.models.identity.social import SocialAccount
+from shared.services.audit import record_audit
 from src import models, schemas
 from src.services.auth_service import AuthService
 from src.services.auth_token_helpers import _linked_players_payload, _load_user_denies
-from src.services.session_cache import get_refresh_idem, is_session_blacklisted, set_refresh_idem
+from src.services.session_cache import (
+    get_refresh_idem,
+    invalidate_rbac,
+    is_session_blacklisted,
+    set_refresh_idem,
+)
 from src.services.session_service import SessionService
 
 
@@ -81,6 +88,13 @@ async def refresh(
         return schemas.Token(**cached_pair)
 
     record = await AuthService.get_active_refresh_token_record(session, refresh_token)
+    # Rotation grace: the client is replaying the token we JUST rotated because it
+    # never received the new pair (the request died with the old network path — a
+    # VPN switch). Beyond the grace window this stays a reuse attack.
+    grace_replay = False
+    if not record:
+        record = await AuthService.get_rotation_grace_record(session, refresh_token)
+        grace_replay = record is not None
     if not record:
         # Triggers reuse-detection on a known-but-revoked token.
         await AuthService.get_user_by_refresh_token(session, refresh_token)
@@ -92,9 +106,21 @@ async def refresh(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
 
-    revoked = await AuthService.revoke_refresh_token(session, refresh_token, commit=False)
-    if not revoked:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
+    if grace_replay:
+        # Retire the successor minted by the lost rotation so the session keeps
+        # exactly one live refresh token; keep the sid unbanned — the access token
+        # issued below carries it.
+        await AuthService.revoke_session_tokens(
+            session,
+            record.user_id,
+            record.session_id,
+            commit=False,
+            blacklist=False,
+        )
+    else:
+        revoked = await AuthService.revoke_refresh_token(session, refresh_token, commit=False)
+        if not revoked:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
 
     access_token = AuthService.create_access_token(
         data={
@@ -213,9 +239,7 @@ async def get_me(session: AsyncSession, user_id: int) -> schemas.AuthUser:
     data["permissions"] = global_permissions
 
     # ``workspace_member`` is anchored on ``player_id``; join through
-    # ``players.user.auth_user_id`` to reach it from the auth identity. The
-    # denormalized ``role`` column is gone, so each membership's legacy role
-    # name is derived from RBAC (``user_roles``, unchanged) below.
+    # ``players.user.auth_user_id`` to reach it from the auth identity.
     workspace_rows = await session.execute(
         sa.select(
             models.WorkspaceMember.workspace_id,
@@ -231,7 +255,6 @@ async def get_me(session: AsyncSession, user_id: int) -> schemas.AuthUser:
 
     workspaces = []
     for ws_id, slug in ws_memberships:
-        member_role = await legacy_workspace_role_name_for_user(session, user_id=user.id, workspace_id=ws_id)
         ws_data = ws_rbac.get(ws_id, ([], []))
         perm_strings = []
         for perm in ws_data[1]:
@@ -241,7 +264,6 @@ async def get_me(session: AsyncSession, user_id: int) -> schemas.AuthUser:
             schemas.AuthUserWorkspace(
                 workspace_id=ws_id,
                 slug=slug,
-                role=member_role,
                 rbac_roles=ws_data[0],
                 rbac_permissions=perm_strings,
             )
@@ -284,3 +306,78 @@ async def set_password(session: AsyncSession, user: models.AuthUser, payload: sc
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
     user.hashed_password = AuthService.get_password_hash(payload.new_password)
     await session.commit()
+
+
+async def delete_me(
+    session: AsyncSession,
+    user: models.AuthUser,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Self-service account deletion. Historical data is never touched.
+
+    Only auth-owned rows go away, all via ``ondelete=CASCADE``: sessions and
+    refresh tokens, OAuth connections, role grants, permission denies, API keys,
+    preview-access grants, subscription records. Everything that carries history
+    references the account with ``ondelete=SET NULL`` instead -- the player
+    identity (``players.user.auth_user_id``), audit rows, and the
+    ``reviewed_by``/``checked_in_by``/``deleted_by`` stamps on registrations --
+    so tournaments, matches, statistics, registrations, achievements and
+    workspace membership all survive verbatim. The player simply becomes
+    unclaimed again, exactly as it was before this account existed, and can be
+    re-claimed by a future OAuth login or an admin link.
+
+    The player's OAuth-verified social identities lose their verified mark and
+    their ``provider_user_id`` pin, the same pair ``oauth_flows.unlink`` clears:
+    the connections that proved them are gone with the account, and a surviving
+    pin would keep capturing that provider identity (see
+    ``OAuthService._attach_verified_social_account``) instead of letting the
+    provider account be linked to a new one -- which is the whole reason a user
+    deletes an account they cannot sign into any other way. The handle rows
+    themselves stay, so the public profile keeps showing the same names.
+
+    Superusers are refused: self-deleting the account that administers the
+    platform is a footgun the admin surface already refuses in the other
+    direction (``rbac_flows.delete_auth_user`` rejects deleting yourself).
+    """
+    if user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Superuser accounts cannot be deleted here. Ask another administrator to remove it.",
+        )
+
+    user_id = user.id
+    email = user.email  # captured before the delete/commit expires the instance
+    username = user.username
+
+    player_id = await session.scalar(sa.select(models.User.id).where(models.User.auth_user_id == user_id))
+    if player_id is not None:
+        await session.execute(
+            sa.update(SocialAccount)
+            .where(SocialAccount.user_id == player_id, SocialAccount.is_verified.is_(True))
+            .values(is_verified=False, provider_user_id=None)
+        )
+
+    # Blacklists every live session id: the refresh tokens are about to be
+    # cascade-deleted, but the stateless access tokens already handed out stay
+    # decodable until they expire on their own.
+    await AuthService.revoke_all_user_tokens(session, user_id, commit=False)
+
+    await record_audit(
+        session,
+        action="auth_user.delete_self",
+        source="admin",
+        actor=user,
+        actor_label=username or email,
+        entity_type="auth_user",
+        entity_id=user_id,
+        entity_label=username or email,
+        before={"email": email, "username": username, "player_id": player_id},
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    await session.delete(user)
+    await session.commit()
+    await invalidate_rbac(user_id)
+    logger.info(f"Account self-deleted: user_id={user_id} email={email} player_id={player_id}")

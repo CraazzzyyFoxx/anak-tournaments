@@ -23,6 +23,22 @@ func concat(slices ...[]edge.RouteSpec) []edge.RouteSpec {
 	return out
 }
 
+// splitQueue partitions routes by RPC subject: the one route serving `queue`,
+// and the rest. Route tables are grouped by who registers them on the mux;
+// documentation is grouped by subject area, and the two need not agree. Driving
+// both groups off the one table keeps the RouteSpec written once — a second
+// literal would be a mirror nobody updates.
+func splitQueue(routes []edge.RouteSpec, queue string) (matched, rest []edge.RouteSpec) {
+	for _, r := range routes {
+		if r.Queue == queue {
+			matched = append(matched, r)
+		} else {
+			rest = append(rest, r)
+		}
+	}
+	return matched, rest
+}
+
 // Groups returns the documentation groups for the public and admin specs. The
 // classification mirrors the route-table grouping: reads + public/captain
 // writes + self-service auth go to the public spec; everything admin-gated
@@ -30,6 +46,11 @@ func concat(slices ...[]edge.RouteSpec) []edge.RouteSpec {
 // spec. parser.Routes mixes public rank reads with admin endpoints, so it is
 // split by auth mode.
 func Groups() (public, admin []openapi.Group) {
+	// The audit feed is served off the metadata-admin table (that table is
+	// already registered and already carries non-metadata) but documents on its
+	// own page — nobody looking for "who changed this" opens "Game Metadata".
+	auditRoutes, metadataRoutes := splitQueue(app.MetadataAdminRoutes, "rpc.app.audit_list")
+
 	public = []openapi.Group{
 		{Tag: "Tournaments", Description: "Public tournament, encounter, match & team reads + captain/registration actions.",
 			Routes: concat(tournament.PublicReadRoutes, tournament.PublicWriteRoutes)},
@@ -46,13 +67,13 @@ func Groups() (public, admin []openapi.Group) {
 	}
 	admin = []openapi.Group{
 		{Tag: "Admin: Tournaments", Description: "Tournament/team/player/encounter/standing CRUD, stages & bespoke admin actions.",
-			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes)},
+			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, app.TournamentAdminRoutes)},
 		{Tag: "Admin: Registration", Description: "Registration management & balancer statuses.",
 			Routes: tournament.RegistrationAdminRoutes},
 		{Tag: "Admin: Integrations", Description: "Challonge sync, Google Sheets, division grids.",
 			Routes: concat(tournament.IntegrationsRoutes, tournament.DivisionGridRoutes)},
 		{Tag: "Admin: Game Metadata", Description: "Hero/map/gamemode admin CRUD.",
-			Routes: app.MetadataAdminRoutes},
+			Routes: metadataRoutes},
 		{Tag: "Admin: Users", Description: "User & identity admin CRUD + profile merge.",
 			Routes: app.UsersAdminRoutes},
 		{Tag: "Admin: Files & Assets", Description: "Workspace icons, assets, match-log download, user avatar & CSV import.",
@@ -65,6 +86,8 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: analytics.WriteRoutes},
 		{Tag: "Admin: RBAC", Description: "Permissions, roles, user-role/player assignment, sessions & service tokens.",
 			Routes: identity.AdminDocRoutes},
+		{Tag: "Admin: Audit", Description: "Platform audit log: who changed what, when, workspace-scoped.",
+			Routes: auditRoutes},
 	}
 	return public, admin
 }

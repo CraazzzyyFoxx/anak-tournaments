@@ -60,7 +60,6 @@ def _tournament_to_pydantic(t: models.Tournament | None) -> schemas.TournamentMi
         id=t.id,
         created_at=t.created_at,
         updated_at=t.updated_at,
-        number=getattr(t, "number", None),
         name=getattr(t, "name", None),
         is_finished=getattr(t, "is_finished", None),
         division_grid_version_id=getattr(t, "division_grid_version_id", None),

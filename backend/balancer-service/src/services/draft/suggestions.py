@@ -56,7 +56,14 @@ class FitResult:
 
 
 def role_discomfort(player: FitPlayer, role: DraftRole) -> int:
-    """Mirror of balancer ``Player.discomfort_map`` construction."""
+    """How much a role hurts this player, for autopick ranking.
+
+    NOT in step with the balancer, despite encoding the same idea. ``preference_order``
+    carries only the primary role here, so both non-priority roles land on the flat
+    1000 below, while the balancer walks a full ordering and charges 100 and 200.
+    Pinned by ``TestDiscomfortDivergesFromTheBalancer``; see the code-mirrors
+    registry, class D.
+    """
     if player.is_flex and role in player.playable_roles:
         return 0
     if role in player.preference_order:

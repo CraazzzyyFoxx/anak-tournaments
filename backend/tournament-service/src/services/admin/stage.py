@@ -10,9 +10,10 @@ from sqlalchemy.orm import selectinload
 from shared.core import enums
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
 from shared.schemas.events import TournamentChangedReason
 from shared.services.bracket.advancement import persist_advancement_edges
-from shared.services.bracket.engine import generate_bracket
+from shared.services.bracket.engine import generate_bracket, predict_rounds
 from shared.services.bracket.swiss import SwissPairingImpossibleError, SwissStanding
 from shared.services.bracket.swiss_settings import (
     clear_swiss_byes,
@@ -25,6 +26,7 @@ from shared.services.bracket.types import BracketSkeleton
 from shared.services.encounter_naming import build_encounter_name_from_ids
 from src import models
 from src.schemas.admin import stage as admin_schemas
+from src.services.admin.best_of import parse_best_of_config, resolve_best_of
 from src.services.standings import swiss_auto_round
 from src.services.tournament.events import (
     enqueue_tournament_changed,
@@ -53,6 +55,51 @@ async def get_stage(session: AsyncSession, stage_id: int) -> models.Stage:
     if not stage:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
     return stage
+
+
+async def get_planned_rounds(session: AsyncSession, stage_id: int) -> list[int]:
+    """The round numbers this stage's bracket has, or will have.
+
+    Elimination round numbering is not the plain ``1..max_rounds`` sequence
+    ``max_rounds`` (an independently admin-set planning field) would suggest:
+    double elimination's lower bracket uses negative numbers, and even single
+    elimination's actual round count depends on team count, which may not
+    match ``max_rounds`` at all. This lets a caller scope a cascade config
+    (e.g. a pick-ban rule) to a round correctly before the bracket exists,
+    rather than guessing and silently missing every lower-bracket round or
+    landing a rule on a round number the eventual bracket will never have.
+
+    Once encounters exist they are the ground truth. Before that, this
+    predicts the same numbers the real generator will produce off the
+    stage's planned team inputs (including still-TENTATIVE ones) -- empty
+    when the stage type isn't a bracket, or fewer than two teams are wired in
+    yet, in which case only the tournament-/stage-wide scopes are meaningful.
+    """
+    stage = await get_stage(session, stage_id)
+
+    generated = await session.execute(
+        select(models.Encounter.round).where(models.Encounter.stage_id == stage_id).distinct()
+    )
+    existing_rounds = sorted({row[0] for row in generated.all()})
+    if existing_rounds:
+        return existing_rounds
+
+    if stage.stage_type not in (enums.StageType.SINGLE_ELIMINATION, enums.StageType.DOUBLE_ELIMINATION):
+        return []
+
+    team_ids: list[int] = []
+    for item in sorted(stage.items, key=lambda it: (it.order, it.id)):
+        team_ids.extend(_collect_item_team_ids(item))
+    if len(team_ids) < 2:
+        return []
+
+    return predict_rounds(
+        stage.stage_type,
+        len(team_ids),
+        split_lower_bracket=(
+            stage.stage_type == enums.StageType.DOUBLE_ELIMINATION and getattr(stage, "split_lower_bracket", False)
+        ),
+    )
 
 
 async def get_stage_item(session: AsyncSession, stage_item_id: int) -> models.StageItem:
@@ -209,44 +256,63 @@ async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     await session.commit()
 
 
-def _map_veto_signature(config: models.MapVetoConfig) -> tuple[tuple, tuple]:
-    # ``map_pool`` was normalized out of the old ``map_pool_ids`` JSON array
-    # (dbarch05) into the ``map_veto_config_map`` child table; the relationship
-    # is ordered by ``sort_order`` so the tuple mirrors the old array order.
+def _pick_ban_config_signature(
+    config: PickBanConfig,
+) -> tuple[tuple, tuple, enums.MapVetoMode, enums.FirstBanRotation | None, tuple]:
+    """Structural identity of ``config`` for stage-merge dedup. Generalizes
+    ``_map_veto_signature`` onto ``PickBanConfig`` -- ``map_id``/``map_pool``
+    become ``item_id``/``items``, everything else (including every ordering
+    and tie-breaking rule the legacy docstring explains) is unchanged."""
+    rotation = config.first_ban_rotation if config.mode == enums.MapVetoMode.SLOTS else None
     return (
-        tuple(config.veto_sequence_json or []),
-        tuple(entry.map_id for entry in config.map_pool),
+        tuple(config.sequence_json or []),
+        tuple(entry.item_id for entry in config.items),
+        config.mode,
+        rotation,
+        tuple(
+            (
+                slot.position,
+                slot.reserve_item_id,
+                tuple(entry.item_id for entry in sorted(slot.items, key=lambda row: (row.sort_order, row.item_id))),
+            )
+            for slot in sorted(config.slots, key=lambda row: row.position)
+        ),
     )
 
 
-async def _merge_map_veto_configs(
+async def _merge_pick_ban_configs(
     session: AsyncSession,
     *,
     target_stage: models.Stage,
     source_stage_ids: list[int],
+    kind: enums.PickBanKind,
 ) -> None:
+    """Generalizes ``_merge_map_veto_configs`` onto ``PickBanConfig``, scoped
+    by ``kind`` -- called once per kind so a tournament's map and hero configs
+    are deduped independently."""
     target_result = await session.execute(
-        select(models.MapVetoConfig)
-        .where(
-            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
-            models.MapVetoConfig.stage_id == target_stage.id,
+        select(PickBanConfig).where(
+            PickBanConfig.tournament_id == target_stage.tournament_id,
+            PickBanConfig.kind == kind,
+            PickBanConfig.stage_id == target_stage.id,
         )
-        .options(selectinload(models.MapVetoConfig.map_pool))
     )
     target_configs = list(target_result.scalars().all())
     if len(target_configs) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Target stage has multiple map veto configs; resolve them before merging",
+            detail=f"Target stage has multiple {kind.value} pick-ban configs; resolve them before merging",
         )
 
     source_result = await session.execute(
-        select(models.MapVetoConfig)
+        select(PickBanConfig)
         .where(
-            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
-            models.MapVetoConfig.stage_id.in_(source_stage_ids),
+            PickBanConfig.tournament_id == target_stage.tournament_id,
+            PickBanConfig.kind == kind,
+            PickBanConfig.stage_id.in_(source_stage_ids),
         )
-        .options(selectinload(models.MapVetoConfig.map_pool))
+        .options(selectinload(PickBanConfig.items))
+        .options(selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items))
     )
     source_configs = list(source_result.scalars().all())
     if not source_configs:
@@ -257,11 +323,13 @@ async def _merge_map_veto_configs(
             await session.delete(config)
         return
 
-    signatures = {_map_veto_signature(config) for config in source_configs}
+    signatures = {_pick_ban_config_signature(config) for config in source_configs}
     if len(signatures) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=("Source stages have different map veto configs; keep one target config before merging"),
+            detail=(
+                f"Source stages have different {kind.value} pick-ban configs; keep one target config before merging"
+            ),
         )
 
     keeper = source_configs[0]
@@ -392,11 +460,13 @@ async def merge_group_stages(
             )
         seen_names.add(normalized_name)
 
-    await _merge_map_veto_configs(
-        session,
-        target_stage=target_stage,
-        source_stage_ids=unique_source_stage_ids,
-    )
+    for kind in (enums.PickBanKind.MAP, enums.PickBanKind.HERO):
+        await _merge_pick_ban_configs(
+            session,
+            target_stage=target_stage,
+            source_stage_ids=unique_source_stage_ids,
+            kind=kind,
+        )
 
     for model in (
         models.TournamentGroup,
@@ -815,6 +885,12 @@ async def _create_encounters_from_skeleton(
     """
     encounters: list[models.Encounter] = []
     local_to_encounter: dict[int, models.Encounter] = {}
+    best_of_cfg = parse_best_of_config(stage.settings_json)
+    is_elimination = stage.stage_type in (
+        enums.StageType.SINGLE_ELIMINATION,
+        enums.StageType.DOUBLE_ELIMINATION,
+    )
+    max_round = max((pairing.round_number for pairing in skeleton.pairings), default=0)
     for pairing in skeleton.pairings:
         # LB rounds use negative round numbers; route to LB item when present.
         item_id = lb_stage_item_id if lb_stage_item_id is not None and pairing.round_number < 0 else stage_item_id
@@ -829,6 +905,11 @@ async def _create_encounters_from_skeleton(
             home_score=0,
             away_score=0,
             round=pairing.round_number,
+            best_of=resolve_best_of(
+                best_of_cfg,
+                pairing.round_number,
+                is_final=is_elimination and pairing.round_number == max_round,
+            ),
             tournament_id=stage.tournament_id,
             stage_id=stage.id,
             stage_item_id=item_id,
@@ -1410,3 +1491,40 @@ async def generate_encounters(
     else:
         await session.flush()
     return encounters
+
+
+async def apply_best_of_to_existing(session: AsyncSession, stage_id: int) -> int:
+    """Backfill ``best_of`` on a stage's existing encounters from its config.
+
+    Reads ``Stage.settings_json['best_of']`` and rewrites each encounter's
+    ``best_of`` in place (preserving scores/results). Applies the same
+    resolution the generator uses; ``final`` targets the max round among the
+    stage's encounters for elimination stages. Returns the number of rows
+    whose ``best_of`` actually changed.
+    """
+    stage = await get_stage(session, stage_id)
+    cfg = parse_best_of_config(stage.settings_json)
+    is_elimination = stage.stage_type in (
+        enums.StageType.SINGLE_ELIMINATION,
+        enums.StageType.DOUBLE_ELIMINATION,
+    )
+
+    result = await session.execute(select(models.Encounter).where(models.Encounter.stage_id == stage_id))
+    encounters = list(result.scalars().all())
+    max_round = max((encounter.round for encounter in encounters), default=0)
+
+    changed = 0
+    for encounter in encounters:
+        target = resolve_best_of(
+            cfg,
+            encounter.round,
+            is_final=is_elimination and encounter.round == max_round,
+        )
+        if encounter.best_of != target:
+            encounter.best_of = target
+            changed += 1
+
+    if changed:
+        await _publish_tournament_changed(session, stage.tournament_id, "structure_changed")
+    await session.commit()
+    return changed

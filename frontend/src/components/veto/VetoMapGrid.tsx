@@ -1,0 +1,247 @@
+"use client";
+
+import Image from "next/image";
+import { useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
+
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import type { MapRead } from "@/types/map.types";
+import type { EncounterMapPoolEntry, MapPoolEntryStatus } from "@/types/tournament.types";
+
+import {
+  isEntrySelectable,
+  pickedMapsInOrder,
+  poolSlotGroups,
+  slotState,
+  statusLabelKey,
+} from "./veto-model";
+
+interface VetoMapGridProps {
+  pool: EncounterMapPoolEntry[];
+  mapsById: Record<number, MapRead | undefined>;
+  selectedMapId: number | null;
+  /** Whether available maps can currently be selected by this viewer. */
+  canSelect: boolean;
+  /**
+   * The server's `current_slot`. Null for a flat pool, for a completed slot veto
+   * and for the unavailable state, so it is never read as a mode or completion
+   * signal — slot mode comes from `pool[].slot` via `poolSlotGroups`.
+   */
+  currentSlot: number | null;
+  /**
+   * Reserve map per slot position, from the session's snapshot — never from the
+   * live config, so a config edit cannot move a running veto's labels. Slots
+   * that named no reserve are simply absent.
+   */
+  slotReserves: Map<number, number>;
+  onSelect: (mapId: number) => void;
+}
+
+const STATUS_BADGE_VARIANT: Record<MapPoolEntryStatus, "secondary" | "destructive" | "default" | "outline"> = {
+  available: "outline",
+  banned: "destructive",
+  picked: "default",
+  played: "secondary",
+};
+
+/** Ties a locked slot's tiles to the paragraph that explains why they are inert. */
+const lockedHintId = (slot: number) => `veto-slot-${slot}-locked`;
+
+export function VetoMapGrid({
+  pool,
+  mapsById,
+  selectedMapId,
+  canSelect,
+  currentSlot,
+  slotReserves,
+  onSelect,
+}: VetoMapGridProps) {
+  const t = useTranslations("encounters.veto.room");
+  const orderedPicks = pickedMapsInOrder(pool);
+  const slotGroups = poolSlotGroups(pool);
+  const mapName = (mapId: number) => mapsById[mapId]?.name ?? t("maps.mapNumber", { id: mapId });
+
+  const currentSlotRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // Below `lg` the timeline stacks above the grid, so a Bo5 slot veto leaves
+    // the live slot well under the fold — and it moves as slots resolve. The ref
+    // is the whole guard: it is attached only to the group whose state is
+    // "current", so a completed veto — which reports a null slot exactly as a
+    // live-slot-less one does — leaves it null and this call a no-op, rather
+    // than yanking the reader away from the final order.
+    currentSlotRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentSlot]);
+
+  /** `lockedSlot` is the group's slot when that slot has not opened yet, else null. */
+  const tile = (entry: EncounterMapPoolEntry, lockedSlot: number | null) => {
+    const map = mapsById[entry.map_id];
+    const selectable = isEntrySelectable(entry, { canSelect, currentSlot });
+    const selected = selectedMapId === entry.map_id;
+    const dimmed = entry.status === "banned";
+
+    return (
+      <button
+        key={entry.id}
+        type="button"
+        disabled={!selectable}
+        aria-pressed={selected}
+        // The hint is the only thing that explains the inert look, and an
+        // upcoming slot's candidate is `available` — indistinguishable from a
+        // live one without it.
+        title={lockedSlot != null ? t("slot.locked", { n: lockedSlot }) : undefined}
+        // `title` is not reliably announced on a disabled control, so the same
+        // reason reaches a screen reader from the tile itself via the group's
+        // hint paragraph rather than only as prose sitting next to it.
+        aria-describedby={lockedSlot != null ? lockedHintId(lockedSlot) : undefined}
+        onClick={() => onSelect(entry.map_id)}
+        className={cn(
+          "group relative flex flex-col overflow-hidden rounded-xl border text-left outline-none transition-shadow",
+          selected
+            ? "border-[color:var(--aqt-teal)] ring-2 ring-[color:var(--aqt-teal)]/45"
+            : "border-[color:var(--aqt-border)]",
+          selectable
+            ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+            : "cursor-default",
+          // `available` + unselectable exists only in slot mode, and nothing
+          // else in this grid reads as "not yet", so say it with the border and
+          // the wash rather than leaving a live-looking tile that ignores clicks.
+          lockedSlot != null ? "border-dashed opacity-55" : null,
+        )}
+      >
+        <div className="relative h-20 w-full bg-[color:var(--aqt-card-2)] sm:h-24">
+          {map?.image_path ? (
+            <Image
+              src={map.image_path}
+              alt={map.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 25vw"
+              className={cn(
+                "object-cover transition-opacity",
+                dimmed ? "opacity-30 grayscale" : null,
+                entry.status === "played" ? "opacity-60" : null,
+                lockedSlot != null ? "opacity-45 saturate-50" : null,
+              )}
+            />
+          ) : (
+            <span className="absolute inset-0 grid place-items-center font-onest text-lg font-semibold text-[color:var(--aqt-fg-faint)]">
+              {mapName(entry.map_id)
+                .split(/\s+/)
+                .map((word) => word[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase()}
+            </span>
+          )}
+          {entry.action_index != null ? (
+            <span className="absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md bg-black/65 font-mono text-xs font-semibold tabular-nums text-[color:var(--aqt-fg)]">
+              {entry.action_index + 1}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-1.5 p-2.5">
+          <span className={cn("truncate text-sm font-medium", dimmed ? "line-through opacity-70" : null)}>
+            {mapName(entry.map_id)}
+          </span>
+          <span className="flex flex-wrap items-center gap-1.5">
+            <Badge variant={STATUS_BADGE_VARIANT[entry.status]} className="px-1.5 py-0 text-[10px]">
+              {t(statusLabelKey(entry))}
+            </Badge>
+            {entry.picked_by ? (
+              <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal text-[color:var(--aqt-fg-muted)]">
+                {t(`maps.by.${entry.picked_by}`)}
+              </Badge>
+            ) : null}
+          </span>
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <Card>
+      {/* `CardHeader`'s own `flex-col space-y-1.5` would stack these and add a
+          stray top margin to the badge, so both are overridden here. */}
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-3">
+        <CardTitle className="text-base">{t("maps.title")}</CardTitle>
+        {slotGroups ? (
+          <Badge variant="outline" className="font-normal text-[color:var(--aqt-fg-muted)]">
+            {t("slot.inPlayCount", { count: slotGroups.length })}
+          </Badge>
+        ) : null}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        {slotGroups === null ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            {pool.map((entry) => tile(entry, null))}
+          </div>
+        ) : (
+          slotGroups.map((group) => {
+            const state = slotState(group, currentSlot);
+            const locked = state === "upcoming";
+            // Absent, not null, for a slot that named no reserve — so this is
+            // undefined for most slots and the caption is skipped entirely
+            // rather than rendered with nothing after it.
+            const reserveMapId = slotReserves.get(group.slot);
+            return (
+              <div
+                key={group.slot}
+                data-veto-map-slot={group.slot}
+                ref={state === "current" ? currentSlotRef : undefined}
+                aria-current={state === "current" ? "step" : undefined}
+                className="flex flex-col gap-2"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold">{t("slot.label", { n: group.slot })}</span>
+                  <Badge
+                    variant={state === "current" ? "default" : "outline"}
+                    className="px-1.5 py-0 text-[10px] font-normal"
+                  >
+                    {state === "current"
+                      ? t("slot.current")
+                      : state === "resolved"
+                        ? t("slot.resolved")
+                        : t("slot.upcoming")}
+                  </Badge>
+                </div>
+                {locked ? (
+                  <p id={lockedHintId(group.slot)} className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {t("slot.locked", { n: group.slot })}
+                  </p>
+                ) : null}
+                {reserveMapId != null ? (
+                  <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {t("slot.reserve", { map: mapName(reserveMapId) })}
+                  </p>
+                ) : null}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                  {group.entries.map((entry) => tile(entry, locked ? group.slot : null))}
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {orderedPicks.length > 0 ? (
+          <div>
+            <div className="mb-1.5 text-sm font-medium">{t("order.title")}</div>
+            <div className="flex flex-wrap gap-2">
+              {orderedPicks.map((entry, index) => (
+                <Badge key={entry.id} variant="secondary">
+                  {index + 1}. {mapName(entry.map_id)}
+                  {/* Slot mode makes every map a survivor, so the marker would
+                      distinguish nothing; in flat mode it names the one map no
+                      side chose. */}
+                  {entry.picked_by === "decider" && entry.slot == null
+                    ? ` · ${t("maps.by.decider")}`
+                    : ""}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}

@@ -167,9 +167,7 @@ def test_assert_viewable_matrix() -> None:
             try:
                 async with session_maker() as session:
                     # allowlist allow_user for the hidden tournament
-                    session.add(
-                        TournamentPreviewAccess(tournament_id=hidden_id, auth_user_id=allow_user_id)
-                    )
+                    session.add(TournamentPreviewAccess(tournament_id=hidden_id, auth_user_id=allow_user_id))
                     await session.commit()
 
                     results: dict[str, object] = {}
@@ -190,9 +188,7 @@ def test_assert_viewable_matrix() -> None:
                     results["hidden_superuser"] = "ok"
 
                     # hidden + workspace admin -> ok
-                    await assert_tournament_viewable(
-                        session, _viewer(999998, ws_admin=[workspace_id]), hidden_id
-                    )
+                    await assert_tournament_viewable(session, _viewer(999998, ws_admin=[workspace_id]), hidden_id)
                     results["hidden_ws_admin"] = "ok"
 
                     # hidden + allowlisted -> ok
@@ -232,15 +228,11 @@ def test_list_excludes_hidden_for_anonymous() -> None:
 
             try:
                 async with session_maker() as session:
-                    qp = schemas.TournamentPaginationSortSearchQueryParams(
-                        workspace_id=workspace_id, per_page=100
-                    )
+                    qp = schemas.TournamentPaginationSortSearchQueryParams(workspace_id=workspace_id, per_page=100)
                     params = schemas.TournamentPaginationSortSearchParams.from_query_params(qp)
 
                     anon_page = await tournament_flows.get_all(session, params, viewer=None)
-                    super_page = await tournament_flows.get_all(
-                        session, params, viewer=_viewer(1, superuser=True)
-                    )
+                    super_page = await tournament_flows.get_all(session, params, viewer=_viewer(1, superuser=True))
                     anon_ids = {r.id for r in anon_page.results}
                     super_ids = {r.id for r in super_page.results}
 

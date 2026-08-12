@@ -19,7 +19,6 @@ export type MeResponse = {
   workspaces: Array<{
     workspace_id: number;
     slug: string;
-    role: string;
     rbac_roles: string[];
     rbac_permissions: string[];
   }>;
@@ -76,7 +75,6 @@ export async function GET() {
         (workspace: MeResponse["workspaces"][number]) => ({
           workspace_id: workspace.workspace_id,
           slug: workspace.slug,
-          role: workspace.role,
           rbac_roles: workspace.rbac_roles ?? [],
           rbac_permissions: workspace.rbac_permissions ?? [],
         }),

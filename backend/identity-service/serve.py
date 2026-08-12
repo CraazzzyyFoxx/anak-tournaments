@@ -7,7 +7,9 @@ Milestone 1A ships `rpc.identity.validate_token`; 1B+ add login/refresh/oauth/et
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
@@ -36,11 +38,21 @@ from src.services import (
     auth_flows,
     avatar_flows,
     oauth_flows,
+    oauth_service,
     player_flows,
     rbac_flows,
     service_flows,
 )
 from src.services.token_validation import validate_token
+
+
+def _install_uvloop() -> None:
+    """Swap in uvloop where it ships (see the `platform_system == 'Linux'` dep marker)."""
+    if sys.platform != "linux":
+        return
+    import uvloop
+
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
 def _validation_detail(exc: ValidationError) -> str:
@@ -84,6 +96,8 @@ logger = setup_logging(
     json_output=settings.json_logging,
 )
 
+_install_uvloop()
+
 broker = make_rabbit_broker(settings.rabbitmq_url, logger=logger, prefetch_count=settings.rpc_prefetch_count)
 app = FastStream(broker)
 
@@ -99,7 +113,7 @@ async def setup_worker() -> None:
         logs_level=settings.sentry_logs_level,
         enable_metrics=settings.sentry_enable_metrics,
         environment=settings.environment,
-        release=settings.version,
+        release=settings.sentry_release,
         http_proxy=settings.sentry_http_proxy_url,
         https_proxy=settings.sentry_https_proxy_url,
     )
@@ -109,6 +123,9 @@ async def setup_worker() -> None:
         enabled=settings.tracing_enabled,
         sampler_name=settings.otel_traces_sampler,
         sampler_arg=settings.otel_traces_sampler_arg,
+        environment=settings.environment,
+        release=settings.sentry_release,
+        engine=db.async_engine,
     )
     if settings.worker_metrics_port:
         start_worker_metrics_server(settings.worker_metrics_port)
@@ -120,6 +137,7 @@ async def setup_worker() -> None:
 @app.on_shutdown
 async def teardown_worker() -> None:
     await s3_client.close()
+    await oauth_service.close_http_client()
     await close_redis()
 
 
@@ -273,6 +291,21 @@ async def rpc_update_me(data: dict, msg: RabbitMessage) -> dict:
         payload = schemas.UserUpdate.model_validate(data)
         updated = await auth_flows.update_me(session, user, payload)
         return schemas.AuthUser.model_validate(updated, from_attributes=True).model_dump(mode="json")
+
+    return await _with_active_user(data.get("access_token"), op)
+
+
+@broker.subscriber("rpc.identity.delete_me")
+async def rpc_delete_me(data: dict, msg: RabbitMessage) -> dict:
+    data = data or {}
+
+    async def op(session: Any, user: Any) -> None:
+        await auth_flows.delete_me(
+            session,
+            user,
+            ip_address=data.get("ip_address"),
+            user_agent=data.get("user_agent"),
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -549,7 +582,9 @@ async def rpc_create_api_key(data: dict, msg: RabbitMessage) -> dict:
 
     async def op(session: Any, user: Any) -> dict:
         payload = schemas.ApiKeyCreate.model_validate(data)
-        result = await api_key_service.create_api_key(session, user=user, payload=payload)
+        result = await api_key_service.create_api_key(
+            session, user=user, payload=payload, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
         return result.model_dump(mode="json")
 
     return await _with_active_user(data.get("access_token"), op)
@@ -565,7 +600,14 @@ async def rpc_update_api_key(data: dict, msg: RabbitMessage) -> dict:
         except (TypeError, ValueError):
             raise HTTPException(status_code=422, detail="api_key_id is required")
         payload = schemas.ApiKeyUpdate.model_validate(data)
-        result = await api_key_service.update_api_key(session, user=user, api_key_id=api_key_id, payload=payload)
+        result = await api_key_service.update_api_key(
+            session,
+            user=user,
+            api_key_id=api_key_id,
+            payload=payload,
+            ip_address=data.get("ip_address"),
+            user_agent=data.get("user_agent"),
+        )
         return result.model_dump(mode="json")
 
     return await _with_active_user(data.get("access_token"), op)
@@ -580,7 +622,13 @@ async def rpc_revoke_api_key(data: dict, msg: RabbitMessage) -> dict:
             api_key_id = int(data.get("api_key_id"))
         except (TypeError, ValueError):
             raise HTTPException(status_code=422, detail="api_key_id is required")
-        await api_key_service.revoke_api_key(session, user=user, api_key_id=api_key_id)
+        await api_key_service.revoke_api_key(
+            session,
+            user=user,
+            api_key_id=api_key_id,
+            ip_address=data.get("ip_address"),
+            user_agent=data.get("user_agent"),
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -661,7 +709,9 @@ async def rpc_rbac_create_permission(data: dict, msg: RabbitMessage) -> dict:
 
     async def op(session: Any, user: Any) -> dict:
         payload = schemas.PermissionCreate.model_validate(data)
-        permission = await rbac_flows.create_permission(session, user, payload)
+        permission = await rbac_flows.create_permission(
+            session, user, payload, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
         return schemas.PermissionRead.model_validate(permission, from_attributes=True).model_dump(mode="json")
 
     return await _with_active_user(data.get("access_token"), op)
@@ -675,7 +725,9 @@ async def rpc_rbac_delete_permission(data: dict, msg: RabbitMessage) -> dict:
         permission_id = _opt_int(data, "permission_id")
         if permission_id is None:
             raise HTTPException(status_code=422, detail="permission_id is required")
-        await rbac_flows.delete_permission(session, user, permission_id)
+        await rbac_flows.delete_permission(
+            session, user, permission_id, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -713,7 +765,9 @@ async def rpc_rbac_create_role(data: dict, msg: RabbitMessage) -> dict:
 
     async def op(session: Any, user: Any) -> dict:
         payload = schemas.RoleCreate.model_validate(data)
-        role = await rbac_flows.create_role(session, user, payload)
+        role = await rbac_flows.create_role(
+            session, user, payload, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
         return schemas.RoleRead.model_validate(role, from_attributes=True).model_dump(mode="json")
 
     return await _with_active_user(data.get("access_token"), op)
@@ -728,7 +782,9 @@ async def rpc_rbac_update_role(data: dict, msg: RabbitMessage) -> dict:
         if role_id is None:
             raise HTTPException(status_code=422, detail="role_id is required")
         payload = schemas.RoleUpdate.model_validate(data)
-        role = await rbac_flows.update_role(session, user, role_id, payload)
+        role = await rbac_flows.update_role(
+            session, user, role_id, payload, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
         return schemas.RoleRead.model_validate(role, from_attributes=True).model_dump(mode="json")
 
     return await _with_active_user(data.get("access_token"), op)
@@ -742,7 +798,9 @@ async def rpc_rbac_delete_role(data: dict, msg: RabbitMessage) -> dict:
         role_id = _opt_int(data, "role_id")
         if role_id is None:
             raise HTTPException(status_code=422, detail="role_id is required")
-        await rbac_flows.delete_role(session, user, role_id)
+        await rbac_flows.delete_role(
+            session, user, role_id, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -783,7 +841,9 @@ async def rpc_rbac_assign_linked_player(data: dict, msg: RabbitMessage) -> dict:
         if user_id is None:
             raise HTTPException(status_code=422, detail="user_id is required")
         payload = schemas.AuthUserPlayerLinkAssign.model_validate(data)
-        await rbac_flows.assign_linked_player_to_auth_user(session, user, user_id, payload)
+        await rbac_flows.assign_linked_player_to_auth_user(
+            session, user, user_id, payload, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -799,7 +859,9 @@ async def rpc_rbac_remove_linked_player(data: dict, msg: RabbitMessage) -> dict:
             raise HTTPException(status_code=422, detail="user_id is required")
         if player_id is None:
             raise HTTPException(status_code=422, detail="player_id is required")
-        await rbac_flows.remove_linked_player_from_auth_user(session, user, user_id, player_id)
+        await rbac_flows.remove_linked_player_from_auth_user(
+            session, user, user_id, player_id, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -812,7 +874,9 @@ async def rpc_rbac_delete_auth_user(data: dict, msg: RabbitMessage) -> dict:
         user_id = _opt_int(data, "user_id")
         if user_id is None:
             raise HTTPException(status_code=422, detail="user_id is required")
-        await rbac_flows.delete_auth_user(session, user, user_id)
+        await rbac_flows.delete_auth_user(
+            session, user, user_id, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -823,7 +887,9 @@ async def rpc_rbac_assign_role(data: dict, msg: RabbitMessage) -> dict:
 
     async def op(session: Any, user: Any) -> None:
         payload = schemas.UserRoleAssign.model_validate(data)
-        await rbac_flows.assign_role_to_user(session, user, payload)
+        await rbac_flows.assign_role_to_user(
+            session, user, payload, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -834,7 +900,9 @@ async def rpc_rbac_remove_role(data: dict, msg: RabbitMessage) -> dict:
 
     async def op(session: Any, user: Any) -> None:
         payload = schemas.UserRoleRemove.model_validate(data)
-        await rbac_flows.remove_role_from_user(session, user, payload)
+        await rbac_flows.remove_role_from_user(
+            session, user, payload, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -877,7 +945,14 @@ async def rpc_rbac_add_user_deny(data: dict, msg: RabbitMessage) -> dict:
             raise HTTPException(status_code=422, detail="user_id and permission_id are required")
         workspace_id = _opt_int(data, "workspace_id")
         return await rbac_flows.add_user_deny(
-            session, user, user_id, permission_id, reason=data.get("reason"), workspace_id=workspace_id
+            session,
+            user,
+            user_id,
+            permission_id,
+            reason=data.get("reason"),
+            workspace_id=workspace_id,
+            ip_address=data.get("ip_address"),
+            user_agent=data.get("user_agent"),
         )
 
     return await _with_active_user(data.get("access_token"), op)
@@ -893,7 +968,15 @@ async def rpc_rbac_remove_user_deny(data: dict, msg: RabbitMessage) -> dict:
         if user_id is None or permission_id is None:
             raise HTTPException(status_code=422, detail="user_id and permission_id are required")
         workspace_id = _opt_int(data, "workspace_id")
-        return await rbac_flows.remove_user_deny(session, user, user_id, permission_id, workspace_id=workspace_id)
+        return await rbac_flows.remove_user_deny(
+            session,
+            user,
+            user_id,
+            permission_id,
+            workspace_id=workspace_id,
+            ip_address=data.get("ip_address"),
+            user_agent=data.get("user_agent"),
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 
@@ -932,7 +1015,9 @@ async def rpc_rbac_delete_oauth_connection(data: dict, msg: RabbitMessage) -> di
         connection_id = _opt_int(data, "connection_id")
         if connection_id is None:
             raise HTTPException(status_code=422, detail="connection_id is required")
-        await rbac_flows.delete_oauth_connection(session, user, connection_id)
+        await rbac_flows.delete_oauth_connection(
+            session, user, connection_id, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
+        )
 
     return await _with_active_user(data.get("access_token"), op)
 

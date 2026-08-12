@@ -1,11 +1,13 @@
 "use client";
 
-import { createElement, useMemo, useState } from "react";
+import { createElement, useId, useMemo, useState } from "react";
 import { Check, ChevronsUpDown, Pipette, Plus, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -43,19 +45,20 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { getStatusIcon, STATUS_ICON_OPTIONS } from "@/lib/status-icons";
-import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
   BalancerCustomStatus,
   BalancerCustomStatusCreateInput,
-  BalancerCustomStatusUpdateInput,
-  StatusScope
+  BalancerCustomStatusUpdateInput
 } from "@/types/balancer-admin.types";
+import type { StatusScope } from "@/types/registration.types";
 
 type StatusFormState = {
   scope: StatusScope;
@@ -63,6 +66,8 @@ type StatusFormState = {
   icon_color: string;
   name: string;
   description: string;
+  excludes_from_balancer: boolean;
+  excludes_from_ready: boolean;
 };
 
 const EMPTY_FORM: StatusFormState = {
@@ -70,7 +75,9 @@ const EMPTY_FORM: StatusFormState = {
   icon_slug: "",
   icon_color: "",
   name: "",
-  description: ""
+  description: "",
+  excludes_from_balancer: false,
+  excludes_from_ready: false
 };
 
 const STATUS_COLOR_PRESETS = [
@@ -108,24 +115,33 @@ function StatusColorPicker({
   onChange: (next: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const triggerId = useId();
+  const hexId = useId();
   const normalizedValue = normalizeHexColor(value) || "#94a3b8";
 
   return (
     <div className="space-y-2">
-      <Label>Icon color</Label>
+      <Label htmlFor={triggerId}>Icon color</Label>
       <Popover open={open} onOpenChange={setOpen} modal={false}>
         <PopoverTrigger asChild>
-          <Button variant="outline" className="w-full justify-between">
+          <Button
+            id={triggerId}
+            variant="outline"
+            className="w-full justify-between"
+            aria-haspopup="dialog"
+            aria-expanded={open}
+          >
             <span className="flex min-w-0 items-center gap-3">
               <span
                 className="size-5 shrink-0 rounded-md border border-border shadow-sm"
                 style={{ backgroundColor: normalizedValue }}
+                aria-hidden
               />
               <span className="truncate font-mono text-xs uppercase">
                 {normalizeHexColor(value) || "Default"}
               </span>
             </span>
-            <Pipette className="ml-2 size-4 shrink-0 opacity-60" />
+            <Pipette className="ml-2 size-4 shrink-0 opacity-60" aria-hidden />
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -135,49 +151,47 @@ function StatusColorPicker({
           onTouchMove={(event) => event.stopPropagation()}
         >
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            <p className={EYEBROW_CLASS} id={`${triggerId}-presets`}>
               Presets
             </p>
-            <div className="flex flex-wrap gap-2">
-              {STATUS_COLOR_PRESETS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border transition hover:scale-[1.03]",
-                    normalizeHexColor(value).toLowerCase() === color.toLowerCase() &&
-                      "ring-2 ring-ring ring-offset-2 ring-offset-background"
-                  )}
-                  style={{ backgroundColor: color }}
-                  onClick={() => onChange(color)}
-                  aria-label={`Pick ${color}`}
-                >
-                  {normalizeHexColor(value).toLowerCase() === color.toLowerCase() ? (
-                    <Check className="size-3.5 text-white drop-shadow" />
-                  ) : null}
-                </button>
-              ))}
+            <div className="flex flex-wrap gap-2" role="group" aria-labelledby={`${triggerId}-presets`}>
+              {STATUS_COLOR_PRESETS.map((color) => {
+                const selected = normalizeHexColor(value).toLowerCase() === color.toLowerCase();
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    className={cn(
+                      "h-8 w-8 shrink-0 rounded-md border border-border transition hover:scale-[1.03]",
+                      selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+                    )}
+                    style={{ backgroundColor: color }}
+                    onClick={() => onChange(color)}
+                    aria-pressed={selected}
+                    aria-label={`Use preset color ${color}`}
+                  />
+                );
+              })}
             </div>
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Custom
-            </p>
+            <p className={EYEBROW_CLASS}>Custom</p>
             <div className="flex items-center gap-2">
-              <label className="flex h-10 w-12 cursor-pointer items-center justify-center rounded-md border border-input bg-background shadow-sm">
+              <span className="flex h-10 w-12 items-center justify-center rounded-md border border-input bg-background shadow-sm">
                 <input
                   type="color"
-                  className="sr-only"
+                  className="size-6 cursor-pointer rounded-md border border-border bg-transparent p-0"
+                  aria-label="Pick a custom icon color"
                   value={normalizedValue}
                   onChange={(event) => onChange(event.target.value)}
                 />
-                <span
-                  className="size-6 rounded-md border border-border"
-                  style={{ backgroundColor: normalizedValue }}
-                />
-              </label>
+              </span>
+              <Label htmlFor={hexId} className="sr-only">
+                Icon color hex code
+              </Label>
               <Input
+                id={hexId}
                 value={value}
                 onChange={(event) => onChange(normalizeHexColor(event.target.value))}
                 placeholder="#38bdf8"
@@ -194,13 +208,18 @@ function StatusColorPicker({
 function StatusForm({
   value,
   onChange,
-  disableScope = false
+  disableScope = false,
+  isBuiltin = false
 }: {
   value: StatusFormState;
   onChange: (next: StatusFormState) => void;
   disableScope?: boolean;
+  /** True when editing a builtin-status override: pool-inclusion is fixed by the system, not admin-editable. */
+  isBuiltin?: boolean;
 }) {
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  // Two dialogs mount this form, so the field ids have to be per-instance.
+  const fieldId = useId();
   const previewMeta = useMemo(
     () => ({
       value: value.name || "preview",
@@ -214,13 +233,18 @@ function StatusForm({
       icon_slug: value.icon_slug || "BadgeHelp",
       icon_color: value.icon_color || null,
       name: value.name || "Preview",
-      description: value.description || null
+      description: value.description || null,
+      excludes_from_balancer: value.excludes_from_balancer,
+      excludes_from_ready: value.excludes_from_ready
     }),
     [value]
   );
   const selectedIconSlug = value.icon_slug || "BadgeHelp";
+  // `icon_color` is workspace data, not a semantic tone, so it stays an inline
+  // style. The slug beside it carries the meaning; the icon is decoration.
   const selectedIcon = createElement(getStatusIcon(selectedIconSlug), {
     className: "size-4",
+    "aria-hidden": true,
     style: value.icon_color ? { color: value.icon_color } : undefined
   });
 
@@ -228,12 +252,12 @@ function StatusForm({
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="status-scope">Scope</Label>
+          <Label htmlFor={`${fieldId}-scope`}>Scope</Label>
           <Select
             value={value.scope}
             onValueChange={(nextScope) => onChange({ ...value, scope: nextScope as StatusScope })}
           >
-            <SelectTrigger id="status-scope" disabled={disableScope}>
+            <SelectTrigger id={`${fieldId}-scope`} disabled={disableScope}>
               <SelectValue placeholder="Select scope" />
             </SelectTrigger>
             <SelectContent>
@@ -243,24 +267,31 @@ function StatusForm({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="status-name">Name</Label>
+          <Label htmlFor={`${fieldId}-name`}>Name</Label>
           <Input
-            id="status-name"
+            id={`${fieldId}-name`}
             value={value.name}
             onChange={(event) => onChange({ ...value, name: event.target.value })}
             placeholder="Awaiting captain"
           />
         </div>
         <div className="space-y-2">
-          <Label>Icon</Label>
+          <Label htmlFor={`${fieldId}-icon`}>Icon</Label>
           <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen} modal={false}>
             <PopoverTrigger asChild>
-              <Button variant="outline" role="combobox" className="w-full justify-between">
+              <Button
+                id={`${fieldId}-icon`}
+                variant="outline"
+                role="combobox"
+                aria-haspopup="listbox"
+                aria-expanded={iconPickerOpen}
+                className="w-full justify-between"
+              >
                 <span className="flex min-w-0 items-center gap-2">
                   {selectedIcon}
                   <span className="truncate">{selectedIconSlug}</span>
                 </span>
-                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" aria-hidden />
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -270,13 +301,13 @@ function StatusForm({
               onTouchMove={(event) => event.stopPropagation()}
             >
               <Command>
-                <CommandInput placeholder="Search icon..." />
+                <CommandInput placeholder="Search icons…" />
                 <CommandList
-                  className="max-h-[260px]"
+                  className="max-h-64"
                   onWheelCapture={(event) => event.stopPropagation()}
                   onTouchMove={(event) => event.stopPropagation()}
                 >
-                  <CommandEmpty>No icon found.</CommandEmpty>
+                  <CommandEmpty>No icon matches that name. Try a shorter word.</CommandEmpty>
                   <CommandGroup>
                     {STATUS_ICON_OPTIONS.map(({ slug, Icon }) => (
                       <CommandItem
@@ -290,11 +321,13 @@ function StatusForm({
                         <span className="flex min-w-0 items-center gap-2">
                           <Icon
                             className="size-4"
+                            aria-hidden
                             style={value.icon_color ? { color: value.icon_color } : undefined}
                           />
                           <span className="truncate">{slug}</span>
                         </span>
                         <Check
+                          aria-hidden
                           className={cn(
                             "ml-auto size-4",
                             value.icon_slug === slug ? "opacity-100" : "opacity-0"
@@ -314,16 +347,49 @@ function StatusForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="status-description">Description</Label>
+        <Label htmlFor={`${fieldId}-description`}>Description</Label>
         <Textarea
-          id="status-description"
+          id={`${fieldId}-description`}
           value={value.description}
           onChange={(event) => onChange({ ...value, description: event.target.value })}
           placeholder="Used when a player is waiting for a captain confirmation."
         />
       </div>
+      {value.scope === "balancer" && !isBuiltin ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+          <div className="space-y-0.5">
+            <Label htmlFor={`${fieldId}-excludes`}>Excludes from balancer pool</Label>
+            <p className="text-xs text-muted-foreground">
+              A registration holding this status is treated as removed from the balancer pool,
+              the same way the builtin &quot;Excluded&quot; status works.
+            </p>
+          </div>
+          <Switch
+            id={`${fieldId}-excludes`}
+            checked={value.excludes_from_balancer}
+            onCheckedChange={(checked) => onChange({ ...value, excludes_from_balancer: checked })}
+          />
+        </div>
+      ) : null}
+      {value.scope === "balancer" && !isBuiltin ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+          <div className="space-y-0.5">
+            <Label htmlFor={`${fieldId}-blocks-ready`}>Blocks Ready</Label>
+            <p className="text-xs text-muted-foreground">
+              A registration holding this status never counts as ready for the balancer, even
+              once every role has a rank -- the same way the builtin &quot;Ready&quot; status is
+              always excluded from this.
+            </p>
+          </div>
+          <Switch
+            id={`${fieldId}-blocks-ready`}
+            checked={value.excludes_from_ready}
+            onCheckedChange={(checked) => onChange({ ...value, excludes_from_ready: checked })}
+          />
+        </div>
+      ) : null}
       <div className="space-y-2">
-        <Label>Preview</Label>
+        <p className="text-sm font-medium">Preview</p>
         <div className="rounded-lg border p-3">
           <StatusMetaBadge meta={previewMeta} fallbackValue="preview" />
         </div>
@@ -340,7 +406,9 @@ export default function AdminBalancerPage() {
   const [editingStatus, setEditingStatus] = useState<BalancerCustomStatus | null>(null);
   const [deletingStatus, setDeletingStatus] = useState<BalancerCustomStatus | null>(null);
   const [form, setForm] = useState<StatusFormState>(EMPTY_FORM);
-  const canManageStatuses = canAccessPermission("team.import", workspaceId);
+  const [formError, setFormError] = useState<string | null>(null);
+  // D12: page is readable with team.read; mutations follow the server matrix (team.update).
+  const canManageStatuses = canAccessPermission("team.update", workspaceId);
 
   const statusesQuery = useQuery({
     queryKey: ["balancer-admin", "status-catalog", workspaceId],
@@ -362,6 +430,9 @@ export default function AdminBalancerPage() {
       setCreateOpen(false);
       setForm(EMPTY_FORM);
       notify.success("Custom status created");
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: "Could not create the status" });
     }
   });
 
@@ -373,6 +444,9 @@ export default function AdminBalancerPage() {
       setEditingStatus(null);
       setForm(EMPTY_FORM);
       notify.success("Custom status updated");
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: "Could not save the status" });
     }
   });
 
@@ -392,6 +466,9 @@ export default function AdminBalancerPage() {
       setEditingStatus(null);
       setForm(EMPTY_FORM);
       notify.success("System status updated");
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: "Could not save the system status override" });
     }
   });
 
@@ -402,6 +479,9 @@ export default function AdminBalancerPage() {
       await invalidateStatuses();
       setDeletingStatus(null);
       notify.success("Custom status deleted");
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: "Could not delete the status" });
     }
   });
 
@@ -412,6 +492,9 @@ export default function AdminBalancerPage() {
       await invalidateStatuses();
       setDeletingStatus(null);
       notify.success("System status reset");
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: "Could not reset the system status" });
     }
   });
 
@@ -425,10 +508,6 @@ export default function AdminBalancerPage() {
       balancer: {
         system: rows.filter((row) => row.scope === "balancer" && row.kind === "builtin"),
         custom: rows.filter((row) => row.scope === "balancer" && row.kind === "custom")
-      },
-      options: {
-        registration: mergeStatusOptions("registration", rows),
-        balancer: mergeStatusOptions("balancer", rows)
       }
     };
   }, [statusesQuery.data]);
@@ -445,7 +524,59 @@ export default function AdminBalancerPage() {
       icon_slug: statusRow.icon_slug ?? "",
       icon_color: statusRow.icon_color ?? "",
       name: statusRow.name,
-      description: statusRow.description ?? ""
+      description: statusRow.description ?? "",
+      excludes_from_balancer: statusRow.excludes_from_balancer,
+      excludes_from_ready: statusRow.excludes_from_ready
+    });
+  };
+
+  const submitCreate = () => {
+    if (!form.name.trim()) {
+      setFormError("Give the status a name before creating it.");
+      return;
+    }
+    setFormError(null);
+    createMutation.mutate({
+      scope: form.scope,
+      icon_slug: form.icon_slug || null,
+      icon_color: form.icon_color || null,
+      name: form.name,
+      description: form.description || null,
+      excludes_from_balancer: form.scope === "balancer" ? form.excludes_from_balancer : false,
+      excludes_from_ready: form.scope === "balancer" ? form.excludes_from_ready : false
+    });
+  };
+
+  const submitEdit = () => {
+    if (!editingStatus) return;
+    if (!form.name.trim()) {
+      setFormError("Give the status a name before saving it.");
+      return;
+    }
+    setFormError(null);
+    if (editingStatus.kind === "builtin") {
+      updateBuiltinMutation.mutate({
+        scope: editingStatus.scope,
+        slug: editingStatus.slug,
+        data: {
+          icon_slug: form.icon_slug || null,
+          icon_color: form.icon_color || null,
+          name: form.name,
+          description: form.description || null
+        }
+      });
+      return;
+    }
+    updateMutation.mutate({
+      statusId: editingStatus.id,
+      data: {
+        icon_slug: form.icon_slug || null,
+        icon_color: form.icon_color || null,
+        name: form.name,
+        description: form.description || null,
+        excludes_from_balancer: editingStatus.scope === "balancer" ? form.excludes_from_balancer : false,
+        excludes_from_ready: editingStatus.scope === "balancer" ? form.excludes_from_ready : false
+      }
     });
   };
 
@@ -456,11 +587,9 @@ export default function AdminBalancerPage() {
           title="Balancer"
           description="Select a workspace to manage custom balancer statuses."
         />
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            No workspace selected.
-          </CardContent>
-        </Card>
+        <p className="rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
+          Pick a workspace in the sidebar to manage its registration and balancer statuses.
+        </p>
       </div>
     );
   }
@@ -477,168 +606,203 @@ export default function AdminBalancerPage() {
           <Card key={scope}>
             <CardHeader className="flex flex-row items-start justify-between gap-3">
               <div>
-                <CardTitle>
-                  {scope === "registration" ? "Registration statuses" : "Balancer statuses"}
+                <CardTitle asChild>
+                  <h2>{scope === "registration" ? "Registration statuses" : "Balancer statuses"}</h2>
                 </CardTitle>
                 <CardDescription>
                   Built-in statuses stay system-controlled. Custom statuses add extra labels for
                   this workspace.
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={() => openCreate(scope)} disabled={!canManageStatuses}>
-                <Plus className="mr-2 size-4" />
-                Add
-              </Button>
+              {canManageStatuses ? (
+                <Button size="sm" onClick={() => openCreate(scope)}>
+                  <Plus className="mr-2 size-4" aria-hidden />
+                  Add status
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  System
-                </p>
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Slug</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="w-[120px] text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {grouped[scope].system.map((statusRow) => (
-                        <TableRow key={`${statusRow.scope}-${statusRow.slug}`}>
-                          <TableCell>
-                            <StatusMetaBadge
-                              meta={{
-                                value: statusRow.slug,
-                                scope: statusRow.scope,
-                                is_builtin: true,
-                                kind: "builtin",
-                                is_override: statusRow.is_override,
-                                can_edit: true,
-                                can_delete: false,
-                                can_reset: statusRow.can_reset,
-                                icon_slug: statusRow.icon_slug,
-                                icon_color: statusRow.icon_color,
-                                name: statusRow.name,
-                                description: statusRow.description
-                              }}
-                              fallbackValue={statusRow.slug}
-                            />
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">{statusRow.slug}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {statusRow.description ?? "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => openEdit(statusRow)}
-                                disabled={!canManageStatuses}
-                              >
-                                <Pencil className="size-4" />
-                              </Button>
-                              {statusRow.can_reset ? (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => setDeletingStatus(statusRow)}
-                                  disabled={!canManageStatuses}
-                                >
-                                  <Trash2 className="size-4" />
-                                </Button>
-                              ) : null}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Custom
-                </p>
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Slug</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="w-[120px] text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {grouped[scope].custom.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                            No custom statuses yet.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        grouped[scope].custom.map((statusRow) => (
-                          <TableRow key={statusRow.id}>
-                            <TableCell>
-                              <StatusMetaBadge
-                                meta={{
-                                  value: statusRow.slug,
-                                  scope: statusRow.scope,
-                                  is_builtin: false,
-                                  kind: "custom",
-                                  is_override: false,
-                                  can_edit: true,
-                                  can_delete: true,
-                                  can_reset: false,
-                                  icon_slug: statusRow.icon_slug,
-                                  icon_color: statusRow.icon_color,
-                                  name: statusRow.name,
-                                  description: statusRow.description
-                                }}
-                                fallbackValue={statusRow.slug}
-                              />
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">{statusRow.slug}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {statusRow.description ?? "-"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => openEdit(statusRow)}
-                                  disabled={!canManageStatuses}
-                                >
-                                  <Pencil className="size-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => setDeletingStatus(statusRow)}
-                                  disabled={!canManageStatuses}
-                                >
-                                  <Trash2 className="size-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
+              {statusesQuery.isLoading ? (
+                <Skeleton className="h-64 w-full rounded-md" />
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <h3 className={EYEBROW_CLASS}>System</h3>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Slug</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="w-30 text-right">Actions</TableHead>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+                        </TableHeader>
+                        <TableBody>
+                          {grouped[scope].system.map((statusRow) => (
+                            <TableRow key={`${statusRow.scope}-${statusRow.slug}`}>
+                              <TableCell>
+                                <StatusMetaBadge
+                                  meta={{
+                                    value: statusRow.slug,
+                                    scope: statusRow.scope,
+                                    is_builtin: true,
+                                    kind: "builtin",
+                                    is_override: statusRow.is_override,
+                                    can_edit: true,
+                                    can_delete: false,
+                                    can_reset: statusRow.can_reset,
+                                    icon_slug: statusRow.icon_slug,
+                                    icon_color: statusRow.icon_color,
+                                    name: statusRow.name,
+                                    description: statusRow.description,
+                                    excludes_from_balancer: statusRow.excludes_from_balancer,
+                                    excludes_from_ready: statusRow.excludes_from_ready
+                                  }}
+                                  fallbackValue={statusRow.slug}
+                                />
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">{statusRow.slug}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {statusRow.description ?? "—"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  {canManageStatuses ? (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => openEdit(statusRow)}
+                                      aria-label={`Edit the ${statusRow.name} system status`}
+                                    >
+                                      <Pencil className="size-4" aria-hidden />
+                                    </Button>
+                                  ) : null}
+                                  {canManageStatuses && statusRow.can_reset ? (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => setDeletingStatus(statusRow)}
+                                      aria-label={`Reset the ${statusRow.name} system status to its default appearance`}
+                                    >
+                                      <Trash2 className="size-4" aria-hidden />
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className={EYEBROW_CLASS}>Custom</h3>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Slug</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="w-30 text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {grouped[scope].custom.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                                {canManageStatuses
+                                  ? "No custom statuses yet. Use “Add status” to create one for this workspace."
+                                  : "No custom statuses yet."}
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            grouped[scope].custom.map((statusRow) => (
+                              <TableRow key={statusRow.id}>
+                                <TableCell>
+                                  <StatusMetaBadge
+                                    meta={{
+                                      value: statusRow.slug,
+                                      scope: statusRow.scope,
+                                      is_builtin: false,
+                                      kind: "custom",
+                                      is_override: false,
+                                      can_edit: true,
+                                      can_delete: true,
+                                      can_reset: false,
+                                      icon_slug: statusRow.icon_slug,
+                                      icon_color: statusRow.icon_color,
+                                      name: statusRow.name,
+                                      description: statusRow.description,
+                                      excludes_from_balancer: statusRow.excludes_from_balancer,
+                                      excludes_from_ready: statusRow.excludes_from_ready
+                                    }}
+                                    fallbackValue={statusRow.slug}
+                                  />
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">{statusRow.slug}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  <div className="flex items-center gap-2">
+                                    <span>{statusRow.description ?? "—"}</span>
+                                    {statusRow.excludes_from_balancer ? (
+                                      <span className="whitespace-nowrap rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-300">
+                                        Excludes pool
+                                      </span>
+                                    ) : null}
+                                    {statusRow.excludes_from_ready ? (
+                                      <span className="whitespace-nowrap rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                                        Blocks ready
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    {canManageStatuses ? (
+                                      <>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          onClick={() => openEdit(statusRow)}
+                                          aria-label={`Edit the ${statusRow.name} custom status`}
+                                        >
+                                          <Pencil className="size-4" aria-hidden />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          onClick={() => setDeletingStatus(statusRow)}
+                                          aria-label={`Delete the ${statusRow.name} custom status`}
+                                        >
+                                          <Trash2 className="size-4" aria-hidden />
+                                        </Button>
+                                      </>
+                                    ) : null}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setFormError(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create custom status</DialogTitle>
@@ -647,23 +811,16 @@ export default function AdminBalancerPage() {
             </DialogDescription>
           </DialogHeader>
           <StatusForm value={form} onChange={setForm} />
+          {formError && <p className="text-sm text-danger">{formError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               Cancel
             </Button>
             <Button
-              onClick={() =>
-                createMutation.mutate({
-                  scope: form.scope,
-                  icon_slug: form.icon_slug || null,
-                  icon_color: form.icon_color || null,
-                  name: form.name,
-                  description: form.description || null
-                })
-              }
-              disabled={createMutation.isPending || !form.name.trim() || !canManageStatuses}
+              onClick={submitCreate}
+              disabled={createMutation.isPending || !canManageStatuses}
             >
-              Create
+              {createMutation.isPending ? "Creating…" : "Create status"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -675,6 +832,7 @@ export default function AdminBalancerPage() {
           if (!open) {
             setEditingStatus(null);
             setForm(EMPTY_FORM);
+            setFormError(null);
           }
         }}
       >
@@ -689,87 +847,56 @@ export default function AdminBalancerPage() {
                 : "Update visual metadata without changing the stored slug."}
             </DialogDescription>
           </DialogHeader>
-          <StatusForm value={form} onChange={setForm} disableScope />
+          <StatusForm
+            value={form}
+            onChange={setForm}
+            disableScope
+            isBuiltin={editingStatus?.kind === "builtin"}
+          />
+          {formError && <p className="text-sm text-danger">{formError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingStatus(null)}>
               Cancel
             </Button>
             <Button
-              onClick={() => {
-                if (!editingStatus) return;
-                const data = {
-                  icon_slug: form.icon_slug || null,
-                  icon_color: form.icon_color || null,
-                  name: form.name,
-                  description: form.description || null
-                };
-                if (editingStatus.kind === "builtin") {
-                  updateBuiltinMutation.mutate({
-                    scope: editingStatus.scope,
-                    slug: editingStatus.slug,
-                    data
-                  });
-                  return;
-                }
-                updateMutation.mutate({
-                  statusId: editingStatus.id,
-                  data
-                });
-              }}
+              onClick={submitEdit}
               disabled={
-                updateMutation.isPending ||
-                updateBuiltinMutation.isPending ||
-                !form.name.trim() ||
-                !canManageStatuses
+                updateMutation.isPending || updateBuiltinMutation.isPending || !canManageStatuses
               }
             >
-              Save
+              {updateMutation.isPending || updateBuiltinMutation.isPending
+                ? "Saving…"
+                : "Save changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <DeleteConfirmDialog
         open={deletingStatus !== null}
         onOpenChange={(open) => !open && setDeletingStatus(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {deletingStatus?.kind === "builtin" ? "Reset system status" : "Delete custom status"}
-            </DialogTitle>
-            <DialogDescription>
-              {deletingStatus?.kind === "builtin"
-                ? "This removes the workspace override and restores the default built-in appearance."
-                : "This only removes the catalog entry. Used statuses are protected by the backend and will return an error."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingStatus(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (!deletingStatus) return;
-                if (deletingStatus.kind === "builtin") {
-                  resetBuiltinMutation.mutate({
-                    scope: deletingStatus.scope,
-                    slug: deletingStatus.slug
-                  });
-                  return;
-                }
-                deleteMutation.mutate(deletingStatus.id);
-              }}
-              disabled={
-                deleteMutation.isPending || resetBuiltinMutation.isPending || !canManageStatuses
-              }
-            >
-              {deletingStatus?.kind === "builtin" ? "Reset" : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onConfirm={() => {
+          if (!deletingStatus) return;
+          if (deletingStatus.kind === "builtin") {
+            resetBuiltinMutation.mutate({
+              scope: deletingStatus.scope,
+              slug: deletingStatus.slug
+            });
+            return;
+          }
+          deleteMutation.mutate(deletingStatus.id);
+        }}
+        isDeleting={deleteMutation.isPending || resetBuiltinMutation.isPending}
+        title={deletingStatus?.kind === "builtin" ? "Reset system status" : "Delete custom status"}
+        description={
+          deletingStatus?.kind === "builtin"
+            ? `“${deletingStatus?.name}” goes back to its default built-in name, icon and color. The workspace override is discarded.`
+            : `“${deletingStatus?.name}” is removed from the catalog. Registrations already using it keep the raw slug, and the server refuses the delete if the status is still in use.`
+        }
+        confirmLabel={deletingStatus?.kind === "builtin" ? "Reset status" : "Delete status"}
+        confirmingLabel={deletingStatus?.kind === "builtin" ? "Resetting…" : "Deleting…"}
+        confirmVariant={deletingStatus?.kind === "builtin" ? "default" : "destructive"}
+      />
     </div>
   );
 }

@@ -31,20 +31,33 @@ mock.module("next/headers", () => ({
 
 type CompleteLinkCall = { ticket: string; accessToken: string; guard: string };
 const completeLinkCalls: CompleteLinkCall[] = [];
-let completeLinkShouldThrow = false;
 
 // safeRedirectTarget (imported by route.ts from @/lib/oauth-callback) in turn
-// imports OAuthLinkAuthRequiredError from this module, so the mock below must
-// re-export it (even though this test never throws it) or that import fails.
+// imports OAuthLinkAuthRequiredError and OAuthLinkFailedError from this module,
+// so the mock below must re-export both (route.ts narrows on the latter) or
+// those imports resolve to undefined and the `instanceof` check throws.
 class OAuthLinkAuthRequiredError extends Error {}
+
+class OAuthLinkFailedError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+// null = succeed; otherwise the error completeLink throws.
+let completeLinkError: Error | null = null;
 
 mock.module("@/services/auth.service", () => ({
   OAuthLinkAuthRequiredError,
+  OAuthLinkFailedError,
   authService: {
     completeLink: async (ticket: string, accessToken: string, guard: string) => {
       completeLinkCalls.push({ ticket, accessToken, guard });
-      if (completeLinkShouldThrow) {
-        throw new Error("boom");
+      if (completeLinkError) {
+        throw completeLinkError;
       }
       return { message: "Discord account linked successfully", provider: "discord", username: "u" };
     }
@@ -65,7 +78,7 @@ describe("GET /auth/link/complete", () => {
   beforeEach(() => {
     requestCookies = {};
     completeLinkCalls.length = 0;
-    completeLinkShouldThrow = false;
+    completeLinkError = null;
   });
 
   afterEach(() => {
@@ -73,11 +86,11 @@ describe("GET /auth/link/complete", () => {
   });
 
   it("redirects to login and does not call completeLink when there is no live session", async () => {
-    const res = await GET(req("https://anakq.gg/auth/link/complete?ticket=tic-1&next=%2Faccount"));
+    const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
 
     expect(res.status).toBe(307);
     const location = new URL(res.headers.get("location")!);
-    expect(location.origin).toBe("https://anakq.gg");
+    expect(location.origin).toBe("https://tenant.example.com");
     expect(location.pathname).toBe("/");
     expect(location.searchParams.get("login")).toBe("1");
     expect(completeLinkCalls.length).toBe(0);
@@ -86,7 +99,7 @@ describe("GET /auth/link/complete", () => {
   it("rejects a missing ticket without calling completeLink", async () => {
     requestCookies.owt_access_token = { value: "session-token" };
 
-    const res = await GET(req("https://anakq.gg/auth/link/complete"));
+    const res = await GET(req("https://tenant.example.com/auth/link/complete"));
 
     const location = new URL(res.headers.get("location")!);
     expect(location.searchParams.get("auth_error")).toBe("invalid_state");
@@ -103,10 +116,10 @@ describe("GET /auth/link/complete", () => {
     requestCookies.owt_access_token = { value: "session-token-abc" };
     // Deliberately no owt_xdomain_guard cookie.
 
-    const res = await GET(req("https://anakq.gg/auth/link/complete?ticket=tic-1&next=%2Faccount"));
+    const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
 
     const location = new URL(res.headers.get("location")!);
-    expect(location.origin).toBe("https://anakq.gg");
+    expect(location.origin).toBe("https://tenant.example.com");
     expect(location.searchParams.get("auth_error")).toBe("invalid_state");
     expect(completeLinkCalls.length).toBe(0);
   });
@@ -115,7 +128,7 @@ describe("GET /auth/link/complete", () => {
     requestCookies.owt_access_token = { value: "session-token-abc" };
     withGuardCookie("raw-guard-value-1");
 
-    await GET(req("https://anakq.gg/auth/link/complete?ticket=tic-1&next=%2Faccount"));
+    await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
 
     expect(completeLinkCalls).toEqual([
       { ticket: "tic-1", accessToken: "session-token-abc", guard: "raw-guard-value-1" }
@@ -126,10 +139,10 @@ describe("GET /auth/link/complete", () => {
     requestCookies.owt_access_token = { value: "session-token-abc" };
     withGuardCookie();
 
-    const res = await GET(req("https://anakq.gg/auth/link/complete?ticket=tic-1&next=%2Faccount"));
+    const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
 
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://anakq.gg/account");
+    expect(res.headers.get("location")).toBe("https://tenant.example.com/account");
     // Session is unchanged by this request -- see module docstring. The
     // guard cookie IS cleared, so it's the only Set-Cookie present.
     const setCookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
@@ -138,7 +151,7 @@ describe("GET /auth/link/complete", () => {
   });
 
   it("clears the guard cookie on the login-redirect path too (no live session)", async () => {
-    const res = await GET(req("https://anakq.gg/auth/link/complete?ticket=tic-1&next=%2Faccount"));
+    const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
 
     const setCookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
     expect(setCookies.length).toBe(1);
@@ -149,21 +162,35 @@ describe("GET /auth/link/complete", () => {
     requestCookies.owt_access_token = { value: "session-token-abc" };
     withGuardCookie();
 
-    const res = await GET(req("https://anakq.gg/auth/link/complete?ticket=tic-1&next=https%3A%2F%2Fevil.com%2Fsteal"));
+    const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=https%3A%2F%2Fevil.com%2Fsteal"));
 
-    expect(res.headers.get("location")).toBe("https://anakq.gg/");
+    expect(res.headers.get("location")).toBe("https://tenant.example.com/");
   });
 
   it("error-redirects (without leaking the error) when the ticket redeem fails, and still clears the guard cookie", async () => {
     requestCookies.owt_access_token = { value: "session-token-abc" };
     withGuardCookie();
-    completeLinkShouldThrow = true;
+    completeLinkError = new Error("boom");
 
-    const res = await GET(req("https://anakq.gg/auth/link/complete?ticket=tic-1&next=%2Faccount"));
+    const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
 
     const location = new URL(res.headers.get("location")!);
-    expect(location.origin).toBe("https://anakq.gg");
+    expect(location.origin).toBe("https://tenant.example.com");
     expect(location.searchParams.get("auth_error")).toBe("exchange_failed");
+    const setCookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
+    expect(setCookies.length).toBe(1);
+    expect(setCookies[0]).toMatch(/^owt_xdomain_guard=;/);
+  });
+
+  it("surfaces a refused link's own code so the user sees why, not a generic failure", async () => {
+    requestCookies.owt_access_token = { value: "session-token-abc" };
+    withGuardCookie();
+    completeLinkError = new OAuthLinkFailedError("link_taken", "already linked to a different account");
+
+    const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
+
+    const location = new URL(res.headers.get("location")!);
+    expect(location.searchParams.get("auth_error")).toBe("link_taken");
     const setCookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
     expect(setCookies.length).toBe(1);
     expect(setCookies[0]).toMatch(/^owt_xdomain_guard=;/);

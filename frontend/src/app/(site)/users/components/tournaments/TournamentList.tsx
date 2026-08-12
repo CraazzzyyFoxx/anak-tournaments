@@ -53,7 +53,7 @@ const ChipButton = ({
     className={cn(
       "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]",
       active
-        ? "border-[color:var(--aqt-teal)] bg-[hsl(172_70%_49%/0.12)] text-[color:var(--aqt-teal)]"
+        ? "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
         : "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
     )}
   >
@@ -86,7 +86,7 @@ const TournamentRow = ({
       aria-pressed={selected}
       className={cn(
         "flex w-full items-center gap-3 border-b border-[color:var(--aqt-border)] px-3.5 py-3 text-left transition-colors last:border-b-0",
-        selected ? "bg-[hsl(172_70%_49%/0.06)]" : "hover:bg-[hsl(0_0%_100%/0.02)]"
+        selected ? "bg-[color:color-mix(in_srgb,var(--aqt-teal)_6%,transparent)]" : "hover:bg-[hsl(0_0%_100%/0.02)]"
       )}
       style={selected ? { boxShadow: "inset 2px 0 0 0 var(--aqt-teal)" } : undefined}
     >

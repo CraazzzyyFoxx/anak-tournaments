@@ -14,15 +14,6 @@ class TournamentRepository(BaseRepository[models.Tournament]):
     def __init__(self) -> None:
         super().__init__(models.Tournament)
 
-    async def get_by_number_and_league(
-        self,
-        session: AsyncSession,
-        *,
-        number: int,
-        league: str | None,
-    ) -> models.Tournament | None:
-        return await self.get_by(session, number=number, league=league)
-
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Tournament | None:
         return await self.get_by(session, name=name)
 

@@ -4,12 +4,16 @@
 package observability
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	sentryotel "github.com/getsentry/sentry-go/otel"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/config"
 )
@@ -36,12 +40,23 @@ func Init(cfg *config.Config) (func(time.Duration), error) {
 		AttachStacktrace: true,
 		// The gateway forwards JWTs in Authorization headers and cookies; keeping
 		// SendDefaultPII off leaves those (and client IPs) out of captured events.
-		SendDefaultPII:   false,
+		SendDefaultPII: false,
+		// Spans come from OpenTelemetry (internal/tracing) and reach Sentry through
+		// the otel-collector's Sentry Exporter, so this SDK ships no transactions
+		// of its own by default (SENTRY_TRACES_SAMPLE_RATE=0). The OTel integration
+		// is pure linking: it resolves an event's trace context from the active
+		// OTel span so an Issue opens on the same trace Grafana shows.
+		Integrations: func(i []sentry.Integration) []sentry.Integration {
+			return append(i, sentryotel.NewOtelIntegration())
+		},
 		EnableTracing:    cfg.Sentry.TracesSampleRate > 0,
 		TracesSampleRate: cfg.Sentry.TracesSampleRate,
 		// QueryString is recorded verbatim regardless of SendDefaultPII; scrub the
 		// JWT (and similar) out of both error and transaction events.
-		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+		BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+			if isClientDisconnect(hint) {
+				return nil
+			}
 			return scrubEvent(event)
 		},
 		BeforeSendTransaction: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
@@ -52,6 +67,37 @@ func Init(cfg *config.Config) (func(time.Duration), error) {
 		return func(time.Duration) {}, fmt.Errorf("sentry init: %w", err)
 	}
 	return func(d time.Duration) { sentry.Flush(d) }, nil
+}
+
+// isClientDisconnect reports whether a captured event is a client hanging up
+// rather than a gateway fault.
+//
+// httputil.ReverseProxy panics with http.ErrAbortHandler when the response copy
+// to the client fails mid-body (navigation away, closed tab, a scanner probing
+// the public IP and dropping the socket). sentryhttp runs with Repanic: true, so
+// net/http's recover turns every one of those into a *fatal* Sentry event under
+// "net/http: abort Handler" — by volume the loudest issue in the project and
+// never once actionable. context.Canceled/DeadlineExceeded reach CaptureException
+// the same way via safego.
+func isClientDisconnect(hint *sentry.EventHint) bool {
+	if hint == nil {
+		return false
+	}
+	candidates := []error{hint.OriginalException}
+	if err, ok := hint.RecoveredException.(error); ok {
+		candidates = append(candidates, err)
+	}
+	for _, err := range candidates {
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, http.ErrAbortHandler) ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
+			return true
+		}
+	}
+	return false
 }
 
 // scrubEvent redacts sensitive query parameters from a captured event's request.

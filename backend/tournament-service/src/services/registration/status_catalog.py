@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.balancer_registration_statuses import (
     StatusScope,
     get_builtin_status_values,
+    invalidate_status_metas_cache,
     normalize_status_slug,
 )
 from shared.core import http_status as status
@@ -176,6 +177,8 @@ async def create_custom_status(
     icon_color: str | None,
     name: str,
     description: str | None,
+    excludes_from_balancer: bool = False,
+    excludes_from_ready: bool = False,
 ) -> models.BalancerRegistrationStatus:
     await ensure_workspace_exists(session, workspace_id)
     slug = _normalize_name_to_slug(name)
@@ -194,9 +197,13 @@ async def create_custom_status(
         icon_color=icon_color,
         name=name.strip(),
         description=description.strip() if description else None,
+        # Only meaningful for scope == "balancer"; harmless (unused) otherwise.
+        excludes_from_balancer=excludes_from_balancer,
+        excludes_from_ready=excludes_from_ready,
     )
     session.add(status_row)
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
     await session.refresh(status_row)
     return status_row
 
@@ -210,6 +217,8 @@ async def update_custom_status(
     icon_color: str | None,
     name: str | None,
     description: str | None,
+    excludes_from_balancer: bool | None = None,
+    excludes_from_ready: bool | None = None,
 ) -> models.BalancerRegistrationStatus:
     status_row = await get_custom_status_by_id(session, workspace_id, status_id)
 
@@ -227,8 +236,13 @@ async def update_custom_status(
         status_row.icon_color = icon_color or None
     if description is not None:
         status_row.description = description.strip() or None
+    if excludes_from_balancer is not None:
+        status_row.excludes_from_balancer = excludes_from_balancer
+    if excludes_from_ready is not None:
+        status_row.excludes_from_ready = excludes_from_ready
 
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
     await session.refresh(status_row)
     return status_row
 
@@ -263,6 +277,7 @@ async def delete_custom_status(
 
     await session.delete(status_row)
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
 
 
 async def upsert_builtin_override(
@@ -321,6 +336,7 @@ async def upsert_builtin_override(
         status_row.description = description.strip() or None
 
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)
     await session.refresh(status_row)
     return status_row
 
@@ -345,3 +361,4 @@ async def reset_builtin_override(
         return
     await session.delete(status_row)
     await session.commit()
+    await invalidate_status_metas_cache(workspace_id)

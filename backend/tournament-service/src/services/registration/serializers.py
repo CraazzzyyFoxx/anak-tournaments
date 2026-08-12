@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from typing import Any
+
 import sqlalchemy as sa
 from sqlalchemy.orm.attributes import NO_VALUE
 
-from shared.balancer_registration_statuses import StatusMeta, build_unknown_status_meta
+from shared.balancer_registration_statuses import (
+    StatusMeta,
+    build_status_meta_from_model,
+    build_unknown_status_meta,
+)
 from src import models
 from src.schemas.admin import balancer as admin_schemas
 from src.schemas.registration import RegistrationFormRead
@@ -50,6 +56,8 @@ def serialize_registration(
     workspace_id: int,
     status_meta_map: dict[str, dict[str, StatusMeta]] | None = None,
     ow_ranks_for_user: dict[str, int] | None = None,
+    profiles_open: bool | None = None,
+    subscription_outcome: str | None = None,
 ) -> admin_schemas.BalancerRegistrationRead:
     binding = loaded_relationship_or_none(registration, "google_sheet_binding")
     roles = loaded_relationship_or_none(registration, "roles") or []
@@ -79,6 +87,7 @@ def serialize_registration(
         smurf_tags_json=registration.smurf_tags_json or [],
         discord_nick=registration.discord_nick,
         twitch_nick=registration.twitch_nick,
+        boosty_nick=registration.boosty_nick,
         stream_pov=registration.stream_pov,
         notes=registration.notes,
         admin_notes=registration.admin_notes,
@@ -88,7 +97,6 @@ def serialize_registration(
         balancer_status=registration.balancer_status,
         status_meta=admin_schemas.StatusMetaRead(**resolved_status_meta),
         balancer_status_meta=admin_schemas.StatusMetaRead(**resolved_balancer_status_meta),
-        exclude_from_balancer=registration.exclude_from_balancer,
         exclude_reason=registration.exclude_reason,
         checked_in=registration.checked_in,
         checked_in_at=registration.checked_in_at,
@@ -98,13 +106,23 @@ def serialize_registration(
         reviewed_at=registration.reviewed_at,
         reviewed_by_username=reviewer.username if reviewer is not None else None,
         balancer_profile_overridden_at=registration.balancer_profile_overridden_at,
+        profiles_open=profiles_open,
+        subscription_outcome=subscription_outcome,
         roles=[serialize_registration_role(role, (ow_ranks_for_user or {}).get(role.role)) for role in sorted_roles],
     )
 
 
 def serialize_registration_form(
     form: models.BalancerRegistrationForm,
+    *,
+    subscription_requirement: dict[str, Any] | None = None,
 ) -> RegistrationFormRead:
+    """``subscription_requirement`` is the WORKSPACE's rule, passed in by the caller.
+
+    An argument rather than a lookup because this stays sync and must not issue a
+    second round trip per call; the async RPC handler already has the session and
+    fetches it once via ``subscription_config.load_workspace_requirement_blob``.
+    """
     return RegistrationFormRead(
         id=form.id,
         tournament_id=form.tournament_id,
@@ -114,6 +132,9 @@ def serialize_registration_form(
         require_open_profile=form.require_open_profile,
         open_profile_scope=form.open_profile_scope,
         show_ranks=form.show_ranks,
+        require_subscription=form.require_subscription,
+        subscription_stage=form.subscription_stage,
+        subscription_requirement_json=subscription_requirement or {},
         built_in_fields=form.built_in_fields_json or {},
         custom_fields=form.custom_fields_json or [],
     )
@@ -136,6 +157,12 @@ def serialize_status(
         icon_color=status_row.icon_color,
         name=status_row.name,
         description=status_row.description,
+        # Builtin rows never carry their own inclusion semantics on the raw
+        # column -- read it through the same builtin-aware helper the
+        # resolved StatusMeta uses, so a builtin-override row (e.g. a
+        # workspace's re-skinned "excluded") still reports the true fixed value.
+        excludes_from_balancer=build_status_meta_from_model(status_row)["excludes_from_balancer"],
+        excludes_from_ready=build_status_meta_from_model(status_row)["excludes_from_ready"],
         created_at=status_row.created_at,
         updated_at=status_row.updated_at,
     )

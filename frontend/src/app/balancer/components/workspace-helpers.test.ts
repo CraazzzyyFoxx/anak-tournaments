@@ -8,13 +8,24 @@ import {
   type PoolLane,
 } from "@/app/balancer/components/balancer-page-helpers";
 import {
+  convertBalanceResponseToInternalPayload,
   createSyntheticApplicationFromRegistration,
   createSyntheticPlayerFromRegistration,
   getPlayerValidationIssues,
   isRegistrationIncludedInBalancer,
+  ratesByMaxRank,
   type PlayerValidationIssue,
 } from "@/app/balancer/components/workspace-helpers";
-import type { AdminRegistration, BalancerApplication, BalancerPlayerRecord, StatusMeta, StatusScope } from "@/types/balancer-admin.types";
+import type {
+  AdminRegistration,
+  AdminRegistrationRole,
+  BalancerApplication,
+  BalancerPlayerRecord,
+  BuiltInFieldConfig,
+} from "@/types/balancer-admin.types";
+import type { BalanceResponse, PlayerData } from "@/types/balancer.types";
+import { DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
+import type { StatusMeta, StatusScope } from "@/types/registration.types";
 
 type TestFunction = () => void | Promise<void>;
 type Expectation<T> = {
@@ -42,6 +53,7 @@ function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerR
     role_entries_json: [],
     is_flex: false,
     is_in_pool: true,
+    ready_blocked: false,
     admin_notes: null,
     ...overrides,
   };
@@ -70,7 +82,13 @@ function createApplication(overrides: Partial<BalancerApplication>): BalancerApp
   };
 }
 
-function createStatusMeta(value: string, scope: StatusScope, name: string): StatusMeta {
+function createStatusMeta(
+  value: string,
+  scope: StatusScope,
+  name: string,
+  excludesFromBalancer = false,
+  excludesFromReady = false
+): StatusMeta {
   return {
     value,
     scope,
@@ -84,6 +102,8 @@ function createStatusMeta(value: string, scope: StatusScope, name: string): Stat
     icon_color: null,
     name,
     description: null,
+    excludes_from_balancer: excludesFromBalancer,
+    excludes_from_ready: excludesFromReady,
   };
 }
 
@@ -128,7 +148,6 @@ function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRe
     status_meta: createStatusMeta("approved", "registration", "Approved"),
     balancer_status: "ready",
     balancer_status_meta: createStatusMeta("ready", "balancer", "Ready"),
-    exclude_from_balancer: false,
     exclude_reason: null,
     checked_in: false,
     checked_in_at: null,
@@ -247,6 +266,31 @@ describe("getPlayerValidationIssues", () => {
     // Worst delta first: dps (Δ1200) before support (Δ1100).
     expect(deltaIssues.map((issue) => issue.role).join(",")).toBe("dps,support");
   });
+
+  it("flags a player blocked by a status-level ready gate even with fully ranked roles", () => {
+    const player = createPlayer({
+      role_entries_json: [
+        { role: "support", subtype: null, priority: 0, division_number: 12, rank_value: 900, is_active: true },
+      ],
+      ready_blocked: true,
+    });
+
+    const issues = getPlayerValidationIssues(player, null);
+
+    expect(issues.find((issue) => issue.code === "status_blocks_ready")).toBeDefined();
+  });
+
+  it("does not flag a player as ready-blocked by default", () => {
+    const player = createPlayer({
+      role_entries_json: [
+        { role: "support", subtype: null, priority: 0, division_number: 12, rank_value: 900, is_active: true },
+      ],
+    });
+
+    const issues = getPlayerValidationIssues(player, null);
+
+    expect(issues.find((issue) => issue.code === "status_blocks_ready")).toBeUndefined();
+  });
 });
 
 describe("pool lane helpers", () => {
@@ -364,7 +408,7 @@ describe("synthetic registration helpers", () => {
   it("keeps incomplete approved non-excluded registrations in the pool", () => {
     const registration = createRegistration({
       balancer_status: "incomplete",
-      exclude_from_balancer: false,
+      balancer_status_meta: createStatusMeta("incomplete", "balancer", "Incomplete"),
     });
 
     expect(isRegistrationIncludedInBalancer(registration)).toBe(true);
@@ -374,10 +418,10 @@ describe("synthetic registration helpers", () => {
     expect(player.is_in_pool).toBe(true);
   });
 
-  it("excludes registrations marked out of balancer even if status is ready", () => {
+  it("excludes registrations whose current status excludes them from the pool", () => {
     const registration = createRegistration({
-      balancer_status: "ready",
-      exclude_from_balancer: true,
+      balancer_status: "excluded",
+      balancer_status_meta: createStatusMeta("excluded", "balancer", "Excluded", true),
     });
 
     expect(isRegistrationIncludedInBalancer(registration)).toBe(false);
@@ -385,6 +429,40 @@ describe("synthetic registration helpers", () => {
     const player = createSyntheticPlayerFromRegistration(registration);
 
     expect(player.is_in_pool).toBe(false);
+  });
+
+  it("excludes registrations held by a custom status configured to exclude from the pool", () => {
+    const registration = createRegistration({
+      balancer_status: "injured",
+      balancer_status_meta: createStatusMeta("injured", "balancer", "Injured", true),
+    });
+
+    expect(isRegistrationIncludedInBalancer(registration)).toBe(false);
+  });
+
+  it("blocks Ready when the current custom status has excludes_from_ready set, without excluding the pool", () => {
+    const registration = createRegistration({
+      balancer_status: "injured",
+      balancer_status_meta: createStatusMeta("injured", "balancer", "Injured", false, true),
+      roles: [
+        {
+          role: "support",
+          subrole: null,
+          is_primary: true,
+          priority: 0,
+          rank_value: 900,
+          is_active: true,
+        },
+      ],
+    });
+
+    const player = createSyntheticPlayerFromRegistration(registration);
+
+    expect(player.is_in_pool).toBe(true);
+    expect(player.ready_blocked).toBe(true);
+    expect(
+      derivePoolLane({ player, issues: getPlayerValidationIssues(player, null) }),
+    ).toBe("needs_fix");
   });
 
   it("derives flex only when all roles are primary", () => {
@@ -442,5 +520,218 @@ describe("synthetic registration helpers", () => {
     expect(application.primary_role).toBeNull();
     expect(application.additional_roles_json).toEqual(["tank", "support"]);
     expect(application.player).toBe(player);
+  });
+});
+
+describe("every-role effective ranks", () => {
+  const role = (
+    roleCode: "tank" | "dps" | "support",
+    rank: number | null,
+    ow: number | null = null,
+    extra: { is_active?: boolean; subrole?: string | null; priority?: number } = {},
+  ): AdminRegistrationRole => ({
+    role: roleCode,
+    subrole: extra.subrole ?? null,
+    is_primary: true,
+    priority: extra.priority ?? 0,
+    rank_value: rank,
+    is_active: extra.is_active ?? true,
+    ow_rank_value: ow,
+  });
+
+  const flattened = (roles: AdminRegistrationRole[]) =>
+    createSyntheticPlayerFromRegistration(createRegistration({ roles }), DEFAULT_DIVISION_GRID, {
+      allRoles: true,
+    });
+
+  it("applies the max rank to all three roles", () => {
+    const player = flattened([role("dps", 3900), role("support", 2400, null, { priority: 1 })]);
+
+    expect(player.role_entries_json.map((entry) => entry.role)).toEqual(["tank", "dps", "support"]);
+    expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
+  });
+
+  it("covers the unranked roles from a single ranked one", () => {
+    const player = flattened([role("dps", 3900)]);
+
+    expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
+    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
+  });
+
+  it("attaches the effective OW rank to the role that produced it", () => {
+    // Replicating it across all three would emit the same rank_delta_warning
+    // three times; leaving it per-role would compare an effective rank against
+    // an unrelated role's OW rank. One comparison, one carrier.
+    const player = flattened([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
+
+    const owByRole: Record<string, number | null> = Object.fromEntries(
+      player.role_entries_json.map((entry) => [entry.role, entry.ow_rank_value]),
+    );
+    expect(owByRole.dps).toBe(4100);
+    expect(owByRole.support).toBeNull();
+    expect(owByRole.tank).toBeNull();
+  });
+
+  it("yields one rank-delta chip instead of three", () => {
+    const player = flattened([role("dps", 3900, 4400), role("support", 2400, 2000, { priority: 1 })]);
+
+    const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
+
+    expect(issues.filter((issue) => issue.code === "rank_delta_warning").length).toBe(1);
+  });
+
+  it("keeps a within-threshold delta silent", () => {
+    const player = flattened([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
+
+    const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
+
+    expect(issues.length).toBe(0);
+  });
+
+  it("counts an inactive role's rank and makes the role playable", () => {
+    const player = flattened([role("tank", 3100, null, { is_active: false })]);
+
+    expect(player.role_entries_json.every((entry) => entry.rank_value === 3100)).toBe(true);
+    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
+  });
+
+  it("leaves a rankless registration out of the pool without disabling its roles", () => {
+    const player = flattened([role("dps", null)]);
+
+    expect(player.role_entries_json.every((entry) => entry.rank_value === null)).toBe(true);
+    // The roles stay playable — the mode says so, and the autofill that fills the
+    // ranks only looks at active roles. The missing rank is what keeps the player
+    // out of a balance run.
+    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
+    expect(
+      getPlayerValidationIssues(player, null).some((issue) => issue.code === "missing_ranked_role"),
+    ).toBe(true);
+  });
+
+  it("keeps each role's own specialization", () => {
+    const player = flattened([
+      role("dps", 3900, null, { subrole: "hitscan" }),
+      role("support", 2400, null, { subrole: "main_heal", priority: 1 }),
+    ]);
+
+    const subtypeByRole: Record<string, string | null> = Object.fromEntries(
+      player.role_entries_json.map((entry) => [entry.role, entry.subtype]),
+    );
+    expect(subtypeByRole.dps).toBe("hitscan");
+    expect(subtypeByRole.support).toBe("main_heal");
+    expect(subtypeByRole.tank).toBeNull();
+  });
+
+  it("changes nothing when the mode is optional", () => {
+    const roles = [role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })];
+    const registration = createRegistration({ roles });
+
+    const player = createSyntheticPlayerFromRegistration(registration);
+
+    expect(player.role_entries_json.map((entry) => entry.rank_value)).toEqual([3900, 2400]);
+    expect(player.role_entries_json.map((entry) => entry.ow_rank_value)).toEqual([4100, 2000]);
+  });
+});
+
+describe("ratesByMaxRank", () => {
+  const config = (overrides: Partial<BuiltInFieldConfig> = {}): BuiltInFieldConfig =>
+    ({ enabled: true, required: false, ...overrides }) as BuiltInFieldConfig;
+
+  it("is on for all_roles and forced", () => {
+    expect(ratesByMaxRank(config({ mode: "all_roles" }))).toBe(true);
+    expect(ratesByMaxRank(config({ mode: "forced" }))).toBe(true);
+  });
+
+  it("is off for optional and for an absent mode", () => {
+    expect(ratesByMaxRank(config({ mode: "optional" }))).toBe(false);
+    expect(ratesByMaxRank(config())).toBe(false);
+  });
+
+  it("is off for a disabled field whatever the stored mode", () => {
+    // Disabling the field bans flex outright, so a stale mode must not survive it.
+    expect(ratesByMaxRank(config({ enabled: false, mode: "forced" }))).toBe(false);
+  });
+
+  it("fails closed on an unreadable config", () => {
+    // The caller passes a query result: guessing an every-role mode while the
+    // form is still loading would inflate every player's effective rank.
+    expect(ratesByMaxRank(undefined)).toBe(false);
+    expect(ratesByMaxRank(null)).toBe(false);
+  });
+});
+
+describe("convertBalanceResponseToInternalPayload", () => {
+  const player = (overrides: Partial<PlayerData> = {}): PlayerData => ({
+    uuid: "p1",
+    name: "player#1234",
+    assigned_rating: 3000,
+    role_discomfort: 0,
+    is_captain: false,
+    role_preferences: ["tank", "dps"],
+    all_ratings: { tank: 3000, dps: 2800 },
+    all_discomforts: { tank: 0, dps: 100, support: 5000 },
+    ...overrides,
+  });
+
+  const response = (roster: Record<string, PlayerData[]>): BalanceResponse =>
+    ({
+      teams: [
+        {
+          id: 1,
+          name: "player#1234",
+          average_mmr: 3000,
+          rating_variance: 0,
+          total_discomfort: 0,
+          max_discomfort: 0,
+          roster,
+        },
+      ],
+      statistics: {},
+    }) as unknown as BalanceResponse;
+
+  it("re-keys the solver's canonical roster codes onto the editor's buckets", () => {
+    // The solver keys the response by the tournament roster shape's slot codes,
+    // so a run whose roster arrives as tank/dps/support must still land in the
+    // Tank/Damage/Support buckets the editor and result_json use.
+    const payload = convertBalanceResponseToInternalPayload(
+      response({ tank: [player({ uuid: "t" })], dps: [player({ uuid: "d" })], support: [player({ uuid: "s" })] }),
+    );
+
+    const roster = payload.teams[0].roster;
+    expect(roster.Tank.map((entry) => entry.uuid)).toEqual(["t"]);
+    expect(roster.Damage.map((entry) => entry.uuid)).toEqual(["d"]);
+    expect(roster.Support.map((entry) => entry.uuid)).toEqual(["s"]);
+  });
+
+  it("re-keys the per-role player maps the editor compares against roster keys", () => {
+    const payload = convertBalanceResponseToInternalPayload(response({ tank: [player()] }));
+
+    const entry = payload.teams[0].roster.Tank[0];
+    expect(entry.role_preferences).toEqual(["Tank", "Damage"]);
+    expect(entry.all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
+    expect(entry.all_discomforts).toEqual({ Tank: 0, Damage: 100, Support: 5000 });
+  });
+
+  it("keeps display-name payloads unchanged", () => {
+    // Saved balances and pre-roster-shape runs carry the display names already.
+    const legacy = player({
+      role_preferences: ["Damage"],
+      all_ratings: { Damage: 2800 },
+      all_discomforts: { Damage: 0 },
+    });
+
+    const payload = convertBalanceResponseToInternalPayload(response({ Damage: [legacy] }));
+
+    const entry = payload.teams[0].roster.Damage[0];
+    expect(entry.role_preferences).toEqual(["Damage"]);
+    expect(entry.all_ratings).toEqual({ Damage: 2800 });
+  });
+
+  it("normalizes benched players the same way", () => {
+    const benched = { ...response({}), benched_players: [player({ uuid: "b" })] };
+
+    const payload = convertBalanceResponseToInternalPayload(benched);
+
+    expect(payload.benched_players?.[0].all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
   });
 });

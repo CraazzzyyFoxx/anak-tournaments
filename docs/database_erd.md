@@ -17,7 +17,7 @@ challonge), `registration/`, `balancer/` (balance, draft), `matches/`,
 
 > **Актуальность.** Документ отражает финальное состояние после
 > identity/workspace-рефактора и нормализаций Challonge / map-veto / draft /
-> predictions. Alembic head — **`captrep0001`**. Сводка изменений — в конце
+> predictions. Alembic head — **`catalias0001`**. Сводка изменений — в конце
 > файла («История изменений схемы»).
 
 > Соглашение об именах на диаграммах: имя сущности = `SCHEMA_TABLE`, потому что
@@ -46,6 +46,7 @@ challonge), `registration/`, `balancer/` (balance, draft), `matches/`,
 | `analytics` | Аналитика и ML | `tournament`, `shifts`, `performance`, `standings_distribution`, `match_quality`, `ml_*`, `job`, … | analytics-service |
 | `log_processing` | Загрузка/парсинг логов | `record`, `discord_channel` | parser / discord |
 | `realtime` | Журнал realtime-событий | `workspace_event` | gateway (Go) |
+| `subscriptions` | Подписки и энтайтлменты | `provider_config`, `requirement`, `entitlement`, `check_log` | tournament / parser |
 
 Общие «хабы», к которым сходятся почти все домены:
 
@@ -67,6 +68,7 @@ flowchart TB
         PLAYERS["players<br/>(игроки, соц-аккаунты)"]
         WS["public.workspace<br/>+ workspace_member"]
         GRID["public.division_grid*<br/>(сетки дивизионов)"]
+        SUBS["subscriptions<br/>(провайдеры, правило, вердикты)"]
     end
 
     subgraph COMPETITION["Соревнование"]
@@ -97,6 +99,8 @@ flowchart TB
     WS --> PLAYERS
     AUTH -. "1:0..1" .-> PLAYERS
     WS --> GRID
+    SUBS --> WS
+    SUBS --> AUTH
 
     TOUR --> WS
     TOUR --> GRID
@@ -295,6 +299,7 @@ erDiagram
         string custom_domain UK "nullable"
         timestamp custom_domain_verified_at "nullable"
         string custom_domain_verification_token "nullable"
+        string discord_guild_id "nullable"
         int default_division_grid_version_id FK "nullable"
     }
     WORKSPACE_MEMBER {
@@ -550,9 +555,36 @@ erDiagram
         int round
         int best_of
         string status
-        string result_status
-        int submitted_by_id FK "nullable → players.user"
-        int confirmed_by_id FK "nullable → players.user"
+        string result_status "confirmed ⟺ status=COMPLETED (CHECK, encres0001)"
+        timestamp confirmed_at "nullable — единственный провенанс на строке"
+    }
+    ENCOUNTER_CAPTAIN_REPORT {
+        int id PK
+        int encounter_id FK "UK(encounter, team)"
+        int team_id FK
+        int reporter_user_id FK "nullable → players.user"
+        int home_score
+        int away_score
+        int closeness "1..10"
+    }
+    ENCOUNTER_MAP_CODE {
+        int id PK
+        int report_id FK "UK(report, map_index)"
+        int map_index "1-based"
+        int map_id FK "nullable — мягкая ссылка на пик вето"
+        string code
+    }
+    ENCOUNTER_RESULT_AUDIT {
+        int id PK
+        int encounter_id FK
+        int actor_user_id FK "nullable = машинный актор"
+        string action "confirm/reopen/auto_confirm/auto_dispute/import/cascade_reset"
+        string from_result_status "nullable"
+        string to_result_status
+        int home_score_after
+        int away_score_after
+        int adopted_team_id FK "nullable — чей репорт приняли"
+        string source
     }
     ENCOUNTER_LINK {
         int id PK
@@ -632,6 +664,11 @@ erDiagram
     ENCOUNTER ||--o{ ENCOUNTER_LINK : "источник продвижения"
     ENCOUNTER ||--o{ ENCOUNTER_LINK : "цель продвижения"
     ENCOUNTER ||--o{ ENCOUNTER_MAP_POOL : "пул карт"
+    ENCOUNTER ||--o{ ENCOUNTER_CAPTAIN_REPORT : "репорты капитанов (по одному на команду)"
+    TOURNAMENT_TEAM ||--o{ ENCOUNTER_CAPTAIN_REPORT : "чей репорт"
+    ENCOUNTER_CAPTAIN_REPORT ||--o{ ENCOUNTER_MAP_CODE : "коды карт"
+    MAP |o--o{ ENCOUNTER_MAP_CODE : "карта пика"
+    ENCOUNTER ||--o{ ENCOUNTER_RESULT_AUDIT : "история решений по результату"
     MAP ||--o{ ENCOUNTER_MAP_POOL : "карта"
     TOURNAMENT ||--o{ MAP_VETO_CONFIG : "конфиг вето"
     MAP_VETO_CONFIG ||--o{ MAP_VETO_CONFIG_MAP : "пул карт (нормализован)"
@@ -655,18 +692,28 @@ erDiagram
 `gamemode`. `mv_hero_global_stats` — materialized view с глобальными рекордами
 по героям (не таблица).
 
+Логи приходят с именами карт, режимов и героев на локали клиента игрока,
+поэтому каждая сущность справочника несёт `aliases` (JSONB-массив строк):
+у героев его наполняет синк OverFast по 13 локалям Blizzard, у карт и режимов
+записи ручные (у `/maps` и `/gamemodes` параметра `locale` нет). Имя, которое
+не разрешилось ни в канон, ни в алиас, попадает в `catalog_alias_miss` —
+очередь «добавьте алиас» в админке, ключ `(entity_type, raw_name)` со
+счётчиком `occurrences` (`catalias0001`).
+
 ```mermaid
 erDiagram
     GAMEMODE {
         int id PK
         string slug UK
         string name UK
+        json aliases "JSONB list[str], default '[]' (catalias0001) — ручные"
     }
     MAP {
         int id PK
         int gamemode_id FK
         string name UK
         string image_path
+        json aliases "JSONB list[str], default '[]' (catalias0001) — ручные"
     }
     HERO {
         int id PK
@@ -674,17 +721,30 @@ erDiagram
         string name UK
         string type "tank/damage/support"
         string color
+        json aliases "JSONB list[str], default '[]' (catalias0001) — 13 локалей OverFast"
+    }
+    CATALOG_ALIAS_MISS {
+        int id PK
+        string entity_type "enum catalogentitytype: hero/map/gamemode; UK(entity_type, raw_name)"
+        string raw_name "имя из лога, 128"
+        int occurrences "инкремент на повторном промахе"
+        datetime first_seen_at
+        datetime last_seen_at
+        int last_log_record_id FK "nullable → log_processing.record (ON DELETE SET NULL)"
+        datetime resolved_at "nullable; сбрасывается в NULL при повторном промахе"
     }
     MATCH {
         int id PK
         int encounter_id FK
         int map_id FK
+        int map_index "nullable — 1-based позиция карты в серии (mapidx01); NULL у распарсенных логов"
         int home_team_id FK
         int away_team_id FK
         int home_score
         int away_score
         float time
-        string log_name
+        string log_name "имя файла; из него всё ещё строится ключ S3"
+        int log_record_id FK "nullable → log_processing.record (mtchlog001, ON DELETE SET NULL)"
     }
     MATCH_STATISTICS {
         int id PK
@@ -1350,11 +1410,11 @@ erDiagram
         string status "pending/processing/done/failed"
         string source "upload/discord/manual"
         string content_hash
+        int attempts "logretry0001 — бюджет повторов reaper'а, живёт на строке"
     }
     DISCORD_CHANNEL {
         int id PK
         int tournament_id FK "UNIQUE"
-        int guild_id
         int channel_id UK
         bool is_active
     }
@@ -1392,12 +1452,94 @@ erDiagram
     TOURNAMENT ||--o{ LOG_RECORD : "логи турнира"
     PLAYERS_USER |o--o{ LOG_RECORD : "загрузивший"
     ENCOUNTER |o--o{ LOG_RECORD : "привязка к встрече"
+    LOG_RECORD |o--o{ MATCH : "провенанс распаршенной карты (mtchlog001)"
     TOURNAMENT |o--o| DISCORD_CHANNEL : "канал сбора (1:0..1)"
     TOURNAMENT ||--o{ COMPUTATION_JOB : "джобы вычисления"
     STAGE |o--o{ COMPUTATION_JOB : "по стадии"
     TOURNAMENT |o--o| RECALCULATION_STATE : "счётчик поколений (1:1)"
     AUTH_USER |o--o{ SETTINGS : "кто менял"
     AUTH_USER |o--o{ COMPUTATION_JOB : "инициатор"
+```
+
+---
+
+## 13. Подписки и энтайтлменты (`subscriptions`)
+
+Проверка подписок как условие допуска к регистрации/чек-ину. `provider_config` —
+как воркспейс верифицирует подписку у конкретного провайдера; `requirement` —
+какое правило он требует (`{mode, requirements: [{provider, min_tier_rank}]}`);
+`entitlement` — последний известный вердикт по (воркспейс, аккаунт, провайдер);
+`check_log` — append-only история живых обращений к провайдеру (зеркало
+`overwatch_rank.fetch_log`).
+
+> **Правило допуска живёт на воркспейсе** (`wsreq0001`), а не на форме: одно
+> правило общее для всех турниров воркспейса, тогда как
+> `balancer.registration_form.require_subscription` остаётся пер-турнирным
+> тумблером. Таблица заведена под пресеты: больше строк плюс nullable FK на
+> форме — чисто аддитивное изменение, тогда как колонка на `workspace`
+> потребовала бы миграции данных.
+
+> `state` — три значения (`active`/`inactive`/`unknown`), и `unknown` **fail-open**:
+> недоступность провайдера не должна запирать вход. Композиция вердиктов —
+> трёхзначная логика Клини, поэтому блокировка происходит только при
+> уверенности.
+
+```mermaid
+erDiagram
+    SUBSCRIPTION_PROVIDER_CONFIG {
+        int id PK
+        int workspace_id FK "UK(workspace, provider)"
+        string provider "discord_role / challenge_code / twitch_helix"
+        bool enabled "server_default false — создание конфига не включает проверку"
+        json config_json "снежинка гильдии тут не хранится — инжектится из workspace"
+    }
+    SUBSCRIPTION_REQUIREMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, name) + частичный unique на дефолт"
+        string name "server_default 'default'"
+        json requirement_json "{mode, requirements: [{provider, min_tier_rank}]}"
+        bool is_default
+    }
+    SUBSCRIPTION_ENTITLEMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, auth_user, provider)"
+        int auth_user_id FK "→ auth.user"
+        string provider
+        string state "active/inactive/unknown (default unknown, fail-open)"
+        int tier_rank "nullable — подписка без доказанного уровня читается как 1"
+        string tier_label "nullable"
+        string source "nullable — чем доказано"
+        timestamp checked_at "nullable"
+        timestamp expires_at "nullable"
+        json evidence_json "nullable"
+    }
+    SUBSCRIPTION_CHECK_LOG {
+        int id PK
+        int workspace_id FK "nullable (SET NULL)"
+        int auth_user_id FK "nullable (SET NULL) — история переживает удаление аккаунта"
+        string provider
+        string state
+        int tier_rank "nullable"
+        string tier_label "nullable"
+        string source "что запустило проверку (scheduled/manual/…)"
+        string mechanism "nullable — чем доказано, в отличие от source"
+        string reason "nullable — причина вердикта (not_subscribed, missing_scope, …)"
+        string error "nullable"
+        timestamp created_at "время завершения проверки; ничего не обновляется"
+    }
+    WORKSPACE {
+        int id PK
+    }
+    AUTH_USER {
+        int id PK
+    }
+
+    WORKSPACE ||--o{ SUBSCRIPTION_PROVIDER_CONFIG : "как верифицируем (UK по provider)"
+    WORKSPACE ||--o{ SUBSCRIPTION_REQUIREMENT : "правило допуска (один дефолт)"
+    WORKSPACE ||--o{ SUBSCRIPTION_ENTITLEMENT : "вердикты воркспейса"
+    AUTH_USER ||--o{ SUBSCRIPTION_ENTITLEMENT : "владелец подписки"
+    WORKSPACE |o--o{ SUBSCRIPTION_CHECK_LOG : "скоуп (SET NULL)"
+    AUTH_USER |o--o{ SUBSCRIPTION_CHECK_LOG : "проверяемый (SET NULL)"
 ```
 
 ---
@@ -1429,7 +1571,7 @@ erDiagram
 
 ## История изменений схемы
 
-Документ актуализирован под финальное состояние (Alembic head — **`captrep0001`**).
+Документ актуализирован под финальное состояние (Alembic head — **`catalias0001`**).
 Ключевые изменения относительно прежнего mid-refactor состояния:
 
 - **Identity/workspace-рефактор.** `players.user.auth_user_id` (unique nullable;
@@ -1463,3 +1605,38 @@ erDiagram
   map-veto, timezone воркспейса (wstz), phase-schedule, снятие team-SR (teamsr),
   MVP-impact scoring (mvpimp), брендинг-палитра (wsbrand), скрытые/preview
   турниры (hidden), captain reports (captrep, `encounter_report`), draft-audit.
+- **Discord-гильдия воркспейса (`wsguild0001` + `wsguild0002`).**
+  `public.workspace.discord_guild_id` (`String(32)`, nullable) — единственный источник
+  снежинки гильдии. Пара expand/contract, порядок обязателен: `wsguild0001` добавляет
+  колонку и бэкфиллит её (до раскатки кода), затем `wsguild0002` убирает ключ из блоба
+  `subscriptions.provider_config.config_json` и удаляет столбец
+  `log_processing.discord_channel.guild_id` (после раскатки). Одной ревизией это
+  недеплоимо: старая ORM всё ещё маппит `guild_id`, поэтому ранний DROP останавливает
+  сбор логов, а новый `load_configs` джойнит колонку воркспейса, поэтому ранний код
+  ломает чтение подписок.
+- **Правило подписки на воркспейсе (`wsreq0001` + `wsreq0002`).** Новая таблица
+  `subscriptions.requirement` (`workspace_id`, `name`, `requirement_json`,
+  `is_default`; UK `(workspace_id, name)` плюс частичный unique на дефолтную строку) —
+  единственный источник правила допуска, общего для всех турниров воркспейса.
+  Пара expand/contract, порядок обязателен: `wsreq0001` создаёт таблицу и бэкфиллит
+  её из форм (до раскатки кода, потому что новый `load_requirement` селектит эту
+  таблицу), затем `wsreq0002` удаляет столбец с правилом из
+  `balancer.registration_form` (после раскатки, потому что старая ORM всё ещё маппит
+  его и SQLAlchemy эмитит его в каждом `SELECT`). Бэкфилл не выбирает правило за
+  организатора: если у воркспейса больше одного различного правила, `wsreq0001`
+  падает и откатывается, а не назначает одно из них. Тумблер `require_subscription`
+  остался на форме — он и есть пер-турнирное решение.
+- **Алиасы справочника Overwatch (`catalias0001`).** `aliases` (JSONB `list[str]`,
+  `NOT NULL DEFAULT '[]'`) на `overwatch.hero`/`map`/`gamemode` плюс таблица
+  `overwatch.catalog_alias_miss` (`UK(entity_type, raw_name)`, `occurrences`,
+  `resolved_at`, nullable FK на `log_processing.record`). Заменяет три
+  хардкод-словаря переводов в `parser-service/src/core/enums.py`
+  (`game_mode_dict`, `map_name_dict`, `hero_translation` — 103 записи), которые
+  требовали передеплоя сервиса на каждую новую карту, героя или локаль клиента.
+  Data-миграция переносит все 103 записи (7 режимов, 32 карты, 50 героев —
+  число различных канонических целей) и печатает предупреждение по каждому
+  каноническому имени, которого нет в каталоге, вместо тихой потери. Дальше
+  алиасы героев наполняет синк OverFast по 13 локалям Blizzard, алиасы карт и
+  режимов — ручные (у `/maps` и `/gamemodes` параметра `locale` нет).
+  Одна ревизия, expand/contract не нужен: колонка nullable-по-умолчанию для
+  старого кода невидима, а новый код читает её сразу после применения.

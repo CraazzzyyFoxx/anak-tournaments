@@ -30,14 +30,20 @@ const ProviderButton = ({ href, title, icon }: ProviderButtonProps) => {
     <Button
       asChild
       variant="outline"
-      className="h-10 w-full justify-start bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.16] transition-all duration-150 text-white/75 hover:text-white rounded-lg gap-3 font-normal"
+      className="h-10 w-full justify-start gap-3 rounded-lg border-border/70 bg-[color:var(--aqt-overlay-2)] font-normal text-[color:var(--aqt-fg-muted)] transition-all duration-150 hover:border-border hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
     >
-      <Link href={href}>
+      {/* Plain <a>, NEVER next/link: /auth/{provider}/login is a GET route
+          handler with side effects — every execution mints a fresh OAuth state
+          and overwrites the single shared owt_oauth_csrf cookie. <Link>
+          prefetches it (on viewport entry AND hover), so late prefetch
+          responses race the click's Set-Cookie and desync the cookie from the
+          state carried to the provider, failing the callback's CSRF binding. */}
+      <a href={href}>
         <div className="flex h-4 w-4 shrink-0 items-center justify-center">
           {icon}
         </div>
         <span className="text-[13px] font-medium">{title}</span>
-      </Link>
+      </a>
     </Button>
   );
 };
@@ -60,13 +66,20 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
 
   const next = encodeURIComponent(nextPath || "/");
   const providers = data?.map((item) => item.provider) ?? [];
+  const brandName = tenantWorkspace?.name ?? SITE_NAME;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="sm:max-w-[360px] p-0 overflow-hidden bg-[#111113] border-white/[0.08] shadow-2xl">
+      <DialogContent className="overflow-hidden p-0 sm:max-w-[360px]">
         {/* Branding header */}
-        <div className="flex flex-col items-center px-8 pt-8 pb-6">
-          <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] shadow-sm">
+        <div className="flex flex-col items-center px-8 pb-6 pt-8">
+          {/* WorkspaceBrandIcon/next-image are decorative (alt=""); the group
+              carries the name so the branding is not silent. */}
+          <div
+            role="img"
+            aria-label={brandName}
+            className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-[color:var(--aqt-overlay-3)] shadow-sm"
+          >
             {tenantWorkspace ? (
               <WorkspaceBrandIcon
                 name={tenantWorkspace.name}
@@ -76,30 +89,31 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
             ) : (
               <Image
                 src={SITE_ICON}
-                alt={SITE_NAME}
+                alt=""
                 width={22}
                 height={22}
+                aria-hidden
                 className="rounded-sm"
               />
             )}
           </div>
 
-          <DialogTitle className="text-[15px] font-semibold text-white tracking-[-0.01em]">
+          <DialogTitle className="text-[15px] font-semibold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
             {t("auth.signIn")}
           </DialogTitle>
-          <DialogDescription className="mt-1 text-[12px] text-white/40 font-normal">
-            {t("auth.continueTo", { siteName: tenantWorkspace?.name ?? SITE_NAME })}
+          <DialogDescription className="mt-1 text-[12px] font-normal text-[color:var(--aqt-fg-dim)]">
+            {t("auth.continueTo", { siteName: brandName })}
           </DialogDescription>
         </div>
 
         {/* Divider */}
-        <div className="h-px bg-white/[0.06]" />
+        <div className="h-px bg-border/70" />
 
         {/* Provider buttons */}
-        <div className="px-8 py-5 grid gap-2">
+        <div className="grid gap-2 px-8 py-5">
           {isLoading
             ? ["discord", "twitch", "battlenet"].map((provider) => (
-                <Skeleton key={provider} className="h-10 rounded-lg bg-white/[0.05]" />
+                <Skeleton key={provider} className="h-10 rounded-lg" />
               ))
             : providers.map((provider) => {
                 const meta = OAUTH_PROVIDER_META[provider];
@@ -112,9 +126,10 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
                     icon={
                       <Image
                         src={meta.icon}
-                        alt={meta.title}
+                        alt=""
                         width={16}
                         height={16}
+                        aria-hidden
                         className={provider === "battlenet" ? "brightness-125" : ""}
                       />
                     }
@@ -123,26 +138,34 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
               })}
 
           {!isLoading && providers.length === 0 && (
-            <p className="text-[12px] text-white/30 text-center py-1">
+            <p className="py-1 text-center text-[12px] text-[color:var(--aqt-fg-dim)]">
               {t("auth.unavailable")}
             </p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="h-px bg-white/[0.06]" />
-        <div className="px-8 py-4 flex justify-center">
-          <p className="text-[11px] text-white/25 text-center leading-relaxed">
+        <div className="h-px bg-border/70" />
+        <div className="flex justify-center px-8 py-4">
+          <p className="text-center text-[11px] leading-relaxed text-[color:var(--aqt-fg-faint)]">
             {t.rich("auth.agreement", {
               terms: (chunks) => (
-                <span className="text-white/40 underline underline-offset-2 decoration-white/20 cursor-pointer hover:text-white/60 transition-colors">
+                <Link
+                  href="/terms"
+                  onClick={close}
+                  className="font-medium text-[color:var(--aqt-fg-dim)] underline-offset-2 hover:underline"
+                >
                   {chunks}
-                </span>
+                </Link>
               ),
               privacy: (chunks) => (
-                <span className="text-white/40 underline underline-offset-2 decoration-white/20 cursor-pointer hover:text-white/60 transition-colors">
+                <Link
+                  href="/privacy"
+                  onClick={close}
+                  className="font-medium text-[color:var(--aqt-fg-dim)] underline-offset-2 hover:underline"
+                >
                   {chunks}
-                </span>
+                </Link>
               )
             })}
           </p>

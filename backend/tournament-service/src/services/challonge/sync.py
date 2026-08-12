@@ -11,6 +11,7 @@ import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from loguru import logger
 from redis import asyncio as redis_async
@@ -22,14 +23,16 @@ from sqlalchemy.orm import selectinload
 from shared.core import enums
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.distributed_lock import distributed_lock
+from shared.services.encounter.result_audit import record_result_transition
 from shared.services.encounter_naming import build_encounter_name
 from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.core import config
 from src.services.challonge import service as challonge_service
-from src.services.encounter import veto_session as veto_session_service
+from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.finalize import finalize_encounter_score
 from src.services.tournament.events import (
+    enqueue_encounter_completed,
     enqueue_tournament_changed,
     enqueue_tournament_recalculation,
 )
@@ -105,6 +108,10 @@ class _UpsertResult:
     action: str
     encounter: models.Encounter | None = None
     conflict_type: str | None = None
+    # True when THIS upsert moved the encounter into COMPLETED, so import_tournament
+    # can emit EncounterCompletedEvent — which the import used to skip entirely,
+    # leaving imported results without achievement/MVP recalculation.
+    newly_completed: bool = False
     before: dict | None = None
     after: dict | None = None
     error: str | None = None
@@ -1054,6 +1061,20 @@ async def _ensure_encounter_stage_inputs(
     )
 
 
+def _has_local_decision(encounter: models.Encounter) -> bool:
+    """Whether a local result outranks whatever Challonge is reporting.
+
+    Keyed on ``result_status``, not just ``status``: a dispute or a half-reported
+    result is a decision in progress, and silently overwriting it destroyed the
+    captains' evidence and the admin's pending call.
+    """
+    return encounter.status == enums.EncounterStatus.COMPLETED or encounter.result_status in (
+        enums.EncounterResultStatus.CONFIRMED,
+        enums.EncounterResultStatus.DISPUTED,
+        enums.EncounterResultStatus.PENDING_CONFIRMATION,
+    )
+
+
 async def _upsert_encounter_from_challonge(
     session: AsyncSession,
     tournament: models.Tournament,
@@ -1126,6 +1147,7 @@ async def _upsert_encounter_from_challonge(
         return _UpsertResult(action="created", encounter=encounter)
 
     was_completed = encounter.status == enums.EncounterStatus.COMPLETED
+    has_local_decision = _has_local_decision(encounter)
     before = _encounter_sync_snapshot(encounter)
     after = {
         "home_team_id": home_team_id,
@@ -1138,7 +1160,7 @@ async def _upsert_encounter_from_challonge(
         "stage_item_id": refs.stage_item_id,
         "tournament_group_id": refs.tournament_group_id,
     }
-    if was_completed:
+    if has_local_decision:
         local_score = (encounter.home_score, encounter.away_score)
         remote_score = (home_score, away_score)
         local_teams = (encounter.home_team_id, encounter.away_team_id)
@@ -1153,9 +1175,9 @@ async def _upsert_encounter_from_challonge(
                 action="conflict",
                 encounter=encounter,
                 conflict_type=(
-                    "local_completed_remote_different"
+                    "local_decided_remote_different"
                     if status == enums.EncounterStatus.COMPLETED
-                    else "local_completed_remote_not_completed"
+                    else "local_decided_remote_not_completed"
                 ),
                 before=before,
                 after=after,
@@ -1179,12 +1201,15 @@ async def _upsert_encounter_from_challonge(
     encounter.status = status
     await session.flush()
     if teams_changed:
-        # Challonge corrected a team slot: sync the veto session (ensure when
-        # both teams are now known, reset a stale existing session).
-        await veto_session_service.sync_veto_session_after_team_change(session, encounter)
+        # Challonge corrected a team slot: sync map/hero pick-ban sessions
+        # (ensure when both teams are now known, reset a stale existing one).
+        await pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change(session, encounter)
     await _ensure_match_mapping(session, source, match.id, encounter, match_lookup)
 
-    if not was_completed and status == enums.EncounterStatus.COMPLETED:
+    newly_completed = not was_completed and status == enums.EncounterStatus.COMPLETED
+    if newly_completed:
+        from_result_status = encounter.result_status
+        home_score_before, away_score_before = before.get("home_score"), before.get("away_score")
         await finalize_encounter_score(
             session,
             encounter.id,
@@ -1192,9 +1217,29 @@ async def _upsert_encounter_from_challonge(
             home_score=encounter.home_score,
             away_score=encounter.away_score,
             source="challonge",
+            result_status=enums.EncounterResultStatus.CONFIRMED,
+            confirmed_at=datetime.now(UTC),
+        )
+        # actor_user_id stays NULL: an external system decided this, and that is
+        # exactly what distinguishes it from an admin resolution in the trail.
+        record_result_transition(
+            session,
+            encounter,
+            action=enums.EncounterResultAuditAction.IMPORT,
+            source="challonge",
+            actor_user_id=None,
+            from_result_status=from_result_status,
+            home_score_before=home_score_before,
+            away_score_before=away_score_before,
         )
 
-    return _UpsertResult(action="updated", encounter=encounter, before=before, after=after)
+    return _UpsertResult(
+        action="updated",
+        encounter=encounter,
+        before=before,
+        after=after,
+        newly_completed=newly_completed,
+    )
 
 
 def _iter_challonge_link_specs(
@@ -1311,6 +1356,10 @@ async def _advance_completed_challonge_matches(
             continue
         encounter = match_lookup.get(source, match.id)
         if encounter is not None:
+            # Re-fires advancement for every complete match (idempotent), so it
+            # must not re-stamp result_status or append a second audit row for
+            # an encounter that is already settled.
+            already_confirmed = encounter.result_status == enums.EncounterResultStatus.CONFIRMED
             await finalize_encounter_score(
                 session,
                 encounter.id,
@@ -1318,7 +1367,17 @@ async def _advance_completed_challonge_matches(
                 home_score=encounter.home_score,
                 away_score=encounter.away_score,
                 source="challonge",
+                result_status=None if already_confirmed else enums.EncounterResultStatus.CONFIRMED,
+                confirmed_at=None if already_confirmed else datetime.now(UTC),
             )
+            if not already_confirmed:
+                record_result_transition(
+                    session,
+                    encounter,
+                    action=enums.EncounterResultAuditAction.IMPORT,
+                    source="challonge",
+                    actor_user_id=None,
+                )
 
 
 async def _build_match_lookup(
@@ -1423,7 +1482,7 @@ async def import_tournament(session: AsyncSession, tournament_id: int, *, dry_ru
         }
 
         # Release the DB connection before the (potentially slow, rate-limited)
-        # Challonge HTTP round-trips: under NullPool + pgBouncer transaction
+        # Challonge HTTP round-trips: under pgBouncer transaction
         # pooling an open transaction pins a scarce backend slot for the whole
         # network wait, and statement_timeout does not bound idle-in-transaction
         # time. expire_on_commit=False keeps the loaded ``tournament`` (and its
@@ -1574,6 +1633,8 @@ async def import_tournament(session: AsyncSession, tournament_id: int, *, dry_ru
                     else:
                         stats["updated"] += 1
                         stats["matches_updated"] += 1
+                    if upsert_result.newly_completed and upsert_result.encounter is not None:
+                        await enqueue_encounter_completed(session, upsert_result.encounter)
 
                     await _log_sync(
                         session,
@@ -1930,7 +1991,8 @@ async def _push_single_result_impl(
 async def auto_push_on_confirm(session: AsyncSession, encounter_id: int) -> None:
     """Auto-push to Challonge when an encounter result is confirmed.
 
-    Called from captain.confirm_result after status -> confirmed.
+    Called from captain.submit_captain_report / set_encounter_result once the
+    encounter result becomes confirmed.
     """
     enc_result = await session.execute(
         select(models.Encounter)

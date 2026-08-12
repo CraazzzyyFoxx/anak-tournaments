@@ -9,11 +9,12 @@ __all__ = (
 class DiscordChannelUpsert(BaseModel):
     """Schema for creating or updating a tournament Discord sync channel.
 
-    guild_id and channel_id are Discord snowflakes (64-bit integers). They are
-    accepted as strings to avoid JavaScript float64 precision loss on the client side.
+    channel_id is a Discord snowflake (64-bit integer), accepted as a string to
+    avoid JavaScript float64 precision loss on the client side. The guild is not
+    here: it belongs to the workspace (``Workspace.discord_guild_id``) and was
+    duplicated into every tournament row while being read by nobody.
     """
 
-    guild_id: str
     channel_id: str
     channel_name: str | None = None
     is_active: bool = True
@@ -24,14 +25,13 @@ class DiscordChannelRead(BaseModel):
 
     id: int
     tournament_id: int
-    guild_id: str
     channel_id: str
     channel_name: str | None
     is_active: bool
 
     model_config = {"from_attributes": True}
 
-    @field_validator("guild_id", "channel_id", mode="before")
+    @field_validator("channel_id", mode="before")
     @classmethod
     def coerce_snowflake_to_str(cls, v: object) -> str:
         return str(v)

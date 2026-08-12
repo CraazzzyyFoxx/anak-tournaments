@@ -52,7 +52,7 @@ def _encounter_match_identity(
 
 
 async def get_user_encounter_matches_unpaginated(
-    session: AsyncSession, user_id: int
+    session: AsyncSession, user_id: int, *, tournament_id: int | None = None
 ) -> typing.Sequence[
     tuple[
         models.Team,
@@ -68,7 +68,11 @@ async def get_user_encounter_matches_unpaginated(
 ]:
     """All (team, encounter, match) rows the user participated in.
 
-    Used to assemble UserTournament.encounters. Loads:
+    Used to assemble the Tournaments-tab dossier's per-tournament encounter
+    list (`services.user.flows.get_tournament_encounters`). `tournament_id`,
+    when given, scopes the rows to one tournament — the flow calls this
+    lazily per selected dossier entry rather than pulling the user's entire
+    encounter history up front. Loads:
       - Match.map — for `MatchReadWithUserStats.map`
       - Encounter.home_team / away_team + their players (so the encounter
         mapper can identify the viewer side and roster)
@@ -220,6 +224,7 @@ async def get_user_encounter_matches_unpaginated(
             sa.and_(
                 models.WorkspaceMember.player_id == user_id,
                 models.Player.is_substitution.is_(False),
+                *([models.Team.tournament_id == tournament_id] if tournament_id is not None else []),
             )
         )
         .order_by(models.Team.id, models.Encounter.id)

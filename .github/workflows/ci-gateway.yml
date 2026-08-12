@@ -1,0 +1,65 @@
+name: CI Gateway
+
+# The Go gateway had no CI: it is the single HTTP/WS entry point for the whole
+# platform — every route table, the JWT validation, the WS topic ACL, the
+# response cache — and its test suite ran only on developer machines.
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "gateway/**"
+      - ".github/workflows/ci-gateway.yml"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    paths:
+      - "gateway/**"
+      - ".github/workflows/ci-gateway.yml"
+  # See ci-frontend.yml: called by the release deploy, unfiltered.
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: gateway
+
+jobs:
+  ci-gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # The toolchain go.mod asks for, so CI cannot pass on a version the
+          # module does not build with.
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      # Fails when go.mod/go.sum disagree with the imports — the Go analogue of
+      # the backend's OpenAPI manifest drift gate.
+      - name: Dependencies are tidy
+        run: |
+          go mod tidy -diff
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt needs to run on:"
+            echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: Build
+        run: go build ./...
+      # -race matters here specifically: the gateway holds the WS hub, the
+      # response cache with its singleflight, and the active-user sampler — all
+      # shared state touched from many request goroutines at once. It needs cgo,
+      # which ubuntu-latest has by default; on a machine without a C compiler
+      # (a plain Windows checkout) run `go test ./...` instead.
+      - name: Test
+        run: go test -race ./...

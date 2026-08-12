@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +28,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
+import { cn } from "@/lib/utils";
 import draftService from "@/services/draft.service";
 import type {
   DraftBoard,
@@ -149,15 +149,19 @@ export function ResolveRoleConflictDialog({
         {feasibility && feasibility.unmatched_slots.length > 0 && (
           <div className="rounded-xl border border-[color:var(--aqt-live)]/30 bg-[color:var(--aqt-live)]/10 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold">
-              <AlertTriangle className="h-4 w-4" />
+              <AlertTriangle className="h-4 w-4" aria-hidden />
               {t("unmatchedSlots")}
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {feasibility.unmatched_slots.map((slot) => {
                 const team = board.teams.find((candidate) => candidate.id === slot.team_id);
                 return (
-                  <Badge key={`${slot.team_id}-${slot.role}-${slot.ordinal}`} variant="outline">
-                    {team?.name ?? `#${slot.team_id}`} · {t(`roles.${slot.role}`)} #{slot.ordinal}
+                  <Badge
+                    key={`${slot.team_id}-${slot.slot_code}-${slot.ordinal}`}
+                    variant="outline"
+                    className="tabular-nums"
+                  >
+                    {team?.name ?? `#${slot.team_id}`} · {t(`roles.${slot.slot_code}`)} #{slot.ordinal}
                   </Badge>
                 );
               })}
@@ -176,7 +180,7 @@ export function ResolveRoleConflictDialog({
                 resetPreview();
               }}
             >
-              <SelectTrigger id="role-conflict-player">
+              <SelectTrigger id="role-conflict-player" aria-label={t("player")}>
                 <SelectValue placeholder={t("selectPlayer")} />
               </SelectTrigger>
               <SelectContent>
@@ -204,7 +208,10 @@ export function ResolveRoleConflictDialog({
                 resetPreview();
               }}
             >
-              <SelectTrigger id="role-conflict-role">
+              <SelectTrigger
+                id="role-conflict-role"
+                aria-label={player ? `${t("newRole")} · ${playerName(player)}` : t("newRole")}
+              >
                 <SelectValue placeholder={t("selectRole")} />
               </SelectTrigger>
               <SelectContent>
@@ -231,6 +238,7 @@ export function ResolveRoleConflictDialog({
             <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
               <Checkbox
                 checked={rankAbsent}
+                aria-label={t("rankAbsent")}
                 onCheckedChange={(checked) => {
                   setRankAbsent(checked === true);
                   if (checked) setRankValue(null);
@@ -257,28 +265,51 @@ export function ResolveRoleConflictDialog({
         </div>
 
         {preview && (
-          <div className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)] p-4">
+          <div
+            role="status"
+            className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)] p-4"
+          >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 font-medium">
-                <ShieldCheck className="h-4 w-4 text-[color:var(--aqt-teal)]" />
+                <ShieldCheck className="h-4 w-4 text-[color:var(--aqt-teal)]" aria-hidden />
                 {t(`impact.${roleEditImpact(preview)}`)}
               </div>
               <Badge variant="outline">{t("previewOnly")}</Badge>
             </div>
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-center">
-              <ImpactValue label={t("before")} value={`${preview.before.matched_slots}/${preview.before.total_open_slots}`} />
-              <ArrowRight className="h-4 w-4 text-[color:var(--aqt-fg-faint)]" />
-              <ImpactValue label={t("after")} value={`${preview.after.matched_slots}/${preview.after.total_open_slots}`} good={preview.after.is_feasible} />
+              <ImpactValue
+                label={t("before")}
+                value={`${preview.before.matched_slots}/${preview.before.total_open_slots}`}
+              />
+              <ArrowRight className="h-4 w-4 text-[color:var(--aqt-fg-faint)]" aria-hidden />
+              <ImpactValue
+                label={t("after")}
+                value={`${preview.after.matched_slots}/${preview.after.total_open_slots}`}
+                good={preview.after.is_feasible}
+              />
             </div>
           </div>
         )}
 
         <DialogFooter>
-          <Button variant="outline" disabled={previewMutation.isPending} onClick={() => previewMutation.mutate()}>
+          <Button
+            variant="outline"
+            disabled={previewMutation.isPending}
+            onClick={() => previewMutation.mutate()}
+          >
             {t("preview")}
           </Button>
-          <Button disabled={!canCommit || commitMutation.isPending} onClick={() => commitMutation.mutate()}>
-            <CheckCircle2 className="mr-2 h-4 w-4" />
+          <Button
+            disabled={commitMutation.isPending}
+            onClick={() => {
+              if (!canCommit) {
+                notify.warning(t("completeFields"));
+                return;
+              }
+              commitMutation.mutate();
+            }}
+          >
+            <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden />
             {t("commit")}
           </Button>
         </DialogFooter>
@@ -287,11 +318,28 @@ export function ResolveRoleConflictDialog({
   );
 }
 
-function ImpactValue({ label, value, good = false }: { label: string; value: string; good?: boolean }) {
+function ImpactValue({
+  label,
+  value,
+  good = false
+}: {
+  label: string;
+  value: string;
+  good?: boolean;
+}) {
   return (
     <div>
-      <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">{label}</p>
-      <p className={good ? "mt-1 text-xl font-semibold text-[color:var(--aqt-support)]" : "mt-1 text-xl font-semibold"}>{value}</p>
+      <p className="font-mono text-xs uppercase tracking-wider text-[color:var(--aqt-fg-faint)]">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-1 text-xl font-semibold tabular-nums",
+          good && "text-[color:var(--aqt-support)]"
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }

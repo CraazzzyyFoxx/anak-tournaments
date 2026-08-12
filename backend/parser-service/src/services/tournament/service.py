@@ -54,24 +54,15 @@ async def get_all(
     return result.unique().scalars().all()
 
 
-async def get_by_number(session: AsyncSession, number: int, entities: list[str]) -> models.Tournament | None:
-    query = (
-        sa.select(models.Tournament)
-        .where(sa.and_(models.Tournament.number == number))
-        .options(*tournament_entities(entities))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
-
-
-async def get_by_number_and_league(
-    session: AsyncSession, number: int, is_league: bool, entities: list[str]
+async def get_by_name_and_league(
+    session: AsyncSession, workspace_id: int, name: str, is_league: bool, entities: list[str]
 ) -> models.Tournament | None:
     query = (
         sa.select(models.Tournament)
         .where(
             sa.and_(
-                models.Tournament.number == number,
+                models.Tournament.workspace_id == workspace_id,
+                models.Tournament.name == name,
                 models.Tournament.is_league == is_league,
             )
         )
@@ -95,7 +86,6 @@ async def create(
     session: AsyncSession,
     *,
     workspace_id: int,
-    number: int,
     is_league: bool,
     name: str,
     description: str | None = None,
@@ -108,7 +98,6 @@ async def create(
     # (source_type='tournament') created by the caller (admin link / import).
     tournament = models.Tournament(
         workspace_id=workspace_id,
-        number=number,
         is_league=is_league,
         name=name,
         description=description,

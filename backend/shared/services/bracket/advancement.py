@@ -25,11 +25,13 @@ from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.team import Team
 from shared.services.bracket.types import AdvancementEdge
+from shared.services.encounter.result_audit import record_result_transition
 from shared.services.encounter_naming import build_encounter_name_from_ids
 
 __all__ = (
     "persist_advancement_edges",
     "advance_winner",
+    "reset_encounter_result",
 )
 
 
@@ -136,7 +138,7 @@ async def advance_winner(
         # The slot previously held a DIFFERENT team (an upstream result was
         # corrected): any result already recorded on the target — and anything
         # that result had advanced further down the bracket — is stale now.
-        updated.extend(await _reset_stale_result(session, target))
+        updated.extend(await reset_encounter_result(session, target))
 
     reset_match = await _maybe_create_grand_final_reset(session, encounter, winner_id)
     if reset_match is not None:
@@ -147,19 +149,23 @@ async def advance_winner(
     return updated
 
 
-async def _reset_stale_result(
+async def reset_encounter_result(
     session: AsyncSession,
     encounter: Encounter,
+    *,
+    action: enums.EncounterResultAuditAction = enums.EncounterResultAuditAction.CASCADE_RESET,
+    actor_user_id: int | None = None,
+    source: str = "admin",
 ) -> list[Encounter]:
-    """Un-play an encounter whose participants just changed.
+    """Un-play an encounter and clear whatever its old result advanced.
 
-    Called when a corrected upstream result rewired one of ``encounter``'s
-    team slots. Any score/confirmation recorded for the OLD matchup is void:
-    reset it, and if the old result had already advanced teams further
-    (status was COMPLETED), recursively clear the downstream slots it fed —
-    those matches now wait for this one to be replayed.
+    Two callers, one behaviour. The bracket calls it with the defaults when a
+    corrected upstream result rewired this encounter's team slots: any score
+    recorded for the OLD matchup is void. An admin reopening a result calls it
+    with ``action=REOPEN`` and their own id, so the initiating transition is
+    attributed while the downstream fan-out stays ``cascade_reset``.
 
-    Returns every additional encounter that was modified. Only flushes are
+    Returns every *additional* encounter that was modified. Only flushes are
     left to the caller (``advance_winner``).
     """
     had_advanced = encounter.status == enums.EncounterStatus.COMPLETED
@@ -172,17 +178,33 @@ async def _reset_stale_result(
     if not has_recorded_result:
         return []
 
+    from_result_status = encounter.result_status
+    home_score_before = encounter.home_score
+    away_score_before = encounter.away_score
+
     encounter.home_score = 0
     encounter.away_score = 0
     encounter.status = enums.EncounterStatus.OPEN
     encounter.result_status = enums.EncounterResultStatus.NONE
-    encounter.submitted_by_id = None
-    encounter.submitted_at = None
-    encounter.confirmed_by_id = None
     encounter.confirmed_at = None
+    # The old matchup's intensity rating is void with the rest of the result;
+    # tournament closeness averages this column, so a stale value would leak
+    # the previous pairing into the tournament's numbers.
+    encounter.closeness = None
+    record_result_transition(
+        session,
+        encounter,
+        action=action,
+        source=source,
+        actor_user_id=actor_user_id,
+        from_result_status=from_result_status,
+        home_score_before=home_score_before,
+        away_score_before=away_score_before,
+    )
     logger.info(
-        "Reset stale result on encounter %s after an upstream correction",
+        "Reset result on encounter %s (%s)",
         encounter.id,
+        action.value,
     )
 
     if not had_advanced:
@@ -218,7 +240,7 @@ async def _reset_stale_result(
             away_team_id=target.away_team_id,
         )
         cleared.append(target)
-        cleared.extend(await _reset_stale_result(session, target))
+        cleared.extend(await reset_encounter_result(session, target))
     return cleared
 
 
@@ -282,6 +304,11 @@ async def _maybe_create_grand_final_reset(
         away_team_id=gf_encounter.away_team_id,
         home_score=0,
         away_score=0,
+        # The reset is the same series as the Grand Final it continues; without
+        # this it took the column default (Bo3) no matter what the stage's
+        # best-of config said, because it is materialised here rather than by
+        # the generator that resolves best-of.
+        best_of=gf_encounter.best_of,
         round=gf_encounter.round + 1,
         tournament_id=gf_encounter.tournament_id,
         stage_id=gf_encounter.stage_id,

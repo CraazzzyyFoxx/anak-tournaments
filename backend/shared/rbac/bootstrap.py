@@ -269,21 +269,3 @@ async def workspace_names_blocking_player_unlink(
         .order_by(Workspace.name)
     )
     return list(result.scalars().all())
-
-
-async def legacy_workspace_role_name_for_user(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    workspace_id: int,
-) -> str:
-    result = await session.execute(
-        sa.select(Role.name)
-        .select_from(user_roles.join(Role, Role.id == user_roles.c.role_id))
-        .where(user_roles.c.user_id == user_id, Role.workspace_id == workspace_id)
-    )
-    role_names = set(result.scalars().all())
-    for role_name in WORKSPACE_SYSTEM_ROLE_NAMES:
-        if role_name in role_names:
-            return role_name
-    return "member"

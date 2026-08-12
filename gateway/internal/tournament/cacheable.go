@@ -16,6 +16,12 @@ import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/respcache"
 //     backend TTL with no targeted invalidation at all.
 //   - /tournaments/{tournament_id}/registration/form — admin form edits emit
 //     no bracket-topic event; a stale form could reject valid submissions.
+//   - /encounters/{encounter_id}/reports — same hazard, one level deeper: the
+//     envelope carries the tournament's match-report field config, and admin
+//     config edits emit no bracket-topic event either, so a cached entry could
+//     hand a captain rules the submit endpoint no longer enforces (or, worse,
+//     hide a field it now requires). The admin report-form routes are
+//     AuthRequired admin patterns, which this cache never covers at all.
 var PublicCacheableReads = map[string]respcache.Rule{
 	// The /tournaments/[id] page shell: overview (layout + metadata), stages,
 	// standings. AuthedRead: the backend handlers (rpc.tournament

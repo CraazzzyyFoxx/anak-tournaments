@@ -1,12 +1,16 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
+
+from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus, EncounterStatus
 
 __all__ = (
     "EncounterCreate",
     "EncounterUpdate",
-    "BulkEncounterUpdate",
     "MatchUpdate",
+    "EncounterSetResultInput",
+    "EncounterResultRead",
+    "EncounterResultAuditRead",
 )
 
 
@@ -21,6 +25,7 @@ class EncounterCreate(BaseModel):
     home_team_id: int | None = None
     away_team_id: int | None = None
     round: int
+    best_of: int = Field(default=3, ge=1)
     home_score: int = 0
     away_score: int = 0
     status: str = "open"  # open, pending, completed
@@ -43,6 +48,7 @@ class EncounterUpdate(BaseModel):
     away_score: int | None = None
     status: str | None = None
     round: int | None = None
+    best_of: int | None = Field(default=None, ge=1)
     closeness: float | None = Field(default=None, ge=0.0, le=1.0)
     scheduled_at: datetime | None = None
     started_at: datetime | None = None
@@ -60,36 +66,49 @@ class MatchUpdate(BaseModel):
     map_id: int | None = None
     code: str | None = None
     time: float | None = None
-    log_name: str | None = None
 
 
-class BulkEncounterUpdate(BaseModel):
-    """Apply the same update to many encounters in a single transaction.
+class EncounterSetResultInput(BaseModel):
+    """Body of the single admin result write.
 
-    Supports the high-frequency admin operations on 40+ team tournaments:
-    - mass-set status (e.g. "mark all group R1 matches as COMPLETED")
-    - mass-reschedule (when a matchday moves by 30 minutes)
-    - clear scores (rollback after wrong data entry)
-
-    Triggers exactly one standings recalc per affected tournament, not N —
-    crucial for keeping admin UI responsive on bulk actions.
+    Every field is optional: an empty body means "confirm what is already
+    there", which covers the common case of two agreeing reports. Supplying
+    ``adopt_report_team_id`` is how a dispute is resolved in one call — "this
+    side was right" — instead of editing the score and confirming separately.
     """
 
-    encounter_ids: list[int] = Field(min_length=1, max_length=500)
-    status: str | None = None
-    home_score: int | None = None
-    away_score: int | None = None
-    reset_scores: bool = False  # if True, forces home_score=away_score=0
+    home_score: int | None = Field(default=None, ge=0)
+    away_score: int | None = Field(default=None, ge=0)
+    closeness: int | None = Field(default=None, ge=1, le=10)
+    adopt_report_team_id: int | None = None
 
-    @model_validator(mode="after")
-    def _validate_some_update(self) -> "BulkEncounterUpdate":
-        has_update = (
-            self.status is not None or self.home_score is not None or self.away_score is not None or self.reset_scores
-        )
-        if not has_update:
-            raise ValueError(
-                "Bulk update must specify at least one field (status, home_score, away_score, reset_scores)"
-            )
-        if self.reset_scores and (self.home_score is not None or self.away_score is not None):
-            raise ValueError("reset_scores is mutually exclusive with explicit scores")
-        return self
+
+class EncounterResultRead(BaseModel):
+    """What the result endpoints return: the settled state of the encounter."""
+
+    id: int
+    status: EncounterStatus
+    result_status: EncounterResultStatus
+    home_score: int
+    away_score: int
+    closeness: float | None
+    confirmed_at: datetime | None
+
+
+class EncounterResultAuditRead(BaseModel):
+    """One recorded transition. ``actor_user_id`` is NULL for a machine actor."""
+
+    id: int
+    encounter_id: int
+    actor_user_id: int | None
+    actor_name: str | None
+    action: EncounterResultAuditAction
+    from_result_status: EncounterResultStatus | None
+    to_result_status: EncounterResultStatus
+    home_score_before: int | None
+    away_score_before: int | None
+    home_score_after: int
+    away_score_after: int
+    adopted_team_id: int | None
+    source: str
+    created_at: datetime

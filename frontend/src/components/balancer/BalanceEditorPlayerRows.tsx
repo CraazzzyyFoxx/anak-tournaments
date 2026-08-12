@@ -5,7 +5,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Crown } from "lucide-react";
 
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import {
   TableBody,
@@ -161,7 +161,7 @@ function BalanceEditorPlayerTableRow({
         <div className="flex justify-center">
           {division != null ? (
             <span title={`Division ${division}`}>
-              <PlayerDivisionIcon division={division} width={26} height={26} />
+              <DivisionIcon division={division} width={26} height={26} />
             </span>
           ) : (
             <span className="text-xs text-[color:var(--aqt-fg-faint)]">-</span>

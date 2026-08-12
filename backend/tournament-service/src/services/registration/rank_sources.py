@@ -155,15 +155,15 @@ async def _load_latest_ranks_from_balancer_history(
     workspace_id: int,
     normalizer: DivisionGridNormalizer | None,
     target_grid: DivisionGrid,
-    min_tournament_number: int | None = None,
+    allowed_tournament_ids: set[int] | None = None,
 ) -> dict[int, dict[str, int]]:
     """Return dict[user_id][role_code] → rank_value from past registration records.
 
     Searches the workspace's previous tournaments (excluding the current one), ordered
-    by tournament number descending so the most recent entry wins. Ranks are normalized from
-    each source tournament's grid version into the target grid. When ``min_tournament_number`` is
-    set, only tournaments whose ``number`` is at least that cutoff are considered (recency window;
-    rows with a ``NULL`` number naturally fall outside the window).
+    by tournament recency (start date, then id, descending) so the most recent entry wins.
+    Ranks are normalized from each source tournament's grid version into the target grid.
+    When ``allowed_tournament_ids`` is set, only registrations from those tournaments are
+    considered (recency window).
     """
     if not user_ids:
         return {}
@@ -202,12 +202,12 @@ async def _load_latest_ranks_from_balancer_history(
         .order_by(
             models.WorkspaceMember.player_id,
             models.BalancerRegistrationRole.role,
-            models.Tournament.number.desc().nullslast(),
-            models.BalancerRegistration.tournament_id.desc(),
+            models.Tournament.start_date.desc().nulls_last(),
+            models.Tournament.id.desc(),
         )
     )
-    if min_tournament_number is not None:
-        stmt = stmt.where(models.Tournament.number >= min_tournament_number)
+    if allowed_tournament_ids is not None:
+        stmt = stmt.where(models.BalancerRegistration.tournament_id.in_(allowed_tournament_ids))
 
     rows = (await session.execute(stmt)).all()
 
@@ -228,7 +228,7 @@ async def _load_latest_ranks_from_tournament_history(
     workspace_id: int,
     normalizer: DivisionGridNormalizer | None,
     target_grid: DivisionGrid,
-    min_tournament_number: int | None = None,
+    allowed_tournament_ids: set[int] | None = None,
 ) -> dict[int, dict[str, int]]:
     """Return dict[user_id][registration_role_code] → rank from past tournament participation.
 
@@ -237,8 +237,8 @@ async def _load_latest_ranks_from_tournament_history(
     tournament and substitution rows; the most recent tournament wins per role. ``Player.role`` is
     a HeroClass and is bridged to the registration role code (Damage → dps) to match keying. Ranks
     are normalized from each source tournament's grid version into the target grid. When
-    ``min_tournament_number`` is set, only tournaments whose ``number`` is at least that cutoff are
-    considered (recency window; rows with a ``NULL`` number naturally fall outside the window).
+    ``allowed_tournament_ids`` is set, only players from those tournaments are considered
+    (recency window).
     """
     if not user_ids:
         return {}
@@ -269,12 +269,12 @@ async def _load_latest_ranks_from_tournament_history(
         .order_by(
             models.WorkspaceMember.player_id,
             models.Player.role,
-            models.Tournament.number.desc().nullslast(),
-            models.Player.tournament_id.desc(),
+            models.Tournament.start_date.desc().nulls_last(),
+            models.Tournament.id.desc(),
         )
     )
-    if min_tournament_number is not None:
-        stmt = stmt.where(models.Tournament.number >= min_tournament_number)
+    if allowed_tournament_ids is not None:
+        stmt = stmt.where(models.Player.tournament_id.in_(allowed_tournament_ids))
 
     rows = (await session.execute(stmt)).all()
 
@@ -306,7 +306,6 @@ async def load_user_balancer_rank_history(
         await session.execute(
             sa.select(
                 models.Tournament.id.label("tournament_id"),
-                models.Tournament.number.label("tournament_number"),
                 models.Tournament.name.label("tournament_name"),
                 models.BalancerRegistrationRole.role,
                 models.BalancerRegistrationRole.rank_value,
@@ -331,7 +330,7 @@ async def load_user_balancer_rank_history(
                 models.BalancerRegistrationRole.rank_value.is_not(None),
             )
             .order_by(
-                models.Tournament.number.desc().nullslast(),
+                models.Tournament.start_date.desc().nulls_last(),
                 models.BalancerRegistration.tournament_id.desc(),
             )
         )
@@ -340,7 +339,6 @@ async def load_user_balancer_rank_history(
     return [
         {
             "tournament_id": row.tournament_id,
-            "tournament_number": row.tournament_number,
             "tournament_name": row.tournament_name,
             "role": row.role,
             "rank_value": row.rank_value,

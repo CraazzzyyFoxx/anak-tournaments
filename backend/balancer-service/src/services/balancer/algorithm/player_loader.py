@@ -4,6 +4,7 @@ import typing
 
 from loguru import logger
 
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 from src.services.balancer.algorithm.entities import Player
 from src.services.balancer.algorithm.input_roles import resolve_input_role_name
 
@@ -30,10 +31,15 @@ def parse_player_node(
             if rank <= 0:
                 continue
             algorithm_role = resolve_input_role_name(json_role, mask)
-            if not algorithm_role or algorithm_role not in mask:
+            if not algorithm_role:
                 continue
+            # Roles the roster does not field are kept out of the preference
+            # list (nothing can be assigned to them) but stay in ``ratings``:
+            # they are what a flex rating is synthesized from, and the saved
+            # balance reports them as the player's full ``all_ratings``.
             ratings[algorithm_role] = rank
-            role_priorities.append((stats.get("priority", 99), algorithm_role))
+            if algorithm_role in mask:
+                role_priorities.append((stats.get("priority", 99), algorithm_role))
             subtype = stats.get("subtype") or ""
             if subtype:
                 subclasses[algorithm_role] = subtype
@@ -43,6 +49,23 @@ def parse_player_node(
 
         role_priorities.sort(key=lambda item: (item[0], item[1]))
         preferences = [role for _, role in role_priorities]
+
+        if FLEX_SLOT_CODE in mask:
+            # A flex slot has no role, so it is worth the best role the player
+            # actually plays — the same "ready to play anything" policy the
+            # draft applies (see tests/test_forced_flex_parity.py). Taken over
+            # the ranks collected above, before this synthesized entry joins
+            # them.
+            ratings[FLEX_SLOT_CODE] = max(ratings.values())
+            # First preference, which makes the flex slot free of discomfort
+            # (entities.py) and keeps a flex assignment out of the off-role
+            # count (result_serializer.py).
+            preferences = [FLEX_SLOT_CODE, *(role for role in preferences if role != FLEX_SLOT_CODE)]
+        elif not preferences:
+            # No slot this player can fill: dropped, exactly as before flex
+            # slots existed.
+            return None
+
         return Player(name, ratings, preferences, uuid, mask, is_flex=is_flex, subclasses=subclasses)
     except Exception as exc:
         logger.warning(f"Failed to parse player {uuid}: {exc}")

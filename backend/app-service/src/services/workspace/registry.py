@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.crud import CrudDispatcher, EntityConfig
+from shared.services.roster_shape_access import invalidate_roster_shape_cache
 from src import models, schemas
 from src.core import db
 from src.services.workspace import service as workspace_service
@@ -35,8 +36,17 @@ async def _svc_update(
     workspace = await workspace_service.get_by_id(session, obj_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    workspace = await workspace_service.update(session, workspace, payload.model_dump(exclude_unset=True))
+    update_data = payload.model_dump(exclude_unset=True)
+    # Detected here, before the write, and acted on after the commit: dropping the
+    # cache first would let a concurrent read repopulate it from the pre-commit
+    # row, and that stale entry would then outlive the write by a full TTL.
+    roster_slots_changed = "default_roster_slots_json" in update_data and (
+        update_data["default_roster_slots_json"] != workspace.default_roster_slots_json
+    )
+    workspace = await workspace_service.update(session, workspace, update_data)
     await session.commit()
+    if roster_slots_changed:
+        await invalidate_roster_shape_cache(workspace_id=workspace.id)
     return workspace
 
 

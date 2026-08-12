@@ -68,7 +68,6 @@ class DraftSession(db.TimeStampIntegerMixin):
     format: Mapped[str] = mapped_column(String(16), nullable=False, server_default="snake", default="snake")
     rounds: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="4", default=4)
     pick_time_seconds: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="45", default=45)
-    team_size: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="5", default=5)
     # Circular FK with draft_pick — created with use_alter so DDL ordering works.
     current_pick_id: Mapped[int | None] = mapped_column(
         ForeignKey("balancer.draft_pick.id", ondelete="SET NULL", use_alter=True, name="fk_draft_session_current_pick"),

@@ -1,7 +1,7 @@
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
-  "bracket" | "teams" | "participants" | "matches" | "heroes" | "standings" | "draft";
+  | "bracket" | "teams" | "participants" | "matches" | "maps" | "heroes" | "standings" | "draft";
 
 export type TournamentNavReasonKey =
   "tournamentDetail.nav.reasons.competitionNotStarted" | "tournamentDetail.nav.reasons.noStages";
@@ -43,6 +43,7 @@ const tournamentSections: Exclude<TournamentSectionId, "draft">[] = [
   "teams",
   "participants",
   "matches",
+  "maps",
   "heroes",
   "standings"
 ];

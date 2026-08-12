@@ -56,8 +56,8 @@ export default function AccessAdminPermissionsPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search permissions..."
-        emptyMessage="No permissions found."
+        searchPlaceholder="Search permissions…"
+        emptyMessage="No permissions match this search. Clear the search box to see the full inventory."
       />
     </div>
   );

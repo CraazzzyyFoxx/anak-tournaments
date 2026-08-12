@@ -112,6 +112,22 @@ describe("TournamentPageState", () => {
     expect(empty).not.toContain("<button");
     expect(filtered).toContain("tournamentDetail.pageState.filteredEmpty.title");
     expect(filtered).toContain("tournamentDetail.pageState.resetFilters");
+
+    // Only the failure the user did not cause is announced assertively; the two
+    // empty states are polite. This comes from the shared PageStateCard now.
+    expect(initial).toContain('role="alert"');
+    expect(empty).toContain('role="status"');
+    expect(filtered).toContain('role="status"');
+  });
+
+  it("renders the three terminal states through the shared PageStateCard", () => {
+    const source = readFileSync(resolve(tournamentRoot, "_components/TournamentPageState.tsx"), "utf8");
+
+    expect(source).toContain('from "@/components/ui/page-state-card"');
+    // Only `refresh-error` keeps a bespoke body, because it is the one state
+    // that must render below stale content instead of replacing it.
+    expect(source).toContain("styles.refreshState");
+    expect(source).not.toContain("styles.stateCard");
   });
 });
 

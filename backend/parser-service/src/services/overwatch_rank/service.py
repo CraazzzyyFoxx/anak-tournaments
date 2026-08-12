@@ -38,6 +38,25 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def workspace_account_ids(workspace_id: int) -> sa.Select:
+    """Battle-tag ``social_account`` ids owned by players of ``workspace_id``.
+
+    Rank rows key on ``players.social_account``, which has no workspace column —
+    a battle tag belongs to a player, and a player reaches a workspace through
+    ``workspace_member``. This subquery is that hop, and it is what lets a
+    workspace-scoped admin see the collection health of their own roster without
+    seeing every other tenant's accounts.
+    """
+    return (
+        sa.select(models.SocialAccount.id)
+        .join(models.WorkspaceMember, models.WorkspaceMember.player_id == models.SocialAccount.user_id)
+        .where(
+            models.WorkspaceMember.workspace_id == workspace_id,
+            models.SocialAccount.provider == SocialProvider.BATTLENET,
+        )
+    )
+
+
 def _jittered_interval(base_seconds: float, jitter_fraction: float) -> float:
     """Spread a reschedule delay over ``[base, base*(1+fraction)]``.
 
@@ -362,43 +381,64 @@ async def count_in_scope(session: AsyncSession, *, scope: str) -> int:
     return int(await session.scalar(query) or 0)
 
 
-async def collection_stats(session: AsyncSession) -> dict:
+async def collection_stats(session: AsyncSession, *, workspace_id: int | None = None) -> dict:
     """Aggregate collection health (DB layer only; caller adds config).
 
     Mirrors the manual incident-diagnostic queries: state status/tier mix, whole
     population size, distinct-account snapshot coverage over 24h/7d, the global
     last successful capture, and the last-24h ``fetch_log`` outcome mix.
+
+    ``workspace_id`` narrows every aggregate to the battle tags of that
+    workspace's players (the caller's authorization scope — see ``rpc/rank.py``).
     """
     state = models.BattleTagRankState
     snap = models.UserRankSnapshot
     log = models.RankFetchLog
     now = _now()
+    accounts = workspace_account_ids(workspace_id) if workspace_id is not None else None
+
+    def _scoped(stmt: sa.Select, column: sa.ColumnElement) -> sa.Select:
+        return stmt if accounts is None else stmt.where(column.in_(accounts))
 
     by_status = {
         str(status): int(count)
         for status, count in (
-            await session.execute(sa.select(state.status, sa.func.count()).group_by(state.status))
+            await session.execute(
+                _scoped(sa.select(state.status, sa.func.count()), state.social_account_id).group_by(state.status)
+            )
         ).all()
     }
     by_tier = {
         int(tier): int(count)
         for tier, count in (
-            await session.execute(sa.select(state.priority_tier, sa.func.count()).group_by(state.priority_tier))
+            await session.execute(
+                _scoped(sa.select(state.priority_tier, sa.func.count()), state.social_account_id).group_by(
+                    state.priority_tier
+                )
+            )
         ).all()
     }
-    total = int(await session.scalar(sa.select(sa.func.count()).select_from(state)) or 0)
+    total = int(
+        await session.scalar(_scoped(sa.select(sa.func.count()).select_from(state), state.social_account_id)) or 0
+    )
     never_checked = int(
         await session.scalar(
-            sa.select(sa.func.count()).select_from(state).where(state.last_checked_at.is_(None))
+            _scoped(sa.select(sa.func.count()).select_from(state), state.social_account_id).where(
+                state.last_checked_at.is_(None)
+            )
         )
         or 0
     )
-    last_success_at = await session.scalar(sa.select(sa.func.max(state.last_success_at)))
+    last_success_at = await session.scalar(
+        _scoped(sa.select(sa.func.max(state.last_success_at)), state.social_account_id)
+    )
 
     async def _coverage(delta: timedelta) -> int:
         return int(
             await session.scalar(
-                sa.select(sa.func.count(sa.distinct(snap.social_account_id))).where(snap.captured_at > now - delta)
+                _scoped(sa.select(sa.func.count(sa.distinct(snap.social_account_id))), snap.social_account_id).where(
+                    snap.captured_at > now - delta
+                )
             )
             or 0
         )
@@ -407,7 +447,7 @@ async def collection_stats(session: AsyncSession) -> dict:
         str(status): int(count)
         for status, count in (
             await session.execute(
-                sa.select(log.status, sa.func.count())
+                _scoped(sa.select(log.status, sa.func.count()), log.social_account_id)
                 .where(log.created_at > now - timedelta(hours=24))
                 .group_by(log.status)
             )
@@ -610,6 +650,7 @@ async def reenable_disabled(
     *,
     interval_seconds: int,
     only_previously_succeeded: bool = False,
+    workspace_id: int | None = None,
     now: datetime | None = None,
 ) -> int:
     """Requeue auto-disabled tags: ``disabled`` -> ``pending``, reset failures.
@@ -620,12 +661,17 @@ async def reenable_disabled(
     backlog doesn't stampede OverFast. ``only_previously_succeeded`` limits it to
     tags that ever produced a snapshot (skip genuinely-dead handles). Returns the
     number of rows re-enabled; caller commits.
+
+    ``workspace_id`` limits the recovery to the battle tags of that workspace's
+    players, so a workspace-scoped admin cannot requeue another tenant's backlog.
     """
     now = now or _now()
     state = models.BattleTagRankState
     query = sa.update(state).where(state.status == enums.RankCollectionStatus.disabled.value)
     if only_previously_succeeded:
         query = query.where(state.last_success_at.isnot(None))
+    if workspace_id is not None:
+        query = query.where(state.social_account_id.in_(workspace_account_ids(workspace_id)))
     result = await session.execute(
         query.values(
             status=enums.RankCollectionStatus.pending.value,

@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { X } from "lucide-react";
 import type { BuiltInFieldConfig } from "@/types/registration.types";
-import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import {
   getBuiltInValueValidationError,
   normalizeBuiltInFieldValue,
 } from "./validation";
-import FieldLabel from "./FieldLabel";
+import FormField from "./FormField";
 
 interface SmurfTagsInputProps {
   tags: string[];
@@ -32,6 +32,7 @@ export default function SmurfTagsInput({
   onValidationChange,
 }: SmurfTagsInputProps) {
   const t = useTranslations();
+  const inputId = useId();
   const [inputValue, setInputValue] = useState("");
   const trimmedInputValue = inputValue.trim();
   const normalizedInputValue = normalizeBuiltInFieldValue("smurf_tags", inputValue);
@@ -57,7 +58,7 @@ export default function SmurfTagsInput({
     onChange(tags.filter((_, i) => i !== index));
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       addTag(inputValue, { clearInput: true });
@@ -71,7 +72,8 @@ export default function SmurfTagsInput({
 
   return (
     <div className="space-y-1.5">
-      <FieldLabel
+      <FormField
+        id={inputId}
         label={label ?? t("registration.accounts.smurfs")}
         required={required}
         icon={
@@ -82,51 +84,45 @@ export default function SmurfTagsInput({
               )
             : undefined
         }
+        beforeControl={
+          tags.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((tag, i) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2 py-0.5 text-xs text-[color:var(--aqt-fg-muted)]"
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(i)}
+                    aria-label={t("registration.accounts.removeSmurf", { tag })}
+                    className="ml-0.5 rounded text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X className="size-3" aria-hidden />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null
+        }
+        placeholder={t("registration.accounts.addSmurfPlaceholder")}
+        value={inputValue}
+        onChange={setInputValue}
+        onKeyDown={handleKeyDown}
+        error={inputValidationError}
+        className="pr-16"
+        endAdornment={
+          <button
+            type="button"
+            onClick={() => addTag(inputValue, { clearInput: true })}
+            disabled={!trimmedInputValue || Boolean(inputValidationError) || tags.includes(normalizedInputValue)}
+            className="absolute right-1 top-1/2 h-7 -translate-y-1/2 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2.5 text-xs font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {t("registration.accounts.addSmurfButton")}
+          </button>
+        }
       />
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {tags.map((tag, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-white/5 px-2 py-0.5 text-xs text-[color:var(--aqt-fg-muted)]"
-            >
-              {tag}
-              <button
-                type="button"
-                onClick={() => removeTag(i)}
-                className="ml-0.5 text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg-muted)]"
-              >
-                &times;
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="relative">
-        <input
-          type="text"
-          placeholder={t("registration.accounts.addSmurfPlaceholder")}
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          aria-invalid={Boolean(inputValidationError)}
-          className={cn(
-            "h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 pr-16 text-sm text-[color:var(--aqt-fg)] placeholder-white/30 outline-none transition-colors focus:border-[color:var(--aqt-border-2)]",
-            inputValidationError && "border-red-500/70 text-red-100 placeholder:text-red-200/60 focus:border-red-500/70",
-          )}
-        />
-        <button
-          type="button"
-          onClick={() => addTag(inputValue, { clearInput: true })}
-          disabled={!trimmedInputValue || Boolean(inputValidationError) || tags.includes(normalizedInputValue)}
-          className="absolute right-1 top-1/2 h-7 -translate-y-1/2 rounded-md border border-[color:var(--aqt-border-2)] bg-white/6 px-2.5 text-xs font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {t("registration.accounts.addSmurfButton")}
-        </button>
-      </div>
-      {inputValidationError && (
-        <p className="text-xs text-red-400">{inputValidationError}</p>
-      )}
       {unusedSuggestions.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {unusedSuggestions.map((s) => (
@@ -134,7 +130,7 @@ export default function SmurfTagsInput({
               key={s}
               type="button"
               onClick={() => addTag(s, { clearInput: false })}
-              className="rounded border border-[color:var(--aqt-border)] bg-white/2 px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-dim)] transition-colors hover:bg-white/5 hover:text-[color:var(--aqt-fg-muted)]"
+              className="rounded border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-dim)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               + {s}
             </button>

@@ -2,6 +2,7 @@ import React from "react";
 import { getTranslations } from "next-intl/server";
 import { TrendingUp } from "lucide-react";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { tournamentTag } from "@/app/(site)/users/components/shared/list-utils";
 import { UserTournament } from "@/types/user.types";
 
 interface Props {
@@ -12,7 +13,10 @@ interface Props {
 type Shape = "podium" | "mid" | "bottom";
 
 interface TrendPoint {
-  label: string;
+  /** Compact axis tick ("T42"), or null when the name yields no usable handle. */
+  label: string | null;
+  /** Full tournament name — the hover title, so the tick can stay terse. */
+  name: string;
   placement: number;
   countTeams: number;
   xFrac: number;
@@ -52,7 +56,8 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
     const shape: Shape =
       placement <= 3 ? "podium" : placement > Math.ceil(tour.count_teams / 2) ? "bottom" : "mid";
     return {
-      label: tour.number ? `${tour.number}` : tour.name.split(" | ")[1] ?? tour.name.slice(0, 4),
+      label: tournamentTag(tour.name),
+      name: tour.name,
       placement,
       countTeams: tour.count_teams,
       xFrac: n > 1 ? i / (n - 1) : 0.5,
@@ -70,6 +75,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
         <span
           className="block rounded-full"
           style={{ width: 11, height: 11, background: p.color, boxShadow: "0 0 0 2px hsl(0 0% 100% / 0.3)" }}
+          aria-hidden
         />
       );
     }
@@ -78,10 +84,11 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
         <span
           className="block rounded-full"
           style={{ width: 10, height: 10, background: "var(--aqt-bg)", border: "2px solid var(--aqt-rose)" }}
+          aria-hidden
         />
       );
     }
-    return <span className="block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} />;
+    return <span className="block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} aria-hidden />;
   };
 
   return (
@@ -116,7 +123,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
               key={i}
               className="absolute"
               style={{ left: `${(p.xFrac * 100).toFixed(2)}%`, top: `${p.yPct.toFixed(2)}%`, transform: "translate(-50%, -50%)" }}
-              title={`#${p.placement} · ${p.label}`}
+              title={`#${p.placement} · ${p.name}`}
             >
               <div className="relative flex items-center justify-center">
                 <span className="aqt-mono absolute bottom-full left-1/2 mb-[3px] -translate-x-1/2 whitespace-nowrap text-[9.5px] text-[color:var(--aqt-fg-muted)]">
@@ -128,15 +135,18 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
           ))}
         </div>
         <div className="relative mt-1 h-[13px]">
-          {points.map((p, i) => (
-            <span
-              key={i}
-              className="aqt-mono absolute -translate-x-1/2 whitespace-nowrap text-[9px] text-[color:var(--aqt-fg-faint)]"
-              style={{ left: `${(p.xFrac * 100).toFixed(2)}%` }}
-            >
-              {p.label}
-            </span>
-          ))}
+          {points.map((p, i) =>
+            p.label ? (
+              <span
+                key={i}
+                className="aqt-mono absolute -translate-x-1/2 whitespace-nowrap text-[9px] text-[color:var(--aqt-fg-faint)]"
+                style={{ left: `${(p.xFrac * 100).toFixed(2)}%` }}
+                title={p.name}
+              >
+                {p.label}
+              </span>
+            ) : null
+          )}
         </div>
       </div>
 
@@ -145,17 +155,19 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
           <span
             className="inline-block rounded-full"
             style={{ width: 10, height: 10, background: "var(--aqt-gold)", boxShadow: "0 0 0 1.5px hsl(0 0% 100% / 0.3)" }}
+            aria-hidden
           />
           {t("users.overview.placement.legend.podium")}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} />
+          <span className="inline-block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} aria-hidden />
           {t("users.overview.placement.legend.mid")}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block rounded-full"
             style={{ width: 9, height: 9, background: "var(--aqt-bg)", border: "2px solid var(--aqt-rose)" }}
+            aria-hidden
           />
           {t("users.overview.placement.legend.bottom")}
         </span>

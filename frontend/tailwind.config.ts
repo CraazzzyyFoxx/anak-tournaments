@@ -1,5 +1,3 @@
-// eslint-disable-next-line no-mixed-spaces-and-tabs
-
 import type { Config } from "tailwindcss";
 import colors from "tailwindcss/colors";
 
@@ -96,6 +94,27 @@ const config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))"
+        },
+        // Tone roles. `success`/`warning`/`info`/`danger` are the light
+        // chromatic values used the same way as `primary`: full opacity for
+        // text and borders, low alpha for tinted surfaces
+        // (`border-warning/40 bg-warning/10 text-warning`). `destructive`
+        // stays the solid-button role; `danger` is its readable text tone.
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))"
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))"
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))"
+        },
+        danger: {
+          DEFAULT: "hsl(var(--danger))",
+          foreground: "hsl(var(--danger-foreground))"
         },
         amber: {
           "50": "#fffbeb",

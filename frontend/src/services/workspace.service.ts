@@ -1,17 +1,25 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import {
+  DivisionGridActivationReadiness,
   DivisionGridEntity,
+  DivisionGridImportJob,
   DivisionGridMarketplaceGrid,
   DivisionGridMarketplaceImportRequest,
-  DivisionGridMarketplaceImportResult,
+  DivisionGridMarketplacePreflightResult,
   DivisionGridMarketplaceWorkspace,
   DivisionGridMappingRule,
+  DivisionGridPortableDocument,
+  DivisionGridSaveResult,
   DivisionGridVersion,
   Workspace,
   WorkspaceMember
 } from "@/types/workspace.types";
-
+import type {
+  DiscordChannelsResponse,
+  DiscordGuildInfo,
+  DiscordRolesResponse
+} from "@/types/discord.types";
 export default class workspaceService {
   static async getAll(): Promise<Workspace[]> {
     return apiFetch("/api/v1/workspaces").then((r) => r.json());
@@ -54,6 +62,7 @@ export default class workspaceService {
       subdomain?: string | null;
       seo_title?: string | null;
       seo_description?: string | null;
+      discord_guild_id?: string | null;
       default_division_grid_version_id?: number | null;
     }
   ): Promise<Workspace> {
@@ -178,11 +187,56 @@ export default class workspaceService {
     }).then((r) => r.json());
   }
 
+  static async updateDivisionGrid(
+    gridId: number,
+    data: { name?: string; description?: string | null; archived?: boolean }
+  ): Promise<DivisionGridEntity> {
+    return apiFetch(`/api/v1/division-grids/library/${gridId}`, {
+      method: "PATCH",
+      body: data
+    }).then((r) => r.json());
+  }
+
+  static async deleteDivisionGrid(gridId: number, force = false): Promise<void> {
+    await apiFetch(`/api/v1/division-grids/library/${gridId}`, {
+      method: "DELETE",
+      query: force ? { force: true } : undefined
+    });
+  }
+
+  static async saveWorkspaceGrid(
+    workspaceId: number,
+    data: {
+      grid_id?: number | null;
+      name?: string | null;
+      tiers: Array<{
+        id?: number | null;
+        slug: string;
+        number: number;
+        name: string;
+        sort_order: number;
+        rank_min: number;
+        rank_max: number | null;
+        icon_url: string;
+        ow_rank_min: number | null;
+        ow_rank_max: number | null;
+      }>;
+    }
+  ): Promise<DivisionGridSaveResult> {
+    return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/grid`, {
+      method: "PUT",
+      body: data
+    }).then((r) => r.json());
+  }
+
   static async getDivisionGridVersions(
     _workspaceId: number,
     gridId: number
   ): Promise<DivisionGridVersion[]> {
     return apiFetch(`/api/v1/division-grids/${gridId}/versions`).then((r) => r.json());
+  }
+  static async getDivisionGridVersion(versionId: number): Promise<DivisionGridVersion> {
+    return apiFetch(`/api/v1/division-grids/versions/${versionId}`).then((r) => r.json());
   }
 
   static async createDivisionGridVersion(
@@ -191,6 +245,7 @@ export default class workspaceService {
     data: {
       label: string;
       tiers: Array<{
+        id?: number;
         slug: string;
         number: number;
         name: string;
@@ -216,6 +271,25 @@ export default class workspaceService {
     }).then((r) => r.json());
   }
 
+  static async getDivisionGridVersionReadiness(
+    workspaceId: number,
+    versionId: number
+  ): Promise<DivisionGridActivationReadiness> {
+    return apiFetch(
+      `/api/v1/division-grids/by-workspace/${workspaceId}/versions/${versionId}/readiness`
+    ).then((r) => r.json());
+  }
+
+  static async activateDivisionGridVersion(
+    workspaceId: number,
+    versionId: number
+  ): Promise<DivisionGridVersion> {
+    return apiFetch(
+      `/api/v1/division-grids/by-workspace/${workspaceId}/versions/${versionId}/activate`,
+      { method: "POST", body: {} }
+    ).then((r) => r.json());
+  }
+
   static async cloneDivisionGridVersion(versionId: number): Promise<DivisionGridVersion> {
     return apiFetch(`/api/v1/division-grids/versions/${versionId}/clone`, {
       method: "POST",
@@ -232,6 +306,7 @@ export default class workspaceService {
     data: {
       label?: string;
       tiers?: Array<{
+        id?: number;
         slug: string;
         number: number;
         name: string;
@@ -275,8 +350,9 @@ export default class workspaceService {
     is_complete: boolean;
     rules: DivisionGridMappingRule[];
   }> {
-    return apiFetch(`/api/v1/division-grids/mappings/${sourceVersionId}/${targetVersionId}`
-    ).then((r) => r.json());
+    return apiFetch(`/api/v1/division-grids/mappings/${sourceVersionId}/${targetVersionId}`).then(
+      (r) => r.json()
+    );
   }
 
   static async putDivisionGridMapping(
@@ -300,7 +376,8 @@ export default class workspaceService {
   static async getDivisionGridMarketplaceWorkspaces(
     workspaceId: number
   ): Promise<DivisionGridMarketplaceWorkspace[]> {
-    return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/marketplace/workspaces`
+    return apiFetch(
+      `/api/v1/division-grids/by-workspace/${workspaceId}/marketplace/workspaces`
     ).then((r) => r.json());
   }
 
@@ -313,13 +390,68 @@ export default class workspaceService {
     }).then((r) => r.json());
   }
 
+  static async preflightDivisionGridMarketplace(
+    workspaceId: number,
+    data: DivisionGridMarketplaceImportRequest
+  ): Promise<DivisionGridMarketplacePreflightResult> {
+    return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/marketplace/preflight`, {
+      method: "POST",
+      body: data
+    }).then((r) => r.json());
+  }
+
   static async importDivisionGridMarketplace(
     workspaceId: number,
     data: DivisionGridMarketplaceImportRequest
-  ): Promise<DivisionGridMarketplaceImportResult> {
+  ): Promise<DivisionGridImportJob> {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/marketplace/import`, {
       method: "POST",
       body: data
     }).then((r) => r.json());
+  }
+
+  static async getDivisionGridImportJobs(
+    workspaceId: number,
+    activeOnly = false,
+    limit = 20
+  ): Promise<DivisionGridImportJob[]> {
+    return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/import-jobs`, {
+      query: { active_only: activeOnly, limit }
+    }).then((r) => r.json());
+  }
+
+  static async getDivisionGridImportJob(
+    workspaceId: number,
+    jobId: number
+  ): Promise<DivisionGridImportJob> {
+    return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/import-jobs/${jobId}`).then(
+      (r) => r.json()
+    );
+  }
+
+  static async exportDivisionGridPortable(gridId: number): Promise<DivisionGridPortableDocument> {
+    return apiFetch(`/api/v1/division-grids/library/${gridId}/export`).then((r) => r.json());
+  }
+
+  static async importDivisionGridPortable(
+    workspaceId: number,
+    document: DivisionGridPortableDocument,
+    mode: "library" | "sync" | "copy" = "library"
+  ): Promise<DivisionGridEntity> {
+    return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/portable/import`, {
+      method: "POST",
+      body: { document, mode }
+    }).then((r) => r.json());
+  }
+  static async getDiscordRoles(workspaceId: number): Promise<DiscordRolesResponse> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord/roles`).then((r) => r.json());
+  }
+
+  static async getDiscordChannels(workspaceId: number): Promise<DiscordChannelsResponse> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord/channels`).then((r) => r.json());
+  }
+
+  static async getDiscordGuildInfo(workspaceId: number): Promise<DiscordGuildInfo> {
+    return apiFetch(`/api/v1/workspaces/${workspaceId}/discord/guild`).then((r) => r.json());
   }
 }

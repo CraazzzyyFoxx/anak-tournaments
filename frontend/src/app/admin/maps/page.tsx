@@ -1,35 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AssetPreview } from "@/components/admin/AssetPreview";
+import {
+  CatalogToolbarActions,
+  entityFormError,
+  onEntityDialogClose
+} from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import adminService from "@/services/admin.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapCreateInput, MapUpdateInput } from "@/types/admin.types";
@@ -37,51 +44,36 @@ import { apiFetch } from "@/lib/api-fetch";
 import type { Gamemode } from "@/types/gamemode.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
+// Key order matters: `hasUnsavedChanges` compares JSON, so `getMapForm` below
+// must list the same fields in the same order or every dialog opens dirty.
 const emptyMapForm: MapCreateInput = {
   name: "",
   gamemode_id: 0,
+  in_competitive: true,
+  aliases: [],
 };
-const GAMEMODE_QUERY_PARAM = "gamemode_id";
 
+function getMapForm(map: MapRead | null): MapCreateInput | MapUpdateInput {
+  if (!map) {
+    return { ...emptyMapForm };
+  }
+
+  return {
+    name: map.name,
+    gamemode_id: map.gamemode_id,
+    in_competitive: map.in_competitive !== false,
+    aliases: map.aliases ?? [],
+  };
+}
+
+const GAMEMODE_QUERY_PARAM = "gamemode_id";
 function parseGamemodeQueryParam(value: string | null): number | null {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function MapImagePreview({
-  imagePath,
-  name,
-  className,
-}: {
-  imagePath?: string | null;
-  name: string;
-  className: string;
-}) {
-  const fallbackLabel = (name.trim().charAt(0) || "?").toUpperCase();
-
-  if (!imagePath) {
-    return (
-      <div
-        aria-label={name ? `${name} image placeholder` : "Map image placeholder"}
-        className={`${className} flex items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/30 text-sm font-semibold text-muted-foreground`}
-      >
-        {fallbackLabel}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      role="img"
-      aria-label={name ? `${name} image` : "Map image"}
-      className={`${className} rounded-md border border-border/70 bg-muted/20 bg-cover bg-center`}
-      style={{ backgroundImage: `url("${imagePath}")` }}
-    />
-  );
 }
 
 export default function MapsAdminPage() {
@@ -89,19 +81,24 @@ export default function MapsAdminPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { canAccessPermission } = usePermissions();
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isSuperuser } = usePermissions();
+  const formId = useId();
+  const nameFieldId = `${formId}-name`;
+  const gamemodeFieldId = `${formId}-gamemode`;
+  const aliasesFieldId = `${formId}-aliases`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingMap, setEditingMap] = useState<MapRead | null>(null);
   const [deletingMap, setDeletingMap] = useState<MapRead | null>(null);
   const [formData, setFormData] = useState<MapCreateInput | MapUpdateInput>({
     ...emptyMapForm,
   });
-  const canCreate = canAccessPermission("map.create", workspaceId);
-  const canUpdate = canAccessPermission("map.update", workspaceId);
-  const canDelete = canAccessPermission("map.delete", workspaceId);
-  const canSync = canAccessPermission("map.sync", workspaceId);
   const selectedGamemodeId = parseGamemodeQueryParam(searchParams.get(GAMEMODE_QUERY_PARAM));
+
+  const closeForm = () => {
+    setCreateDialogOpen(false);
+    setEditingMap(null);
+    setFormData({ ...emptyMapForm });
+  };
 
   // Fetch gamemodes for selector
   const { data: gamemodesData } = useQuery({
@@ -117,8 +114,7 @@ export default function MapsAdminPage() {
     mutationFn: (data: MapCreateInput) => adminService.createMap(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
-      setCreateDialogOpen(false);
-      setFormData({ ...emptyMapForm });
+      closeForm();
     },
   });
 
@@ -127,8 +123,7 @@ export default function MapsAdminPage() {
       adminService.updateMap(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
-      setEditingMap(null);
-      setFormData({ ...emptyMapForm });
+      closeForm();
     },
   });
 
@@ -169,14 +164,15 @@ export default function MapsAdminPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const formInitial = editingMap ? { name: editingMap.name, gamemode_id: editingMap.gamemode_id } : emptyMapForm;
-  const isFormDirty = (createDialogOpen || !!editingMap) && hasUnsavedChanges(formData, formInitial);
+  const formInitial = getMapForm(editingMap);
 
+  const isFormDirty = (createDialogOpen || !!editingMap) && hasUnsavedChanges(formData, formInitial);
   const columns: ColumnDef<MapRead>[] = [
     {
       accessorKey: "id",
       header: "ID",
       size: 44,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
     },
     {
       id: "image",
@@ -186,7 +182,12 @@ export default function MapsAdminPage() {
         const map = row.original;
         return (
           <div className="flex justify-center">
-            <MapImagePreview imagePath={map.image_path} name={map.name} className="h-12 w-24" />
+            <AssetPreview
+              imagePath={map.image_path}
+              name={map.name}
+              assetLabel="map image"
+              className="h-12 w-24"
+            />
           </div>
         );
       },
@@ -211,42 +212,69 @@ export default function MapsAdminPage() {
       },
     },
     {
+      accessorKey: "in_competitive",
+      header: "Mode Pool",
+      size: 120,
+      cell: ({ row }) => {
+        const map = row.original;
+        return map.in_competitive !== false ? (
+          <Badge variant="secondary" className="border-success/30 text-success bg-success/10">
+            Competitive
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            Casual
+          </Badge>
+        );
+      },
+    },
+    {
+      id: "aliases",
+      header: "Aliases",
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const count = row.original.aliases?.length ?? 0;
+        return count > 0 ? (
+          <Badge variant="secondary">{count}</Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
       id: "actions",
       size: 50,
       cell: ({ row }) => {
         const map = row.original;
-        if (!canUpdate && !canDelete) {
+        if (!isSuperuser) {
           return null;
         }
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button aria-label={`Open actions for ${map.name}`} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal aria-hidden className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-               {canUpdate ? (
-                 <DropdownMenuItem
-                   onClick={() => {
-                     updateMutation.reset();
-                     setEditingMap(map);
-                     setFormData({ name: map.name, gamemode_id: map.gamemode_id });
-                   }}
-                 >
-                   <Pencil className="mr-2 h-4 w-4" />
-                   Edit
-                 </DropdownMenuItem>
-               ) : null}
-               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
-               {canDelete ? (
-                 <DropdownMenuItem onClick={() => setDeletingMap(map)} className="text-destructive">
-                   <Trash2 className="mr-2 h-4 w-4" />
-                   Delete
-                 </DropdownMenuItem>
-               ) : null}
-             </DropdownMenuContent>
+              <DropdownMenuLabel className="truncate">{map.name}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => {
+                  updateMutation.reset();
+                  setEditingMap(map);
+                  setFormData(getMapForm(map));
+                }}
+              >
+                <Pencil aria-hidden className="mr-2 h-4 w-4" />
+                Edit map
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDeletingMap(map)} className="text-destructive">
+                <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                Delete map
+              </DropdownMenuItem>
+            </DropdownMenuContent>
            </DropdownMenu>
          );
       },
@@ -259,35 +287,19 @@ export default function MapsAdminPage() {
         title="Maps"
         description="Manage game maps"
         actions={
-          canSync || canCreate ? (
-            <div className="flex gap-2">
-              {canSync ? (
-                <Button
-                  variant="outline"
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
-                  />
-                  Sync from Game
-                </Button>
-              ) : null}
-              {canCreate ? (
-                <Button
-                  onClick={() => {
-                    createMutation.reset();
-                    updateMutation.reset();
-                    setFormData({ ...emptyMapForm });
-                    setCreateDialogOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Map
-                </Button>
-              ) : null}
-            </div>
-          ) : null
+          <CatalogToolbarActions
+            canSync={isSuperuser}
+            isSyncing={syncMutation.isPending}
+            onSync={() => syncMutation.mutate()}
+            syncLabel="Sync maps from game"
+            onCreate={() => {
+              createMutation.reset();
+              updateMutation.reset();
+              setFormData({ ...emptyMapForm });
+              setCreateDialogOpen(true);
+            }}
+            createLabel="Create map"
+          />
         }
       />
 
@@ -314,14 +326,14 @@ export default function MapsAdminPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search maps..."
-        emptyMessage="No maps found."
+        searchPlaceholder="Search maps…"
+        emptyMessage="No maps yet. Use “Create map” to add the first one."
         actions={
           <Select
             value={selectedGamemodeId?.toString() ?? "all"}
             onValueChange={handleGamemodeFilterChange}
           >
-            <SelectTrigger className="w-[220px]">
+            <SelectTrigger aria-label="Filter maps by gamemode" className="w-[220px]">
               <SelectValue placeholder="Filter by gamemode" />
             </SelectTrigger>
             <SelectContent>
@@ -335,12 +347,12 @@ export default function MapsAdminPage() {
           </Select>
         }
         onRowDoubleClick={
-          canUpdate
+          isSuperuser
             ? (row) => {
                 const map = row.original;
                 updateMutation.reset();
                 setEditingMap(map);
-                setFormData({ name: map.name, gamemode_id: map.gamemode_id });
+                setFormData(getMapForm(map));
               }
             : undefined
         }
@@ -349,30 +361,25 @@ export default function MapsAdminPage() {
       {/* Create/Edit Dialog */}
       <EntityFormDialog
         open={createDialogOpen || !!editingMap}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCreateDialogOpen(false);
-            setEditingMap(null);
-            setFormData({ ...emptyMapForm });
-          }
-        }}
-        title={editingMap ? "Edit Map" : "Create Map"}
+        onOpenChange={onEntityDialogClose(closeForm)}
+        title={editingMap ? "Edit map" : "Create map"}
         description={editingMap ? "Update map information" : "Create a new map in the game"}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         submittingLabel={editingMap ? "Updating map…" : "Creating map…"}
-        errorMessage={
-          (editingMap ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingMap ? updateMutation.error : createMutation.error)?.message
-            : undefined
-        }
+        errorMessage={entityFormError(
+          "map",
+          !!editingMap,
+          updateMutation.error,
+          createMutation.error
+        )}
         isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor={nameFieldId}>Name *</Label>
             <Input
-              id="name"
+              id={nameFieldId}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Map name"
@@ -381,14 +388,14 @@ export default function MapsAdminPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="gamemode">Gamemode</Label>
+            <Label htmlFor={gamemodeFieldId}>Gamemode *</Label>
             <Select
               value={formData.gamemode_id?.toString() || ""}
               onValueChange={(value) =>
                 setFormData({ ...formData, gamemode_id: parseInt(value) })
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id={gamemodeFieldId}>
                 <SelectValue placeholder="Select gamemode" />
               </SelectTrigger>
               <SelectContent>
@@ -400,17 +407,46 @@ export default function MapsAdminPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={aliasesFieldId}>Aliases</Label>
+            <Textarea
+              id={aliasesFieldId}
+              value={formatAliasesInput(formData.aliases ?? [])}
+              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
+              placeholder={"Илиос\nHollywood (Halloween)"}
+              rows={5}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              One alias per line — names as they appear in match logs.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <Checkbox
+              id={`${formId}-in-competitive`}
+              checked={formData.in_competitive !== false}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, in_competitive: Boolean(checked) })
+              }
+            />
+            <Label htmlFor={`${formId}-in-competitive`} className="cursor-pointer font-medium text-sm">
+              Competitive map (Входит в соревновательный пул)
+            </Label>
+          </div>
         </div>
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {canDelete && deletingMap && (
+      {deletingMap && (
         <DeleteConfirmDialog
           open={!!deletingMap}
           onOpenChange={(open) => !open && setDeletingMap(null)}
           onConfirm={() => deleteMutation.mutate(deletingMap.id)}
           isDeleting={deleteMutation.isPending}
-          title={`Delete ${deletingMap.name}?`}
+          title="Delete map"
+          description={`“${deletingMap.name}” will be permanently removed from the map catalogue. This cannot be undone.`}
         />
       )}
     </div>

@@ -20,32 +20,38 @@ export default function StepIndicator({ steps, current }: StepIndicatorProps) {
         const isCompleted = i < current;
         const isActive = i === current;
         return (
-          <div key={i} className="flex items-center gap-1">
+          <div key={step.label} className="flex items-center gap-1">
             {i > 0 && (
               <div
+                aria-hidden
                 className={cn(
                   "h-px w-8 transition-colors",
-                  isCompleted ? "bg-white/30" : "bg-white/8",
+                  isCompleted
+                    ? "bg-[color:var(--aqt-fg-dim)]"
+                    : "bg-[color:var(--aqt-border-2)]",
                 )}
               />
             )}
-            <div className="flex items-center gap-1.5">
+            <div
+              className="flex items-center gap-1.5"
+              aria-current={isActive ? "step" : undefined}
+            >
               <div
                 className={cn(
                   "flex size-6 items-center justify-center rounded-full text-xs font-medium transition-all",
                   isActive
-                    ? "bg-white text-black"
+                    ? "bg-[color:var(--aqt-teal)] text-[color:var(--aqt-bg)]"
                     : isCompleted
-                      ? "bg-white/20 text-[color:var(--aqt-fg-muted)]"
-                      : "bg-white/5 text-[color:var(--aqt-fg-faint)]",
+                      ? "bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]"
+                    : "bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)]",
                 )}
               >
-                {isCompleted ? <Check className="size-3.5" /> : i + 1}
+                {isCompleted ? <Check className="size-3.5" aria-hidden /> : i + 1}
               </div>
               <span
                 className={cn(
                   "hidden text-xs font-medium sm:inline",
-                  isActive ? "text-[color:var(--aqt-fg)]" : isCompleted ? "text-[color:var(--aqt-fg-muted)]" : "text-[color:var(--aqt-fg-faint)]",
+                  isActive ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
                 )}
               >
                 {step.label}

@@ -34,6 +34,15 @@ const meService = {
     await apiFetch(`/api/auth/oauth/${provider}/unlink`, { method: "DELETE" });
   },
 
+  /** Self-service deletion of the CURRENT ACCOUNT (not a social account).
+   *  Returns 204. Historical data is deliberately untouched: identity-svc drops
+   *  only account-owned rows (sessions, OAuth connections, API keys, roles) and
+   *  unclaims the player identity, so tournaments, matches, statistics and
+   *  registrations survive. Refused for a superuser account (400). */
+  async deleteAccount(): Promise<void> {
+    await apiFetch("/api/auth/me", { method: "DELETE" });
+  },
+
   async setAvatar(file: File): Promise<unknown> {
     // The gateway's POST /api/auth/me/avatar handler expects a multipart form
     // with a "file" field — it base64-encodes the upload into the RPC body

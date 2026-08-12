@@ -16,6 +16,7 @@ from shared.services.balancer_realtime import (
     BALANCER_JOB_RUNNING,
     BALANCER_JOB_SUCCEEDED,
 )
+from shared.services.roster_shape_access import get_effective_roster_shape
 from src.core.job_store import get_job_store
 from src.core.metrics import (
     BALANCER_JOB_QUEUE_WAIT_SECONDS,
@@ -125,6 +126,7 @@ def get_config() -> dict:
 
 async def create_job(
     *,
+    session,
     uploaded_file,
     raw_config: str | None,
     workspace_id: int,
@@ -144,6 +146,15 @@ async def create_job(
     validate_api_key_config_policy(user, config_overrides)
     _enforce_player_limit(user, player_data)
 
+    # Per-team slot counts are the tournament's, not the request's: resolved
+    # here so a broken roster shape fails the call instead of the job, and so
+    # the queued payload records the shape the run was accepted for.
+    roster_shape = await get_effective_roster_shape(
+        session,
+        tournament_id=tournament_id,
+        workspace_id=workspace_id,
+    )
+
     job_id = uuid.uuid4().hex
     api_key_id = get_api_key_id(user) if is_api_key_principal(user) else None
     principal = get_principal(user)
@@ -159,6 +170,7 @@ async def create_job(
             created_by=user.id,
             credential_type=getattr(user, "_credential_type", "access_token"),
             api_key_id=api_key_id,
+            role_mask=roster_shape.slots,
         )
     except Exception:
         if principal is not None:
@@ -323,6 +335,11 @@ async def execute_balance_job(job_id: str, *, progress_clock=None) -> None:
             raise ValueError("Job payload does not contain valid player data")
         if not isinstance(config_overrides, dict):
             raise ValueError("Job payload does not contain valid config overrides")
+        # Absent on jobs queued before the roster shape reached the balancer:
+        # ``None`` keeps the AlgorithmConfig default mask.
+        role_mask = payload.get("role_mask") or None
+        if role_mask is not None and not isinstance(role_mask, dict):
+            raise ValueError("Job payload does not contain a valid role mask")
 
         algorithm = "moo"
         created_at = current_meta.get("created_at") if isinstance(current_meta, dict) else None
@@ -366,7 +383,7 @@ async def execute_balance_job(job_id: str, *, progress_clock=None) -> None:
 
         solver_started_at = time.perf_counter()
         result = await asyncio.wait_for(
-            run_balance(input_data, config_overrides, progress_callback),
+            run_balance(input_data, config_overrides, progress_callback, role_mask),
             timeout=_SOLVER_WATCHDOG_SECONDS,
         )
         solver_seconds = time.perf_counter() - solver_started_at

@@ -1,13 +1,15 @@
 import React from "react";
 import { getTranslations } from "next-intl/server";
-import { Swords } from "lucide-react";
+import { ArrowRight, Swords } from "lucide-react";
 import Link from "next/link";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { tournamentTag } from "@/app/(site)/users/components/shared/list-utils";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
 import { Hero } from "@/types/hero.types";
 import { cn } from "@/lib/utils";
+import { getPlayerSlug } from "@/utils/player";
 
 interface Props {
   encounters: EncounterWithUserStats[];
@@ -36,7 +38,7 @@ const getTeamLabels = (
 const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: Props) => {
   if (encounters.length === 0) return null;
   const t = await getTranslations();
-  const userSlug = userName.replace("#", "-");
+  const userSlug = getPlayerSlug(userName);
   const teamIdByTournament = new Map(tournaments.map((tour) => [tour.id, tour.team_id]));
 
   return (
@@ -46,7 +48,8 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
       icon={<Swords size={15} />}
       action={
         <Link href={`/users/${userSlug}?tab=matches`} className="aqt-seeall">
-          {t("users.overview.recent.allMatches")} →
+          {t("users.overview.recent.allMatches")}
+          <ArrowRight aria-hidden className="size-3" />
         </Link>
       }
     >
@@ -60,7 +63,7 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
         );
         const stage = getStageLabel(enc);
         const tour = enc.tournament;
-        const tournamentLabel = tour ? (tour.number ? `T${tour.number}` : tour.name.slice(0, 3)) : "T?";
+        const tournamentLabel = tour ? tournamentTag(tour.name) : null;
         const score = enc.score;
         const scoreKind = score.home === score.away ? "draw" : (isUserHome ? score.home > score.away : score.away > score.home) ? "win" : "loss";
         const scoreStr = `${score.home} - ${score.away}`;
@@ -73,7 +76,6 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
           if (userScore < oppScore) return "loss";
           return "draw";
         });
-        const stageShort = stage ? stage.split(" ")[0] : "";
         const subLabel = stage || `BO${enc.best_of || "?"}`;
         const mapCount = enc.matches?.length || 0;
 
@@ -96,8 +98,11 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
             href={`/encounters/${enc.id}`}
             className="grid cursor-pointer grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)] sm:grid-cols-[auto_1fr_auto_auto_auto_auto]"
           >
-            <span className="aqt-mono min-w-[42px] text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
-              {tournamentLabel}{stageShort ? `·${stageShort.charAt(0)}` : ""}
+            <span
+              className="aqt-mono min-w-[42px] text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]"
+              title={tour?.name}
+            >
+              {tournamentLabel}
             </span>
             <div className="flex flex-col gap-0.5 leading-tight">
               <div className="text-[14px] font-semibold text-[color:var(--aqt-fg)]">
@@ -114,7 +119,7 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
             <span className="hidden items-center sm:inline-flex">
               {encHeroes.length > 0 ? <HeroStrip heroes={encHeroes} size="sm" limit={4} /> : null}
             </span>
-            <span className="inline-flex gap-[3px]">
+            <span className="inline-flex gap-[3px]" aria-hidden>
               {pips.map((p, i) => (
                 <span key={i} className={cn("aqt-pip", p)} />
               ))}

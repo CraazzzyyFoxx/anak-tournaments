@@ -194,9 +194,7 @@ def test_first_registration_creates_member_and_player_role() -> None:
                 async with session_maker() as session:
                     # The registration's only identity anchor is workspace_member_id
                     # (dbarch02 dropped user_id) — resolve the member row it points at.
-                    member = await session.scalar(
-                        sa.select(WorkspaceMember).where(WorkspaceMember.id == member_id)
-                    )
+                    member = await session.scalar(sa.select(WorkspaceMember).where(WorkspaceMember.id == member_id))
                     player_role = await get_workspace_system_role(session, workspace_id, "player")
                     has_role = None
                     if player_role is not None:
@@ -242,9 +240,7 @@ def test_workspace_scoped_self_register_deny_returns_403() -> None:
             try:
                 actor = _authed_user(
                     auth_user_id,
-                    denies=[
-                        {"resource": "registration", "action": "self_register", "workspace_id": workspace_id}
-                    ],
+                    denies=[{"resource": "registration", "action": "self_register", "workspace_id": workspace_id}],
                 )
 
                 raised = None
@@ -339,9 +335,7 @@ def test_second_registration_does_not_duplicate_member() -> None:
                     member_id_b = registration_b.workspace_member_id
 
                 async with session_maker() as session:
-                    member_a = await session.scalar(
-                        sa.select(WorkspaceMember).where(WorkspaceMember.id == member_id_a)
-                    )
+                    member_a = await session.scalar(sa.select(WorkspaceMember).where(WorkspaceMember.id == member_id_a))
                     members = (
                         (
                             await session.execute(

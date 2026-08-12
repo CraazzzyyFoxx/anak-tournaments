@@ -289,6 +289,81 @@ class FlexGuardTests(TestCase):
         )
 
 
+class AllRolesModeGuardTests(TestCase):
+    """``all_roles``: exactly one priority role, or flex. Nothing in between.
+
+    The write-path normalizer backfills the role SET but cannot invent which role
+    the registrant meant, so a payload with no priority — or two — is rejected
+    rather than guessed at.
+    """
+
+    FORM = {"flex_role": {"mode": "all_roles"}}
+
+    def test_accepts_exactly_one_priority(self) -> None:
+        validation.validate_registration_input(
+            _form(self.FORM),
+            _payload(
+                [
+                    {"role": "tank", "is_primary": True},
+                    {"role": "dps", "is_primary": False},
+                    {"role": "support", "is_primary": False},
+                ]
+            ),
+        )
+
+    def test_accepts_flex(self) -> None:
+        validation.validate_registration_input(
+            _form(self.FORM),
+            _payload(
+                [
+                    {"role": "tank", "is_primary": True},
+                    {"role": "dps", "is_primary": True},
+                    {"role": "support", "is_primary": True},
+                ]
+            ),
+        )
+
+    def test_rejects_no_priority(self) -> None:
+        with pytest.raises(HTTPException) as exc:
+            validation.validate_registration_input(
+                _form(self.FORM),
+                _payload(
+                    [
+                        {"role": "tank", "is_primary": False},
+                        {"role": "dps", "is_primary": False},
+                        {"role": "support", "is_primary": False},
+                    ]
+                ),
+            )
+        assert exc.value.status_code == 422
+
+    def test_rejects_two_priorities(self) -> None:
+        with pytest.raises(HTTPException) as exc:
+            validation.validate_registration_input(
+                _form(self.FORM),
+                _payload(
+                    [
+                        {"role": "tank", "is_primary": True},
+                        {"role": "dps", "is_primary": True},
+                        {"role": "support", "is_primary": False},
+                    ]
+                ),
+            )
+        assert exc.value.status_code == 422
+
+    def test_optional_mode_still_allows_two_primaries(self) -> None:
+        """The guard is scoped to the mode; nothing else changes behaviour."""
+        validation.validate_registration_input(
+            _form({}),
+            _payload(
+                [
+                    {"role": "tank", "is_primary": True},
+                    {"role": "dps", "is_primary": True},
+                ]
+            ),
+        )
+
+
 class BuildRegistrationRoleHeroesTests(TestCase):
     def test_attaches_ordered_hero_entries(self) -> None:
         entries = reg_service.build_registration_roles(

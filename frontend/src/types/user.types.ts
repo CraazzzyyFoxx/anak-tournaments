@@ -40,7 +40,6 @@ export interface UserRole {
 
 export interface UserTournamentWithStats {
   id: number;
-  number: number;
   name: string;
   division: number;
   /** Grid the `division` was resolved against — render its icon on this grid,
@@ -66,7 +65,6 @@ export interface UserTournamentWithStats {
 
 export interface UserTournamentSummary {
   id: number;
-  number: number | null;
   name: string;
   is_league: boolean;
   is_finished?: boolean;
@@ -96,7 +94,6 @@ export interface UserTournamentPlayer {
 export interface UserEncounterTournament {
   id: number;
   name: string;
-  number: number | null;
   is_league: boolean;
   is_finished?: boolean;
   status?: string | null;
@@ -130,8 +127,8 @@ export interface MatchWithUserStats {
   home_team_id: number | null;
   away_team_id: number | null;
   score: Score;
-  time: number;
-  log_name: string;
+  time: number | null;
+  log_name: string | null;
   encounter_id: number;
   map_id: number;
   code: string | null;
@@ -169,7 +166,6 @@ export interface EncounterWithUserStats {
 export interface UserTournament {
   id: number;
   name: string;
-  number: number;
   is_league: boolean;
   team_id: number;
   team: string;
@@ -186,7 +182,11 @@ export interface UserTournament {
   division_grid_version: DivisionGridVersion | null;
   role: string;
 
-  encounters: EncounterWithUserStats[];
+  /** Only populated after a lazy fetch of `/tournaments/{id}/encounters` for
+   *  the tournament currently open in the dossier — the list endpoint omits
+   *  it so a career-spanning history doesn't ship every event's full
+   *  encounter/match log up front. */
+  encounters?: EncounterWithUserStats[];
 }
 
 export interface UserProfile {

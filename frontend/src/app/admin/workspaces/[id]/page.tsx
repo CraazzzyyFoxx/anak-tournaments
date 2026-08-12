@@ -4,9 +4,12 @@ import { use, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, XCircle, Copy, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle, Copy, Loader2 } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AuditTrail } from "@/components/admin/AuditTrail";
+import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +55,7 @@ interface EditFormData {
   subdomain: string | null;
   seo_title: string | null;
   seo_description: string | null;
+  discord_guild_id: string | null;
 }
 
 function formFromWorkspace(ws: Workspace): EditFormData {
@@ -73,6 +77,7 @@ function formFromWorkspace(ws: Workspace): EditFormData {
     subdomain: ws.subdomain,
     seo_title: ws.seo_title,
     seo_description: ws.seo_description,
+    discord_guild_id: ws.discord_guild_id ?? null,
   };
 }
 
@@ -95,7 +100,7 @@ function BrandColorField({
       <div className="mt-1 flex items-center gap-2">
         <input
           type="color"
-          aria-label={`${label} color`}
+          aria-label={`${label} colour picker`}
           value={valid ? hex : "#000000"}
           onChange={(e) => onChange(e.target.value)}
           className="h-9 w-10 shrink-0 cursor-pointer rounded border border-input bg-transparent p-0.5"
@@ -112,8 +117,12 @@ function BrandColorField({
   );
 }
 
+/**
+ * A bare API `error.message` reads like a stack trace to the person who has to
+ * act on it, so the caller's plain-language sentence always leads.
+ */
 const errorMessage = (error: unknown, fallback: string): string =>
-  error instanceof Error ? error.message : fallback;
+  error instanceof Error && error.message ? `${fallback}: ${error.message}` : fallback;
 
 export default function WorkspaceEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: idParam } = use(params);
@@ -139,6 +148,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
     verifiedAt: string | null;
     token: string | null;
   }>({ domain: null, verifiedAt: null, token: null });
+  const [removeDomainOpen, setRemoveDomainOpen] = useState(false);
 
   // All IANA zones the runtime knows, with a fallback and the saved value kept
   // selectable even if the runtime doesn't list it.
@@ -158,6 +168,11 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     if (!ws || seeded) return;
+    // One-time seed of an editable form from the loaded workspace, guarded by
+    // `seeded` so a background refetch cannot clobber in-progress edits.
+    // Deriving this during render would need a reset-key rewrite of the whole
+    // form; not done here because this pass must not change data flow.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(formFromWorkspace(ws));
     setIconPreview(ws.icon_url ?? null);
     setCustomDomainInput(ws.custom_domain ?? "");
@@ -194,7 +209,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
       notify.success("Workspace updated");
       router.push("/admin/workspaces");
     },
-    onError: (error) => notify.error(errorMessage(error, "Failed to save workspace")),
+    onError: (error) => notify.error(errorMessage(error, "Could not save the workspace")),
   });
 
   const deleteIconMutation = useMutation({
@@ -213,7 +228,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
       invalidate();
       notify.success("Custom domain saved — add the DNS records below, then verify");
     },
-    onError: (error) => notify.error(errorMessage(error, "Failed to save custom domain")),
+    onError: (error) => notify.error(errorMessage(error, "Could not save the custom domain")),
   });
 
   const verifyMutation = useMutation({
@@ -234,9 +249,10 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
     onSuccess: (updated) => {
       applyDomainResult(updated);
       invalidate();
+      setRemoveDomainOpen(false);
       notify.success("Custom domain removed");
     },
-    onError: (error) => notify.error(errorMessage(error, "Failed to remove custom domain")),
+    onError: (error) => notify.error(errorMessage(error, "Could not remove the custom domain")),
   });
 
   // Auto-poll verification while a domain is pending: the domain only goes live
@@ -255,11 +271,14 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
   });
   useEffect(() => {
     if (verifyPoll.data?.custom_domain_verified_at) {
+      // Reacting to a poll result is the "subscribe to an external system" case;
+      // the toast and cache invalidation must fire once per verification, so
+      // this cannot move into render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       applyDomainResult(verifyPoll.data);
       invalidate();
       notify.success("Custom domain verified");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verifyPoll.data?.custom_domain_verified_at]);
 
   const handleIconSelect = (file: File) => {
@@ -276,7 +295,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
   if (wsQuery.isLoading || !isLoaded) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading workspace…
+        <Loader2 aria-hidden className="mr-2 h-5 w-5 animate-spin" /> Loading workspace…
       </div>
     );
   }
@@ -337,6 +356,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
       subdomain: form.subdomain?.trim() || null,
       seo_title: form.seo_title?.trim() || null,
       seo_description: form.seo_description?.trim() || null,
+      discord_guild_id: form.discord_guild_id,
     });
   };
 
@@ -350,14 +370,14 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
         actions={
           <Button asChild variant="ghost" size="sm">
             <Link href="/admin/workspaces">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              <ArrowLeft aria-hidden className="mr-2 h-4 w-4" /> Back to workspaces
             </Link>
           </Button>
         }
       />
 
-      {/* Basics */}
       <section className="space-y-4 rounded-lg border p-4">
+        <h2 className="text-sm font-semibold text-foreground">Basics</h2>
         <div>
           <Label htmlFor="edit-name">Name</Label>
           <Input id="edit-name" value={form.name} onChange={(e) => patch({ name: e.target.value })} />
@@ -389,7 +409,31 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           </p>
         </div>
         <div>
-          <Label>Icon</Label>
+          <Label htmlFor="discord-guild-id">Discord guild ID</Label>
+          <Input
+            id="discord-guild-id"
+            className="mt-1 font-mono"
+            value={form.discord_guild_id ?? ""}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="123456789012345678"
+            maxLength={19}
+            onChange={(e) => patch({ discord_guild_id: e.target.value.replace(/\D/g, "") || null })}
+          />
+          {form.discord_guild_id && !/^\d{17,19}$/.test(form.discord_guild_id) ? (
+            <p className="mt-1 text-xs font-medium text-destructive">
+              A Discord server ID is 17–19 digits — this one is {form.discord_guild_id.length}. Saving
+              now would fail.
+            </p>
+          ) : null}
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            The server this workspace runs in: where Boosty&apos;s bot assigns subscriber roles and where
+            match-log channels live. Enable Developer Mode in Discord, then right-click the server &rarr; Copy
+            Server ID.
+          </p>
+        </div>
+        <div>
+          <p className="text-sm font-medium leading-none">Icon</p>
           <div className="mt-1.5">
             <EditableAvatar
               src={iconPreview}
@@ -419,8 +463,8 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
         </div>
       </section>
 
-      {/* Branding */}
       <section className="space-y-3 rounded-lg border p-4">
+        <h2 className="text-sm font-semibold text-foreground">Branding</h2>
         <div className="flex items-center justify-between gap-4">
           <div>
             <Label htmlFor="branding-enabled">Site branding</Label>
@@ -435,9 +479,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           />
         </div>
 
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Seed colours
-        </p>
+        <h3 className={EYEBROW_CLASS}>Seed colours</h3>
         <div className="grid grid-cols-2 gap-3">
           <BrandColorField id="brand-primary" label="Primary accent" value={form.brand_primary} onChange={(v) => patch({ brand_primary: v })} />
           <BrandColorField id="brand-secondary" label="Secondary accent" value={form.brand_secondary} onChange={(v) => patch({ brand_secondary: v })} />
@@ -445,10 +487,8 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           <BrandColorField id="brand-surface" label="Surface" value={form.brand_surface} onChange={(v) => patch({ brand_surface: v })} />
         </div>
 
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Core palette · optional overrides
-        </p>
-        <p className="-mt-2 text-[11px] text-muted-foreground">
+        <h3 className={EYEBROW_CLASS}>Core palette · optional overrides</h3>
+        <p className="-mt-2 text-xs text-muted-foreground">
           Leave blank to derive from the seed colours above.
         </p>
         <div className="grid grid-cols-2 gap-3">
@@ -491,8 +531,8 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
         )}
       </section>
 
-      {/* Domains & SEO */}
       <section className="space-y-4 rounded-lg border p-4">
+        <h2 className="text-sm font-semibold text-foreground">Domains and SEO</h2>
         <div>
           <Label htmlFor="edit-subdomain">Subdomain</Label>
           <Input
@@ -511,11 +551,11 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
             <Label htmlFor="edit-custom-domain">Custom domain</Label>
             {domain.verifiedAt ? (
               <Badge variant="secondary" className="gap-1">
-                <CheckCircle className="h-3 w-3 text-emerald-500" /> Verified · live
+                <CheckCircle aria-hidden className="h-3 w-3 text-success" /> Verified · live
               </Badge>
             ) : domain.domain ? (
               <Badge variant="outline" className="gap-1">
-                <Loader2 className="h-3 w-3 animate-spin text-amber-500" /> Pending — checking DNS…
+                <Loader2 aria-hidden className="h-3 w-3 animate-spin text-warning" /> Pending — checking DNS…
               </Badge>
             ) : null}
           </div>
@@ -531,18 +571,24 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
               <Button
                 type="button"
                 variant="outline"
-                className="text-destructive"
+                className="text-danger"
                 disabled={clearDomainMutation.isPending}
-                onClick={() => clearDomainMutation.mutate()}
+                onClick={() => setRemoveDomainOpen(true)}
               >
-                Remove
+                Remove domain
               </Button>
             ) : (
               <Button
                 type="button"
                 variant="outline"
-                disabled={!customDomainInput || setDomainMutation.isPending}
-                onClick={() => setDomainMutation.mutate(customDomainInput)}
+                disabled={setDomainMutation.isPending}
+                onClick={() => {
+                  if (!customDomainInput) {
+                    notify.error("Enter a domain such as tourney.example.com first.");
+                    return;
+                  }
+                  setDomainMutation.mutate(customDomainInput);
+                }}
               >
                 {setDomainMutation.isPending ? "Saving…" : "Save domain"}
               </Button>
@@ -556,13 +602,14 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           {domain.domain && !domain.verifiedAt ? (
             <div className="space-y-3 rounded-md border bg-muted/30 p-3">
               <div>
-                <p className="text-xs font-semibold">How to connect your domain</p>
+                <h3 className="text-xs font-semibold">How to connect your domain</h3>
                 <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
                   <li>Open your DNS provider (Cloudflare, Namecheap, GoDaddy…).</li>
                   <li>Add the two records below exactly as shown.</li>
                   <li>
-                    DNS can take a few minutes to propagate — we re-check automatically every 15s,
-                    or press <strong>Verify now</strong>.
+                    DNS can take a few minutes to propagate — we re-check automatically every{" "}
+                    <span className="tabular-nums">{VERIFY_POLL_MS / 1000}s</span>, or press{" "}
+                    <strong>Verify now</strong>.
                   </li>
                 </ol>
               </div>
@@ -571,7 +618,9 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
                   <span className="text-muted-foreground">TXT</span>
                   <span className="break-all">{`_owt-verify.${domain.domain}`}</span>
                   <span className="break-all text-muted-foreground">(ownership)</span>
-                  <span className="text-muted-foreground">↳ value</span>
+                  <span className="text-muted-foreground">
+                    <span aria-hidden>↳ </span>value
+                  </span>
                   <span className="break-all">{domain.token}</span>
                   {domain.token ? (
                     <Button
@@ -582,7 +631,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
                       aria-label="Copy TXT value"
                       onClick={() => domain.token && handleCopy(domain.token)}
                     >
-                      <Copy className="h-3 w-3" />
+                      <Copy aria-hidden className="h-3 w-3" />
                     </Button>
                   ) : (
                     <span />
@@ -591,7 +640,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
                 <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 font-mono">
                   <span className="text-muted-foreground">CNAME</span>
                   <span className="break-all">{domain.domain}</span>
-                  <span className="break-all text-muted-foreground">→ {PLATFORM_ZONE}</span>
+                  <span className="break-all text-muted-foreground">points to {PLATFORM_ZONE}</span>
                 </div>
               </div>
               <Button
@@ -634,6 +683,21 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           {updateMutation.isPending ? "Saving…" : "Save changes"}
         </Button>
       </div>
+
+      {/* Branding, the custom domain and the Discord guild are all audited from
+          this screen, so the trail that answers "who changed this" sits on it.
+          Below the save row on purpose: history is for after the fact. */}
+      <AuditTrail entityType="workspace" entityId={id} workspaceId={id} />
+      <DeleteConfirmDialog
+        open={removeDomainOpen}
+        onOpenChange={setRemoveDomainOpen}
+        onConfirm={() => clearDomainMutation.mutate()}
+        title="Remove custom domain"
+        description={`${domain.domain ?? "This domain"} stops serving ${ws.name} the moment you confirm — visitors land on the platform URL instead. You can add it back later, but the DNS records have to be verified again.`}
+        confirmLabel="Remove domain"
+        confirmingLabel="Removing…"
+        isDeleting={clearDomainMutation.isPending}
+      />
     </form>
   );
 }

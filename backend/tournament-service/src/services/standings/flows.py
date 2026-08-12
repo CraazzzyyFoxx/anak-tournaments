@@ -2,11 +2,12 @@ import typing
 from collections import defaultdict
 
 import sqlalchemy as sa
+from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.services.tournament_utils import sort_bracket_matches
 from src import models, schemas
-from src.core import utils
+from src.core import config, utils
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
 
@@ -61,6 +62,8 @@ async def to_pydantic(
     entities: list[str],
     *,
     histories_by_team: dict[int, list[models.Encounter]] | None = None,
+    tournament_cache: schemas.TournamentRead | None = None,
+    team_cache: dict[int, schemas.TeamRead] | None = None,
 ) -> schemas.StandingRead:
     """
     Converts a Standing model instance to a Pydantic schema (StandingRead), including related entities.
@@ -84,13 +87,25 @@ async def to_pydantic(
     tournament_model = typing.cast(models.Tournament | None, _loaded_relationship(standing, "tournament"))
 
     if _entity_requested(entities, "team") and team_model is not None:
-        team = await team_flows.to_pydantic(session, team_model, utils.prepare_entities(entities, "team"))
+        if team_cache is not None and team_model.id in team_cache:
+            team = team_cache[team_model.id]
+        else:
+            team = await team_flows.to_pydantic(session, team_model, utils.prepare_entities(entities, "team"))
+            if team_cache is not None:
+                team_cache[team_model.id] = team
     if _entity_requested(entities, "stage") and stage_model is not None:
         stage = schemas.StageSummaryRead.model_validate(stage_model, from_attributes=True)
     if _entity_requested(entities, "stage_item") and stage_item_model is not None:
         stage_item = schemas.StageItemSummaryRead.model_validate(stage_item_model, from_attributes=True)
     if _entity_requested(entities, "tournament") and tournament_model is not None:
-        tournament = await tournament_flows.to_pydantic(session, tournament_model, [])
+        # Every standing in one get_by_tournament call shares the SAME tournament
+        # row — recomputing its (entities=[]) pydantic form per standing is pure
+        # CPU waste, not a query, but still O(standings) work for one answer.
+        tournament = (
+            tournament_cache
+            if tournament_cache is not None
+            else await tournament_flows.to_pydantic(session, tournament_model, [])
+        )
     if "matches_history" in entities:
         if histories_by_team is None:
             histories_by_team = _history_by_team(
@@ -127,26 +142,61 @@ async def to_pydantic(
     )
 
 
+@cache(
+    ttl=config.settings.standings_cache_ttl,
+    key="standings_by_tournament:{tournament_id}:{entities}",
+    prefix="fastapi:",
+)
 async def get_by_tournament(
-    session: AsyncSession, tournament: models.Tournament, entities: list[str]
+    session: AsyncSession,
+    tournament_id: int,
+    entities: list[str],
+    *,
+    tournament: models.Tournament | None = None,
 ) -> list[schemas.StandingRead]:
     """
     Retrieves all standings for a specific tournament and converts them to Pydantic schemas.
 
+    Standings rows change on a recalculation (results_changed) or a stage
+    restructure (structure_changed); the embedded ``matches_history`` also moves
+    whenever an encounter does (bracket_changed). All three invalidate this
+    cache via tournament_cache_patterns, so a plain TTL cache here is safe.
+
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        tournament (models.Tournament): The Tournament model instance for which to retrieve standings.
+        tournament_id (int): The id of the tournament to retrieve standings for.
         entities (list[str]): A list of related entities to include (e.g., ["team", "group", "tournament", "matches_history"]).
+        tournament (models.Tournament | None): Optional pre-fetched tournament
+            model (callers typically already loaded it for a visibility check).
+            Only read on a cache miss when "tournament" is a requested entity;
+            otherwise never queried.
 
     Returns:
         list[schemas.StandingRead]: A list of Pydantic schemas representing the standings.
     """
-    standings = await service.get_by_tournament(session, tournament, entities)
+    standings = await service.get_by_tournament(session, tournament_id, entities)
     histories_by_team = None
     if "matches_history" in entities:
         histories_by_team = _history_by_team(
-            await service.get_completed_match_history_by_tournament(session, tournament.id)
+            await service.get_completed_match_history_by_tournament(session, tournament_id)
         )
+    # Every standing shares one tournament and often repeats a team across
+    # stages/stage_items — precompute/memoize instead of re-serializing per row.
+    tournament_cache = None
+    if _entity_requested(entities, "tournament"):
+        tournament_model = (
+            tournament if tournament is not None else await tournament_flows.get(session, tournament_id, [])
+        )
+        tournament_cache = await tournament_flows.to_pydantic(session, tournament_model, [])
+    team_cache: dict[int, schemas.TeamRead] = {}
     return [
-        await to_pydantic(session, standing, entities, histories_by_team=histories_by_team) for standing in standings
+        await to_pydantic(
+            session,
+            standing,
+            entities,
+            histories_by_team=histories_by_team,
+            tournament_cache=tournament_cache,
+            team_cache=team_cache,
+        )
+        for standing in standings
     ]

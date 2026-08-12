@@ -26,7 +26,6 @@ export type BalancerPageCollections = {
   playerValidationStates: PlayerValidationState[];
   readyPlayers: BalancerPlayerRecord[];
   invalidPlayerStates: PlayerValidationState[];
-  missingRankPlayerStates: PlayerValidationState[];
   addableApplications: BalancerApplication[];
   flexPoolCount: number;
 };
@@ -34,12 +33,19 @@ export type BalancerPageCollections = {
 export function buildBalancerPageCollections(
   registrations: AdminRegistration[],
   divisionGrid: DivisionGrid,
+  /**
+   * `flex_role.mode` is `all_roles` or `forced`: every pool player is rated by
+   * their highest rank across all roles, applied to all three. Flattening here
+   * rather than inside `buildBalancerInput` is deliberate — the pool table, the
+   * validation chips and the solver payload then all read the same numbers.
+   */
+  allRoles = false,
 ): BalancerPageCollections {
   const registrationsById = new Map(
     registrations.map((registration) => [registration.id, registration]),
   );
   const players = registrations.map((registration) =>
-    createSyntheticPlayerFromRegistration(registration, divisionGrid),
+    createSyntheticPlayerFromRegistration(registration, divisionGrid, { allRoles }),
   );
   const playersById = new Map(players.map((player) => [player.id, player]));
   const applications = registrations
@@ -62,9 +68,6 @@ export function buildBalancerPageCollections(
     .filter((state) => state.issues.length === 0)
     .map((state) => state.player);
   const invalidPlayerStates = playerValidationStates.filter((state) => state.issues.length > 0);
-  const missingRankPlayerStates = invalidPlayerStates.filter((state) =>
-    state.issues.some((issue) => issue.code === "missing_ranked_role"),
-  );
   const addableApplications = applications.filter(
     (application) => application.is_active && application.player === null,
   );
@@ -81,7 +84,6 @@ export function buildBalancerPageCollections(
     playerValidationStates,
     readyPlayers,
     invalidPlayerStates,
-    missingRankPlayerStates,
     addableApplications,
     flexPoolCount,
   };
@@ -176,7 +178,7 @@ export function replaceVariantPayload(
   payload: InternalBalancePayload,
 ): BalanceVariant[] {
   return variants.map((variant) =>
-    variant.id === activeVariantId ? { ...variant, payload } : variant,
+    variant.id === activeVariantId ? { ...variant, payload, dirty: true } : variant,
   );
 }
 

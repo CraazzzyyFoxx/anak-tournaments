@@ -49,7 +49,7 @@ func NewBinary(h *Handler, resolver IdentityResolver) *Binary {
 func (b *Binary) AvatarSet(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	// Validate the token up front (not just its presence) so an invalid bearer is
@@ -101,7 +101,7 @@ func (b *Binary) AvatarSet(w http.ResponseWriter, r *http.Request) {
 func (b *Binary) AvatarDelete(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token})

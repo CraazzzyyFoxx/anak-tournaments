@@ -23,7 +23,15 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from pydantic import ValidationError  # noqa: E402
 
-from shared.core.enums import DraftAutopickStrategy, DraftFormat, DraftPoolSource  # noqa: E402
+from shared.core.enums import (  # noqa: E402
+    DraftAutopickStrategy,
+    DraftFormat,
+    DraftPoolSource,
+    DraftStatus,
+)
+from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.models.balancer.draft import DraftSession  # noqa: E402
+from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 from src.schemas import draft as ds  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
 
@@ -32,33 +40,77 @@ def test_create_request_defaults() -> None:
     req = ds.DraftSessionCreateRequest()
     assert req.pool_source == DraftPoolSource.BALANCER_BALANCE
     assert req.format == DraftFormat.SNAKE
-    assert req.rounds == 4
     assert req.pick_time_seconds == 45
-    assert req.team_size == 5
     assert req.autopick_strategy == DraftAutopickStrategy.BEST_FIT
     assert req.allow_admin_override is True
 
 
-@pytest.mark.parametrize("rounds", [0, 9, -1])
-def test_create_request_rejects_bad_rounds(rounds: int) -> None:
-    with pytest.raises(ValidationError):
-        ds.DraftSessionCreateRequest(rounds=rounds)
+def test_create_request_no_longer_carries_the_roster_size() -> None:
+    # The shape owns both, so neither may reappear as a request field.
+    assert "rounds" not in ds.DraftSessionCreateRequest.model_fields
+    assert "team_size" not in ds.DraftSessionCreateRequest.model_fields
 
 
-def test_create_request_rejects_rounds_that_do_not_match_roster_size() -> None:
-    with pytest.raises(ValidationError, match="team_size - 1"):
-        ds.DraftSessionCreateRequest(rounds=3, team_size=5)
+def test_create_request_ignores_a_stale_client_sending_rounds_or_team_size() -> None:
+    # Pydantic's default `extra="ignore"`: the keys are accepted and dropped, so
+    # an old admin bundle keeps working and cannot influence the created session.
+    req = ds.DraftSessionCreateRequest(rounds=7, team_size=11)
+
+    assert not hasattr(req, "rounds")
+    assert not hasattr(req, "team_size")
+    assert req.model_dump() == ds.DraftSessionCreateRequest().model_dump()
 
 
-def test_lifecycle_rejects_inconsistent_roster_shape_even_without_schema() -> None:
+def test_lifecycle_rejects_rounds_that_do_not_match_the_shape() -> None:
     with pytest.raises(Exception) as exc_info:
-        lifecycle.validate_roster_shape(rounds=3, team_size=5)
+        lifecycle.validate_draft_rounds(rounds=3, shape=parse_roster_slots({"flex": 6}))
 
     assert exc_info.value.detail[0]["code"] == "invalid_roster_shape"
 
 
-def test_lifecycle_accepts_rounds_equal_to_team_size_minus_captain() -> None:
-    lifecycle.validate_roster_shape(rounds=4, team_size=5)
+def test_lifecycle_accepts_rounds_equal_to_the_shape_minus_the_captain() -> None:
+    lifecycle.validate_draft_rounds(rounds=5, shape=parse_roster_slots({"flex": 6}))
+
+
+def test_session_read_reports_the_shape_and_never_a_scalar_team_size() -> None:
+    assert "team_size" not in ds.DraftSessionRead.model_fields
+    assert ds.DraftSessionRead.model_fields["roster_shape"].annotation is RosterShapeRead
+
+
+def test_session_read_from_session_projects_the_resolved_shape() -> None:
+    # A transient row has no column defaults applied (those land on INSERT), so
+    # every non-nullable field is spelled out here.
+    shape = parse_roster_slots({"tank": 1, "flex": 5})
+    read = ds.DraftSessionRead.from_session(
+        DraftSession(
+            id=1,
+            tournament_id=2,
+            workspace_id=3,
+            status=DraftStatus.SETUP.value,
+            format=DraftFormat.SNAKE.value,
+            rounds=shape.draft_rounds,
+            pick_time_seconds=45,
+            pool_source=DraftPoolSource.BALANCER_BALANCE.value,
+            autopick_strategy=DraftAutopickStrategy.BEST_FIT.value,
+            allow_admin_override=True,
+            settings_json={},
+            version=1,
+        ),
+        shape=shape,
+    )
+
+    assert read.rounds == 5
+    assert read.roster_shape.team_size == 6
+    assert read.roster_shape.draft_rounds == 5
+    assert read.roster_shape.has_role_slots is True
+    assert read.roster_shape.slots == {"tank": 1, "flex": 5}
+
+
+def test_roster_shape_read_is_one_class_shared_with_tournament_service() -> None:
+    # A second copy in balancer-service would be the mirror this feature removes.
+    from src.schemas.draft import RosterShapeRead as balancer_read
+
+    assert balancer_read is RosterShapeRead
 
 
 @pytest.mark.parametrize("seconds", [9, 601])

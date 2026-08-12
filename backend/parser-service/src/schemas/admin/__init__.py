@@ -1,6 +1,5 @@
 from .tournament import *
 from .stage import *
-from .team import *
 from .encounter import *
 from .standing import *
 from .hero import *
@@ -12,12 +11,7 @@ __all__ = (
     # Tournament schemas
     "TournamentCreate",
     "TournamentUpdate",
-    # Team schemas
-    "TeamCreate",
-    "TeamUpdate",
-    # Player schemas
-    "PlayerCreate",
-    "PlayerUpdate",
+    # Player sub-role schemas
     "PlayerSubRoleCreate",
     "PlayerSubRoleRead",
     "PlayerSubRoleUpdate",

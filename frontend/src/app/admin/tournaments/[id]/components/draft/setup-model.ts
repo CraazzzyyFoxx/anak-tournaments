@@ -1,3 +1,4 @@
+import type { RosterShape } from "@/lib/roster-shape";
 import type {
   DraftCaptainOrder,
   DraftFormat,
@@ -66,30 +67,16 @@ export interface DraftScheduleRound {
 }
 
 export interface DraftSetupValidationState {
-  teamSize: number;
   pickTimeSeconds: number;
   captainIds: number[];
   poolReady: boolean;
   previewFeasible: boolean;
 }
 
-export function roundsForTeamSize(teamSize: number): number {
-  return Math.max(1, Math.min(8, teamSize - 1));
-}
-
-function roleTargets(teamSize: number): Record<DraftRole, number> {
-  if (teamSize >= 5) {
-    return { tank: 1, dps: 2, support: Math.max(2, teamSize - 3) };
-  }
-  const tank = Math.min(1, Math.max(0, teamSize));
-  const dps = Math.min(2, Math.max(0, teamSize - tank));
-  return { tank, dps, support: Math.max(0, teamSize - tank - dps) };
-}
-
 export function derivePoolReadiness(
   candidates: DraftPoolCandidate[],
   teamCount: number,
-  teamSize: number
+  shape: RosterShape
 ): DraftPoolReadiness {
   const included = candidates.filter((candidate) => !candidate.excluded);
   const roleCoverage: Record<DraftRole, number> = { tank: 0, dps: 0, support: 0 };
@@ -98,12 +85,14 @@ export function derivePoolReadiness(
       roleCoverage[role] += 1;
     }
   }
-  const requiredPlayers = Math.max(0, teamCount) * Math.max(0, teamSize);
+  const requiredPlayers = Math.max(0, teamCount) * shape.team_size;
   const blockers: string[] = [];
   if (included.length < requiredPlayers) blockers.push("not_enough_players");
-  const targets = roleTargets(teamSize);
+  // The per-role targets ARE the server's roster shape. A code the shape does
+  // not ask for has a target of 0 and can never be short; flex slots take any
+  // role, so they never name one here.
   for (const role of ["tank", "dps", "support"] as const) {
-    if (roleCoverage[role] < targets[role] * teamCount) {
+    if (roleCoverage[role] < (shape.slots[role] ?? 0) * teamCount) {
       blockers.push(`role_shortage:${role}`);
     }
   }
@@ -116,6 +105,45 @@ export function derivePoolReadiness(
     roleCoverage,
     blockers
   };
+}
+
+export type DraftCaptainSort = "rank_desc" | "rank_asc" | "name";
+
+export interface DraftCaptainRow {
+  id: number;
+  label: string;
+  roles: DraftRole[];
+  rank: number | null;
+}
+
+/**
+ * Search + role filter + sort for the captain picker.
+ *
+ * Roles are OR-ed and an empty selection means "any role", so unchecking every
+ * role never hides the whole pool. Unranked players sort last in BOTH rank
+ * directions: a missing rank is unknown, not zero, so it must not win the
+ * strongest seat by accident nor the weakest one.
+ */
+export function filterCaptainRows(
+  rows: readonly DraftCaptainRow[],
+  filters: { query: string; roles: readonly DraftRole[]; sort: DraftCaptainSort }
+): DraftCaptainRow[] {
+  const needle = filters.query.trim().toLocaleLowerCase();
+  const matched = rows.filter(
+    (row) =>
+      (filters.roles.length === 0 || filters.roles.some((role) => row.roles.includes(role))) &&
+      (needle === "" || row.label.toLocaleLowerCase().includes(needle))
+  );
+  if (filters.sort === "name") {
+    return matched.sort((left, right) => left.label.localeCompare(right.label));
+  }
+  const direction = filters.sort === "rank_desc" ? -1 : 1;
+  return matched.sort((left, right) => {
+    if (left.rank == null || right.rank == null) {
+      return left.rank == null ? (right.rank == null ? 0 : 1) : -1;
+    }
+    return (left.rank - right.rank) * direction;
+  });
 }
 
 export function moveCaptain(ids: number[], activeId: number, overId: number): number[] {
@@ -186,7 +214,6 @@ export function validateSetupStep(
 ): string[] {
   const errors: string[] = [];
   if (step === "config") {
-    if (state.teamSize < 2 || state.teamSize > 9) errors.push("team_size_out_of_range");
     if (state.pickTimeSeconds < 10 || state.pickTimeSeconds > 600) {
       errors.push("pick_time_out_of_range");
     }

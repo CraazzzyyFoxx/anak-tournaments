@@ -338,6 +338,7 @@ def validate_registration_input(
         "smurf_tags": getattr(payload, "smurf_tags", None),
         "discord_nick": getattr(payload, "discord_nick", None),
         "twitch_nick": getattr(payload, "twitch_nick", None),
+        "boosty_nick": getattr(payload, "boosty_nick", None),
         "notes": getattr(payload, "notes", None),
         "stream_pov": getattr(payload, "stream_pov", None),
         "roles": getattr(payload, "roles", None),
@@ -348,6 +349,7 @@ def validate_registration_input(
         ("smurf_tags", "Smurf Accounts"),
         ("discord_nick", "Discord"),
         ("twitch_nick", "Twitch"),
+        ("boosty_nick", "Boosty"),
         ("notes", "Notes"),
     ):
         config = built_in_fields.get(field_key)
@@ -402,6 +404,16 @@ def validate_registration_input(
         flex_config = built_in_fields.get("flex_role")
         if flex_config is not None and not flex_config.enabled and _is_flex_submission(submitted_roles):
             _validation_error("Flex registration is not available for this tournament.")
+
+        # ``all_roles``: every role is mandatory and the registrant names exactly
+        # one priority role, or declares flex (every role primary). Anything in
+        # between is a client that lost the choice, not a preference we can guess
+        # — the write-path normalizer backfills the role SET but cannot invent
+        # which role the registrant meant.
+        if flex_config is not None and getattr(flex_config, "mode", None) == "all_roles":
+            primary_count = sum(1 for role in submitted_roles if getattr(role, "is_primary", False))
+            if primary_count not in (1, len(REGISTRATION_ROLE_CODES)):
+                _validation_error("Choose one priority role, or Flex.")
 
         if hero_catalog is not None:
             _validate_role_heroes(

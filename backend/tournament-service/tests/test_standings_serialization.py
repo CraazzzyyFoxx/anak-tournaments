@@ -97,8 +97,6 @@ def _encounter(
         has_logs=False,
         status=enums.EncounterStatus.COMPLETED,
         result_status=enums.EncounterResultStatus.NONE,
-        submitted_by_id=None,
-        confirmed_by_id=None,
     )
 
 

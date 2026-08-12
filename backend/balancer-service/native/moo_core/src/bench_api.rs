@@ -19,6 +19,8 @@ fn bench_config() -> ConfigSpec {
         team_max_pain_weight: 1.0,
         role_line_balance_weight: 1.0,
         sub_role_collision_weight: 24.0,
+        low_rank_threshold: 0.0,
+        low_rank_collision_weight: 250.0,
         use_captains: false,
         tank_impact_weight: 1.4,
         dps_impact_weight: 1.0,

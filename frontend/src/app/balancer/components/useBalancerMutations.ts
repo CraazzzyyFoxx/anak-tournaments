@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
 import type React from "react";
 import type { JobAction } from "./useBalancerJob";
+import { parseImportedBalancePayload } from "./balance-import";
 import { sanitizeBalancerConfig } from "./balancer-config-helpers";
 import {
   buildBalancerInput,
@@ -67,7 +68,7 @@ type ExportToTournamentVariables = {
   onStageChange?: FlowStageReporter;
 };
 
-type ImportTeamsVariables = {
+type ImportBalanceVariables = {
   file: File;
   onStageChange?: FlowStageReporter;
 };
@@ -160,10 +161,7 @@ export function useBalancerMutations({
   const addPlayerMutation = useMutation({
     mutationFn: async (application: BalancerApplication) => {
       if (!tournamentId) throw new Error("Select a tournament first");
-      return balancerAdminService.setRegistrationExclusion(application.id, {
-        exclude_from_balancer: false,
-        exclude_reason: null
-      });
+      return balancerAdminService.includeInBalancer(application.id);
     },
     onSuccess: async (registration) => {
       setSelectedPlayerId(registration.id);
@@ -235,14 +233,20 @@ export function useBalancerMutations({
         registrationPatch.balancer_status = payload.registration_balancer_status;
       }
 
-      if (payload.is_in_pool !== undefined) {
-        registrationPatch.exclude_from_balancer = !(payload.is_in_pool ?? true);
-        registrationPatch.exclude_reason = payload.is_in_pool ? null : "manual_exclusion";
+      // "Include" can't be expressed as a literal balancer_status in this
+      // combined PATCH (ready/incomplete are computed-only); fold "exclude"
+      // in here, but issue "include" as its own follow-up call below.
+      if (payload.is_in_pool === false) {
+        registrationPatch.balancer_status = "excluded";
+        registrationPatch.exclude_reason = "manual_exclusion";
       }
 
       let updated: AdminRegistration | null = null;
       if (Object.keys(registrationPatch).length > 0) {
         updated = await balancerAdminService.updateRegistration(playerId, registrationPatch);
+      }
+      if (payload.is_in_pool === true) {
+        updated = await balancerAdminService.includeInBalancer(playerId);
       }
       return updated;
     },
@@ -259,10 +263,7 @@ export function useBalancerMutations({
 
   const removePlayerMutation = useMutation({
     mutationFn: (playerId: number) =>
-      balancerAdminService.setRegistrationExclusion(playerId, {
-        exclude_from_balancer: true,
-        exclude_reason: "manual_exclusion"
-      }),
+      balancerAdminService.setBalancerStatus(playerId, "excluded", "manual_exclusion"),
     onSuccess: (registration) => {
       patchRegistrationInCache(registration);
       setEditingPlayerId(null);
@@ -272,17 +273,20 @@ export function useBalancerMutations({
 
   const setPlayerPoolMembershipMutation = useMutation({
     mutationFn: ({ playerId, isInPool }: { playerId: number; isInPool: boolean }) =>
-      balancerAdminService.setRegistrationExclusion(playerId, {
-        exclude_from_balancer: !isInPool,
-        exclude_reason: isInPool ? null : "manual_exclusion"
-      }),
+      isInPool
+        ? balancerAdminService.includeInBalancer(playerId)
+        : balancerAdminService.setBalancerStatus(playerId, "excluded", "manual_exclusion"),
     onSuccess: (registration, variables) => {
       patchRegistrationInCache(registration);
-      notify.success(
-        variables.isInPool
-          ? "Registration included in balancer"
-          : "Registration excluded from balancer"
-      );
+      if (variables.isInPool) {
+        notify.success(
+          registration.balancer_status === "ready"
+            ? "Registration moved to Ready"
+            : "Registration included in balancer, but marked Incomplete -- not every active role has a rank yet"
+        );
+      } else {
+        notify.success("Registration excluded from balancer");
+      }
     }
   });
 
@@ -298,11 +302,13 @@ export function useBalancerMutations({
   const bulkPoolMembershipMutation = useMutation({
     mutationFn: async ({ playerIds, isInPool }: { playerIds: number[]; isInPool: boolean }) => {
       if (!tournamentId) throw new Error("Select a tournament first");
-      const result = await balancerAdminService.bulkSetExclusion(tournamentId, {
-        registration_ids: playerIds,
-        exclude_from_balancer: !isInPool,
-        exclude_reason: isInPool ? null : "manual_exclusion"
-      });
+      const result = isInPool
+        ? await balancerAdminService.bulkAddToBalancer(tournamentId, playerIds)
+        : await balancerAdminService.bulkSetBalancerStatus(tournamentId, {
+            registration_ids: playerIds,
+            balancer_status: "excluded",
+            exclude_reason: "manual_exclusion"
+          });
       return { ...result, isInPool };
     },
     onSuccess: (result) => {
@@ -495,24 +501,32 @@ export function useBalancerMutations({
     }
   });
 
-  const importTeamsMutation = useMutation({
-    mutationFn: async ({ file, onStageChange }: ImportTeamsVariables) => {
+  // Import loads the file as another variant — creating tournament teams stays an
+  // explicit Save / Export to Tournament step, same as for a generated balance.
+  const importBalanceMutation = useMutation({
+    mutationFn: async ({ file, onStageChange }: ImportBalanceVariables) => {
       if (!tournamentId) throw new Error("Select a tournament first");
 
-      await runReportedStage("read", onStageChange, async () => {
-        JSON.parse(await file.text());
-      });
-
-      const result = await runReportedStage("import", onStageChange, () =>
-        balancerAdminService.importTeamsFromJson(tournamentId, file)
+      const payload = await runReportedStage("read", onStageChange, async () =>
+        parseImportedBalancePayload(await file.text())
       );
 
-      await runReportedStage("refresh", onStageChange, invalidateTournamentExportQueries);
-
-      return result;
+      return runReportedStage("load", onStageChange, async () => {
+        const variant: BalanceVariant = {
+          id: `imported-${Date.now()}`,
+          label: `Imported ${file.name}`,
+          payload,
+          source: "imported"
+        };
+        setVariants((current) => [...current, variant]);
+        setActiveVariantId(variant.id);
+        return { variant, teamCount: payload.teams.length };
+      });
     },
-    onSuccess: (result) => {
-      notify.success("Teams imported", { description: `${result.imported_teams} teams created.` });
+    onSuccess: ({ teamCount }) => {
+      notify.success("Balance loaded from JSON", {
+        description: `${teamCount} teams ready to review — save or export when it looks right.`
+      });
     }
   });
 
@@ -527,6 +541,6 @@ export function useBalancerMutations({
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
-    importTeamsMutation
+    importBalanceMutation
   };
 }

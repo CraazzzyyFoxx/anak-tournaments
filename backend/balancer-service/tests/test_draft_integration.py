@@ -37,6 +37,7 @@ from shared.core.enums import (  # noqa: E402
     TournamentStatus,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
+from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftPick  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
@@ -48,6 +49,12 @@ from src.services.draft import clock as draft_clock  # noqa: E402
 from src.services.draft import export as draft_export  # noqa: E402
 from src.services.draft import lifecycle, loaders, selection  # noqa: E402
 from src.services.draft import realtime as draft_realtime  # noqa: E402
+
+# The 3-slot roster these tests draft for. It replaces the old
+# `rounds=2, team_size=3` pair: `role_targets_for_team_size(3)` resolved to
+# 1 tank / 2 dps / 0 support, which is exactly this shape, and `draft_rounds`
+# derives the same 2 rounds the calls used to pass explicitly.
+_SHAPE = parse_roster_slots({"tank": 1, "dps": 2})
 
 
 def _async_url() -> str:
@@ -156,8 +163,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             s,
             tournament_id=self.tournament_id,
             workspace_id=self.workspace_id,
-            rounds=2,
-            team_size=3,
+            shape=_SHAPE,
         )
         await lifecycle.seed(s, draft, captains=self._captains(), players=self._players())
         await s.commit()
@@ -261,8 +267,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
-                rounds=2,
-                team_size=3,
+                shape=_SHAPE,
             )
             # Primary TANK@3000 who can flex DPS@2500.
             special = lifecycle.PlayerSeed(
@@ -312,8 +317,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
-                rounds=2,
-                team_size=3,
+                shape=_SHAPE,
             )
             captains = [
                 lifecycle.CaptainSeed(
@@ -521,10 +525,49 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                     s2,
                     tournament_id=self.tournament_id,
                     workspace_id=self.workspace_id,
-                    rounds=2,
-                    team_size=3,
+                    shape=_SHAPE,
                 )
                 await s2.commit()
+
+    async def test_delete_session_erases_teams_players_and_picks(self) -> None:
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            draft_id = draft.id
+
+            await lifecycle.delete_session(s, draft)
+            await s.commit()
+
+            from shared.models.balancer.draft import DraftPlayer, DraftSession, DraftTeam
+
+            for model in (DraftSession, DraftTeam, DraftPlayer, DraftPick):
+                column = DraftSession.id if model is DraftSession else model.session_id
+                remaining = (await s.scalars(sa.select(model.id).where(column == draft_id))).all()
+                self.assertEqual(list(remaining), [], f"{model.__name__} rows survived the delete")
+
+        # The active-session index is free again, so a fresh draft can be set up.
+        async with self.Session() as s2:
+            replacement = await lifecycle.create_session(
+                s2,
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                shape=_SHAPE,
+            )
+            await s2.commit()
+            self.assertNotEqual(replacement.id, draft_id)
+
+    async def test_delete_session_erases_a_cancelled_draft(self) -> None:
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.cancel(s, draft)
+            await s.commit()
+            draft_id = draft.id
+
+            await lifecycle.delete_session(s, draft)
+            await s.commit()
+
+            from shared.models.balancer.draft import DraftSession
+
+            self.assertIsNone(await s.get(DraftSession, draft_id))
 
     async def test_full_run_autopick_to_completion_then_export(self) -> None:
         async with self.Session() as s:
@@ -663,7 +706,6 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 display_name=tag,
                 status="approved",
                 balancer_status="ready",
-                exclude_from_balancer=False,
             )
             s.add(reg)
             await s.flush()
@@ -684,7 +726,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_seed_from_pool_uses_existing_balancer_pool(self) -> None:
         async with self.Session() as s:
             draft = await lifecycle.create_session(
-                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, rounds=2, team_size=3
+                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             pool_ids = await self._build_balancer_pool(s, 9)
             captain_ids = pool_ids[:3]
@@ -714,7 +756,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
         async with self.Session() as s:
             draft = await lifecycle.create_session(
-                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, rounds=2, team_size=3
+                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             pool_ids = await self._build_balancer_pool(s, 9)
             # ranks = 3000 + i*25, so captains[0..2] have ranks 3000 < 3025 < 3050
@@ -750,7 +792,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         # A cancelled draft must not block creating a fresh one.
         async with self.Session() as s:
             second = await lifecycle.create_session(
-                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, rounds=2, team_size=3
+                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             await s.commit()
             self.assertEqual(second.status, DraftStatus.SETUP.value)
@@ -759,7 +801,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_seed_from_pool_rejects_captain_not_in_pool(self) -> None:
         async with self.Session() as s:
             draft = await lifecycle.create_session(
-                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, rounds=2, team_size=3
+                s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             await self._build_balancer_pool(s, 4)
             with self.assertRaises(ApiHTTPException):

@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import heroService from "@/services/hero.service";
+import registrationService from "@/services/registration.service";
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { useTranslations } from "next-intl";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import type {
   RegistrationForm,
   RoleInput,
 } from "@/types/registration.types";
-import type { AdditionalRole } from "./types";
+import type { RoleSelections } from "./types";
+import { createRoleSelections, isFlexSelection, type FlexMode } from "./types";
 import type { User } from "@/types/user.types";
-import type { AdminRegistration, BalancerRoleCode, BalancerRoleSubtype } from "@/types/balancer-admin.types";
+import type { AdminRegistration } from "@/types/balancer-admin.types";
 
 import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/admin/AuthUserSearchCombobox";
 import { rbacService } from "@/services/rbac.service";
@@ -20,15 +23,16 @@ import StepIndicator from "@/components/registration/StepIndicator";
 import AccountStep from "@/components/registration/AccountStep";
 import RoleStep from "@/components/registration/RoleStep";
 import DetailsStep from "@/components/registration/DetailsStep";
-import { ROLES } from "@/lib/roles";
+import { ROLES, type RoleCode } from "@/lib/roles";
 import {
   getFirstLiveValidationError,
-  getStepDisplayValidationError,
   getBuiltInFieldValidationError,
   getBuiltInListValidationError,
   getCustomFieldValidationError,
   getVerifiedFieldError,
 } from "@/components/registration/validation";
+
+type StepKey = "accounts" | "roles" | "details";
 
 interface UnifiedFormState {
   step: number;
@@ -37,17 +41,14 @@ interface UnifiedFormState {
   smurfTags: string[];
   discordNick: string;
   twitchNick: string;
+  boostyNick: string;
   notes: string;
   adminNotes: string;
-  isFlex: boolean;
   streamPov: boolean;
   status: string;
   balancerStatus: string;
-  primaryRole: string;
-  subrole: string;
-  additionalRoles: AdditionalRole[];
-  primaryRoleHeroes: string[];
-  flexHeroes: string[];
+  /** One entry per role — see `./types`. Replaces the old primary/additional split. */
+  roleSelections: RoleSelections;
   // rank values map by role
   ranks: Record<string, string>;
   // Custom fields
@@ -56,15 +57,10 @@ interface UnifiedFormState {
 
 type UnifiedFormAction =
   | { type: "SET_STEP"; step: number }
-  | { type: "SET_FIELD"; key: keyof UnifiedFormState; value: any }
+  | { type: "SET_FIELD"; key: keyof UnifiedFormState; value: unknown }
   | { type: "SET_RANK"; role: string; value: string }
   | { type: "SET_CUSTOM_FIELD"; key: string; value: string }
-  | { type: "SET_FLEX"; isFlex: boolean }
-  | { type: "SET_PRIMARY_ROLE"; role: string }
-  | { type: "SET_SUBROLE"; subrole: string }
-  | { type: "SET_ADDITIONAL_ROLES"; roles: AdditionalRole[] }
-  | { type: "SET_PRIMARY_ROLE_HEROES"; heroes: string[] }
-  | { type: "SET_FLEX_HEROES"; heroes: string[] }
+  | { type: "SET_ROLES"; selections: RoleSelections }
   | { type: "INIT_VALUES"; values: Partial<UnifiedFormState> };
 
 const initialState: UnifiedFormState = {
@@ -74,17 +70,13 @@ const initialState: UnifiedFormState = {
   smurfTags: [],
   discordNick: "",
   twitchNick: "",
+  boostyNick: "",
   notes: "",
   adminNotes: "",
-  isFlex: false,
   streamPov: false,
   status: "approved",
   balancerStatus: "not_in_balancer",
-  primaryRole: "",
-  subrole: "",
-  additionalRoles: [],
-  primaryRoleHeroes: [],
-  flexHeroes: [],
+  roleSelections: createRoleSelections(),
   ranks: { tank: "", dps: "", support: "" },
   customFieldsValues: {},
 };
@@ -102,24 +94,8 @@ function formReducer(state: UnifiedFormState, action: UnifiedFormAction): Unifie
         ...state,
         customFieldsValues: { ...state.customFieldsValues, [action.key]: action.value },
       };
-    case "SET_FLEX":
-      return {
-        ...state,
-        isFlex: action.isFlex,
-        ...(action.isFlex
-          ? { primaryRole: "", subrole: "", additionalRoles: [], primaryRoleHeroes: [] }
-          : {}),
-      };
-    case "SET_PRIMARY_ROLE":
-      return { ...state, primaryRole: action.role, isFlex: false, primaryRoleHeroes: [] };
-    case "SET_SUBROLE":
-      return { ...state, subrole: action.subrole };
-    case "SET_ADDITIONAL_ROLES":
-      return { ...state, additionalRoles: action.roles };
-    case "SET_PRIMARY_ROLE_HEROES":
-      return { ...state, primaryRoleHeroes: action.heroes };
-    case "SET_FLEX_HEROES":
-      return { ...state, flexHeroes: action.heroes };
+    case "SET_ROLES":
+      return { ...state, roleSelections: action.selections };
     case "INIT_VALUES":
       return { ...state, ...action.values };
     default:
@@ -154,9 +130,30 @@ export default function UnifiedRegistrationForm({
 }: UnifiedRegistrationFormProps) {
   const t = useTranslations();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
-  const [state, dispatch] = useReducer(formReducer, initialState);
+  // The mode has to be the reducer's INITIAL state, not something applied later:
+  // `buildRolesPayload` only submits roles whose priority is not `off`, and the
+  // modes that render no per-row priority control could never lift a role off it,
+  // so an all-`off` start would submit no roles at all.
+  const flexRoleConfig = formConfig.built_in_fields?.flex_role;
+  const flexMode: FlexMode =
+    flexRoleConfig?.enabled === false
+      ? "off"
+      : flexRoleConfig?.mode === "forced"
+        ? "forced"
+        : flexRoleConfig?.mode === "all_roles"
+          ? "all_roles"
+          : "optional";
+  const [state, dispatch] = useReducer(formReducer, flexMode, (initialFlexMode) => ({
+    ...initialState,
+    roleSelections: createRoleSelections(initialFlexMode),
+  }));
   const [error, setError] = useState<string | null>(null);
+  // Step errors stay hidden until the registrant tries to advance: the form used
+  // to open with a red "BattleTag is required" and a dead Next button.
+  const [advanceAttempted, setAdvanceAttempted] = useState(false);
   const [liveValidationErrors, setLiveValidationErrors] = useState<Record<string, string | null>>({});
+  const stepRef = useRef<HTMLDivElement>(null);
+  const stepErrorRef = useRef<HTMLParagraphElement>(null);
   // Admin-only: site account to anchor this registration on. Prefills empty
   // identity handles from the account's OAuth-verified logins on select.
   const [authUserId, setAuthUserId] = useState<number | undefined>(undefined);
@@ -173,6 +170,7 @@ export default function UnifiedRegistrationForm({
         ["battleTag", handleFor("battlenet"), state.battleTag],
         ["discordNick", handleFor("discord"), state.discordNick],
         ["twitchNick", handleFor("twitch"), state.twitchNick],
+        ["boostyNick", handleFor("boosty"), state.boostyNick],
       ];
       for (const [key, handle, current] of prefill) {
         if (handle && !current.trim()) dispatch({ type: "SET_FIELD", key, value: handle });
@@ -195,14 +193,40 @@ export default function UnifiedRegistrationForm({
   const topHeroesEnabled = !!topHeroesConfig && topHeroesConfig.enabled !== false;
   const maxHeroes =
     topHeroesConfig?.max_heroes && topHeroesConfig.max_heroes > 0 ? topHeroesConfig.max_heroes : 5;
-  const flexEnabled = formConfig.built_in_fields?.flex_role?.enabled !== false;
 
-  // i18n and display steps
-  const STEPS = [
-    { label: mode === "admin" ? "Accounts" : t("registration.wizard.steps.accounts") },
-    { label: mode === "admin" ? "Roles" : t("registration.wizard.steps.roles") },
-    { label: mode === "admin" ? "Details" : t("registration.wizard.steps.details") },
+  /**
+   * Only steps that actually have something to fill in are offered.
+   *
+   * The step list used to be a hard-coded three, so a tournament with no notes,
+   * no stream POV and no custom fields still made the registrant click through a
+   * "Details" step whose entire content was "No additional fields required".
+   */
+  const stepHasContent: Record<StepKey, boolean> = {
+    accounts:
+      mode === "admin" ||
+      ["battle_tag", "smurf_tags", "discord_nick", "twitch_nick", "boosty_nick"].some(isEnabled),
+    roles:
+      mode === "admin" ||
+      isEnabled("primary_role") ||
+      isEnabled("additional_roles") ||
+      isEnabled("flex_role") ||
+      topHeroesEnabled,
+    details:
+      mode === "admin" ||
+      isEnabled("notes") ||
+      formConfig.built_in_fields?.stream_pov?.enabled === true ||
+      formConfig.custom_fields.length > 0,
+  };
+
+  const allStepDefs: Array<{ key: StepKey; label: string }> = [
+    { key: "accounts", label: mode === "admin" ? "Accounts" : t("registration.wizard.steps.accounts") },
+    { key: "roles", label: mode === "admin" ? "Roles" : t("registration.wizard.steps.roles") },
+    { key: "details", label: mode === "admin" ? "Details" : t("registration.wizard.steps.details") },
   ];
+  const visibleSteps = allStepDefs.filter((step) => stepHasContent[step.key]);
+  const STEPS = visibleSteps.length > 0 ? visibleSteps : [allStepDefs[0]];
+  const stepIndex = Math.min(state.step, STEPS.length - 1);
+  const stepKey = STEPS[stepIndex].key;
 
   const heroesQuery = useQuery({
     queryKey: ["heroes-all"],
@@ -212,43 +236,41 @@ export default function UnifiedRegistrationForm({
   });
   const allHeroes = heroesQuery.data?.results ?? [];
 
-  // Map initial values
+  // Map initial values. `formConfig` is read but deliberately not a dependency:
+  // it is a fresh object on most parent renders, and re-running this effect
+  // would overwrite whatever the operator has typed since.
+  const publicPrefillApplied = useRef(false);
   useEffect(() => {
     if (mode === "admin" && initialData) {
       const initRanks: Record<string, string> = { tank: "", dps: "", support: "" };
-      const initRoles: AdditionalRole[] = [];
-      let isFlex = initialData.is_flex ?? false;
-      let primaryRole = "";
-      let subrole = "";
-      let primaryRoleHeroes: string[] = [];
-      let flexHeroes: string[] = [];
+      const roleSelections = createRoleSelections();
 
-      if (initialData.roles) {
-        // Sort roles so primary comes first or by priority
-        const sorted = [...initialData.roles].sort((a, b) => a.priority - b.priority);
-        for (const role of sorted) {
-          const roleHeroes = (role as any).top_heroes ?? [];
-          if (role.rank_value != null) {
-            initRanks[role.role] = String(role.rank_value);
-          }
-          if (isFlex) {
-            if (roleHeroes.length > 0) {
-              flexHeroes = roleHeroes;
-            }
-          } else {
-            if (role.is_primary) {
-              primaryRole = role.role;
-              subrole = role.subrole ?? "";
-              primaryRoleHeroes = roleHeroes;
-            } else {
-              initRoles.push({
-                code: role.role,
-                subrole: role.subrole ?? "",
-                topHeroes: roleHeroes,
-              });
-            }
-          }
+      for (const role of [...(initialData.roles ?? [])].sort((a, b) => a.priority - b.priority)) {
+        const code = role.role;
+        if (!(code in roleSelections)) {
+          continue;
         }
+        if (role.rank_value != null) {
+          initRanks[code] = String(role.rank_value);
+        }
+        roleSelections[code] = {
+          priority: role.is_primary ? "main" : "fallback",
+          subrole: role.subrole ?? "",
+          topHeroes: role.top_heroes ?? [],
+        };
+      }
+
+      // Stored answers are typed JSON; the form state is all strings.
+      const initCustomFields: Record<string, string> = {};
+      for (const field of formConfig.custom_fields) {
+        const stored = initialData.custom_fields_json?.[field.key];
+        if (stored == null) continue;
+        initCustomFields[field.key] =
+          field.type === "checkbox"
+            ? stored === true || stored === "true"
+              ? "true"
+              : "false"
+            : String(stored);
       }
 
       dispatch({
@@ -259,48 +281,51 @@ export default function UnifiedRegistrationForm({
           smurfTags: initialData.smurf_tags_json ?? [],
           discordNick: initialData.discord_nick ?? "",
           twitchNick: initialData.twitch_nick ?? "",
+          boostyNick: initialData.boosty_nick ?? "",
+          // Without these two the editor opened blank on data that exists and
+          // the submit below wrote the blank back — a silent wipe on every save.
           notes: initialData.notes ?? "",
+          customFieldsValues: initCustomFields,
           adminNotes: initialData.admin_notes ?? "",
-          isFlex,
           streamPov: initialData.stream_pov ?? false,
           status: initialData.status ?? "approved",
           balancerStatus: initialData.balancer_status ?? "not_in_balancer",
-          primaryRole,
-          subrole,
-          additionalRoles: initRoles,
+          roleSelections,
           ranks: initRanks,
-          primaryRoleHeroes,
-          flexHeroes,
         },
       });
-    } else if (mode === "public" && userProfile) {
+    } else if (mode === "public" && userProfile && !publicPrefillApplied.current) {
       const init: Partial<UnifiedFormState> = {};
       const accounts = userProfile.social_accounts ?? [];
       const bts = accounts.filter((a) => a.provider === "battlenet").map((a) => a.username);
       const dcs = accounts.filter((a) => a.provider === "discord").map((a) => a.username);
       const tws = accounts.filter((a) => a.provider === "twitch").map((a) => a.username);
+      const bss = accounts.filter((a) => a.provider === "boosty").map((a) => a.username);
       if (isEnabled("battle_tag") && bts.length > 0) init.battleTag = bts[0];
       if (isEnabled("discord_nick") && dcs.length > 0) init.discordNick = dcs[0];
       if (isEnabled("twitch_nick") && tws.length > 0) init.twitchNick = tws[0];
-      dispatch({ type: "INIT_VALUES", values: init });
+      if (isEnabled("boosty_nick") && bss.length > 0) init.boostyNick = bss[0];
+      // The dispatch was missing outright, so this whole block computed a
+      // prefill and threw it away. Applied once: a background refetch of the
+      // profile must not stomp on handles the registrant has since edited.
+      if (Object.keys(init).length > 0) {
+        publicPrefillApplied.current = true;
+        dispatch({ type: "INIT_VALUES", values: init });
+      }
     }
   }, [mode, initialData, userProfile]);
 
-  // Validation strings
-  const PRIMARY_ROLE_REQUIRED_ERROR = t("registration.wizard.validation.primaryRoleRequired");
-  const ADDITIONAL_ROLES_REQUIRED_ERROR = t("registration.wizard.validation.fallbackRoleRequired");
-  const TOP_HEROES_REQUIRED_ERROR = t("registration.wizard.validation.topHeroesRequired");
-
   const getCurrentStepLiveValidationFieldKeys = (): string[] => {
-    if (state.step === 0) {
+    if (stepKey === "accounts") {
       return [
         ...(isEnabled("battle_tag") ? ["battle_tag"] : []),
         ...(isEnabled("smurf_tags") ? ["smurf_tags"] : []),
         ...(isEnabled("discord_nick") ? ["discord_nick"] : []),
         ...(isEnabled("twitch_nick") ? ["twitch_nick"] : []),
+        ...(isEnabled("boosty_nick") ? ["boosty_nick"] : []),
       ];
     }
-    if (state.step === 2) {
+    if (stepKey === "details") {
       return [
         ...(isEnabled("notes") ? ["notes"] : []),
         ...formConfig.custom_fields.map((field) => field.key),
@@ -313,6 +338,7 @@ export default function UnifiedRegistrationForm({
     battle_tag: state.battleTag,
     discord_nick: state.discordNick,
     twitch_nick: state.twitchNick,
+    boosty_nick: state.boostyNick,
   };
   // ``require_verified`` gates the registrant's own OAuth accounts; admin editing
   // is unconstrained (matches AccountStep, which renders a plain input in admin).
@@ -328,7 +354,7 @@ export default function UnifiedRegistrationForm({
       : null;
 
   const validateCurrentStep = (): string | null => {
-    if (state.step === 0) {
+    if (stepKey === "accounts") {
       // ``require_verified`` gating takes priority — it implies the field is required.
       const verifiedError =
         getVerifiedError("battle_tag") ??
@@ -348,6 +374,9 @@ export default function UnifiedRegistrationForm({
       }
       if (isRequired("twitch_nick") && !state.twitchNick.trim()) {
         return t("registration.wizard.validation.twitchRequired");
+      }
+      if (isRequired("boosty_nick") && !state.boostyNick.trim()) {
+        return t("registration.wizard.validation.boostyRequired");
       }
       return (
         (isEnabled("battle_tag")
@@ -381,206 +410,191 @@ export default function UnifiedRegistrationForm({
               getBuiltInConfig("twitch_nick"),
               t
             )
+          : null) ??
+        (isEnabled("boosty_nick")
+          ? getBuiltInFieldValidationError(
+              "boosty_nick",
+              state.boostyNick,
+              getBuiltInConfig("boosty_nick"),
+              t
+            )
           : null)
       );
     }
 
-    if (state.step === 1) {
-      const requiresAnyRole = isEnabled("primary_role") || isEnabled("additional_roles");
-      if (requiresAnyRole && !state.isFlex && !state.primaryRole) {
-        return PRIMARY_ROLE_REQUIRED_ERROR;
+    if (stepKey === "roles") {
+      const active = ROLES.filter((role) => state.roleSelections[role.code].priority !== "off");
+      const hasMain = active.some((role) => state.roleSelections[role.code].priority === "main");
+      if ((isEnabled("primary_role") || isEnabled("additional_roles")) && !hasMain) {
+        return t("registration.wizard.validation.primaryRoleRequired");
       }
-      if (isRequired("additional_roles") && !state.isFlex && state.additionalRoles.length === 0) {
-        return ADDITIONAL_ROLES_REQUIRED_ERROR;
+      if (
+        isRequired("additional_roles") &&
+        !isFlexSelection(state.roleSelections) &&
+        active.length < 2
+      ) {
+        return t("registration.wizard.validation.fallbackRoleRequired");
       }
       if (topHeroesEnabled && topHeroesConfig?.required) {
-        const hasHero = state.isFlex
-          ? state.flexHeroes.length > 0
-          : state.primaryRoleHeroes.length > 0 ||
-            state.additionalRoles.some((entry) => entry.topHeroes.length > 0);
+        const hasHero = active.some((role) => state.roleSelections[role.code].topHeroes.length > 0);
         if (!hasHero) {
-          return TOP_HEROES_REQUIRED_ERROR;
+          return t("registration.wizard.validation.topHeroesRequired");
         }
       }
       return null;
     }
 
-    if (state.step === 2) {
-      if (isRequired("notes") && !state.notes.trim()) {
-        return t("registration.wizard.validation.notesRequired");
-      }
-      const notesValidationError = getBuiltInFieldValidationError(
-        "notes",
-        state.notes,
-        getBuiltInConfig("notes"),
-        t
-      );
-      if (notesValidationError) {
-        return notesValidationError;
-      }
+    if (isRequired("notes") && !state.notes.trim()) {
+      return t("registration.wizard.validation.notesRequired");
+    }
+    const notesValidationError = getBuiltInFieldValidationError(
+      "notes",
+      state.notes,
+      getBuiltInConfig("notes"),
+      t
+    );
+    if (notesValidationError) {
+      return notesValidationError;
+    }
 
-      if (mode === "public") {
-        for (const field of formConfig.custom_fields) {
-          const rawValue = state.customFieldsValues[field.key] ?? "";
-          const isFilled = field.type === "checkbox" ? true : rawValue.trim() !== "";
-          if (field.required && !isFilled) {
-            return t("registration.wizard.validation.fieldRequired", { label: field.label });
-          }
-          const customFieldValidationError = getCustomFieldValidationError(field, rawValue, t);
-          if (customFieldValidationError) {
-            return customFieldValidationError;
-          }
-        }
+    for (const field of formConfig.custom_fields) {
+      const rawValue = state.customFieldsValues[field.key] ?? "";
+      const isFilled = field.type === "checkbox" ? true : rawValue.trim() !== "";
+      // `required` is a rule for the registrant. An admin editing a row that
+      // predates the definition must not be locked out of unrelated fixes, so
+      // only the format check runs on both sides.
+      if (mode === "public" && field.required && !isFilled) {
+        return t("registration.wizard.validation.fieldRequired", { label: field.label });
+      }
+      const customFieldValidationError = getCustomFieldValidationError(field, rawValue, t);
+      if (customFieldValidationError) {
+        return customFieldValidationError;
       }
     }
 
     return null;
   };
 
-  const currentStepLiveValidationError = getFirstLiveValidationError(
-    liveValidationErrors,
-    getCurrentStepLiveValidationFieldKeys()
-  );
-  const currentStepBaseValidationError = validateCurrentStep();
-  const currentStepValidationError = currentStepLiveValidationError ?? currentStepBaseValidationError;
-  const currentStepDisplayValidationError = getStepDisplayValidationError(
-    currentStepLiveValidationError,
-    currentStepBaseValidationError
-  );
-  const roleStepPrimaryError =
-    state.step === 1 && currentStepDisplayValidationError === PRIMARY_ROLE_REQUIRED_ERROR
-      ? currentStepDisplayValidationError
-      : null;
-  const roleStepSecondaryError =
-    state.step === 1 && currentStepDisplayValidationError === ADDITIONAL_ROLES_REQUIRED_ERROR
-      ? currentStepDisplayValidationError
-      : null;
-  const footerValidationError =
-    currentStepDisplayValidationError === roleStepPrimaryError ||
-    currentStepDisplayValidationError === roleStepSecondaryError
-      ? null
-      : currentStepDisplayValidationError;
+  const currentStepValidationError =
+    getFirstLiveValidationError(liveValidationErrors, getCurrentStepLiveValidationFieldKeys()) ??
+    validateCurrentStep();
+  // Field-level problems already render inline next to their control, wired via
+  // `aria-invalid`/`aria-describedby`; the footer only carries step-level ones.
+  const stepError = advanceAttempted ? currentStepValidationError : null;
+  const roleStepError = stepKey === "roles" ? stepError : null;
+  const footerError = error ?? (stepKey === "roles" ? null : stepError);
 
-  const buildRolesPayload = (): RoleInput[] => {
-    if (state.isFlex) {
-      return ROLES.map((r) => ({
-        role: r.code,
-        is_primary: true,
-        ...(state.flexHeroes.length > 0 ? { top_heroes: state.flexHeroes } : {}),
-      }));
-    }
-    const roles: RoleInput[] = [];
-    if (state.primaryRole) {
-      roles.push({
-        role: state.primaryRole,
-        ...(state.subrole ? { subrole: state.subrole } : {}),
-        is_primary: true,
-        ...(state.primaryRoleHeroes.length > 0 ? { top_heroes: state.primaryRoleHeroes } : {}),
-      });
-    }
-    for (const ar of state.additionalRoles) {
-      roles.push({
-        role: ar.code,
-        ...(ar.subrole ? { subrole: ar.subrole } : {}),
-        is_primary: false,
-        ...(ar.topHeroes.length > 0 ? { top_heroes: ar.topHeroes } : {}),
-      });
-    }
-    return roles;
+  const orderedActiveRoles = ROLES.filter(
+    (role) => state.roleSelections[role.code].priority !== "off"
+  ).sort((a, b) => {
+    const rank = (code: RoleCode) => (state.roleSelections[code].priority === "main" ? 0 : 1);
+    return rank(a.code) - rank(b.code);
+  });
+
+  const buildRolesPayload = (): RoleInput[] =>
+    orderedActiveRoles.map((role) => {
+      const selection = state.roleSelections[role.code];
+      return {
+        role: role.code,
+        ...(selection.subrole ? { subrole: selection.subrole } : {}),
+        is_primary: selection.priority === "main",
+        ...(selection.topHeroes.length > 0 ? { top_heroes: selection.topHeroes } : {}),
+      };
+    });
+
+  /**
+   * Custom-field answers in the shape both APIs store: string values keyed by
+   * definition key, empty answers omitted so clearing a field clears the stored
+   * one. Shared, because the admin editor used to send no custom fields at all.
+   */
+  const buildCustomFieldsPayload = (): Record<string, string> =>
+    Object.fromEntries(
+      formConfig.custom_fields
+        .map((field) => [
+          field.key,
+          field.type === "checkbox"
+            ? state.customFieldsValues[field.key] === "true"
+              ? "true"
+              : "false"
+            : (state.customFieldsValues[field.key] ?? ""),
+        ])
+        .filter(([, value]) => value !== "")
+    );
+
+  const focusFirstProblem = () => {
+    const invalid = stepRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    (invalid ?? stepErrorRef.current)?.focus();
   };
 
   // Build the unified payload on submit
   const handleNext = () => {
     if (currentStepValidationError) {
+      setAdvanceAttempted(true);
+      // Let the alert render before moving focus into it.
+      requestAnimationFrame(focusFirstProblem);
       return;
     }
 
-    const isLastStep = state.step === STEPS.length - 1;
-    if (isLastStep) {
-      const rolesPayload = buildRolesPayload();
-
-      if (mode === "public") {
-        const payload = {
-          battle_tag: isEnabled("battle_tag") ? (state.battleTag || undefined) : undefined,
-          smurf_tags: isEnabled("smurf_tags") && state.smurfTags.length > 0 ? state.smurfTags : undefined,
-          discord_nick: isEnabled("discord_nick") ? (state.discordNick || undefined) : undefined,
-          twitch_nick: isEnabled("twitch_nick") ? (state.twitchNick || undefined) : undefined,
-          roles: rolesPayload.length > 0 ? rolesPayload : undefined,
-          stream_pov: isEnabled("stream_pov") ? state.streamPov : undefined,
-          notes: isEnabled("notes") ? (state.notes || undefined) : undefined,
-          custom_fields: Object.fromEntries(
-            formConfig.custom_fields
-              .map((f) => [
-                f.key,
-                f.type === "checkbox"
-                  ? (state.customFieldsValues[f.key] === "true" ? "true" : "false")
-                  : (state.customFieldsValues[f.key] ?? ""),
-              ])
-              .filter(([, v]) => v !== "")
-          ),
-        };
-        onSubmit(payload);
-      } else {
-        // Admin payloads
-        const buildAdminRolePayload = (): any[] => {
-          const enabledRoles = ROLES.filter((r) => {
-            if (state.isFlex) return true;
-            return r.code === state.primaryRole || state.additionalRoles.some((ar) => ar.code === r.code);
-          }).map((r) => r.code);
-
-          return enabledRoles.map((roleCode, index) => {
-            const isPrimary = state.isFlex || state.primaryRole === roleCode;
-            const rankStr = state.ranks[roleCode] ?? "";
-            const parsedRankValue = rankStr.trim() ? Number(rankStr) : null;
-            const entry = state.additionalRoles.find((ar) => ar.code === roleCode);
-            const sub = isPrimary ? state.subrole : (entry?.subrole ?? "");
-
-            let topHeroes: string[] = [];
-            if (state.isFlex) {
-              topHeroes = state.flexHeroes;
-            } else if (isPrimary) {
-              topHeroes = state.primaryRoleHeroes;
-            } else if (entry) {
-              topHeroes = entry.topHeroes;
-            }
-
-            return {
-              role: roleCode,
-              subrole: sub || null,
-              is_primary: isPrimary,
-              priority: index + 1,
-              rank_value: Number.isFinite(parsedRankValue) ? parsedRankValue : null,
-              is_active: true,
-              ...(topHeroes.length > 0 ? { top_heroes: topHeroes } : {}),
-            };
-          });
-        };
-
-        const payload = {
-          display_name: state.displayName || null,
-          battle_tag: state.battleTag || null,
-          smurf_tags_json: state.smurfTags,
-          discord_nick: state.discordNick || null,
-          twitch_nick: state.twitchNick || null,
-          notes: state.notes || null,
-          admin_notes: state.adminNotes || null,
-          is_flex: state.isFlex,
-          stream_pov: state.streamPov,
-          status: state.status,
-          balancer_status: state.balancerStatus,
-          roles: buildAdminRolePayload(),
-          auth_user_id: authUserId ?? null,
-        };
-        onSubmit(payload);
-      }
-    } else {
-      dispatch({ type: "SET_STEP", step: state.step + 1 });
+    const isLastStep = stepIndex === STEPS.length - 1;
+    if (!isLastStep) {
+      setAdvanceAttempted(false);
+      dispatch({ type: "SET_STEP", step: stepIndex + 1 });
+      return;
     }
+
+    const rolesPayload = buildRolesPayload();
+
+    if (mode === "public") {
+      onSubmit({
+        battle_tag: isEnabled("battle_tag") ? (state.battleTag || undefined) : undefined,
+        smurf_tags: isEnabled("smurf_tags") && state.smurfTags.length > 0 ? state.smurfTags : undefined,
+        discord_nick: isEnabled("discord_nick") ? (state.discordNick || undefined) : undefined,
+        twitch_nick: isEnabled("twitch_nick") ? (state.twitchNick || undefined) : undefined,
+        boosty_nick: isEnabled("boosty_nick") ? (state.boostyNick || undefined) : undefined,
+        roles: rolesPayload.length > 0 ? rolesPayload : undefined,
+        stream_pov: isEnabled("stream_pov") ? state.streamPov : undefined,
+        notes: isEnabled("notes") ? (state.notes || undefined) : undefined,
+        custom_fields: buildCustomFieldsPayload(),
+      });
+      return;
+    }
+
+    onSubmit({
+      display_name: state.displayName || null,
+      battle_tag: state.battleTag || null,
+      smurf_tags_json: state.smurfTags,
+      discord_nick: state.discordNick || null,
+      twitch_nick: state.twitchNick || null,
+      boosty_nick: state.boostyNick || null,
+      notes: state.notes || null,
+      custom_fields_json: buildCustomFieldsPayload(),
+      admin_notes: state.adminNotes || null,
+      is_flex: isFlexSelection(state.roleSelections),
+      stream_pov: state.streamPov,
+      status: state.status,
+      balancer_status: state.balancerStatus,
+      roles: orderedActiveRoles.map((role, index) => {
+        const selection = state.roleSelections[role.code];
+        const rankStr = state.ranks[role.code] ?? "";
+        const parsedRankValue = rankStr.trim() ? Number(rankStr) : null;
+        return {
+          role: role.code,
+          subrole: selection.subrole || null,
+          is_primary: selection.priority === "main",
+          priority: index + 1,
+          rank_value: Number.isFinite(parsedRankValue) ? parsedRankValue : null,
+          is_active: true,
+          ...(selection.topHeroes.length > 0 ? { top_heroes: selection.topHeroes } : {}),
+        };
+      }),
+      auth_user_id: authUserId ?? null,
+    });
   };
 
   const handleBack = () => {
     setError(null);
-    dispatch({ type: "SET_STEP", step: state.step - 1 });
+    setAdvanceAttempted(false);
+    dispatch({ type: "SET_STEP", step: stepIndex - 1 });
   };
 
   const handleFieldUpdate = (key: string, value: string) => {
@@ -588,6 +602,7 @@ export default function UnifiedRegistrationForm({
     if (key === "battle_tag") dispatch({ type: "SET_FIELD", key: "battleTag", value });
     else if (key === "discord_nick") dispatch({ type: "SET_FIELD", key: "discordNick", value });
     else if (key === "twitch_nick") dispatch({ type: "SET_FIELD", key: "twitchNick", value });
+    else if (key === "boosty_nick") dispatch({ type: "SET_FIELD", key: "boostyNick", value });
     else if (key === "notes") dispatch({ type: "SET_FIELD", key: "notes", value });
     else if (key === "stream_pov") dispatch({ type: "SET_FIELD", key: "streamPov", value: value === "true" });
     else dispatch({ type: "SET_CUSTOM_FIELD", key, value });
@@ -612,9 +627,27 @@ export default function UnifiedRegistrationForm({
   const battleTagSuggestions = profileAccounts.filter((a) => a.provider === "battlenet").map((a) => a.username);
   const discordSuggestions = profileAccounts.filter((a) => a.provider === "discord").map((a) => a.username);
   const twitchSuggestions = profileAccounts.filter((a) => a.provider === "twitch").map((a) => a.username);
+  const boostySuggestions = profileAccounts.filter((a) => a.provider === "boosty").map((a) => a.username);
+
+  // Subscription standing for the chips, the rule notice and the submit block.
+  // Public mode only: the endpoint answers for the CALLER, so it is meaningless
+  // while an admin edits somebody else's registration.
+  const subscriptionQuery = useQuery({
+    queryKey: tournamentQueryKeys.subscriptionStatus(tournamentId),
+    queryFn: () => registrationService.getMySubscriptionStatus(tournamentId),
+    enabled: mode === "public" && formConfig.require_subscription === true,
+    staleTime: 30_000,
+  });
+
+  // The server refuses this submit, and no field on this form can change that:
+  // `blocks_registration` is already narrowed to the automatically-decided part
+  // of the rule, so anything a challenge code could still fix is NOT in here —
+  // that is asked for at check-in. Disabling beats letting three steps be filled
+  // in and answering 400.
+  const subscriptionBlocked = subscriptionQuery.data?.blocks_registration === true;
 
   // Setup options for admin selects
-  const registrationStatusOptions = {
+  const resolvedRegistrationStatusOptions = {
     system: [
       { value: "pending", name: "Pending" },
       { value: "approved", name: "Approved" },
@@ -623,58 +656,42 @@ export default function UnifiedRegistrationForm({
       { value: "banned", name: "Banned" },
       { value: "insufficient_data", name: "Incomplete" },
     ],
-    custom: [], // Can be populated dynamically if custom options are loaded
+    custom:
+      initialData?.status_meta?.kind === "custom"
+        ? [{ value: initialData.status ?? "", name: initialData.status_meta.name }]
+        : [],
   };
 
-  const balancerStatusOptions = {
+  const resolvedBalancerStatusOptions = {
     system: [
       { value: "not_in_balancer", name: "Not Added" },
       { value: "incomplete", name: "Incomplete" },
       { value: "ready", name: "Ready" },
     ],
-    custom: [],
+    custom:
+      initialData?.balancer_status_meta?.kind === "custom"
+        ? [{ value: initialData.balancer_status ?? "", name: initialData.balancer_status_meta.name }]
+        : [],
   };
 
-  const isLastStep = state.step === STEPS.length - 1;
-
-  // Admin select custom status options merging if initialData contains custom options
-  const resolvedRegistrationStatusOptions = {
-    system: registrationStatusOptions.system,
-    custom: initialData?.status_meta?.kind === "custom" 
-      ? [{ value: initialData.status ?? "", name: initialData.status_meta.name }]
-      : [],
-  };
-
-  const resolvedBalancerStatusOptions = {
-    system: balancerStatusOptions.system,
-    custom: initialData?.balancer_status_meta?.kind === "custom"
-      ? [{ value: initialData.balancer_status ?? "", name: initialData.balancer_status_meta.name }]
-      : [],
-  };
+  const isLastStep = stepIndex === STEPS.length - 1;
 
   return (
-    <div className="flex flex-col gap-5 sm:min-h-[560px] lg:min-h-[640px]">
+    <div className="flex flex-col gap-4">
       {mode === "public" && (
-        <div>
-          <h2 className="text-lg font-semibold text-[color:var(--aqt-fg)]">
-            {tournamentName
-              ? t("registration.wizard.titleFor", { name: tournamentName })
-              : t("registration.wizard.title")}
-          </h2>
-          <p className="mt-1 text-sm text-[color:var(--aqt-fg-muted)]">
-            {state.step === 0 && t("registration.wizard.step1Desc")}
-            {state.step === 1 && t("registration.wizard.step2Desc")}
-            {state.step === 2 && t("registration.wizard.step3Desc")}
-          </p>
-        </div>
+        <h2 className="text-lg font-semibold text-[color:var(--aqt-fg)]">
+          {tournamentName
+            ? t("registration.wizard.titleFor", { name: tournamentName })
+            : t("registration.wizard.title")}
+        </h2>
       )}
 
-      <StepIndicator steps={STEPS} current={state.step} />
+      {STEPS.length > 1 && <StepIndicator steps={STEPS} current={stepIndex} />}
 
-      <div className="flex-1">
-        {state.step === 0 && mode === "admin" && (
+      <div ref={stepRef}>
+        {stepKey === "accounts" && mode === "admin" && (
           <div className="mb-4 space-y-1.5">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+            <h3 className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
               Linked Site Account
             </h3>
             <AuthUserSearchCombobox
@@ -682,13 +699,13 @@ export default function UnifiedRegistrationForm({
               selectedLabel={authUserLabel}
               onSelect={handleSelectAuthUser}
             />
-            <p className="text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
+            <p className="text-xs leading-5 text-[color:var(--aqt-fg-muted)]">
               Optional. Anchors this registration on the selected account; empty handles are prefilled
               from its verified logins.
             </p>
           </div>
         )}
-        {state.step === 0 && (
+        {stepKey === "accounts" && (
           <AccountStep
             mode={mode}
             displayName={state.displayName}
@@ -697,6 +714,7 @@ export default function UnifiedRegistrationForm({
               battle_tag: state.battleTag,
               discord_nick: state.discordNick,
               twitch_nick: state.twitchNick,
+              boosty_nick: state.boostyNick,
             }}
             onUpdate={handleFieldUpdate}
             smurfTags={state.smurfTags}
@@ -706,6 +724,8 @@ export default function UnifiedRegistrationForm({
             battleTagSuggestions={mode === "admin" ? [] : battleTagSuggestions}
             discordSuggestions={mode === "admin" ? [] : discordSuggestions}
             twitchSuggestions={mode === "admin" ? [] : twitchSuggestions}
+            boostySuggestions={mode === "admin" ? [] : boostySuggestions}
+            subscription={mode === "public" ? subscriptionQuery.data : null}
             accounts={mode === "admin" ? [] : (userProfile?.social_accounts ?? [])}
             verifiedErrors={{
               battle_tag: getVerifiedError("battle_tag"),
@@ -726,32 +746,21 @@ export default function UnifiedRegistrationForm({
           />
         )}
 
-        {state.step === 1 && (
+        {stepKey === "roles" && (
           <RoleStep
-            isFlex={state.isFlex}
-            primaryRole={state.primaryRole}
-            subrole={state.subrole}
-            additionalRoles={state.additionalRoles}
-            onSetFlex={(isFlex) => dispatch({ type: "SET_FLEX", isFlex })}
-            onSetPrimaryRole={(role) => dispatch({ type: "SET_PRIMARY_ROLE", role })}
-            onSetSubrole={(subrole) => dispatch({ type: "SET_SUBROLE", subrole })}
-            onSetAdditionalRoles={(roles) => dispatch({ type: "SET_ADDITIONAL_ROLES", roles })}
-            primaryRoleError={roleStepPrimaryError}
-            secondaryRolesError={roleStepSecondaryError}
+            selections={state.roleSelections}
+            onChange={(selections) => dispatch({ type: "SET_ROLES", selections })}
+            error={roleStepError}
             form={formConfig}
             allHeroes={allHeroes}
             topHeroesEnabled={topHeroesEnabled}
             maxHeroes={maxHeroes}
-            flexEnabled={flexEnabled}
-            primaryRoleHeroes={state.primaryRoleHeroes}
-            onSetPrimaryRoleHeroes={(heroes) => dispatch({ type: "SET_PRIMARY_ROLE_HEROES", heroes })}
-            flexHeroes={state.flexHeroes}
-            onSetFlexHeroes={(heroes) => dispatch({ type: "SET_FLEX_HEROES", heroes })}
+            flexMode={flexMode}
             hideHelperText={mode === "admin"}
           />
         )}
 
-        {state.step === 2 && (
+        {stepKey === "details" && (
           <DetailsStep
             mode={mode}
             values={{
@@ -774,25 +783,43 @@ export default function UnifiedRegistrationForm({
         )}
       </div>
 
-      {(error || footerValidationError) && (
-        <p className="text-sm text-red-400">{error ?? footerValidationError}</p>
+      {footerError && (
+        <p
+          ref={stepErrorRef}
+          role="alert"
+          tabIndex={-1}
+          className="text-sm text-destructive focus-visible:outline-none"
+        >
+          {footerError}
+        </p>
+      )}
+
+      {subscriptionBlocked && (
+        <p
+          role="alert"
+          className="rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-rose)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_12%,transparent)] p-2.5 text-xs leading-5 text-[color:var(--aqt-fg)]"
+        >
+          {t("common.subscription.registrationBlocked", {
+            rule: subscriptionQuery.data?.rule ?? "",
+          })}
+        </p>
       )}
 
       <div className="flex items-center justify-between border-t border-[color:var(--aqt-border)] pt-4">
-        {state.step > 0 ? (
+        {stepIndex > 0 ? (
           <button
             type="button"
             onClick={handleBack}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-white/4"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            <ArrowLeft className="size-3.5" />
+            <ArrowLeft className="size-3.5" aria-hidden />
             {mode === "admin" ? "Back" : t("common.back")}
           </button>
         ) : (
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-white/4"
+            className="rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {mode === "admin" ? "Cancel" : t("common.cancel")}
           </button>
@@ -801,16 +828,16 @@ export default function UnifiedRegistrationForm({
         <button
           type="button"
           onClick={handleNext}
-          disabled={submitPending || Boolean(currentStepValidationError)}
-          className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+          disabled={submitPending || (isLastStep && subscriptionBlocked)}
+          className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
         >
-          {submitPending && <Loader2 className="size-4 animate-spin" />}
+          {submitPending && <Loader2 className="size-4 animate-spin" aria-hidden />}
           {isLastStep ? (
             mode === "admin" ? (initialData ? "Save" : "Create") : t("common.submit")
           ) : (
             <>
               {mode === "admin" ? "Next" : t("common.next")}
-              <ArrowRight className="size-3.5" />
+              <ArrowRight className="size-3.5" aria-hidden />
             </>
           )}
         </button>

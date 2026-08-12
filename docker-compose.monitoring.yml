@@ -44,7 +44,10 @@ services:
           memory: 256M
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    # v0.28+ is REQUIRED: v0.27.0 parses `webhook_url_file` in discord_configs but
+    # its receiver validation still demands `webhook_url`, so a file-backed Discord
+    # webhook fails config load with "no discord webhook URL provided".
+    image: prom/alertmanager:v0.28.1
     restart: unless-stopped
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
@@ -105,6 +108,27 @@ services:
         reservations:
           cpus: '0.05'
           memory: 32M
+
+  # nginx edge — connection/request counters from the internal stub_status
+  # endpoint (nginx :8081, not published to the host). stub_status carries no
+  # per-status counters, so 429 rates come from the `nginx` job in Loki; this
+  # exporter covers saturation and slowloris signals
+  # (nginx_connections_{active,reading,writing,waiting}).
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.4.1
+    restart: unless-stopped
+    command:
+      - "--nginx.scrape-uri=http://nginx:8081/stub_status"
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 32M
+        reservations:
+          cpus: '0.05'
+          memory: 16M
 
   # Host-level metrics (CPU / memory / disk / network). Reads the host via
   # bind-mounts; no ports published — scraped over the compose network.
@@ -210,9 +234,21 @@ services:
           memory: 128M
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.111.0
+    # 0.145.0 is the first release shipping the Sentry Exporter (alpha) used by
+    # monitoring/otel/otel-collector.yml.
+    image: otel/opentelemetry-collector-contrib:0.157.0
     restart: unless-stopped
     command: ["--config=/etc/otel-collector/config.yml"]
+    environment:
+      # Sentry Exporter target. The token is an Internal Integration token with
+      # org:read + project:read. The "unset" fallback is deliberate: the exporter
+      # requires a non-empty token at config validation, and an empty one would
+      # crash-loop the collector and take Tempo down with it. With a bogus token
+      # the Sentry branch only logs "Failed to pre-populate project cache" and
+      # drops its spans, while the Tempo pipeline keeps running.
+      SENTRY_ORG_SLUG: "${SENTRY_ORG_SLUG:-craazzzyyfoxx}"
+      SENTRY_OTEL_PROJECT: "${SENTRY_OTEL_PROJECT:-owt-tournaments}"
+      SENTRY_OTEL_AUTH_TOKEN: "${SENTRY_OTEL_AUTH_TOKEN:-unset}"
     volumes:
       - ./monitoring/otel/otel-collector.yml:/etc/otel-collector/config.yml:ro
     depends_on:

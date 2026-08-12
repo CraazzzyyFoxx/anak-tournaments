@@ -8,7 +8,12 @@ DOCS: dict[str, dict] = {
     # ── token / service validation ─────────────────────────────────────────
     "rpc.identity.validate_token": {
         "summary": "Validate token",
-        "description": "Validates a bearer access token or API key and returns the RBAC token payload (user, permissions); 403 if not authenticated.",
+        # 401, not 403: every not-authenticated path in validate_token raises
+        # HTTP_401_UNAUTHORIZED (token_validation.py, auth_token_helpers.py), and
+        # the gateway pins that mapping in TestValidate_ErrorEnvelopeMapsStatus.
+        # This line said 403 and the committed manifest said 401, which is what
+        # had the OpenAPI drift gate — and so all of Lint Backend — red on master.
+        "description": "Validates a bearer access token or API key and returns the RBAC token payload (user, permissions); 401 if not authenticated.",
     },
     "rpc.identity.validate_service_token": {
         "summary": "Validate service token",
@@ -19,8 +24,14 @@ DOCS: dict[str, dict] = {
         "description": "Exchanges service client credentials (client_id + client_secret) for a signed service access token.",
     },
     "rpc.identity.invalidate_session": {
-        "summary": "Invalidate user session",
-        "description": "Service-token-authenticated call that revokes all sessions for the given user_id; returns 204 No Content.",
+        "summary": "Invalidate cached permissions for a user",
+        "description": (
+            "Service-token-authenticated call that drops the cached RBAC entry for the given user_id, so "
+            "their next request re-resolves roles and permissions from the database instead of waiting out "
+            "the cache TTL; returns 204 No Content. Despite the endpoint name it does NOT revoke tokens or "
+            "end sessions — an issued access token stays valid until it expires. Use the session endpoints "
+            "for revocation."
+        ),
     },
     # ── auth core ──────────────────────────────────────────────────────────
     "rpc.identity.register": {
@@ -58,6 +69,10 @@ DOCS: dict[str, dict] = {
     "rpc.identity.update_me": {
         "summary": "Update current user",
         "description": "Applies a partial profile update to the active user and returns the updated user.",
+    },
+    "rpc.identity.delete_me": {
+        "summary": "Delete current account",
+        "description": "Permanently deletes the active user's own account (sessions, OAuth connections, API keys, role grants) and returns 204. Historical data is preserved: the linked player identity survives with its account link nulled, so tournaments, matches, statistics and registrations are untouched. 400 for a superuser account.",
     },
     "rpc.identity.set_password": {
         "summary": "Set password",

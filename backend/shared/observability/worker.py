@@ -197,6 +197,39 @@ async def observe_message_processing(
             reset_correlation_id(token)
 
 
+@asynccontextmanager
+async def observe_scheduled_job(job_name: str, *, logger: Any = default_logger) -> Any:
+    """Root-span a periodic/background job (APScheduler tick, cron, poll loop).
+
+    Without this, a job that fires outside any request/message context (no
+    active OTel span to attach to) makes every span it opens — an httpx call,
+    a SQL query — the ROOT of its own trace. Sentry then buckets each one
+    under a generic, unhelpful transaction name (bare "GET" for an httpx
+    child, the raw SQL op for a DB child) instead of the job that made the
+    call. Wrapping the job body gives it one named root ("scheduled
+    <job_name>") that every child span attaches to, mirroring how
+    :func:`observe_message_processing` roots a RabbitMQ consumer.
+    """
+    tracer = trace.get_tracer("shared.observability.worker")
+    started_at = time.perf_counter()
+    with tracer.start_as_current_span(f"scheduled {job_name}", kind=SpanKind.INTERNAL) as span:
+        span.set_attribute("job.name", job_name)
+        try:
+            yield
+            span.set_status(Status(StatusCode.OK))
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            logger.bind(job=job_name, duration_ms=round((time.perf_counter() - started_at) * 1000, 2)).exception(
+                "Scheduled job failed"
+            )
+            raise
+        else:
+            logger.bind(job=job_name, duration_ms=round((time.perf_counter() - started_at) * 1000, 2)).debug(
+                "Scheduled job completed"
+            )
+
+
 async def publish_message(
     broker: Any,
     message: Any,
@@ -210,7 +243,19 @@ async def publish_message(
     logger: Any = default_logger,
     **publish_kwargs: Any,
 ) -> Any:
-    """Publish a RabbitMQ message with metrics and trace propagation."""
+    """Publish a RabbitMQ message with metrics and trace propagation.
+
+    ``persist`` defaults to ``True``: every caller of this helper targets a
+    durable work queue (match-log jobs, achievement evaluation, computation
+    jobs, rank fetches, ...), and FastStream's own default is
+    ``persist=False`` — a transient message on a durable queue, which a broker
+    restart silently discards. The dropped job leaves its row behind with no
+    live consumer (a LogProcessingRecord stuck on ``pending``, i.e. "Queued"
+    forever). The transactional outbox already publishes with ``persist=True``;
+    this makes the direct publishers match. Pass ``persist=False`` explicitly
+    for a genuinely disposable message.
+    """
+    publish_kwargs.setdefault("persist", True)
     queue_name = _queue_name(queue)
     effective_headers, effective_correlation_id = build_message_headers(headers, correlation_id=correlation_id)
     effective_message_id = message_id or uuid.uuid4().hex

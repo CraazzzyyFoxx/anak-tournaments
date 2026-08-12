@@ -59,7 +59,7 @@ async def start_worker() -> None:
         logs_level=config.settings.sentry_logs_level,
         enable_metrics=config.settings.sentry_enable_metrics,
         environment=config.settings.environment,
-        release=config.settings.version,
+        release=config.settings.sentry_release,
         http_proxy=config.settings.sentry_http_proxy_url,
         https_proxy=config.settings.sentry_https_proxy_url,
     )
@@ -69,6 +69,9 @@ async def start_worker() -> None:
         enabled=config.settings.tracing_enabled,
         sampler_name=config.settings.otel_traces_sampler,
         sampler_arg=config.settings.otel_traces_sampler_arg,
+        environment=config.settings.environment,
+        release=config.settings.sentry_release,
+        engine=db.async_engine,
     )
     if config.settings.worker_metrics_port is not None:
         start_worker_metrics_server(config.settings.worker_metrics_port)

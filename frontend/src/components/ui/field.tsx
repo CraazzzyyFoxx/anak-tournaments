@@ -59,14 +59,19 @@ const fieldVariants = cva(
   {
     variants: {
       orientation: {
-        vertical: ["flex-col [&>*]:w-full [&>.sr-only]:w-auto"],
+        // The `.sr-only` escape hatch is matched by class name, so a responsive
+        // variant like `lg:sr-only` misses it and keeps `w-full`: absolutely
+        // positioned at 100% of the viewport, one hidden label then stretches
+        // the document twice its width. `[class*=":sr-only"]` catches the
+        // variants without also catching `not-sr-only`.
+        vertical: ['flex-col [&>*]:w-full [&>.sr-only]:w-auto [&>[class*=":sr-only"]]:w-auto'],
         horizontal: [
           "flex-row items-center",
           "[&>[data-slot=field-label]]:flex-auto",
           "has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px has-[>[data-slot=field-content]]:items-start",
         ],
         responsive: [
-          "@md/field-group:flex-row @md/field-group:items-center @md/field-group:[&>*]:w-auto flex-col [&>*]:w-full [&>.sr-only]:w-auto",
+          '@md/field-group:flex-row @md/field-group:items-center @md/field-group:[&>*]:w-auto flex-col [&>*]:w-full [&>.sr-only]:w-auto [&>[class*=":sr-only"]]:w-auto',
           "@md/field-group:[&>[data-slot=field-label]]:flex-auto",
           "@md/field-group:has-[>[data-slot=field-content]]:items-start @md/field-group:has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px",
         ],

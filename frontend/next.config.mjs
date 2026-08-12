@@ -14,6 +14,16 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Dynamic segments default to a 0s client Router Cache stale time (Next 15+),
+  // so every client-side navigation under a `force-dynamic` layout (e.g.
+  // /tournaments/[id]/*) refetches that layout's RSC payload from scratch.
+  // 30s lets flipping between tabs reuse the just-fetched shell instead of a
+  // full round trip on every click.
+  experimental: {
+    staleTimes: {
+      dynamic: 30,
+    },
+  },
   // Only use standalone output in production builds
   ...(process.env.NODE_ENV === 'production' && { output: "standalone" }),
   // Enable polling only inside Docker (native fs watcher doesn't work with bind mounts)
@@ -31,6 +41,28 @@ const nextConfig = {
       source: `${prefix}/:path*`,
       destination: `${gateway}${prefix}/:path*`,
     }));
+  },
+  async redirects() {
+    // Framework-level so these are real HTTP redirects. The same `redirect()`
+    // call inside a page returns 200 with the redirect encoded in the RSC
+    // stream — the browser still follows it, but a crawler, a bookmark or a
+    // link checker sees a successful empty page instead of a moved one.
+    return [
+      {
+        // `/matches` is a container, not a view: its content is now the
+        // `results` sub-tab. Temporary, because the landing sub-tab is a UI
+        // decision we may revisit.
+        source: "/admin/tournaments/:id/matches",
+        destination: "/admin/tournaments/:id/matches/results",
+        permanent: false,
+      },
+      {
+        // Logs stopped being a top-level tab. This move is settled, so 308.
+        source: "/admin/tournaments/:id/logs",
+        destination: "/admin/tournaments/:id/matches/logs",
+        permanent: true,
+      },
+    ];
   },
   images: {
     unoptimized: true,
@@ -63,6 +95,12 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'minio.craazzzyyfoxx.me',
+        port: '',
+        pathname: '/aqt/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'static.nl.craazzzyyfoxx.me',
         port: '',
         pathname: '/aqt/**',
       },

@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
 
+from shared.schemas.roster_slots import RosterSlotsField
 from shared.tenancy.hostnames import validate_subdomain_label
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -10,6 +11,15 @@ from src.schemas.division_grid import DivisionGridVersionRead
 # 6-digit hex colour (#RRGGBB) — the format the frontend colour pickers emit and
 # the branding derive util consumes.
 _HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
+
+# A Discord snowflake: 17-19 digits. 19 already reaches ~2084, and the column this
+# used to live in was BigInteger, which tops out at 19 digits -- so 20 was never
+# storable, and permitting it would let through a value the migration's downgrade
+# cannot cast back. Kept as a string end to end because it exceeds 2**53 and a float
+# round-trip would corrupt it. No `max_length` accompanies this pattern: it caps the
+# value at 19 characters already, so the `String(32)` column width could never bind,
+# and shipping both into the public schema would advertise contradictory bounds.
+_DISCORD_SNOWFLAKE = r"^\d{17,19}$"
 
 __all__ = (
     "WorkspaceRead",
@@ -51,8 +61,15 @@ class WorkspaceRead(BaseRead):
     custom_domain: str | None = None
     custom_domain_verified_at: datetime | None = None
     custom_domain_verification_token: str | None = None
+    # The organizer's Discord guild. Public for the same reason
+    # `custom_domain_verification_token` above is: it is not a secret -- every
+    # Discord message link is `discord.com/channels/<guild_id>/<channel_id>/<id>`.
+    # A genuinely secret integration value must NOT follow this path; it needs an
+    # authenticated admin read model.
+    discord_guild_id: str | None = None
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
+    default_roster_slots_json: dict[str, int] | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -61,6 +78,7 @@ class WorkspaceCreate(BaseModel):
     description: str | None = None
     icon_url: str | None = None
     default_division_grid_version_id: int | None = None
+    default_roster_slots_json: RosterSlotsField = None
 
 
 class WorkspaceUpdate(BaseModel):
@@ -83,7 +101,11 @@ class WorkspaceUpdate(BaseModel):
     subdomain: str | None = None
     seo_title: str | None = None
     seo_description: str | None = None
+    discord_guild_id: str | None = Field(default=None, pattern=_DISCORD_SNOWFLAKE)
     default_division_grid_version_id: int | None = None
+    # Edited in place, unlike `default_division_grid_version_id` above: a roster
+    # shape has no activation semantics, so it needs no dedicated endpoint.
+    default_roster_slots_json: RosterSlotsField = None
 
     @field_validator(
         "brand_primary",
@@ -126,6 +148,15 @@ class WorkspaceUpdate(BaseModel):
             raise ValueError(f"Unknown IANA timezone: {value!r}") from exc
         return value
 
+    @field_validator("discord_guild_id", mode="before")
+    @classmethod
+    def _blank_snowflake_to_none(cls, value: object) -> object:
+        # A blank id means "clear it", not "fail the digits pattern" -- the same
+        # discipline `_blank_hex_to_none` applies to the brand colours.
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
 
 class WorkspaceCustomDomainSet(BaseModel):
     """Body for ``set_custom_domain``. Normalization/validation of the domain
@@ -150,7 +181,6 @@ class WorkspaceMemberRoleRead(BaseModel):
 class WorkspaceMemberRead(BaseRead):
     workspace_id: int
     auth_user_id: int
-    role: str
     username: str | None = None
     email: str | None = None
     first_name: str | None = None

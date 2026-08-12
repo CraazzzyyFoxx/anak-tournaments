@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 
 import { isAuthRequiredPath } from "@/config/auth";
 import { AUTH_UNAUTHORIZED_EVENT } from "@/lib/auth-events";
@@ -9,29 +10,14 @@ import { isExpiredOrNearExpiry } from "@/lib/jwt";
 import { useProactiveTokenRefresh } from "@/lib/use-proactive-token-refresh";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { realtimeClient } from "@/services/realtime.service";
+import { useAuthModalStore } from "@/stores/auth-modal.store";
 
 const AUTH_PROFILE_STALE_MS = 60_000;
 
-function redirectToLoginIfProtectedRoute() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const { pathname, search, hash } = window.location;
-  if (!isAuthRequiredPath(pathname)) {
-    return;
-  }
-
-  const nextPath = `${pathname}${search}${hash}`;
-  const loginUrl = new URL("/", window.location.origin);
-  loginUrl.searchParams.set("login", "1");
-  loginUrl.searchParams.set("next", nextPath);
-
-  window.location.assign(loginUrl.toString());
-}
-
 export default function AuthBootstrap() {
   const status = useAuthProfileStore((state) => state.status);
+  const router = useRouter();
+  const openAuthModal = useAuthModalStore((state) => state.open);
   const fetchMe = useAuthProfileStore((state) => state.fetchMe);
   const clear = useAuthProfileStore((state) => state.clear);
   const userId = useAuthProfileStore((state) => state.user?.id ?? null);
@@ -117,7 +103,16 @@ export default function AuthBootstrap() {
 
     const handleUnauthorized = () => {
       clear();
-      redirectToLoginIfProtectedRoute();
+      const { pathname, search, hash } = window.location;
+      if (!isAuthRequiredPath(pathname)) {
+        return;
+      }
+      // Leave the protected route and open the sign-in modal in place. This
+      // used to `window.location.assign("/?login=1&next=…")`, throwing away the
+      // whole client app on every 401 — the three other login entry points all
+      // open the modal without a reload.
+      openAuthModal(`${pathname}${search}${hash}`);
+      router.replace("/");
     };
 
     window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
@@ -125,7 +120,7 @@ export default function AuthBootstrap() {
     return () => {
       window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
     };
-  }, [clear]);
+  }, [clear, openAuthModal, router]);
 
   return null;
 }

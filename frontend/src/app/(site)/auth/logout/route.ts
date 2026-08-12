@@ -3,22 +3,23 @@ import { cookies } from "next/headers";
 import { getForwardedClientHeaders } from "@/lib/forward-client-headers";
 import { authService } from "@/services/auth.service";
 import { clearAuthCookies, getAccessToken, getRefreshToken } from "@/lib/auth-cookies";
-import { publicOrigin } from "@/lib/request-origin";
 
-export async function GET(request: Request) {
-  // Redirect back to the host the user is actually on (custom domain / subdomain
-  // / apex), derived from forwarded headers — not request.url (0.0.0.0:3000
-  // behind the edge) and not a fixed apex SITE_URL, which would kick a
-  // custom-domain user over to the platform apex on logout. See request-origin.ts.
-  const origin = publicOrigin(request);
-  const url = new URL(request.url);
-  const nextParam = url.searchParams.get("next");
-
+// POST only, and deliberately so. This endpoint revokes the refresh token and
+// deletes the session cookies — a state change that must never ride on a GET,
+// because a GET to a URL is something the *world* can trigger: a chat client
+// unfurling a link preview, a corporate link scanner, an antivirus proxy, the
+// browser's own speculative prefetch, "reopen all tabs". As a GET it was also
+// one careless `<Link href="/auth/logout">` away from signing users out on
+// hover. It answers 204 and lets the client navigate (see lib/logout.ts), which
+// also retires the old `next` parameter and its open-redirect clamp: the client
+// stays on whatever host it is already on, so there is no redirect to validate.
+export async function POST(request: Request) {
   const cookieStore = await cookies();
   const accessToken = getAccessToken(cookieStore);
   const refreshToken = getRefreshToken(cookieStore);
 
-  // Best-effort server-side logout (revoke refresh token)
+  // Best-effort server-side logout (revoke refresh token). A failure here must
+  // still clear the cookies below — the user asked to leave.
   try {
     if (accessToken && refreshToken) {
       await authService.logout(accessToken, refreshToken, getForwardedClientHeaders(request));
@@ -27,24 +28,7 @@ export async function GET(request: Request) {
     // ignore
   }
 
-  // Validate redirect target to prevent open redirects (must stay same-origin).
-  let safeNext = "/";
-  if (nextParam) {
-    try {
-      const parsedNext = new URL(nextParam, origin);
-      if (parsedNext.origin === origin) {
-        safeNext = `${parsedNext.pathname}${parsedNext.search}`;
-      }
-    } catch {
-      if (nextParam.startsWith("/")) {
-        safeNext = nextParam;
-      }
-    }
-  }
-
-  // Redirect back onto the current host (custom domain / subdomain / apex).
-  const redirectUrl = new URL(safeNext, origin);
-  const response = NextResponse.redirect(redirectUrl);
+  const response = new NextResponse(null, { status: 204 });
   clearAuthCookies(response);
   return response;
 }

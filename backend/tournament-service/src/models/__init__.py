@@ -19,6 +19,8 @@ from shared.models.tournament.computation import *
 from shared.models.tournament.encounter import *
 from shared.models.tournament.encounter_link import *
 from shared.models.tournament.encounter_map import *
+from shared.models.tournament.encounter_report import *
+from shared.models.tournament.encounter_result_audit import *
 from shared.models.tournament.stage import *
 from shared.models.tournament.standings import *
 from shared.models.tournament.team import *

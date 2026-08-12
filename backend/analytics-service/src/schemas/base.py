@@ -51,7 +51,6 @@ class TournamentGroupMin(BaseRead):
 
 
 class TournamentMin(BaseRead):
-    number: int | None = None
     name: str | None = None
     is_finished: bool | None = None
     division_grid_version_id: int | None = None

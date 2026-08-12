@@ -5,7 +5,9 @@ arrives base64-encoded from the gateway), status poll, and result. These accept
 both access tokens and workspace-scoped API keys, so the user is rebuilt with the
 full balancer identity (``_resolve_user_from_token`` — restores credential_type +
 api_key attrs the api-key rate-limit/policy/ownership logic needs) rather than the
-generic shared rehydrate. No DB session is used (Redis-backed job store + broker).
+generic shared rehydrate. Only ``create`` needs a DB session — it resolves the
+tournament's roster shape into the queued job; status and result are pure
+Redis-backed job-store reads.
 
 The SSE stream endpoint is intentionally NOT migrated: it's dead code (the
 frontend tracks progress via the tournament:{id}:balancer WS topic), and a
@@ -25,9 +27,12 @@ from starlette.datastructures import Headers, UploadFile
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import MissingIdentityError
+from src.core import db
 from src.core.auth import _resolve_user_from_token
 from src.rpc import _common as c
 from src.services.balancer import jobs
+
+_SF = db.async_session_maker
 
 
 async def _resolve_user(data: dict[str, Any]) -> Any:
@@ -74,13 +79,14 @@ async def _build_upload(data: dict[str, Any]) -> UploadFile:
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.balancer.jobs.create")
     async def _create(data: dict, msg: RabbitMessage) -> dict:
-        async def op() -> Any:
+        async def op(session: Any) -> Any:
             user = await _resolve_user(data)
             workspace_id = c.q1(data, "workspace_id", int)
             if workspace_id is None:
                 raise HTTPException(status_code=422, detail="workspace_id is required")
             try:
                 return await jobs.create_job(
+                    session=session,
                     uploaded_file=await _build_upload(data),
                     raw_config=data.get("config_overrides"),
                     workspace_id=workspace_id,
@@ -91,7 +97,7 @@ def register(broker: Any, logger: Any) -> None:
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        return await c.call(logger, "jobs.create", op)
+        return await c.envelope(logger, "jobs.create", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.jobs.status")
     async def _status(data: dict, msg: RabbitMessage) -> dict:

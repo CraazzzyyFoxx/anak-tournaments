@@ -1,6 +1,6 @@
 import React from "react";
 import { getTranslations } from "next-intl/server";
-import { Award } from "lucide-react";
+import { ArrowRight, Award } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { AchievementRarity } from "@/types/achievement.types";
@@ -47,7 +47,8 @@ const OverviewAchievementsPreview = async ({ achievements, userSlug, limit = DEF
       icon={<Award size={15} />}
       action={
         <Link href={`/users/${userSlug}?tab=achievements`} className="aqt-seeall">
-          {t("common.all")} {unlocked.length} →
+          {t("common.all")} {unlocked.length}
+          <ArrowRight aria-hidden className="size-3" />
         </Link>
       }
     >
@@ -80,7 +81,7 @@ const OverviewAchievementsPreview = async ({ achievements, userSlug, limit = DEF
                     className="aqt-mono text-[10px] font-bold uppercase tracking-[0.1em]"
                     style={{ color: "hsl(var(--rar))" }}
                   >
-                    ◆ {rarityLabel}
+                    <span aria-hidden>◆</span> {rarityLabel}
                   </span>
                   <span className="aqt-mono text-[10px] text-[color:var(--aqt-fg-dim)]">
                     {(ach.rarity * 100).toFixed(2)}%

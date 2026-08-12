@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { Hero } from "@/types/hero.types";
 
 interface HeroPickerBlockProps {
-  /** Heroes to offer — pre-filtered to the role's class, or all heroes for Flex. */
+  /** Heroes to offer — pre-filtered to the role's class. */
   heroes: Hero[];
   /** Selected hero slugs in priority order (1 = top pick). */
   selected: string[];
@@ -39,26 +39,30 @@ export function HeroPickerBlock({ heroes, selected, max, roleCode, onChange }: H
       {heroes.map((hero) => {
         const index = selected.indexOf(hero.slug);
         const isSelected = index >= 0;
-        const disabled = !isSelected && atMax;
+        // At the cap, unselected heroes stay focusable and announce their state:
+        // `disabled` silently removed ~40 controls from the tab order with only
+        // a counter to explain it.
+        const blocked = !isSelected && atMax;
 
         return (
           <button
             key={hero.slug}
             type="button"
+            aria-disabled={blocked}
+            aria-pressed={isSelected}
+            title={hero.name}
             onClick={(event) => {
               event.stopPropagation();
               toggle(hero.slug);
             }}
-            disabled={disabled}
-            aria-pressed={isSelected}
-            title={hero.name}
             className={cn(
-              "relative size-9 shrink-0 rounded-lg border transition-all",
+              "relative size-9 shrink-0 rounded-lg border transition-[opacity,border-color]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               isSelected
                 ? accent.selectedCard
-                : disabled
+                : blocked
                   ? "cursor-default border-[color:var(--aqt-border)] opacity-35"
-                  : "border-[color:var(--aqt-border-2)] opacity-80 hover:border-[color:var(--aqt-border-2)] hover:opacity-100",
+                  : "border-[color:var(--aqt-border-2)] opacity-80 hover:border-[color:var(--aqt-border-3)] hover:opacity-100",
             )}
           >
             <span className="block size-full overflow-hidden rounded-[7px]">
@@ -71,7 +75,7 @@ export function HeroPickerBlock({ heroes, selected, max, roleCode, onChange }: H
               />
             </span>
             {isSelected && (
-              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-white text-[10px] font-bold leading-none text-black shadow">
+              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[color:var(--aqt-teal)] text-[11px] font-bold leading-none tabular-nums text-[color:var(--aqt-bg)] shadow">
                 {index + 1}
               </span>
             )}

@@ -1,9 +1,8 @@
 """Typed-RPC handlers for the achievement engine + rules admin.
 
-Mirrors ``src/routes/achievement.py`` (global ``admin``-role calculate) and the
-workspace-scoped rule/library/override admin in
-``src/routes/admin/achievement_rule.py`` (gated by
-``require_workspace_permission("achievement", <action>)``).
+Mirrors ``src/routes/achievement.py`` (calculate) and the workspace-scoped
+rule/library/override admin in ``src/routes/admin/achievement_rule.py``; both are
+gated by ``require_workspace_permission("achievement", <action>)``.
 
 Achievement *reads* (a user's earned achievements) are owned by app-service; only
 the rules engine + admin live here.
@@ -122,19 +121,20 @@ async def _run_calculate(session: Any, *, workspace_id: int, tournament_id: int 
 
 
 def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber per route, mechanical
-    # ── achievement/calculate (global admin role) ──────────────────────────────
+    # ── achievement/calculate (workspace-scoped achievement.update) ───────────
+    # ``_require_ws`` resolves the scope from ``data`` (the path/query slot); these
+    # two carry it in the payload / on the tournament, so they gate inline instead.
     @broker.subscriber("rpc.parser.ach.calculate")
     async def _calculate(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            if not user.has_role("admin"):
-                raise HTTPException(status_code=403, detail="Role required: admin")
             payload = schemas.AchievementCalculateRequest.model_validate(c.payload(data) or {})
             if payload.workspace_id is None:
                 raise HTTPException(
                     status_code=400, detail="workspace_id is required for global achievement calculation"
                 )
+            ensure_workspace_permission(user, payload.workspace_id, "achievement", "update")
             executed = await _run_calculate(
                 session, workspace_id=payload.workspace_id, tournament_id=None, payload=payload
             )
@@ -149,8 +149,6 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            if not user.has_role("admin"):
-                raise HTTPException(status_code=403, detail="Role required: admin")
             tournament_id = _path_int(data, "tournament_id")
             payload = schemas.AchievementCalculateRequest.model_validate(c.payload(data) or {})
             tournament = await session.get(models.Tournament, tournament_id)
@@ -159,6 +157,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             workspace_id = payload.workspace_id or tournament.workspace_id
             if payload.workspace_id is not None and payload.workspace_id != tournament.workspace_id:
                 raise HTTPException(status_code=400, detail="workspace_id does not match tournament workspace")
+            ensure_workspace_permission(user, workspace_id, "achievement", "update")
             executed = await _run_calculate(
                 session, workspace_id=workspace_id, tournament_id=tournament_id, payload=payload
             )
@@ -246,7 +245,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.export")
     async def _export(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _user, workspace_id = _require_ws(data, "export")
+            _user, workspace_id = _require_ws(data, "read")
             workspace = await _get_workspace_or_404(session, workspace_id)
             rules = await load_rules_for_workspace(session, workspace_id)
             return build_export_payload(workspace, rules)
@@ -256,7 +255,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.import")
     async def _import(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            user, workspace_id = _require_ws(data, "import")
+            user, workspace_id = _require_ws(data, "create")
             body = AchievementRuleExportEnvelope.model_validate(c.payload(data))
             target_workspace = await _get_workspace_or_404(session, workspace_id)
             source_workspace = None
@@ -373,7 +372,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.evaluate")
     async def _evaluate(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _user, workspace_id = _require_ws(data, "calculate")
+            _user, workspace_id = _require_ws(data, "update")
             body = EvaluateRequest.model_validate(c.payload(data))
             run = await run_evaluation(
                 session=session,
@@ -482,7 +481,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.test")
     async def _test(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            _user, workspace_id = _require_ws(data, "calculate")
+            _user, workspace_id = _require_ws(data, "update")
             from src.core.workspace import get_division_grid
             from src.services.achievement.engine.context import EvalContext
             from src.services.achievement.engine.evaluator import evaluate
@@ -562,7 +561,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     @broker.subscriber("rpc.parser.ach.lib_import")
     async def _lib_import(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            user, workspace_id = _require_ws(data, "import")
+            user, workspace_id = _require_ws(data, "create")
             body = AchievementLibraryImportRequest.model_validate(c.payload(data))
             target_workspace = await _get_workspace_or_404(session, workspace_id)
             source_workspace = await _get_source_workspace_or_404(

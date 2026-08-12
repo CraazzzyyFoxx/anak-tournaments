@@ -39,16 +39,12 @@ __all__ = (
 async def load_preview_user_ids(session: AsyncSession, tournament_id: int) -> set[int]:
     """Auth-user ids on a tournament's preview allowlist."""
     rows = await session.execute(
-        sa.select(TournamentPreviewAccess.auth_user_id).where(
-            TournamentPreviewAccess.tournament_id == tournament_id
-        )
+        sa.select(TournamentPreviewAccess.auth_user_id).where(TournamentPreviewAccess.tournament_id == tournament_id)
     )
     return {int(r) for r in rows.scalars().all()}
 
 
-def can_view_tournament(
-    user: AuthUser | None, tournament: Tournament, preview_user_ids: set[int]
-) -> bool:
+def can_view_tournament(user: AuthUser | None, tournament: Tournament, preview_user_ids: set[int]) -> bool:
     """Pure predicate: may ``user`` (possibly anonymous) see ``tournament``?"""
     if not tournament.is_hidden:
         return True
@@ -59,9 +55,7 @@ def can_view_tournament(
     return int(user.id) in preview_user_ids
 
 
-async def assert_tournament_viewable(
-    session: AsyncSession, user: AuthUser | None, tournament_id: int
-) -> Tournament:
+async def assert_tournament_viewable(session: AsyncSession, user: AuthUser | None, tournament_id: int) -> Tournament:
     """Load a tournament and gate it, returning it when viewable.
 
     Raises ``HTTPException(404)`` when the viewer may not see it — including when

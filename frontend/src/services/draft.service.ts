@@ -86,6 +86,23 @@ export default class draftService {
     return res.json();
   }
 
+  /** Every session ever created for the tournament, newest first. */
+  static async listSessions(tournamentId: number): Promise<DraftSession[]> {
+    const res = await apiFetch(`/api/balancer/draft/tournaments/${tournamentId}/sessions`);
+    return res.json();
+  }
+
+  /**
+   * Erase a session with its teams, pool, picks and audit trail. Answers 204,
+   * so there is no body to parse. Rejected with 409 while the draft is live or
+   * paused — cancel it first.
+   */
+  static async deleteSession(tournamentId: number, sessionId: number): Promise<void> {
+    await apiFetch(`/api/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}`, {
+      method: "DELETE"
+    });
+  }
+
   static async seed(
     tournamentId: number,
     sessionId: number,

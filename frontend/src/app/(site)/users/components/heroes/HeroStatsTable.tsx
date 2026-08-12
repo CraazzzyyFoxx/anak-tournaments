@@ -2,9 +2,11 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
+import { ArrowDown, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogStatsName } from "@/types/stats.types";
 import { formatDelta, formatStatValue } from "@/app/(site)/users/components/heroes/utils";
+import { SearchField } from "@/components/ui/search-field";
 
 export type StatSortKey = "delta" | "overall" | "avg10" | "name";
 
@@ -35,36 +37,53 @@ const HeroStatsTable = ({
 }) => {
   const t = useTranslations();
   // Plain render helper (not a component) to avoid recreating a component during render.
-  const sortTh = (label: string, k: StatSortKey, align: "left" | "right" = "right") => (
+  // `srLabel` names the column for assistive tech when the visible header is a
+  // bare symbol (the Δ column) that reads as nonsense on its own.
+  const sortTh = (label: string, k: StatSortKey, align: "left" | "right" = "right", srLabel?: string) => (
     <th
-      onClick={() => onSortChange(k)}
+      scope="col"
+      aria-sort={sort === k ? "descending" : "none"}
       className={cn(
-        "aqt-mono cursor-pointer select-none border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em]",
-        align === "right" ? "text-right" : "text-left",
-        sort === k ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)] hover:text-[color:var(--aqt-fg-muted)]"
+        "border-b border-[color:var(--aqt-border)] px-3 py-2.5",
+        align === "right" ? "text-right" : "text-left"
       )}
     >
-      {label}
-      {sort === k ? " ↓" : ""}
+      <button
+        type="button"
+        onClick={() => onSortChange(k)}
+        className={cn(
+          "aqt-mono inline-flex select-none items-center gap-1 rounded-sm text-[11px] font-bold uppercase tracking-[0.1em] outline-none transition-colors",
+          "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+          sort === k ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)] hover:text-[color:var(--aqt-fg-muted)]"
+        )}
+      >
+        {srLabel ? (
+          <>
+            <span aria-hidden>{label}</span>
+            <span className="sr-only">{srLabel}</span>
+          </>
+        ) : (
+          label
+        )}
+        {sort === k ? <ArrowDown aria-hidden className="h-3 w-3" /> : null}
+      </button>
     </th>
   );
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="relative min-w-[180px] max-w-[280px] flex-1">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--aqt-fg-faint)]">
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <input
-            placeholder={t("users.heroes.searchStats")}
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] px-3 py-1.5 pl-8 text-[13.5px] text-[color:var(--aqt-fg)] outline-none"
-          />
-        </div>
-        <span className="aqt-mono text-[11.5px] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.recordLegend")}</span>
+        <SearchField
+          label={t("users.heroes.searchStats")}
+          placeholder={t("users.heroes.searchStats")}
+          value={search}
+          onValueChange={onSearchChange}
+          containerClassName="min-w-[180px] max-w-[280px] flex-1"
+        />
+        <span className="aqt-mono inline-flex items-center gap-1.5 text-[11.5px] text-[color:var(--aqt-fg-faint)]">
+          <Crown aria-hidden className="h-3 w-3 text-[color:var(--aqt-amber)]" />
+          {t("users.heroes.recordTitle")}
+        </span>
       </div>
       <div className="overflow-x-auto">
         <table className="aqt-tnum w-full border-collapse text-[13.5px]">
@@ -72,11 +91,11 @@ const HeroStatsTable = ({
             <tr>
               {sortTh(t("users.heroes.col.stat"), "name", "left")}
               {sortTh(t("users.heroes.col.overall"), "overall")}
-              <th className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestYou")}</th>
+              <th scope="col" className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestYou")}</th>
               {sortTh(t("users.heroes.col.avg10"), "avg10")}
-              {sortTh("Δ", "delta")}
-              <th className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestAll")}</th>
-              <th className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.global10")}</th>
+              {sortTh("Δ", "delta", "right", t("users.heroes.col.delta"))}
+              <th scope="col" className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestAll")}</th>
+              <th scope="col" className="aqt-mono border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.global10")}</th>
             </tr>
           </thead>
           <tbody>
@@ -84,7 +103,13 @@ const HeroStatsTable = ({
               <tr key={r.name} className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]">
                 <td className="px-3 py-2 text-left font-medium text-[color:var(--aqt-fg)]">
                   {r.label}
-                  {r.isRecord ? <span className="ml-1.5 text-[color:var(--aqt-amber)]" title={t("users.heroes.recordTitle")}>♔</span> : null}
+                  {r.isRecord ? (
+                    <Crown
+                      role="img"
+                      aria-label={t("users.heroes.recordTitle")}
+                      className="ml-1.5 inline h-3 w-3 text-[color:var(--aqt-amber)]"
+                    />
+                  ) : null}
                 </td>
                 <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{formatStatValue(r.name, r.overall)}</td>
                 <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">

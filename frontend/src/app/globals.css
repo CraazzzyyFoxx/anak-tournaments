@@ -38,6 +38,16 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Tone roles — see tailwind.config.ts. Light appearance: dark chromatic
+       text on white, white text on the solid variant. */
+    --success: 158 72% 30%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 90% 32%;
+    --warning-foreground: 0 0% 100%;
+    --info: 206 90% 36%;
+    --info-foreground: 0 0% 100%;
+    --danger: 352 70% 40%;
+    --danger-foreground: 0 0% 100%;
   }
 
   .dark {
@@ -80,6 +90,16 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Tone roles, dark appearance. Verified as text on --card: APCA |Lc|
+       65.5 / 69.0 / 68.6 / 66.6 — all above the 60 non-body floor. */
+    --success: 158 64% 52%;
+    --success-foreground: 158 45% 8%;
+    --warning: 38 92% 62%;
+    --warning-foreground: 38 55% 10%;
+    --info: 204 94% 74%;
+    --info-foreground: 204 55% 10%;
+    --danger: 352 95% 82%;
+    --danger-foreground: 352 55% 12%;
   }
 }
 
@@ -179,7 +199,12 @@
   --popover: 215 20% 8%;
   --popover-foreground: 210 20% 95%;
   --muted: 215 16% 13%;
-  --muted-foreground: 215 12% 50%;
+  /* Secondary text carries hints, field descriptions and unit labels across the
+     admin surfaces, so it is held to the same 60 APCA floor as the tone roles
+     below. At the previous 50% lightness it measured |Lc| 32.1 on --card — dimmer
+     than the site's own dark theme — which made every hint on a settings page
+     unreadable. 71% measures |Lc| 60.4 on --card and 60.8 on --background. */
+  --muted-foreground: 215 12% 71%;
   --accent: 215 20% 16%;
   --accent-foreground: 210 20% 95%;
   --secondary: 215 24% 20%;
@@ -191,6 +216,17 @@
   --ring: 172 70% 49%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
+
+  /* Tone roles on the admin surfaces (--card 8%, --background 6%). Measured
+     as text: success 65.5, warning 69.0, info 68.6, danger 66.6 APCA |Lc|. */
+  --success: 158 64% 52%;
+  --success-foreground: 158 45% 8%;
+  --warning: 38 92% 62%;
+  --warning-foreground: 38 55% 10%;
+  --info: 204 94% 74%;
+  --info-foreground: 204 55% 10%;
+  --danger: 352 95% 82%;
+  --danger-foreground: 352 55% 12%;
 
   /* Chart palette — OW2 inspired */
   --chart-1: 172 70% 49%;
@@ -400,7 +436,7 @@
   background: var(--aqt-emerald);
 }
 .aqt-form-chip.l {
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   color: var(--aqt-fg-dim);
 }
 .aqt-form-chip.d {
@@ -412,7 +448,7 @@
   width: 12px;
   height: 6px;
   border-radius: 2px;
-  background: hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-3);
   display: inline-block;
 }
 .aqt-pip.win {
@@ -428,7 +464,7 @@
   width: 11px;
   height: 18px;
   border-radius: 2px;
-  background: hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-3);
   display: inline-block;
 }
 .aqt-pip-tall.win {
@@ -444,7 +480,7 @@
 /* stage pill */
 .aqt-stage-pill {
   display: inline-block;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--aqt-border-2);
   color: var(--aqt-fg-muted);
   font-size: 10px;
@@ -456,18 +492,18 @@
   font-family: var(--aqt-mono);
 }
 .aqt-stage-pill.playoffs {
-  background: hsl(36 88% 65% / 0.08);
-  border-color: hsl(36 88% 65% / 0.25);
+  background: color-mix(in srgb, var(--aqt-amber) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-amber) 25%, transparent);
   color: var(--aqt-amber);
 }
 .aqt-stage-pill.group {
-  background: hsl(210 80% 60% / 0.08);
-  border-color: hsl(210 80% 60% / 0.25);
+  background: color-mix(in srgb, var(--aqt-blue) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-blue) 25%, transparent);
   color: var(--aqt-blue);
 }
 .aqt-stage-pill.finals {
-  background: hsl(349 84% 63% / 0.08);
-  border-color: hsl(349 84% 63% / 0.25);
+  background: color-mix(in srgb, var(--aqt-rose) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-rose) 25%, transparent);
   color: var(--aqt-rose);
 }
 
@@ -517,7 +553,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--aqt-border-2);
   color: var(--aqt-fg-muted);
   font-family: var(--aqt-mono);
@@ -555,11 +591,15 @@
   /* border-radius: 12px; */
   /* padding: 10px; */
 }
+.aqt-filter-chip:focus-visible {
+  outline: 2px solid var(--aqt-teal);
+  outline-offset: 2px;
+}
 .aqt-filter-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--aqt-border);
   color: var(--aqt-fg-muted);
   font-size: 12px;
@@ -570,24 +610,24 @@
   transition: 0.15s;
 }
 .aqt-filter-chip:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--aqt-fg);
 }
 .aqt-filter-chip.active {
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.35);
+  background: color-mix(in srgb, var(--aqt-teal) 12%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-teal) 35%, transparent);
   color: var(--aqt-teal);
 }
 .aqt-filter-chip .aqt-count {
   font-family: var(--aqt-mono);
   font-size: 10px;
   color: var(--aqt-fg-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
 .aqt-filter-chip.active .aqt-count {
-  background: hsl(172 70% 49% / 0.16);
+  background: color-mix(in srgb, var(--aqt-teal) 16%, transparent);
   color: var(--aqt-teal);
 }
 .aqt-filter-divider {
@@ -618,7 +658,7 @@
 }
 .aqt-place-spark .aqt-bar {
   width: 100%;
-  background: linear-gradient(180deg, var(--aqt-teal), hsl(172 70% 49% / 0.35));
+  background: linear-gradient(180deg, var(--aqt-teal), color-mix(in srgb, var(--aqt-teal) 35%, transparent));
   border-radius: 3px 3px 0 0;
   transition: 0.15s;
   min-height: 4px;
@@ -627,7 +667,7 @@
   filter: brightness(1.2);
 }
 .aqt-place-spark .aqt-col.podium .aqt-bar {
-  background: linear-gradient(180deg, var(--aqt-amber), hsl(36 88% 65% / 0.4));
+  background: linear-gradient(180deg, var(--aqt-amber), color-mix(in srgb, var(--aqt-amber) 40%, transparent));
 }
 .aqt-place-spark .aqt-col.first .aqt-bar {
   background: linear-gradient(180deg, hsl(45 95% 60%), hsl(38 90% 48%));
@@ -659,7 +699,7 @@
 /* role pyramid bar */
 .aqt-pyramid-bar {
   height: 42px;
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -713,7 +753,7 @@
   width: 6px;
   height: 18px;
   border-radius: 1px;
-  background: hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-3);
 }
 .aqt-opp-row .aqt-wl .b.w {
   background: var(--aqt-emerald);
@@ -769,7 +809,7 @@
 }
 .aqt-mode-card .aqt-bar {
   height: 4px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -807,7 +847,7 @@
   transition: 0.15s;
 }
 .aqt-map-row:hover {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-map-row:last-child {
   border-bottom: 0;
@@ -836,7 +876,7 @@
 .aqt-wr-bar .aqt-track {
   flex: 1;
   height: 6px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -862,6 +902,7 @@
 
 /* achievement rarity rank */
 .aqt-ach-rank {
+  flex-wrap: wrap;
   display: flex;
   align-items: stretch;
   gap: 1px;
@@ -1045,15 +1086,15 @@
   font-size: 10px;
   font-weight: 700;
   color: var(--aqt-fg-muted);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--aqt-border-2);
   padding: 2px 6px;
   border-radius: 4px;
 }
 .aqt-ach-card .aqt-stamp.x {
   color: var(--aqt-teal);
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.28);
+  background: color-mix(in srgb, var(--aqt-teal) 12%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-teal) 28%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1295,7 +1336,7 @@
   gap: 6px;
   font-size: 11.5px;
   color: var(--aqt-fg-muted);
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--aqt-border-2);
   border-radius: 999px;
   padding: 3px 10px;
@@ -1324,7 +1365,7 @@
   border-bottom: 0;
 }
 .aqt-earner-row:hover {
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 .aqt-earner-rank {
   font-family: var(--aqt-mono);
@@ -1373,7 +1414,7 @@
   stroke-width: 1.2;
 }
 .aqt-radar-you {
-  fill: hsl(172 70% 49% / 0.22);
+  fill: color-mix(in srgb, var(--aqt-teal) 22%, transparent);
   stroke: var(--aqt-teal);
   stroke-width: 1.8;
 }
@@ -1398,16 +1439,16 @@
   border-bottom: 0;
 }
 .aqt-t-item:hover {
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 .aqt-t-item.gold {
   border-left: 3px solid var(--aqt-amber);
 }
 .aqt-t-item.podium {
-  border-left: 3px solid hsl(36 88% 65% / 0.5);
+  border-left: 3px solid color-mix(in srgb, var(--aqt-amber) 50%, transparent);
 }
 .aqt-t-item.expanded {
-  background: hsl(172 70% 49% / 0.04);
+  background: color-mix(in srgb, var(--aqt-teal) 4%, transparent);
   border-bottom-color: transparent;
 }
 
@@ -1417,7 +1458,7 @@
   height: 200px;
   padding: 14px 8px 8px;
   border: 1px solid var(--aqt-border);
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -1501,16 +1542,6 @@
   .liquid-glass-surface {
     background: hsl(var(--background));
   }
-
-  .liquid-glass [data-ui="card"] {
-    background: hsl(var(--card));
-    border-color: hsl(var(--border));
-  }
-
-  .liquid-glass [data-ui="tabs-list"] {
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-  }
 }
 
 /* ── Popover surface (design request) ──────────────────────────────────────
@@ -1564,8 +1595,15 @@
   --aqt-border-3: hsl(216 16% 26%);
   --aqt-fg: hsl(214 33% 96%);
   --aqt-fg-muted: hsl(212 13% 65%);
-  --aqt-fg-dim: hsl(213 9% 46%);
-  --aqt-fg-faint: hsl(214 10% 34%);
+  /* Lifted twice. 46%/34% failed badly; the 54%/46% pass fixed --aqt-fg-dim but
+     left --aqt-fg-faint at 3.70:1 on --aqt-card-2, 3.92:1 on --aqt-card and
+     4.13:1 on --aqt-bg — still under WCAG AA 4.5:1, and faint paints every stat
+     label, table header and card caption in the app (70 distinct nodes on one
+     player profile alone). 58%/52% clear 4.5:1 on the lightest first-class
+     surface (--aqt-card-2) and keep the four-tier ramp (96 / 65 / 58 / 52)
+     ordered and visually distinct. */
+  --aqt-fg-dim: hsl(213 9% 58%);
+  --aqt-fg-faint: hsl(214 10% 52%);
   --aqt-teal: hsl(172 70% 49%);
   --aqt-teal-deep: hsl(173 81% 32%);
   --aqt-emerald: hsl(150 57% 52%);
@@ -1581,10 +1619,39 @@
   --aqt-support: hsl(150 57% 52%);
   --aqt-live: var(--aqt-rose);
   --aqt-warm: var(--aqt-amber);
+  /* Third-party brand marks. Not ours to re-hue, but they belong in one place
+     rather than as raw hex sprinkled through participant and profile cards. */
+  --aqt-brand-discord: #5865f2;
+  --aqt-brand-twitch: #9146ff;
+  /* Nested-surface elevation. First-level cards sit on --aqt-card; a nested
+     card uses --aqt-card-2 OR one of these translucent white overlays; deeper
+     nesting always uses overlays. White alpha composites over ANY parent
+     surface (palette is clamped dark), so contrast and brand hue survive at
+     every depth. -1 subtle (strips, thead, zebra) · -2 raised (chips, nested
+     surfaces) · -3 lifted (hover/active, track fills). */
+  --aqt-overlay-1: hsl(0 0% 100% / 0.015);
+  --aqt-overlay-2: hsl(0 0% 100% / 0.025);
+  --aqt-overlay-3: hsl(0 0% 100% / 0.05);
+  --aqt-overlay-border: hsl(0 0% 100% / 0.06);
   /* Achievement rarity accent (HSL triplet so `hsl(var(--rar) / a)` alpha tints
      work). Global fallback = "common" grey; the `.aqt-rar-*` classes override
      it per tier. Kept as a triplet, not a full color, on purpose. */
   --rar: 215 14% 60%;
+  /* Placement medals — one source of truth for gold/silver/bronze surfaces
+     and their on-medal text. Previously duplicated as raw hex in the home
+     dashboard, the statistics leaderboards and the OWAL standings. */
+  --aqt-medal-gold: var(--aqt-gold);
+  --aqt-medal-gold-fg: hsl(42 60% 8%);
+  --aqt-medal-silver: var(--aqt-silver);
+  --aqt-medal-silver-fg: hsl(212 30% 10%);
+  --aqt-medal-bronze: var(--aqt-bronze);
+  --aqt-medal-bronze-fg: hsl(26 45% 8%);
+  --aqt-medal-default: hsl(210 26% 25%);
+  --aqt-medal-default-fg: hsl(0 0% 100%);
+  /* Sticky chrome geometry. --aqt-header-h is the sticky site header; sticky
+     in-page rails offset by --aqt-sticky-top so nothing slides under it. */
+  --aqt-header-h: 56px;
+  --aqt-sticky-top: 88px;
   --aqt-radius: 14px;
   --aqt-radius-sm: 8px;
   --aqt-display: var(--font-onest), var(--font-inter), Inter, system-ui, sans-serif;
@@ -1594,7 +1661,7 @@
      restrained teal glow. The spectrum is the single sanctioned multi-hue
      accent — everywhere else, one teal leads. */
   --aqt-spectrum: linear-gradient(90deg, var(--aqt-tank), var(--aqt-damage), var(--aqt-support));
-  --aqt-hero-glow: radial-gradient(ellipse at 30% 45%, hsl(172 70% 49% / 0.1), transparent 60%);
+  --aqt-hero-glow: radial-gradient(ellipse at 30% 45%, color-mix(in srgb, var(--aqt-teal) 10%, transparent), transparent 60%);
 }
 
 /* Page-hero title accent — role-spectrum gradient text. Callers wrap the
@@ -1620,17 +1687,17 @@
 /* ═══════════════════════════════════════════════════════════════════════
    Tournaments redesign — structural styles (Tournaments Redesign.html).
    Scoped under .aqt-tn. Local token aliases point at the global --aqt-*
-   set (single source of truth); alpha tints are kept as literals because
-   the design relies on translucency of the same hues.
+   set (single source of truth); alpha tints derive from the same tokens via
+   color-mix so workspace-themed accents carry through.
    ═══════════════════════════════════════════════════════════════════════ */
 .aqt-tn {
-  --bg: var(--aqt-bg);
+  --tn-bg: var(--aqt-bg);
   --bg-2: var(--aqt-bg-2);
-  --card: var(--aqt-card);
+  --tn-card: var(--aqt-card);
   --card-2: var(--aqt-card-2);
-  --border: var(--aqt-border);
+  --tn-border: var(--aqt-border);
   --border-2: var(--aqt-border-2);
-  --fg: var(--aqt-fg);
+  --tn-fg: var(--aqt-fg);
   --fg-muted: var(--aqt-fg-muted);
   --fg-dim: var(--aqt-fg-dim);
   --fg-faint: var(--aqt-fg-faint);
@@ -1638,11 +1705,12 @@
   --emerald: var(--aqt-emerald);
   --amber: var(--aqt-amber);
   --rose: var(--aqt-rose);
+  --gold: var(--aqt-gold);
   --violet: var(--aqt-violet);
   --blue: var(--aqt-blue);
   --display: var(--aqt-display);
   --mono: var(--aqt-mono);
-  color: var(--fg);
+  color: var(--tn-fg);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -1681,10 +1749,10 @@
 .aqt-tn .hero {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--tn-border);
   border-radius: 14px;
   padding: 36px 40px;
-  background: var(--bg);
+  background: var(--tn-bg);
 }
 .aqt-tn .hex {
   position: absolute;
@@ -1699,7 +1767,7 @@
   left: -5%;
   width: 65%;
   height: 130%;
-  background: radial-gradient(ellipse at 30% 50%, hsl(172 70% 49% / 0.18), transparent 62%);
+  background: radial-gradient(ellipse at 30% 50%, color-mix(in srgb, var(--teal) 18%, transparent), transparent 62%);
   pointer-events: none;
 }
 .aqt-tn .glow-2 {
@@ -1708,7 +1776,7 @@
   right: 0;
   width: 55%;
   height: 100%;
-  background: radial-gradient(ellipse at 70% 30%, hsl(349 84% 63% / 0.1), transparent 58%);
+  background: radial-gradient(ellipse at 70% 30%, color-mix(in srgb, var(--rose) 10%, transparent), transparent 58%);
   pointer-events: none;
 }
 .aqt-tn .hero-grid {
@@ -1742,7 +1810,7 @@
   font-weight: 700;
   font-size: 34px;
   line-height: 1;
-  color: var(--fg);
+  color: var(--tn-fg);
   font-variant-numeric: tabular-nums;
 }
 .aqt-tn .hero-stat .v em {
@@ -1768,7 +1836,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
   margin-right: 6px;
   vertical-align: middle;
@@ -1791,8 +1859,8 @@
   appearance: none;
   cursor: pointer;
   font-family: inherit;
-  border: 1px solid var(--border);
-  background: hsl(0 0% 100% / 0.02);
+  border: 1px solid var(--tn-border);
+  background: var(--aqt-overlay-2);
   color: var(--fg-muted);
   font-weight: 600;
   font-size: 12.5px;
@@ -1804,22 +1872,22 @@
   transition: 0.15s;
 }
 .aqt-tn .tn-btn:hover {
-  background: hsl(0 0% 100% / 0.04);
-  color: var(--fg);
+  background: var(--aqt-overlay-3);
+  color: var(--tn-fg);
 }
 .aqt-tn .tn-btn.primary {
-  background: hsl(172 70% 49% / 0.14);
-  border-color: hsl(172 70% 49% / 0.3);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
   color: var(--teal);
 }
 .aqt-tn .tn-btn.primary:hover {
-  background: hsl(172 70% 49% / 0.2);
+  background: color-mix(in srgb, var(--teal) 20%, transparent);
 }
 .aqt-tn .tn-btn .kbd {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -1830,69 +1898,10 @@
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--tn-card);
+  border: 1px solid var(--tn-border);
   border-radius: 12px;
   padding: 10px;
-}
-.aqt-tn .filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
-  border: 1px solid var(--border);
-  color: var(--fg-muted);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 7px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: 0.15s;
-}
-.aqt-tn .filter-chip:hover {
-  background: hsl(0 0% 100% / 0.04);
-  color: var(--fg);
-}
-.aqt-tn .filter-chip.active {
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.35);
-  color: var(--teal);
-}
-.aqt-tn .filter-chip .count {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.04);
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-.aqt-tn .filter-chip.active .count {
-  background: hsl(172 70% 49% / 0.16);
-  color: var(--teal);
-}
-.aqt-tn .filter-chip .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-.aqt-tn .filter-chip .dot.live {
-  background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
-}
-.aqt-tn .filter-chip .dot.upcoming {
-  background: var(--amber);
-}
-.aqt-tn .filter-chip .dot.finished {
-  background: var(--fg-dim);
-}
-.aqt-tn .filter-chip .dot.draft {
-  background: var(--blue);
-}
-.aqt-tn .filter-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--border-2);
-  margin: 0 2px;
 }
 .aqt-tn .filter-search {
   position: relative;
@@ -1903,14 +1912,25 @@
 }
 .aqt-tn .filter-search input {
   width: 100%;
-  background: hsl(0 0% 100% / 0.02);
-  border: 1px solid var(--border);
-  color: var(--fg);
+  background: var(--aqt-overlay-2);
+  border: 1px solid var(--tn-border);
+  color: var(--tn-fg);
   border-radius: 8px;
   padding: 7px 12px 7px 32px;
-  font-size: 13px;
+  /* 16px below the sm breakpoint: iOS Safari zooms the page when a focused
+     input renders smaller than that. */
+  font-size: 16px;
   outline: none;
   font-family: inherit;
+}
+@media (min-width: 640px) {
+  .aqt-tn .filter-search input {
+    font-size: 13px;
+  }
+}
+.aqt-tn .filter-search input:focus-visible {
+  border-color: var(--aqt-teal);
+  box-shadow: 0 0 0 2px hsl(0 0% 100% / 0.04);
 }
 .aqt-tn .filter-search svg {
   position: absolute;
@@ -1923,8 +1943,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
-  border: 1px solid var(--border);
+  background: var(--aqt-overlay-2);
+  border: 1px solid var(--tn-border);
   color: var(--fg-muted);
   font-size: 12px;
   font-weight: 500;
@@ -1958,8 +1978,8 @@
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
-  background: hsl(0 0% 100% / 0.03);
-  border: 1px solid var(--border);
+  background: var(--aqt-overlay-2);
+  border: 1px solid var(--tn-border);
   padding: 2px 8px;
   border-radius: 6px;
 }
@@ -1980,8 +2000,8 @@
 .aqt-tn .feat-card {
   position: relative;
   overflow: hidden;
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--tn-card);
+  border: 1px solid var(--tn-border);
   border-radius: 14px;
   padding: 0;
   display: flex;
@@ -1994,21 +2014,21 @@
   background: var(--card-2);
 }
 .aqt-tn .feat-card.live {
-  border-color: hsl(349 84% 63% / 0.25);
+  border-color: color-mix(in srgb, var(--rose) 25%, transparent);
 }
 .aqt-tn .feat-card.live:hover {
-  border-color: hsl(349 84% 63% / 0.4);
+  border-color: color-mix(in srgb, var(--rose) 40%, transparent);
 }
 .aqt-tn .feat-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 0% 0%, hsl(349 84% 63% / 0.14), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, hsl(172 70% 49% / 0.08), transparent 55%);
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--rose) 14%, transparent), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--teal) 8%, transparent), transparent 55%);
 }
 .aqt-tn .feat-card.upcoming .feat-glow {
-  background: radial-gradient(ellipse at 0% 0%, hsl(36 88% 65% / 0.1), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, hsl(172 70% 49% / 0.06), transparent 60%);
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--amber) 10%, transparent), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--teal) 6%, transparent), transparent 60%);
 }
 .aqt-tn .feat-hex {
   position: absolute;
@@ -2060,32 +2080,32 @@
   font-family: Inter, sans-serif;
 }
 .aqt-tn .status-pill.live {
-  background: hsl(349 84% 63% / 0.14);
+  background: color-mix(in srgb, var(--rose) 14%, transparent);
   color: var(--rose);
-  border: 1px solid hsl(349 84% 63% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--rose) 30%, transparent);
 }
 .aqt-tn .status-pill.live .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
 }
 .aqt-tn .status-pill.upcoming {
-  background: hsl(36 88% 65% / 0.12);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
   color: var(--amber);
-  border: 1px solid hsl(36 88% 65% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
 }
 .aqt-tn .status-pill.finished {
-  background: hsl(215 12% 40% / 0.18);
+  background: color-mix(in srgb, var(--fg-dim) 18%, transparent);
   color: var(--fg-muted);
   border: 1px solid var(--border-2);
 }
 .aqt-tn .status-pill.draft {
-  background: hsl(210 80% 60% / 0.12);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
   color: var(--blue);
-  border: 1px solid hsl(210 80% 60% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
 }
 .aqt-tn .feat-meta {
   position: relative;
@@ -2099,7 +2119,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border-2);
   font-size: 11.5px;
   color: var(--fg-muted);
@@ -2116,14 +2136,14 @@
   text-transform: uppercase;
 }
 .aqt-tn .meta-pill .v {
-  color: var(--fg);
+  color: var(--tn-fg);
   font-weight: 600;
 }
 .aqt-tn .feat-progress {
   position: relative;
   z-index: 1;
   padding: 14px 22px 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--tn-border);
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
@@ -2145,7 +2165,7 @@
   font-weight: 700;
   font-size: 24px;
   line-height: 1;
-  color: var(--fg);
+  color: var(--tn-fg);
   font-variant-numeric: tabular-nums;
 }
 .aqt-tn .feat-stat .v em {
@@ -2161,8 +2181,8 @@
   z-index: 1;
   margin: 14px 22px 18px;
   padding: 12px 14px;
-  background: hsl(0 0% 100% / 0.025);
-  border: 1px solid var(--border);
+  background: var(--aqt-overlay-2);
+  border: 1px solid var(--tn-border);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -2217,7 +2237,7 @@
   flex-shrink: 0;
 }
 .aqt-tn .feat-now .team .av.t1 {
-  background: linear-gradient(135deg, hsl(174 72% 50%), hsl(174 60% 30%));
+  background: linear-gradient(135deg, var(--teal), color-mix(in srgb, var(--teal) 55%, black));
   color: hsl(220 30% 8%);
 }
 .aqt-tn .feat-now .team .av.t2 {
@@ -2227,7 +2247,7 @@
 .aqt-tn .feat-now .team .nm {
   font-weight: 600;
   font-size: 13.5px;
-  color: var(--fg);
+  color: var(--tn-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2236,7 +2256,7 @@
   font-family: var(--display);
   font-weight: 700;
   font-size: 22px;
-  color: var(--fg);
+  color: var(--tn-fg);
   font-variant-numeric: tabular-nums;
 }
 .aqt-tn .feat-now .score .em {
@@ -2250,7 +2270,7 @@
   font-family: var(--mono);
   font-size: 10px;
   color: var(--fg-muted);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 3px 7px;
   border-radius: 5px;
 }
@@ -2261,8 +2281,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 22px;
-  border-top: 1px solid var(--border);
-  background: hsl(0 0% 100% / 0.015);
+  border-top: 1px solid var(--tn-border);
+  background: var(--aqt-overlay-1);
 }
 .aqt-tn .feat-foot .left {
   display: flex;
@@ -2291,7 +2311,7 @@
   color: var(--fg-muted);
 }
 .aqt-tn .feat-foot .lead-team .nm {
-  color: var(--fg);
+  color: var(--tn-fg);
   font-weight: 600;
 }
 .aqt-tn .feat-foot .right {
@@ -2308,13 +2328,33 @@
 
 /* ── Table ── */
 .aqt-tn .tn-card {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--tn-card);
+  border: 1px solid var(--tn-border);
   border-radius: 12px;
   overflow: hidden;
 }
+/* The card clips (`overflow: hidden`), so the table needs its own scroll
+   region or its narrow-viewport columns become unreachable rather than
+   scrollable. `overscroll-behavior-inline: contain` keeps a horizontal swipe
+   inside the table instead of triggering browser back-navigation. */
+.aqt-tn .tn-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  /* `contain: paint` is load-bearing, not decoration. A <table>'s intrinsic
+     width propagates to the document's scroll width in Chromium even through
+     an `overflow-x: auto` ancestor, so without it the 780px table scrolls the
+     whole page sideways at 375px (measured: html.scrollWidth 783 vs 375).
+     Safe here: nothing inside the table escapes its box — the action controls
+     are plain links and every overlay renders through a portal on <body>. */
+  contain: paint;
+}
+.aqt-tn .tn-table-scroll:focus-visible {
+  outline: 2px solid var(--aqt-teal);
+  outline-offset: -2px;
+}
 .aqt-tn table.tn {
   width: 100%;
+  min-width: 780px;
   border-collapse: collapse;
 }
 .aqt-tn table.tn th {
@@ -2325,8 +2365,8 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 11px 14px;
-  background: hsl(0 0% 100% / 0.015);
-  border-bottom: 1px solid var(--border);
+  background: var(--aqt-overlay-1);
+  border-bottom: 1px solid var(--tn-border);
 }
 .aqt-tn table.tn th.r {
   text-align: right;
@@ -2336,16 +2376,18 @@
 }
 .aqt-tn table.tn td {
   padding: 13px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
 }
+/* No `cursor: pointer` here: the row itself is not a control. The tournament
+   name and the two action icons are the real links, and each carries its own
+   hover and focus affordance. */
 .aqt-tn table.tn tbody tr {
-  cursor: pointer;
   transition: 0.12s;
 }
 .aqt-tn table.tn tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-tn table.tn tbody tr:last-child td {
   border-bottom: 0;
@@ -2371,7 +2413,7 @@
 }
 .aqt-tn .tn-name-cell .nm {
   font-weight: 600;
-  color: var(--fg);
+  color: var(--tn-fg);
   font-size: 14px;
   display: flex;
   align-items: center;
@@ -2402,7 +2444,7 @@
   font-family: Inter, sans-serif;
 }
 .aqt-tn .tn-status.live {
-  background: hsl(349 84% 63% / 0.14);
+  background: color-mix(in srgb, var(--rose) 14%, transparent);
   color: var(--rose);
 }
 .aqt-tn .tn-status.live .dot {
@@ -2410,11 +2452,11 @@
   height: 6px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 2.5px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
 }
 .aqt-tn .tn-status.upcoming {
-  background: hsl(36 88% 65% / 0.12);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
   color: var(--amber);
 }
 .aqt-tn .tn-status.upcoming .dot {
@@ -2424,7 +2466,7 @@
   background: var(--amber);
 }
 .aqt-tn .tn-status.finished {
-  background: hsl(215 12% 40% / 0.18);
+  background: color-mix(in srgb, var(--fg-dim) 18%, transparent);
   color: var(--fg-muted);
 }
 .aqt-tn .tn-status.finished .dot {
@@ -2434,7 +2476,7 @@
   background: var(--fg-dim);
 }
 .aqt-tn .tn-status.draft {
-  background: hsl(210 80% 60% / 0.12);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
   color: var(--blue);
 }
 .aqt-tn .tn-status.draft .dot {
@@ -2454,21 +2496,21 @@
   position: relative;
   width: 80px;
   height: 5px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
 }
 .aqt-tn .tn-stage .progress .fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(90deg, var(--teal), hsl(174 72% 60%));
+  background: linear-gradient(90deg, var(--teal), color-mix(in srgb, var(--teal) 70%, white));
   border-radius: 3px;
 }
 .aqt-tn .tn-stage .progress .fill.amber {
   background: linear-gradient(90deg, var(--amber), hsl(38 95% 65%));
 }
 .aqt-tn .tn-stage .progress .fill.muted {
-  background: hsl(215 12% 40%);
+  background: var(--fg-dim);
 }
 .aqt-tn .tn-stage .stage-label {
   font-family: var(--mono);
@@ -2492,7 +2534,7 @@
   font-family: var(--display);
   font-weight: 700;
   font-size: 18px;
-  color: var(--fg);
+  color: var(--tn-fg);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -2509,7 +2551,7 @@
   height: 22px;
   border-radius: 50%;
   background: linear-gradient(135deg, #3a5168, #1c2937);
-  border: 2px solid var(--card);
+  border: 2px solid var(--tn-card);
   font-family: var(--display);
   font-weight: 800;
   font-size: 9px;
@@ -2526,8 +2568,8 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: hsl(0 0% 100% / 0.04);
-  border: 2px solid var(--card);
+  background: var(--aqt-overlay-3);
+  border: 2px solid var(--tn-card);
   font-family: var(--mono);
   font-size: 9px;
   color: var(--fg-muted);
@@ -2557,56 +2599,9 @@
   transition: 0.15s;
 }
 .aqt-tn .icon-btn:hover {
-  background: hsl(0 0% 100% / 0.05);
-  color: var(--fg);
-  border-color: var(--border);
-}
-
-/* ── Pagination ── */
-.aqt-tn .pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  border-top: 1px solid var(--border);
-  background: hsl(0 0% 100% / 0.012);
-}
-.aqt-tn .page-info {
-  font-size: 12px;
-  color: var(--fg-dim);
-  font-family: var(--mono);
-}
-.aqt-tn .page-controls {
-  display: flex;
-  gap: 4px;
-}
-.aqt-tn .page-btn {
-  min-width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: hsl(0 0% 100% / 0.02);
-  border: 1px solid var(--border);
-  color: var(--fg-muted);
-  border-radius: 6px;
-  font-size: 12px;
-  font-family: var(--mono);
-  cursor: pointer;
-  padding: 0 8px;
-}
-.aqt-tn .page-btn:hover {
-  background: hsl(0 0% 100% / 0.04);
-  color: var(--fg);
-}
-.aqt-tn .page-btn.active {
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.3);
-  color: var(--teal);
-}
-.aqt-tn .page-btn.disabled {
-  opacity: 0.35;
-  cursor: default;
+  background: var(--aqt-overlay-3);
+  color: var(--tn-fg);
+  border-color: var(--tn-border);
 }
 
 /* ── Responsive ── */
@@ -2639,19 +2634,19 @@
 .aqt-tn .tn-hero {
   position: relative;
   overflow: hidden;
-  border: 1px solid hsl(349 84% 63% / 0.25);
+  border: 1px solid color-mix(in srgb, var(--rose) 25%, transparent);
   border-radius: 14px;
   padding: 28px 36px 24px;
-  background: var(--bg);
+  background: var(--tn-bg);
 }
 .aqt-tn .tn-hero.status-finished {
   border-color: var(--border-2);
 }
 .aqt-tn .tn-hero.status-upcoming {
-  border-color: hsl(36 88% 65% / 0.28);
+  border-color: color-mix(in srgb, var(--amber) 28%, transparent);
 }
 .aqt-tn .tn-hero.status-draft {
-  border-color: hsl(210 80% 60% / 0.24);
+  border-color: color-mix(in srgb, var(--blue) 24%, transparent);
 }
 .aqt-tn .glow-rose {
   position: absolute;
@@ -2659,7 +2654,7 @@
   left: -10%;
   width: 60%;
   height: 160%;
-  background: radial-gradient(ellipse at 30% 50%, hsl(349 84% 63% / 0.18), transparent 60%);
+  background: radial-gradient(ellipse at 30% 50%, color-mix(in srgb, var(--rose) 18%, transparent), transparent 60%);
   pointer-events: none;
 }
 .aqt-tn .glow-teal {
@@ -2668,7 +2663,7 @@
   right: -5%;
   width: 55%;
   height: 130%;
-  background: radial-gradient(ellipse at 70% 40%, hsl(172 70% 49% / 0.14), transparent 60%);
+  background: radial-gradient(ellipse at 70% 40%, color-mix(in srgb, var(--teal) 14%, transparent), transparent 60%);
   pointer-events: none;
 }
 .aqt-tn .tn-hero-inner {
@@ -2746,7 +2741,7 @@
   font-weight: 700;
   font-size: 32px;
   line-height: 1;
-  color: var(--fg);
+  color: var(--tn-fg);
   font-variant-numeric: tabular-nums;
 }
 .aqt-tn .tn-h-stat .v em {
@@ -2769,7 +2764,7 @@
 .aqt-tn .tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--tn-border);
   margin-top: 24px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -2797,7 +2792,7 @@
   text-decoration: none;
 }
 .aqt-tn .tab:hover {
-  color: var(--fg);
+  color: var(--tn-fg);
 }
 .aqt-tn .tab.active {
   color: var(--teal);
@@ -2815,20 +2810,20 @@
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   padding: 1px 6px;
   border-radius: 4px;
 }
 .aqt-tn .tab.active .count {
   color: var(--teal);
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
 }
 .aqt-tn .tab .live-tag {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
   margin-left: 2px;
 }
@@ -2875,8 +2870,8 @@
 .aqt-tn .stage-tabs {
   display: flex;
   gap: 6px;
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--tn-card);
+  border: 1px solid var(--tn-border);
   padding: 5px;
   border-radius: 10px;
   align-self: flex-start;
@@ -2898,24 +2893,24 @@
   transition: 0.15s;
 }
 .aqt-tn .stage-tab:hover {
-  color: var(--fg);
+  color: var(--tn-fg);
 }
 .aqt-tn .stage-tab.active {
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
   color: var(--teal);
-  box-shadow: inset 0 0 0 1px hsl(172 70% 49% / 0.3);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent);
 }
 .aqt-tn .stage-tab .count {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
 .aqt-tn .stage-tab.active .count {
   color: var(--teal);
-  background: hsl(172 70% 49% / 0.18);
+  background: color-mix(in srgb, var(--teal) 18%, transparent);
 }
 
 .aqt-tn .groups-layout {
@@ -2930,18 +2925,18 @@
 }
 
 .aqt-tn .standings-card {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--tn-card);
+  border: 1px solid var(--tn-border);
   border-radius: 14px;
   overflow: hidden;
 }
 .aqt-tn .standings-card .head {
   padding: 16px 22px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--tn-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   gap: 14px;
   flex-wrap: wrap;
 }
@@ -2957,14 +2952,14 @@
   width: 38px;
   height: 38px;
   border-radius: 8px;
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
   color: var(--teal);
   font-family: var(--display);
   font-weight: 800;
   font-size: 20px;
 }
 .aqt-tn .standings-card .head .title .gid.playoff {
-  background: hsl(45 90% 60% / 0.14);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
   color: var(--gold);
 }
 .aqt-tn .standings-card .head .title .stack {
@@ -3011,7 +3006,7 @@
   font-family: var(--display);
   font-weight: 700;
   font-size: 18px;
-  color: var(--fg);
+  color: var(--tn-fg);
   line-height: 1;
 }
 .aqt-tn .st-scroll {
@@ -3035,8 +3030,8 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 10px 10px;
-  background: hsl(0 0% 100% / 0.015);
-  border-bottom: 1px solid var(--border);
+  background: var(--aqt-overlay-1);
+  border-bottom: 1px solid var(--tn-border);
   white-space: nowrap;
 }
 .aqt-tn table.st th.r {
@@ -3047,7 +3042,7 @@
 }
 .aqt-tn table.st td {
   padding: 11px 10px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
 }
@@ -3057,8 +3052,8 @@
   align-items: center;
   gap: 12px;
   padding: 12px 18px;
-  background: hsl(0 0% 100% / 0.012);
-  border-top: 1px solid var(--border);
+  background: var(--aqt-overlay-1);
+  border-top: 1px solid var(--tn-border);
   font-size: 11px;
 }
 .aqt-tn .st-footer .label {
@@ -3086,8 +3081,8 @@
   font-size: 10px;
 }
 .aqt-tn .st-footer .badge {
-  background: hsl(0 0% 100% / 0.03);
-  border: 1px solid hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-2);
+  border: 1px solid var(--aqt-overlay-border);
   color: var(--fg-dim);
   padding: 2px 8px;
   border-radius: 4px;
@@ -3096,8 +3091,8 @@
   cursor: default;
 }
 .aqt-tn .st-footer .badge:hover {
-  background: hsl(172 70% 49% / 0.08);
-  border-color: hsl(172 70% 49% / 0.2);
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 20%, transparent);
   color: var(--teal);
 }
 @media (max-width: 640px) {
@@ -3111,7 +3106,7 @@
   transition: 0.12s;
 }
 .aqt-tn table.st tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
 }
 .aqt-tn table.st tbody tr:last-child td {
   border-bottom: 0;
@@ -3123,16 +3118,16 @@
   text-align: center;
 }
 .aqt-tn table.st tr.advance {
-  background: hsl(172 70% 49% / 0.05);
+  background: color-mix(in srgb, var(--teal) 5%, transparent);
 }
 .aqt-tn table.st tr.advance:hover td {
-  background: hsl(172 70% 49% / 0.09);
+  background: color-mix(in srgb, var(--teal) 9%, transparent);
 }
 .aqt-tn table.st tr.crown {
-  background: hsl(45 90% 60% / 0.06);
+  background: color-mix(in srgb, var(--gold) 6%, transparent);
 }
 .aqt-tn table.st tr.crown:hover td {
-  background: hsl(45 90% 60% / 0.1);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
 }
 .aqt-tn table.st tr.crown td:first-child {
   padding-left: 32px;
@@ -3191,7 +3186,7 @@
 }
 .aqt-tn .st-team .nm {
   font-weight: 700;
-  color: var(--fg);
+  color: var(--tn-fg);
   font-size: 14.5px;
   font-family: var(--display);
   text-transform: uppercase;
@@ -3242,7 +3237,7 @@
   position: relative;
   width: 90px;
   height: 6px;
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
   display: flex;
@@ -3253,7 +3248,7 @@
 }
 .aqt-tn .st-maps .bar .l {
   height: 100%;
-  background: hsl(349 84% 63% / 0.4);
+  background: color-mix(in srgb, var(--rose) 40%, transparent);
 }
 .aqt-tn .st-diff {
   font-family: var(--mono);
@@ -3290,7 +3285,7 @@
   background: var(--emerald);
 }
 .aqt-tn .form-chips .fc.l {
-  background: hsl(349 84% 63% / 0.7);
+  background: color-mix(in srgb, var(--rose) 70%, transparent);
   color: hsl(0 0% 100%);
 }
 .aqt-tn .form-chips .fc.t {
@@ -3309,7 +3304,7 @@
   font-family: Inter, sans-serif;
 }
 .aqt-tn .st-status.adv {
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
   color: var(--teal);
 }
 .aqt-tn .st-status.adv .arrow {
@@ -3320,11 +3315,11 @@
   border-bottom: 4px solid var(--teal);
 }
 .aqt-tn .st-status.out {
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   color: var(--fg-dim);
 }
 .aqt-tn .st-status.winner {
-  background: hsl(45 90% 60% / 0.14);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
   color: var(--gold);
 }
 .aqt-tn .st-cut {
@@ -3337,7 +3332,7 @@
   left: 14px;
   right: 14px;
   top: 0;
-  border-top: 1.5px dashed hsl(172 70% 49% / 0.4);
+  border-top: 1.5px dashed color-mix(in srgb, var(--teal) 40%, transparent);
 }
 .aqt-tn .st-cut::after {
   content: attr(data-label);
@@ -3346,7 +3341,7 @@
   top: 50%;
   transform: translate(-50%, -50%);
   padding: 2px 10px;
-  background: var(--card);
+  background: var(--tn-card);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -3362,15 +3357,15 @@
    tournament shell. References the global --aqt-* token layer.
    ═══════════════════════════════════════════════════════════════════════ */
 .team-card {
-  background: hsl(0 0% 100% / 0.018);
-  border: 1px solid hsl(0 0% 100% / 0.07);
+  background: var(--aqt-overlay-1);
+  border: 1px solid var(--aqt-overlay-border);
   border-radius: 12px;
   overflow: hidden;
   transition: 0.15s;
 }
 .team-card:hover {
   border-color: hsl(0 0% 100% / 0.12);
-  background: hsl(0 0% 100% / 0.028);
+  background: var(--aqt-overlay-2);
 }
 .team-card .tc-header {
   padding: 14px 18px 16px;
@@ -3396,8 +3391,8 @@
 }
 .group-chip.a {
   color: var(--aqt-teal);
-  background: hsl(174 72% 50% / 0.1);
-  border-color: hsl(174 72% 50% / 0.22);
+  background: color-mix(in srgb, var(--aqt-teal) 10%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-teal) 22%, transparent);
 }
 .group-chip.b {
   color: var(--aqt-amber);
@@ -3428,8 +3423,8 @@
 }
 .placement.gold {
   color: var(--aqt-gold);
-  background: hsl(45 90% 60% / 0.1);
-  border-color: hsl(45 90% 60% / 0.3);
+  background: color-mix(in srgb, var(--aqt-gold) 10%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-gold) 30%, transparent);
 }
 .placement.silver {
   color: hsl(0 0% 80%);
@@ -3443,7 +3438,7 @@
 }
 .placement.def {
   color: hsl(0 0% 65%);
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   border-color: hsl(0 0% 100% / 0.12);
 }
 .team-card .tc-name-row {
@@ -3481,7 +3476,7 @@
   color: hsl(0 0% 100% / 0.65);
 }
 .team-card .tc-divider {
-  border-top: 1px solid hsl(0 0% 100% / 0.06);
+  border-top: 1px solid var(--aqt-overlay-border);
 }
 .roster {
   width: 100%;
@@ -3502,7 +3497,7 @@
 }
 .roster td {
   padding: 8px 12px;
-  border-top: 1px solid hsl(0 0% 100% / 0.04);
+  border-top: 1px solid var(--aqt-overlay-border);
   font-size: 13px;
   vertical-align: middle;
 }
@@ -3510,7 +3505,7 @@
   text-align: center;
 }
 .roster tr:hover td {
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 .roster .roster-scroll {
   overflow-x: auto;
@@ -3522,10 +3517,10 @@
    shared component styles correctly regardless of ancestor.
    ═══════════════════════════════════════════════════════════════════════ */
 .aqt-matches {
-  --card: var(--aqt-card, hsl(215 20% 8%));
-  --border: var(--aqt-border, hsl(215 20% 12%));
+  --tn-card: var(--aqt-card, hsl(215 20% 8%));
+  --tn-border: var(--aqt-border, hsl(215 20% 12%));
   --border-2: var(--aqt-border-2, hsl(215 20% 16%));
-  --fg: var(--aqt-fg, hsl(210 20% 95%));
+  --tn-fg: var(--aqt-fg, hsl(210 20% 95%));
   --fg-muted: var(--aqt-fg-muted, hsl(215 12% 60%));
   --fg-dim: var(--aqt-fg-dim, hsl(215 12% 40%));
   --fg-faint: var(--aqt-fg-faint, hsl(215 12% 30%));
@@ -3534,7 +3529,7 @@
   --amber: var(--aqt-amber, hsl(36 88% 65%));
   --mono: var(--aqt-mono, "JetBrains Mono", ui-monospace, monospace);
   --display: var(--aqt-display, "Barlow Condensed", Inter, system-ui, sans-serif);
-  color: var(--fg);
+  color: var(--tn-fg);
 }
 .aqt-matches .m-search {
   position: relative;
@@ -3543,17 +3538,18 @@
 }
 .aqt-matches .m-search input {
   width: 100%;
-  background: hsl(0 0% 100% / 0.02);
-  border: 1px solid var(--border);
-  color: var(--fg);
+  background: var(--aqt-overlay-2);
+  border: 1px solid var(--tn-border);
+  color: var(--tn-fg);
   border-radius: 8px;
   padding: 8px 12px 8px 32px;
   font-size: 13px;
   outline: none;
   font-family: inherit;
 }
-.aqt-matches .m-search input:focus {
-  border-color: var(--border-2);
+.aqt-matches .m-search input:focus-visible {
+  border-color: var(--aqt-teal);
+  box-shadow: 0 0 0 2px hsl(0 0% 100% / 0.04);
 }
 .aqt-matches .m-search svg {
   position: absolute;
@@ -3563,8 +3559,8 @@
   color: var(--fg-faint);
 }
 .aqt-matches .matches-card {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--tn-card);
+  border: 1px solid var(--tn-border);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -3584,8 +3580,8 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 10px 14px;
-  background: hsl(0 0% 100% / 0.01);
-  border-bottom: 1px solid var(--border);
+  background: var(--aqt-overlay-1);
+  border-bottom: 1px solid var(--tn-border);
   white-space: nowrap;
 }
 .aqt-matches table.m th.r {
@@ -3596,7 +3592,7 @@
 }
 .aqt-matches table.m td {
   padding: 14px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
 }
@@ -3605,16 +3601,16 @@
   transition: 0.12s;
 }
 .aqt-matches table.m tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-matches table.m tbody tr:last-child td {
   border-bottom: 0;
 }
 .aqt-matches table.m tbody tr.live td {
-  background: hsl(349 84% 63% / 0.045);
+  background: color-mix(in srgb, var(--rose) 4.5%, transparent);
 }
 .aqt-matches table.m tbody tr.live:hover td {
-  background: hsl(349 84% 63% / 0.08);
+  background: color-mix(in srgb, var(--rose) 8%, transparent);
 }
 .aqt-matches table.m td.r {
   text-align: right;
@@ -3656,11 +3652,11 @@
   text-overflow: ellipsis;
 }
 .aqt-matches .m-up .row.winner .nm {
-  color: var(--fg);
+  color: var(--tn-fg);
   font-weight: 700;
 }
 .aqt-matches .m-up .row.winner .av {
-  box-shadow: 0 0 0 1.5px hsl(172 70% 49% / 0.6);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--teal) 60%, transparent);
 }
 .aqt-matches .m-up .row.loser .av {
   opacity: 0.6;
@@ -3695,13 +3691,13 @@
 .aqt-matches .m-close .track {
   flex: 1;
   height: 5px;
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
 }
 .aqt-matches .m-close .fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--teal), hsl(174 72% 65%));
+  background: linear-gradient(90deg, var(--teal), color-mix(in srgb, var(--teal) 65%, white));
   border-radius: 3px;
 }
 .aqt-matches .m-close .fill.hot {
@@ -3759,15 +3755,15 @@
   font-size: 10px;
   font-weight: 500;
   color: var(--fg-muted);
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border-2);
   padding: 2px 6px;
   border-radius: 5px;
 }
 .aqt-matches .m-media .pill.has {
   color: var(--teal);
-  background: hsl(172 70% 49% / 0.08);
-  border-color: hsl(172 70% 49% / 0.25);
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 25%, transparent);
 }
 .aqt-matches .m-media .pill.empty {
   opacity: 0.4;
@@ -3777,7 +3773,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
   display: inline-block;
 }
@@ -3806,8 +3802,8 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 11px 14px;
-  background: hsl(0 0% 100% / 0.015);
-  border-bottom: 1px solid var(--border);
+  background: var(--aqt-overlay-1);
+  border-bottom: 1px solid var(--tn-border);
   vertical-align: middle;
 }
 .aqt-tn .data-table th.r {
@@ -3818,7 +3814,7 @@
 }
 .aqt-tn .data-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
   color: var(--fg-muted);
@@ -3828,7 +3824,7 @@
   cursor: default;
 }
 .aqt-tn .data-table tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-tn .data-table tbody tr:last-child td {
   border-bottom: 0;
@@ -3921,7 +3917,7 @@
 .aqt-tn .hero-bar {
   position: relative;
   height: 24px;
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   border-radius: 5px;
   overflow: hidden;
   display: flex;
@@ -3955,7 +3951,7 @@
   font-family: var(--display);
   font-weight: 700;
   font-size: 18px;
-  color: var(--fg);
+  color: var(--tn-fg);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -3969,5 +3965,26 @@
   .aqt-tn .hero-row {
     grid-template-columns: 140px 1fr 70px;
     gap: 10px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Reduced motion. Everything animated in this stylesheet is decorative:
+   under `prefers-reduced-motion` the static cue (color, border, label)
+   always remains, so suppressing motion never removes information.
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .aqt-ach-card:hover,
+  .aqt-tn .tn-card:hover,
+  .aqt-tn .feat-card:hover {
+    transform: none;
   }
 }

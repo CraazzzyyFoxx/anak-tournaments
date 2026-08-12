@@ -3,12 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
     Float,
     ForeignKey,
+    Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,6 +24,7 @@ __all__ = (
     "DivisionGridTier",
     "DivisionGridMapping",
     "DivisionGridMappingRule",
+    "DivisionGridImportJob",
 )
 
 
@@ -36,9 +40,24 @@ class DivisionGrid(db.TimeStampIntegerMixin):
     slug: Mapped[str] = mapped_column(String(), nullable=False)
     name: Mapped[str] = mapped_column(String(), nullable=False)
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
+    source_workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspace.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_grid_id: Mapped[int | None] = mapped_column(
+        ForeignKey("division_grid.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    source_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     versions: Mapped[list[DivisionGridVersion]] = relationship(
         back_populates="grid",
+        cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="DivisionGridVersion.version",
         lazy="selectin",
@@ -148,3 +167,32 @@ class DivisionGridMappingRule(db.TimeStampIntegerMixin):
     mapping: Mapped[DivisionGridMapping] = relationship(back_populates="rules")
     source_tier: Mapped[DivisionGridTier] = relationship(foreign_keys=[source_tier_id])
     target_tier: Mapped[DivisionGridTier] = relationship(foreign_keys=[target_tier_id])
+
+
+class DivisionGridImportJob(db.TimeStampIntegerMixin):
+    __tablename__ = "division_grid_import_job"
+    __table_args__ = (UniqueConstraint("workspace_id", "idempotency_key"),)
+
+    workspace_id: Mapped[int] = mapped_column(
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspace.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    requested_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="pending")
+    progress: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
+    request_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -12,11 +12,9 @@ from shared.core.errors import BaseAPIException as HTTPException
 from src import models
 from src.core import enums
 from src.schemas.admin import encounter as admin_schemas
-from src.services.encounter import veto_session as veto_session_service
-from src.services.encounter.finalize import finalize_encounter_score
+from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
 from src.services.tournament.events import (
-    enqueue_encounter_completed,
     enqueue_tournament_recalculation,
 )
 
@@ -146,8 +144,27 @@ async def _require_team_in_tournament(
     return team
 
 
+def _reject_completed_status(new_status: str | None) -> None:
+    """Completion is not a field edit.
+
+    ``COMPLETED`` is now reachable only through the result endpoint, which moves
+    ``status``, ``result_status``, the score and the audit row together. Letting
+    a plain field update land it here is what allowed ``completed`` +
+    ``disputed`` — a state no endpoint could repair.
+    """
+    if new_status is not None and new_status.lower() == enums.EncounterStatus.COMPLETED.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "use_result_endpoint: complete an encounter via POST /api/v1/admin/encounters/{encounter_id}/result"
+            ),
+        )
+
+
 async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterCreate) -> models.Encounter:
     """Create a new encounter"""
+    _reject_completed_status(data.status)
+
     # Verify tournament exists
     result = await session.execute(select(models.Tournament).where(models.Tournament.id == data.tournament_id))
     tournament = result.scalar_one_or_none()
@@ -190,6 +207,7 @@ async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterC
         home_team_id=data.home_team_id,
         away_team_id=data.away_team_id,
         round=data.round,
+        best_of=data.best_of,
         home_score=data.home_score,
         away_score=data.away_score,
         status=encounter_status,
@@ -212,6 +230,8 @@ async def update_encounter(
     session: AsyncSession, encounter_id: int, data: admin_schemas.EncounterUpdate
 ) -> models.Encounter:
     """Update encounter fields"""
+    _reject_completed_status(data.status)
+
     result = await session.execute(
         select(models.Encounter)
         .where(models.Encounter.id == encounter_id)
@@ -278,24 +298,11 @@ async def update_encounter(
         setattr(encounter, field, value)
 
     if (encounter.home_team_id, encounter.away_team_id) != previous_teams:
-        # Admin re-assigned a team slot: sync the veto session (ensure when
-        # both teams are now known, reset a stale existing session).
-        await veto_session_service.sync_veto_session_after_team_change(session, encounter)
-
-    completed_by_this_update = encounter.status == enums.EncounterStatus.COMPLETED
-    if completed_by_this_update:
-        await finalize_encounter_score(
-            session,
-            encounter.id,
-            encounter=encounter,
-            home_score=encounter.home_score,
-            away_score=encounter.away_score,
-            source="admin",
-        )
+        # Admin re-assigned a team slot: sync map/hero pick-ban sessions
+        # (ensure when both teams are now known, reset a stale existing one).
+        await pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change(session, encounter)
 
     await enqueue_tournament_recalculation(session, tournament_id)
-    if completed_by_this_update:
-        await enqueue_encounter_completed(session, encounter)
     await session.commit()
     await _invalidate_encounter_reads([tournament_id])
     await session.refresh(encounter)
@@ -371,100 +378,3 @@ async def delete_encounter(session: AsyncSession, encounter_id: int) -> None:
     await enqueue_tournament_recalculation(session, tournament_id)
     await session.commit()
     await _invalidate_encounter_reads([tournament_id])
-
-
-async def bulk_update_encounters(
-    session: AsyncSession,
-    data: admin_schemas.BulkEncounterUpdate,
-) -> dict[str, int | list[int]]:
-    """Apply the same update to many encounters in one transaction.
-
-    Standings are recalculated ONCE per affected tournament, not per
-    encounter — the critical optimisation for 40+ team tournaments where
-    admins frequently mark 20-50 matches at a time.
-
-    Also triggers bracket advancement for each encounter that transitioned
-    into COMPLETED so bracket progression stays consistent.
-    """
-    if not data.encounter_ids:
-        return {"updated": 0, "tournaments_recalculated": []}
-
-    # Parse requested status once (fail fast if invalid).
-    new_status: enums.EncounterStatus | None = None
-    if data.status is not None:
-        try:
-            new_status = enums.EncounterStatus(data.status)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Invalid status {data.status!r}. Must be one of: "
-                    f"{', '.join(s.value for s in enums.EncounterStatus)}"
-                ),
-            ) from exc
-
-    result = await session.execute(
-        select(models.Encounter).where(models.Encounter.id.in_(data.encounter_ids)).with_for_update()
-    )
-    encounters = list(result.scalars().all())
-    if not encounters:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No encounters found with the provided ids",
-        )
-
-    newly_completed: list[models.Encounter] = []
-    affected_tournaments: set[int] = set()
-
-    for encounter in encounters:
-        affected_tournaments.add(encounter.tournament_id)
-
-        was_completed = encounter.status == enums.EncounterStatus.COMPLETED
-
-        if new_status is not None:
-            encounter.status = new_status
-
-        if data.reset_scores:
-            encounter.home_score = 0
-            encounter.away_score = 0
-        else:
-            if data.home_score is not None:
-                encounter.home_score = data.home_score
-            if data.away_score is not None:
-                encounter.away_score = data.away_score
-
-        now_completed = encounter.status == enums.EncounterStatus.COMPLETED
-        if now_completed and not was_completed:
-            newly_completed.append(encounter)
-
-    for encounter in newly_completed:
-        await finalize_encounter_score(
-            session,
-            encounter.id,
-            encounter=encounter,
-            home_score=encounter.home_score,
-            away_score=encounter.away_score,
-            source="admin",
-        )
-
-    # One queued recalc per tournament - not N recalcs per N encounters.
-    for tournament_id in affected_tournaments:
-        await enqueue_tournament_recalculation(session, tournament_id)
-
-    for encounter in newly_completed:
-        await enqueue_encounter_completed(session, encounter)
-
-    await session.commit()
-    await _invalidate_encounter_reads(affected_tournaments)
-
-    logger.info(
-        "Bulk-updated %d encounters across %d tournaments (%d newly completed)",
-        len(encounters),
-        len(affected_tournaments),
-        len(newly_completed),
-    )
-    return {
-        "updated": len(encounters),
-        "newly_completed": len(newly_completed),
-        "tournaments_recalculated": sorted(affected_tournaments),
-    }

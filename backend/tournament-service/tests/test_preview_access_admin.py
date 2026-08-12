@@ -100,9 +100,7 @@ async def _seed(session):
     )
     session.add(tournament)
     await session.flush()
-    auth_user = AuthUser(
-        email=f"pa-{suffix}@example.com", username=f"pa_{suffix}", hashed_password="x"
-    )
+    auth_user = AuthUser(email=f"pa-{suffix}@example.com", username=f"pa_{suffix}", hashed_password="x")
     session.add(auth_user)
     await session.flush()
     await session.commit()

@@ -37,9 +37,8 @@ export interface Encounter {
   started_at: Date | string | null;
   ended_at: Date | string | null;
   current_map_index: number | null;
-  submitted_by_id: number | null;
-  submitted_at: Date | string | null;
-  confirmed_by_id: number | null;
+  // Who decided the result — and every earlier decision — lives in the result
+  // audit, not in a single slot that only ever remembered the last writer.
   confirmed_at: Date | string | null;
 
   matches: Match[];
@@ -51,6 +50,74 @@ export interface Encounter {
   tournament_group?: TournamentGroup | null;
 }
 
+export interface CaptainMapCode {
+  id: number;
+  map_index: number;
+  map_id: number | null;
+  code: string;
+}
+
+export interface CaptainReport {
+  id: number;
+  encounter_id: number;
+  team_id: number;
+  side: "home" | "away" | null;
+  reporter_user_id: number | null;
+  /** Display name of the captain who filed it (`CaptainReportRead.reporter_name`). */
+  reporter_name?: string | null;
+  home_score: number;
+  away_score: number;
+  /** 1..10, or null when the tournament disables/does not require match quality. */
+  closeness: number | null;
+  map_codes: CaptainMapCode[];
+  comment: string | null;
+  /** Organizer-defined text answers, keyed by `ReportCustomFieldDefinition.key`. */
+  custom_fields: Record<string, string>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ReportBuiltInFieldConfig {
+  enabled: boolean;
+  required: boolean;
+}
+
+export interface ReportCustomFieldDefinition {
+  /** `^[a-z][a-z0-9_]{0,31}$`; the key under `CaptainReport.custom_fields`. */
+  key: string;
+  label: string;
+  type: "text";
+  required: boolean;
+  placeholder: string | null;
+}
+
+/** Per-tournament configuration of the captain match-report form. */
+export interface MatchReportForm {
+  tournament_id: number;
+  built_in_fields: {
+    closeness: ReportBuiltInFieldConfig;
+    map_codes: ReportBuiltInFieldConfig;
+    comment: ReportBuiltInFieldConfig;
+  };
+  custom_fields: ReportCustomFieldDefinition[];
+}
+
+export interface CaptainReportsResponse {
+  reports: CaptainReport[];
+  form: MatchReportForm;
+}
+
+/**
+ * Mirrors the backend `DEFAULT_BUILT_IN_FIELDS`. Used while the reports query is
+ * in flight so the dialog renders its usual shape instead of flashing empty and
+ * then growing fields under the captain's cursor.
+ */
+export const DEFAULT_MATCH_REPORT_BUILT_INS: MatchReportForm["built_in_fields"] = Object.freeze({
+  closeness: Object.freeze({ enabled: true, required: true }),
+  map_codes: Object.freeze({ enabled: true, required: false }),
+  comment: Object.freeze({ enabled: true, required: false })
+});
+
 export interface Match {
   id: number;
   created_at: Date;
@@ -58,10 +125,18 @@ export interface Match {
   home_team_id: number;
   away_team_id: number;
   score: Score;
-  time: number;
+  time: number | null;
   encounter_id: number;
   map_id: number;
-  log_name: string;
+  /**
+   * Which map OF THE SERIES this row is, 1-based in play order. Null when
+   * unknown — every parsed log, and every row written before the column
+   * existed. It, not `map_id`, is what identifies a played map: a series may
+   * play the same map twice (see `seriesMatchesByPosition`).
+   */
+  map_index: number | null;
+  log_name: string | null;
+  source: "log_parser" | "captain_report";
   code: string | null;
 
   map: MapRead | null;

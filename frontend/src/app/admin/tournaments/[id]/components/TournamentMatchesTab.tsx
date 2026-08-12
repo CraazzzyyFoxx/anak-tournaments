@@ -18,7 +18,9 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Swords,
   Trash2,
+  Trophy,
   Upload
 } from "lucide-react";
 import {
@@ -26,13 +28,13 @@ import {
   getAdminDetailTableStyles
 } from "@/components/admin/AdminDetailTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
+import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { buildEncounterName } from "@/components/admin/encounter-name";
 import { isGroupStageScoreContext } from "@/components/admin/encounter-score";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,6 +60,7 @@ import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type {
   EncounterCreateInput,
+  EncounterEditableStatus,
   EncounterUpdateInput,
   StandingUpdateInput
 } from "@/types/admin.types";
@@ -104,11 +107,11 @@ interface TournamentMatchesTabProps {
 }
 
 function SortIcon({ state, active }: { state: StandingSortState; active: boolean }) {
-  if (!active || !state) return <ArrowUpDown className="ml-1 inline size-3.5" />;
+  if (!active || !state) return <ArrowUpDown className="size-3.5" aria-hidden />;
   return state.dir === "asc" ? (
-    <ArrowUp className="ml-1 inline size-3.5" />
+    <ArrowUp className="size-3.5" aria-hidden />
   ) : (
-    <ArrowDown className="ml-1 inline size-3.5" />
+    <ArrowDown className="size-3.5" aria-hidden />
   );
 }
 
@@ -119,6 +122,38 @@ function setScopeParam(params: URLSearchParams, key: string, value: string) {
   }
 
   params.set(key, value);
+}
+
+interface ScopeFilterProps {
+  id: string;
+  param: string;
+  value: string;
+  groups: Array<{ id: string; name: string }>;
+  onChange: (param: string, value: string) => void;
+}
+
+/** Stage/scope narrowing control shared by the encounters and standings tables. */
+function ScopeFilter({ id, param, value, groups, onChange }: ScopeFilterProps) {
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        Scope
+      </Label>
+      <Select value={value} onValueChange={(next) => onChange(param, next)}>
+        <SelectTrigger id={id} className="h-8 w-[220px]">
+          <SelectValue placeholder="All stages" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All stages</SelectItem>
+          {groups.map((group) => (
+            <SelectItem key={group.id} value={group.id}>
+              {group.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }
 
 export function TournamentMatchesTab({
@@ -224,7 +259,7 @@ export function TournamentMatchesTab({
       notify.success(variables.mode === "create" ? "Encounter created" : "Encounter updated");
     },
     onError: (error: Error) => {
-      setEncounterFormError(error.message);
+      setEncounterFormError(`Could not save the encounter. ${error.message}`);
     }
   });
 
@@ -309,7 +344,7 @@ export function TournamentMatchesTab({
     event.preventDefault();
 
     if (!encounterFormData.name.trim()) {
-      setEncounterFormError("Encounter name is required.");
+      setEncounterFormError("Enter an encounter name.");
       return;
     }
 
@@ -323,7 +358,7 @@ export function TournamentMatchesTab({
       encounterFormData.away_team_id != null &&
       encounterFormData.home_team_id === encounterFormData.away_team_id
     ) {
-      setEncounterFormError("Home and away teams must be different.");
+      setEncounterFormError("Pick two different teams.");
       return;
     }
 
@@ -337,7 +372,7 @@ export function TournamentMatchesTab({
           round: encounterFormData.round,
           home_score: encounterFormData.home_score,
           away_score: encounterFormData.away_score,
-          status: encounterFormData.status
+          status: encounterFormData.status as EncounterEditableStatus
         } satisfies EncounterUpdateInput)
       : ({
           name: encounterFormData.name.trim(),
@@ -349,7 +384,7 @@ export function TournamentMatchesTab({
           round: encounterFormData.round,
           home_score: encounterFormData.home_score,
           away_score: encounterFormData.away_score,
-          status: encounterFormData.status
+          status: encounterFormData.status as EncounterEditableStatus
         } satisfies EncounterCreateInput);
 
     saveEncounterMutation.mutate(
@@ -466,121 +501,77 @@ export function TournamentMatchesTab({
     });
   };
 
+  const syncEncountersButton = canSyncEncounters ? (
+    <Button
+      variant="outline"
+      onClick={() => syncEncountersMutation.mutate()}
+      disabled={syncEncountersMutation.isPending || !hasChallongeSource}
+    >
+      <RefreshCw className="mr-2 size-4" aria-hidden />
+      Sync encounters
+    </Button>
+  ) : null;
+
+  const createEncounterButton = canCreateEncounter ? (
+    <Button onClick={openCreateEncounterDialog} disabled={!canCreateEncounterNow}>
+      <Plus className="mr-2 size-4" aria-hidden />
+      Create encounter
+    </Button>
+  ) : null;
+
   return (
     <>
-      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Encounters
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{encounters.length}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {completedEncounterCount} completed
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Log Coverage
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">
-              {encounters.length - missingLogCount}/{encounters.length || 0}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {missingLogCount} missing log{missingLogCount === 1 ? "" : "s"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Standings
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{standings.length}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground" title={standingsLeader}>
-              Leader: {standingsLeader}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Sync Source
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">
-              {hasChallongeSource ? "Linked" : "Manual"}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {hasChallongeSource ? "External match sync enabled" : "Use manual match control"}
-            </p>
-          </CardContent>
-        </Card>
+      <div role="status" className="mb-4">
+        <StatTileGrid className="xl:grid-cols-3">
+          <StatTile
+            label="Encounters"
+            value={encounters.length}
+            detail={`${completedEncounterCount} completed`}
+            icon={Swords}
+            tone="accent"
+          />
+          <StatTile
+            label="Log coverage"
+            value={`${encounters.length - missingLogCount}/${encounters.length}`}
+            detail={`${missingLogCount} missing log${missingLogCount === 1 ? "" : "s"}`}
+            icon={FileCheck2}
+            tone={missingLogCount ? "warning" : "success"}
+          />
+          <StatTile
+            label="Standings"
+            value={standings.length}
+            detail={`Leader: ${standingsLeader}`}
+            icon={Trophy}
+            tone={standings.length ? "success" : "neutral"}
+          />
+        </StatTileGrid>
       </div>
 
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <Card className="border-border/40">
           <CardHeader className="gap-3 pb-3">
             <div className="flex min-w-0 flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-base font-semibold">Match Control</CardTitle>
-                <Badge variant="outline">{filteredEncounters.length} filtered</Badge>
-                <Badge variant={completedFilteredEncounterCount ? "secondary" : "outline"}>
-                  {completedFilteredEncounterCount} completed
-                </Badge>
-              </div>
+              <CardTitle asChild className="text-base font-semibold">
+                <h2>Match control</h2>
+              </CardTitle>
               <CardDescription>
                 Create, sync, score, and attach logs to tournament encounters.
               </CardDescription>
-              <div className="hidden">
-                <span>{filteredEncounters.length} encounters</span>
-                <span>·</span>
-                <span>{completedFilteredEncounterCount} completed</span>
-              </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {canSyncEncounters ? (
-                <Button
-                  variant="outline"
-                  onClick={() => syncEncountersMutation.mutate()}
-                  disabled={syncEncountersMutation.isPending || !hasChallongeSource}
-                >
-                  <RefreshCw className="size-4" />
-                  Sync Encounters
-                </Button>
-              ) : null}
-              {canCreateEncounter ? (
-                <Button onClick={openCreateEncounterDialog} disabled={!canCreateEncounterNow}>
-                  <Plus className="size-4" />
-                  Create Encounter
-                </Button>
-              ) : null}
+              {syncEncountersButton}
+              {createEncounterButton}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {encounterGroups.length > 1 ? (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="encounters-scope-filter" className="text-xs text-muted-foreground">
-                  Scope
-                </Label>
-                <Select
-                  value={encounterScopeFilter}
-                  onValueChange={(value) => updateScopeFilter(ENCOUNTERS_SCOPE_QUERY_PARAM, value)}
-                >
-                  <SelectTrigger id="encounters-scope-filter" className="h-8 w-[220px]">
-                    <SelectValue placeholder="All stages" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All stages</SelectItem>
-                    {encounterGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <ScopeFilter
+                id="encounters-scope-filter"
+                param={ENCOUNTERS_SCOPE_QUERY_PARAM}
+                value={encounterScopeFilter}
+                groups={encounterGroups}
+                onChange={updateScopeFilter}
+              />
             ) : null}
 
             <AdminDetailTableShell variant="compact">
@@ -612,8 +603,10 @@ export function TournamentMatchesTab({
                         <TableCell className={tableStyles.cell}>
                           {getEncounterStageLabel(encounter)}
                         </TableCell>
-                        <TableCell className={tableStyles.cell}>{encounter.round}</TableCell>
-                        <TableCell className={tableStyles.cell}>
+                        <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                          {encounter.round}
+                        </TableCell>
+                        <TableCell className={`${tableStyles.cell} tabular-nums`}>
                           {encounter.score.home} - {encounter.score.away}
                         </TableCell>
                         <TableCell className={tableStyles.cell}>
@@ -668,7 +661,7 @@ export function TournamentMatchesTab({
                                     size="icon"
                                     aria-label={`Upload logs for ${encounter.name}`}
                                   >
-                                    <Upload className="h-4 w-4" />
+                                    <Upload className="size-4" aria-hidden />
                                   </Button>
                                 }
                               />
@@ -680,7 +673,7 @@ export function TournamentMatchesTab({
                                 aria-label={`Edit ${encounter.name}`}
                                 onClick={() => openEditEncounterDialog(encounter)}
                               >
-                                <Pencil className="h-4 w-4" />
+                                <Pencil className="size-4" aria-hidden />
                               </Button>
                             ) : null}
                             {canDeleteEncounter ? (
@@ -691,7 +684,7 @@ export function TournamentMatchesTab({
                                 aria-label={`Delete ${encounter.name}`}
                                 onClick={() => setEncounterPendingDelete(encounter)}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="size-4" aria-hidden />
                               </Button>
                             ) : null}
                           </div>
@@ -703,30 +696,12 @@ export function TournamentMatchesTab({
                       <TableCell className={tableStyles.cell} colSpan={7}>
                         <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
                           <span>
-                            No encounters available yet. Add at least two teams before creating the
-                            first encounter.
+                            No encounters yet. Add at least two teams, then sync from Challonge or
+                            create the first encounter.
                           </span>
                           <div className="flex flex-wrap gap-2">
-                            {canSyncEncounters ? (
-                              <Button
-                                variant="outline"
-                                onClick={() => syncEncountersMutation.mutate()}
-                                disabled={syncEncountersMutation.isPending || !hasChallongeSource}
-                              >
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                Sync Encounters
-                              </Button>
-                            ) : null}
-                            {canCreateEncounter ? (
-                              <Button
-                                variant="outline"
-                                onClick={openCreateEncounterDialog}
-                                disabled={!canCreateEncounterNow}
-                              >
-                                <Plus className="mr-2 h-4 w-4" />
-                                Create First Encounter
-                              </Button>
-                            ) : null}
+                            {syncEncountersButton}
+                            {createEncounterButton}
                           </div>
                         </div>
                       </TableCell>
@@ -739,9 +714,9 @@ export function TournamentMatchesTab({
               <div className="border-t border-border/30 px-3 py-2">
                 <Link
                   href={`/admin/encounters?tournament=${tournamentId}`}
-                  className="text-[12px] text-muted-foreground/60 transition-colors hover:text-foreground"
+                  className="text-sm tabular-nums text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  Show all {filteredEncounters.length} encounters →
+                  Show all {filteredEncounters.length} encounters <span aria-hidden>→</span>
                 </Link>
               </div>
             ) : null}
@@ -751,10 +726,9 @@ export function TournamentMatchesTab({
         <Card className="border-border/40">
           <CardHeader className="gap-3 pb-3">
             <div className="flex min-w-0 flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-base font-semibold">Standings Control</CardTitle>
-                <Badge variant="outline">{standings.length} rows</Badge>
-              </div>
+              <CardTitle asChild className="text-base font-semibold">
+                <h2>Standings control</h2>
+              </CardTitle>
               <CardDescription>
                 Calculate, sort, and adjust the ranking table for the selected scope.
               </CardDescription>
@@ -764,15 +738,15 @@ export function TournamentMatchesTab({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 gap-1.5 text-xs text-muted-foreground"
+                  className="h-7 text-xs text-muted-foreground"
                   onClick={() => setStandingsExpanded((current) => !current)}
                 >
                   {standingsExpanded ? (
-                    <ChevronsDownUp className="size-3.5" />
+                    <ChevronsDownUp className="mr-2 size-4" aria-hidden />
                   ) : (
-                    <ChevronsUpDown className="size-3.5" />
+                    <ChevronsUpDown className="mr-2 size-4" aria-hidden />
                   )}
-                  {standingsExpanded ? "Collapse" : "Expand all"}
+                  {standingsExpanded ? "Collapse all" : "Expand all"}
                 </Button>
               ) : null}
               {canRecalculateStandings && standings.length === 0 ? (
@@ -782,7 +756,8 @@ export function TournamentMatchesTab({
                   onClick={() => calculateStandingsMutation.mutate()}
                   disabled={calculateStandingsMutation.isPending || !canManageStandingsNow}
                 >
-                  <RefreshCw className="size-3.5" /> Calculate
+                  <RefreshCw className="mr-2 size-4" aria-hidden />
+                  Calculate standings
                 </Button>
               ) : null}
               {canRecalculateStandings && standings.length > 0 ? (
@@ -792,34 +767,21 @@ export function TournamentMatchesTab({
                   onClick={() => recalculateStandingsMutation.mutate()}
                   disabled={recalculateStandingsMutation.isPending || !canManageStandingsNow}
                 >
-                  <RefreshCw className="size-3.5" /> Recalculate
+                  <RefreshCw className="mr-2 size-4" aria-hidden />
+                  Recalculate standings
                 </Button>
               ) : null}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {standingGroups.length > 1 ? (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="standings-scope-filter" className="text-xs text-muted-foreground">
-                  Scope
-                </Label>
-                <Select
-                  value={standingsGroupFilter}
-                  onValueChange={(value) => updateScopeFilter(STANDINGS_SCOPE_QUERY_PARAM, value)}
-                >
-                  <SelectTrigger id="standings-scope-filter" className="h-8 w-[220px]">
-                    <SelectValue placeholder="All stages" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All stages</SelectItem>
-                    {standingGroups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <ScopeFilter
+                id="standings-scope-filter"
+                param={STANDINGS_SCOPE_QUERY_PARAM}
+                value={standingsGroupFilter}
+                groups={standingGroups}
+                onChange={updateScopeFilter}
+              />
             ) : null}
 
             <AdminDetailTableShell variant="compact">
@@ -836,19 +798,32 @@ export function TournamentMatchesTab({
                         { key: "draw", label: "D" },
                         { key: "lose", label: "L" }
                       ] as Array<{ key: StandingSortKey; label: string }>
-                    ).map((column) => (
-                      <TableHead
-                        key={column.key}
-                        className={`${tableStyles.head} cursor-pointer select-none`}
-                        onClick={() => toggleStandingSort(column.key)}
-                      >
-                        {column.label}
-                        <SortIcon
-                          state={standingsSort}
-                          active={standingsSort?.key === column.key}
-                        />
-                      </TableHead>
-                    ))}
+                    ).map((column) => {
+                      const active = standingsSort?.key === column.key;
+
+                      return (
+                        <TableHead
+                          key={column.key}
+                          className={tableStyles.head}
+                          aria-sort={
+                            active
+                              ? standingsSort?.dir === "asc"
+                                ? "ascending"
+                                : "descending"
+                              : "none"
+                          }
+                        >
+                          <button
+                            type="button"
+                            className="flex select-none items-center gap-1 transition-colors hover:text-foreground"
+                            onClick={() => toggleStandingSort(column.key)}
+                          >
+                            {column.label}
+                            <SortIcon state={standingsSort} active={active} />
+                          </button>
+                        </TableHead>
+                      );
+                    })}
                     <TableHead className={`${tableStyles.head} text-right`}>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -856,17 +831,27 @@ export function TournamentMatchesTab({
                   {visibleStandings.length ? (
                     visibleStandings.map((standing) => (
                       <TableRow key={standing.id} className={tableStyles.row}>
-                        <TableCell className={tableStyles.cell}>{standing.position}</TableCell>
+                        <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                          {standing.position}
+                        </TableCell>
                         <TableCell className={`${tableStyles.cell} font-medium`}>
                           {standing.team?.name ?? "Unknown team"}
                         </TableCell>
                         <TableCell className={tableStyles.cell}>
                           {getStandingScopeLabel(standing)}
                         </TableCell>
-                        <TableCell className={tableStyles.cell}>{standing.points}</TableCell>
-                        <TableCell className={tableStyles.cell}>{standing.win}</TableCell>
-                        <TableCell className={tableStyles.cell}>{standing.draw}</TableCell>
-                        <TableCell className={tableStyles.cell}>{standing.lose}</TableCell>
+                        <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                          {standing.points}
+                        </TableCell>
+                        <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                          {standing.win}
+                        </TableCell>
+                        <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                          {standing.draw}
+                        </TableCell>
+                        <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                          {standing.lose}
+                        </TableCell>
                         <TableCell className={tableStyles.cell}>
                           <div className="flex items-center justify-end gap-2">
                             {canUpdateStanding ? (
@@ -876,7 +861,7 @@ export function TournamentMatchesTab({
                                 aria-label={`Edit standing for ${standing.team?.name ?? "team"}`}
                                 onClick={() => openEditStandingDialog(standing)}
                               >
-                                <Pencil className="h-4 w-4" />
+                                <Pencil className="size-4" aria-hidden />
                               </Button>
                             ) : null}
                             {canDeleteStanding ? (
@@ -887,7 +872,7 @@ export function TournamentMatchesTab({
                                 aria-label={`Delete standing for ${standing.team?.name ?? "team"}`}
                                 onClick={() => setStandingPendingDelete(standing)}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="size-4" aria-hidden />
                               </Button>
                             ) : null}
                           </div>
@@ -899,8 +884,7 @@ export function TournamentMatchesTab({
                       <TableCell className={tableStyles.cell} colSpan={8}>
                         <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
                           <span>
-                            No standings available yet. Complete encounters first, then calculate
-                            standings.
+                            No standings yet. Complete a few encounters, then calculate standings.
                           </span>
                           {canRecalculateStandings ? (
                             <Button
@@ -910,8 +894,8 @@ export function TournamentMatchesTab({
                                 calculateStandingsMutation.isPending || !canManageStandingsNow
                               }
                             >
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              Calculate Standings
+                              <RefreshCw className="mr-2 size-4" aria-hidden />
+                              Calculate standings
                             </Button>
                           ) : null}
                         </div>
@@ -933,17 +917,17 @@ export function TournamentMatchesTab({
             resetEncounterDialog();
           }
         }}
-        title={editingEncounter ? "Edit Encounter" : "Create Encounter"}
+        title={editingEncounter ? "Edit encounter" : "Create encounter"}
         description="Create or update tournament encounters without leaving the workspace."
         onSubmit={handleEncounterSubmit}
         isSubmitting={saveEncounterMutation.isPending}
-        submittingLabel={editingEncounter ? "Updating encounter..." : "Creating encounter..."}
+        submittingLabel={editingEncounter ? "Updating encounter…" : "Creating encounter…"}
         errorMessage={encounterFormError}
         isDirty={isEncounterDirty}
       >
         <div className="space-y-4">
           <div>
-            <Label htmlFor="workspace-encounter-name">Encounter Name</Label>
+            <Label htmlFor="workspace-encounter-name">Encounter name</Label>
             <Input
               id="workspace-encounter-name"
               value={encounterFormData.name}
@@ -980,7 +964,7 @@ export function TournamentMatchesTab({
           </div>
 
           <div>
-            <Label htmlFor="workspace-encounter-stage-item">Stage Item</Label>
+            <Label htmlFor="workspace-encounter-stage-item">Stage item</Label>
             <Select
               value={encounterFormData.stage_item_id?.toString() ?? "none"}
               onValueChange={(value) =>
@@ -1020,7 +1004,7 @@ export function TournamentMatchesTab({
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <Label htmlFor="workspace-encounter-home">Home Team</Label>
+              <Label htmlFor="workspace-encounter-home">Home team</Label>
               <TeamCombobox
                 id="workspace-encounter-home"
                 teams={teams}
@@ -1040,7 +1024,7 @@ export function TournamentMatchesTab({
             </div>
 
             <div>
-              <Label htmlFor="workspace-encounter-away">Away Team</Label>
+              <Label htmlFor="workspace-encounter-away">Away team</Label>
               <TeamCombobox
                 id="workspace-encounter-away"
                 teams={teams}
@@ -1112,7 +1096,6 @@ export function TournamentMatchesTab({
               <SelectContent>
                 <SelectItem value="open">Open</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1127,13 +1110,15 @@ export function TournamentMatchesTab({
             resetStandingDialog();
           }
         }}
-        title="Edit Standing"
+        title="Edit standing"
         description="Adjust a stored standings row manually."
         onSubmit={handleStandingSubmit}
         isSubmitting={updateStandingMutation.isPending}
-        submittingLabel="Updating standing..."
+        submittingLabel="Updating standing…"
         errorMessage={
-          updateStandingMutation.isError ? updateStandingMutation.error.message : undefined
+          updateStandingMutation.isError
+            ? `Could not update the standing. ${updateStandingMutation.error.message}`
+            : undefined
         }
         isDirty={isStandingDirty}
       >
@@ -1226,7 +1211,7 @@ export function TournamentMatchesTab({
             deleteEncounterMutation.mutate(encounterPendingDelete.id);
           }
         }}
-        title="Delete Encounter"
+        title="Delete encounter"
         description={`Delete "${encounterPendingDelete?.name ?? "this encounter"}"? This action cannot be undone.`}
         cascadeInfo={["All matches in this encounter", "Attached match statistics and logs"]}
         isDeleting={deleteEncounterMutation.isPending}
@@ -1244,8 +1229,8 @@ export function TournamentMatchesTab({
             deleteStandingMutation.mutate(standingPendingDelete.id);
           }
         }}
-        title="Delete Standing"
-        description={`Delete the standings row for "${standingPendingDelete?.team?.name ?? "this team"}"?`}
+        title="Delete standing"
+        description={`Delete the standings row for "${standingPendingDelete?.team?.name ?? "this team"}"? The row stays gone until standings are recalculated.`}
         isDeleting={deleteStandingMutation.isPending}
       />
     </>

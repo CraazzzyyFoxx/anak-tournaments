@@ -47,7 +47,6 @@ class AdminTournamentServiceTests(IsolatedAsyncioTestCase):
         )
         data = admin_schemas.TournamentCreate(
             workspace_id=10,
-            number=4,
             name="Test",
             is_league=False,
             start_date=date(2026, 4, 17),
@@ -90,7 +89,6 @@ class AdminTournamentServiceTests(IsolatedAsyncioTestCase):
     async def test_update_uses_workspace_default_division_grid_version_when_null_requested(self) -> None:
         tournament = models.Tournament(
             workspace_id=10,
-            number=4,
             name="Test",
             is_league=False,
             start_date=date(2026, 4, 17),

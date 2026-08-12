@@ -95,3 +95,25 @@ def test_list_available_oauth_providers_top_level_route_returns_enabled_provider
     response = oauth_flows.list_providers()
 
     assert [item.provider for item in response] == [OAuthProvider.DISCORD, OAuthProvider.BATTLENET]
+
+
+def test_twitch_authorize_url_requests_the_subscriptions_scope() -> None:
+    """The subscription-entitlement module calls Helix
+    ``GET /subscriptions/user`` with the patron's own token, which requires
+    ``user:read:subscriptions``. Dropping this scope makes every Twitch verdict
+    resolve as ``unknown`` (fail-open), silently disabling the gate.
+
+    Reads the registry directly (as ``_provider_settings`` is read above) so the
+    assertion is independent of the enable flags other tests monkeypatch.
+    """
+    url = OAuthService._providers["twitch"].get_authorization_url("state-123")
+
+    assert "user%3Aread%3Asubscriptions" in url
+
+
+def test_twitch_authorize_url_keeps_the_email_scope() -> None:
+    """``user:read:email`` predates this feature and the callback still reads
+    ``email`` off the profile; adding a scope must not drop it."""
+    url = OAuthService._providers["twitch"].get_authorization_url("state-123")
+
+    assert "user%3Aread%3Aemail" in url

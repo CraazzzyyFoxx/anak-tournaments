@@ -5,13 +5,14 @@ from sqlalchemy import Boolean, Enum, Float, ForeignKey, Index, Integer, String,
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
-from shared.models.identity.user import User
 from shared.models.tournament.stage import Stage, StageItem
 from shared.models.tournament.team import Team
 from shared.models.tournament.tournament import Tournament, TournamentGroup
 
 if typing.TYPE_CHECKING:
     from shared.models.matches.match import Match
+    from shared.models.tournament.encounter_report import EncounterCaptainReport
+    from shared.models.tournament.encounter_result_audit import EncounterResultAudit
 
 __all__ = ("Encounter",)
 
@@ -99,9 +100,12 @@ class Encounter(db.TimeStampIntegerMixin):
         default=enums.EncounterResultStatus.NONE,
         server_default=enums.EncounterResultStatus.NONE.value,
     )
-    submitted_by_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
-    submitted_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
-    confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
+    # ``confirmed_at`` is the only provenance kept on the row: it is the sole
+    # timestamp an admin confirmation with zero captain reports leaves behind,
+    # and lists sort/filter on it without joining the audit. Who did it — and
+    # every earlier decision — lives in ``result_audit``; the old
+    # submitted_by_id/submitted_at/confirmed_by_id slots had no readers and
+    # forgot everything but the last writer.
     confirmed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
 
     tournament_group: Mapped[TournamentGroup] = relationship()
@@ -110,6 +114,15 @@ class Encounter(db.TimeStampIntegerMixin):
     away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])
     stage: Mapped["Stage | None"] = relationship()
     stage_item: Mapped["StageItem | None"] = relationship()
-    submitted_by: Mapped["User | None"] = relationship(foreign_keys=[submitted_by_id])
-    confirmed_by: Mapped["User | None"] = relationship(foreign_keys=[confirmed_by_id])
+    result_audit: Mapped[list["EncounterResultAudit"]] = relationship(
+        back_populates="encounter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="EncounterResultAudit.created_at.desc()",
+    )
     matches: Mapped[list["Match"]] = relationship()
+    captain_reports: Mapped[list["EncounterCaptainReport"]] = relationship(
+        back_populates="encounter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

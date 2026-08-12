@@ -16,13 +16,26 @@ from shared.services.realtime_publisher import event_to_envelope, publish_event_
 from src.core import config
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
 
-TournamentRealtimeReason = Literal["bracket_changed", "results_changed", "structure_changed"]
+TournamentRealtimeReason = Literal["bracket_changed", "results_changed", "structure_changed", "registration_changed"]
 
 _SESSION_KEY = "tournament_realtime_updates"
 _SESSION_EVENTS_KEY = "tournament_realtime_event_objects"
 _BRACKET_CHANGED: TournamentRealtimeReason = "bracket_changed"
 _RESULTS_CHANGED: TournamentRealtimeReason = "results_changed"
 _STRUCTURE_CHANGED: TournamentRealtimeReason = "structure_changed"
+_REGISTRATION_CHANGED: TournamentRealtimeReason = "registration_changed"
+
+# asyncio holds only a WEAK reference to a running task, so a fire-and-forget
+# `create_task` whose result nobody keeps can be collected mid-flight and take
+# the cache invalidation or the Redis publish with it, silently. Anchoring the
+# handles here until they finish is the documented remedy.
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _spawn(loop: asyncio.AbstractEventLoop, coro: Any) -> None:
+    task = loop.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def _normalize_reason(reason: str) -> TournamentRealtimeReason | None:
@@ -32,6 +45,8 @@ def _normalize_reason(reason: str) -> TournamentRealtimeReason | None:
         return _RESULTS_CHANGED
     if reason == _STRUCTURE_CHANGED:
         return _STRUCTURE_CHANGED
+    if reason == _REGISTRATION_CHANGED:
+        return _REGISTRATION_CHANGED
     return None
 
 
@@ -50,6 +65,13 @@ def _merge_updates(
             merged.append((tournament_id, _RESULTS_CHANGED))
         elif _BRACKET_CHANGED in reasons:
             merged.append((tournament_id, _BRACKET_CHANGED))
+        # registration_changed's invalidation plan (registration/registrationsList/
+        # registrationForm) is disjoint from the bracket-family plans above, not a
+        # subset of them — fold it into the chain only where structure_changed
+        # already supersedes it (its plan includes the registration keys too);
+        # otherwise it needs its own event or its invalidation would be dropped.
+        if _REGISTRATION_CHANGED in reasons and _STRUCTURE_CHANGED not in reasons:
+            merged.append((tournament_id, _REGISTRATION_CHANGED))
     return merged
 
 
@@ -178,10 +200,10 @@ def _publish_registered_updates_after_commit(session: Session) -> None:
                 )
             )
         for tournament_id, reason, topic, envelope in envelopes:
-            loop.create_task(_publish_persisted_event(tournament_id, reason, topic, envelope))
+            _spawn(loop, _publish_persisted_event(tournament_id, reason, topic, envelope))
 
     if fallback_updates:
-        loop.create_task(publish_tournament_realtime_updates(fallback_updates))
+        _spawn(loop, publish_tournament_realtime_updates(fallback_updates))
 
 
 @event.listens_for(Session, "after_rollback")

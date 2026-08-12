@@ -4,6 +4,8 @@ from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.messaging.config import (
+    DIVISION_GRID_IMPORT_JOBS_DLQ,
+    DIVISION_GRID_IMPORT_JOBS_QUEUE,
     TOURNAMENT_BRACKET_JOBS_DLQ,
     TOURNAMENT_BRACKET_JOBS_QUEUE,
     TOURNAMENT_COMPUTE_EXCHANGE,
@@ -15,6 +17,7 @@ from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
     observe_message_processing,
+    observe_scheduled_job,
     setup_logging,
     setup_sentry,
     setup_tracing,
@@ -24,12 +27,14 @@ from shared.schemas.events import TournamentComputationJobEvent
 from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
-from src.rpc import admin_misc, integrations, public_rpc, registration_admin, stage_admin, veto_admin
+from src.core.redis import close_realtime_redis
+from src.rpc import admin_misc, integrations, pick_ban_admin, public_rpc, registration_admin, stage_admin
 from src.rpc import reads as rpc_reads
 from src.services.admin import registry as admin_registry
 from src.services.challonge import sync as challonge_sync
 from src.services.computation.bracket_worker import process_bracket_job
 from src.services.computation.standings_worker import process_standings_job
+from src.services.division_grid.import_jobs import process_import_job, recover_stale_import_jobs
 
 # Import for side effects: registers the SQLAlchemy after-commit listeners that
 # publish encounter map-veto realtime signals (encounter:{id}:map-veto).
@@ -71,7 +76,7 @@ admin_misc.register(broker, logger)
 registration_admin.register(broker, logger)
 integrations.register(broker, logger)
 stage_admin.register(broker, logger)
-veto_admin.register(broker, logger)
+pick_ban_admin.register(broker, logger)
 public_rpc.register(broker, logger)
 # Recalculation-event consumers (tournament.changed / standings.invalidated).
 # Previously mounted by the deleted HTTP main.py; the worker now hosts them so
@@ -80,28 +85,31 @@ broker.include_router(recalculation_events.task_router)
 
 
 async def drain_outbox() -> None:
-    async with db.async_session_maker() as session:
+    async with observe_scheduled_job("event_outbox_drain"), db.async_session_maker() as session:
         published = await publish_pending_outbox_events(session, broker, limit=100, commit=True)
         if published:
             logger.info("Published %d outbox events", published)
 
 
 async def sync_registration_google_sheet_feeds() -> None:
-    results = await registration_service.sync_due_google_sheet_feeds(db.async_session_maker)
-    if results:
-        logger.info("Registration Google Sheets sync completed", results=results)
+    async with observe_scheduled_job("registration_google_sheet_sync"):
+        results = await registration_service.sync_due_google_sheet_feeds(db.async_session_maker)
+        if results:
+            logger.info("Registration Google Sheets sync completed", results=results)
 
 
 async def sync_challonge_active_tournaments() -> None:
-    results = await challonge_sync.sync_active_challonge_tournaments(db.async_session_maker)
-    if results:
-        logger.info("Challonge auto-sync completed", results=results)
+    async with observe_scheduled_job("challonge_active_sync"):
+        results = await challonge_sync.sync_active_challonge_tournaments(db.async_session_maker)
+        if results:
+            logger.info("Challonge auto-sync completed", results=results)
 
 
 async def auto_transition_tournaments() -> None:
-    results = await auto_transitions.run_due_transitions(db.async_session_maker)
-    if results:
-        logger.info("Tournament auto-transitions applied", results=results)
+    async with observe_scheduled_job("auto_transition_tournaments"):
+        results = await auto_transitions.run_due_transitions(db.async_session_maker)
+        if results:
+            logger.info("Tournament auto-transitions applied", results=results)
 
 
 @app.on_startup
@@ -109,6 +117,7 @@ async def start_worker() -> None:
     await broker.connect()
     await declare_dead_letter_queue(broker, TOURNAMENT_BRACKET_JOBS_DLQ)
     await declare_dead_letter_queue(broker, TOURNAMENT_STANDINGS_JOBS_DLQ)
+    await declare_dead_letter_queue(broker, DIVISION_GRID_IMPORT_JOBS_DLQ)
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,
@@ -118,7 +127,7 @@ async def start_worker() -> None:
         logs_level=config.settings.sentry_logs_level,
         enable_metrics=config.settings.sentry_enable_metrics,
         environment=config.settings.environment,
-        release=config.settings.version,
+        release=config.settings.sentry_release,
         http_proxy=config.settings.sentry_http_proxy_url,
         https_proxy=config.settings.sentry_https_proxy_url,
     )
@@ -128,8 +137,18 @@ async def start_worker() -> None:
         enabled=config.settings.tracing_enabled,
         sampler_name=config.settings.otel_traces_sampler,
         sampler_arg=config.settings.otel_traces_sampler_arg,
+        environment=config.settings.environment,
+        release=config.settings.sentry_release,
+        engine=db.async_engine,
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
+    await recover_stale_import_jobs()
+    scheduler.add_job(
+        recover_stale_import_jobs,
+        "interval",
+        minutes=5,
+        id="division_grid_import_recovery",
+    )
     scheduler.add_job(drain_outbox, "interval", seconds=1, id="event_outbox_drain")
     scheduler.add_job(
         sync_registration_google_sheet_feeds,
@@ -161,6 +180,9 @@ async def stop_scheduler() -> None:
     # flows commit incrementally (per encounter / per batch) and are idempotent
     # on re-run, so an interrupted job resumes cleanly on the next tick.
     scheduler.shutdown(wait=False)
+    # The realtime publisher's pooled client: unclosed, it leaks a connection per
+    # worker restart (the same leak challonge.sync's own client was fixed for).
+    await close_realtime_redis()
 
 
 @broker.subscriber(TOURNAMENT_BRACKET_JOBS_QUEUE, exchange=TOURNAMENT_COMPUTE_EXCHANGE, channel=_JOBS_CHANNEL)
@@ -185,3 +207,18 @@ async def consume_standings_job(data: dict, msg: RabbitMessage) -> None:
     ):
         event = TournamentComputationJobEvent.model_validate(data)
         await process_standings_job(event.job_id)
+
+
+@broker.subscriber(
+    DIVISION_GRID_IMPORT_JOBS_QUEUE,
+    exchange=TOURNAMENT_COMPUTE_EXCHANGE,
+    channel=_JOBS_CHANNEL,
+)
+async def consume_division_grid_import_job(data: dict, msg: RabbitMessage) -> None:
+    async with observe_message_processing(
+        queue=DIVISION_GRID_IMPORT_JOBS_QUEUE,
+        handler="consume_division_grid_import_job",
+        message=msg,
+        logger=logger,
+    ):
+        await process_import_job(int(data["job_id"]))

@@ -3,6 +3,7 @@
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.catalog_aliases import normalize_aliases
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import GamemodeRepository
@@ -38,7 +39,7 @@ async def create_gamemode(session: AsyncSession, data: admin_schemas.GamemodeCre
             detail=f"Gamemode with name '{data.name}' already exists",
         )
 
-    gamemode = models.Gamemode(name=data.name)
+    gamemode = models.Gamemode(name=data.name, aliases=normalize_aliases(data.aliases or [], canonical=data.name))
     gamemode = await _repo.create(session, gamemode)
     await session.commit()
     await session.refresh(gamemode)
@@ -62,6 +63,10 @@ async def update_gamemode(
             )
 
     update_data = data.model_dump(exclude_unset=True)
+    if "aliases" in update_data:
+        update_data["aliases"] = normalize_aliases(
+            update_data["aliases"] or [], canonical=update_data.get("name") or gamemode.name
+        )
     gamemode = await _repo.update_fields(session, gamemode, update_data)
     await session.commit()
     await session.refresh(gamemode)

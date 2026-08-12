@@ -4,7 +4,8 @@ import { Layers } from "lucide-react";
 import { UserProfile, UserRole, UserMapRead } from "@/types/user.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
-import { CardSurface, normalizeRole, type AqtRoleKey } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
 import { getOverall } from "@/app/(site)/users/components/heroes/utils";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -23,12 +24,6 @@ const ROLE_LABEL_KEY: Record<AqtRoleKey, string> = {
   tank: "common.roles.tank",
   damage: "common.roles.dps",
   support: "common.roles.support"
-};
-
-const ROLE_SHORT_KEY: Record<AqtRoleKey, string> = {
-  tank: "users.overview.roleSplit.short.tank",
-  damage: "users.overview.roleSplit.short.damage",
-  support: "users.overview.roleSplit.short.support"
 };
 
 const ROLE_COLOR: Record<AqtRoleKey, string> = {
@@ -152,7 +147,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
         {/* Role-spectrum distribution bar (design-book §3f) — one thin
             full-width bar segmented by each role's share of maps played. */}
         <div className="flex flex-col gap-2">
-          <div className="flex h-2.5 w-full overflow-hidden rounded-full border border-[color:var(--aqt-border)]">
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full border border-[color:var(--aqt-border)]" aria-hidden>
             {buckets.map((b) =>
               b.share > 0 ? (
                 <div
@@ -166,8 +161,8 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
           <div className="flex flex-wrap gap-x-3.5 gap-y-1">
             {buckets.map((b) => (
               <span key={b.key} className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--aqt-fg-muted)]">
-                <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: ROLE_COLOR[b.key] }} />
-                {t(ROLE_SHORT_KEY[b.key] as Parameters<typeof t>[0])}
+                <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: ROLE_COLOR[b.key] }} aria-hidden />
+                {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
                 <span className="aqt-tnum font-bold text-[color:var(--aqt-fg)]">{b.maps}</span>
                 <span className="aqt-mono text-[color:var(--aqt-fg-faint)]">{Math.round(b.share * 100)}%</span>
               </span>
@@ -205,7 +200,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
                   className="aqt-display flex items-center gap-1.5 text-[16px] font-bold uppercase leading-none tracking-[0.04em]"
                   style={{ color: ROLE_COLOR[b.key] }}
                 >
-                  <PlayerRoleIcon role={ROLE_ICON[b.key]} size={14} color={ROLE_COLOR[b.key]} />
+                  <PlayerRoleIcon role={ROLE_ICON[b.key]} size={14} color={ROLE_COLOR[b.key]} decorative />
                   {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
                   {primary && b.key === primary.key ? (
                     <span className="ml-1 text-[11px] font-semibold tracking-[0.1em] text-[color:var(--aqt-fg-muted)]"> · {t("users.overview.roleSplit.main")}</span>
@@ -244,7 +239,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
               const roleName = t(ROLE_LABEL_KEY[sig.key] as Parameters<typeof t>[0]);
               return (
                 <div key={sig.key} className="grid grid-cols-[16px_26px_1fr_auto] items-center gap-2.5">
-                  <div className="flex justify-center" title={roleName} aria-label={roleName}>
+                  <div className="flex justify-center" title={roleName}>
                     <PlayerRoleIcon role={ROLE_ICON[sig.key]} size={14} color={ROLE_COLOR[sig.key]} />
                   </div>
                   <HeroImage
@@ -260,12 +255,17 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
                       {sig.kda != null ? t("users.overview.roleSplit.kda", { value: sig.kda.toFixed(2) }) : "—"}
                     </div>
                   </div>
-                  <div
-                    className="aqt-display aqt-tnum text-[15px] font-bold"
-                    style={{ color: sig.winPct != null ? winrateColor(sig.winPct) : "var(--aqt-fg-muted)" }}
-                  >
-                    {sig.winPct != null ? `${sig.winPct.toFixed(0)}%` : "—"}
-                  </div>
+                  {/* Empty when the hero has no winrate sample: an `auto` track
+                      collapses to nothing, where a placeholder dash printed a
+                      column of three bare em dashes down the card. */}
+                  {sig.winPct != null ? (
+                    <div
+                      className="aqt-display aqt-tnum text-[15px] font-bold"
+                      style={{ color: winrateColor(sig.winPct) }}
+                    >
+                      {sig.winPct.toFixed(0)}%
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

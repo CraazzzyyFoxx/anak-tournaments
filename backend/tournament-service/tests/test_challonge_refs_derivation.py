@@ -96,7 +96,6 @@ def _tournament() -> models.Tournament:
         created_at=datetime.now(UTC),
         updated_at=None,
         workspace_id=1,
-        number=10,
         name="Tournament 10",
         description=None,
         is_league=False,
@@ -112,6 +111,9 @@ def _tournament() -> models.Tournament:
         loss_points=0.0,
         team_formation="balancer",
         division_grid_version_id=5,
+        # Serialized as a plain column: an unset attribute on a detached
+        # instance would trigger a refresh instead of reading NULL.
+        roster_slots_json=None,
     )
 
 
@@ -135,8 +137,6 @@ def _encounter() -> models.Encounter:
         has_logs=False,
         status=enums.EncounterStatus.COMPLETED,
         result_status=enums.EncounterResultStatus.NONE,
-        submitted_by_id=None,
-        confirmed_by_id=None,
     )
 
 

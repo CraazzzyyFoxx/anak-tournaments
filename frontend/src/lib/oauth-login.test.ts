@@ -64,14 +64,14 @@ describe("startOAuthLogin", () => {
     for (const action of ["login", "link"] as const) {
       it(`sets a host-only owt_xdomain_guard cookie and a matching guard_hash on the apex bounce (action=${action})`, async () => {
         const qs = action === "link" ? "?action=link" : "";
-        const res = await startOAuthLogin(req(`https://anakq.gg/auth/discord/login${qs}`), "discord");
+        const res = await startOAuthLogin(req(`https://tenant.example.com/auth/discord/login${qs}`), "discord");
 
         expect(res.status).toBe(307);
         const location = new URL(res.headers.get("location")!);
         expect(location.origin).toBe(`https://${PLATFORM_ZONE}`);
         expect(location.pathname).toBe("/auth/discord/login");
         expect(location.searchParams.get("action")).toBe(action);
-        expect(location.searchParams.get("origin")).toBe("https://anakq.gg");
+        expect(location.searchParams.get("origin")).toBe("https://tenant.example.com");
 
         const cookies = setCookieHeaders(res);
         const guardCookie = cookies.find((c) => c.startsWith("owt_xdomain_guard="));
@@ -98,14 +98,14 @@ describe("startOAuthLogin", () => {
     }
 
     it("carries the next param through the bounce", async () => {
-      const res = await startOAuthLogin(req("https://anakq.gg/auth/discord/login?next=%2Fsettings"), "discord");
+      const res = await startOAuthLogin(req("https://tenant.example.com/auth/discord/login?next=%2Fsettings"), "discord");
       const location = new URL(res.headers.get("location")!);
       expect(location.searchParams.get("next")).toBe("/settings");
     });
 
     it("mints a fresh guard token (and hash) on every bounce", async () => {
-      const first = await startOAuthLogin(req("https://anakq.gg/auth/discord/login"), "discord");
-      const second = await startOAuthLogin(req("https://anakq.gg/auth/discord/login"), "discord");
+      const first = await startOAuthLogin(req("https://tenant.example.com/auth/discord/login"), "discord");
+      const second = await startOAuthLogin(req("https://tenant.example.com/auth/discord/login"), "discord");
 
       const firstHash = new URL(first.headers.get("location")!).searchParams.get("guard_hash");
       const secondHash = new URL(second.headers.get("location")!).searchParams.get("guard_hash");
@@ -116,14 +116,14 @@ describe("startOAuthLogin", () => {
   describe("apex (guard_hash gate)", () => {
     it("forwards a bounced guard_hash query param to getOAuthUrl", async () => {
       const res = await startOAuthLogin(
-        req(`https://${PLATFORM_ZONE}/auth/discord/login?action=login&origin=https%3A%2F%2Fanakq.gg&guard_hash=abc123`),
+        req(`https://${PLATFORM_ZONE}/auth/discord/login?action=login&origin=https%3A%2F%2Ftenant.example.com&guard_hash=abc123`),
         "discord"
       );
 
       expect(res.status).toBe(307);
       expect(getOAuthUrlCalls.length).toBe(1);
       expect(getOAuthUrlCalls[0].guardHash).toBe("abc123");
-      expect(getOAuthUrlCalls[0].origin).toBe("https://anakq.gg");
+      expect(getOAuthUrlCalls[0].origin).toBe("https://tenant.example.com");
     });
 
     it("omits guardHash entirely when no guard_hash param is present (platform-host flow)", async () => {

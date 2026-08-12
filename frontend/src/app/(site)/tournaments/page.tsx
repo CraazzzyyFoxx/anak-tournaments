@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
@@ -9,8 +9,11 @@ import encounterService from "@/services/encounter.service";
 import statisticsService from "@/services/statistics.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
-import { countByTournamentStatus, isTournamentStatusActive } from "@/lib/tournament-status";
+import { TOURNAMENT_STATUS_ORDER, countByTournamentStatus } from "@/lib/tournament-status";
+import type { TournamentStatus } from "@/types/tournament.types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { useQueryParams } from "@/hooks/useQueryParams";
 
 import TournamentsHero from "./components/TournamentsHero";
 import FeaturedLive from "./components/FeaturedLive";
@@ -26,6 +29,9 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 11;
 
+const SORT_BY: readonly SortBy[] = ["latest", "oldest", "participants"];
+const TYPE_FILTERS: readonly TypeFilter[] = ["all", "standard", "league"];
+
 const TournamentsPageSkeleton = () => (
   <div className="space-y-6">
     <Skeleton className="h-[200px] w-full rounded-2xl" />
@@ -40,13 +46,38 @@ const TournamentsPage = () => {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const workspaceName = workspaces.find((w) => w.id === workspaceId)?.name;
 
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<SortBy>("latest");
-  const [page, setPage] = useState(1);
+  // Filters live in the URL, so a filtered view survives a reload and can be
+  // shared. `resetOnChange: ["page"]` drops the page whenever a filter moves.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: ["page"] });
 
-  const { data: tournaments, isLoading } = useQuery({
+  const statusParam = searchParams?.get("status");
+  const statusFilter: StatusFilter =
+    statusParam && (TOURNAMENT_STATUS_ORDER as string[]).includes(statusParam)
+      ? (statusParam as TournamentStatus)
+      : "all";
+
+  const typeParam = searchParams?.get("type");
+  const typeFilter: TypeFilter = TYPE_FILTERS.includes(typeParam as TypeFilter)
+    ? (typeParam as TypeFilter)
+    : "all";
+
+  const search = searchParams?.get("q") ?? "";
+
+  const sortParam = searchParams?.get("sort");
+  const sortBy: SortBy = SORT_BY.includes(sortParam as SortBy) ? (sortParam as SortBy) : "latest";
+
+  const pageParam = Number(searchParams?.get("page"));
+  const page = Number.isFinite(pageParam) && pageParam >= 1 ? Math.floor(pageParam) : 1;
+
+  const hasActiveFilters = statusFilter !== "all" || typeFilter !== "all" || search.trim() !== "";
+  const clearFilters = () => setParams({ status: null, type: null, q: null, page: null });
+
+  const {
+    data: tournaments,
+    isLoading,
+    isError,
+    refetch
+  } = useQuery({
     queryKey: ["tournaments", workspaceId],
     queryFn: () => tournamentService.getAll(null, workspaceId)
   });
@@ -67,7 +98,7 @@ const TournamentsPage = () => {
   const allResults = useMemo(() => tournaments?.results ?? [], [tournaments]);
 
   const statusCounts = useMemo(
-    () => countByTournamentStatus(allResults.map((t) => t.status)),
+    () => countByTournamentStatus(allResults.map((tournament) => tournament.status)),
     [allResults]
   );
   const leagueCount = useMemo(() => allResults.filter((t) => t.is_league).length, [allResults]);
@@ -86,12 +117,7 @@ const TournamentsPage = () => {
 
     const query = search.trim().toLowerCase();
     if (query) {
-      filtered = filtered.filter(
-        (t) =>
-          t.name.toLowerCase().includes(query) ||
-          `#${t.number}`.includes(query) ||
-          String(t.number).includes(query)
-      );
+      filtered = filtered.filter((t) => t.name.toLowerCase().includes(query));
     }
 
     return [...filtered].sort((a, b) => {
@@ -108,33 +134,11 @@ const TournamentsPage = () => {
     });
   }, [allResults, statusFilter, typeFilter, search, sortBy]);
 
-  // Reset to the first page whenever a filter changes (avoids setState-in-effect).
-  const handleStatusChange = (value: StatusFilter) => {
-    setStatusFilter(value);
-    setPage(1);
-  };
-  const handleTypeChange = (value: TypeFilter) => {
-    setTypeFilter(value);
-    setPage(1);
-  };
-  const handleSearchChange = (value: string) => {
-    setSearch(value);
-    setPage(1);
-  };
-  const handleSortChange = (value: SortBy) => {
-    setSortBy(value);
-    setPage(1);
-  };
-
   const liveGroups = useMemo(
     () => groupLiveByTournament(overview?.featured.live ?? []),
     [overview]
   );
 
-  const activeCount = useMemo(
-    () => allResults.filter((t) => isTournamentStatusActive(t.status)).length,
-    [allResults]
-  );
 
   if (isLoading) {
     return (
@@ -144,9 +148,10 @@ const TournamentsPage = () => {
     );
   }
 
-  const totalTournaments = tournaments?.total ?? allResults.length;
-  const totalPlayers =
-    overall?.players ?? allResults.reduce((sum, t) => sum + (t.participants_count || 0), 0);
+  // Platform totals come from the same service that feeds `/` and `/statistics`,
+  // so the three public pages cannot state different facts about the platform.
+  // The list payload only ever backs the scoped "N shown" label below.
+  const shownCount = filteredTournaments.length;
 
   return (
     <div className="aqt-tn space-y-6">
@@ -154,9 +159,7 @@ const TournamentsPage = () => {
         workspaceName={workspaceName}
         liveEvents={(statusCounts.live ?? 0) + (statusCounts.playoffs ?? 0)}
         liveMatches={overview?.kpis.live_now_count ?? 0}
-        totalTournaments={totalTournaments}
-        activeTournaments={activeCount}
-        totalPlayers={totalPlayers}
+        totalPlayers={overall?.players ?? 0}
         totalTeams={overall?.teams ?? 0}
       />
 
@@ -178,13 +181,13 @@ const TournamentsPage = () => {
             className="tn-id"
             style={{
               marginLeft: 6,
-              background: "hsl(0 0% 100% / 0.03)",
-              border: "1px solid hsl(var(--border))",
+              background: "var(--aqt-overlay-1)",
+              border: "1px solid var(--aqt-border)",
               padding: "3px 8px",
               borderRadius: 6
             }}
           >
-            {t("tournamentsList.heading.total", { count: totalTournaments })}
+            {t("tournamentsList.heading.shown", { count: shownCount })}
           </span>
         </div>
       </section>
@@ -195,41 +198,36 @@ const TournamentsPage = () => {
         total={allResults.length}
         statusCounts={statusCounts}
         statusFilter={statusFilter}
-        onStatusChange={handleStatusChange}
+        onStatusChange={(value) => setParams({ status: value === "all" ? null : value })}
         typeFilter={typeFilter}
         leagueCount={leagueCount}
         standardCount={allResults.length - leagueCount}
-        onTypeChange={handleTypeChange}
+        onTypeChange={(value) => setParams({ type: value === "all" ? null : value })}
         search={search}
-        onSearchChange={handleSearchChange}
+        onSearchChange={(value) => setParams({ q: value })}
         sortBy={sortBy}
-        onSortChange={handleSortChange}
+        onSortChange={(value) => setParams({ sort: value === "latest" ? null : value })}
       />
 
-      {filteredTournaments.length === 0 ? (
-        <div className="tn-card" style={{ padding: "64px 24px", textAlign: "center" }}>
-          <h2
-            style={{
-              fontFamily: "var(--display)",
-              fontWeight: 700,
-              fontSize: 20,
-              textTransform: "uppercase",
-              letterSpacing: ".04em",
-              margin: "0 0 6px"
-            }}
-          >
-            {t("tournamentsList.empty.title")}
-          </h2>
-          <p style={{ color: "var(--fg-dim)", fontSize: 13, margin: 0 }}>
-            {t("tournamentsList.empty.body")}
-          </p>
-        </div>
+      {isError ? (
+        <PageStateCard state="error" onAction={() => void refetch()} />
+      ) : shownCount === 0 ? (
+        hasActiveFilters ? (
+          <PageStateCard
+            state="filtered-empty"
+            title={t("tournamentsList.empty.title")}
+            description={t("tournamentsList.empty.body")}
+            onAction={clearFilters}
+          />
+        ) : (
+          <PageStateCard state="empty" />
+        )
       ) : (
         <TournamentsTable
           tournaments={filteredTournaments}
           page={page}
           pageSize={PAGE_SIZE}
-          onPageChange={setPage}
+          onPageChange={(next) => setParams({ page: next === 1 ? null : next })}
         />
       )}
     </div>

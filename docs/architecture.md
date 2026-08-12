@@ -75,9 +75,17 @@ entirely by RabbitMQ; the only one that runs as a plain process rather than an R
 
 1. **Traefik** terminates TLS (upstream of this repo).
 2. **nginx** (`nginx/nginx.conf`) is the internal HTTP edge: it recovers the real client IP
-   from Traefik's `X-Forwarded-For`, applies a defense-in-depth auth rate limit, allows
+   from Traefik's `X-Forwarded-For`, enforces the per-IP DoS layer (`limit_req` / `limit_conn`
+   zones for ordinary traffic, auth, WebSocket handshakes and the upload paths, with internal
+   networks exempted via an empty zone key), applies anti-slowloris timeouts, allows
    WebSocket upgrades, caps body size at 12 MB (60 MB for match-log upload paths), and
-   `proxy_pass`es to `gateway:8080` with runtime DNS re-resolution.
+   `proxy_pass`es to `gateway:8080` with runtime DNS re-resolution. It emits a JSON access log
+   (`$uri` only — the WS token must never be logged) carrying `$limit_req_status`, which
+   promtail turns into both Loki streams and Prometheus rejection counters. The limits ship in
+   `limit_req_dry_run` mode pending calibration — see
+   [`docs/superpowers/specs/2026-08-06-nginx-dos-hardening-design.md`](superpowers/specs/2026-08-06-nginx-dos-hardening-design.md).
+   HTTP/2 attack surface belongs to Traefik (nginx only ever speaks HTTP/1.1 here) and
+   L3/L4 to the hosting provider.
 3. The **gateway** (`gateway/cmd/gateway/main.go`):
    - validates JWTs locally with the shared HS256 secret; for RBAC-gated routes it
      revalidates and enriches the principal via `rpc.identity.validate_token`;
@@ -112,7 +120,9 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 - **Realtime.** Workers publish to Redis topics (`tournament:{id}:bracket`,
   `encounter:{id}:map-veto`, `tournament:{id}:balancer`, `workspace:{id}:analytics_jobs`,
   workspace `logs.updated`) via `realtime.workspace_event` rows; the gateway relays them to
-  WebSocket clients with replay.
+  WebSocket clients with replay. `workspace:{id}:subscriptions` is non-durable (no event row,
+  no replay): one thin `subscription.updated` per resolve pass that actually moved a verdict,
+  which the admin subscription views and the tournament hub refetch on.
 - **Discord ingest.** The bot uploads match-log attachments as base64 to
   `UPLOAD_MATCH_LOG_QUEUE`; parser results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
   (per-replica exclusive queue) correlated by `ResultWaiter`.
@@ -176,7 +186,11 @@ egress through the outbound `proxy` container (xray/shadowsocks).
 
 - **Metrics** — Prometheus scrapes the gateway (`:9110`) and each worker's
   `WORKER_METRICS_PORT`.
-- **Tracing** — OpenTelemetry spans from gateway and workers → OTel Collector → Tempo.
+- **Tracing** — OpenTelemetry spans from gateway and workers → OTel Collector → Tempo
+  *and* Sentry (Sentry Exporter). One OTLP stream, two backends: Grafana for the
+  span-metrics/service-graph view, Sentry for traces sitting next to the Issues they
+  caused. The Sentry SDKs emit no transactions of their own
+  (`SENTRY_TRACES_SAMPLE_RATE=0`) and only link errors/logs to the OTel trace.
 - **Logs** — structured JSON logs to `logs/` → Promtail → Loki.
 - **Dashboards & alerts** — Grafana (Application Logs, Workers & Queues, Gateway, Tracing,
   Infrastructure) and Alertmanager → Discord.

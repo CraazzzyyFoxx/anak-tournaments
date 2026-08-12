@@ -270,8 +270,11 @@ async def apply_identity_selection(
 ) -> dict[str, list[int]]:
     """Move the selected source social accounts to the target, deduping on
     (provider, normalized handle). Moved accounts arrive non-primary; a single
-    primary per affected provider is then ensured. Unselected source accounts are
-    left on the source (and dropped when it is deleted)."""
+    primary per affected provider is then ensured. When a selected source account
+    is dropped as a duplicate of an unverified target account, its verification
+    (and provider_user_id) is promoted onto the surviving target row so merging
+    never regresses a verified identity to unverified. Unselected source accounts
+    are left on the source (and dropped when it is deleted)."""
     target_user_id = target.id
     selected_ids = set(identity_selection.social_account_ids)
     moved: list[int] = []
@@ -287,8 +290,27 @@ async def apply_identity_selection(
             continue
         key = (account.provider, normalize_social_handle(account.provider, account.username))
         if key in target_keys:
+            existing = None
+            if account.is_verified:
+                existing = next(
+                    (
+                        candidate
+                        for candidate in target.social_accounts
+                        if (candidate.provider, normalize_social_handle(candidate.provider, candidate.username)) == key
+                    ),
+                    None,
+                )
             await session.delete(account)
             deduped.append(account.id)
+            if existing is not None and not existing.is_verified:
+                # The pre-existing target duplicate wins the row, but the source's
+                # proof of ownership must not be discarded just because it lost the
+                # dedup. Flush the delete first so the partial unique index on
+                # (provider, provider_user_id) never sees both rows holding the same
+                # value at once.
+                await session.flush()
+                existing.is_verified = True
+                existing.provider_user_id = account.provider_user_id
             continue
         account.user_id = target_user_id
         account.is_primary = False

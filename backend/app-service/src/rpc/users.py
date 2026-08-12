@@ -166,6 +166,15 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "users.tournament", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.app.users.tournament_encounters")
+    async def _tournament_encounters(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            tournament_id = int(data["tournament_id"])
+            await c.gate_tournament(session, data, tournament_id)
+            return await user_flows.get_tournament_encounters(session, c.require_id(data), tournament_id)
+
+        return await c.envelope(logger, "users.tournament_encounters", op, session_factory=_SF)
+
     @broker.subscriber("rpc.app.users.tournament_leaderboard")
     async def _tournament_leaderboard(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

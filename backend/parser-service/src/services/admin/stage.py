@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import enums
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
 from src import models
 from src.schemas.admin import stage as admin_schemas
 from src.services.standings import recalculation as standings_recalculation
@@ -176,44 +177,63 @@ async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     await _publish_tournament_changed(tournament_id, "structure_changed")
 
 
-def _map_veto_signature(config: models.MapVetoConfig) -> tuple[tuple, tuple]:
-    # ``map_pool`` was normalized out of the old ``map_pool_ids`` JSON array
-    # (dbarch05) into the ``map_veto_config_map`` child table; the relationship
-    # is ordered by ``sort_order`` so the tuple mirrors the old array order.
+def _pick_ban_config_signature(
+    config: PickBanConfig,
+) -> tuple[tuple, tuple, enums.MapVetoMode, enums.FirstBanRotation | None, tuple]:
+    """Structural identity of ``config`` for stage-merge dedup. Generalizes
+    ``_map_veto_signature`` onto ``PickBanConfig`` -- ``map_id``/``map_pool``
+    become ``item_id``/``items``, everything else (including every ordering
+    and tie-breaking rule the legacy docstring explains) is unchanged."""
+    rotation = config.first_ban_rotation if config.mode == enums.MapVetoMode.SLOTS else None
     return (
-        tuple(config.veto_sequence_json or []),
-        tuple(entry.map_id for entry in config.map_pool),
+        tuple(config.sequence_json or []),
+        tuple(entry.item_id for entry in config.items),
+        config.mode,
+        rotation,
+        tuple(
+            (
+                slot.position,
+                slot.reserve_item_id,
+                tuple(entry.item_id for entry in sorted(slot.items, key=lambda row: (row.sort_order, row.item_id))),
+            )
+            for slot in sorted(config.slots, key=lambda row: row.position)
+        ),
     )
 
 
-async def _merge_map_veto_configs(
+async def _merge_pick_ban_configs(
     session: AsyncSession,
     *,
     target_stage: models.Stage,
     source_stage_ids: list[int],
+    kind: enums.PickBanKind,
 ) -> None:
+    """Generalizes ``_merge_map_veto_configs`` onto ``PickBanConfig``, scoped
+    by ``kind`` -- called once per kind so a tournament's map and hero configs
+    are deduped independently."""
     target_result = await session.execute(
-        select(models.MapVetoConfig)
-        .where(
-            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
-            models.MapVetoConfig.stage_id == target_stage.id,
+        select(PickBanConfig).where(
+            PickBanConfig.tournament_id == target_stage.tournament_id,
+            PickBanConfig.kind == kind,
+            PickBanConfig.stage_id == target_stage.id,
         )
-        .options(selectinload(models.MapVetoConfig.map_pool))
     )
     target_configs = list(target_result.scalars().all())
     if len(target_configs) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Target stage has multiple map veto configs; resolve them before merging",
+            detail=f"Target stage has multiple {kind.value} pick-ban configs; resolve them before merging",
         )
 
     source_result = await session.execute(
-        select(models.MapVetoConfig)
+        select(PickBanConfig)
         .where(
-            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
-            models.MapVetoConfig.stage_id.in_(source_stage_ids),
+            PickBanConfig.tournament_id == target_stage.tournament_id,
+            PickBanConfig.kind == kind,
+            PickBanConfig.stage_id.in_(source_stage_ids),
         )
-        .options(selectinload(models.MapVetoConfig.map_pool))
+        .options(selectinload(PickBanConfig.items))
+        .options(selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items))
     )
     source_configs = list(source_result.scalars().all())
     if not source_configs:
@@ -224,11 +244,13 @@ async def _merge_map_veto_configs(
             await session.delete(config)
         return
 
-    signatures = {_map_veto_signature(config) for config in source_configs}
+    signatures = {_pick_ban_config_signature(config) for config in source_configs}
     if len(signatures) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=("Source stages have different map veto configs; keep one target config before merging"),
+            detail=(
+                f"Source stages have different {kind.value} pick-ban configs; keep one target config before merging"
+            ),
         )
 
     keeper = source_configs[0]
@@ -359,11 +381,13 @@ async def merge_group_stages(
             )
         seen_names.add(normalized_name)
 
-    await _merge_map_veto_configs(
-        session,
-        target_stage=target_stage,
-        source_stage_ids=unique_source_stage_ids,
-    )
+    for kind in (enums.PickBanKind.MAP, enums.PickBanKind.HERO):
+        await _merge_pick_ban_configs(
+            session,
+            target_stage=target_stage,
+            source_stage_ids=unique_source_stage_ids,
+            kind=kind,
+        )
 
     for model in (
         models.TournamentGroup,

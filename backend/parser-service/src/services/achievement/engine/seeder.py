@@ -422,7 +422,7 @@ def _overall_rules(workspace_id: int) -> list[AchievementRule]:
             grain=AchievementGrain.user,
             condition_tree={
                 "type": "tournament_count",
-                "params": {"op": ">=", "value": 1, "is_league": False, "number_max": 18},
+                "params": {"op": ">=", "value": 1, "is_league": False, "start_before": "2022-10-04"},
             },
             depends_on=["tournament.player"],
         ),
@@ -433,7 +433,7 @@ def _overall_rules(workspace_id: int) -> list[AchievementRule]:
             grain=AchievementGrain.user,
             condition_tree={
                 "type": "tournament_count",
-                "params": {"op": ">=", "value": 1, "is_league": False, "number_min": 19},
+                "params": {"op": ">=", "value": 1, "is_league": False, "start_after": "2022-10-04"},
             },
             depends_on=["tournament.player"],
         ),

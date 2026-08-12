@@ -30,7 +30,6 @@ export interface Achievement {
 
 export interface AchievementTournamentLink {
   id: number;
-  number: number | null;
   name: string;
   is_league: boolean;
 }
@@ -45,8 +44,8 @@ export interface AchievementMatchLink {
   encounter_id: number;
   map_id: number;
   score: Score;
-  log_name: string;
-  time: number;
+  log_name: string | null;
+  time: number | null;
   home_team: AchievementMatchTeamRef | null;
   away_team: AchievementMatchTeamRef | null;
 }

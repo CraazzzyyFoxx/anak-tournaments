@@ -7,9 +7,8 @@ import {
   StageItem,
   StageItemInput,
   StageItemType,
-  MapVetoConfig,
-  MapVetoConfigUpsertInput,
-  EncounterMapPoolState
+  PickBanKind,
+  PickBanState
 } from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
@@ -23,6 +22,7 @@ import {
   TournamentUpdateInput,
   TournamentPreviewAccessEntry,
   TournamentStatusTransitionInput,
+  TournamentReadiness,
   TournamentPhaseScheduleEntryInput,
   StageCreateInput,
   StageUpdateInput,
@@ -53,6 +53,9 @@ import {
   GamemodeUpdateInput,
   MapCreateInput,
   MapUpdateInput,
+  CatalogAliasAttachInput,
+  CatalogAliasMissQuery,
+  CatalogAliasMissRead,
   AchievementCreateInput,
   AchievementUpdateInput,
   AchievementRegistryEntry,
@@ -80,8 +83,9 @@ import {
   DiscordChannelInput,
   LogHistoryResponse,
   LogProcessingRecord,
+  LogProcessingStats,
+  LogProcessingStatus,
   LogUploadResponse,
-  QueueDepth,
   SeedResultRead,
   PlayerSubRole,
   PlayerSubRoleCreateInput,
@@ -93,8 +97,65 @@ import {
   CollectTriggerResult,
   RankFetchLogRow,
   RankFetchLogQuery,
-  RankCollectionStats
+  RankCollectionStats,
+  SubscriptionCollectionStats,
+  SubscriptionCheckLogRow,
+  SubscriptionCheckLogQuery,
+  SubscriptionUserCollectionRow,
+  SubscriptionCollectTriggerInput,
+  SubscriptionCollectTriggerResult,
+  EncounterResultAuditRead,
+  EncounterResultRead,
+  EncounterSetResultInput,
+  EncounterReportsQuery,
+  EncounterReportsRow,
+  EncounterReportsStats,
+  AdminMatchDetail,
+  AdminMatchRow,
+  AdminMatchesQuery,
+  AuditLogQuery,
+  AuditLogRead,
 } from "@/types/admin.types";
+
+/**
+ * Serialise the reports filter set once — the list and its counters must send
+ * an identical scope or the chips would count a different population than the
+ * table shows.
+ */
+function buildEncounterReportsQuery(params: EncounterReportsQuery): string {
+  const search = new URLSearchParams();
+  search.set("workspace_id", String(params.workspace_id));
+  if (params.page != null) search.set("page", String(params.page));
+  if (params.per_page != null) search.set("per_page", String(params.per_page));
+  if (params.query) search.set("query", params.query);
+  if (params.tournament_id != null) search.set("tournament_id", String(params.tournament_id));
+  if (params.stage_id != null) search.set("stage_id", String(params.stage_id));
+  if (params.mismatch_only) search.set("mismatch_only", "true");
+  if (params.reported_count != null) search.set("reported_count", String(params.reported_count));
+  // Repeated, not comma-joined: the backend field is a list and the gateway
+  // forwards every occurrence.
+  for (const status of params.result_status ?? []) search.append("result_status", status);
+  return search.toString();
+}
+
+/**
+ * Serialise the parsed-matches filter set. `log_status` repeats rather than
+ * comma-joining: the backend field is a list and the gateway forwards every
+ * occurrence.
+ */
+function buildAdminMatchesQuery(params: AdminMatchesQuery): string {
+  const search = new URLSearchParams();
+  search.set("workspace_id", String(params.workspace_id));
+  if (params.page != null) search.set("page", String(params.page));
+  if (params.per_page != null) search.set("per_page", String(params.per_page));
+  if (params.query) search.set("query", params.query);
+  if (params.tournament_id != null) search.set("tournament_id", String(params.tournament_id));
+  if (params.encounter_id != null) search.set("encounter_id", String(params.encounter_id));
+  if (params.map_id != null) search.set("map_id", String(params.map_id));
+  if (params.unlinked_only) search.set("unlinked_only", "true");
+  for (const status of params.log_status ?? []) search.append("log_status", status);
+  return search.toString();
+}
 
 class AdminService {
   private async getTournamentJob(jobId: number): Promise<TournamentComputationJob> {
@@ -146,6 +207,12 @@ class AdminService {
     return response.json();
   }
 
+  /** Readiness aggregate for the hub living checklist (D13, §7.1). */
+  async getTournamentReadiness(id: number): Promise<TournamentReadiness> {
+    const response = await apiFetch(`/api/v1/admin/tournaments/${id}/readiness`);
+    return response.json();
+  }
+
   async updateTournament(id: number, data: TournamentUpdateInput): Promise<Tournament> {
     const response = await apiFetch(`/api/v1/admin/tournaments/${id}`, {
       method: "PATCH",
@@ -173,7 +240,6 @@ class AdminService {
 
   async createTournamentWithGroups(params: {
     workspace_id: number;
-    number: number;
     challonge_slug: string;
     is_league: boolean;
     start_date: string;
@@ -376,12 +442,77 @@ class AdminService {
     });
   }
 
-  async confirmEncounterResult(
-    id: number
-  ): Promise<{ id: number; result_status: string; status: string }> {
-    const response = await apiFetch(`/api/v1/admin/encounters/${id}/confirm-result`, {
+  /**
+   * The single admin result write: score, status, result_status and the audit
+   * row move together. An empty body confirms whatever is already there, which
+   * covers the common case of two agreeing captain reports.
+   */
+  async setEncounterResult(
+    id: number,
+    data: EncounterSetResultInput = {}
+  ): Promise<EncounterResultRead> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${id}/result`, {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  /** Un-confirm a result so it can be replayed or re-reported. */
+  async reopenEncounterResult(id: number): Promise<EncounterResultRead> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${id}/result/reopen`, {
       method: "POST"
     });
+    return response.json();
+  }
+
+  /** Every recorded transition of this encounter's result, newest first. */
+  async getEncounterResultAudit(id: number): Promise<EncounterResultAuditRead[]> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${id}/result-audit`);
+    return response.json();
+  }
+
+  /**
+   * Cross-tournament captain reports, scoped to one workspace.
+   *
+   * `result_status` repeats as a query param rather than joining with commas —
+   * the gateway forwards every value and the backend model is a list.
+   */
+  async listEncounterReports(
+    params: EncounterReportsQuery
+  ): Promise<PaginatedResponse<EncounterReportsRow>> {
+    const response = await apiFetch(
+      `/api/v1/admin/encounter-reports?${buildEncounterReportsQuery(params)}`
+    );
+    return response.json();
+  }
+
+  /**
+   * Counters behind the filter chips. Takes the same params as the list; the
+   * server ignores the chip filters so each chip counts what it would select.
+   */
+  async getEncounterReportStats(params: EncounterReportsQuery): Promise<EncounterReportsStats> {
+    const response = await apiFetch(
+      `/api/v1/admin/encounter-reports/stats?${buildEncounterReportsQuery(params)}`
+    );
+    return response.json();
+  }
+
+  /** Parsed matches — one row per played map — across the workspace. */
+  async listAdminMatches(params: AdminMatchesQuery): Promise<PaginatedResponse<AdminMatchRow>> {
+    const response = await apiFetch(`/api/v1/admin/matches?${buildAdminMatchesQuery(params)}`);
+    return response.json();
+  }
+
+  /**
+   * One parsed match with the aggregates the list omits. Needs the workspace
+   * because the endpoint 404s identically for an unknown id and for one in
+   * another workspace.
+   */
+  async getAdminMatch(matchId: number, workspaceId: number): Promise<AdminMatchDetail> {
+    const response = await apiFetch(
+      `/api/v1/admin/matches/${matchId}?workspace_id=${workspaceId}`
+    );
     return response.json();
   }
 
@@ -569,6 +700,13 @@ class AdminService {
 
   async setSocialAccountPrimary(userId: number, accountId: number): Promise<User> {
     const response = await apiFetch(`/api/v1/admin/users/${userId}/social/${accountId}/primary`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
+  async verifySocialAccount(userId: number, accountId: number): Promise<User> {
+    const response = await apiFetch(`/api/v1/admin/users/${userId}/social/${accountId}/verify`, {
       method: "POST"
     });
     return response.json();
@@ -762,6 +900,44 @@ class AdminService {
       method: "POST"
     });
     return response.json();
+  }
+
+  // ─── Catalog aliases (superuser) ───────────────────────────────────────────
+
+  /**
+   * Names the log parser could not resolve, worst offenders first. Open misses
+   * only unless `include_resolved` asks for the dismissed ones too.
+   */
+  async getCatalogAliasMisses(
+    params: CatalogAliasMissQuery = {}
+  ): Promise<PaginatedResponse<CatalogAliasMissRead>> {
+    const response = await apiFetch("/api/v1/admin/catalog-aliases/misses", {
+      query: {
+        ...(params.page != null && { page: params.page }),
+        ...(params.per_page != null && { per_page: params.per_page }),
+        ...(params.entity_type && { entity_type: params.entity_type }),
+        ...(params.include_resolved && { include_resolved: params.include_resolved })
+      }
+    });
+    return response.json();
+  }
+
+  /**
+   * Appends the alias to the entity and closes the miss in one transaction —
+   * the union happens server-side so two admins cannot clobber each other.
+   */
+  async attachCatalogAlias(data: CatalogAliasAttachInput): Promise<void> {
+    await apiFetch("/api/v1/admin/catalog-aliases/attach", {
+      method: "POST",
+      body: data
+    });
+  }
+
+  /** Marks the miss resolved without touching any entity. */
+  async dismissCatalogAliasMiss(id: number): Promise<void> {
+    await apiFetch(`/api/v1/admin/catalog-aliases/misses/${id}/dismiss`, {
+      method: "POST"
+    });
   }
 
   // ─── Achievement CRUD ──────────────────────────────────────────────────────
@@ -1101,15 +1277,41 @@ class AdminService {
 
   async getLogHistory(
     tournamentId?: number,
-    params?: { encounterId?: number; workspaceId?: number | null; limit?: number; offset?: number }
+    params?: {
+      encounterId?: number;
+      workspaceId?: number | null;
+      /** Server-side status filter; omit for every status. */
+      status?: LogProcessingStatus;
+      /** Server-side match across filename, error, uploader and encounter name. */
+      search?: string;
+      limit?: number;
+      offset?: number;
+    }
   ): Promise<LogHistoryResponse> {
+    const search = params?.search?.trim();
     const response = await apiFetch("/api/v1/admin/logs/history", {
       query: {
         ...(tournamentId != null && { tournament_id: tournamentId }),
         ...(params?.encounterId != null && { encounter_id: params.encounterId }),
         ...(params?.workspaceId != null && { workspace_id: params.workspaceId }),
+        ...(params?.status && { status: params.status }),
+        ...(search && { search }),
         limit: params?.limit ?? 50,
         offset: params?.offset ?? 0
+      }
+    });
+    return response.json();
+  }
+
+  async getLogStats(
+    tournamentId?: number,
+    params?: { encounterId?: number; workspaceId?: number | null }
+  ): Promise<LogProcessingStats> {
+    const response = await apiFetch("/api/v1/admin/logs/stats", {
+      query: {
+        ...(tournamentId != null && { tournament_id: tournamentId }),
+        ...(params?.encounterId != null && { encounter_id: params.encounterId }),
+        ...(params?.workspaceId != null && { workspace_id: params.workspaceId })
       }
     });
     return response.json();
@@ -1133,11 +1335,6 @@ class AdminService {
       method: "POST",
       body: formData
     });
-    return response.json();
-  }
-
-  async getQueueStatus(): Promise<QueueDepth[]> {
-    const response = await apiFetch("/api/v1/admin/logs/queue-status");
     return response.json();
   }
 
@@ -1194,6 +1391,22 @@ class AdminService {
 
   async deleteStage(stageId: number): Promise<void> {
     await apiFetch(`/api/v1/admin/stages/${stageId}`, { method: "DELETE" });
+  }
+
+  /**
+   * The round numbers `stageId`'s bracket has, or will have. Elimination
+   * rounds are not a plain `1..max_rounds` sequence -- double elimination's
+   * lower bracket uses negative numbers, and single elimination's round
+   * count depends on team count, not the stage's independently-set
+   * `max_rounds`. Before the bracket exists this predicts the same numbers
+   * the real generator will produce from the stage's planned team inputs;
+   * empty when the stage type has no bracket shape or fewer than two teams
+   * are wired in yet.
+   */
+  async getStagePlannedRounds(stageId: number): Promise<number[]> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/planned-rounds`);
+    const data: { rounds: number[] } = await response.json();
+    return data.rounds;
   }
 
   async mergeGroupStages(stageId: number, data: StageMergeGroupStagesInput): Promise<Stage> {
@@ -1261,6 +1474,13 @@ class AdminService {
     return { generated: Number(completed.result_json?.generated ?? 0) };
   }
 
+  async applyStageBestOf(stageId: number): Promise<{ updated: number }> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/apply-best-of`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async wireFromGroups(
     stageId: number,
     data: {
@@ -1304,24 +1524,6 @@ class AdminService {
     return response.json();
   }
 
-  async bulkUpdateEncounters(data: {
-    encounter_ids: number[];
-    status?: string;
-    home_score?: number;
-    away_score?: number;
-    reset_scores?: boolean;
-  }): Promise<{
-    updated: number;
-    newly_completed: number;
-    tournaments_recalculated: number[];
-  }> {
-    const response = await apiFetch("/api/v1/admin/encounters/bulk", {
-      method: "PATCH",
-      body: data
-    });
-    return response.json();
-  }
-
   async getStagesProgress(tournamentId: number): Promise<
     {
       stage_id: number;
@@ -1346,57 +1548,25 @@ class AdminService {
     return response.json();
   }
 
-  // ─── Admin Map Pool ─────────────────────────────────────────────────────────
+  // ─── Pick-Ban Sessions (live-session admin overrides only; config CRUD
+  // moved to PickBanConfig -- see pickBanService.upsertConfig) ────────────────
 
-  async assignMapPool(encounterId: number, mapIds: number[]): Promise<{ assigned: number }> {
-    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/map-pool`, {
+  /** Drop the encounter's pick-ban session + pool for `kind` and re-create
+   * them (re-resolves seeds). */
+  async resetPickBanSession(encounterId: number, kind: PickBanKind): Promise<PickBanState> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-session/reset`, {
       method: "POST",
-      body: { map_ids: mapIds }
+      body: { kind }
     });
     return response.json();
   }
 
-  // ─── Map Veto Configs & Sessions ───────────────────────────────────────────
-
-  async listVetoConfigs(tournamentId: number): Promise<{ configs: MapVetoConfig[] }> {
-    const response = await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/veto-configs`, {
-      method: "GET"
-    });
-    return response.json();
-  }
-
-  async upsertVetoConfig(
-    tournamentId: number,
-    data: MapVetoConfigUpsertInput
-  ): Promise<MapVetoConfig> {
-    const response = await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/veto-configs`, {
-      method: "PUT",
-      body: data
-    });
-    return response.json();
-  }
-
-  async deleteVetoConfig(configId: number): Promise<{ deleted: boolean }> {
-    const response = await apiFetch(`/api/v1/admin/veto-configs/${configId}`, {
-      method: "DELETE"
-    });
-    return response.json();
-  }
-
-  /** Drop the encounter's veto session + pool and re-create them (re-resolves seeds). */
-  async resetVetoSession(encounterId: number): Promise<EncounterMapPoolState> {
-    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/veto-session/reset`, {
-      method: "POST"
-    });
-    return response.json();
-  }
-
-  /** Perform a veto step on behalf of a side (admin override). */
-  async adminVetoAct(
+  /** Perform a ban/pick/protect on behalf of a side (admin override). */
+  async adminPickBanAct(
     encounterId: number,
-    data: { side: "home" | "away"; map_id: number; action: "pick" | "ban" }
-  ): Promise<{ id: number; map_id: number; status: string; picked_by: string | null }> {
-    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/veto-act`, {
+    data: { kind: PickBanKind; side: "home" | "away"; item_id: number; action: "pick" | "ban" | "protect" }
+  ): Promise<{ id: number; item_id: number; status: string; picked_by: string | null }> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-act`, {
       method: "POST",
       body: data
     });
@@ -1455,26 +1625,27 @@ class AdminService {
     return response.json();
   }
 
-  // ─── OverFast rank collection (superuser/admin) ───────────────────────────
+  // ─── OverFast rank collection ─────────────────────────────────────────────
+  // `workspace_id` is injected (no `skipWorkspace`): it is the RBAC scope these
+  // endpoints authorize against, so dropping it demands the GLOBAL
+  // `rank.read`/`update` and locks out a workspace owner/admin holding it only
+  // in their own workspace. It also scopes the rows to that workspace.
 
   async getRankCollectionStatus(userId: number): Promise<RankCollectionStatusRow[]> {
-    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`, {
-      skipWorkspace: true
-    });
+    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`);
     return response.json();
   }
 
   async triggerRankCollection(data: CollectTriggerInput): Promise<CollectTriggerResult> {
     const response = await apiFetch("/api/v1/admin/rank/collect", {
       method: "POST",
-      body: data,
-      skipWorkspace: true
+      body: data
     });
     return response.json();
   }
 
   async getRankCollectionStats(): Promise<RankCollectionStats> {
-    const response = await apiFetch("/api/v1/admin/rank/stats", { skipWorkspace: true });
+    const response = await apiFetch("/api/v1/admin/rank/stats");
     return response.json();
   }
 
@@ -1485,8 +1656,7 @@ class AdminService {
         source: params.source,
         before_id: params.before_id,
         limit: params.limit ?? 50
-      },
-      skipWorkspace: true
+      }
     });
     return response.json();
   }
@@ -1496,8 +1666,70 @@ class AdminService {
   ): Promise<{ reenabled: number }> {
     const response = await apiFetch("/api/v1/admin/rank/reenable-disabled", {
       method: "POST",
-      body: { only_previously_succeeded: onlyPreviouslySucceeded },
-      skipWorkspace: true
+      body: { only_previously_succeeded: onlyPreviouslySucceeded }
+    });
+    return response.json();
+  }
+
+  // ─── Subscription collection ───────────────────────────────────────────────
+  // `workspace_id` is injected (no `skipWorkspace`): it is the RBAC scope these
+  // endpoints authorize against, so dropping it demands the GLOBAL
+  // `subscription.read`/`update` and locks out a workspace owner/admin holding
+  // it only in their own workspace. It also scopes the rows to that workspace.
+
+  async getSubscriptionCollectionStats(): Promise<SubscriptionCollectionStats> {
+    const response = await apiFetch("/api/v1/admin/subscriptions/stats");
+    return response.json();
+  }
+
+  async getSubscriptionCheckLog(
+    params: SubscriptionCheckLogQuery = {}
+  ): Promise<SubscriptionCheckLogRow[]> {
+    const response = await apiFetch("/api/v1/admin/subscriptions/check-log", {
+      query: {
+        state: params.state,
+        source: params.source,
+        provider: params.provider,
+        user_id: params.user_id,
+        before_id: params.before_id,
+        limit: params.limit ?? 50
+      }
+    });
+    return response.json();
+  }
+
+  async getSubscriptionCollectionStatus(userId: number): Promise<SubscriptionUserCollectionRow[]> {
+    const response = await apiFetch(`/api/v1/admin/subscriptions/users/${userId}/collection`);
+    return response.json();
+  }
+
+  async triggerSubscriptionCollection(
+    data: SubscriptionCollectTriggerInput
+  ): Promise<SubscriptionCollectTriggerResult> {
+    const response = await apiFetch("/api/v1/admin/subscriptions/collect", {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  // ─── Platform audit log ────────────────────────────────────────────────────
+
+  /**
+   * One feed for "who did this", scoped by the ambient workspace.
+   *
+   * `workspace_id` rides the usual injection because it IS the RBAC scope the
+   * endpoint authorizes against — and the scope is applied first and
+   * unconditionally, so `entity_type`/`entity_id`/`actor_user_id` narrow inside
+   * it rather than reaching around it. Only a superuser may drop it
+   * (`allWorkspaces`), which is also the only way platform rows
+   * (`workspace_id IS NULL`) come back at all.
+   */
+  async listAudit(params: AuditLogQuery = {}): Promise<PaginatedResponse<AuditLogRead>> {
+    const { allWorkspaces, ...query } = params;
+    const response = await apiFetch("/api/v1/admin/audit", {
+      skipWorkspace: allWorkspaces === true,
+      query
     });
     return response.json();
   }

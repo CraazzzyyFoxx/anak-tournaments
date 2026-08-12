@@ -3,7 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Dialog,
   DialogContent,
@@ -13,18 +13,21 @@ import {
 } from "@/components/ui/dialog";
 import type { AchievementRarity, AchievementMatchLink } from "@/types/achievement.types";
 import { cn } from "@/lib/utils";
-import { classifyRarity, type Rarity } from "./rarity";
+import { classifyRarity, localizedText, type Rarity } from "./rarity";
 
-const formatMatchDate = (time: number): string => {
+// `locale` is required, matching `formatDateRange` in @/lib/utils: passing
+// `undefined` here formatted match dates in the *browser* locale, so a Russian
+// UI rendered "Jul 30, 2026" on an en-US machine.
+const formatMatchDate = (time: number | null, locale: string): string => {
   if (!time) return "";
   const ms = time > 1e12 ? time : time * 1000;
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
 };
 
-const MatchRow = ({ match }: { match: AchievementMatchLink }) => {
-  const date = formatMatchDate(match.time);
+const MatchRow = ({ match, locale }: { match: AchievementMatchLink; locale: string }) => {
+  const date = formatMatchDate(match.time, locale);
   const home = match.home_team?.name ?? "—";
   const away = match.away_team?.name ?? "—";
   return (
@@ -49,11 +52,12 @@ interface Props {
  *  (tournaments + matches with dates), or a locked state if not yet earned. */
 export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
   const tr = useTranslations();
+  const locale = useLocale();
   const ach = achievement;
   const rarity: Rarity | null = ach ? classifyRarity(ach.rarity * 100) : null;
   const locked = ach ? ach.count === 0 : false;
   const imgSrc = ach ? (ach.image_url ?? `/achievements/${ach.slug}.webp`) : null;
-  const description = ach ? ach.description_ru || ach.description_en || "" : "";
+  const description = ach ? localizedText(locale, ach.description_ru, ach.description_en) : "";
 
   return (
     <Dialog
@@ -76,7 +80,11 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                   <div className="flex min-w-0 flex-col gap-1">
                     <DialogTitle className="text-[16px] text-[color:var(--aqt-fg)]">{ach.name}</DialogTitle>
                     <div className="flex items-center gap-2 text-[12px] text-[color:var(--aqt-fg-muted)]">
-                      {rarity ? <span className="capitalize">◆ {rarity}</span> : null}
+                      {rarity ? (
+                        <span className="capitalize">
+                          <span aria-hidden>◆</span> {rarity}
+                        </span>
+                      ) : null}
                       <span className="aqt-mono">{(ach.rarity * 100).toFixed(2)}%</span>
                       {ach.count > 0 ? (
                         <span className="aqt-mono">
@@ -107,7 +115,6 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                         <div className="flex flex-wrap gap-1.5">
                           {ach.tournaments.map((t) => (
                             <span key={t.id} className="aqt-stage-pill" title={t.name}>
-                              {t.number != null ? `#${t.number} · ` : ""}
                               {t.name}
                             </span>
                           ))}
@@ -122,7 +129,7 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                         </h3>
                         <div className="flex flex-col gap-1">
                           {ach.matches.map((m) => (
-                            <MatchRow key={m.id} match={m} />
+                            <MatchRow key={m.id} match={m} locale={locale} />
                           ))}
                         </div>
                       </section>

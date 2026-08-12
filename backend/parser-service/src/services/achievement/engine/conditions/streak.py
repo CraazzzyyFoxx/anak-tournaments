@@ -25,8 +25,8 @@ async def execute_consecutive(
 ) -> ResultSet:
     """Consecutive tournaments with a condition met (e.g., wins). Grain: user.
 
-    Uses the (tournament_number - row_number()) grouping trick to detect
-    consecutive sequences.
+    Uses the (seq - row_number()) grouping trick over a per-workspace
+    chronological sequence to detect consecutive sequences.
 
     params:
         metric: "win" | "day_two" | "playoffs" — what constitutes a qualifying tournament
@@ -37,13 +37,26 @@ async def execute_consecutive(
     metric = params["metric"]
     min_streak = params["min_streak"]
 
+    # Per-workspace chronological sequence over regular (non-league) tournaments.
+    tournament_seq = (
+        sa.select(
+            models.Tournament.id.label("tournament_id"),
+            sa.func.dense_rank()
+            .over(order_by=[models.Tournament.start_date.nulls_last(), models.Tournament.id])
+            .label("seq"),
+        ).where(
+            models.Tournament.workspace_id == context.workspace_id,
+            models.Tournament.is_league.is_(False),
+        )
+    ).subquery("tournament_seq")
+
     if metric == "win":
         # Users who won (position == 1) in consecutive tournaments
         # Only bracket/final standings (buchholz IS NULL) and non-league tournaments
         qualifying = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
-                models.Tournament.number.label("t_num"),
+                tournament_seq.c.seq.label("seq"),
             )
             .select_from(models.Player)
             .join(
@@ -60,13 +73,13 @@ async def execute_consecutive(
             )
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .outerjoin(models.Stage, models.Stage.id == models.Standing.stage_id)
+            .join(tournament_seq, tournament_seq.c.tournament_id == models.Tournament.id)
             .where(
                 models.Standing.overall_position == 1,
                 standing_is_elimination(standing=models.Standing, stage=models.Stage),
                 models.Tournament.is_league.is_(False),
                 models.Tournament.workspace_id == context.workspace_id,
                 models.Player.is_substitution.is_(False),
-                models.Tournament.number.isnot(None),
             )
         ).subquery("qualifying")
 
@@ -80,7 +93,7 @@ async def execute_consecutive(
         qualifying = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
-                models.Tournament.number.label("t_num"),
+                tournament_seq.c.seq.label("seq"),
             )
             .select_from(models.Player)
             .join(
@@ -97,13 +110,13 @@ async def execute_consecutive(
             )
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .outerjoin(models.Stage, models.Stage.id == models.Standing.stage_id)
+            .join(tournament_seq, tournament_seq.c.tournament_id == models.Tournament.id)
             .where(
                 op_fn(models.Standing.overall_position, position_value),
                 standing_is_elimination(standing=models.Standing, stage=models.Stage),
                 models.Tournament.is_league.is_(False),
                 models.Tournament.workspace_id == context.workspace_id,
                 models.Player.is_substitution.is_(False),
-                models.Tournament.number.isnot(None),
             )
         ).subquery("qualifying")
 
@@ -113,7 +126,7 @@ async def execute_consecutive(
         qualifying = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
-                models.Tournament.number.label("t_num"),
+                tournament_seq.c.seq.label("seq"),
             )
             .select_from(models.Player)
             .join(
@@ -130,23 +143,23 @@ async def execute_consecutive(
             )
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .outerjoin(models.Stage, models.Stage.id == models.Standing.stage_id)
+            .join(tournament_seq, tournament_seq.c.tournament_id == models.Tournament.id)
             .where(
                 standing_is_elimination(standing=models.Standing, stage=models.Stage),
                 models.Tournament.is_league.is_(False),
                 models.Tournament.workspace_id == context.workspace_id,
                 models.Player.is_substitution.is_(False),
-                models.Tournament.number.isnot(None),
             )
         ).subquery("qualifying")
     else:
         return set()
 
-    # Apply consecutive grouping trick: group_id = t_num - row_number()
+    # Apply consecutive grouping trick: group_id = seq - row_number()
     rn = (
         sa.func.row_number()
         .over(
             partition_by=qualifying.c.user_id,
-            order_by=qualifying.c.t_num,
+            order_by=qualifying.c.seq,
         )
         .label("rn")
     )
@@ -154,8 +167,8 @@ async def execute_consecutive(
     with_rn = (
         sa.select(
             qualifying.c.user_id,
-            qualifying.c.t_num,
-            (qualifying.c.t_num - rn).label("grp"),
+            qualifying.c.seq,
+            (qualifying.c.seq - rn).label("grp"),
         )
     ).subquery("with_rn")
 
@@ -183,8 +196,8 @@ async def execute_stable_streak(
     """N+ consecutive participations at same values for given fields. Grain: user.
 
     Uses segment-based detection (like the legacy code): a new segment starts when
-    any tracked field changes or when prev is NULL. Consecutive tournament numbers
-    are NOT required — skipping a tournament does not break the streak.
+    any tracked field changes or when prev is NULL. Skipping a tournament does
+    not break the streak — only chronological order matters.
 
     params:
         fields: list of field names (e.g., ["role", "division"])
@@ -201,7 +214,6 @@ async def execute_stable_streak(
         sa.select(
             models.WorkspaceMember.player_id,
             models.Player.tournament_id,
-            models.Tournament.number.label("t_num"),
             models.Tournament.division_grid_version_id,
             models.Player.role,
             models.Player.rank,
@@ -216,9 +228,8 @@ async def execute_stable_streak(
             models.Tournament.workspace_id == context.workspace_id,
             models.Tournament.is_league.is_(False),
             models.Player.is_substitution.is_(False),
-            models.Tournament.number.isnot(None),
         )
-        .order_by(models.WorkspaceMember.player_id, models.Tournament.number)
+        .order_by(models.WorkspaceMember.player_id, models.Tournament.start_date.nulls_last(), models.Tournament.id)
     )
 
     result = await session.execute(query)
@@ -228,12 +239,11 @@ async def execute_stable_streak(
     from collections import defaultdict
 
     user_rows: dict[int, list] = defaultdict(list)
-    for user_id, _tournament_id, t_num, source_version_id, role, rank in rows:
+    for user_id, _tournament_id, source_version_id, role, rank in rows:
         division = context.resolve_division(rank, source_version_id=source_version_id)
         div_num = division.number if division else None
         user_rows[user_id].append(
             {
-                "t_num": t_num,
                 "role": str(role) if role else None,
                 "division": div_num,
             }
@@ -241,7 +251,7 @@ async def execute_stable_streak(
 
     qualifying_users: ResultSet = set()
     for user_id, entries in user_rows.items():
-        entries.sort(key=lambda x: x["t_num"])
+        # Rows arrive chronologically ordered per user (SQL ORDER BY above).
         streak = 1
         for i in range(1, len(entries)):
             # Segment breaks when any tracked field changes (gaps are OK)

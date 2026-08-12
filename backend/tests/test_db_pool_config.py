@@ -125,18 +125,12 @@ def test_create_database_pgbouncer_mode_disables_prepared_statements(monkeypatch
     )
 
     kwargs = captured["async_kwargs"]
-    # pgBouncer owns the pool; SQLAlchemy must not keep its own.
-    assert kwargs["poolclass"] is db_module.NullPool
-    # QueuePool-only tuning is invalid for NullPool and must be omitted.
-    for key in (
-        "pool_size",
-        "max_overflow",
-        "pool_timeout",
-        "pool_use_lifo",
-        "pool_recycle",
-        "pool_pre_ping",
-    ):
-        assert key not in kwargs
+    # pgBouncer caps server backends; the client-side pool stays bounded and
+    # pre-pinged so connections are reused instead of one connect per message.
+    assert "poolclass" not in kwargs
+    assert kwargs["pool_size"] == 10
+    assert kwargs["max_overflow"] == 20
+    assert kwargs["pool_pre_ping"] is True
 
     connect_args = kwargs["connect_args"]
     assert connect_args["prepared_statement_cache_size"] == 0

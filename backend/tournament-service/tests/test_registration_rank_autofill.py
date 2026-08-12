@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
 import sys
@@ -49,7 +50,6 @@ def _registration(*roles: SimpleNamespace, battle_tag: str | None = "Main#123") 
         battle_tag=battle_tag,
         status="approved",
         balancer_status="not_in_balancer",
-        exclude_from_balancer=True,
         roles=list(roles),
     )
 
@@ -355,10 +355,18 @@ def test_resolve_stages_all_disabled_is_empty() -> None:
     assert reg_admin.resolve_autofill_stages("ow_first", stages) == []
 
 
-def test_lookback_cutoff() -> None:
-    assert reg_admin._autofill_lookback_cutoff(42, 5) == 37
-    assert reg_admin._autofill_lookback_cutoff(None, 5) is None
-    assert reg_admin._autofill_lookback_cutoff(42, None) is None
+def test_lookback_ids_none_when_unrestricted() -> None:
+    target = SimpleNamespace(id=5, start_date=None, workspace_id=1)
+    assert asyncio.run(reg_admin._autofill_lookback_tournament_ids(None, target, None)) is None
+
+
+def test_lookback_ids_returns_queried_id_set() -> None:
+    class _Session:
+        async def execute(self, stmt):
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [3, 2]))
+
+    target = SimpleNamespace(id=5, start_date=datetime(2024, 1, 1, tzinfo=UTC).date(), workspace_id=1)
+    assert asyncio.run(reg_admin._autofill_lookback_tournament_ids(_Session(), target, 2)) == {3, 2}
 
 
 # ── allow_partial + unverified action in the plan builder ────────────────────────────────────

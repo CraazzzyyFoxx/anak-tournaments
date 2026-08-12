@@ -21,6 +21,7 @@
     "participants": "Participants",
     "matches": "Matches",
     "heroes": "Heroes",
+    "maps": "Maps",
     "standings": "Standings",
     "bracket": "Bracket",
     "rolesList": "Roles",
@@ -29,6 +30,7 @@
     "bracketFullscreen": "Fullscreen",
     "bracketExitFullscreen": "Exit fullscreen (Esc)",
     "profile": "Profile",
+    "subscriptionColumn": "Subscription",
     "accountSettings": "Account settings",
     "logout": "Logout",
     "language": "Language",
@@ -74,6 +76,7 @@
     "withdrawDesc": "Your application will be marked as withdrawn, and you will not be able to register for this tournament again.",
     "confirmWithdraw": "Confirm withdraw",
     "checkingIn": "Checking in...",
+    "checkInFailed": "Check-in failed",
     "withdrawing": "Withdrawing...",
     "checkIn": "Check-in",
     "withdraw": "Withdraw",
@@ -127,6 +130,23 @@
     "profileOpen": "Profile open",
     "profileClosed": "Profile closed",
     "profileNotChecked": "Profile not checked",
+    "subscription": {
+      "satisfied": "Subscription confirmed",
+      "refused": "No subscription",
+      "undetermined": "Subscription not checked",
+      "active": "subscribed",
+      "none": "not subscribed",
+      "unchecked": "not checked",
+      "requiredAny": "An active subscription is required: {rule}",
+      "requiredAll": "Active subscriptions are required: {rule}",
+      "codeLabel": "Code from the subscriber-only post",
+      "codePlaceholder": "Paste the code",
+      "codeSubmit": "Redeem",
+      "codeAccepted": "Code accepted",
+      "linkDiscordCta": "Link Discord to confirm your Boosty subscription",
+      "reconnectTwitchCta": "Reconnect Twitch to confirm your subscription",
+      "registrationBlocked": "You cannot sign up yet: an active subscription is required ({rule}). Subscribe with the account linked to your profile, then reload this form."
+    },
     "divisionWithId": "Division {id}",
     "stageWithId": "Stage {id}",
     "showingRange": "Showing {start}–{end} of {total}",
@@ -134,6 +154,7 @@
     "smurfDesc": "All registered smurf BattleTags for this participant.",
     "history": "History",
     "status": "Status",
+    "actions": "Actions",
     "balancer": "Balancer",
     "admission": "Admission",
     "admissionStatus": {
@@ -190,15 +211,82 @@
       "flanker": "FLK",
       "flex_dps": "FD",
       "flex_support": "FS"
-    }
+    },
+    "clearFilters": "Clear filters",
+    "now": "Now",
+    "unassignedStage": "Unassigned",
+    "save": "Save",
+    "delete": "Delete",
+    "previous": "Previous",
+    "pagination": {
+      "label": "Pagination",
+      "previous": "Previous page",
+      "next": "Next page",
+      "goToPage": "Go to page {page}"
+    },
+    "pageState": {
+      "error": {
+        "title": "Unable to load this section",
+        "description": "The request failed. Check your connection and try again."
+      },
+      "empty": {
+        "title": "Nothing here yet",
+        "description": "This section fills up as tournaments are played."
+      },
+      "filteredEmpty": {
+        "title": "No results",
+        "description": "No rows match the current filters."
+      },
+      "notFound": {
+        "title": "Not found",
+        "description": "This page does not exist, or it has been removed."
+      }
+    },
+    "searchLabel": "Search",
+    "filters": "Filters",
+    "openMenu": "Open account menu",
+    "signIn": "Sign in",
+    "homeLink": "Go to the home page",
+    "sourceOnGithub": "View the source on GitHub",
+    "skipToContent": "Skip to content",
+    "footer": {
+      "disclaimer": "{siteName} is not affiliated with or endorsed by Blizzard Entertainment, Inc.",
+      "getWorkspace": "Get your own workspace",
+      "sectionsHeading": "Sections",
+      "resourcesHeading": "Resources",
+      "apiDocs": "API Docs",
+      "copyright": "© {year} {siteName}. All rights reserved."
+    },
+    "placementSpark": {
+      "label": "Placements: {summary}"
+    },
+    "matchLogs": {
+      "none": "No logs",
+      "noneAvailable": "No logs available",
+      "available": "Logs available",
+      "download": "Download log: {label}",
+      "downloadAll": "Download logs ({count})",
+      "title": "Match logs",
+      "map": "Map {index}"
+    },
+    "duration": {
+      "h": "h",
+      "m": "m",
+      "s": "s"
+    },
+    "heroStats": {
+      "winrate": "Winrate",
+      "games": "Games",
+      "record": "Record",
+      "playtimeOnMap": "Playtime on this map",
+      "countedNote": "Games are counted when hero time played is over 60s."
+    },
+    "sortDirection": "Sort direction: {current}. Switch to {next}."
   },
   "registration": {
     "wizard": {
       "title": "Register",
       "titleFor": "Register for {name}",
-      "step1Desc": "Step 1 - Verify your game accounts.",
-      "step2Desc": "Step 2 - Pick your preferred role.",
-      "step3Desc": "Step 3 - Any additional info for organizers.",
       "steps": {
         "accounts": "Accounts",
         "roles": "Roles",
@@ -209,6 +297,7 @@
         "smurfTagsRequired": "Add at least one smurf account.",
         "discordRequired": "Discord is required.",
         "twitchRequired": "Twitch is required.",
+        "boostyRequired": "Boosty is required.",
         "primaryRoleRequired": "Choose a primary role or enable Flex before continuing.",
         "fallbackRoleRequired": "This tournament requires at least one fallback role.",
         "topHeroesRequired": "Select at least one top hero before continuing.",
@@ -221,14 +310,13 @@
       }
     },
     "accounts": {
-      "title": "Your Accounts",
-      "desc": "We've pre-filled your linked accounts. Change them if needed.",
       "battleTag": "BattleTag",
       "smurfs": "Smurf Accounts",
       "discord": "Discord",
       "twitch": "Twitch",
       "addSmurfPlaceholder": "Add smurf BattleTag",
       "addSmurfButton": "Add",
+      "removeSmurf": "Remove {tag}",
       "verifiedHint": "Choose one of your OAuth-verified accounts.",
       "verifiedNone": "No verified {label} account is linked.",
       "verifiedLink": "Link {label} via OAuth",
@@ -239,48 +327,45 @@
       "useValue": "Use \"{value}\"",
       "discordPlaceholder": "username",
       "twitchPlaceholder": "channel_name",
+      "boosty": "Boosty",
+      "boostyPlaceholder": "nickname",
       "verified": "Verified",
       "noAccountsHint": "You don't have any linked accounts yet.",
       "noAccountsHintDesc": "Link your Battle.net, Discord or Twitch in profile settings to autofill and verify them.",
       "noAccountsHintCta": "Link accounts in profile settings"
     },
     "roles": {
-      "title": "Choose Your Role",
-      "desc": "Set your primary role first. Then choose secondary roles we can assign you to if a team is short on them during balancing.",
       "primary": {
-        "title": "Primary Role",
-        "desc": "This is the role we should place you on by default."
+        "title": "Primary Role"
       },
-      "secondary": {
-        "title": "Secondary Roles",
-        "required": "Required",
-        "optional": "Optional",
-        "clearAll": "Clear all",
-        "selectAll": "Select all",
-        "descEmptyPrimary": "Pick a primary role first to reveal your fallback role options.",
-        "descFlex": "Flex already covers all roles, so no fallback roles are needed.",
-        "descFallback": "These are fallback roles. If a team is missing one of them, we may place you there during balancing.",
-        "emptyStateFlex": "Flex already covers every role, so fallback roles are not needed for this registration.",
-        "emptyStateChoosePrimary": "Choose a primary role first. We will then show the two fallback roles you can also be assigned to."
-      },
-      "flex": {
-        "title": "Flex",
-        "desc": "All roles, equal priority"
+      "matrix": {
+        "hint": "Mark the roles you can play. Fallback roles are used during balancing when a team is short on one.",
+        "hintRequired": "Mark your main role and at least one fallback role. Fallback roles are used during balancing when a team is short on one.",
+        "hintForced": "On this tournament everyone plays any role, so there is nothing to prioritise. Pick a specialization and your top heroes for each role if you like.",
+        "hintAllRoles": "Every role counts on this tournament, so pick the one you want to be prioritised on — or Flex, if you have no preference. You will still be put on the others when a team is short. Pick a specialization and your top heroes for each role if you like.",
+        "choiceLabel": "Priority",
+        "choiceFlex": "Flex",
+        "columnRole": "Role",
+        "columnPriority": "Priority",
+        "off": "Skip",
+        "fallback": "Fallback",
+        "main": "Main",
+        "priorityLabel": "{role} priority",
+        "flexPreset": "Play any role",
+        "heroesLabel": "Top heroes for {role}: {count} of {max} selected",
+        "heroesPickerLabel": "Choose top heroes for {role}",
+        "heroesAtMax": "Maximum of {max} heroes selected. Remove one to swap."
       },
       "specialization": "Specialization",
       "roleSpecialization": "{role} specialization",
       "any": "Any",
       "topHeroes": {
         "title": "Top Heroes",
-        "desc": "Pick up to {max} hero(es) you play best for each role.",
-        "anyRole": "Any role",
+        "desc": "Pick up to {max} heroes you play best in this role.",
         "count": "{count}/{max}"
       }
     },
     "details": {
-      "title": "Additional Details",
-      "descWithFields": "Almost done! Fill in any extra info.",
-      "descNoFields": "No additional fields required. You're ready to submit!",
       "streamPov": "Stream POV",
       "streamPovLabel": "I will stream my POV",
       "notes": "Notes",
@@ -354,7 +439,17 @@
       "disconnect": "Disconnect this OAuth account",
       "disconnectAria": "Disconnect {name}",
       "disconnectConfirm": "Disconnect your {provider} account? You can reconnect it later via OAuth.",
-      "footnote": "Accounts can only be added through OAuth, which also verifies them. Disconnect removes the OAuth link (the account stays, unverified, until you reconnect); hiding removes it from your public profile. Only an administrator can fully delete an account."
+      "footnote": "Accounts can only be added through OAuth, which also verifies them. Disconnect removes the OAuth link (the account stays, unverified, until you reconnect); hiding removes it from your public profile. Only an administrator can erase a linked account from your profile entirely."
+    },
+    "danger": {
+      "title": "Danger zone",
+      "deleteDesc": "Delete this account permanently. Sessions, linked OAuth connections and API keys are removed and you are signed out immediately. This cannot be undone.",
+      "deleteKeeps": "Your tournament history stays: matches, statistics, registrations and team results are kept on your player profile, which simply becomes unclaimed. The OAuth accounts you had linked become free to link to another account.",
+      "delete": "Delete account",
+      "confirmTitle": "Delete your account?",
+      "confirmBody": "Your account, sessions, linked OAuth connections and API keys will be deleted permanently. Your tournament history and player profile are kept, without an owner. You will be signed out right away.",
+      "confirmCancel": "Keep my account",
+      "confirmDelete": "Delete permanently"
     },
     "sessions": {
       "title": "Sessions",
@@ -425,7 +520,9 @@
       "pauseCompact": "PAUSE",
       "paused": "paused",
       "autoCompact": "AUTO",
-      "autopicking": "autopicking…"
+      "autopicking": "autopicking…",
+      "remaining": "{seconds, plural, one {# second} other {# seconds}} left to pick",
+      "idle": "Pick clock is not running"
     },
     "empty": {
       "title": "No draft yet",
@@ -539,9 +636,11 @@
     "pendingConfirmation": "Pending Confirmation",
     "disputed": "Disputed",
     "matchScore": "Match score",
+    "bestOf": "Best of",
     "manualEntry": "Manual result entry",
     "resultPresets": "Result presets",
     "status": "Status",
+    "statusLockedHint": "A completed match keeps its status until the result is reopened.",
     "matchCloseness": "Match closeness",
     "closenessHint": "Only the overall score is edited. Maps will appear after parsing the log files.",
     "cancel": "Cancel",
@@ -563,7 +662,16 @@
       "Away sweep": "Away team sweep"
     },
     "starsAria": "{count, plural, one {# star} other {# stars}}",
-    "notSet": "Not set"
+    "notSet": "Not set",
+    "statuses": {
+      "open": "Open",
+      "pending": "Pending",
+      "completed": "Completed"
+    },
+    "reopenResult": "Reopen result",
+    "reopening": "Reopening…",
+    "resultReopened": "Result reopened",
+    "reopenErrorMessage": "Could not reopen the result"
   },
   "matchReport": {
     "title": "Match Report",
@@ -572,18 +680,29 @@
     "howClose": "How close was the series",
     "submit": "Submit",
     "submitting": "Submitting...",
-    "submittedForConfirmation": "Result submitted for confirmation",
+    "submittedForConfirmation": "Report submitted",
     "submitErrorMessage": "Failed to submit",
-    "alreadyConfirmedTitle": "Result already confirmed",
-    "alreadyConfirmedBody": "This match result has been confirmed and can no longer be changed. Contact an admin if a correction is needed.",
-    "pendingSubmissionTitle": "Result awaiting confirmation",
-    "pendingSubmissionBody": "A result has already been submitted for this match and is waiting for the other captain to confirm it. Dispute it from the match page if it's wrong.",
-    "confirmedSuccess": "Result confirmed",
-    "confirmErrorMessage": "Failed to confirm",
-    "cannotConfirmOwnTitle": "Can't confirm your own result",
-    "cannotConfirmOwnBody": "The other team's captain has to confirm this result.",
-    "nothingToConfirmTitle": "Nothing to confirm",
-    "nothingToConfirmBody": "This match no longer has a result waiting for confirmation.",
+    "autoConfirmed": "Reports match — result confirmed",
+    "autoDisputed": "Reports differ — result disputed",
+    "confirmedLockedTitle": "Result already confirmed",
+    "confirmedLockedBody": "This match result has been confirmed and can only be changed by an admin.",
+    "mapCodes": "Map replay codes",
+    "mapCodePlaceholder": "Replay code",
+    "mapLabel": "Map {index}",
+    "bothReportsTitle": "Captain reports",
+    "homeReport": "Home report",
+    "awayReport": "Away report",
+    "noReportYet": "No report yet",
+    "avgCloseness": "Average closeness",
+    "reportOrEdit": "Report / Edit my report",
+    "comment": "Comment",
+    "commentPlaceholder": "Anything the organizers should know about this match",
+    "commentRequiredError": "A comment is required",
+    "customFields": "Additional details",
+    "mapCodesRequiredHint": "A code is required for every map played",
+    "mapCodesRequiredError": "Enter a code for every map played",
+    "fieldRequiredError": "\"{label}\" is required",
+    "optional": "Optional",
     "qualityDescriptions": {
       "1": "One-sided match",
       "2": "Almost one-sided",
@@ -601,6 +720,42 @@
       "toTheEnd": "10 - to the end"
     },
     "qualityAria": "Match quality {score}/10: {description}"
+  },
+  "matchReportFormAdmin": {
+    "title": "Report form",
+    "description": "Choose which fields captains fill in when they report a match result.",
+    "builtInHeading": "Standard fields",
+    "builtInDescription": "The series score is always required and cannot be turned off.",
+    "customHeading": "Custom text fields",
+    "customDescription": "Add up to 20 free-text questions for captains.",
+    "enabledLabel": "Enabled",
+    "requiredLabel": "Required",
+    "fields": {
+      "closeness": "Match quality",
+      "closenessHint": "A 1-10 rating of how close the series was.",
+      "mapCodes": "Map replay codes",
+      "mapCodesHint": "When required, a code must be given for every map played.",
+      "comment": "Comment",
+      "commentHint": "A free-text note from the captain, up to 1000 characters."
+    },
+    "addField": "Add field",
+    "removeField": "Remove field",
+    "labelLabel": "Label",
+    "keyLabel": "Key",
+    "keyHint": "Lowercase letters, digits and underscores. Used to store answers.",
+    "placeholderLabel": "Placeholder",
+    "noCustomFields": "No custom fields yet.",
+    "maxFieldsReached": "Limit of 20 custom fields reached.",
+    "save": "Save form",
+    "saving": "Saving...",
+    "saved": "Report form saved",
+    "saveError": "Failed to save the report form",
+    "errors": {
+      "labelRequired": "Enter a label",
+      "keyInvalid": "Start with a letter; use only lowercase letters, digits and underscores",
+      "keyDuplicate": "This key is already used"
+    },
+    "loadError": "Failed to load the report form"
   },
   "rankAutofill": {
     "title": "Rank autofill",
@@ -1156,7 +1311,7 @@
       "createdRelative": "created {relative}"
     },
     "meta": {
-      "title": "Tournaments Analytics | {siteName}",
+      "title": "Tournaments Analytics",
       "description": "View tournaments analytics on {siteName}."
     }
   },
@@ -1166,7 +1321,11 @@
     },
     "heading": {
       "all": "All tournaments",
-      "total": "{count, plural, one {# total} other {# total}}"
+      "shown": "{count, plural, one {# shown} other {# shown}}"
+    },
+    "row": {
+      "bracketAria": "Bracket for {name}",
+      "openAria": "Open tournament {name}"
     },
     "empty": {
       "title": "No tournaments found",
@@ -1180,9 +1339,7 @@
       "liveNow": "Live now",
       "matchesInFlight": "{count, plural, one {# match in flight} other {# matches in flight}}",
       "noMatchesInFlight": "No matches in flight",
-      "totalTournaments": "Total tournaments",
-      "activeCount": "{count, plural, one {# active} other {# active}}",
-      "teamsBalanced": "{count, plural, one {# team balanced} other {# teams balanced}}"
+      "teamsBalancedLabel": "Teams balanced"
     },
     "filters": {
       "standard": "Standard",
@@ -1192,10 +1349,6 @@
         "oldest": "Oldest first",
         "participants": "Most participants"
       }
-    },
-    "card": {
-      "viewBracket": "View Bracket",
-      "participantsCount": "{count, plural, one {# participant} other {# participants}}"
     },
     "featured": {
       "liveRightNow": "Live right now",
@@ -1229,7 +1382,17 @@
     "tournamentsLoadError": "Failed to load tournaments",
     "loadingTournaments": "Loading tournaments...",
     "selectTournament": "Select a tournament",
-    "jumpToTeam": "Jump to team",
+    "findTeam": "Find team",
+    "sortValue": "{field} — {order}",
+    "groupLabel": "Group {name}",
+    "roster": {
+      "role": "Role",
+      "battleTag": "Battle tag",
+      "division": "Div",
+      "newcomer": "New",
+      "newcomerRole": "New role",
+      "avgSr": "Avg. SR"
+    },
     "sortAvgSr": "Avg. SR",
     "sortPlacement": "Placement",
     "sortGroup": "Group",
@@ -1357,7 +1520,6 @@
       "shotsHit": "Shots Hit",
       "shotsMissed": "Shots Missed"
     },
-    "unassignedStage": "Unassigned",
     "matchesTotal": "{count, plural, one {# match total} other {# matches total}}",
     "allTournaments": "All tournaments",
     "noMatchesFound": "No matches found.",
@@ -1385,6 +1547,17 @@
       "earnedSub": "Total awards, all-time"
     },
     "searchPlaceholder": "Search achievements…",
+    "meta": {
+      "description": "Browse every achievement on {siteName}."
+    },
+    "rarityName": {
+      "mythic": "Mythic",
+      "legendary": "Legendary",
+      "epic": "Epic",
+      "rare": "Rare",
+      "uncommon": "Uncommon",
+      "common": "Common"
+    },
     "results": "{count, plural, one {# result} other {# results}}",
     "sectionCount": "{count, plural, one {# badge} other {# badges}}",
     "category": {
@@ -1474,6 +1647,7 @@
     "metaTitleFallback": "Tournament",
     "metaDescriptionFallback": "Tournament overview.",
     "sectionsNav": "Tournament sections",
+    "bracketRegion": "Bracket — scroll horizontally to see all rounds",
     "sortTeams": "Sort teams",
     "rankHistory": "Rank history",
     "allFieldsVisible": "All fields visible in table",
@@ -1503,7 +1677,8 @@
         "participants": "Loading tournament participants",
         "matches": "Loading tournament matches",
         "heroes": "Loading hero statistics",
-        "standings": "Loading tournament standings"
+        "standings": "Loading tournament standings",
+        "maps": "Loading the tournament map pool"
       }
     },
     "participants": {
@@ -1566,6 +1741,10 @@
     "byTheNumbers": "By the numbers",
     "workspaces": "Workspaces",
     "communitiesOnPlatform": "Communities on this platform",
+    "getWorkspaceCard": {
+      "title": "Get your own",
+      "description": "Learn how to add your community as a workspace"
+    },
     "seasonOverview": "Season overview",
     "communityDashboard": "Community Dashboard",
     "avgDivisionDesc": "Average division rank per role across all tournaments.",
@@ -1581,6 +1760,28 @@
     "standingsSnapshot": "Standings snapshot",
     "viewStandings": "View standings",
     "colDiff": "Diff"
+  },
+  "getWorkspace": {
+    "title": "How to get your own workspace",
+    "lead": "A workspace is an isolated tournament space you can brand as your own community's home.",
+    "features": {
+      "domain": {
+        "title": "Your own address",
+        "description": "A subdomain, or a custom domain you connect yourself."
+      },
+      "theme": {
+        "title": "Your own look",
+        "description": "A dedicated color theme that matches your community's branding."
+      },
+      "content": {
+        "title": "Separate content",
+        "description": "Your tournaments and stats stay isolated from every other workspace."
+      }
+    },
+    "action": {
+      "title": "No self-service signup",
+      "description": "Workspaces are currently created manually by the platform administrator. Contact them and describe the community you'd like to set up."
+    }
   },
   "workspace": {
     "eyebrow": "Workspace",
@@ -1620,6 +1821,8 @@
     "selectSeason": "Select season",
     "stacks": "Stacks",
     "searchUser": "Search user...",
+    "standingsTableLabel": "OWAL standings. Scroll horizontally for all day and record columns.",
+    "stacksTableLabel": "OWAL stacks. Scroll horizontally for all columns.",
     "only3Days": "Only 3+ days",
     "playerOne": "Player One",
     "playerTwo": "Player Two",
@@ -1635,7 +1838,8 @@
     "wins": "W",
     "losses": "L",
     "draws": "D",
-    "winRatio": "Win ratio"
+    "winRatio": "Win ratio",
+    "title": "OWAL"
   },
   "notConfigured": {
     "title": "Workspace not configured",
@@ -1658,11 +1862,16 @@
     "round": "Round {n}",
     "lowerRound": "Lower R{n}",
     "viewMatch": "View match",
+    "viewMapPool": "View map pool",
+    "pregameRoom": "Open pre-game room",
+    "mapPool": {
+      "title": "Map Pool",
+      "description": "{home} vs {away}"
+    },
     "pending": "Pending",
     "disputed": "Disputed",
     "editMatch": "Edit match",
     "reportMatch": "Report match",
-    "confirmMatch": "Confirm result",
     "doubleElimination": "Double Elimination",
     "singleElimination": "Single Elimination"
   },
@@ -1682,7 +1891,11 @@
     "granularityPlaceholder": "Granularity",
     "daily": "Daily",
     "hourly": "Hourly",
-    "allPoints": "All points"
+    "allPoints": "All points",
+    "groupByLabel": "Group by",
+    "accountLabel": "Battle.net account",
+    "roleLabel": "Role",
+    "platformLabel": "Platform"
   },
   "encounters": {
     "meta": {
@@ -1691,11 +1904,10 @@
     },
     "dataUnavailable": "Encounter data is temporarily unavailable. Retrying in the background.",
     "views": "Views",
-    "unassigned": "Unassigned",
-    "tournamentNumber": "Tournament {number}",
     "searchPlaceholder": "Search by team, player, or matchup…",
     "roundNum": "Round {round}",
     "roundShort": "R{round}",
+    "bestOfShort": "Bo{count}",
     "mapsCount": "{count, plural, one {# map} other {# maps}}",
     "aria": {
       "views": "Encounter views",
@@ -1753,7 +1965,10 @@
       "maps": "Maps",
       "closeness": "Closeness",
       "media": "Media",
-      "played": "Played"
+      "played": "Played",
+      "format": "Format",
+      "when": "When",
+      "logs": "Logs"
     },
     "savedView": {
       "saved": "View saved",
@@ -1762,7 +1977,8 @@
       "promptDefault": "Current view",
       "deleteAria": "Delete saved view {name}",
       "confirmDelete": "Delete saved view \"{name}\"?",
-      "saveCurrent": "Save current view"
+      "saveCurrent": "Save current view",
+      "deleteTitle": "Delete saved view"
     },
     "insights": {
       "title": "Insights",
@@ -1838,23 +2054,106 @@
       "tie": "Tie",
       "winner": "Winner",
       "loser": "Loser",
-      "vetoRoom": "Veto room"
+      "pregameRoom": "Pre-game room",
+      "heroTitle": "{home} <em>vs</em> {away}",
+      "verdictWin": "Series won by {team}",
+      "verdictDraw": "Series drawn",
+      "verdictPending": "Series not decided",
+      "ledeWin": "{winner} took the series {winnerScore}–{loserScore} against {loser} across {maps, plural, one {# map} other {# maps}}.",
+      "ledeDraw": "The series ended level after {maps, plural, one {# map} other {# maps}}.",
+      "ledePending": "A Bo{format} series that has not been played out yet.",
+      "placementShort": "Placement",
+      "pipsAria": "Map results: {summary}",
+      "pipUnplayed": "not played",
+      "challonge": "Challonge",
+      "statMaps": "Maps played",
+      "statMapsSub": "{format} · {home}–{away} on maps",
+      "statDuration": "Series time",
+      "statDurationSub": "{value} average per map",
+      "statNoTiming": "No map timings reported",
+      "statClosenessSub": "Reported by captains",
+      "statNoCloseness": "Not rated",
+      "scheduledAt": "Scheduled",
+      "startedAt": "Started",
+      "endedAt": "Ended",
+      "confirmedAt": "Confirmed",
+      "scoreboard": "Series result",
+      "mapsMeta": "{played} of {slots} slots played",
+      "mapNotPlayed": "Not played",
+      "mapNotPlayedHint": "The series ended before this map",
+      "mapInProgress": "In progress",
+      "mapInProgressHint": "The result of this map has not been reported yet",
+      "mapPendingHint": "Allowed by the format, not reached yet",
+      "mapScoreAria": "{home} {homeScore}, {away} {awayScore}",
+      "openScoreboard": "Scoreboard",
+      "rosters": "Rosters",
+      "rostersMeta": "Substitutes are indented under the player they replaced",
+      "rosterAria": "{team} roster",
+      "seriesStats": "Series statistics",
+      "seriesStatsMeta": "Totalled across {maps, plural, one {# map} other {# maps}}",
+      "seriesStatsNoLogs": "No game logs were parsed for this series, so per-player statistics are unavailable.",
+      "seriesTableTitle": "Player totals",
+      "seriesTableSub": "Whole series · same columns as a single map",
+      "statsMapsCounted": "Maps counted",
+      "statsMapsCountedValue": "{counted} of {total}",
+      "statsScope": "Scope",
+      "statsScopeValue": "Whole series",
+      "statsRoster": "Players",
+      "statsPartial": "Showing {counted} of {total} maps — the rest could not be loaded.",
+      "colMaps": "MAPS",
+      "colMapsTitle": "Maps this player appeared on",
+      "reports": "Captain reports",
+      "reportsMeta": "{count, plural, one {# report} other {# reports}} filed",
+      "reportsDisagree": "The captains reported different scores. An organizer decides the official result.",
+      "reportAria": "Report from {team}",
+      "reportBy": "Filed by",
+      "reportedScore": "Reported score",
+      "reportedCloseness": "Match quality",
+      "reportedClosenessValue": "{value} of 10",
+      "reportedCodes": "Lobby codes",
+      "reportedComment": "Comment",
+      "pregame": "Pre-game",
+      "pregameMap": "Map veto",
+      "pregameHero": "Hero bans",
+      "pregameProgress": "{done} of {total} steps",
+      "pregameSteps": "Steps",
+      "pregamePicked": "Picked",
+      "pregameBanned": "Banned",
+      "pregameFirst": "First move",
+      "pregameSeeds": "Seeds (home / away)",
+      "pregameTurn": "Current turn",
+      "readinessHome": "Home ready",
+      "readinessAway": "Away ready"
     },
     "match": {
-      "roundTab": "Round {round}",
       "mapAlt": "Map",
       "gamemodeAlt": "Gamemode",
       "playtime": "Playtime",
-      "logName": "Log name",
       "openNewTab": "Open in New Tab",
-      "allMatch": "All Match"
+      "openStats": "Open the {map} scoreboard",
+      "source": "Source",
+      "sourceLogParser": "Game log",
+      "sourceCaptainReport": "Captain report",
+      "code": "Code",
+      "logName": "Log",
+      "nonCompetitive": "Outside the competitive pool"
     },
     "team": {
-      "placement": "Placement: {value}",
       "colName": "Name",
       "colDivision": "Division",
+      "colDivisionShort": "DIV",
       "colNew": "New",
-      "colNewRole": "New Role"
+      "colNewShort": "NEW",
+      "colNewTitle": "First tournament on the platform",
+      "colNewRole": "New Role",
+      "colNewRoleShort": "ROLE",
+      "colNewRoleTitle": "First tournament on this role",
+      "newcomerYes": "Newcomer",
+      "newcomerNo": "Not a newcomer",
+      "newRoleYes": "New to this role",
+      "newRoleNo": "Not new to this role",
+      "captain": "Captain",
+      "substitution": "Substitute"
     },
     "chart": {
       "title": "Kills and Assists Overview",
@@ -1889,7 +2188,15 @@
           "notConfiguredTitle": "Veto is not configured",
           "notConfiguredHint": "The organizer has not set veto rules for this match yet. Check back later.",
           "teamsUnknownTitle": "Teams are not decided yet",
-          "teamsUnknownHint": "The veto room opens once both teams of this match are known."
+          "teamsUnknownHint": "The veto room opens once both teams of this match are known.",
+          "slotCountMismatchTitle": "The map pool does not cover this series",
+          "slotCountMismatchHint": "This match plays more maps than the configured pool has slots, so the veto cannot open. The organizer has to add the missing slots — waiting will not fix it.",
+          "slotUnderfilledTitle": "A slot has too few maps",
+          "slotUnderfilledHint": "One of this match's slots has fewer than two candidate maps, so there is nothing to ban there. The organizer has to fill it before the veto can open.",
+          "notReadyTitle": "Waiting for both captains",
+          "notReadyHint": "The veto room opens once both captains confirm they are ready.",
+          "waitingMapTitle": "Waiting for this round's map",
+          "waitingMapHint": "This phase opens once the map for this round of the series is picked."
         },
         "steps": {
           "title": "Veto steps",
@@ -1911,7 +2218,8 @@
             "available": "Available",
             "banned": "Banned",
             "picked": "Picked",
-            "played": "Played"
+            "played": "Played",
+            "remaining": "Remaining"
           },
           "by": {
             "home": "home",
@@ -1953,6 +2261,15 @@
           "resetConfirmAction": "Reset",
           "resetSuccess": "Veto session reset",
           "resetFailed": "Failed to reset the veto session"
+        },
+        "slot": {
+          "label": "Slot {n}",
+          "current": "current slot",
+          "resolved": "resolved",
+          "upcoming": "opens later",
+          "locked": "Slot {n} opens once the earlier slots are decided.",
+          "inPlayCount": "{count, plural, one {# slot in play} other {# slots in play}}",
+          "reserve": "Regulation reserve on a draw: {map}"
         }
       }
     },
@@ -1961,16 +2278,410 @@
       "none": "No result",
       "pendingConfirmation": "Pending confirmation",
       "confirmed": "Confirmed",
-      "disputed": "Disputed",
-      "home": "Home",
-      "away": "Away",
-      "submit": "Submit Result",
-      "submitting": "Submitting...",
-      "submittedScore": "Submitted score: {home} - {away}",
-      "confirm": "Confirm Result",
-      "confirming": "Confirming...",
-      "dispute": "Dispute",
-      "disputedNotice": "Result disputed. An admin will resolve this."
+      "disputed": "Disputed"
+    }
+  },
+  "pickBan": {
+    "room": {
+      "map": {
+        "title": "Map Pool",
+        "itemNumber": "Map #{id}"
+      },
+      "hero": {
+        "title": "Hero Pool",
+        "itemNumber": "Hero #{id}"
+      },
+      "title": "Pre-game Room",
+      "phase": {
+        "map": "Map veto",
+        "hero": "Hero bans",
+        "current": "current phase",
+        "done": "done",
+        "report": "Map result",
+        "rail": "Round progress",
+        "next": "next"
+      },
+      "board": {
+        "label": "Match scoreboard",
+        "seed": "Seed",
+        "seedNone": "—",
+        "opens": "Opens this round",
+        "score": "Series",
+        "bestOf": "Bo{n}",
+        "toWin": "first to {n}"
+      },
+      "series": {
+        "label": "Maps of this series",
+        "awaiting": "awaiting result",
+        "upcoming": "not played yet"
+      },
+      "back": "Back",
+      "loadError": "Failed to load pick-ban state",
+      "retry": "Retry",
+      "statusChip": {
+        "active": "In progress",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "firstBanner": "{team} goes first",
+      "seedBadge": "Seed #{seed}",
+      "seedUnknown": "Seed —",
+      "seedSource": {
+        "bracket_slot": "from bracket",
+        "standings": "from standings",
+        "fallback_home": "default (home)",
+        "admin": "set by admin"
+      },
+      "side": {
+        "home": "home",
+        "away": "away"
+      },
+      "notConfiguredTitle": "Not configured",
+      "notConfiguredHint": "The organizer has not set rules for this match yet. Check back later.",
+      "teamsUnknownTitle": "Teams are not decided yet",
+      "teamsUnknownHint": "This room opens once both teams of this match are known.",
+      "slotCountMismatchTitle": "The pool does not cover this series",
+      "slotCountMismatchHint": "This match plays more rounds than the configured pool has slots. The organizer has to add the missing slots — waiting will not fix it.",
+      "slotUnderfilledTitle": "A slot has too few candidates",
+      "slotUnderfilledHint": "One of this match's slots has fewer than two candidates, so there is nothing to ban there. The organizer has to fill it before this room can open.",
+      "notReadyTitle": "Waiting for both captains",
+      "notReadyHint": "This room opens once both captains confirm they are ready.",
+      "ready": {
+        "button": "I'm ready",
+        "sending": "Confirming...",
+        "confirmed": "You're ready",
+        "waitingOpponent": "Waiting for the other captain to confirm",
+        "stateReady": "Ready",
+        "statePending": "Not ready",
+        "failed": "Failed to confirm readiness"
+      },
+      "steps": {
+        "title": "Steps",
+        "ban": "Ban",
+        "pick": "Pick",
+        "protect": "Protect",
+        "decider": "Decider",
+        "done": "done",
+        "current": "current step",
+        "pending": "pending"
+      },
+      "timer": {
+        "label": "Turn timer",
+        "expired": "Time expired"
+      },
+      "status": {
+        "available": "Available",
+        "banned": "Banned",
+        "picked": "Picked",
+        "protected": "Protected",
+        "played": "Played",
+        "remaining": "Remaining"
+      },
+      "by": {
+        "home": "home",
+        "away": "away",
+        "decider": "decider",
+        "admin": "admin"
+      },
+      "protectedBy": {
+        "home": "protected by home",
+        "away": "protected by away"
+      },
+      "turn": "Turn: {side} — {action}",
+      "action": {
+        "ban": "ban",
+        "pick": "pick",
+        "protect": "protect"
+      },
+      "deciderResolving": "Decider is being resolved",
+      "completedBanner": "Sequence completed",
+      "commandBar": "Pick-ban command bar",
+      "captain": {
+        "yourTurn": "Your turn",
+        "selectHint": "Select an item from the pool",
+        "confirmBan": "Ban {item}",
+        "confirmPick": "Pick {item}",
+        "confirmProtect": "Protect {item}",
+        "cancel": "Cancel",
+        "sending": "Sending...",
+        "actionFailed": "Action failed"
+      },
+      "round": {
+        "label": "Round {n}",
+        "current": "current round",
+        "resolved": "resolved",
+        "upcoming": "opens later",
+        "locked": "Round {n} opens once the earlier rounds are decided.",
+        "inPlayCount": "{count, plural, one {# round in play} other {# rounds in play}}",
+        "reserve": "Regulation reserve on a draw: {item}"
+      },
+      "electOpener": {
+        "title": "Choose who opens the next round",
+        "hint": "Your side lost the previous map. Choose who bans first this round.",
+        "chooseHome": "Home opens",
+        "chooseAway": "Away opens",
+        "confirm": "Confirm",
+        "sending": "Sending...",
+        "failed": "Failed to submit the choice"
+      },
+      "mapReport": {
+        "title": "Report this map's result",
+        "yourScore": "Your team's score",
+        "opponentScore": "Opponent's score",
+        "submit": "Submit report",
+        "sending": "Sending...",
+        "failed": "Failed to submit the report",
+        "waitingOpponent": "Waiting for the other captain's report",
+        "disputed": "Reports disagree",
+        "disputedHint": "Your report does not match the opponent's. An admin will resolve it.",
+        "resolved": "Result confirmed — moving to the next map"
+      },
+      "admin": {
+        "title": "Pick-ban controls (admin)",
+        "sideLabel": "Side",
+        "actionLabel": "Action",
+        "confirm": "Perform action",
+        "selectItemFirst": "Select an item in the pool first",
+        "actFailed": "Failed to act for side",
+        "reset": "Reset session",
+        "resetConfirmTitle": "Reset this pick-ban session?",
+        "resetConfirmHint": "The session and pool will be dropped and re-created with seeds re-resolved. All performed actions will be lost.",
+        "resetConfirmAction": "Reset",
+        "resetSuccess": "Session reset",
+        "resetFailed": "Failed to reset the session"
+      },
+      "waitingMapTitle": "Waiting for this round's map",
+      "waitingMapHint": "Hero bans open once the map for this round of the series is picked — they are banned for a known map.",
+      "mapResult": {
+        "eyebrow": "Play it, then report it",
+        "hint": "Both captains report this map independently. Matching reports lock it in and open the next map's bans; a mismatch goes to an admin.",
+        "pending": "{team} has not reported yet",
+        "filed": "{team} has reported",
+        "filedScore": "{team} reported {home}–{away}",
+        "claim": {
+          "waiting": "Not reported",
+          "sealed": "Sealed until both",
+          "filed": "Reported"
+        },
+        "verdict": {
+          "waiting": "Awaiting both reports",
+          "agree": "Reports match — map locked in",
+          "disagree": "Reports differ — admin decides"
+        },
+        "report": "Report the result",
+        "amend": "Change my report"
+      },
+      "heroBans": {
+        "eyebrow": "Hero bans for this map",
+        "hint": "Disable these heroes in the custom game before you start. Protected heroes stay in — the shield marks them.",
+        "none": "No bans this map",
+        "state": {
+          "ban": "Banned:",
+          "protect": "Protected:"
+        }
+      },
+      "undo": {
+        "label": "Take the last action back — both captains have to agree",
+        "ask": "Ask to undo",
+        "waiting": "Waiting for {team} to agree to undo this",
+        "withdraw": "Withdraw",
+        "asked": "{team} asks to undo this",
+        "agree": "Agree",
+        "decline": "Decline",
+        "failed": "Could not undo the last action"
+      },
+      "rule": {
+        "blocked": "This side has already used its one action on this role this round",
+        "pointless": "The opponent has already banned this role — protecting it changes nothing",
+        "repeat": "Your side already banned this earlier in the series"
+      },
+      "seriesDone": {
+        "title": "Nothing left to decide",
+        "hint": "Every map of this series has been picked, banned and reported. The result is with the organizers now."
+      },
+      "finalReport": {
+        "title": "Report the match",
+        "hint": "Pick and ban are done. This is the tournament's match report: confirm the series score, add the match codes and anything else the organizers asked for. Filing it takes you back where you came from."
+      }
+    },
+    "admin": {
+      "title": "Pre-game Phase",
+      "intro": "A rule set decides what captains ban and pick before a match, and in which order. This is one config system for two catalogs — maps and heroes — each with its own independent rule sets below. Matches use the most specific rule set that covers them: a round's own beats its stage's, and a stage's beats the tournament-wide one.",
+      "readOnly": "You do not have permission to change these rule sets.",
+      "loadFailed": "Unable to load the rule sets.",
+      "retry": "Try again",
+      "kindMap": "Map veto",
+      "kindHero": "Hero bans",
+      "addMapConfig": "Add map rules",
+      "addHeroConfig": "Add hero rules",
+      "noConfigs": "No rule sets yet",
+      "noConfigsMapHint": "Without one, the map veto room stays closed for every match of this tournament.",
+      "noConfigsHeroHint": "Without one, the hero ban room stays closed for every match of this tournament.",
+      "tournamentLevel": "Whole tournament",
+      "scopeStage": "{stage} — all rounds",
+      "scopeStageRound": "{stage} — round {round}",
+      "unknownStage": "Stage #{id}",
+      "editorNewMap": "New map rules",
+      "editorNewHero": "New hero rules",
+      "editorEditMap": "Edit map rules",
+      "editorEditHero": "Edit hero rules",
+      "catalogueLoading": "Loading the catalogue…",
+      "catalogueEmpty": "Nothing matches that name.",
+      "pickerSearchLabel": "Name",
+      "scopeSection": "1 · Where these rules apply",
+      "scopeSectionHint": "Start tournament-wide, then add a narrower rule set only where a stage or a round needs to differ.",
+      "scopeLabel": "Applies to",
+      "scopeHint": "Every match of this tournament, unless a narrower rule set covers it.",
+      "roundLabel": "Round",
+      "roundAll": "All rounds of this stage",
+      "roundNumber": "Round {n}",
+      "roundNumberLower": "Lower bracket round {n}",
+      "roundHint": "Narrow these rules to one round of the stage.",
+      "roundHintDisabled": "Available once these rules apply to a single stage.",
+      "roundHintLoading": "Checking the stage's planned bracket…",
+      "roundHintUnknown": "This stage's bracket isn't built yet, and no teams are wired into it either, so its rounds aren't known. Add teams to the stage, or scope these rules to the whole stage for now.",
+      "scopeTaken": "A rule set already covers this scope. Saving replaces it.",
+      "poolSection": "2 · What captains choose from",
+      "poolSectionHint": "The candidates a match draws on, and how they are grouped.",
+      "modeLabel": "Pool shape",
+      "modePool": "One shared pool",
+      "modeSlots": "One group per round",
+      "modePoolHint": "One pool and one run of steps for the whole series: captains ban and pick out of the same list.",
+      "modeSlotsHint": "A separate group of candidates for each round of the series, each banned down to one survivor on its own.",
+      "poolMapLabel": "Map pool",
+      "poolHeroLabel": "Hero pool",
+      "poolCount": "{count, plural, =0 {nothing selected} other {# selected}}",
+      "poolHint": "Order matters: it is the order the room lists candidates in.",
+      "poolAddMaps": "Add maps",
+      "poolAddHeroes": "Add heroes",
+      "searchMaps": "Search maps…",
+      "searchHeroes": "Search heroes…",
+      "poolRemove": "Remove {item}",
+      "poolSelectAllVisible": "Select all",
+      "poolClearVisible": "Clear",
+      "groupFilterLabel": "Filter by group",
+      "groupFilterAll": "All",
+      "groupFilterUngrouped": "Ungrouped",
+      "slotCountMismatch": "There are {slots, plural, one {# group} other {# groups}} but this scope plays {maps, plural, one {# map} other {# maps}}. Extra groups are ignored; missing ones keep the room closed.",
+      "slotTitle": "Round {n}",
+      "slotCandidates": "{count, plural, =0 {no candidates} one {# candidate} other {# candidates}}",
+      "slotRemove": "Remove round {n}",
+      "addSlot": "Add a round",
+      "slotReserve": "Reserve:",
+      "slotReserveAria": "Reserve for round {n}",
+      "slotReserveNone": "None",
+      "slotReserveHint": "Stands in if this round's candidates are all used up. It cannot be one of them.",
+      "orderSection": "3 · The order of steps",
+      "orderSectionHint": "Who acts when, from the first ban to the last pick.",
+      "orderLabel": "Step order",
+      "orderBracket": "From the bracket",
+      "orderCustom": "Custom",
+      "orderBracketHint": "Generated for each match from its series length: two opening bans, then alternating picks, then a decider when the length is odd.",
+      "orderCustomHint": "Your exact list of steps, used as written for every match in this scope regardless of its series length.",
+      "orderPreview": "Generated order",
+      "orderSteps": "Steps",
+      "orderRoundsPlayed": "{count, plural, one {# round played} other {# rounds played}}",
+      "orderNeedsPool": "The order is generated from the pool — add candidates above to see it.",
+      "orderCustomMismatch": "This order plays {played, plural, one {# round} other {# rounds}}, but matches in this scope play {expected, plural, one {# round} other {# rounds}}.",
+      "seriesSource": {
+        "round": "This round plays Bo{bestOf}.",
+        "stage": "Every round of this stage plays Bo{bestOf}.",
+        "variesByRound": "Series length differs per round in this stage; the preview shows Bo{bestOf}. Each match still gets its own order.",
+        "variesByMatch": "Series length differs per match; the preview shows Bo{bestOf}. Each match still gets its own order."
+      },
+      "sequenceEmpty": "No steps yet.",
+      "stepNumber": "Step {n}",
+      "stepActionLabel": "Action for step {n}",
+      "stepSideLabel": "Team for step {n}",
+      "stepMoveUp": "Move step {n} earlier",
+      "stepMoveDown": "Move step {n} later",
+      "stepRemove": "Remove step {n}",
+      "addStep": "Add step",
+      "deciderAuto": "Last candidate remaining",
+      "action": {
+        "ban": "Ban",
+        "pick": "Pick",
+        "protect": "Protect",
+        "decider": "Decider"
+      },
+      "side": {
+        "first": "Team 1",
+        "second": "Team 2"
+      },
+      "rulesSection": "4 · Rules of the room",
+      "rulesSectionHint": "Who opens, what carries over between rounds, and how long a turn lasts.",
+      "firstPickRule": "Round 1 opener",
+      "firstPickRuleHint": "How the opening side of round 1 is decided, before any result exists to react to. Later rounds follow the rotation below.",
+      "firstPickRuleValue": {
+        "higher_seed": "The higher seed opens"
+      },
+      "firstBanRotation": "Later rounds open with",
+      "firstBanRotationHint": {
+        "fixed": "The side that opened round 1 opens every round.",
+        "alternate": "The opening side flips every round, whatever the results.",
+        "result_winner_first": "The side that won the previous round opens the next one.",
+        "result_loser_first": "The side that lost the previous round opens the next one.",
+        "result_loser_choice": "The side that lost the previous round chooses who opens next; the room pauses until it answers."
+      },
+      "firstBanRotationValue": {
+        "fixed": "The same side every round",
+        "alternate": "Alternating sides",
+        "result_winner_first": "The previous winner",
+        "result_loser_first": "The previous loser",
+        "result_loser_choice": "The previous loser's choice"
+      },
+      "noRepeatScope": "Repeats across rounds",
+      "noRepeatScopeHint": {
+        "none": "Nothing carries over: the same map or hero can be banned again in a later round.",
+        "encounter": "Once either side bans or protects a candidate, it is out for both sides for the rest of the series.",
+        "encounter_same_side": "Once a side bans or protects a candidate, only that side is blocked from it again; the opponent still can."
+      },
+      "noRepeatScopeValue": {
+        "none": "Allowed",
+        "encounter": "Blocked for both sides",
+        "encounter_same_side": "Blocked for the same side only"
+      },
+      "turnTimer": "Turn timer",
+      "turnTimerUnit": "seconds",
+      "turnTimerPlaceholder": "No limit",
+      "turnTimerClear": "Remove the limit",
+      "turnTimerHint": "Countdown shown to captains on their turn. Leave it empty for no time limit — captains then take as long as they need.",
+      "allowProtect": "Allow a protect step",
+      "allowProtectHint": "Lets a side shield one candidate for the round so the opponent cannot ban it. It only runs where a step of the order says Protect.",
+      "protectWithoutStep": "The protect step is on, but no step in this order uses it, so nothing changes. Switch the step order to Custom and add a Protect step.",
+      "uniqueRole": "One hero per role per side each round",
+      "uniqueRoleHint": "Stops a side from picking two heroes of the same role in the same round.",
+      "validationTitle": "Fix these before saving",
+      "validation": {
+        "emptyPool": "Add at least one candidate to the pool.",
+        "emptySequence": "Add at least one step to the order.",
+        "multipleDeciders": "Only one decider step is allowed.",
+        "deciderNotLast": "The decider must be the last step.",
+        "noPickOrDecider": "The order needs at least one pick or a decider.",
+        "sequenceLongerThanPool": "The order has {steps} steps but the pool only has {items} candidates.",
+        "emptySlots": "Add at least one round group.",
+        "slotTooFewCandidates": "Round {slot} needs at least two candidates.",
+        "heroDecider": "A hero order has no decider: nothing is left to decide once the bans are in."
+      },
+      "save": "Save rules",
+      "saving": "Saving…",
+      "saved": "Rules saved",
+      "saveFailed": "Unable to save the rules",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "delete": "Delete rules",
+      "deleteConfigAria": "Delete the rules for {scope}",
+      "deleteConfirm": "Delete this rule set?",
+      "deleteDescription": "The rules for “{scope}” are removed. Matches in this scope fall back to the next wider rule set, or lose their room if there is none.",
+      "deleted": "Rule set deleted",
+      "deleteFailed": "Unable to delete the rule set",
+      "summaryPool": "{count, plural, =0 {empty pool} one {# candidate} other {# candidates}}",
+      "summarySlots": "{slots, plural, one {# round} other {# rounds}}, {candidates, plural, one {# candidate} other {# candidates}}",
+      "summaryOrderBracket": "Order from the bracket",
+      "summaryOrderCustom": "Custom order",
+      "summaryTimerOff": "No turn limit",
+      "summaryTimerOn": "{seconds}s per turn",
+      "orderHeroHint": "One round's worth of steps — hero bans repeat for every map of the series, so this list is replayed per map, not spread across it."
     }
   },
   "users": {
@@ -1998,7 +2709,9 @@
         "maps": "Maps",
         "avgPlace": "Avg Place",
         "playoffs": "Playoffs {place}",
-        "deltaTitle": "Last tournament vs career"
+        "deltaTitle": "Last tournament vs career",
+        "trendUp": "Increase",
+        "trendDown": "Decrease"
       },
       "tabs": {
         "overview": "Overview",
@@ -2023,6 +2736,30 @@
       "atoms": {
         "recentForm": "Recent form",
         "mapsTitle": "{label}: {count, plural, one {# map} other {# maps}}"
+      },
+      "empty": {
+        "eyebrow": "Career · not started",
+        "title": "No <em>tournaments</em> yet",
+        "description": "{name} has not entered a tournament yet, so there is nothing to chart here. Once they play their first event, this profile fills in on its own.",
+        "unlocks": {
+          "tournaments": "Placements",
+          "matches": "Match history",
+          "heroes": "Hero stats",
+          "achievements": "Achievements"
+        },
+        "browseTournaments": "Browse tournaments",
+        "browsePlayers": "All players"
+      },
+      "share": {
+        "heading": "OWT player card",
+        "rolePlayer": "Player",
+        "division": "Div {division}",
+        "events": "{count, plural, one {# event} other {# events}}",
+        "winrate": "Winrate",
+        "avgPlace": "Avg place",
+        "titles": "Titles",
+        "mapsWon": "Maps won",
+        "formLast": "Form · last {count}"
       }
     },
     "overview": {
@@ -2031,17 +2768,13 @@
       "loss": "L",
       "career": {
         "title": "Career",
-        "tournaments": "Tournaments",
         "tournamentsWon": "Tournaments won",
-        "winrate": "Winrate",
-        "maps": "Maps",
         "closeness": "Closeness",
         "closenessGlossary": "How competitive your matches were on average — higher means tighter games.",
-        "avgPlacement": "Avg placement",
         "avgPlayoffPlace": "Avg playoff place",
         "avgGroupPlace": "Avg group place",
         "finishes": "Finishes",
-        "events": "{count, plural, one {# event} other {# events}}",
+        "placements": "{count, plural, one {# placement} other {# placements}}",
         "finish": {
           "first": "1st",
           "second": "2nd",
@@ -2049,14 +2782,14 @@
           "topHalf": "Top half",
           "bottom": "Bottom"
         },
-        "verdictPodium": "Podium finish in {pct}% of {count, plural, one {# event} other {# events}}."
+        "verdictPodium": "Podium in {pct}% of {count, plural, one {# recorded placement} other {# recorded placements}}."
       },
       "mostPlayed": {
         "title": "Most played heroes"
       },
       "topHeroes": {
         "title": "Top heroes",
-        "played": "{count, plural, one {# played} other {# played}}",
+        "playedByTime": "{count, plural, one {# played} other {# played}} · top by playtime",
         "lowSample": "low sample",
         "lowSampleTitle": "Hidden under {games} games",
         "vsAvgTitle": "Your win% vs the global average on this hero",
@@ -2064,6 +2797,7 @@
           "hero": "Hero",
           "role": "Role",
           "games": "Games",
+          "time": "Time",
           "winrate": "Win%",
           "kda": "KDA",
           "dmg10": "Dmg/10",
@@ -2102,11 +2836,6 @@
         "subtitle": "{maps, plural, one {# map} other {# maps}} · {tournaments, plural, one {# tournament} other {# tournaments}}",
         "main": "Main",
         "ofPool": "of pool",
-        "short": {
-          "tank": "T",
-          "damage": "Damage",
-          "support": "Sup"
-        },
         "signatureTitle": "Signature hero per role",
         "games": "{count, plural, one {# game} other {# games}}",
         "kda": "KDA {value}"
@@ -2116,7 +2845,7 @@
         "dialogSubtitle": "{count, plural, one {# unique stack-mate} other {# unique stack-mates}} · {maps, plural, one {# map together} other {# maps together}}",
         "you": "You",
         "edgesHint": "Edges sized by appearances",
-        "wrHint": "bar = win rate together",
+        "wrHint": "Bar = win rate together",
         "playedMaps": "{count}× · {maps, plural, one {# map} other {# maps}}",
         "footer": "{count, plural, one {# unique} other {# unique}} · {maps, plural, one {# map} other {# maps}}",
         "searchPlaceholder": "Search teammates…",
@@ -2129,11 +2858,12 @@
           "wr": "WR",
           "kda": "KDA",
           "mvp": "MVP"
-        }
+        },
+        "searchLabel": "Search teammates"
       },
       "leaderboard": {
         "open": "Open lobby leaderboard · {stat}",
-        "vsLeader": "bar = vs leader",
+        "vsLeader": "Bar = vs leader",
         "lowerIsBetter": "lower is better",
         "yourRank": "Your rank: #{rank} of {total} · top {pct}%",
         "you": "you"
@@ -2145,11 +2875,11 @@
         "playtimeNoHours": "{minutes}m playtime",
         "mapWinrate": "map winrate",
         "lobbyRank": "Rank in lobby",
-        "percentileHint": "bar = percentile · fuller is better",
+        "percentileHint": "Bar = rank in lobby · fuller is better",
         "rankTop": "Top {pct}%",
         "players": "{count, plural, one {# player} other {# players}}",
         "mapResults": "Map results",
-        "mapResultsAggregate": "aggregate · map order not recorded",
+        "mapResultsAggregate": "Aggregate result · map order not recorded",
         "mapWon": "Map won",
         "mapLost": "Map lost",
         "stat": {
@@ -2166,7 +2896,6 @@
     },
     "heroes": {
       "searchStats": "Search stats…",
-      "recordLegend": "♔ = holds the all-players record",
       "recordTitle": "Holds the all-players record",
       "noStatsMatch": "No stats match search",
       "col": {
@@ -2175,7 +2904,8 @@
         "bestYou": "Best (you)",
         "avg10": "Avg /10",
         "bestAll": "Best (all)",
-        "global10": "Global /10"
+        "global10": "Global /10",
+        "delta": "Delta vs global average"
       },
       "radar": {
         "dmg": "DMG",
@@ -2225,7 +2955,9 @@
       },
       "played": "{time} played",
       "poolShare": "{pct}% pool share",
-      "playtimeShare": "Playtime share"
+      "playtimeShare": "Playtime share",
+      "searchHeroes": "Search heroes…",
+      "removeAxis": "Remove {stat} axis"
     },
     "maps": {
       "overallWinrate": "Overall winrate",
@@ -2257,7 +2989,8 @@
       "colWinrate": "Winrate",
       "colRecord": "Record",
       "colGames": "Games",
-      "noMaps": "No maps match the filters"
+      "noMaps": "No maps match the filters",
+      "searchLabel": "Search maps"
     },
     "matches": {
       "loadError": "Could not load matches. Please try again later.",
@@ -2279,7 +3012,6 @@
       "allOpponents": "All opponents",
       "colOpponent": "Opponent",
       "colWinrate": "Win%",
-      "tTag": "T {number}",
       "mapLabel": "Map {number}",
       "overperformanceBadge": "Above expectations",
       "mvp": {
@@ -2294,7 +3026,8 @@
       "colMvp": "MVP",
       "colCloseness": "Close.",
       "colLogs": "Logs",
-      "noMatches": "No matches for current filter"
+      "noMatches": "No matches for current filter",
+      "searchOpponentLabel": "Search opponent"
     },
     "tournaments": {
       "title": "Tournament history",
@@ -2385,7 +3118,7 @@
         "subtitle": "{count, plural, one {# tournament} other {# tournaments}} · finish position vs field size",
         "axisTop": "top",
         "axisLast": "last",
-        "dotTitle": "T#{number} · placed {placement}/{count}",
+        "dotTitle": "{name} · placed {placement}/{count}",
         "legend": {
           "first": "1st place",
           "podium": "Podium",
@@ -2442,7 +3175,8 @@
         "earnedIn": "Earned in",
         "earnedCount": "· earned ×{count}",
         "earnedNoDetails": "Earned {count}× — no tournament or match details recorded."
-      }
+      },
+      "searchLabel": "Search achievements"
     },
     "list": {
       "meta": {
@@ -2593,9 +3327,6 @@
       "playtime": "Playtime",
       "avgPlaytime": "Avg playtime",
       "selectUserPrompt": "Select a user above to start comparing",
-      "durationH": "h",
-      "durationM": "m",
-      "durationS": "s",
       "allRoles": "All roles",
       "comparingAgainstUser": "Comparing against {name}",
       "comparingAgainstSelected": "Comparing against selected user",
@@ -2644,8 +3375,6 @@
     "heroesCompare": {
       "selectHeroPrompt": "Select a hero above to rank every player who's logged time on it.",
       "allTournaments": "All tournaments",
-      "sortAscending": "Sort ascending",
-      "sortDescending": "Sort descending",
       "stat": {
         "elims": "Elims / 10",
         "healing": "Healing / 10",
@@ -2683,7 +3412,10 @@
         "scope": "scope",
         "playersCount": "<em>{count}</em> {count, plural, one {player} other {players}}",
         "noData": "No data found for this hero.",
-        "noDataInTournament": "No data found for this hero in this tournament."
+        "noDataInTournament": "No data found for this hero in this tournament.",
+        "rank": "Rank",
+        "player": "Player",
+        "selectStat": "Change column stat: {stat}"
       },
       "hero": {
         "healing": "Healing",
@@ -2699,7 +3431,7 @@
         "usersBreadcrumb": "Users",
         "breadcrumb": "Hero compare",
         "title": "Who plays it <em>best</em>?",
-        "lede": "Pick a hero and rank every player who's logged time on it. Each column ranks the same roster independently — so the elims leader and the healing leader can be different people, side by side."
+        "lede": "Pick a hero and rank every player who's logged time on it. One shared row order across every column — click any column header to sort the whole board by it."
       }
     }
   },
@@ -2760,6 +3492,7 @@
     },
     "workspaces": "Workspaces",
     "switchWorkspace": "Switch workspace",
+    "openWorkspace": "Open {name}",
     "activeEvents": {
       "title": "Active Events",
       "badge": "{count} Active",
@@ -2772,7 +3505,8 @@
       "minChars": "Type at least 2 characters.",
       "clear": "Clear search",
       "resultsLabel": "User search results"
-    }
+    },
+    "mobileMenuTitle": "Site navigation"
   },
   "draftAdmin": {
     "title": "Draft administration",
@@ -2805,6 +3539,8 @@
     "sessionNumber": "Session #{id}",
     "configLocked": "The session has already been created, so roster shape and format are locked. Complete or cancel it to use a different configuration.",
     "teamSize": "Final roster size",
+    "rosterShapeHint": "The roster shape and the rounds it implies come from the tournament settings.",
+    "openTournamentSettings": "Open tournament settings",
     "teamCount": "Number of teams",
     "teamCountHint": "The same number of captains must be selected later.",
     "rounds": "Rounds",
@@ -2813,15 +3549,33 @@
     "customPickTime": "Custom time per pick in seconds",
     "format": "Draft format",
     "formats": {
-      "snake": { "title": "Snake", "description": "The direction reverses after every round." },
-      "linear": { "title": "Linear", "description": "The same captain order is used every round." },
-      "custom": { "title": "Custom", "description": "Choose a rule independently for each round." }
+      "snake": {
+        "title": "Snake",
+        "description": "The direction reverses after every round."
+      },
+      "linear": {
+        "title": "Linear",
+        "description": "The same captain order is used every round."
+      },
+      "custom": {
+        "title": "Custom",
+        "description": "Choose a rule independently for each round."
+      }
     },
     "autopick": "Automatic pick strategy",
     "autopicks": {
-      "best_fit": { "title": "Best fit", "description": "Balances role need and player strength while preserving a feasible finish." },
-      "role_need": { "title": "Role need", "description": "Prioritizes the role the current team needs most." },
-      "best_available": { "title": "Best available", "description": "Chooses the strongest safe option remaining in the pool." }
+      "best_fit": {
+        "title": "Best fit",
+        "description": "Balances role need and player strength while preserving a feasible finish."
+      },
+      "role_need": {
+        "title": "Role need",
+        "description": "Prioritizes the role the current team needs most."
+      },
+      "best_available": {
+        "title": "Best available",
+        "description": "Chooses the strongest safe option remaining in the pool."
+      }
     },
     "advanced": "Advanced settings",
     "allowOverride": "Allow admin override",
@@ -2844,7 +3598,12 @@
     "missingAccounts": "No linked account",
     "excludedPlayers": "Excluded / not approved",
     "roleCoverage": "Declared role coverage",
-    "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+    "roles": {
+      "tank": "Tank",
+      "dps": "Damage",
+      "support": "Support",
+      "flex": "Flex"
+    },
     "blocker": "Blocker",
     "blocked": "Blocked",
     "ready": "Ready",
@@ -2860,25 +3619,43 @@
     "captainsSelected": "Captains selected",
     "searchCaptains": "Search by BattleTag or name…",
     "roleFilter": "Filter by role",
-    "allRoles": "All roles",
+    "captainSort": "Sort captains",
+    "captainSorts": {
+      "rank_desc": "Rank: high to low",
+      "rank_asc": "Rank: low to high",
+      "name": "Name (A–Z)"
+    },
     "selectCaptain": "Select {name} as captain",
     "removeCaptain": "Remove captain {name}",
-    "noCaptainsFound": "No matching players found.",
+    "noCaptainsFound": "No players match this search. Clear the search or widen the role filter.",
     "selectedTeams": "Selected teams",
     "selectCaptainsHint": "Select captains from the pool to configure their teams.",
     "teamName": "Team name (optional)",
     "captainOrder": "Captain order",
     "orders": {
-      "weakest_first": { "title": "Weakest first", "description": "Lower-rated captains receive earlier seats." },
-      "strongest_first": { "title": "Strongest first", "description": "Higher-rated captains receive earlier seats." },
-      "random": { "title": "Seeded random", "description": "A saved seed makes the random result reproducible." },
-      "manual": { "title": "Manual", "description": "Drag captains into the exact order you want." }
+      "weakest_first": {
+        "title": "Weakest first",
+        "description": "Lower-rated captains receive earlier seats."
+      },
+      "strongest_first": {
+        "title": "Strongest first",
+        "description": "Higher-rated captains receive earlier seats."
+      },
+      "random": {
+        "title": "Seeded random",
+        "description": "A saved seed makes the random result reproducible."
+      },
+      "manual": {
+        "title": "Manual",
+        "description": "Drag captains into the exact order you want."
+      }
     },
     "newRandomSeed": "Generate a new random seed",
     "moveCaptain": "Move captain {name}",
     "schedulePreview": "Round schedule preview",
     "validatingDraft": "The server is building a dry-run and checking role feasibility…",
     "previewFailed": "Draft validation failed",
+    "previewFailedHint": "Check the pool and captain selection, then continue again to re-run validation.",
     "reviewChecks": {
       "pool": "Enough eligible players",
       "captains": "Captain count matches team count",
@@ -2902,14 +3679,16 @@
     "readyToStartHint": "Open the board for captains, then start when everyone is connected.",
     "notReadyToStartHint": "Return to setup and resolve the reported role or pool deficits.",
     "startDraft": "Start draft",
+    "startConfirmTitle": "Start the draft",
+    "startConfirmDescription": "Every captain's board goes live and the clock on the first pick starts at once. You can pause the draft afterwards, but it cannot be returned to the ready state.",
     "openLiveBoard": "Open live board",
-    "changeAndReseed": "Change and re-seed",
+    "editSetup": "Edit setup",
     "back": "Back",
     "continue": "Continue",
-    "makeReady": "Seed and make ready",
-    "confirmReseed": "Confirm re-seed",
-    "cancel": "Cancel",
-    "reseedConfirmTitle": "Replace the current draft seed?",
+    "seedDraft": "Seed draft",
+    "keepEditing": "Keep editing",
+    "discardSetup": "Discard setup",
+    "reseedConfirmTitle": "Replace the current draft seed",
     "reseedConfirmDescription": "Teams, players and upcoming picks will be rebuilt from the reviewed configuration. The draft has not started, so no completed live pick will be changed.",
     "fixStepErrors": "Fix the highlighted parameters before continuing.",
     "captainCountError": "Select exactly {count} captains.",
@@ -2919,7 +3698,7 @@
     "draftSeeded": "Draft seed saved and validated",
     "draftStarted": "Draft started",
     "startFailed": "Draft could not be started",
-    "cancelSetupTitle": "Discard this draft setup?",
+    "cancelSetupTitle": "Discard draft setup",
     "cancelSetupDescription": "Unsaved configuration, captain order and preview choices will be cleared. No draft session has been created yet.",
     "loadFailed": "Draft data could not be loaded",
     "loadFailedHint": "Check the connection and try again.",
@@ -2929,24 +3708,50 @@
     "liveSummary": "{completed} of {total} picks complete · {seconds}s per pick",
     "systemPauseReason": "The draft was paused by the system: {reason}",
     "realtimeActive": "Realtime updates active",
-    "previousDraft": "Previous draft",
-    "previousDraftHint": "This session is read-only. A new setup can be created below.",
     "openBoard": "Open board",
     "lifecycleSuccess": "Draft action completed: {action}",
+    "roundsShort": "{rounds, plural, one {# round} other {# rounds}}",
+    "history": {
+      "title": "Draft history",
+      "hint": "Every session created for this tournament. Erase the ones you no longer need.",
+      "empty": "No draft session has been created for this tournament yet.",
+      "loadFailed": "The draft history could not be loaded.",
+      "delete": "Delete draft session #{id}",
+      "deleteConfirm": "Delete permanently",
+      "cancelFirst": "Cancel the draft before deleting it.",
+      "confirmTitle": "Delete draft session #{id}?",
+      "confirmDescription": "Teams, the player pool, every pick and the audit trail of this session are erased for good. Teams already exported to the tournament are kept.",
+      "deleted": "Draft session #{id} deleted",
+      "deleteFailed": "Draft session could not be deleted"
+    },
     "controlRoom": {
       "title": "Draft control room",
       "description": "Monitor the live invariant, captain connectivity and exceptional organizer actions from one surface.",
       "adminCoordinate": "ADMIN / DRAFT-{id}",
-      "status": { "live": "Live", "paused": "Paused", "completed": "Completed", "cancelled": "Cancelled", "ready": "Ready", "setup": "Setup" },
+      "status": {
+        "live": "Live",
+        "paused": "Paused",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "ready": "Ready",
+        "setup": "Setup"
+      },
       "format": "Format",
       "teamSize": "Roster size",
       "connection": "Realtime",
-      "connectionState": { "idle": "Idle", "connecting": "Connecting", "connected": "Connected", "reconnecting": "Reconnecting" },
+      "connectionState": {
+        "idle": "Idle",
+        "connecting": "Connecting",
+        "connected": "Connected",
+        "reconnecting": "Reconnecting"
+      },
       "pickProgress": "Pick progress",
       "round": "Round",
       "clock": "Clock",
       "systemPause": "System pause",
-      "blockedReason": { "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually." },
+      "blockedReason": {
+        "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually."
+      },
       "resolveRoles": "Resolve role shortage",
       "currentPick": "Current operation",
       "noCurrentPick": "No current pick",
@@ -2956,11 +3761,16 @@
       "teams": "Teams",
       "availablePlayers": "Available players",
       "viewers": "Anonymous viewers",
-      "feasibilityUnavailable": "Feasibility status is temporarily unavailable.",
+      "feasibilityUnavailable": "Feasibility status is temporarily unavailable. It refreshes on its own — reload the page if it stays empty.",
       "feasible": "Completion remains feasible",
       "infeasible": "Role shortage detected",
       "slotCoverage": "Matched role slots: {matched} of {total}",
-      "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+      "roles": {
+        "tank": "Tank",
+        "dps": "Damage",
+        "support": "Support",
+        "flex": "Flex"
+      },
       "deficit": "missing {missing} · eligible {eligible}",
       "captainPresence": "Captain presence",
       "captainPresenceCount": "{online} of {total} connected",
@@ -2971,15 +3781,27 @@
         "resume": "Resume manually",
         "autopick": "Run autopick",
         "override": "Override pick",
-        "rollback": "Rollback last pick",
+        "rollback": "Roll back last pick",
         "cancel": "Cancel draft",
         "export": "Export teams"
       },
       "confirm": {
-        "autopick": { "title": "Run an admin autopick?", "description": "The server will choose the highest-ranked safe option and immediately resolve the current pick." },
-        "rollback": { "title": "Rollback the last resolved pick?", "description": "The player returns to the pool, later pick state is reset and the draft remains paused until manually resumed." },
-        "cancel": { "title": "Cancel this draft?", "description": "The session becomes terminal and cannot be resumed. Existing data remains available for audit." },
-        "export": { "title": "Export final teams?", "description": "Final draft rosters will be written to tournament teams. Repeating the export is idempotent." }
+        "autopick": {
+          "title": "Run admin autopick",
+          "description": "The server picks the highest-ranked safe option on the current captain's behalf and closes the pick at once. The captain cannot undo it."
+        },
+        "rollback": {
+          "title": "Roll back the last pick",
+          "description": "The picked player returns to the pool, the pick is handed back to that team's captain, and the draft stays paused until you resume it manually."
+        },
+        "cancel": {
+          "title": "Cancel draft",
+          "description": "Every captain's board closes at once, the drafted teams are discarded and the session can never be resumed. Completed picks stay readable for audit."
+        },
+        "export": {
+          "title": "Export final teams",
+          "description": "Every drafted roster is written to the tournament's teams, replacing their current players. Repeating the export produces the same result."
+        }
       },
       "actionSuccess": {
         "pause": "Draft paused",
@@ -2990,20 +3812,25 @@
         "cancel": "Draft cancelled",
         "export": "Teams exported"
       },
-      "dismiss": "Back",
-      "confirmAction": "Confirm action",
+      "dismiss": "Keep as is",
       "overrideTitle": "Override the current pick",
       "overrideDescription": "Only server-approved safe player-role options are available. This action is recorded in the private audit trail.",
       "overrideOption": "Player and role",
       "overrideSelect": "Choose a safe option",
       "overrideReason": "Reason",
-      "overrideReasonPlaceholder": "Why is organizer intervention required?"
+      "overrideReasonPlaceholder": "Why is organizer intervention required?",
+      "overrideIncomplete": "Choose a safe player-role option and enter a reason before overriding the pick."
     },
     "roleConflict": {
       "title": "Add a missing player role",
       "description": "Update the draft snapshot without editing the original registration. Preview feasibility before committing.",
       "unmatchedSlots": "Unmatched team-role slots",
-      "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+      "roles": {
+        "tank": "Tank",
+        "dps": "Damage",
+        "support": "Support",
+        "flex": "Flex"
+      },
       "player": "Remaining player",
       "selectPlayer": "Choose a player",
       "declaredRoles": "Declared roles",
@@ -3019,7 +3846,12 @@
       "commitFailed": "Role edit could not be saved",
       "committed": "Player role added. The draft remains paused.",
       "previewOnly": "Preview",
-      "impact": { "resolved": "Role shortage resolved", "improved": "Feasibility improved", "unchanged": "No feasibility change", "worse": "Feasibility became worse" },
+      "impact": {
+        "resolved": "Role shortage resolved",
+        "improved": "Feasibility improved",
+        "unchanged": "No feasibility change",
+        "worse": "Feasibility became worse"
+      },
       "before": "Before",
       "after": "After",
       "preview": "Preview impact",
@@ -3048,14 +3880,26 @@
       "loadingName": "Loading tournament",
       "publicBoard": "Public board"
     },
-    "status": { "setup": "Setup", "ready": "Ready", "live": "Live", "paused": "Paused", "completed": "Completed", "cancelled": "Cancelled" },
+    "status": {
+      "setup": "Setup",
+      "ready": "Ready",
+      "live": "Live",
+      "paused": "Paused",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
     "format": "Format",
     "rosterSize": "Roster",
     "teams": "Teams",
     "progress": "Progress",
     "onClock": "On the clock",
     "onClockLabel": "On the clock",
-    "connection": { "idle": "Realtime idle", "connecting": "Connecting", "connected": "Live connection", "reconnecting": "Reconnecting" },
+    "connection": {
+      "idle": "Realtime idle",
+      "connecting": "Connecting",
+      "connected": "Live connection",
+      "reconnecting": "Reconnecting"
+    },
     "anonymousViewers": "Viewers: {count}",
     "onlineCount": "{n} of {total} online",
     "you": "You",
@@ -3074,6 +3918,7 @@
     "draftOrder": "Draft order",
     "round": "Round {n}",
     "pending": "Pending",
+    "pickDone": "Pick made",
     "unknownTeam": "Unknown team",
     "myTeam": "My team",
     "teamRosters": "Team rosters",
@@ -3081,7 +3926,12 @@
     "teamAverage": "Avg",
     "openSlot": "Open slot",
     "onTheClock": "On the clock",
-    "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+    "roles": {
+      "tank": "Tank",
+      "dps": "Damage",
+      "support": "Support",
+      "flex": "Flex"
+    },
     "flex": "Flex",
     "availablePool": "Player pool",
     "searchPlayers": "Search players",
@@ -3101,10 +3951,12 @@
     "unsafePlayerReason": "This player has no role that keeps every remaining roster feasible.",
     "removeShortlist": "Remove from shortlist",
     "addShortlist": "Add to shortlist",
+    "selectPlayer": "Select {player}",
     "inspectorEmptyTitle": "Select a player",
     "inspectorEmptyHint": "Player details and server-verified role options will appear here.",
     "inspectorCoordinate": "Player inspector",
     "closeInspector": "Close player details",
+    "inspectorHelp": "How the player inspector works",
     "captain": "Captain",
     "secondaryRoles": "Secondary roles",
     "note": "Note",
@@ -3112,10 +3964,13 @@
     "chooseRole": "Choose role",
     "primaryRole": "Primary role",
     "rank": "Rank",
-    "optionReason": { "role_filled": "This roster slot is already filled.", "role_shortage": "Choosing this option would leave another required role impossible to fill." },
+    "optionReason": {
+      "slot_filled": "This roster slot is already filled.",
+      "role_shortage": "Choosing this option would leave another required role impossible to fill."
+    },
     "shortlist": "Shortlist",
     "shortlistEmpty": "Save players here while you compare options. This list is private to this browser.",
-    "howItWorks": "How it works?",
+    "shortlistHelp": "How the shortlist works",
     "pickCommand": "Pick command",
     "selectionFor": "Selection for {team}",
     "noSelection": "Select a player and an available role to review the pick.",
@@ -3128,7 +3983,11 @@
     "pickSuccess": "{player} was picked successfully.",
     "checkingSafeOptions": "Checking every player-role option against the remaining draft…",
     "mobileViews": "Draft workspace sections",
-    "mobileView": { "pool": "Pool", "team": "My team", "order": "Order" },
+    "mobileView": {
+      "pool": "Pool",
+      "team": "My team",
+      "order": "Order"
+    },
     "spectatorCompleted": "The draft is complete. These are the final rosters and recorded selections.",
     "spectatorReadOnly": "This public board updates live. Selection controls are shown only to registered captains.",
     "loadingTitle": "Loading the draft room",
@@ -3144,6 +4003,692 @@
     "continueTo": "to continue to {siteName}",
     "continueWith": "Continue with {provider}",
     "unavailable": "OAuth login is currently unavailable.",
-    "agreement": "By continuing, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>"
+    "agreement": "By continuing, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",
+    "errors": {
+      "oauth_init_failed": "Couldn't start sign-in. Please try again.",
+      "invalid_state": "The sign-in attempt expired or was invalid. Please try again.",
+      "invalid_provider": "Unknown sign-in provider.",
+      "exchange_failed": "Couldn't complete sign-in. Please try again.",
+      "invalid_origin": "Sign-in isn't allowed from this domain.",
+      "link_taken": "This {provider} account is already linked to a different account here. Sign in with {provider} to reach that account, delete it under Account settings → Danger zone, then link it again.",
+      "linkProviderFallback": "OAuth",
+      "generic": "Sign-in failed. Please try again."
+    }
+  },
+  "legal": {
+    "terms": {
+      "metaTitle": "Terms of Service",
+      "metaDescription": "The terms governing use of {siteName}.",
+      "title": "Terms of Service",
+      "intro": "These Terms of Service (\"Terms\") govern your access to and use of {siteName}. By creating an account or using the site, you agree to these Terms.",
+      "sections": {
+        "acceptance": {
+          "title": "Acceptance of these Terms",
+          "body": "By signing in or otherwise using {siteName}, you agree to be bound by these Terms and by our Privacy Policy. If you don't agree, don't use the site."
+        },
+        "service": {
+          "title": "About the service",
+          "body": "{siteName} is a fan-run platform for organizing and tracking Overwatch tournaments: brackets, match reporting, drafts, and player statistics. It is not affiliated with, endorsed by, or sponsored by Blizzard Entertainment, Inc."
+        },
+        "eligibility": {
+          "title": "Eligibility",
+          "body": "You must be at least 13 years old to use {siteName}, and old enough to hold an account with whichever OAuth provider you sign in with. If local law sets a higher minimum age for online services, that age applies instead."
+        },
+        "accounts": {
+          "title": "Accounts and sign-in",
+          "body": "There is no separate password: you sign in through Discord, Twitch, or Battle.net OAuth, and {siteName} stores the profile information that provider returns (username, avatar, and a stable identifier) together with any tournament data tied to your account. You're responsible for keeping that OAuth account secure — anyone who can sign in to it can sign in as you here."
+        },
+        "workspaces": {
+          "title": "Workspaces",
+          "body": "Some communities run their own branded workspace on {siteName} — a self-contained set of tournaments, teams, and stats with its own administrators. Workspace administrators can see the membership, roles, and tournament activity within their own workspace only. New workspaces are created by the platform administrator on request, not through self-service signup."
+        },
+        "conduct": {
+          "title": "Tournament conduct",
+          "body": "When you register for or play in a tournament, you agree to report match results accurately, follow that tournament's rules, and accept the ruling of its organizers on disputes. Falsifying a match report, colluding on results, or evading a suspension by registering under another identity is a breach of these Terms."
+        },
+        "content": {
+          "title": "Your content",
+          "body": "Anything you submit — match reports, screenshots, logs, an avatar, a workspace's branding — stays yours, but you grant {siteName} a license to store, display, and process it for the purpose of running the tournaments and stats you submitted it for. Don't upload anything you don't have the right to share."
+        },
+        "prohibited": {
+          "title": "Prohibited conduct",
+          "body": "Don't attempt to bypass access controls, scrape or overload the API outside documented use, impersonate another player or organizer, or use the platform to harass other users. We may remove content, void tournament results, or suspend an account that violates this section."
+        },
+        "suspension": {
+          "title": "Suspension and termination",
+          "body": "We can suspend or terminate access for violating these Terms, at a platform level or, for workspace-specific misconduct, at a workspace level by that workspace's administrators. You can stop using the service at any time; ask a platform administrator to close your account and its associated data."
+        },
+        "thirdParty": {
+          "title": "Third-party services",
+          "body": "Sign-in and some profile data depend on Discord, Twitch, and Battle.net; your use of those providers is governed by their own terms, separately from ours. {siteName} isn't responsible for their availability or behavior."
+        },
+        "liability": {
+          "title": "No warranty, limited liability",
+          "body": "{siteName} is provided \"as is\", built and maintained as an open-source community project, with no guarantee of uptime, accuracy of statistics, or fitness for a particular purpose. To the extent permitted by law, {siteName} and its maintainers aren't liable for damages arising from your use of the site."
+        },
+        "changes": {
+          "title": "Changes to these Terms",
+          "body": "We may update these Terms as the platform evolves. Continuing to use {siteName} after a change takes effect means you accept the revised Terms."
+        },
+        "contact": {
+          "title": "Contact",
+          "body": "{siteName} is developed in the open. Questions, requests, or reports about these Terms can be filed as an issue on the project's GitHub repository."
+        }
+      }
+    },
+    "privacy": {
+      "metaTitle": "Privacy Policy",
+      "metaDescription": "How {siteName} collects, uses, and protects your data.",
+      "title": "Privacy Policy",
+      "intro": "This Privacy Policy explains what {siteName} collects when you use the site, why, and who can see it. It covers the platform itself; each workspace sets its own community rules separately.",
+      "sections": {
+        "collection": {
+          "title": "Information we collect",
+          "body": "When you sign in, your OAuth provider (Discord, Twitch, or Battle.net) gives us a stable account identifier, your username or display name, and your avatar; some providers also share an email address. As you use the site we also store what you generate directly: tournament registrations, match and map reports, draft picks, and any roles assigned to you. Standard web infrastructure logs (IP address, user agent) are kept briefly for security and abuse prevention."
+        },
+        "use": {
+          "title": "How we use it",
+          "body": "We use this information to run tournaments and drafts, attribute match results and statistics to the right player, enforce the roles and permissions you've been granted, and keep the site secure. We don't use it for advertising, and we don't sell it."
+        },
+        "cookies": {
+          "title": "Cookies",
+          "body": "{siteName} sets a session cookie to keep you signed in, a cookie recording your active workspace so a custom-domain workspace shows the right branding, and a locale cookie for your language preference. These functional cookies are required for the site to work. Google Analytics cookies, which measure how pages are used, are optional: they load only after you accept them in the cookie notice, and declining keeps them off. You can change that choice at any time from \"Cookie settings\" in the site footer; withdrawing it also deletes the analytics cookies already stored. No advertising cookies are set."
+        },
+        "sharing": {
+          "title": "Who can see your information",
+          "body": "Your public profile (name, avatar, tournament history, and stats) is visible to anyone who can view the workspace it belongs to. Workspace administrators can see the membership and roles within their own workspace. We share account data with OAuth providers only to the extent needed to authenticate you, and we don't otherwise share it with third parties."
+        },
+        "retention": {
+          "title": "Retention",
+          "body": "Account and tournament data is kept for as long as your account exists, since match history and statistics remain part of the historical record of a tournament even after it ends. Infrastructure logs are rotated on a much shorter schedule."
+        },
+        "rights": {
+          "title": "Your rights",
+          "body": "You can review the profile information tied to your account from your account settings. To request a correction or deletion of your account and its data, contact a platform administrator through the project's GitHub repository; deleting an account may anonymize rather than remove historical match records where full removal would corrupt another player's tournament history."
+        },
+        "children": {
+          "title": "Children's privacy",
+          "body": "{siteName} is not directed at children under 13, and we don't knowingly collect data from them beyond what their OAuth provider already restricts by its own age requirements."
+        },
+        "security": {
+          "title": "Security",
+          "body": "We rely on your OAuth provider for authentication rather than storing a password ourselves, and access to administrative data is restricted by the same role-based permissions that govern the rest of the platform. No online service can guarantee absolute security."
+        },
+        "changes": {
+          "title": "Changes to this Policy",
+          "body": "We may update this Privacy Policy as the platform changes. Continuing to use {siteName} after a change takes effect means you accept the revised Policy."
+        },
+        "contact": {
+          "title": "Contact",
+          "body": "Questions about this Privacy Policy can be filed as an issue on the project's GitHub repository."
+        }
+      }
+    },
+    "cookieConsent": {
+      "title": "Cookies",
+      "body": "{siteName} needs functional cookies to keep you signed in and remember your language. Analytics cookies are optional and only measure how pages are used — see the <privacy>privacy policy</privacy>.",
+      "accept": "Accept analytics",
+      "decline": "Decline analytics",
+      "manage": "Cookie settings",
+      "statusOn": "Analytics cookies are on.",
+      "statusOff": "Analytics cookies are off."
+    }
+  },
+  "errors": {
+    "boundary": {
+      "title": "Something went wrong",
+      "description": "This section failed to load. Try again, or head back to the dashboard.",
+      "digest": "Error {digest}",
+      "retry": "Try again",
+      "home": "Back to dashboard"
+    }
+  },
+  "notFound": {
+    "eyebrow": "404 // route unavailable",
+    "title": "That route is off the board.",
+    "description": "The page you requested has moved or never existed. Head back to the dashboard, or pick one of the live sections below.",
+    "backHome": "Back to dashboard",
+    "browseTournaments": "Browse tournaments",
+    "quickRecovery": "Quick recovery",
+    "links": {
+      "tournaments": {
+        "title": "Tournaments",
+        "description": "Return to the full tournament board."
+      },
+      "players": {
+        "title": "Players",
+        "description": "Jump into player profiles and rankings."
+      },
+      "encounters": {
+        "title": "Encounters",
+        "description": "Open recent match breakdowns and results."
+      }
+    }
+  },
+  "registrationFormAdmin": {
+    "builtInFields": {
+      "title": "Built-in Fields",
+      "description": "Toggle which standard fields appear on the registration form. Sub-roles for the role fields are configured in the Subroles tab.",
+      "verifiedBadge": "Verified",
+      "required": "Required",
+      "mode": "Mode",
+      "modeOptional": "Player chooses",
+      "modeAllRoles": "All roles, one priority",
+      "modeForced": "Everyone is flex",
+      "settingsAria": "{field} settings",
+      "verifiedAccount": "Verified account",
+      "verifiedAccountHelp": "Require an OAuth-verified account; the registrant picks from their verified accounts.",
+      "regexPattern": "Regex pattern",
+      "errorMessage": "Error message",
+      "errorMessagePlaceholder": "Shown when {field} is invalid",
+      "maxHeroes": "Max heroes per role",
+      "defs": {
+        "battle_tag": {
+          "label": "BattleTag",
+          "description": "Battle.net tag (e.g. Player#1234)"
+        },
+        "smurf_tags": {
+          "label": "Smurf Accounts",
+          "description": "Additional BattleTag accounts (smurfs)"
+        },
+        "discord_nick": {
+          "label": "Discord",
+          "description": "Discord username"
+        },
+        "twitch_nick": {
+          "label": "Twitch",
+          "description": "Twitch channel name"
+        },
+        "primary_role": {
+          "label": "Primary Role",
+          "description": "Main role (tank/dps/support) with subrole selection"
+        },
+        "additional_roles": {
+          "label": "Additional Roles",
+          "description": "Secondary roles the player can fill"
+        },
+        "flex_role": {
+          "label": "Flex Role",
+          "description": "\"Player chooses\" offers a Flex preset. \"All roles, one priority\" makes every role mandatory and asks the player for a single priority role, or Flex — their other roles stay playable but less comfortable, which keeps the balancer's comfort trade-off alive. \"Everyone is flex\" removes the choice entirely. Both of the latter rate a player by their highest rank across all roles, and in both the Additional Roles sub-role list stops applying because every role counts as main."
+        },
+        "boosty_nick": {
+          "label": "Boosty",
+          "description": "Boosty nickname (self-declared — Boosty has no OAuth)"
+        },
+        "top_heroes": {
+          "label": "Top Heroes",
+          "description": "Let players pick their best heroes per role"
+        },
+        "stream_pov": {
+          "label": "Stream POV",
+          "description": "Player will stream their POV"
+        },
+        "notes": {
+          "label": "Notes",
+          "description": "Free-text notes from the player"
+        }
+      }
+    },
+    "customFields": {
+      "title": "Custom Fields",
+      "description": "Add extra fields like Boosty nick, VK link, YouTube, etc.",
+      "addField": "Add field",
+      "emptyTitle": "No custom fields yet",
+      "emptyHint": "Custom fields collect extra details from players, such as a Boosty nickname or a VK link.",
+      "label": "Label",
+      "labelPlaceholder": "e.g. Boosty nick",
+      "type": "Type",
+      "types": {
+        "text": "Text",
+        "number": "Number",
+        "url": "URL",
+        "select": "Select",
+        "checkbox": "Checkbox"
+      },
+      "placeholder": "Placeholder",
+      "placeholderHint": "Hint text...",
+      "required": "Required",
+      "fieldFallback": "field",
+      "settingsAria": "{field} settings",
+      "removeAria": "Remove {field}",
+      "options": "Options (one per line)",
+      "optionsPlaceholder": "Option A\nOption B\nOption C",
+      "regex": "Regex pattern",
+      "errorMessage": "Error message",
+      "errorMessagePlaceholder": "Shown when {field} is invalid",
+      "keyLabel": "key: {key}"
+    },
+    "subroles": {
+      "title": "Subroles",
+      "description": "Choose which sub-roles players can pick per role on this form. Highlighted chips are offered; leave all enabled to offer every option.",
+      "editCatalog": "Edit catalog",
+      "offeredCount": "{count}/{total} offered",
+      "chipOffered": "Offered on the form — click to hide",
+      "chipHidden": "Hidden — click to offer",
+      "loading": "Loading…",
+      "emptyRole": "No {role} sub-roles in this workspace yet — add them in the catalog."
+    },
+    "page": {
+      "title": "Form Configuration",
+      "description": "Configure registration form fields, admission rules, sub-roles, and custom inputs.",
+      "backToRegistrations": "Back to registrations",
+      "tabs": {
+        "status": "Status",
+        "fields": "Fields",
+        "subroles": "Subroles",
+        "custom": "Custom Fields"
+      },
+      "admission": {
+        "title": "Admission",
+        "requireOpenProfile": "Require open Overwatch profile",
+        "scope": "Scope",
+        "scopeAria": "Open profile scope",
+        "scopeMain": "Main account only",
+        "scopeAll": "All accounts (incl. smurfs)",
+        "hint": "When enabled, players whose Overwatch profile is private are not admitted (blocked at check-in). Unranked players are already excluded separately."
+      },
+      "subscription": {
+        "title": "Subscription",
+        "require": "Require an active subscription",
+        "hint": "Where the requirement is checked is up to you. At check-in (the default) sign-up stays open to everybody and only check-in refuses — a roster is built there, so that is where the answer matters. At sign-up refuses the application itself as well, which keeps the list subscriber-only but turns a requirement players could still satisfy later into a deadline. Either way a verdict that cannot be determined (provider down, account not linked) fails open and never blocks; and at sign-up a provider verified by a code from a subscriber-only post never blocks either, since that field is only offered at check-in.",
+        "stage": "Check at",
+        "stageAria": "When to check the subscription",
+        "stageCheckIn": "Check-in only",
+        "stageRegistration": "Sign-up and check-in",
+        "resolved": "This workspace requires: {rule}",
+        "resolvedEmpty": "This workspace has no subscription rule configured, so the toggle above enforces nothing.",
+        "resolvedUnknown": "This tournament has no saved form yet, so the workspace rule has not been read — save the form to see what the toggle will enforce.",
+        "manage": "Configure the workspace rule"
+      },
+      "display": {
+        "title": "Display Options",
+        "showRanks": "Show player ranks on participants page",
+        "hint": "When enabled, player rank values will be displayed on the public participants page. When disabled, rank values are completely hidden and omitted from backend payloads."
+      },
+      "unsavedChanges": "Unsaved changes",
+      "saveChanges": "Save changes",
+      "createForm": "Create form",
+      "savedToast": "Registration form saved",
+      "noTournamentError": "No tournament selected",
+      "noTournament": {
+        "title": "Select a tournament",
+        "description": "Choose a tournament in the sidebar before configuring the registration form."
+      },
+      "loadError": {
+        "title": "Failed to load the registration form",
+        "fallback": "Reload the page and try again."
+      },
+      "loading": "Loading registration form…"
+    },
+    "status": {
+      "title": "Registration Status",
+      "description": "Control whether players can register for this tournament.",
+      "acceptLabel": "Accept registrations",
+      "acceptHint": "When enabled, the registration form will be visible on the tournament page.",
+      "autoApproveLabel": "Auto-approve",
+      "autoApproveHint": "Skip manual review. Registrations are approved instantly and players are added to the pool automatically."
+    }
+  },
+  "subscriptionRequirement": {
+    "matchLabel": "Match",
+    "modeAria": "Requirement match mode",
+    "modes": {
+      "all": "All of the below",
+      "any": "Any one of the below"
+    },
+    "emptyHint": "No providers selected — the gate is inactive even while the toggle is on.",
+    "providerAria": "Provider",
+    "minTierAria": "Minimum tier",
+    "addProvider": "Add provider",
+    "removeAria": "Remove {provider}",
+    "unconfiguredWarning": "{count, plural, one {{providers} is not configured for this workspace. Its verdict resolves to <em>undetermined</em>, which fails open — the gate silently stops enforcing that provider.} other {{providers} are not configured for this workspace. Their verdicts resolve to <em>undetermined</em>, which fails open — the gate silently stops enforcing those providers.}}",
+    "summary": "Players must have: <hl>{rule}</hl>",
+    "tiers": {
+      "anyTier": "any tier",
+      "boosty": {
+        "any": "any level",
+        "level2": "Level 2+",
+        "level3": "Level 3+"
+      },
+      "twitch": {
+        "tier1": "Tier 1+",
+        "tier2": "Tier 2+",
+        "tier3": "Tier 3+"
+      }
+    },
+    "rule": {
+      "clause": "{provider} level {tier}",
+      "clauseAnyTier": "{provider}",
+      "and": " and ",
+      "or": " or "
+    }
+  },
+  "subscriptionProviders": {
+    "title": "Subscription providers",
+    "description": "Each provider proves a subscription its own way. Pick the mechanism, then map what it returns to a tier.",
+    "loading": "Loading…",
+    "save": "Save",
+    "saved": "{provider} configuration saved",
+    "saveFailed": "Failed to save {provider}",
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled"
+    },
+    "methodLabel": "How a subscription is proven",
+    "methodAria": "Verification method",
+    "methods": {
+      "live": {
+        "boosty": {
+          "label": "Discord role",
+          "description": "Boosty's own bot assigns a role per level; we read the patron's roles in your server. Needs a linked Discord account."
+        },
+        "twitch": {
+          "label": "Twitch subscription",
+          "description": "Read directly from Twitch. Affiliate/Partner channels only."
+        },
+        "generic": {
+          "label": "Provider signal",
+          "description": "Read from the provider directly."
+        }
+      },
+      "code": {
+        "label": "Challenge code",
+        "description": "You publish a secret in a subscriber-only post and the player pastes it. Works without Discord, but a code is shareable."
+      },
+      "any": {
+        "label": "Either",
+        "description": "Whichever the player can produce. The most permissive option."
+      }
+    },
+    "guild": {
+      "unset": "No Discord server is set for this workspace.",
+      "missing": "Live verification needs a Discord server. Set it in workspace settings.",
+      "hint": "Set once per workspace, in workspace settings. Boosty's bot assigns subscriber roles in that server; our bot must also be a member of it."
+    },
+    "roles": {
+      "label": "Role → tier",
+      "add": "Add role",
+      "roleAria": "Discord role",
+      "tierRankAria": "tier rank",
+      "tierLabelPlaceholder": "Level 2",
+      "tierLabelAria": "tier name",
+      "removeAria": "Remove role {number}"
+    },
+    "broadcaster": {
+      "idLabel": "Broadcaster ID",
+      "loginLabel": "Broadcaster login",
+      "loginPlaceholder": "channel_name",
+      "note": "Only works for Affiliate/Partner channels — Twitch has no subscriptions API for anyone else, and a non-eligible channel resolves to <em>undetermined</em>, which fails open."
+    },
+    "codes": {
+      "label": "Challenge codes",
+      "addCode": "Add code",
+      "hint": "Publish a secret in a subscriber-only post; the player pastes it back. Rotate them per tournament — a code is shareable, so it proves access to a level, not identity.",
+      "stored": "Currently stored: {codes}. Codes are stored hashed and cannot be shown again.",
+      "tierFallback": "tier {rank}",
+      "codePlaceholder": "code from the post",
+      "codeAria": "challenge code",
+      "tierRankAria": "tier rank",
+      "removeAria": "Remove code {number}",
+      "replaceWarning": "{count, plural, one {Saving replaces every stored code with the one above.} other {Saving replaces every stored code with the # above.}}"
+    },
+    "warnings": {
+      "duplicateRole": "Two tiers point at the same Discord role. The server rejects this — the resulting verdict would depend on ordering.",
+      "rolesMissing": "A Discord server without a role mapping resolves to <em>undetermined</em>, which fails open — the gate will not enforce anything.",
+      "codesMissing": "Code-only with no code configured is unsatisfiable, so it resolves to <em>undetermined</em> and fails open — nobody is checked, and nobody is blocked."
+    }
+  },
+  "discord": {
+    "role": {
+      "placeholder": "Select a Discord role",
+      "loading": "Loading roles…",
+      "refresh": "Refresh roles from Discord",
+      "manual": "Enter a role ID instead",
+      "dropdown": "Pick from the list",
+      "managed": "managed",
+      "idAria": "Discord role ID",
+      "searchPlaceholder": "Search roles…",
+      "searchLabel": "Search Discord roles",
+      "empty": "No role matches that search. Paste a role ID to find one by id."
+    },
+    "channel": {
+      "placeholder": "Select a Discord channel",
+      "loading": "Loading channels…",
+      "refresh": "Refresh channels from Discord",
+      "manual": "Enter a channel ID instead",
+      "dropdown": "Pick from the list",
+      "uncategorized": "Uncategorized",
+      "idAria": "Discord channel ID",
+      "searchPlaceholder": "Search channels…",
+      "searchLabel": "Search Discord channels",
+      "empty": "No channel matches that search. Paste a channel ID to find one by id."
+    },
+    "server": {
+      "checking": "Checking the Discord bot…",
+      "fallbackName": "Discord server",
+      "connected": "Connected",
+      "disconnected": "Not connected",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "refresh": "Refresh the Discord server status"
+    }
+  },
+  "subscriptionWorkspace": {
+    "title": "Subscription requirement",
+    "description": "One rule for the whole workspace. Each tournament only decides whether to enforce it, with the \"Require an active subscription\" toggle on its registration form.",
+    "loading": "Loading…",
+    "loadError": "Couldn't load the requirement. Check your connection and reload the page.",
+    "save": "Save",
+    "saving": "Saving…",
+    "unsavedChanges": "Unsaved changes",
+    "saved": "Workspace subscription requirement saved",
+    "saveFailed": "Failed to save the subscription requirement",
+    "warning": {
+      "disarming": "{count, plural, =0 {Clearing the rule stops enforcement across the whole workspace. No tournament is currently enforcing it, but any whose \"Require an active subscription\" toggle is on will then admit everybody without reporting a reason.} one {Clearing the rule stops enforcement for the # tournament currently enforcing it — it will admit everybody without reporting a reason, toggle still on.} other {Clearing the rule stops enforcement for all # tournaments currently enforcing it — they will admit everybody without reporting a reason, toggles still on.}}",
+      "changed": "{count, plural, =0 {Changing the rule changes who is admitted everywhere in this workspace at once. No tournament is currently enforcing it.} one {Changing the rule changes who is admitted in the # tournament currently enforcing it, even one already in progress: tightening it retroactively refuses patrons who have already been admitted.} other {Changing the rule changes who is admitted across all # tournaments currently enforcing it, including ones already in progress: tightening it retroactively refuses patrons who have already been admitted.}}"
+    }
+  },
+  "mapVeto": {
+    "step": {
+      "banFirst": "Ban · Team 1",
+      "banSecond": "Ban · Team 2",
+      "pickFirst": "Pick · Team 1",
+      "pickSecond": "Pick · Team 2",
+      "decider": "Decider"
+    },
+    "preset": {
+      "bo1": "Bo1",
+      "bo2": "Bo2",
+      "bo3": "Bo3",
+      "bo5": "Bo5",
+      "custom": "Custom",
+      "bo7": "Bo7"
+    },
+    "scope": {
+      "tournamentDefault": "Tournament default",
+      "stage": "{stage} default",
+      "stageRound": "{stage} · Round {round}",
+      "unknownStage": "Stage #{id}"
+    },
+    "mapsInPool": "{count, plural, one {# map in the pool} other {# maps in the pool}}",
+    "mapsPlayed": "{count, plural, one {# map played} other {# maps played}}",
+    "notConfiguredTitle": "The organizer has not published a map pool yet",
+    "notConfiguredDescription": "Once the map pool is configured, the maps captains can ban and pick will appear here.",
+    "source": {
+      "exact": "Configured for this round",
+      "stage": "Inherited from the {stage} default",
+      "tournament": "Inherited from the tournament default"
+    },
+    "roundGroupUpper": "Upper bracket",
+    "roundGroupLower": "Lower bracket",
+    "wholeStage": "Whole stage",
+    "roundPoolShared": "Whole series",
+    "sequenceTitle": "Veto sequence",
+    "sequenceDescription": "The order captains ban and pick maps in before the match.",
+    "sequenceStepAria": "Step {n}: {label}",
+    "bracketFormat": "Format from the bracket",
+    "bracketFormatVaries": "Varies by round",
+    "bracketFormatUnknown": "Depends on the stage",
+    "customOrder": "Custom veto order",
+    "customOrderMismatch": "This custom order plays {played, plural, one {# map} other {# maps}}, but the bracket calls for {expected, plural, one {# map} other {# maps}}.",
+    "slotPoolSize": "{slots, plural, one {# slot} other {# slots}}, {candidates, plural, one {# candidate} other {# candidates}}",
+    "slotCandidates": "{count, plural, one {# candidate} other {# candidates}}",
+    "slotUnderfilled": "Slot {n} has fewer than two candidate maps, so there is nothing to ban there and the veto cannot open."
+  },
+  "mapVetoAdmin": {
+    "stats": {
+      "configured": "{count, plural, one {# configured level} other {# configured levels}}"
+    },
+    "tournamentDefault": "Tournament default",
+    "stageDefaultButton": "Whole stage",
+    "roundLabel": "Round {round}",
+    "roundGroupUpper": "Upper bracket",
+    "roundGroupLower": "Lower bracket",
+    "roundNotGenerated": "Not generated",
+    "roundInherits": "Inherits",
+    "roundUsesDefault": "Uses the inherited pool",
+    "roundPoolSize": "{count, plural, one {# map in the pool} other {# maps in the pool}}",
+    "roundSlotPoolSize": "{slots, plural, one {# slot} other {# slots}}, {candidates, plural, one {# candidate} other {# candidates}}",
+    "hasOwnConfig": "Has its own configuration",
+    "levelNew": "New configuration",
+    "levelExisting": "Own configuration",
+    "deleteLevel": "Delete this level",
+    "turnTimerLabel": "Turn timer",
+    "turnTimerUnit": "seconds",
+    "turnTimerHint": "Countdown shown to captains in the veto room. It does not enforce a turn.",
+    "poolTitle": "Map pool",
+    "poolSelected": "{count, plural, one {# map selected} other {# maps selected}}",
+    "poolEmpty": "No maps in this game mode.",
+    "poolSelectAll": "Select all",
+    "poolClear": "Clear",
+    "poolToggleAria": "{map}, {gamemode}",
+    "filterAll": "All",
+    "filterLabel": "Filter the pool by game mode",
+    "filterOption": "{gamemode} ({count})",
+    "ungrouped": "No game mode",
+    "sequenceTitle": "Veto sequence",
+    "sequenceDescription": "The order captains ban and pick. A decider, if used, must be the final step.",
+    "sequenceEmpty": "The sequence is empty.",
+    "sequenceStep": "Step {n}",
+    "addStep": "Add step",
+    "moveStepUp": "Move step {n} up",
+    "moveStepDown": "Move step {n} down",
+    "removeStep": "Remove step {n}",
+    "actionLabel": "Action for step {n}",
+    "sideLabel": "Team for step {n}",
+    "action": {
+      "ban": "Ban",
+      "pick": "Pick",
+      "decider": "Decider"
+    },
+    "side": {
+      "first": "Team 1",
+      "second": "Team 2"
+    },
+    "deciderAuto": "Last map remaining",
+    "validationTitle": "Fix these before saving",
+    "validation": {
+      "emptyPool": "Select at least one map for the pool.",
+      "emptySequence": "The sequence must contain at least one step.",
+      "multipleDeciders": "Only one decider step is allowed.",
+      "deciderNotLast": "The decider step must be the last step.",
+      "noPickOrDecider": "The sequence needs at least one pick or a decider.",
+      "sequenceLongerThanPool": "The sequence has {steps} steps but the pool only has {maps} maps.",
+      "slotTooFewCandidates": "Slot {slot} needs at least two candidate maps."
+    },
+    "save": "Save configuration",
+    "saving": "Saving…",
+    "saved": "Veto configuration saved",
+    "saveError": "Could not save: {message}",
+    "deleted": "Veto configuration deleted; this level now inherits",
+    "deleteTitle": "Delete veto configuration",
+    "deleteDescription": "The configuration for “{level}” will be deleted. Matches in this scope will inherit the next level up.",
+    "readOnly": "You do not have permission to change the veto configuration.",
+    "formatSourceBracket": "Taken from the bracket",
+    "formatEditStage": "Edit it in the stage settings",
+    "formatFinalRound": "Final round: {format}",
+    "orderModeTitle": "Veto step order",
+    "orderModeBracket": "Follow the bracket",
+    "orderModeBracketHint": "Bans and picks are generated from the match's best-of. This is what almost every tournament wants.",
+    "orderModeCustom": "Author the order myself",
+    "orderModeCustomHint": "Opts this level out of the bracket. The steps below are used verbatim, whatever the bracket says.",
+    "previewTitle": "Generated steps",
+    "previewHint": "Preview for {format} with {count} maps in the pool.",
+    "previewStale": "Select maps to preview the generated steps.",
+    "mismatchTitle": "This order disagrees with the bracket",
+    "mismatchBody": "The steps play {played, plural, one {# map} other {# maps}} while the bracket calls for {expected, plural, one {# map} other {# maps}}. The custom order wins — fix one of the two.",
+    "storedFallbackHint": "Saved as a fallback. Each match regenerates its own steps from its best-of.",
+    "poolShapeTitle": "Map pool shape",
+    "poolShapeFlat": "One pool for the whole match",
+    "poolShapeFlatHint": "Captains ban and pick from a single pool of maps, in the veto order below.",
+    "poolShapeSlots": "A different pool per map in the series",
+    "poolShapeSlotsHint": "Each map of the series gets its own candidates. Captains ban inside one slot until a single map is left, then move on to the next slot.",
+    "poolShapeSlotsUnavailableStage": "The rounds of this stage play series of different lengths, so the number of slots is not fixed here. Choose a single round.",
+    "poolShapeSlotsUnavailableTournament": "The tournament default applies to every stage, so the series length is not known here. Choose a stage or a single round.",
+    "firstBanTitle": "Who bans first",
+    "firstBanFixed": "Always the higher seed",
+    "firstBanAlternate": "Take turns",
+    "firstBanHint": "Either the higher seed opens every slot, or the teams take turns: the higher seed opens the odd-numbered slots and the lower seed the even-numbered ones.",
+    "slotsTitle": "Pool per map",
+    "slotsDescription": "One slot per map of the series. Each slot needs at least two candidate maps; captains ban inside it until one is left.",
+    "slotLabel": "Slot {n}",
+    "slotCandidates": "{count, plural, one {# candidate} other {# candidates}}",
+    "slotReserveLabel": "Reserve map for slot {slot}",
+    "slotReserveNone": "No reserve",
+    "slotReserveHint": "The regulation plays this map if the slot's map ends in a draw. The platform only shows it and never switches to it.",
+    "slotsStageScopeWarning": "These slots apply to all {count, plural, one {# round} other {# rounds}} of this stage. A regulation with a different pool per round needs one configuration per round.",
+    "slotCountMismatchWarning": "This level has {slots, plural, one {# slot} other {# slots}} configured while the bracket now calls for {maps, plural, one {# map} other {# maps}}. Extra slots are dropped from the end; missing ones stop the veto from opening.",
+    "tournamentUnconfigured": "No pool configured — matches here have no level to inherit from and the veto cannot open.",
+    "addMaps": "Add maps",
+    "selectionEmpty": "No maps chosen yet.",
+    "poolPickerLabel": "Maps in the pool",
+    "slotPickerLabel": "Maps in slot {slot}",
+    "pickerSearchLabel": "Find a map",
+    "pickerSearchPlaceholder": "Map name",
+    "pickerSearchEmpty": "No map matches “{query}”.",
+    "poolChipRemove": "Remove {map} from the pool",
+    "slotChipRemove": "Remove {map} from slot {slot}",
+    "advancedTitle": "Advanced",
+    "reset": "Discard changes",
+    "unsaved": "Unsaved changes",
+    "slotReserveShort": "Reserve:",
+    "densityLabel": "Map size",
+    "densityNormal": "Normal",
+    "densityCompact": "Compact",
+    "inheritedFrom": "Inherited from {level}. Matches here play this pool until this level gets its own.",
+    "forkLevel": "Give this level its own pool",
+    "poolInheritedTitle": "Inherited map pool"
+  },
+  "rosterShape": {
+    "title": "Roster shape",
+    "description": "How many slots of each kind one team has. The draft picks into exactly these slots, and the balancer fills them.",
+    "mode": "Shape",
+    "modes": {
+      "inherit": "Inherit from the workspace",
+      "ow5v5": "Overwatch 5v5 · 1/2/2",
+      "flex6": "6 flex slots",
+      "custom": "Custom shape"
+    },
+    "slots": "Slots per team",
+    "slotCodes": {
+      "tank": "Tank",
+      "dps": "Damage",
+      "support": "Support",
+      "flex": "Flex"
+    },
+    "total": "{total, plural, one {# slot} other {# slots}} · {rounds, plural, one {# draft round} other {# draft rounds}}",
+    "errors": {
+      "too_few": "A team needs at least 2 slots — with one, the captain is the whole roster and there is nothing to draft.",
+      "too_many": "A team can have at most 12 slots."
+    },
+    "preview": "What a captain fills",
+    "previewEmpty": "Add at least one slot to see what a captain fills.",
+    "inherited": "Inherited from the {source}: {shape}.",
+    "inheritedSources": {
+      "workspace": "workspace default",
+      "default": "built-in Overwatch 5v5 default"
+    },
+    "overriding": "This tournament pins its own shape instead of following the workspace.",
+    "willInherit": "Saving hands this tournament back to the workspace shape.",
+    "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
   }
 }

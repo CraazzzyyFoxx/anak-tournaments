@@ -30,6 +30,7 @@ const (
 	queueRevokeSession = "rpc.identity.revoke_session"
 	queueGetMe         = "rpc.identity.get_me"
 	queueUpdateMe      = "rpc.identity.update_me"
+	queueDeleteMe      = "rpc.identity.delete_me"
 	queueSetPassword   = "rpc.identity.set_password"
 
 	queueServiceToken         = "rpc.identity.service_token"
@@ -136,7 +137,7 @@ func (h *Handler) ValidateService(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) validateBearer(w http.ResponseWriter, r *http.Request, queue string) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"token": token})
@@ -154,10 +155,14 @@ func (h *Handler) ServiceToken(w http.ResponseWriter, r *http.Request) {
 
 // InvalidateSession mirrors POST /service/invalidate-session/{user_id} -> 204.
 // Requires a valid service token (bearer).
+//
+// The name is historical: the worker drops the user's cached RBAC so their next
+// request re-reads permissions from the database. It does NOT revoke a token or
+// end a session -- see invalidate_session in identity-service service_flows.py.
 func (h *Handler) InvalidateSession(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"token": token, "user_id": r.PathValue("user_id")})
@@ -197,7 +202,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := bodyWithMeta(w, r, map[string]any{"access_token": token})
@@ -222,11 +227,18 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	h.authedNoBody(w, r, queueGetMe, http.StatusOK)
 }
 
+// DeleteMe mirrors DELETE /me -> 204: the user deletes their OWN account.
+// Historical data survives the deletion (see identity-svc auth_flows.delete_me);
+// only auth-owned rows cascade away.
+func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	h.authedNoBody(w, r, queueDeleteMe, http.StatusNoContent)
+}
+
 // RevokeSession mirrors DELETE /sessions/{id} -> 204.
 func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token, "session_id": r.PathValue("id")})
@@ -237,7 +249,7 @@ func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -251,7 +263,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -336,7 +348,7 @@ func (h *Handler) OAuthLink(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) LinkComplete(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -373,7 +385,7 @@ func (h *Handler) OAuthConnections(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) OAuthUnlink(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token, "provider": r.PathValue("provider")})
@@ -391,7 +403,7 @@ func (h *Handler) ListApiKeys(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CreateApiKey(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token})
@@ -405,7 +417,7 @@ func (h *Handler) CreateApiKey(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateApiKey(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, ok := mergeBody(w, r, map[string]any{"access_token": token, "api_key_id": r.PathValue("id")})
@@ -419,7 +431,7 @@ func (h *Handler) UpdateApiKey(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RevokeApiKey(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body, _ := json.Marshal(map[string]any{"access_token": token, "api_key_id": r.PathValue("id")})
@@ -576,17 +588,19 @@ func (h *Handler) PlayerSetPrimary(w http.ResponseWriter, r *http.Request) {
 }
 
 // authedFields handles a bearer-authenticated endpoint with no JSON request body,
-// forwarding the access token plus fixed extra fields (path params) to identity-svc.
+// forwarding the access token plus fixed extra fields (path params) and the
+// trusted client metadata (see setClientMeta) to identity-svc.
 func (h *Handler) authedFields(w http.ResponseWriter, r *http.Request, queue string, successStatus int, extra map[string]any) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body := map[string]any{"access_token": token}
 	for k, v := range extra {
 		body[k] = v
 	}
+	setClientMeta(r, body)
 	b, _ := json.Marshal(body)
 	h.callIdentity(w, r, queue, b, successStatus)
 }
@@ -596,7 +610,7 @@ func (h *Handler) authedFields(w http.ResponseWriter, r *http.Request, queue str
 func (h *Handler) authedQuery(w http.ResponseWriter, r *http.Request, queue string, successStatus int, params ...string) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	body := map[string]any{"access_token": token}
@@ -616,28 +630,39 @@ func (h *Handler) authedQuery(w http.ResponseWriter, r *http.Request, queue stri
 func (h *Handler) authedAllQuery(w http.ResponseWriter, r *http.Request, queue string, successStatus int) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
-	body, _ := json.Marshal(map[string]any{
+	// The metadata rides at the TOP level, never inside "query":
+	// build_query_model only ever sees the nested map, so an audit field can
+	// never be mistaken for (or collide with) a filter name.
+	body := map[string]any{
 		"access_token": token,
 		"query":        map[string][]string(r.URL.Query()),
-	})
-	h.callIdentity(w, r, queue, body, successStatus)
+	}
+	setClientMeta(r, body)
+	b, _ := json.Marshal(body)
+	h.callIdentity(w, r, queue, b, successStatus)
 }
 
 // authedMerge handles a bearer-authenticated endpoint with a JSON request body,
-// merging the access token plus fixed extra fields (path params) before forwarding.
+// merging the access token plus fixed extra fields (path params) and the trusted
+// client metadata before forwarding.
 func (h *Handler) authedMerge(w http.ResponseWriter, r *http.Request, queue string, successStatus int, extra map[string]any) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	merged := map[string]any{"access_token": token}
 	for k, v := range extra {
 		merged[k] = v
 	}
+	// mergeBody applies `merged` OVER the decoded client body, so stamping the
+	// metadata into it here is still an unconditional post-merge overwrite --
+	// the very mechanism that keeps a body-supplied access_token from surviving
+	// in OAuthLink above.
+	setClientMeta(r, merged)
 	body, ok := mergeBody(w, r, merged)
 	if !ok {
 		return
@@ -645,16 +670,25 @@ func (h *Handler) authedMerge(w http.ResponseWriter, r *http.Request, queue stri
 	h.callIdentity(w, r, queue, body, successStatus)
 }
 
+// A MISSING bearer is 401, never 403: 401 means "not authenticated" and invites
+// the caller to refresh, 403 means "authenticated but not allowed". These
+// handlers answered 403, which the frontend's refresh path (it only reacts to
+// 401) read as a hard permission error — so an expired access cookie silently
+// presented a still-valid 30-day session as logged out. edge/dispatch.go and the
+// OpenAPI generator have always documented 401 here; keep every guard aligned.
+
 // authedNoBody handles a bearer-authenticated endpoint with no request body,
-// forwarding just the access token to identity-svc.
+// forwarding just the access token plus the trusted client metadata to identity-svc.
 func (h *Handler) authedNoBody(w http.ResponseWriter, r *http.Request, queue string, successStatus int) {
 	token := bearerToken(r)
 	if token == "" {
-		writeDetail(w, http.StatusForbidden, "Not authenticated")
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
-	body, _ := json.Marshal(map[string]any{"access_token": token})
-	h.callIdentity(w, r, queue, body, successStatus)
+	body := map[string]any{"access_token": token}
+	setClientMeta(r, body)
+	b, _ := json.Marshal(body)
+	h.callIdentity(w, r, queue, b, successStatus)
 }
 
 // callIdentity performs the RPC and maps the reply envelope to an HTTP response.
@@ -759,22 +793,29 @@ func bearerToken(r *http.Request) string {
 }
 
 // clientMeta extracts the original user-agent and the trusted client IP written
-// to the session/audit record. The IP comes from clientip.From, which trusts the
-// nginx-set X-Real-IP (and the right-most, non-spoofable X-Forwarded-For hop) —
+// to the session/audit record. Both come from the clientip package, which is
+// also what edge.Dispatcher stamps onto every other route's RPC body -- one
+// definition of which headers are trustworthy, not two. The IP trusts the
+// nginx-set X-Real-IP (and the right-most, non-spoofable X-Forwarded-For hop) --
 // never the left-most, client-controlled X-Forwarded-For entry.
 func clientMeta(r *http.Request) (userAgent, ip string) {
-	userAgent = firstNonEmpty(r.Header.Get("X-Original-User-Agent"), r.Header.Get("User-Agent"))
-	ip = clientip.From(r)
-	return userAgent, ip
+	return clientip.UserAgent(r), clientip.From(r)
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
+// setClientMeta stamps the trusted client IP/user-agent onto an outgoing RPC
+// body under the names identity-svc already reads (`ip_address`/`user_agent`).
+// These bearer-authenticated routes never pass through edge.Dispatcher, so this
+// is the only place the caller's origin can be captured -- and they are the ones
+// writing the platform audit log's security rows (role grants, API keys, session
+// revocations, player links), where a missing IP costs the forensics.
+//
+// It is applied AFTER any client-supplied body is merged and overwrites
+// unconditionally: a caller must never be able to forge the recorded origin of
+// its own mutation, the same reason access_token is overwritten in OAuthLink.
+func setClientMeta(r *http.Request, body map[string]any) {
+	ua, ip := clientMeta(r)
+	body["user_agent"] = ua
+	body["ip_address"] = ip
 }
 
 // writeDetail emits a FastAPI-style error body: {"detail": "..."}.

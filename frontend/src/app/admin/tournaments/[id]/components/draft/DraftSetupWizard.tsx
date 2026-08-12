@@ -27,9 +27,10 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { HeroFrame } from "@/components/site/PageHero";
 import { notify } from "@/lib/notify";
+import type { RosterShape } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -55,7 +56,6 @@ import {
   MIN_DRAFT_TEAM_COUNT,
   orderCaptainIds,
   previousSetupStep,
-  roundsForTeamSize,
   SETUP_STEPS,
   type DraftSetupStep,
   validateSetupStep
@@ -66,16 +66,16 @@ import { isInDraftPool, summarizeRegistration } from "./setup-types";
 interface DraftSetupWizardProps {
   tournamentId: number;
   board: DraftBoard | null;
+  /** Resolved tournament roster shape; a live session's own shape wins over it. */
+  rosterShape: RosterShape;
 }
 
 const STEP_ICONS = [Settings2, ListChecks, UsersRound, Sparkles, ClipboardCheck, ShieldCheck];
 
-function configFromSession(session: DraftSession | null): DraftSetupConfig {
-  const teamSize = session?.team_size ?? 5;
+function configFromSession(session: DraftSession | null, shape: RosterShape): DraftSetupConfig {
   const roundRules = session?.settings_json?.round_rules;
   const teamCount = session?.settings_json?.team_count;
   return {
-    teamSize,
     teamCount: typeof teamCount === "number" ? teamCount : 2,
     pickTimeSeconds: session?.pick_time_seconds ?? 45,
     format: session?.format ?? "snake",
@@ -83,7 +83,7 @@ function configFromSession(session: DraftSession | null): DraftSetupConfig {
     allowAdminOverride: session?.allow_admin_override ?? true,
     roundRules: Array.isArray(roundRules)
       ? roundRules.map(String)
-      : Array.from({ length: roundsForTeamSize(teamSize) }, () => "linear")
+      : Array.from({ length: shape.draft_rounds }, () => "linear")
   };
 }
 
@@ -96,7 +96,7 @@ function createEmptyCaptainSetup(): DraftCaptainSetup {
   };
 }
 
-export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps) {
+export function DraftSetupWizard({ tournamentId, board, rosterShape }: DraftSetupWizardProps) {
   const t = useTranslations("draftAdmin");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
@@ -111,7 +111,9 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
   const [step, setStep] = useState<DraftSetupStep>(
     initialSession?.status === "ready" ? "ready" : initialSession ? "pool" : "config"
   );
-  const [config, setConfig] = useState<DraftSetupConfig>(() => configFromSession(initialSession));
+  const [config, setConfig] = useState<DraftSetupConfig>(() =>
+    configFromSession(initialSession, initialSession?.roster_shape ?? rosterShape)
+  );
   const [captains, setCaptains] = useState<DraftCaptainSetup>(createEmptyCaptainSetup);
   const [preview, setPreview] = useState<DraftSeedResponse | null>(null);
   const [committedFeasibility, setCommittedFeasibility] = useState<
@@ -122,7 +124,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
 
   const resetSetupState = () => {
     setLocalSession(null);
-    setConfig(configFromSession(null));
+    setConfig(configFromSession(null, rosterShape));
     setCaptains(createEmptyCaptainSetup());
     setPreview(null);
     setCommittedFeasibility(null);
@@ -173,9 +175,11 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
       }),
     [allRegistrations]
   );
+  // A created session froze its own shape; before that the tournament's applies.
+  const shape = session?.roster_shape ?? rosterShape;
   const readiness = useMemo(
-    () => derivePoolReadiness(candidates, config.teamCount, config.teamSize),
-    [candidates, config.teamCount, config.teamSize]
+    () => derivePoolReadiness(candidates, config.teamCount, shape),
+    [candidates, config.teamCount, shape]
   );
   const ranks = useMemo(
     () =>
@@ -206,9 +210,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
       draftService.createSession(tournamentId, {
         pool_source: "balancer_balance",
         format: config.format,
-        rounds: roundsForTeamSize(config.teamSize),
         pick_time_seconds: config.pickTimeSeconds,
-        team_size: config.teamSize,
         autopick_strategy: config.autopickStrategy,
         allow_admin_override: config.allowAdminOverride,
         settings: {
@@ -314,7 +316,6 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
   const canCancelSetup = canCancelDraftSetup(step, session?.status ?? null);
 
   const validationState = {
-    teamSize: config.teamSize,
     pickTimeSeconds: config.pickTimeSeconds,
     captainIds: captains.ids,
     poolReady: readiness.blockers.length === 0,
@@ -380,7 +381,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
   return (
     <div className="space-y-5 text-[color:var(--aqt-fg)]">
       <div className="overflow-x-auto pb-1">
-        <ol className="flex min-w-[720px] items-center gap-2" aria-label={t("setupSteps")}>
+        <ol className="flex min-w-3xl items-center gap-2" aria-label={t("setupSteps")}>
           {SETUP_STEPS.map((entry, index) => {
             const Icon = STEP_ICONS[index];
             const complete = index < currentIndex;
@@ -405,17 +406,20 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
                 >
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[color:var(--aqt-card-2)]">
                     {complete ? (
-                      <Check className="h-4 w-4 text-[color:var(--aqt-support)]" />
+                      <Check className="h-4 w-4 text-[color:var(--aqt-support)]" aria-hidden />
                     ) : (
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-4 w-4" aria-hidden />
                     )}
                   </span>
-                  <span className="truncate text-xs font-medium">
+                  <span className="truncate text-xs font-medium tabular-nums">
                     {index + 1}. {t(`steps.${entry}`)}
                   </span>
                 </button>
                 {index < SETUP_STEPS.length - 1 && (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--aqt-fg-faint)]" />
+                  <ChevronRight
+                    className="h-4 w-4 shrink-0 text-[color:var(--aqt-fg-faint)]"
+                    aria-hidden
+                  />
                 )}
               </li>
             );
@@ -427,7 +431,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
         <div className="border-b border-[color:var(--aqt-border)] px-5 py-5 sm:px-7">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-teal)]">
+              <p className="font-mono text-xs uppercase tracking-wider tabular-nums text-[color:var(--aqt-teal)]">
                 {t("stepOf", { current: currentIndex + 1, total: SETUP_STEPS.length })}
               </p>
               <h2 className="mt-2 font-onest text-2xl font-semibold">{t(`stepTitles.${step}`)}</h2>
@@ -438,7 +442,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
             {(session || canCancelSetup) && (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {session && (
-                  <Badge variant="outline">
+                  <Badge variant="outline" className="tabular-nums">
                     {t("sessionNumber", { id: session.id })} · v{session.version}
                   </Badge>
                 )}
@@ -451,8 +455,8 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
                     className="border-[color:var(--aqt-live)]/40 text-[color:var(--aqt-live)] hover:border-[color:var(--aqt-live)] hover:bg-[color:var(--aqt-live)]/10"
                     onClick={() => setCancelDialogOpen(true)}
                   >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    {t("actions.cancel")}
+                    <XCircle className="mr-2 h-4 w-4" aria-hidden />
+                    {session ? t("actions.cancel") : t("discardSetup")}
                   </Button>
                 )}
               </div>
@@ -461,7 +465,13 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
         </div>
         <div className="p-4 sm:p-7">
           {step === "config" && (
-            <DraftConfigStep value={config} onChange={setConfig} locked={!!session} />
+            <DraftConfigStep
+              value={config}
+              onChange={setConfig}
+              rosterShape={shape}
+              tournamentId={tournamentId}
+              locked={!!session}
+            />
           )}
           {step === "pool" && (
             <DraftPoolStep
@@ -484,7 +494,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
               value={captains}
               onChange={setCaptainsAndReset}
               pool={pool}
-              rounds={roundsForTeamSize(config.teamSize)}
+              rounds={shape.draft_rounds}
               format={config.format}
               roundRules={config.roundRules}
             />
@@ -492,6 +502,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
           {step === "review" && (
             <DraftReviewStep
               config={config}
+              rounds={shape.draft_rounds}
               captains={captains}
               orderedCaptainIds={orderedCaptainIds}
               pool={pool}
@@ -526,7 +537,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
               disabled={pending || step === "config"}
               onClick={back}
             >
-              <ChevronLeft className="mr-2 h-4 w-4" />
+              <ChevronLeft className="mr-2 h-4 w-4" aria-hidden />
               {t("back")}
             </Button>
             <Button
@@ -534,8 +545,8 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
               disabled={pending || (step === "review" && !reviewReady)}
               onClick={() => void next()}
             >
-              {step === "review" ? t(isReseed ? "confirmReseed" : "makeReady") : t("continue")}
-              {step !== "review" && <ChevronRight className="ml-2 h-4 w-4" />}
+              {step === "review" ? t("seedDraft") : t("continue")}
+              {step !== "review" && <ChevronRight className="ml-2 h-4 w-4" aria-hidden />}
             </Button>
           </div>
         )}
@@ -548,7 +559,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
             <AlertDialogDescription>{t("reseedConfirmDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
           {preview && (
-            <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm">
+            <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm tabular-nums">
               <div>
                 {t("teams")}: {preview.diff.teams_before} → {preview.diff.teams_after}
               </div>
@@ -561,7 +572,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
             </div>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogCancel>{t("keepEditing")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={commitMutation.isPending}
               onClick={(event) => {
@@ -569,7 +580,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
                 commitMutation.mutate();
               }}
             >
-              {t("confirmReseed")}
+              {t("seedDraft")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -589,18 +600,18 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={cancelMutation.isPending}>
-              {t("controlRoom.dismiss")}
+              {t("keepEditing")}
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={cancelMutation.isPending}
-              className="bg-[color:var(--aqt-live)] text-white hover:bg-[color:var(--aqt-live)]/90"
+              className={buttonVariants({ variant: "destructive" })}
               onClick={(event) => {
                 event.preventDefault();
                 if (session) cancelMutation.mutate();
                 else resetSetupState();
               }}
             >
-              {t("actions.cancel")}
+              {session ? t("actions.cancel") : t("discardSetup")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

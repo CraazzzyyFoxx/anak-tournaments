@@ -7,7 +7,9 @@ __all__ = (
     "draft",
     "logs",
     "map_veto",
+    "pick_ban_hero",
     "realtime_channel",
+    "subscriptions",
     "workspace_notifications",
 )
 
@@ -30,6 +32,17 @@ def map_veto(encounter_id: int) -> str:
     bracket/draft spectator topics.
     """
     return f"encounter:{int(encounter_id)}:map-veto"
+
+
+def pick_ban_hero(encounter_id: int) -> str:
+    """Public topic for live hero-ban updates on a single encounter.
+
+    Sibling of :func:`map_veto`, kept as its own topic (rather than a
+    ``kind``-parametrized ``map_veto``) so the legacy map-veto room's
+    subscribers are never woken by a hero-only change and vice versa — see
+    docs/plans/2026-08-09-generic-pickban-engine.md Design Section 4.
+    """
+    return f"encounter:{int(encounter_id)}:pick-ban:hero"
 
 
 def balancer(tournament_id: int) -> str:
@@ -55,6 +68,20 @@ def logs(workspace_id: int) -> str:
 
 def workspace_notifications(workspace_id: int) -> str:
     return f"workspace:{int(workspace_id)}:notifications"
+
+
+def subscriptions(workspace_id: int) -> str:
+    """Topic for subscription-entitlement changes within a workspace.
+
+    Carries a thin ``subscription.updated`` signal (no verdict, no user); the
+    admin subscription views and the tournament hub refetch on receipt. Workspace
+    scoped because an entitlement is (workspace, user, provider) — one change is
+    visible in every tournament that workspace runs. Gated by workspace
+    membership via the existing ``workspace:*:*`` ACL rule, which is also why the
+    public participants list does NOT get this signal: who is being checked is
+    not spectator data.
+    """
+    return f"workspace:{int(workspace_id)}:subscriptions"
 
 
 def analytics_jobs(workspace_id: int) -> str:

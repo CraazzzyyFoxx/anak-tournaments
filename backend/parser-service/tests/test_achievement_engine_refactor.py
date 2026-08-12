@@ -29,6 +29,8 @@ os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
+from sqlalchemy.dialects import postgresql  # noqa: E402
+
 from shared.core.enums import StageType  # noqa: E402
 from shared.models.achievements.achievement import AchievementGrain, AchievementRule  # noqa: E402
 from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
@@ -108,22 +110,61 @@ class DiffWorkspaceMemberResolutionTests(IsolatedAsyncioTestCase):
     workspace_member for the rule's own workspace before persisting — and the
     existing-rows read must key off the player identity it recovers via the
     workspace_member join, so an already-qualified player is not re-inserted.
+
+    Rows are persisted with a single ``INSERT ... ON CONFLICT DO NOTHING``
+    (concurrent runs for one workspace used to collide on
+    ``uq_eval_result_dedup_coalesced``), so these tests inspect the emitted
+    statement rather than ``session.add`` calls.
     """
 
-    async def test_insert_path_resolves_workspace_member_for_new_player(self) -> None:
-        rule = AchievementRule(id=9, slug="newcomer", rule_version=1, workspace_id=3)
+    @staticmethod
+    def _fake_session(existing_rows: list[tuple[object, ...]]) -> tuple[SimpleNamespace, list[object]]:
+        """Session double returning ``existing_rows`` for the diff read.
+
+        Returns the session and the list that collects every non-read statement
+        passed to ``execute`` (the reconcile insert, and any delete).
+        """
+        statements: list[object] = []
 
         async def execute_side_effect(query):
             sql = str(query)
             if "SELECT achievements.evaluation_result.id" in sql:
-                return []  # no existing rows
+                return existing_rows
+            statements.append(query)
             return None
 
-        added_rows: list[object] = []
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=execute_side_effect),
-            add=added_rows.append,
+            add=lambda _row: None,
+            flush=AsyncMock(),
         )
+        return session, statements
+
+    @staticmethod
+    def _insert_rows(statements: list[object]) -> list[dict]:
+        """Values carried by the reconcile INSERT, asserting it is upsert-safe."""
+        inserts = [s for s in statements if str(s).startswith("INSERT INTO achievements.evaluation_result")]
+        assert len(inserts) == 1, f"expected exactly one reconcile insert, got {len(inserts)}"
+        compiled = inserts[0].compile(dialect=postgresql.dialect())
+        sql = str(compiled)
+        assert "ON CONFLICT" in sql and "DO NOTHING" in sql, sql
+        # The conflict target must repeat the functional index's COALESCE
+        # expressions with literal zeros, or Postgres will not match it and the
+        # duplicate-key crash comes back (migration perfidx05).
+        assert "coalesce(tournament_id, 0)" in sql, sql
+        assert "coalesce(match_id, 0)" in sql, sql
+        # Multi-row VALUES render as <column>_m<row index> bind parameters.
+        rows: dict[int, dict] = {}
+        for key, value in compiled.params.items():
+            column, _, index = key.rpartition("_m")
+            if not index.isdigit():
+                continue
+            rows.setdefault(int(index), {})[column] = value
+        return [rows[i] for i in sorted(rows)]
+
+    async def test_insert_path_resolves_workspace_member_for_new_player(self) -> None:
+        rule = AchievementRule(id=9, slug="newcomer", rule_version=1, workspace_id=3)
+        session, statements = self._fake_session([])
 
         fake_member = SimpleNamespace(id=777)
         get_or_create = AsyncMock(return_value=fake_member)
@@ -137,9 +178,10 @@ class DiffWorkspaceMemberResolutionTests(IsolatedAsyncioTestCase):
             )
 
         get_or_create.assert_awaited_once_with(session, workspace_id=3, player_id=55)
-        self.assertEqual(1, len(added_rows))
-        self.assertEqual(777, added_rows[0].workspace_member_id)
-        self.assertFalse(hasattr(added_rows[0], "user_id") and added_rows[0].user_id)
+        rows = self._insert_rows(statements)
+        self.assertEqual(1, len(rows))
+        self.assertEqual(777, rows[0]["workspace_member_id"])
+        self.assertNotIn("user_id", rows[0])
         self.assertEqual(1, len(diff.to_insert))
         self.assertEqual(55, diff.to_insert[0]["user_id"])
 
@@ -147,18 +189,7 @@ class DiffWorkspaceMemberResolutionTests(IsolatedAsyncioTestCase):
         """Two new rows for the same player (different tournaments) must only
         resolve/create the workspace_member once."""
         rule = AchievementRule(id=9, slug="newcomer", rule_version=1, workspace_id=3)
-
-        async def execute_side_effect(query):
-            sql = str(query)
-            if "SELECT achievements.evaluation_result.id" in sql:
-                return []
-            return None
-
-        added_rows: list[object] = []
-        session = SimpleNamespace(
-            execute=AsyncMock(side_effect=execute_side_effect),
-            add=added_rows.append,
-        )
+        session, statements = self._fake_session([])
 
         fake_member = SimpleNamespace(id=888)
         get_or_create = AsyncMock(return_value=fake_member)
@@ -172,29 +203,19 @@ class DiffWorkspaceMemberResolutionTests(IsolatedAsyncioTestCase):
             )
 
         get_or_create.assert_awaited_once_with(session, workspace_id=3, player_id=55)
-        self.assertEqual(2, len(added_rows))
-        self.assertTrue(all(row.workspace_member_id == 888 for row in added_rows))
+        rows = self._insert_rows(statements)
+        self.assertEqual(2, len(rows))
+        self.assertTrue(all(row["workspace_member_id"] == 888 for row in rows))
         self.assertEqual(2, len(diff.to_insert))
 
     async def test_existing_rows_key_off_player_identity_via_workspace_member_join(self) -> None:
         """A stored row's player identity is recovered through the
         workspace_member join; a new result for the same player must not be
-        re-inserted (no spurious get_or_create call, no duplicate insert)."""
+        re-inserted (no spurious get_or_create call, no insert at all)."""
         rule = AchievementRule(id=9, slug="newcomer", rule_version=1, workspace_id=3)
-
-        async def execute_side_effect(query):
-            sql = str(query)
-            if "SELECT achievements.evaluation_result.id" in sql:
-                # (row_id, player_id, tournament_id, match_id) — player_id
-                # recovered via the workspace_member join, not a raw column.
-                return [(101, 55, 10, None)]
-            return None
-
-        added_rows: list[object] = []
-        session = SimpleNamespace(
-            execute=AsyncMock(side_effect=execute_side_effect),
-            add=added_rows.append,
-        )
+        # (row_id, player_id, tournament_id, match_id) — player_id recovered via
+        # the workspace_member join, not a raw column.
+        session, statements = self._fake_session([(101, 55, 10, None)])
 
         get_or_create = AsyncMock()
 
@@ -207,7 +228,7 @@ class DiffWorkspaceMemberResolutionTests(IsolatedAsyncioTestCase):
             )
 
         get_or_create.assert_not_awaited()
-        self.assertEqual([], added_rows)
+        self.assertEqual([], statements)
         self.assertEqual([], diff.to_insert)
         self.assertEqual([], diff.to_delete)
 

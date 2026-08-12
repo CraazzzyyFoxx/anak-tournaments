@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  CheckCircle2,
   GripVertical,
   History,
   Loader2,
@@ -53,7 +54,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import Cookies from "js-cookie";
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
+import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useCurrentWorkspaceId, useDivisionGrid, useDivisionGridVersion } from "@/hooks/useCurrentWorkspace";
 import { useQuery } from "@tanstack/react-query";
@@ -82,7 +84,7 @@ import {
 } from "@/app/balancer/components/workspace-helpers";
 import { getRegistrationBattleTags } from "./balancer-page-helpers";
 import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
-import BattleTagRankHistory from "@/components/BattleTagRankHistory";
+import RankHistory from "@/components/RankHistory";
 
 const ROLE_OPTIONS: Array<{ value: BalancerRoleCode; label: string }> = [
   { value: "tank", label: "Tank" },
@@ -274,7 +276,6 @@ function getRankFillPercentFromDivisionIndex(
 
 function formatTournamentSource(entry: PlayerRankHistoryPreviewEntry): string {
   if (entry.tournament_name) return entry.tournament_name;
-  if (entry.tournament_number != null) return `Tournament #${entry.tournament_number}`;
   return entry.source === "balancer" ? "Balancer history" : "Analytics";
 }
 
@@ -389,7 +390,7 @@ function SortableRoleEntry({
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={15} />
+            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={15} decorative />
             <span
               className={cn(
                 "text-xs font-semibold",
@@ -542,7 +543,7 @@ function SortableRoleEntry({
             >
               {divisionNumber != null ? (
                 <>
-                  <PlayerDivisionIcon division={divisionNumber} width={20} height={20} />
+                  <DivisionIcon division={divisionNumber} width={20} height={20} />
                   <div className="min-w-0">
                     <div className="truncate text-[12px] font-medium text-[color:var(--aqt-fg-muted)]">
                       {divisionName ?? `Division ${divisionNumber}`}
@@ -572,7 +573,7 @@ function SortableRoleEntry({
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
             <span className="text-[9px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
             {owSuggestionDivision != null ? (
-              <PlayerDivisionIcon division={owSuggestionDivision} width={16} height={16} />
+              <DivisionIcon division={owSuggestionDivision} width={16} height={16} />
             ) : null}
             <span className="truncate text-[11px] font-medium text-[color:var(--aqt-fg-muted)]">
               {owSuggestionName ?? `Division ${owSuggestionDivision}`}
@@ -640,7 +641,7 @@ function HistoryPreviewCard({
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2">
-            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={18} />
+            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={18} decorative />
             <span className={cn("text-sm font-semibold", accent.text)}>
               {ROLE_DISPLAY[entry.role]}
             </span>
@@ -652,7 +653,7 @@ function HistoryPreviewCard({
           {originalDivisionName ? (
             <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-black/15 px-2 py-1 text-[color:var(--aqt-fg)]">
               {entry.original_division_number != null ? (
-                <PlayerDivisionIcon
+                <DivisionIcon
                   division={entry.original_division_number}
                   width={16}
                   height={16}
@@ -668,7 +669,7 @@ function HistoryPreviewCard({
               <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">→</span>
               <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-white/5 px-2 py-1 text-[color:var(--aqt-fg)]">
                 {entry.division_number != null ? (
-                  <PlayerDivisionIcon division={entry.division_number} width={16} height={16} />
+                  <DivisionIcon division={entry.division_number} width={16} height={16} />
                 ) : null}
                 <span className="text-[11px] font-medium">{divisionName}</span>
               </div>
@@ -692,8 +693,6 @@ function HistoryPreviewCard({
         </div>
         {entry.tournament_name ? (
           <div className="font-medium text-[color:var(--aqt-fg)]">{entry.tournament_name}</div>
-        ) : entry.tournament_number != null ? (
-          <div className="font-medium text-[color:var(--aqt-fg)]">Tournament #{entry.tournament_number}</div>
         ) : null}
         {entry.source_role ? <div>Source role: {entry.source_role}</div> : null}
       </div>
@@ -818,7 +817,6 @@ export function PlayerEditModal({
   const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
     normalizeRoleEntries(player.role_entries_json)
   );
-  const [isInPool, setIsInPool] = useState(player.is_in_pool);
   const [isFlex, setIsFlex] = useState(player.is_flex);
   const [notes, setNotes] = useState(player.admin_notes ?? "");
   const [registrationStatus, setRegistrationStatus] = useState(registration?.status ?? "approved");
@@ -844,7 +842,6 @@ export function PlayerEditModal({
 
   useEffect(() => {
     const normalized = normalizeRoleEntries(player.role_entries_json);
-    setIsInPool(player.is_in_pool);
     setIsFlex(player.is_flex);
     setNotes(player.admin_notes ?? "");
     setRegistrationStatus(registration?.status ?? "approved");
@@ -863,30 +860,14 @@ export function PlayerEditModal({
   const primaryBattleTag = battleTags[0] ?? player.battle_tag;
   const smurfTags = battleTags.slice(1);
 
-  const checkRanksAndAutoUpdateStatus = (nextEntries: BalancerPlayerRoleEntry[]) => {
-    const activeRoles = nextEntries.filter((e) => e.is_active);
-    const allRanked =
-      activeRoles.length > 0 &&
-      activeRoles.every((e) => e.rank_value !== null && e.rank_value !== undefined && String(e.rank_value).trim() !== "");
-
-    if (allRanked) {
-      setRegistrationBalancerStatus((current) => {
-        if (current === "not_in_balancer" || current === "incomplete") {
-          setIsInPool(true);
-          return "ready";
-        }
-        return current;
-      });
-    } else {
-      setRegistrationBalancerStatus((current) => {
-        if (current === "ready") {
-          setIsInPool(false);
-          return "incomplete";
-        }
-        return current;
-      });
-    }
-  };
+  // `ready`/`incomplete` are computed server-side from role ranks the moment
+  // roles are saved (see sync_included_balancer_status) -- nothing here needs
+  // to mirror that locally. This only drives the read-only "computed" preview
+  // badge below the Roles header.
+  const activeRoles = roleEntries.filter((e) => e.is_active);
+  const isComputedReady =
+    activeRoles.length > 0 &&
+    activeRoles.every((e) => e.rank_value !== null && e.rank_value !== undefined && String(e.rank_value).trim() !== "");
 
   const handleLoadFromHistory = async () => {
     setLoadingHistory(true);
@@ -948,7 +929,6 @@ export function PlayerEditModal({
   const handleApplyHistoryPreview = () => {
     const next = applyHistoryPreviewToRoleEntries(roleEntries, historyPreview, resolveRankFromDivision);
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
     handleDismissHistoryPreview();
   };
 
@@ -994,7 +974,6 @@ export function PlayerEditModal({
       }
     ];
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
   };
 
   const updateEntry = (index: number, nextEntry: BalancerPlayerRoleEntry) => {
@@ -1002,23 +981,42 @@ export function PlayerEditModal({
       roleEntries.map((entry, currentIndex) => (currentIndex === index ? nextEntry : entry))
     );
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
   };
 
   const removeEntry = (index: number) => {
     const next = normalizeRoleEntries(roleEntries.filter((_, currentIndex) => currentIndex !== index));
     setRoleEntries(next);
-    checkRanksAndAutoUpdateStatus(next);
   };
 
   const handleSave = () => {
     onSave(player.id, {
       role_entries_json: normalizeRoleEntries(roleEntries),
-      is_in_pool: isInPool === player.is_in_pool ? undefined : isInPool,
       is_flex: isFlex,
       admin_notes: notes || null,
-      registration_status: registration ? registrationStatus : null,
-      registration_balancer_status: registration ? registrationBalancerStatus : null
+      registration_status: registration && registrationStatus !== registration.status ? registrationStatus : null,
+      // Only send an explicit override when it actually changed -- the current
+      // value may be a server-computed "ready"/"incomplete" the backend
+      // rejects as a literal write (see AUTO_MANAGED_BALANCER_STATUSES).
+      registration_balancer_status:
+        registration && registrationBalancerStatus !== registration.balancer_status
+          ? registrationBalancerStatus
+          : null
+    });
+  };
+
+  // Saves every pending edit (roles, notes, registration status) exactly like
+  // handleSave, then recomputes balancer_status from those roles via
+  // add_to_balancer (is_in_pool: true's server-side effect -- see
+  // updatePlayerMutation) instead of writing a literal override. That
+  // recompute always runs last and wins, so no explicit balancer-status
+  // override is sent here -- it would just be overwritten.
+  const handleMoveToReady = () => {
+    onSave(player.id, {
+      role_entries_json: normalizeRoleEntries(roleEntries),
+      is_flex: isFlex,
+      admin_notes: notes || null,
+      registration_status: registration && registrationStatus !== registration.status ? registrationStatus : null,
+      is_in_pool: true
     });
   };
 
@@ -1053,30 +1051,25 @@ export function PlayerEditModal({
 
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
           <div className="grid gap-2.5 lg:grid-cols-2">
-            <div
-              className={cn(
-                "rounded-lg border px-3 py-2",
-                isInPool
-                  ? "border-primary/20 bg-primary/[0.08]"
-                  : "border-[color:var(--aqt-border-2)] bg-white/[0.03]"
-              )}
-            >
+            <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.03] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
-                <Label
-                  htmlFor="is-in-pool"
-                  className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
-                >
-                  Include in balancer
-                </Label>
-                <Switch
-                  id="is-in-pool"
-                  checked={isInPool}
-                  onCheckedChange={setIsInPool}
-                  aria-label="Include in balancer"
-                />
+                <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Balancer status</span>
+                {registration ? (
+                  <StatusMetaBadge meta={registration.balancer_status_meta} className="h-5 text-[10px]" />
+                ) : (
+                  <Badge
+                    className={cn(
+                      "h-5 px-2 text-[10px]",
+                      isComputedReady
+                        ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
+                        : "border-orange-400/25 bg-orange-400/10 text-orange-200"
+                    )}
+                  >
+                    {isComputedReady ? "Ready" : "Incomplete"}
+                  </Badge>
+                )}
               </div>
             </div>
-
             <div
               className={cn(
                 "rounded-lg border px-3 py-2",
@@ -1251,7 +1244,11 @@ export function PlayerEditModal({
           <div className="space-y-2">
             <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Live rank (OverFast)</Label>
             <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.03] p-2.5">
-              <BattleTagRankHistory userId={player.user_id} battleTag={primaryBattleTag} />
+              {player.user_id != null ? (
+                <RankHistory userId={player.user_id} />
+              ) : (
+                <RankHistory battleTag={primaryBattleTag} />
+              )}
             </div>
           </div>
 
@@ -1296,11 +1293,18 @@ export function PlayerEditModal({
                     <SelectValue placeholder="Select balancer status" />
                   </SelectTrigger>
                   <SelectContent>
-                    {statusOptions.balancer.system.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.name} · System
+                    {registrationBalancerStatus === "ready" || registrationBalancerStatus === "incomplete" ? (
+                      <SelectItem value={registrationBalancerStatus} disabled>
+                        {registrationBalancerStatus === "ready" ? "Ready" : "Incomplete"} · Computed
                       </SelectItem>
-                    ))}
+                    ) : null}
+                    {statusOptions.balancer.system
+                      .filter((option) => option.value !== "ready" && option.value !== "incomplete")
+                      .map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.name} · System
+                        </SelectItem>
+                      ))}
                     {statusOptions.balancer.custom.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.name} · Custom
@@ -1308,6 +1312,25 @@ export function PlayerEditModal({
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px] text-[color:var(--aqt-fg-dim)]">
+                    Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
+                  </p>
+                  {registrationBalancerStatus !== "ready" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
+                      disabled={saving}
+                      onClick={handleMoveToReady}
+                      title="Saves your pending edits, then recomputes this player's balancer status from their current role ranks"
+                    >
+                      <CheckCircle2 className="h-3 w-3" />
+                      Move to Ready
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : null}

@@ -59,7 +59,3 @@ env/
 # Database
 *.db
 *.sqlite
-migrations/
-
-# Alembic
-alembic.ini

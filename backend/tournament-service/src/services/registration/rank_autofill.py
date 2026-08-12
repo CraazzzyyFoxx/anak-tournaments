@@ -14,8 +14,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.division_grid import DivisionGrid
 from src import models
 from src.services.registration._common import (
@@ -228,10 +230,7 @@ def _rank_autofill_balancer_addition(
         return False, None
     if getattr(registration, "status", None) != "approved":
         return False, "Registration must be approved before it can be added to balancer."
-    if not (
-        getattr(registration, "exclude_from_balancer", False)
-        or getattr(registration, "balancer_status", None) == "not_in_balancer"
-    ):
+    if not is_balancer_status_excluded(getattr(registration, "balancer_status", None)):
         return False, "Registration is already in balancer."
     if not _active_roles_ranked_after_updates(registration, updates):
         return False, "Registration will still be missing active role ranks."
@@ -280,16 +279,30 @@ def resolve_autofill_stages(
     return [_ResolvedAutofillStage(source=source) for source in order]
 
 
-def _autofill_lookback_cutoff(target_number: int | None, lookback_tournaments: int | None) -> int | None:
-    """Min ``Tournament.number`` for a "last N tournaments" window, or None when not applicable.
+async def _autofill_lookback_tournament_ids(
+    session: AsyncSession, target: models.Tournament, lookback_tournaments: int | None
+) -> set[int] | None:
+    """Ids of the N workspace tournaments immediately preceding ``target``, or None when unrestricted.
 
-    Returns ``target_number - lookback_tournaments`` so that tournaments numbered
-    ``[target - N, target)`` (the N immediately preceding the current one, which is excluded
-    elsewhere) qualify. ``None`` when no window is requested or the current tournament has no number.
+    "Preceding" is chronological by ``(start_date, id)`` with NULL start dates sorting last; the N
+    most recent of those (``start_date DESC NULLS LAST, id DESC``) form the lookback window.
     """
-    if lookback_tournaments is None or target_number is None:
+    if lookback_tournaments is None:
         return None
-    return target_number - lookback_tournaments
+    if target.start_date is not None:
+        before = sa.or_(
+            models.Tournament.start_date < target.start_date,
+            sa.and_(models.Tournament.start_date == target.start_date, models.Tournament.id < target.id),
+        )
+    else:
+        before = sa.or_(models.Tournament.start_date.is_not(None), models.Tournament.id < target.id)
+    stmt = (
+        sa.select(models.Tournament.id)
+        .where(models.Tournament.workspace_id == target.workspace_id, before)
+        .order_by(models.Tournament.start_date.desc().nulls_last(), models.Tournament.id.desc())
+        .limit(lookback_tournaments)
+    )
+    return set((await session.execute(stmt)).scalars().all())
 
 
 async def autofill_registration_ranks_from_parsed(
@@ -318,7 +331,6 @@ async def autofill_registration_ranks_from_parsed(
     now = datetime.now(UTC)
     tournament = await _load_tournament_for_autofill(session, tournament_id)
     grid = DivisionGrid.from_version(tournament.division_grid_version if tournament else None)
-    target_number = getattr(tournament, "number", None) if tournament is not None else None
 
     registrations = await _load_rank_autofill_registrations(session, tournament_id, registration_ids)
     battle_tags_by_key = await _load_main_battle_tags_by_key(session, registrations)
@@ -353,7 +365,7 @@ async def autofill_registration_ranks_from_parsed(
                 tournament.workspace_id,
                 normalizer,
                 grid,
-                _autofill_lookback_cutoff(target_number, division_lookback),
+                await _autofill_lookback_tournament_ids(session, tournament, division_lookback),
             )
         if "analytics" in enabled_sources:
             analytics_history_by_user_id = await _load_latest_ranks_from_tournament_history(
@@ -363,7 +375,7 @@ async def autofill_registration_ranks_from_parsed(
                 tournament.workspace_id,
                 normalizer,
                 grid,
-                _autofill_lookback_cutoff(target_number, analytics_lookback),
+                await _autofill_lookback_tournament_ids(session, tournament, analytics_lookback),
             )
 
     players: list[dict[str, Any]] = []
@@ -423,7 +435,6 @@ async def autofill_registration_ranks_from_parsed(
             role_updates += len(updates)
 
         if apply and will_add_to_balancer:
-            registration.exclude_from_balancer = False
             registration.exclude_reason = None
             registration.balancer_status = included_balancer_status(registration)
             balancer_additions += 1

@@ -21,9 +21,7 @@ async def list_preview_access(session: AsyncSession, tournament_id: int) -> list
     return list(rows.scalars().all())
 
 
-async def add_preview_access(
-    session: AsyncSession, tournament_id: int, auth_user_id: int
-) -> TournamentPreviewAccess:
+async def add_preview_access(session: AsyncSession, tournament_id: int, auth_user_id: int) -> TournamentPreviewAccess:
     existing = await session.scalar(
         sa.select(TournamentPreviewAccess).where(
             TournamentPreviewAccess.tournament_id == tournament_id,

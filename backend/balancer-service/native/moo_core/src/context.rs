@@ -27,7 +27,16 @@ impl Context {
             .collect();
 
         let tank_role_idx = roles.iter().position(|r| r.eq_ignore_ascii_case("Tank"));
-        let dps_role_idx = roles.iter().position(|r| r.eq_ignore_ascii_case("Damage"));
+        // Два написания у одной роли: канон проекта — код `dps`
+        // (shared/domain/roster_shape.py), а `Damage` остаётся ради сохранённых
+        // легаси-конфигов в balance.config_json, чью маску мы обязаны читать.
+        // Без второго варианта dps_role_idx оказывается None на канонической
+        // маске, и objectives.rs молча подставляет impact 1.0 вместо
+        // dps_impact_weight. `flex` здесь намеренно отсутствует: у слота без
+        // роли нет ролевого веса влияния, impact 1.0 для него — верная семантика.
+        let dps_role_idx = roles
+            .iter()
+            .position(|r| r.eq_ignore_ascii_case("Damage") || r.eq_ignore_ascii_case("dps"));
         let support_role_idx = roles.iter().position(|r| r.eq_ignore_ascii_case("Support"));
 
         // Валидация входа: без неё избыток игроков молча выпадает из результата
@@ -76,6 +85,7 @@ impl Context {
             ));
         }
 
+        let low_rank_threshold = request.config.low_rank_threshold;
         let mut players = Vec::with_capacity(request.players.len());
         for player in request.players {
             let seed_role_name = player
@@ -117,6 +127,17 @@ impl Context {
                 discomfort.push(pain);
             }
 
+            // Низкоранговость — свойство человека: максимум по ВСЕМ его
+            // рейтингам (включая роли вне маски), а не по назначенной роли.
+            let is_low_rank = low_rank_threshold > 0.0
+                && player
+                    .ratings
+                    .values()
+                    .copied()
+                    .max()
+                    .unwrap_or(0) as f64
+                    <= low_rank_threshold;
+
             let first_preference = player
                 .preferences
                 .first()
@@ -132,6 +153,7 @@ impl Context {
                 first_preference,
                 seed_role,
                 captain_team: None,
+                is_low_rank,
             });
         }
 

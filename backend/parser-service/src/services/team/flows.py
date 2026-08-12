@@ -177,7 +177,7 @@ async def get_player_by_user_and_tournament(
             detail=[
                 errors.ApiExc(
                     code="not_found",
-                    msg=f"Player with user [id={user_id}] not found in tournament [number={tournament_id}].",
+                    msg=f"Player with user [id={user_id}] not found in tournament [id={tournament_id}].",
                 )
             ],
         )
@@ -224,7 +224,7 @@ async def create_player(
             detail=[
                 errors.ApiExc(
                     code="player_already_exists",
-                    msg=f"Player [id={user.id} name={user.name}] already exists in this tournament [number={tournament.number}].",
+                    msg=f"Player [id={user.id} name={user.name}] already exists in this tournament [name={tournament.name}].",
                 )
             ],
         )
@@ -588,7 +588,7 @@ async def _fetch_challonge_participant_rows(
     if not plans:
         return []
 
-    # Commit (and thereby release the pgBouncer/NullPool-backed connection)
+    # Commit (and thereby release the pgBouncer-backed connection)
     # before the rate-limited Challonge round-trips: holding a transaction open
     # across third-party HTTP pins a scarce backend slot for the whole network
     # wait. expire_on_commit=False keeps the already-loaded tournament/teams

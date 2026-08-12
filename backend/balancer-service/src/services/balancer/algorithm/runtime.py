@@ -41,8 +41,14 @@ def _prepare_balance_context(
     input_data: dict[str, typing.Any],
     config_overrides: dict[str, typing.Any] | None,
     progress_callback: ProgressCallback | None,
+    role_mask: dict[str, int] | None = None,
 ) -> tuple[AlgorithmConfig, list, int, bool, dict[str, str], int]:
-    """Prepare config, players and role assignment for balancer flows."""
+    """Prepare config, players and role assignment for balancer flows.
+
+    ``role_mask`` is the tournament's resolved roster shape. It is not a config
+    override but the shape of the thing being built, so it is applied after the
+    overrides and cannot be contradicted by a saved config.
+    """
     config = AlgorithmConfig()
     has_applied_overrides = False
 
@@ -66,6 +72,9 @@ def _prepare_balance_context(
                 has_applied_overrides = True
             else:
                 logger.warning(f"Unknown config parameter '{key}' ignored")
+
+    if role_mask:
+        config.role_mask = role_mask
 
     mask = config.role_mask
     emit_progress(
@@ -183,12 +192,14 @@ def balance_teams_moo(
     input_data: dict[str, typing.Any],
     config_overrides: dict[str, typing.Any] | None = None,
     progress_callback: ProgressCallback | None = None,
+    role_mask: dict[str, int] | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return a Pareto front of balance solutions for the same payload format."""
     config, valid_players, num_teams, has_applied_overrides, role_assignment, optimizer_seed = _prepare_balance_context(
         input_data,
         config_overrides,
         progress_callback,
+        role_mask,
     )
     mask = config.role_mask
 

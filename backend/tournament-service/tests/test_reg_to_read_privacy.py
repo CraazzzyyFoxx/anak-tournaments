@@ -1,16 +1,35 @@
-"""Public participants list privacy contract for ``_reg_to_read``.
+"""Public participants list visibility contract for ``_reg_to_read``.
 
-Smurf tags are declared alternate battle tags (anti-smurf transparency, same
-class as the public ``battle_tag``) and must stay visible on the anonymous
-participants roster. Free-text notes are a participant-facing form field
-rendered as a roster column, so they stay public too. Organizer custom fields
-remain admin/self only and must be stripped when ``include_private=False``.
+The roster renders a column per built-in field and per organizer-defined custom
+field, so every one of them has to survive serialization for an anonymous
+caller. Smurf tags are declared alternate battle tags (anti-smurf transparency,
+same class as the public ``battle_tag``); free-text notes are a
+participant-facing form field; custom fields are questions the organizer chose
+to ask on a public sign-up form.
+
+``custom_fields_json`` used to be stripped behind an ``include_private`` flag,
+which left every custom column on the roster permanently empty under a header
+that advertised it. The flag is gone -- one read model, one visibility rule.
 """
 
+import os
 from datetime import datetime
 from types import SimpleNamespace
 
-from src.schemas.registration_build import _reg_to_read
+# Importing the read model instantiates the service Settings(); this file used
+# to rely on whichever sibling test module happened to be collected first.
+for _key, _value in {
+    "POSTGRES_HOST": "localhost",
+    "POSTGRES_PORT": "5432",
+    "POSTGRES_DB": "tournament_test",
+    "POSTGRES_USER": "postgres",
+    "POSTGRES_PASSWORD": "postgres",
+    "JWT_SECRET_KEY": "test-secret",
+    "REDIS_URL": "redis://localhost:6379",
+}.items():
+    os.environ.setdefault(_key, _value)
+
+from src.schemas.registration_build import _reg_to_read  # noqa: E402
 
 
 def _reg_stub() -> SimpleNamespace:
@@ -22,10 +41,11 @@ def _reg_stub() -> SimpleNamespace:
         smurf_tags_json=["Alt#1111", "Alt#2222"],
         discord_nick="player",
         twitch_nick="player_tv",
+        boosty_nick="player_boosty",
         stream_pov=False,
         roles=[],
         notes="anything you'd like organizers to know",
-        custom_fields_json={"phone": "555-1234"},
+        custom_fields_json={"vk": "vk.com/player"},
         status="approved",
         balancer_status="ready",
         checked_in=False,
@@ -34,35 +54,40 @@ def _reg_stub() -> SimpleNamespace:
     )
 
 
-def test_public_list_keeps_smurf_tags_and_notes_strips_custom_fields():
-    read = _reg_to_read(_reg_stub(), workspace_id=1, include_private=False)
+def test_the_roster_read_carries_every_column_it_renders():
+    read = _reg_to_read(_reg_stub(), workspace_id=1)
 
-    # Anti-smurf transparency data stays public (the roster's whole point).
+    # Anti-smurf transparency data (the roster's whole point).
     assert read.smurf_tags_json == ["Alt#1111", "Alt#2222"]
-    # Notes are a roster column — public even for anonymous viewers.
+    # Notes are a roster column.
     assert read.notes == "anything you'd like organizers to know"
-    # Organizer custom fields are genuinely private and stay stripped.
-    assert read.custom_fields_json is None
+    # The custom columns are built from the form's definitions, so their
+    # answers have to arrive or the header lies.
+    assert read.custom_fields_json == {"vk": "vk.com/player"}
+    # Every identity handle the form collects gets its own column.
+    assert read.discord_nick == "player"
+    assert read.twitch_nick == "player_tv"
+    assert read.boosty_nick == "player_boosty"
     # Balancer progress is public: the roster shows it and the registrant's
     # own card renders the balancing step from it.
     assert read.balancer_status == "ready"
     assert read.balancer_status_meta is not None
 
 
-def test_private_context_keeps_everything():
-    read = _reg_to_read(_reg_stub(), workspace_id=1, include_private=True)
+def test_ranks_stay_hidden_unless_the_form_publishes_them():
+    stub = _reg_stub()
+    stub.roles = [
+        SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=3200, hero_entries=[])
+    ]
 
-    assert read.smurf_tags_json == ["Alt#1111", "Alt#2222"]
-    assert read.notes == "anything you'd like organizers to know"
-    assert read.custom_fields_json == {"phone": "555-1234"}
+    hidden = _reg_to_read(stub, workspace_id=1)
+    shown = _reg_to_read(stub, workspace_id=1, show_ranks=True)
+
+    assert hidden.roles[0].rank_value is None
+    assert shown.roles[0].rank_value == 3200
 
 
-def test_private_read_payload_includes_profile_visibility():
-    read = _reg_to_read(
-        _reg_stub(),
-        workspace_id=1,
-        include_private=True,
-        profiles_open=True,
-    )
+def test_read_payload_includes_profile_visibility():
+    read = _reg_to_read(_reg_stub(), workspace_id=1, profiles_open=True)
 
     assert read.profiles_open is True

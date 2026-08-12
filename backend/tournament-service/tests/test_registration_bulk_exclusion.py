@@ -16,7 +16,16 @@ os.environ.setdefault("PROJECT_URL", "http://localhost")
 os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
-from src.services.registration.lifecycle import bulk_set_exclusion  # noqa: E402
+from shared.core.errors import BaseAPIException as HTTPException
+from src.services.registration.lifecycle import bulk_set_balancer_status  # noqa: E402
+
+
+class _TournamentResult:
+    def __init__(self, tournament: SimpleNamespace) -> None:
+        self._tournament = tournament
+
+    def scalar_one_or_none(self) -> SimpleNamespace:
+        return self._tournament
 
 
 class _Result:
@@ -36,53 +45,67 @@ def _registration(registration_id: int, *, status: str, ranked: bool) -> SimpleN
         tournament_id=7,
         status=status,
         roles=[SimpleNamespace(is_active=True, rank_value=2500 if ranked else None)],
-        exclude_from_balancer=False,
         exclude_reason=None,
         balancer_status="incomplete",
     )
 
 
-class BulkSetExclusionTests(IsolatedAsyncioTestCase):
-    async def test_matches_single_registration_semantics(self) -> None:
-        approved = _registration(1, status="approved", ranked=True)
-        pending = _registration(2, status="pending", ranked=False)
-        session = SimpleNamespace(
-            execute=AsyncMock(return_value=_Result([approved, pending])),
-            commit=AsyncMock(),
-            info={},
-        )
+def _session(*execute_results: object) -> SimpleNamespace:
+    return SimpleNamespace(
+        execute=AsyncMock(side_effect=list(execute_results)),
+        commit=AsyncMock(),
+        info={},
+    )
 
-        updated, skipped = await bulk_set_exclusion(
+
+class BulkSetBalancerStatusTests(IsolatedAsyncioTestCase):
+    async def test_excluded_only_touches_the_rows_the_query_returns(self) -> None:
+        """ "excluded" (like every non-not_in_balancer target) filters to
+        approved rows at the SQL level -- this fake session can't express
+        that filter, so it only hands back the row that would actually match."""
+        approved = _registration(1, status="approved", ranked=True)
+        tournament = SimpleNamespace(workspace_id=99)
+        session = _session(_TournamentResult(tournament), _Result([approved]))
+
+        updated, skipped = await bulk_set_balancer_status(
             session,
             7,
-            [1, 2, 404],
-            exclude_from_balancer=True,
+            [1, 404],
+            balancer_status="excluded",
             exclude_reason="manual_exclusion",
         )
 
-        self.assertEqual((2, 1), (updated, skipped))
-        self.assertIs(approved.exclude_from_balancer, True)
-        self.assertIs(pending.exclude_from_balancer, True)
+        self.assertEqual((1, 1), (updated, skipped))
+        self.assertEqual("excluded", approved.balancer_status)
         self.assertEqual("manual_exclusion", approved.exclude_reason)
-        self.assertEqual("manual_exclusion", pending.exclude_reason)
-        self.assertEqual("not_in_balancer", approved.balancer_status)
-        self.assertEqual("not_in_balancer", pending.balancer_status)
         session.commit.assert_awaited_once()
 
-        session.commit.reset_mock()
-        updated, skipped = await bulk_set_exclusion(
+    async def test_not_in_balancer_does_not_require_approved_and_clears_reason(self) -> None:
+        approved = _registration(1, status="approved", ranked=True)
+        pending = _registration(2, status="pending", ranked=False)
+        approved.balancer_status = "ready"
+        approved.exclude_reason = None
+        tournament = SimpleNamespace(workspace_id=99)
+        session = _session(_TournamentResult(tournament), _Result([approved, pending]))
+
+        updated, skipped = await bulk_set_balancer_status(
             session,
             7,
             [1, 2],
-            exclude_from_balancer=False,
+            balancer_status="not_in_balancer",
             exclude_reason="ignored",
         )
 
         self.assertEqual((2, 0), (updated, skipped))
-        self.assertIs(approved.exclude_from_balancer, False)
-        self.assertIs(pending.exclude_from_balancer, False)
+        self.assertEqual("not_in_balancer", approved.balancer_status)
+        self.assertEqual("not_in_balancer", pending.balancer_status)
+        # exclude_reason is only meaningful for "excluded" -- always cleared otherwise.
         self.assertIsNone(approved.exclude_reason)
         self.assertIsNone(pending.exclude_reason)
-        self.assertEqual("ready", approved.balancer_status)
-        self.assertEqual("not_in_balancer", pending.balancer_status)
         session.commit.assert_awaited_once()
+
+    async def test_rejects_auto_managed_statuses_outright(self) -> None:
+        session = _session()
+        with self.assertRaises(HTTPException):
+            await bulk_set_balancer_status(session, 7, [1], balancer_status="ready")
+        session.execute.assert_not_awaited()

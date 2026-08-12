@@ -1,11 +1,12 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo } from "react";
 import { useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
+
 import teamService from "@/services/team.service";
-import { TournamentTeamCard, TournamentTeamCardSkeleton } from "@/components/TournamentTeamCard";
 import tournamentService from "@/services/tournament.service";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { TournamentTeamCard, TournamentTeamCardSkeleton } from "@/components/TournamentTeamCard";
 import {
   Select,
   SelectContent,
@@ -14,50 +15,77 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { useQuery } from "@tanstack/react-query";
-import TeamComboBox from "@/components/TeamComboBox";
-import { Team } from "@/types/team.types";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useQueryParams } from "@/hooks/useQueryParams";
+
+type SortBy = "placement" | "group" | "avg_sr";
+type SortOrder = "asc" | "desc";
+
+/**
+ * One control for both sort key and direction — it used to be two selects.
+ * `as const` keeps the message keys literal so next-intl can type-check them.
+ */
+const SORT_OPTIONS = [
+  { by: "avg_sr", order: "asc", fieldKey: "teams.sortAvgSr", orderKey: "common.ascending" },
+  { by: "avg_sr", order: "desc", fieldKey: "teams.sortAvgSr", orderKey: "common.descending" },
+  { by: "placement", order: "asc", fieldKey: "teams.sortPlacement", orderKey: "common.ascending" },
+  {
+    by: "placement",
+    order: "desc",
+    fieldKey: "teams.sortPlacement",
+    orderKey: "common.descending"
+  },
+  { by: "group", order: "asc", fieldKey: "teams.sortGroup", orderKey: "common.ascending" },
+  { by: "group", order: "desc", fieldKey: "teams.sortGroup", orderKey: "common.descending" }
+] as const satisfies readonly {
+  by: SortBy;
+  order: SortOrder;
+  fieldKey: string;
+  orderKey: string;
+}[];
+
+const SORT_BY_VALUES: readonly SortBy[] = ["avg_sr", "placement", "group"];
+
+const parseId = (value: string | null) => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+// Starts at one column: the ladder used to open on `grid-cols-2` below the 320px
+// `xs` breakpoint, which no viewport can reach.
+const TEAM_GRID = "grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-8 xl:grid-cols-3";
 
 const TeamsPage = () => {
   const t = useTranslations();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
 
-  const stickyRef = useRef<HTMLDivElement | null>(null);
-
-  const [sortBy, setSortBy] = useState<"placement" | "group" | "avg_sr">("avg_sr");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [previousElement, setPreviousElement] = useState<HTMLElement | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<string>("");
-
-  const parseId = useCallback((value: string | null) => {
-    if (!value) return null;
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return parsed;
-  }, []);
-
-  const tournamentId = useMemo(() => {
-    return parseId(searchParams.get("tournamentId"));
-  }, [parseId, searchParams]);
+  const tournamentId = parseId(searchParams.get("tournamentId"));
+  const search = searchParams.get("q") ?? "";
+  const requestedSort = searchParams.get("sort") as SortBy | null;
+  const sortBy: SortBy =
+    requestedSort && SORT_BY_VALUES.includes(requestedSort) ? requestedSort : "avg_sr";
+  const sortOrder: SortOrder = searchParams.get("order") === "desc" ? "desc" : "asc";
 
   const {
     data: tournamentsData,
     isSuccess: isSuccessTournaments,
     isLoading: loadingTournaments,
-    isError: isErrorTournaments
+    isError: isErrorTournaments,
+    refetch: refetchTournaments
   } = useQuery({
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll()
   });
+
   const {
     data: teamsData,
     isLoading: teamsLoading,
-    isError: isErrorTeams
+    isError: isErrorTeams,
+    refetch: refetchTeams
   } = useQuery({
     queryKey: ["teams", tournamentId, sortBy, sortOrder],
     queryFn: () =>
@@ -65,106 +93,50 @@ const TeamsPage = () => {
     enabled: tournamentId != null
   });
 
-  const activeTournament = useMemo(() => {
-    if (!tournamentId) return null;
-    return tournamentsData?.results?.find((t) => t.id === tournamentId) || null;
-  }, [tournamentId, tournamentsData?.results]);
+  const firstTournamentId = tournamentsData?.results?.[0]?.id;
 
   useEffect(() => {
-    const nextParams = new URLSearchParams(searchParams);
-    if (tournamentId == null && isSuccessTournaments && tournamentsData?.results?.[0]?.id) {
-      nextParams.set("tournamentId", String(tournamentsData.results[0].id));
-      router.replace(`${pathname}?${nextParams.toString()}`);
+    if (tournamentId == null && isSuccessTournaments && firstTournamentId) {
+      setParams({ tournamentId: firstTournamentId });
     }
-  }, [pathname, router, searchParams, tournamentsData?.results, isSuccessTournaments, tournamentId]);
+  }, [firstTournamentId, isSuccessTournaments, setParams, tournamentId]);
 
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      setSelectedTeam("");
-      setPreviousElement((el) => {
-        el?.classList.remove("ring-2", "ring-ring", "ring-offset-2", "ring-offset-background");
-        return null;
-      });
-    }, 0);
-    return () => clearTimeout(handle);
-  }, [tournamentId]);
+  const teams = useMemo(() => {
+    const all = teamsData?.results ?? [];
+    const query = search.trim().toLowerCase();
+    if (!query) return all;
+    return all.filter((team) => team.name.toLowerCase().includes(query));
+  }, [teamsData?.results, search]);
 
-  const pushTournamentId = useCallback(
-    (newTournamentId: string) => {
-      const nextParams = new URLSearchParams(searchParams || undefined);
-      nextParams.set("tournamentId", String(newTournamentId));
-      router.push(`${pathname}?${nextParams.toString()}`);
-    },
-    [pathname, router, searchParams]
-  );
-
-  const getScrollOffset = useCallback(() => {
-    const rect = stickyRef.current?.getBoundingClientRect();
-    if (!rect) return 124;
-    return rect.bottom + 16;
-  }, []);
-
-  const scrollToTeam = useCallback((team: Team) => {
-    setSelectedTeam(team.name);
-    setTimeout(() => {
-      const element = document.getElementById(team.id.toString());
-      setPreviousElement((prev) => {
-        prev?.classList.remove("ring-2", "ring-ring", "ring-offset-2", "ring-offset-background");
-        return element;
-      });
-      if (element) {
-        const bodyRect = document.body.getBoundingClientRect().top;
-        const elementRect = element.getBoundingClientRect().top;
-        const elementPosition = elementRect - bodyRect;
-        const offsetPosition = elementPosition - getScrollOffset();
-
-        window.scrollTo({
-          top: offsetPosition,
-          behavior: "smooth"
-        });
-        element.classList.add("ring-2", "ring-ring", "ring-offset-2", "ring-offset-background");
-      }
-    }, 250);
-  }, [getScrollOffset]);
-
-  const teams = teamsData?.results || [];
-  const isEmptyTeams = !teamsLoading && tournamentId != null && teams.length === 0;
+  const isLoading = teamsLoading || loadingTournaments;
+  const hasNoTeams = !isLoading && tournamentId != null && teams.length === 0;
+  const isFiltered = search.trim() !== "";
 
   return (
     <div className="liquid-glass flex flex-col gap-4 md:gap-8">
-      <div ref={stickyRef} className="sticky top-14 z-40 -mx-4 md:-mx-6 xl:-mx-10 px-4 md:px-6 xl:px-10 pb-4">
+      <div className="sticky top-[var(--aqt-header-h)] z-40 -mx-4 px-4 pb-4 md:-mx-6 md:px-6 xl:-mx-10 xl:px-10">
         <Card className="overflow-hidden">
           <CardHeader className="p-4 pb-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex flex-col gap-1">
-                <h1 className="text-2xl font-semibold leading-none tracking-tight">{t("common.teams")}</h1>
-                <p className="text-sm text-muted-foreground hidden sm:block">
-                  {t("teams.subtitle")}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
-                {loadingTournaments ? (
-                  <Skeleton className="h-6 w-56" />
-                ) : isErrorTournaments ? (
-                  <Badge variant="outline">{t("teams.tournamentsLoadError")}</Badge>
-                ) : null}
-              </div>
+            <div className="flex flex-col gap-1">
+              <h1 className="text-2xl font-semibold leading-none tracking-tight">
+                {t("common.teams")}
+              </h1>
+              <p className="hidden text-sm text-muted-foreground sm:block">{t("teams.subtitle")}</p>
             </div>
           </CardHeader>
 
           <CardContent className="p-4 pt-3">
-            <div className="grid gap-3 xs:grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+            <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
               <div className="grid gap-1">
                 <span className="text-xs text-muted-foreground">{t("common.tournament")}</span>
                 <Select
                   value={tournamentId?.toString()}
-                  onValueChange={(value) => pushTournamentId(value)}
+                  onValueChange={(value) => setParams({ tournamentId: value })}
                   disabled={loadingTournaments || isErrorTournaments}
                 >
                   <SelectTrigger
                     aria-label={t("common.tournament")}
-                    className="h-10 cursor-pointer xs:w-full md:w-62.5"
+                    className="h-10 w-full cursor-pointer md:w-62.5"
                   >
                     <SelectValue
                       placeholder={
@@ -188,43 +160,43 @@ const TeamsPage = () => {
                 </Select>
               </div>
 
-              <div className="grid gap-1">
-                <span className="text-xs text-muted-foreground">{t("teams.jumpToTeam")}</span>
-                {teamsLoading ? (
-                  <Skeleton className="h-10 xs:w-full md:w-62.5" />
-                ) : (
-                  <TeamComboBox
-                    teams={teams}
-                    onSelect={scrollToTeam}
-                    selectedTeam={selectedTeam}
-                    variant="glass"
-                  />
-                )}
-              </div>
+              <SearchField
+                showLabel
+                value={search}
+                onValueChange={(value) => setParams({ q: value })}
+                label={t("teams.findTeam")}
+                placeholder={t("teams.findTeam")}
+                containerClassName="w-full md:w-62.5"
+                className="h-10"
+              />
 
               <div className="grid gap-1">
                 <span className="text-xs text-muted-foreground">{t("common.sortBy")}</span>
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
-                  <SelectTrigger aria-label={t("common.sortBy")} className="h-10 cursor-pointer xs:w-full md:w-62.5">
-                    <SelectValue placeholder={t("common.sortBy")} />
+                <Select
+                  value={`${sortBy}:${sortOrder}`}
+                  onValueChange={(value) => {
+                    const [by, order] = value.split(":");
+                    setParams({ sort: by, order });
+                  }}
+                >
+                  <SelectTrigger
+                    aria-label={t("common.sortBy")}
+                    className="h-10 w-full cursor-pointer md:w-62.5"
+                  >
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="liquid-glass-panel">
-                    <SelectItem value="avg_sr">{t("teams.sortAvgSr")}</SelectItem>
-                    <SelectItem value="placement">{t("teams.sortPlacement")}</SelectItem>
-                    <SelectItem value="group">{t("teams.sortGroup")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-1">
-                <span className="text-xs text-muted-foreground">{t("common.order")}</span>
-                <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as typeof sortOrder)}>
-                  <SelectTrigger aria-label={t("common.order")} className="h-10 cursor-pointer xs:w-full md:w-62.5">
-                    <SelectValue placeholder={t("common.order")} />
-                  </SelectTrigger>
-                  <SelectContent className="liquid-glass-panel">
-                    <SelectItem value="asc">{t("common.ascending")}</SelectItem>
-                    <SelectItem value="desc">{t("common.descending")}</SelectItem>
+                    {SORT_OPTIONS.map((option) => {
+                      const value = `${option.by}:${option.order}`;
+                      return (
+                        <SelectItem key={value} value={value}>
+                          {t("teams.sortValue", {
+                            field: t(option.fieldKey),
+                            order: t(option.orderKey)
+                          })}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -233,80 +205,64 @@ const TeamsPage = () => {
         </Card>
       </div>
 
-      {tournamentId == null && !loadingTournaments ? (
-        <Card>
-          <CardHeader>
-            <div className="text-sm text-muted-foreground">{t("teams.selectTournamentToView")}</div>
-          </CardHeader>
-        </Card>
+      {isErrorTournaments ? (
+        <PageStateCard
+          state="error"
+          description={t("teams.tournamentsLoadError")}
+          onAction={() => void refetchTournaments()}
+        />
+      ) : tournamentId == null && !loadingTournaments ? (
+        <PageStateCard state="empty" description={t("teams.selectTournamentToView")} />
       ) : isErrorTeams ? (
-        <Card>
-          <CardHeader>
-            <div className="text-sm text-muted-foreground">{t("teams.teamsLoadError")}</div>
-          </CardHeader>
-        </Card>
-      ) : isEmptyTeams ? (
-        <Card>
-          <CardHeader>
-            <div className="text-sm text-muted-foreground">{t("teams.noTeamsFound")}</div>
-          </CardHeader>
-        </Card>
+        <PageStateCard
+          state="error"
+          description={t("teams.teamsLoadError")}
+          onAction={() => void refetchTeams()}
+        />
+      ) : hasNoTeams ? (
+        <PageStateCard
+          state={isFiltered ? "filtered-empty" : "empty"}
+          description={isFiltered ? undefined : t("teams.noTeamsFound")}
+          onAction={isFiltered ? () => setParams({ q: null }) : undefined}
+        />
       ) : (
-        <div className="grid grid-cols-2 xs:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-8">
-          {teamsLoading || loadingTournaments ? (
-            <>
-              <TournamentTeamCardSkeleton />
-              <TournamentTeamCardSkeleton />
-              <TournamentTeamCardSkeleton />
-              <TournamentTeamCardSkeleton />
-              <TournamentTeamCardSkeleton />
-              <TournamentTeamCardSkeleton />
-            </>
-          ) : (
-            teams.map((team) => <TournamentTeamCard key={team.id} team={team} />)
-          )}
+        <div className={TEAM_GRID}>
+          {isLoading
+            ? Array.from({ length: 6 }).map((_, index) => <TournamentTeamCardSkeleton key={index} />)
+            : teams.map((team) => <TournamentTeamCard key={team.id} team={team} />)}
         </div>
       )}
     </div>
   );
 };
 
-const TeamsPageFallback = () => {
-  return (
-    <div className="liquid-glass flex flex-col gap-4 md:gap-8">
-      <div className="-mx-4 md:-mx-6 xl:-mx-10 px-4 md:px-6 xl:px-10">
-        <Card className="overflow-hidden">
-          <CardHeader className="p-4 pb-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex flex-col gap-2">
-                <Skeleton className="h-8 w-40" />
-                <Skeleton className="hidden sm:block h-4 w-80" />
-              </div>
-              <Skeleton className="h-6 w-56" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-3">
-            <div className="grid gap-3 xs:grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-2 xs:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-8">
-        <TournamentTeamCardSkeleton />
-        <TournamentTeamCardSkeleton />
-        <TournamentTeamCardSkeleton />
-        <TournamentTeamCardSkeleton />
-        <TournamentTeamCardSkeleton />
-        <TournamentTeamCardSkeleton />
-      </div>
+const TeamsPageFallback = () => (
+  <div className="liquid-glass flex flex-col gap-4 md:gap-8">
+    <div className="-mx-4 px-4 md:-mx-6 md:px-6 xl:-mx-10 xl:px-10">
+      <Card className="overflow-hidden">
+        <CardHeader className="p-4 pb-3">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="hidden h-4 w-80 sm:block" />
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </CardContent>
+      </Card>
     </div>
-  );
-};
+
+    <div className={TEAM_GRID}>
+      {Array.from({ length: 6 }).map((_, index) => (
+        <TournamentTeamCardSkeleton key={index} />
+      ))}
+    </div>
+  </div>
+);
 
 const TeamsPageWrapper = () => (
   <Suspense fallback={<TeamsPageFallback />}>

@@ -478,6 +478,52 @@ class AuthService:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_rotation_grace_record(session: AsyncSession, token: str) -> models.RefreshToken | None:
+        """Return a just-rotated token that may be rotated once more, else None.
+
+        A client whose rotation response never arrived — the network path changed
+        mid-flight, i.e. the classic VPN toggle — is left holding the token the
+        server already revoked. Replaying it looks exactly like a stolen-token
+        replay, so it is honoured only when ALL of these hold:
+
+        * it was revoked within ``REFRESH_ROTATION_GRACE_SECONDS`` (a lost
+          response is retried within seconds; a hoarded stolen token is not),
+        * it has not expired,
+        * its session family is still alive — an explicit logout or session
+          revoke leaves no active token, so this can never resurrect a session
+          the user closed.
+
+        Outside that window reuse stays fatal: the caller falls through to
+        ``get_user_by_refresh_token``, which revokes the whole session family.
+        """
+        grace_seconds = max(int(settings.REFRESH_ROTATION_GRACE_SECONDS), 0)
+        if grace_seconds == 0:
+            return None
+
+        candidates = AuthService._refresh_token_hash_candidates(token)
+        now = datetime.now(UTC)
+        result = await session.execute(
+            select(models.RefreshToken)
+            .where(models.RefreshToken.token.in_(candidates))
+            .where(models.RefreshToken.is_revoked.is_(True))
+            .where(models.RefreshToken.expires_at > now)
+            .where(models.RefreshToken.revoked_at > now - timedelta(seconds=grace_seconds))
+            .where(models.RefreshToken.session_id.is_not(None))
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            return None
+
+        alive = await session.execute(
+            select(models.RefreshToken.id)
+            .where(models.RefreshToken.user_id == record.user_id)
+            .where(models.RefreshToken.session_id == record.session_id)
+            .where(models.RefreshToken.is_revoked.is_(False))
+            .limit(1)
+        )
+        return record if alive.scalar_one_or_none() is not None else None
+
+    @staticmethod
     async def get_user_by_refresh_token(session: AsyncSession, token: str) -> models.AuthUser | None:
         """Get user by refresh token"""
         candidates = AuthService._refresh_token_hash_candidates(token)
@@ -493,7 +539,13 @@ class AuthService:
         result = await session.execute(select(models.RefreshToken).where(models.RefreshToken.token.in_(candidates)))
         reused_token = result.scalar_one_or_none()
         if reused_token:
-            logger.bind(user_id=str(reused_token.user_id)).error(
+            # WARNING, not ERROR: reuse is an expected consequence of ordinary
+            # client behaviour (a stale tab replaying a rotated token, a mobile
+            # app resuming from background) and is fully handled right below by
+            # revoking the affected session. As an ERROR it opened a Sentry issue
+            # per occurrence with nothing to fix. Alert on the rate of this
+            # message instead, which is what actually indicates token theft.
+            logger.bind(user_id=str(reused_token.user_id)).warning(
                 "Refresh token reuse detected; revoking only the matching browser session"
             )
             reused_session_id = getattr(reused_token, "session_id", None)
@@ -543,8 +595,15 @@ class AuthService:
         user_id: int,
         session_id: UUID,
         commit: bool = True,
+        blacklist: bool = True,
     ) -> int:
-        """Revoke active tokens for a logical session family."""
+        """Revoke active tokens for a logical session family.
+
+        ``blacklist=False`` skips banning the ``sid`` claim, for the one caller
+        that retires a session's refresh tokens while KEEPING the session alive:
+        the rotation-grace replay, which immediately mints a fresh pair under the
+        same ``sid``. Banning it there would kill the token just issued.
+        """
         result = await session.execute(
             select(models.RefreshToken)
             .where(models.RefreshToken.user_id == user_id)
@@ -564,8 +623,9 @@ class AuthService:
 
         if commit:
             await session.commit()
-        # Block any still-valid access token carrying this sid until it expires.
-        await session_cache.blacklist_session(str(session_id), _access_token_ttl_seconds())
+        if blacklist:
+            # Block any still-valid access token carrying this sid until it expires.
+            await session_cache.blacklist_session(str(session_id), _access_token_ttl_seconds())
         return count
 
     @staticmethod

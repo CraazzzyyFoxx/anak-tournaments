@@ -24,12 +24,15 @@ export function CaptainPresence({ teams, presence }: CaptainPresenceProps) {
           <h3 id="captain-presence-heading" className="font-onest text-base font-semibold">
             {t("captainPresence")}
           </h3>
-          <p className="mt-1 text-sm text-[color:var(--aqt-fg-muted)]">
+          <p className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]" role="status">
             {t("captainPresenceCount", { online, total: rows.length })}
           </p>
         </div>
-        <span className="flex items-center gap-2 font-mono text-xs text-[color:var(--aqt-fg-muted)]">
-          <Eye className="h-4 w-4" />
+        <span
+          className="flex items-center gap-2 font-mono text-xs tabular-nums text-[color:var(--aqt-fg-muted)]"
+          aria-label={t("viewers")}
+        >
+          <Eye className="h-4 w-4" aria-hidden />
           {presence.anonymous_viewer_count}
         </span>
       </div>
@@ -40,6 +43,7 @@ export function CaptainPresence({ teams, presence }: CaptainPresenceProps) {
             className="flex min-h-11 items-center gap-3 border-t border-[color:var(--aqt-border)] py-2 first:border-t-0"
           >
             <span
+              aria-hidden
               className={cn(
                 "grid h-8 w-8 place-items-center rounded-lg bg-[color:var(--aqt-card-2)] font-onest text-xs font-semibold",
                 row.connected && "text-[color:var(--aqt-teal)]"
@@ -52,8 +56,11 @@ export function CaptainPresence({ teams, presence }: CaptainPresenceProps) {
               <Radio
                 className={cn(
                   "h-3.5 w-3.5",
-                  row.connected ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-fg-faint)]"
+                  row.connected
+                    ? "text-[color:var(--aqt-support)]"
+                    : "text-[color:var(--aqt-fg-faint)]"
                 )}
+                aria-hidden
               />
               {row.connected ? t("connected") : t("offline")}
             </span>

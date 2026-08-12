@@ -182,13 +182,17 @@ func run() error {
 	// Rate-limited (anti-brute-force): register/login/refresh + oauth callbacks.
 	mux.HandleFunc("POST /api/auth/register", authLimiter.Wrap(identityHandler.Register))
 	mux.HandleFunc("POST /api/auth/login", authLimiter.Wrap(identityHandler.Login))
-	mux.HandleFunc("POST /api/auth/refresh", authLimiter.Wrap(identityHandler.Refresh))
+	// Refresh meters only FAILED attempts (WrapFailures): legitimate rotations
+	// from a shared VPN/NAT exit IP must not exhaust one flat per-IP budget and
+	// 429 everyone behind it into a forced re-login.
+	mux.HandleFunc("POST /api/auth/refresh", authLimiter.WrapFailures(identityHandler.Refresh))
 	mux.HandleFunc("POST /api/auth/logout", identityHandler.Logout)
 	mux.HandleFunc("POST /api/auth/logout-all", identityHandler.LogoutAll)
 	mux.HandleFunc("GET /api/auth/sessions", identityHandler.Sessions)
 	mux.HandleFunc("DELETE /api/auth/sessions/{id}", identityHandler.RevokeSession)
 	mux.HandleFunc("GET /api/auth/me", identityHandler.Me)
 	mux.HandleFunc("PATCH /api/auth/me", identityHandler.UpdateMe)
+	mux.HandleFunc("DELETE /api/auth/me", identityHandler.DeleteMe)
 	mux.HandleFunc("POST /api/auth/set-password", identityHandler.SetPassword)
 	mux.HandleFunc("POST /api/auth/service/token", identityHandler.ServiceToken)
 	mux.HandleFunc("POST /api/auth/service/validate", identityHandler.ValidateService)
@@ -310,6 +314,7 @@ func run() error {
 	appEdge.Register(mux, app.WorkspaceWriteRoutes)
 	appEdge.Register(mux, app.MetadataAdminRoutes)
 	appEdge.Register(mux, app.UsersAdminRoutes)
+	appEdge.Register(mux, app.TournamentAdminRoutes)
 	// achievements get surface: ambiguous (/{id}/users vs /user/{user_id}) -> subtree.
 	mux.Handle("/api/v1/achievements/", appEdge.Subtree(app.AchievementsSubtreeRoutes))
 	// Binary/multipart endpoints the JSON dispatcher can't handle: icon + asset

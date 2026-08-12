@@ -71,6 +71,20 @@ func TestRegistrationFormNeverCacheable(t *testing.T) {
 	}
 }
 
+// The captain-reports envelope carries the tournament's match-report field
+// config; caching it would let a captain be served rules the submit endpoint no
+// longer enforces. Admin config edits emit no bracket-topic event, so there is
+// nothing to invalidate the entry with either.
+func TestEncounterReportsNeverCacheable(t *testing.T) {
+	const reports = "/api/v1/encounters/{encounter_id}/reports"
+	if _, ok := PublicCacheableReads[reports]; ok {
+		t.Fatalf("%s must not be cached", reports)
+	}
+	if _, ok := PublicWriteCacheableReads[reports]; ok {
+		t.Fatalf("%s must not be cached", reports)
+	}
+}
+
 // The encounters list grants AuthedRead only because the sole viewer-
 // dependent shape (scope=my_team) is carved out; the grant without the
 // carve-out would serve logged-in players the anonymous (hardcoded-empty)

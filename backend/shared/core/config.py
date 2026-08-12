@@ -35,8 +35,14 @@ class BaseServiceSettings(BaseSettings):
     proxy_http_port: int = 8080
 
     # Application
-    project_name: str = "Anak Service"
+    project_name: str = "OWT Service"
     version: str = "0.0.1"
+    # Build identity, injected by CI/the image build (GIT_SHA). ``version`` is a
+    # hand-maintained constant that has not moved from 0.0.1, so on its own it
+    # cannot distinguish two deploys — which made stale-image bugs (a service
+    # running ahead of / behind its migrations) indistinguishable from real
+    # defects in Sentry. See sentry_release below.
+    git_sha: str | None = None
     environment: typing.Literal["development", "production", "staging"] = "development"
     host: str = "localhost"
     port: int = 8000
@@ -70,8 +76,8 @@ class BaseServiceSettings(BaseSettings):
     db_connect_timeout: float = 10.0
     db_statement_timeout: int = 30000  # milliseconds
     # Connect through pgBouncer (transaction pooling): disables asyncpg
-    # prepared-statement caching, uses NullPool, and applies statement_timeout
-    # per-transaction via SET LOCAL.
+    # prepared-statement caching and applies statement_timeout per-transaction
+    # via SET LOCAL. The client-side pool tuning above still applies.
     db_pgbouncer: bool = False
 
     # Circuit Breaker
@@ -91,7 +97,7 @@ class BaseServiceSettings(BaseSettings):
     s3_secret_key: str | None = None
     s3_endpoint_url: str | None = None
     s3_bucket_name: str = "aqt"
-    s3_public_url: str | None = None  # e.g. "https://minio.craazzzyyfoxx.me/aqt"
+    s3_public_url: str | None = None  # e.g. "https://static.nl.craazzzyyfoxx.me/aqt"
 
     # Observability
     sentry_dsn: str | None = None
@@ -171,3 +177,14 @@ class BaseServiceSettings(BaseSettings):
         if self.sentry_https_proxy:
             return self.sentry_https_proxy
         return self.sentry_http_proxy_url
+
+    @property
+    def sentry_release(self) -> str:
+        """Release identifier for Sentry events: ``<version>+<short sha>``.
+
+        Falls back to ``version`` alone when GIT_SHA is not injected (local runs),
+        so the SDK still gets a stable, non-empty release.
+        """
+        if not self.git_sha:
+            return self.version
+        return f"{self.version}+{self.git_sha[:12]}"

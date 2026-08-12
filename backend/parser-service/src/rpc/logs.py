@@ -20,7 +20,7 @@ import base64
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE, PROCESS_TOURNAMENT_LOGS_QUEUE
@@ -32,6 +32,7 @@ from src.core import auth, db
 from src.core.config import settings
 from src.schemas.admin.logs import (
     LogRecordRead,
+    LogStatsRead,
     LogUploadError,
     LogUploadItem,
     LogUploadResponse,
@@ -41,6 +42,8 @@ from src.services.match_logs.admin_reads import (
     _fetch_queue_depths,
     _record_to_dict,
     _validate_attached_encounter,
+    history_scope_conditions,
+    history_search_condition,
 )
 from src.services.tournament import flows as tournament_flows
 
@@ -63,71 +66,152 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "logs.queue_status", op, session_factory=_SF)
 
+    async def _authorize_scope(
+        session: Any,
+        data: dict,
+        *,
+        tournament_id: int | None,
+        encounter_id: int | None,
+        workspace_id: int | None,
+    ) -> int | None:
+        """Shared per-arg gating for the two scoped log reads (history, stats).
+
+        Returns the workspace id the scope resolved to (derived from the encounter
+        when only ``encounter_id`` was given), so callers can use it as a filter.
+        """
+        user = c.actor(data)
+        c.require_active(user)
+        if workspace_id is not None:
+            await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="read")
+        elif tournament_id is not None:
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="log", action="read"
+            )
+        elif encounter_id is not None:
+            workspace_id = await auth._get_encounter_workspace_id(session, encounter_id)
+            await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="read")
+        elif not user.has_permission("log", "read"):
+            raise HTTPException(status_code=403, detail="Permission denied: log.read required")
+        return workspace_id
+
     @broker.subscriber("rpc.parser.logs.history")
     async def _history(data: dict, msg: RabbitMessage) -> dict:
         # GET /admin/logs/history — per-arg permission gating mirrors the route.
         async def op(session: Any) -> Any:
-            user = c.actor(data)
-            c.require_active(user)
             tournament_id = c.q1(data, "tournament_id", int)
             encounter_id = c.q1(data, "encounter_id", int)
-            workspace_id = c.q1(data, "workspace_id", int)
             limit = c.q1(data, "limit", int, 50)
             offset = c.q1(data, "offset", int, 0)
+            status_filter = (c.q1(data, "status", str) or "").strip() or None
+            search = c.q1(data, "search", str)
             if limit < 1 or limit > 200:
                 raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
             if offset < 0:
                 raise HTTPException(status_code=422, detail="offset must be >= 0")
-
-            if workspace_id is not None:
-                await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="read")
-            elif tournament_id is not None:
-                await auth.require_tournament_id_permission(
-                    session, user, tournament_id=tournament_id, resource="log", action="read"
+            if status_filter is not None and status_filter not in LogProcessingStatus.__members__:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"status must be one of: {', '.join(LogProcessingStatus.__members__)}",
                 )
-            elif encounter_id is not None:
-                workspace_id = await auth._get_encounter_workspace_id(session, encounter_id)
-                await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="read")
-            elif not user.has_permission("log", "read"):
-                raise HTTPException(status_code=403, detail="Permission denied: log.read required")
 
-            query = select(models.LogProcessingRecord).order_by(desc(models.LogProcessingRecord.created_at))
-            count_query = select(models.LogProcessingRecord.id)
+            workspace_id = await _authorize_scope(
+                session,
+                data,
+                tournament_id=tournament_id,
+                encounter_id=encounter_id,
+                workspace_id=c.q1(data, "workspace_id", int),
+            )
 
-            if tournament_id is not None:
-                query = query.where(models.LogProcessingRecord.tournament_id == tournament_id)
-                count_query = count_query.where(models.LogProcessingRecord.tournament_id == tournament_id)
-            if encounter_id is not None:
-                query = query.where(models.LogProcessingRecord.attached_encounter_id == encounter_id)
-                count_query = count_query.where(models.LogProcessingRecord.attached_encounter_id == encounter_id)
-            if workspace_id is not None:
-                query = query.join(
-                    models.Tournament, models.LogProcessingRecord.tournament_id == models.Tournament.id
-                ).where(models.Tournament.workspace_id == workspace_id)
-                count_query = count_query.join(
-                    models.Tournament, models.LogProcessingRecord.tournament_id == models.Tournament.id
-                ).where(models.Tournament.workspace_id == workspace_id)
+            conditions = history_scope_conditions(
+                tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
+            )
+            if status_filter is not None:
+                conditions.append(models.LogProcessingRecord.status == LogProcessingStatus[status_filter])
+            search_condition = history_search_condition(search)
+            if search_condition is not None:
+                conditions.append(search_condition)
 
-            count_result = await session.execute(count_query)
-            total = len(count_result.scalars().all())
+            # Aggregate count, not a full row fetch: the previous len(all()) pulled
+            # every matching record over the wire just to size the page footer.
+            total = await session.scalar(
+                select(func.count()).select_from(models.LogProcessingRecord).where(*conditions)
+            )
 
-            result = await session.execute(query.limit(limit).offset(offset))
+            result = await session.execute(
+                select(models.LogProcessingRecord)
+                .where(*conditions)
+                .order_by(desc(models.LogProcessingRecord.created_at), desc(models.LogProcessingRecord.id))
+                .limit(limit)
+                .offset(offset)
+            )
             items = [_record_to_dict(r) for r in result.scalars().all()]
-            return {"items": items, "total": total}
+            return {"items": items, "total": int(total or 0)}
 
         return await c.envelope(logger, "logs.history", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.parser.logs.stats")
+    async def _stats(data: dict, msg: RabbitMessage) -> dict:
+        # GET /admin/logs/stats — same scoping/gating as history, one aggregate row.
+        async def op(session: Any) -> Any:
+            tournament_id = c.q1(data, "tournament_id", int)
+            encounter_id = c.q1(data, "encounter_id", int)
+            workspace_id = await _authorize_scope(
+                session,
+                data,
+                tournament_id=tournament_id,
+                encounter_id=encounter_id,
+                workspace_id=c.q1(data, "workspace_id", int),
+            )
+
+            record = models.LogProcessingRecord
+            conditions = history_scope_conditions(
+                tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
+            )
+            duration = func.extract("epoch", record.finished_at - record.started_at)
+            row = (
+                await session.execute(
+                    select(
+                        func.count(),
+                        *(
+                            func.count().filter(record.status == member)
+                            for member in (
+                                LogProcessingStatus.pending,
+                                LogProcessingStatus.processing,
+                                LogProcessingStatus.done,
+                                LogProcessingStatus.failed,
+                            )
+                        ),
+                        # AVG skips NULL rows, so unfinished records drop out on their own.
+                        func.avg(duration),
+                        func.max(record.created_at),
+                    )
+                    .select_from(record)
+                    .where(*conditions)
+                )
+            ).one()
+
+            total, pending, processing, done, failed, avg_duration, last_created_at = row
+            return LogStatsRead(
+                total=int(total or 0),
+                pending=int(pending or 0),
+                processing=int(processing or 0),
+                done=int(done or 0),
+                failed=int(failed or 0),
+                avg_duration_seconds=float(avg_duration) if avg_duration is not None else None,
+                last_created_at=last_created_at,
+            )
+
+        return await c.envelope(logger, "logs.stats", op, session_factory=_SF)
+
     @broker.subscriber("rpc.parser.logs.retry")
     async def _retry(data: dict, msg: RabbitMessage) -> dict:
-        # POST /admin/logs/{record_id}/retry — dependency: require_log_record_permission("log","reprocess").
+        # POST /admin/logs/{record_id}/retry — dependency: require_log_record_permission("log","update").
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
             record_id = c.require_id(data)
             workspace_id = await auth._get_log_record_workspace_id(session, record_id)
-            await auth._require_workspace_permission(
-                user, workspace_id=workspace_id, resource="log", action="reprocess"
-            )
+            await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
 
             result = await session.execute(
                 select(models.LogProcessingRecord).where(models.LogProcessingRecord.id == record_id)
@@ -140,6 +224,9 @@ def register(broker: Any, logger: Any) -> None:
             record.error_message = None
             record.started_at = None
             record.finished_at = None
+            # An operator asking for a retry gets a fresh budget, so a record the
+            # stall reaper retired can be driven again.
+            record.attempts = 0
             await session.commit()
             await session.refresh(record)
 
@@ -163,7 +250,7 @@ def register(broker: Any, logger: Any) -> None:
             except (KeyError, TypeError, ValueError) as exc:
                 raise HTTPException(status_code=422, detail="tournament_id is required") from exc
             await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="log", action="upload"
+                session, user, tournament_id=tournament_id, resource="log", action="create"
             )
 
             files = data.get("files") or []
@@ -237,14 +324,15 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.parser.logs.process_tournament")
     async def _process_tournament(data: dict, msg: RabbitMessage) -> dict:
-        # POST /logs/{tournament_id} — router dep require_role_or_service_scope("admin","parser:logs");
-        # the gateway path is the admin user (role "admin"); the bot path moves to RabbitMQ.
+        # POST /logs/{tournament_id} — tournament-scoped log.update (the HTTP route
+        # gated on the admin role); the bot path moves to RabbitMQ.
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            if not user.has_role("admin"):
-                raise HTTPException(status_code=403, detail="Role required: admin")
             tournament_id = c.require_id(data)
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="log", action="update"
+            )
             tournament = await tournament_flows.get(session, tournament_id, [])
             event = ProcessTournamentLogsEvent(tournament_id=tournament.id)
             await publish_message(broker, event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE, logger=logger)

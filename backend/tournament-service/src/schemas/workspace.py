@@ -7,9 +7,6 @@ __all__ = (
     "WorkspaceRead",
     "WorkspaceCreate",
     "WorkspaceUpdate",
-    "WorkspaceMemberRead",
-    "WorkspaceMemberCreate",
-    "WorkspaceMemberUpdate",
 )
 
 
@@ -21,6 +18,7 @@ class WorkspaceRead(BaseRead):
     is_active: bool
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
+    default_roster_slots_json: dict[str, int] | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -37,19 +35,3 @@ class WorkspaceUpdate(BaseModel):
     icon_url: str | None = None
     is_active: bool | None = None
     default_division_grid_version_id: int | None = None
-
-
-class WorkspaceMemberRead(BaseRead):
-    workspace_id: int
-    auth_user_id: int
-    role: str
-    username: str | None = None
-
-
-class WorkspaceMemberCreate(BaseModel):
-    auth_user_id: int
-    role: str = Field(default="member", pattern=r"^(owner|admin|member)$")
-
-
-class WorkspaceMemberUpdate(BaseModel):
-    role: str = Field(..., pattern=r"^(owner|admin|member)$")

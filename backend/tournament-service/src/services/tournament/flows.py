@@ -8,10 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.division_grid import DivisionGrid
+from shared.domain.roster_shape import resolve_roster_shape
 from shared.models.identity.auth_user import AuthUser
 from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge, resolve_tournament_challonge
 from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.draft_guards import has_unfinished_draft_session
+from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
 from shared.services.tournament_visibility import visible_tournaments_predicate
 from src import models, schemas
 from src.core import config, enums, errors, pagination
@@ -113,13 +116,28 @@ async def to_pydantic(
                 division_grid_version_model,
                 from_attributes=True,
             )
+    roster_shape = None
+    roster_locked_by_draft = None
+    if _entity_requested(entities, "roster_shape"):
+        # Both levels are read explicitly so `source` is KNOWN rather than
+        # reverse-engineered from the resolved shape: an override that happens to
+        # equal the workspace default is still an override. Both getters are
+        # cache-backed, so this costs no query on a warm read.
+        tournament_slots = await get_tournament_roster_slots(session, tournament.id)
+        workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
+        shape = resolve_roster_shape(tournament_slots, workspace_slots)
+        source = "tournament" if tournament_slots else "workspace" if workspace_slots else "default"
+        roster_shape = schemas.RosterShapeRead.from_shape(shape, source=source)
+        # Same opt-in gate, same reason: this one DOES cost a query, so nested
+        # reads must not pay for it. The write-path guard uses the same predicate,
+        # so the form disables exactly what a save would reject.
+        roster_locked_by_draft = await has_unfinished_draft_session(session, tournament.id)
     tournament_challonge_id, tournament_challonge_slug = challonge_ref if challonge_ref is not None else (None, None)
     return schemas.TournamentRead(
         id=tournament.id,
         workspace_id=tournament.workspace_id,
         start_date=tournament.start_date,
         end_date=tournament.end_date,
-        number=tournament.number,
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
         is_hidden=tournament.is_hidden,
@@ -140,6 +158,9 @@ async def to_pydantic(
         loss_points=tournament.loss_points,
         division_grid_version_id=tournament.division_grid_version_id,
         division_grid_version=division_grid_version,
+        roster_slots_json=tournament.roster_slots_json,
+        roster_shape=roster_shape,
+        roster_locked_by_draft=roster_locked_by_draft,
         stages=stages,
         participants_count=participants_count,
         registrations_count=registrations_count,
@@ -283,38 +304,6 @@ async def get_stages_read(session: AsyncSession, tournament_id: int) -> list[sch
     return output
 
 
-async def get_by_number_and_league(
-    session: AsyncSession, number: int, is_league: bool, entities: list[str]
-) -> models.Tournament:
-    """
-    Retrieves a `Tournament` model instance by its number and league status, optionally including related entities.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        number: The number of the tournament to retrieve.
-        is_league: Whether the tournament is a league.
-        entities: A list of strings representing the names of related entities to include.
-
-    Returns:
-        A `Tournament` model instance.
-
-    Raises:
-        errors.ApiHTTPException: If the tournament is not found.
-    """
-    tournament = await service.get_by_number_and_league(session, number, is_league, entities)
-    if tournament is None:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="tournament_not_found",
-                    msg="Tournament with this number not found",
-                )
-            ],
-        )
-    return tournament
-
-
 async def get_all(
     session: AsyncSession,
     params: schemas.TournamentPaginationSortSearchParams,
@@ -331,9 +320,7 @@ async def get_all(
     Returns:
         A `Paginated` instance containing `TournamentRead` schemas.
     """
-    results, total = await service.get_all(
-        session, params, visibility=visible_tournaments_predicate(viewer)
-    )
+    results, total = await service.get_all(session, params, visibility=visible_tournaments_predicate(viewer))
     tournament_ids = [result.id for result in results]
     participants_counts = (
         await team_service.get_player_count_by_tournament_bulk(session, tournament_ids)
@@ -405,7 +392,7 @@ async def get_history_tournaments(
         output.append(
             schemas.TournamentStatistics(
                 id=stat[0].id,
-                number=stat[0].number,
+                name=stat[0].name,
                 players_count=stat[1],
                 avg_sr=round(stat[2], 2),
                 avg_closeness=stat[3],
@@ -434,13 +421,13 @@ async def get_avg_divisions_tournaments(
     # aggregates players to a per-(tournament, role, rank) histogram, so the
     # average is weighted by the count instead of iterating every player row.
     raw_rank_cache: dict[int, dict[enums.HeroClass, list[tuple[float, int]]]] = {}
-    tournament_numbers: dict[int, int] = {}
+    tournament_names: dict[int, str] = {}
 
     rows = await service.get_avg_div_tournaments(session, workspace_id=workspace_id)
     for tournament, role, rank, players_count in rows:
         if tournament.id not in raw_rank_cache:
             raw_rank_cache[tournament.id] = {}
-            tournament_numbers[tournament.id] = tournament.number
+            tournament_names[tournament.id] = tournament.name
 
         source_version_id: int | None = tournament.division_grid_version_id
 
@@ -473,7 +460,7 @@ async def get_avg_divisions_tournaments(
         output.append(
             schemas.DivisionStatistics(
                 id=tournament_id,
-                number=tournament_numbers[tournament_id],
+                name=tournament_names[tournament_id],
                 tank_avg_div=avg_or_none(roles.get(enums.HeroClass.tank)),
                 damage_avg_div=avg_or_none(roles.get(enums.HeroClass.damage)),
                 support_avg_div=avg_or_none(roles.get(enums.HeroClass.support)),

@@ -2,7 +2,8 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
-from src.core import config, errors, pagination
+from src.core import config, enums, errors, pagination
+from src.services import catalog_aliases
 from src.services.gamemode import service as gamemode_service
 
 from . import service
@@ -26,9 +27,17 @@ async def fetch_maps(gamemode: models.Gamemode) -> list[schemas.OverfastMap]:
     return [schemas.OverfastMap.model_validate(map) for map in response.json()]
 
 
-async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map:
-    map = await service.get_by_name_and_gamemode(session, name, gamemode)
+async def get_by_name_or_alias_and_gamemode(
+    session: AsyncSession, name: str, gamemode: str, *, log_record_id: int | None = None
+) -> models.Map:
+    """Resolve a log's raw map + gamemode names through `name` or `aliases`."""
+    map = await service.get_by_name_or_alias_and_gamemode(session, name, gamemode)
     if not map:
+        # Recorded BEFORE the raise and in its own transaction: the 404 rolls the
+        # log-processing session back. Both names go in — a failed join cannot
+        # tell which of the two was the unknown one.
+        await catalog_aliases.record_misses(enums.CatalogEntityType.map, [name], log_record_id=log_record_id)
+        await catalog_aliases.record_misses(enums.CatalogEntityType.gamemode, [gamemode], log_record_id=log_record_id)
         raise errors.ApiHTTPException(
             status_code=404,
             detail=[

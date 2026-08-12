@@ -4,6 +4,7 @@ Revision ID: wscustdom0001
 Revises: wsdomain0001
 Create Date: 2026-07-06
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence

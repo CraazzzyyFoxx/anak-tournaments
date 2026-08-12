@@ -5,6 +5,7 @@ import { getTokenMaxAgeSeconds } from "@/lib/jwt";
 import { authService } from "@/services/auth.service";
 import { PLATFORM_ZONE, isPlatformHost } from "@/lib/host";
 import { clearAuthCookies, getRefreshToken } from "@/lib/auth-cookies";
+import { ApiError } from "@/lib/api-error";
 import { publicHostname } from "@/lib/request-origin";
 
 // Cookie lifetime used when the access token's `exp` can't be decoded.
@@ -60,9 +61,21 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch {
-    const response = NextResponse.json({ message: "Failed to refresh" }, { status: 401 });
-    clearAuthCookies(response);
-    return response;
+  } catch (error) {
+    // ONLY a genuine upstream 401 (refresh token missing/expired/revoked) means
+    // the session is dead and the cookies must go. Everything else is transient
+    // — a dropped in-flight request (VPN/network switch changes the client IP
+    // mid-flight), a 429 from the per-IP auth throttle (shared VPN/NAT exit
+    // node), or a 5xx — and clearing the cookies there is what silently logged
+    // VPN users out: the refresh cookie is the ONLY way back, so wiping it
+    // turns a retryable blip into a forced re-login. Answer 503 instead;
+    // refreshAccessToken() maps a non-401 to RefreshOutcome "error", which
+    // keeps the session and retries on the next activity.
+    if (error instanceof ApiError && error.status === 401) {
+      const response = NextResponse.json({ message: "Failed to refresh" }, { status: 401 });
+      clearAuthCookies(response);
+      return response;
+    }
+    return NextResponse.json({ message: "Refresh temporarily unavailable" }, { status: 503 });
   }
 }

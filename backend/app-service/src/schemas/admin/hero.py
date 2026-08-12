@@ -21,6 +21,7 @@ class HeroCreate(BaseModel):
     role: enums.HeroClass
     color: str | None = None
     image_path: str | None = None
+    aliases: list[str] | None = None
 
 
 class HeroUpdate(BaseModel):
@@ -30,6 +31,7 @@ class HeroUpdate(BaseModel):
     role: enums.HeroClass | None = None
     color: str | None = None
     image_path: str | None = None
+    aliases: list[str] | None = None
 
 
 class HeroListQueryParams(

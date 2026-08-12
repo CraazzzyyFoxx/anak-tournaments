@@ -2,6 +2,7 @@
 from shared.models.achievements.achievement import *
 from shared.models.analytics.analytics import *
 from shared.models.balancer.balance import *
+from shared.models.catalog.alias_miss import *
 from shared.models.catalog.gamemode import *
 from shared.models.catalog.hero import *
 from shared.models.catalog.map import *
@@ -16,6 +17,7 @@ from shared.models.matches.match import *
 from shared.models.matches.stat_baseline import *
 from shared.models.ranks.overwatch_rank import *
 from shared.models.registration.registration import *
+from shared.models.subscriptions.subscription import *
 from shared.models.tenancy.settings import *
 from shared.models.tenancy.workspace import *
 from shared.models.tournament.challonge import *

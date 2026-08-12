@@ -31,7 +31,11 @@ export default function DeltaPill({ delta }: DeltaPillProps) {
   const up = delta > 0;
   return (
     <span className={cn(styles.cDelta, up ? styles.cDeltaUp : styles.cDeltaDown)}>
-      {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+      {up ? (
+        <ArrowUp aria-hidden className="h-3 w-3" />
+      ) : (
+        <ArrowDown aria-hidden className="h-3 w-3" />
+      )}
       {up ? "+" : "−"}
       {Math.abs(delta)}
     </span>

@@ -1,48 +1,40 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   CheckCircle2,
-  ChevronLeft,
   ChevronRight,
   Clock3,
-  Eye,
   FileText,
   FolderInput,
   Loader2,
   RefreshCw,
   RotateCcw,
   Search,
-  Upload,
   XCircle
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Fragment, useState } from "react";
-import {
-  AdminDetailTableShell,
-  getAdminDetailTableStyles
-} from "@/components/admin/AdminDetailTable";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useState } from "react";
+import { useDebounce } from "use-debounce";
+
+import { TONE_CLASS, TONE_TEXT, type Tone } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import type { LogProcessingRecord, LogProcessingStatus } from "@/types/admin.types";
+import type {
+  LogProcessingRecord,
+  LogProcessingStats,
+  LogProcessingStatus
+} from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
 import { TournamentLogUploadDialog } from "./TournamentLogUploadDialog";
 import {
@@ -50,43 +42,28 @@ import {
   invalidateTournamentWorkspace
 } from "./tournamentWorkspace.queryKeys";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 25;
+/**
+ * Poll cadence used only while the queue still has work. When nothing is
+ * pending the console is driven by the `workspace:{id}:logs` realtime signal
+ * (parser publishes it on every completion), so an idle tab costs no requests —
+ * the old console polled every 10s forever.
+ */
+const ACTIVE_QUEUE_POLL_MS = 10_000;
+/** Collapse a burst of completions into one refetch. */
+const REALTIME_REFRESH_DEBOUNCE_MS = 500;
 
 type LogFilter = LogProcessingStatus | "all";
 
-const LOG_FILTERS: Array<{ value: LogFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "failed", label: "Failed" },
-  { value: "done", label: "Processed" },
-  { value: "processing", label: "Processing" },
-  { value: "pending", label: "Queued" }
-];
-
-const STATUS_META: Record<
-  LogProcessingStatus,
-  { label: string; icon: LucideIcon; className: string }
-> = {
-  pending: {
-    label: "Queued",
-    icon: Clock3,
-    className: "border-muted-foreground/20 bg-muted/20 text-muted-foreground"
-  },
-  processing: {
-    label: "Processing",
-    icon: Loader2,
-    className: "border-blue-400/25 bg-blue-400/10 text-blue-300"
-  },
-  done: {
-    label: "Processed",
-    icon: CheckCircle2,
-    className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-  },
-  failed: {
-    label: "Failed",
-    icon: XCircle,
-    className: "border-destructive/35 bg-destructive/10 text-destructive"
-  }
+const STATUS_META: Record<LogProcessingStatus, { label: string; icon: LucideIcon; tone: Tone }> = {
+  pending: { label: "Queued", icon: Clock3, tone: "neutral" },
+  processing: { label: "Processing", icon: Loader2, tone: "info" },
+  done: { label: "Processed", icon: CheckCircle2, tone: "success" },
+  failed: { label: "Failed", icon: XCircle, tone: "danger" }
 };
+
+/** Filter order is scan order: the states that need action come first. */
+const LOG_FILTERS: LogFilter[] = ["all", "failed", "processing", "pending", "done"];
 
 const SOURCE_LABELS: Record<LogProcessingRecord["source"], string> = {
   upload: "Upload",
@@ -96,6 +73,7 @@ const SOURCE_LABELS: Record<LogProcessingRecord["source"], string> = {
 
 interface TournamentLogsTabProps {
   tournamentId: number;
+  workspaceId: number | null;
   encounters: Encounter[];
   canUploadLogs: boolean;
   enabled: boolean;
@@ -105,25 +83,24 @@ function getLogFileName(filename: string) {
   return filename.split(/[\\/]/).at(-1) ?? filename;
 }
 
-function getDurationSeconds(record: LogProcessingRecord) {
-  if (!record.started_at || !record.finished_at) return null;
-
-  const durationMs = new Date(record.finished_at).getTime() - new Date(record.started_at).getTime();
-  return Number.isFinite(durationMs) && durationMs >= 0 ? durationMs / 1000 : null;
-}
-
 function formatDuration(record: LogProcessingRecord) {
-  const duration = getDurationSeconds(record);
-
-  if (duration != null) {
-    return `${duration.toFixed(1)}s`;
+  if (!record.started_at || !record.finished_at) {
+    return record.status === "processing" ? "running" : "-";
   }
 
-  return record.status === "processing" ? "In progress" : "-";
+  const durationMs = new Date(record.finished_at).getTime() - new Date(record.started_at).getTime();
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "-";
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString();
+/** Matches `formatSyncTime` in ChallongeIntegrationSection so both admin logs read alike. */
+function formatLogTime(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function getErrorSummary(errorMessage: string | null) {
@@ -135,29 +112,10 @@ function getErrorSummary(errorMessage: string | null) {
 
   if (code) {
     const formattedCode = code.charAt(0).toUpperCase() + code.slice(1);
-    return statusMatch ? `${statusMatch[1]} - ${formattedCode}` : formattedCode;
+    return statusMatch ? `${statusMatch[1]} · ${formattedCode}` : formattedCode;
   }
 
   return errorMessage.replace(/^(\d{3}:\s*)?/, "").slice(0, 120);
-}
-
-function matchesLogSearch(record: LogProcessingRecord, searchTerm: string) {
-  if (!searchTerm) return true;
-
-  const haystack = [
-    record.filename,
-    getLogFileName(record.filename),
-    record.status,
-    record.source,
-    record.uploader_name,
-    record.attached_encounter_name,
-    record.error_message
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return haystack.includes(searchTerm);
 }
 
 function LogStatusBadge({ status }: { status: LogProcessingStatus }) {
@@ -165,81 +123,119 @@ function LogStatusBadge({ status }: { status: LogProcessingStatus }) {
   const Icon = meta.icon;
 
   return (
-    <Badge variant="outline" className={cn("gap-1.5 whitespace-nowrap", meta.className)}>
-      <Icon className={cn("size-3", status === "processing" && "animate-spin")} />
+    <Badge
+      variant="outline"
+      className={cn("gap-1.5 whitespace-nowrap px-1.5 text-[11px]", TONE_CLASS[meta.tone])}
+    >
+      <Icon className={cn("size-3", status === "processing" && "animate-spin")} aria-hidden />
       {meta.label}
     </Badge>
   );
 }
 
-function MetricCell({
-  label,
-  value,
-  detail,
-  tone = "default"
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone?: "default" | "success" | "warning" | "danger";
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-lg border border-border/45 bg-background/55 px-3 py-2",
-        tone === "success" && "border-emerald-500/20 bg-emerald-500/5",
-        tone === "warning" && "border-amber-500/20 bg-amber-500/5",
-        tone === "danger" && "border-destructive/25 bg-destructive/5"
-      )}
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-      <p className="mt-0.5 text-[12px] text-muted-foreground">{detail}</p>
-    </div>
-  );
+/** Counts come from the server aggregate, so a filter shows its real size. */
+function getFilterCount(filter: LogFilter, stats: LogProcessingStats | undefined) {
+  if (!stats) return null;
+  return filter === "all" ? stats.total : stats[filter];
 }
 
 export function TournamentLogsTab({
   tournamentId,
+  workspaceId,
   encounters,
   canUploadLogs,
   enabled
 }: TournamentLogsTabProps) {
   const queryClient = useQueryClient();
-  const tableStyles = getAdminDetailTableStyles("compact");
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
-  const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState<LogFilter>("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [expandedRecordId, setExpandedRecordId] = useState<number | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch] = useDebounce(searchInput, 300);
+  const searchTerm = debouncedSearch.trim();
 
-  const logHistoryQuery = useQuery({
-    queryKey: [...queryKeys.logHistory, page],
-    queryFn: () =>
-      adminService.getLogHistory(tournamentId, { limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
-    enabled,
-    refetchInterval: enabled ? 10_000 : false,
-    placeholderData: (prev) => prev
+  const statsQuery = useQuery({
+    queryKey: [...queryKeys.logHistory, "stats"],
+    queryFn: () => adminService.getLogStats(tournamentId),
+    enabled
   });
+  const stats = statsQuery.data;
+  const queueActive = stats != null && stats.pending + stats.processing > 0;
+  const pollInterval = enabled && queueActive ? ACTIVE_QUEUE_POLL_MS : false;
+
+  const historyQuery = useInfiniteQuery({
+    queryKey: [...queryKeys.logHistory, "list", statusFilter, searchTerm],
+    queryFn: ({ pageParam }) =>
+      adminService.getLogHistory(tournamentId, {
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        search: searchTerm
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((count, page) => count + page.items.length, 0);
+      // A page shorter than requested means the tail; stop even if `total`
+      // grew underneath us while the operator was scrolling.
+      if (lastPage.items.length < PAGE_SIZE || loaded >= lastPage.total) return undefined;
+      return loaded;
+    },
+    enabled,
+    refetchInterval: pollInterval
+  });
+
+  // Offset paging over a list that grows at the head can repeat a record across
+  // page boundaries. Keying by id collapses those: position comes from where the
+  // record first appeared, the value from the freshest page carrying it.
+  const records = Array.from(
+    new Map(
+      (historyQuery.data?.pages ?? [])
+        .flatMap((page) => page.items)
+        .map((record) => [record.id, record] as const)
+    ).values()
+  );
+  const matchedTotal = historyQuery.data?.pages[0]?.total;
+  const loadedFailures = records.filter((record) => record.status === "failed");
+  const hasActiveFilter = statusFilter !== "all" || searchTerm.length > 0;
+
+  const refreshAll = () => {
+    void statsQuery.refetch();
+    void historyQuery.refetch();
+  };
+
+  // Parser signals completions on the workspace topic, so the console stays live
+  // without polling. Debounced: a batch upload emits one signal per file.
+  const [scheduleRealtimeRefresh] = useDebounce(refreshAll, REALTIME_REFRESH_DEBOUNCE_MS);
+  useRealtimeTopic(
+    enabled && workspaceId != null ? `workspace:${workspaceId}:logs` : null,
+    () => scheduleRealtimeRefresh(),
+    [scheduleRealtimeRefresh]
+  );
 
   const retryLogMutation = useMutation({
     mutationFn: (recordId: number) => adminService.retryLogRecord(recordId),
     onSuccess: () => {
       notify.success("Log retry queued");
-      logHistoryQuery.refetch();
+      refreshAll();
     }
   });
 
-  const retryVisibleFailedMutation = useMutation({
-    mutationFn: (recordIds: number[]) =>
-      Promise.all(recordIds.map((recordId) => adminService.retryLogRecord(recordId))),
-    onSuccess: (_records, recordIds) => {
-      notify.success("Failed logs queued", {
-        description: `${recordIds.length} visible failed log${recordIds.length === 1 ? "" : "s"} sent for retry.`
-      });
-      logHistoryQuery.refetch();
+  const retryFailuresMutation = useMutation({
+    mutationFn: async (recordIds: number[]) => {
+      const results = await Promise.allSettled(
+        recordIds.map((recordId) => adminService.retryLogRecord(recordId))
+      );
+      return results.filter((result) => result.status === "rejected").length;
+    },
+    onSuccess: (failedCount, recordIds) => {
+      const queued = recordIds.length - failedCount;
+      if (failedCount > 0) {
+        notify.error(`Queued ${queued} of ${recordIds.length} logs`, {
+          description: `${failedCount} could not be queued. Retry them individually.`
+        });
+      } else {
+        notify.success(`Queued ${queued} logs for retry`);
+      }
+      refreshAll();
     }
   });
 
@@ -247,102 +243,29 @@ export function TournamentLogsTab({
     mutationFn: () => adminService.processAllTournamentLogs(tournamentId),
     onSuccess: () => {
       notify.success("Processing queued for all S3 logs");
-      logHistoryQuery.refetch();
+      refreshAll();
     }
   });
 
-  const logRecords = logHistoryQuery.data?.items ?? [];
-  const totalLogs = logHistoryQuery.data?.total ?? 0;
-  const failedLogs = logRecords.filter((record) => record.status === "failed").length;
-  const processingLogs = logRecords.filter((record) => record.status === "processing").length;
-  const doneLogs = logRecords.filter((record) => record.status === "done").length;
-  const pendingLogs = logRecords.filter((record) => record.status === "pending").length;
-  const visibleFailedRecords = logRecords.filter((record) => record.status === "failed");
-  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-  const filteredRecords = logRecords.filter(
-    (record) =>
-      (statusFilter === "all" || record.status === statusFilter) &&
-      matchesLogSearch(record, normalizedSearchTerm)
-  );
-  const completedDurations = logRecords
-    .map(getDurationSeconds)
-    .filter((duration): duration is number => duration != null);
-  const averageDuration =
-    completedDurations.length > 0
-      ? `${(
-          completedDurations.reduce((total, duration) => total + duration, 0) /
-          completedDurations.length
-        ).toFixed(1)}s`
-      : "-";
-  const lastUploadLabel = logRecords[0] ? formatDateTime(logRecords[0].created_at) : "-";
-  const rangeStart = totalLogs === 0 ? 0 : page * PAGE_SIZE + 1;
-  const rangeEnd = Math.min((page + 1) * PAGE_SIZE, totalLogs);
-  const totalPages = Math.max(1, Math.ceil(totalLogs / PAGE_SIZE));
-  const hasActiveFilter = statusFilter !== "all" || normalizedSearchTerm.length > 0;
-
-  const renderRecordActions = (record: LogProcessingRecord, showPlaceholder = false) => {
-    const isRetryingThisRecord =
-      (retryLogMutation.isPending && retryLogMutation.variables === record.id) ||
-      (retryVisibleFailedMutation.isPending &&
-        retryVisibleFailedMutation.variables?.includes(record.id));
-
-    if (record.status !== "failed" && showPlaceholder) {
-      return <span className="text-xs text-muted-foreground">-</span>;
-    }
-
-    if (record.status !== "failed") {
-      return null;
-    }
-
-    return (
-      <div className="flex items-center justify-end gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              aria-label={`Retry processing ${getLogFileName(record.filename)}`}
-              disabled={isRetryingThisRecord}
-              onClick={() => retryLogMutation.mutate(record.id)}
-            >
-              {isRetryingThisRecord ? <Loader2 className="animate-spin" /> : <RotateCcw />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Retry log</TooltipContent>
-        </Tooltip>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8"
-          aria-expanded={expandedRecordId === record.id}
-          onClick={() =>
-            setExpandedRecordId((current) => (current === record.id ? null : record.id))
-          }
-        >
-          <Eye />
-          Details
-        </Button>
-      </div>
-    );
-  };
+  const isRetrying = (recordId: number) =>
+    (retryLogMutation.isPending && retryLogMutation.variables === recordId) ||
+    (retryFailuresMutation.isPending && retryFailuresMutation.variables?.includes(recordId));
 
   return (
     <TooltipProvider>
       <Card className="border-border/40">
-        <CardHeader className="gap-3 pb-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <CardHeader className="gap-2 pb-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <FolderInput className="size-4 shrink-0 text-primary" />
-                <CardTitle className="text-base font-semibold">Log Processing Console</CardTitle>
-                <Badge variant={failedLogs > 0 ? "destructive" : "outline"}>
-                  {failedLogs} failed on page
-                </Badge>
+              <div className="flex items-center gap-2">
+                <FolderInput className="size-4 shrink-0 text-primary" aria-hidden />
+                <CardTitle asChild className="text-base font-semibold">
+                  <h2>Log processing</h2>
+                </CardTitle>
               </div>
-              <CardDescription className="mt-1">
-                Monitor uploaded and Discord/S3-sourced match logs, isolate failures, and queue
-                retries without scanning every row.
+              <CardDescription className="mt-1 text-pretty">
+                Track uploaded and Discord/S3 match logs, isolate failures, and queue retries.
+                Stalled logs are requeued automatically.
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-1">
@@ -352,12 +275,11 @@ export function TournamentLogsTab({
                   encounters={encounters}
                   onUploaded={() => {
                     invalidateTournamentWorkspace(queryClient, tournamentId);
-                    logHistoryQuery.refetch();
+                    refreshAll();
                   }}
                   trigger={
-                    <Button variant="outline" size="sm">
-                      <Upload />
-                      Upload Logs
+                    <Button variant="outline" size="sm" className="h-8">
+                      Upload logs
                     </Button>
                   }
                 />
@@ -365,15 +287,14 @@ export function TournamentLogsTab({
               <Button
                 variant="outline"
                 size="sm"
+                className="h-8"
                 disabled={processAllLogsMutation.isPending}
                 onClick={() => processAllLogsMutation.mutate()}
               >
                 {processAllLogsMutation.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <FolderInput />
-                )}
-                Process S3
+                  <Loader2 className="animate-spin" aria-hidden />
+                ) : null}
+                Process S3 logs
               </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -381,356 +302,285 @@ export function TournamentLogsTab({
                     variant="ghost"
                     size="icon"
                     className="size-8"
-                    aria-label="Refresh log history"
-                    onClick={() => logHistoryQuery.refetch()}
-                    disabled={logHistoryQuery.isFetching}
+                    aria-label="Refresh log processing"
+                    onClick={refreshAll}
+                    disabled={historyQuery.isFetching || statsQuery.isFetching}
                   >
-                    <RefreshCw className={cn(logHistoryQuery.isFetching && "animate-spin")} />
+                    <RefreshCw
+                      className={cn(
+                        (historyQuery.isFetching || statsQuery.isFetching) && "animate-spin"
+                      )}
+                      aria-hidden
+                    />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Refresh logs</TooltipContent>
+                <TooltipContent>Refresh log processing</TooltipContent>
               </Tooltip>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="flex flex-col gap-4 p-4 pt-0">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-            <MetricCell label="Total" value={totalLogs.toLocaleString()} detail="all records" />
-            <MetricCell
-              label="Processed"
-              value={doneLogs.toLocaleString()}
-              detail="on this page"
-              tone="success"
-            />
-            <MetricCell
-              label="Failed"
-              value={failedLogs.toLocaleString()}
-              detail="on this page"
-              tone={failedLogs > 0 ? "danger" : "default"}
-            />
-            <MetricCell
-              label="Queue"
-              value={(pendingLogs + processingLogs).toLocaleString()}
-              detail={`${pendingLogs} queued, ${processingLogs} running`}
-              tone={processingLogs > 0 ? "warning" : "default"}
-            />
-            <MetricCell label="Avg time" value={averageDuration} detail="page completed" />
-          </div>
-
-          <div className="flex flex-col gap-1 rounded-lg border border-border/40 bg-muted/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Last upload
-              </p>
-              <p className="mt-0.5 text-sm font-medium">{lastUploadLabel}</p>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Showing {rangeStart}-{rangeEnd} of {totalLogs.toLocaleString()} records
-            </p>
-          </div>
-
-          {failedLogs > 0 ? (
-            <Alert className="border-destructive/30 bg-destructive/5">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>
-                {failedLogs} log{failedLogs === 1 ? "" : "s"} on this page need attention
-              </AlertTitle>
-              <AlertDescription className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
-                <span>
-                  {getErrorSummary(visibleFailedRecords[0]?.error_message) ??
-                    "Review failed records and retry after fixing the match state."}
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setStatusFilter("failed");
-                      setExpandedRecordId(visibleFailedRecords[0]?.id ?? null);
-                    }}
-                  >
-                    <Eye />
-                    View failed
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={retryVisibleFailedMutation.isPending}
-                    onClick={() =>
-                      retryVisibleFailedMutation.mutate(
-                        visibleFailedRecords.map((record) => record.id)
-                      )
-                    }
-                  >
-                    {retryVisibleFailedMutation.isPending ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <RotateCcw />
-                    )}
-                    Retry visible failed
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <CardContent className="flex flex-col gap-3 p-4 pt-0">
+          {/*
+            One row replaces the old five stat tiles plus a separate filter
+            group: both listed the same statuses, and the tiles only ever
+            counted the page that happened to be loaded.
+          */}
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <ToggleGroup
               type="single"
               value={statusFilter}
-              onValueChange={(value) => {
-                setStatusFilter(value as LogFilter);
-                setExpandedRecordId(null);
-              }}
-              className="w-full flex-wrap justify-start lg:w-auto"
+              onValueChange={(value) => value && setStatusFilter(value as LogFilter)}
+              className="w-full flex-wrap justify-start xl:w-auto"
               size="sm"
               variant="outline"
+              aria-label="Filter logs by processing status"
             >
-              {LOG_FILTERS.map((filter) => (
-                <ToggleGroupItem key={filter.value} value={filter.value} className="text-xs">
-                  {filter.label}
-                </ToggleGroupItem>
-              ))}
+              {LOG_FILTERS.map((filter) => {
+                const count = getFilterCount(filter, stats);
+                // Only the states that need an operator get a tone; tinting
+                // "Processed" too would pull the eye to the inert majority.
+                const tone = filter === "failed" || filter === "processing";
+
+                return (
+                  <ToggleGroupItem key={filter} value={filter} className="h-8 gap-1.5 text-xs">
+                    {filter === "all" ? "All" : STATUS_META[filter].label}
+                    <span
+                      className={cn(
+                        "tabular-nums",
+                        tone && count
+                          ? TONE_TEXT[STATUS_META[filter].tone]
+                          : "text-muted-foreground"
+                      )}
+                    >
+                      {count?.toLocaleString() ?? "—"}
+                    </span>
+                  </ToggleGroupItem>
+                );
+              })}
             </ToggleGroup>
-            <div className="relative w-full lg:max-w-sm">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search visible logs..."
-                className="h-8 pl-8 text-xs"
-                aria-label="Search visible log records"
-              />
+
+            <div className="flex items-center gap-3">
+              {stats ? (
+                <p className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                  Avg{" "}
+                  <span className="tabular-nums text-foreground/80">
+                    {stats.avg_duration_seconds != null
+                      ? `${stats.avg_duration_seconds.toFixed(1)}s`
+                      : "-"}
+                  </span>
+                  {stats.last_created_at ? (
+                    <>
+                      {" · newest "}
+                      <span className="tabular-nums text-foreground/80">
+                        {formatLogTime(stats.last_created_at)}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+              <div className="relative w-full xl:w-64">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="file, error, uploader, encounter"
+                  className="h-8 pl-8 text-base sm:text-xs"
+                  aria-label="Search all logs for this tournament"
+                />
+              </div>
             </div>
           </div>
 
-          {logHistoryQuery.isLoading ? (
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : !logHistoryQuery.data?.items.length ? (
-            <div className="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-              <FileText className="mx-auto size-7 text-muted-foreground" />
-              <p className="mt-3 text-sm font-medium">No log processing records yet</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Upload logs or process S3 logs to populate this console.
+          {stats && stats.failed > 0 ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+              <p className="min-w-0 text-danger">
+                {stats.failed.toLocaleString()} log{stats.failed === 1 ? "" : "s"} failed to process
               </p>
+              <div className="flex shrink-0 flex-wrap items-center gap-1">
+                {statusFilter !== "failed" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setStatusFilter("failed")}
+                  >
+                    Show failed
+                  </Button>
+                ) : null}
+                {loadedFailures.length > 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={retryFailuresMutation.isPending}
+                    onClick={() =>
+                      retryFailuresMutation.mutate(loadedFailures.map((record) => record.id))
+                    }
+                  >
+                    {retryFailuresMutation.isPending ? (
+                      <Loader2 className="animate-spin" aria-hidden />
+                    ) : (
+                      <RotateCcw aria-hidden />
+                    )}
+                    Retry {loadedFailures.length} loaded
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          ) : filteredRecords.length === 0 ? (
+          ) : null}
+
+          {historyQuery.isPending ? (
+            <div className="flex flex-col gap-1.5" aria-hidden>
+              <Skeleton className="h-11 w-full" />
+              <Skeleton className="h-11 w-full" />
+              <Skeleton className="h-11 w-full" />
+              <Skeleton className="h-11 w-full" />
+            </div>
+          ) : records.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
-              <Search className="mx-auto size-7 text-muted-foreground" />
-              <p className="mt-3 text-sm font-medium">No records match these filters</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Clear search or switch back to All to see the visible page.
-              </p>
               {hasActiveFilter ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => {
-                    setStatusFilter("all");
-                    setSearchTerm("");
-                    setExpandedRecordId(null);
-                  }}
-                >
-                  Clear filters
-                </Button>
-              ) : null}
+                <>
+                  <Search className="mx-auto size-6 text-muted-foreground" aria-hidden />
+                  <p className="mt-3 text-sm font-medium">
+                    {searchTerm ? `No logs match “${searchTerm}”` : "No logs in this status"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Search covers every log in this tournament, not just the loaded rows.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => {
+                      setStatusFilter("all");
+                      setSearchInput("");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <FileText className="mx-auto size-6 text-muted-foreground" aria-hidden />
+                  <p className="mt-3 text-sm font-medium">No logs for this tournament yet</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Upload log files or process the tournament&apos;s stored S3 logs to populate
+                    this console.
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <>
-              <AdminDetailTableShell variant="compact" className="hidden lg:block">
-                <Table className="table-fixed">
-                  <TableHeader>
-                    <TableRow className={tableStyles.headerRow}>
-                      <TableHead className={cn(tableStyles.head, "w-[30%]")}>Log file</TableHead>
-                      <TableHead className={cn(tableStyles.head, "w-[13%]")}>Result</TableHead>
-                      <TableHead className={cn(tableStyles.head, "w-[12%]")}>Source</TableHead>
-                      <TableHead className={cn(tableStyles.head, "w-[18%]")}>Uploaded</TableHead>
-                      <TableHead className={cn(tableStyles.head, "w-[10%]")}>Duration</TableHead>
-                      <TableHead className={cn(tableStyles.head, "w-[17%] text-right")}>
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRecords.map((record) => {
-                      const isExpanded = expandedRecordId === record.id;
-                      const errorSummary = getErrorSummary(record.error_message);
-
-                      return (
-                        <Fragment key={record.id}>
-                          <TableRow
-                            className={cn(
-                              tableStyles.row,
-                              record.status === "failed" &&
-                                "bg-destructive/5 hover:bg-destructive/10"
-                            )}
-                          >
-                            <TableCell className={tableStyles.cell}>
-                              <div className="flex min-w-0 flex-col gap-1">
-                                <span className="truncate font-mono text-xs">
-                                  {getLogFileName(record.filename)}
-                                </span>
-                                <span className="truncate text-xs text-muted-foreground">
-                                  {record.attached_encounter_name ?? "Not attached"} -{" "}
-                                  {record.uploader_name ?? "Unknown uploader"}
-                                </span>
-                                {errorSummary ? (
-                                  <span className="truncate text-xs text-destructive">
-                                    {errorSummary}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </TableCell>
-                            <TableCell className={tableStyles.cell}>
-                              <LogStatusBadge status={record.status} />
-                            </TableCell>
-                            <TableCell className={tableStyles.cell}>
-                              <Badge variant="outline" className="capitalize">
-                                {SOURCE_LABELS[record.source]}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className={tableStyles.cell}>
-                              <span className="text-sm">{formatDateTime(record.created_at)}</span>
-                            </TableCell>
-                            <TableCell className={tableStyles.cell}>
-                              <span className="text-sm text-muted-foreground">
-                                {formatDuration(record)}
-                              </span>
-                            </TableCell>
-                            <TableCell className={cn(tableStyles.cell, "text-right")}>
-                              {renderRecordActions(record, true)}
-                            </TableCell>
-                          </TableRow>
-                          {isExpanded ? (
-                            <TableRow className="bg-muted/10">
-                              <TableCell colSpan={6} className="px-3 py-3">
-                                <div className="grid gap-3 rounded-lg border border-border/40 bg-background/70 p-3 md:grid-cols-[180px_1fr]">
-                                  <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                                      Error detail
-                                    </p>
-                                    <p className="mt-1 text-sm font-medium">
-                                      {errorSummary ?? "No error details"}
-                                    </p>
-                                  </div>
-                                  <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/20 p-3 text-xs text-muted-foreground">
-                                    {record.error_message ?? "No raw response available."}
-                                  </pre>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </AdminDetailTableShell>
-
-              <div className="flex flex-col gap-2 lg:hidden">
-                {filteredRecords.map((record) => {
+              <ul className="divide-y divide-border/30 overflow-hidden rounded-lg border border-border/40">
+                {records.map((record) => {
+                  const fileName = getLogFileName(record.filename);
                   const errorSummary = getErrorSummary(record.error_message);
-                  const isExpanded = expandedRecordId === record.id;
+                  const retrying = isRetrying(record.id);
+                  // "Queued"/"Processing" rows go stale when the worker drops
+                  // their queue message; the reaper requeues them on its own
+                  // schedule, this is the operator's shortcut past the wait.
+                  const canRequeue = record.status !== "done";
+                  const requeueLabel = record.status === "failed" ? "Retry log" : "Requeue log";
 
                   return (
-                    <div
+                    <li
                       key={record.id}
                       className={cn(
-                        "rounded-lg border border-border/45 bg-background/60 p-3",
-                        record.status === "failed" && "border-destructive/25 bg-destructive/5"
+                        "px-3 py-1.5 transition-colors hover:bg-accent/20",
+                        record.status === "failed" && "bg-danger/5 hover:bg-danger/10"
                       )}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-mono text-xs">
-                            {getLogFileName(record.filename)}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {formatDateTime(record.created_at)} - {formatDuration(record)}
-                          </p>
-                        </div>
-                        <LogStatusBadge status={record.status} />
-                      </div>
-                      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-                        <div>
-                          <span className="text-muted-foreground">Encounter</span>
-                          <p className="mt-0.5 font-medium">
-                            {record.attached_encounter_name ?? "Not attached"}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Source</span>
-                          <p className="mt-0.5 font-medium">{SOURCE_LABELS[record.source]}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Uploader</span>
-                          <p className="mt-0.5 font-medium">
-                            {record.uploader_name ?? "Unknown uploader"}
-                          </p>
-                        </div>
-                      </div>
-                      {errorSummary ? (
-                        <p className="mt-3 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
-                          {errorSummary}
+                      {/*
+                        One line per record. The uploader and source used to sit
+                        on a second line under every filename, which doubled the
+                        row height to repeat the same two values 25 times; both
+                        now ride the row's tooltip.
+                      */}
+                      <div
+                        className="flex flex-wrap items-center gap-x-3 gap-y-0.5"
+                        title={`${record.filename}\n${SOURCE_LABELS[record.source]} by ${record.uploader_name ?? "unknown uploader"}${record.attempts > 1 ? `\n${record.attempts} processing attempts` : ""}`}
+                      >
+                        <p className="min-w-0 flex-1 basis-48 truncate font-mono text-xs">
+                          {fileName}
                         </p>
+                        <p className="min-w-0 flex-1 basis-40 truncate text-xs text-muted-foreground">
+                          {record.attached_encounter_name ?? "Not attached"}
+                        </p>
+                        <div className="flex w-28 shrink-0 items-center gap-1.5">
+                          <LogStatusBadge status={record.status} />
+                          {record.attempts > 1 ? (
+                            <span className="text-[11px] tabular-nums text-muted-foreground">
+                              ×{record.attempts}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="w-28 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                          {formatLogTime(record.created_at)}
+                        </p>
+                        <p className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                          {formatDuration(record)}
+                        </p>
+                        <div className="flex w-8 shrink-0 justify-end">
+                          {canRequeue ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                  aria-label={`${requeueLabel} ${fileName}`}
+                                  disabled={retrying}
+                                  onClick={() => retryLogMutation.mutate(record.id)}
+                                >
+                                  {retrying ? (
+                                    <Loader2 className="animate-spin" aria-hidden />
+                                  ) : (
+                                    <RotateCcw aria-hidden />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{requeueLabel}</TooltipContent>
+                            </Tooltip>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {errorSummary ? (
+                        <details className="group mt-1.5">
+                          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs text-danger focus-visible:outline-2 focus-visible:outline-offset-2">
+                            <ChevronRight
+                              className="size-3 transition-transform group-open:rotate-90"
+                              aria-hidden
+                            />
+                            {errorSummary}
+                          </summary>
+                          <pre
+                            tabIndex={0}
+                            className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/20 p-2 text-xs text-muted-foreground"
+                          >
+                            {record.error_message}
+                          </pre>
+                        </details>
                       ) : null}
-                      {record.status === "failed" ? (
-                        <div className="mt-3 flex justify-end">{renderRecordActions(record)}</div>
-                      ) : null}
-                      {isExpanded ? (
-                        <pre className="mt-3 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/15 p-3 text-xs text-muted-foreground">
-                          {record.error_message ?? "No raw response available."}
-                        </pre>
-                      ) : null}
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
 
-              {totalLogs > PAGE_SIZE ? (
-                <div className="flex flex-col gap-2 rounded-lg border border-border/40 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-[12px] text-muted-foreground">
-                    Showing {rangeStart}-{rangeEnd} of {totalLogs.toLocaleString()} logs
-                  </span>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      aria-label="Previous log page"
-                      disabled={page === 0 || logHistoryQuery.isFetching}
-                      onClick={() => {
-                        setExpandedRecordId(null);
-                        setPage((p) => p - 1);
-                      }}
-                    >
-                      <ChevronLeft />
-                    </Button>
-                    <span className="min-w-16 text-center text-[12px] text-muted-foreground">
-                      {page + 1} / {totalPages}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      aria-label="Next log page"
-                      disabled={(page + 1) * PAGE_SIZE >= totalLogs || logHistoryQuery.isFetching}
-                      onClick={() => {
-                        setExpandedRecordId(null);
-                        setPage((p) => p + 1);
-                      }}
-                    >
-                      <ChevronRight />
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
+              <InfiniteScrollFooter
+                loaded={records.length}
+                total={matchedTotal}
+                unit="logs"
+                hasNextPage={historyQuery.hasNextPage}
+                isFetchingNextPage={historyQuery.isFetchingNextPage}
+                fetchNextPage={historyQuery.fetchNextPage}
+                isError={historyQuery.isError}
+              />
             </>
           )}
         </CardContent>

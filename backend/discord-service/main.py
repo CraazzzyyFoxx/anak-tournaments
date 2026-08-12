@@ -9,10 +9,18 @@ import httpx
 from faststream.rabbit import RabbitBroker, RabbitQueue
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import ValidationError
+from redis.asyncio import Redis
 from sqlalchemy import select
 
+from shared import models
+from shared.core.enums import SubscriptionCollectionSource
+from shared.core.social import SocialProvider
 from shared.messaging.config import (
     DISCORD_COMMANDS_QUEUE,
+    DISCORD_GUILD_CHANNELS_QUEUE,
+    DISCORD_GUILD_INFO_QUEUE,
+    DISCORD_GUILD_ROLES_QUEUE,
+    DISCORD_MEMBER_ROLES_QUEUE,
     MATCH_LOG_RESULT_EXCHANGE,
     UPLOAD_MATCH_LOG_QUEUE,
 )
@@ -21,14 +29,16 @@ from shared.models.ingestion.log_processing import LogProcessingRecord, LogProce
 from shared.observability import (
     make_rabbit_broker,
     observe_message_processing,
+    observe_scheduled_job,
     publish_message,
     setup_logging,
     setup_tracing,
     start_worker_metrics_server,
 )
 from shared.schemas.events import DiscordCommandEvent, MatchLogProcessedEvent, UploadMatchLogEvent
+from shared.services.subscription_wiring import build_resolver
 from src.core.config import settings
-from src.core.db import async_session_maker
+from src.core.db import async_engine, async_session_maker
 from src.feedback import (
     AttachmentFeedbackResult,
     AttachmentFeedbackState,
@@ -49,7 +59,7 @@ intents.messages = True
 intents.message_content = True
 intents.reactions = True
 intents.guilds = True
-
+intents.members = True
 PROXY_CONF = settings.proxy_url
 
 client = discord.Client(intents=intents, proxy=PROXY_CONF)
@@ -169,10 +179,7 @@ async def load_active_channels():
         new_channels = {}
         for discord_channel, tournament in result:
             new_channels[discord_channel.channel_id] = tournament.id
-            logger.info(
-                f"📌 Monitoring channel {discord_channel.channel_id} "
-                f"for tournament #{tournament.number} - {tournament.name}"
-            )
+            logger.info(f"📌 Monitoring channel {discord_channel.channel_id} for tournament {tournament.name}")
 
         active_channels = new_channels
         logger.success(f"✅ Loaded {len(active_channels)} active channels")
@@ -401,6 +408,49 @@ async def process_channel_history(channel_id: int, tournament_id: int, limit: in
         logger.error(f"❌ Error processing channel history: {e}")
 
 
+async def _lookup_guild(guild_id: str) -> tuple[discord.Guild | None, bool]:
+    """Resolve a snowflake to a guild, preferring discord.py's gateway cache.
+
+    The flag says whether the guild came from that cache. It matters: the
+    ``fetch_guild`` fallback is a single REST call whose payload carries roles
+    but NO channels, members or threads, so ``guild.text_channels`` on a fetched
+    guild is silently empty and ``member_count`` is ``None``. Callers needing
+    those must fetch them explicitly -- see ``handle_get_guild_channels``.
+    """
+    try:
+        guild_id_int = int(guild_id)
+    except ValueError:
+        return None, False
+
+    cached = client.get_guild(guild_id_int)
+    if cached is not None:
+        return cached, True
+
+    try:
+        # NotFound/Forbidden both derive from HTTPException: "we cannot see this
+        # guild" is one outcome here, not three.
+        return await client.fetch_guild(guild_id_int), False
+    except discord.HTTPException:
+        return None, False
+
+
+async def _lookup_member(guild: discord.Guild, user_id: str) -> discord.Member | None:
+    """Member from the guild's member cache, else one REST lookup."""
+    try:
+        user_id_int = int(user_id)
+    except ValueError:
+        return None
+
+    cached = guild.get_member(user_id_int)
+    if cached is not None:
+        return cached
+
+    try:
+        return await guild.fetch_member(user_id_int)
+    except discord.HTTPException:
+        return None
+
+
 def register_rabbit_handlers(broker: RabbitBroker) -> None:
     @broker.subscriber(DISCORD_COMMANDS_QUEUE)
     async def handle_discord_command(body: dict[str, Any], msg: RabbitMessage):
@@ -477,6 +527,187 @@ def register_rabbit_handlers(broker: RabbitBroker) -> None:
                 await msg.nack()  # Requeue for retry
                 raise
 
+    @broker.subscriber(DISCORD_MEMBER_ROLES_QUEUE)
+    async def handle_get_member_roles(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_MEMBER_ROLES_QUEUE,
+            handler="handle_get_member_roles",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            user_ids = [str(u) for u in (body.get("user_ids") or []) if u]
+
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "guild_role_ids": [], "members": {}}
+
+            try:
+                guild, _cached = await _lookup_guild(guild_id)
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {"error": "guild_not_found", "guild_role_ids": [], "members": {}}
+
+                guild_role_ids = [str(role.id) for role in guild.roles]
+                members_out: dict[str, dict[str, Any]] = {}
+
+                for uid_str in user_ids:
+                    member = await _lookup_member(guild, uid_str)
+                    if member is None:
+                        members_out[uid_str] = {"found": False, "roles": []}
+                        continue
+                    # Drop @everyone. Discord's REST member object omits it, and
+                    # the caller's HTTP fallback reads that object -- so leaving
+                    # it in would let a tier mapped to @everyone resolve ACTIVE
+                    # over RPC and INACTIVE over HTTP for the very same patron.
+                    members_out[uid_str] = {
+                        "found": True,
+                        "roles": [str(role.id) for role in member.roles if not role.is_default()],
+                    }
+
+                observation.set_status("success")
+                return {
+                    "guild_role_ids": guild_role_ids,
+                    "members": members_out,
+                }
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting member roles for guild {guild_id}: {e}")
+                return {"error": str(e), "guild_role_ids": [], "members": {}}
+
+    @broker.subscriber(DISCORD_GUILD_ROLES_QUEUE)
+    async def handle_get_guild_roles(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_GUILD_ROLES_QUEUE,
+            handler="handle_get_guild_roles",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "guild_id": guild_id, "roles": []}
+
+            try:
+                guild, _cached = await _lookup_guild(guild_id)
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {"error": "guild_not_found", "guild_id": guild_id, "roles": []}
+
+                roles_out = []
+                # Highest first: that is the order the Discord client shows, and
+                # the picker on the other end renders the list as-is.
+                for role in sorted(guild.roles, key=lambda r: r.position, reverse=True):
+                    color_hex = f"#{role.color.value:06x}" if role.color.value else None
+                    roles_out.append(
+                        {
+                            "id": str(role.id),
+                            "name": role.name,
+                            "color": color_hex,
+                            "position": role.position,
+                            "managed": role.managed,
+                        }
+                    )
+
+                observation.set_status("success")
+                return {"guild_id": guild_id, "roles": roles_out}
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting guild roles for {guild_id}: {e}")
+                return {"error": str(e), "guild_id": guild_id, "roles": []}
+
+    @broker.subscriber(DISCORD_GUILD_CHANNELS_QUEUE)
+    async def handle_get_guild_channels(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_GUILD_CHANNELS_QUEUE,
+            handler="handle_get_guild_channels",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "guild_id": guild_id, "channels": []}
+
+            try:
+                guild, cached = await _lookup_guild(guild_id)
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {"error": "guild_not_found", "guild_id": guild_id, "channels": []}
+
+                if cached:
+                    text_channels = list(guild.text_channels)
+                else:
+                    # A fetched guild has no channel cache at all, so reading
+                    # ``guild.text_channels`` here would answer "no channels" for
+                    # a server that has plenty.
+                    text_channels = [ch for ch in await guild.fetch_channels() if isinstance(ch, discord.TextChannel)]
+
+                channels_out = [
+                    {
+                        "id": str(ch.id),
+                        "name": ch.name,
+                        "category_name": ch.category.name if ch.category else None,
+                        "position": ch.position,
+                    }
+                    for ch in sorted(text_channels, key=lambda c: c.position)
+                ]
+
+                observation.set_status("success")
+                return {"guild_id": guild_id, "channels": channels_out}
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting guild channels for {guild_id}: {e}")
+                return {"error": str(e), "guild_id": guild_id, "channels": []}
+
+    @broker.subscriber(DISCORD_GUILD_INFO_QUEUE)
+    async def handle_get_guild_info(body: dict[str, Any], msg: RabbitMessage) -> dict[str, Any]:
+        await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_GUILD_INFO_QUEUE,
+            handler="handle_get_guild_info",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            guild_id = str(body.get("guild_id") or "").strip()
+            if not guild_id:
+                observation.set_status("invalid")
+                return {"error": "guild_id_required", "connected": False}
+
+            try:
+                guild, cached = await _lookup_guild(guild_id)
+                if guild is None:
+                    observation.set_status("guild_not_found")
+                    return {
+                        "guild_id": guild_id,
+                        "connected": False,
+                        "name": None,
+                        "icon_url": None,
+                        "member_count": 0,
+                    }
+
+                icon_url = str(guild.icon.url) if guild.icon else None
+                # ``member_count`` is only populated from the gateway payload; a
+                # guild we had to fetch carries ``approximate_member_count``
+                # instead, and an empty member cache would otherwise report 0.
+                member_count = (guild.member_count if cached else guild.approximate_member_count) or 0
+
+                observation.set_status("success")
+                return {
+                    "guild_id": guild_id,
+                    "connected": True,
+                    "name": guild.name,
+                    "icon_url": icon_url,
+                    "member_count": member_count,
+                }
+            except Exception as e:
+                observation.set_status("error")
+                logger.error(f"❌ Error getting guild info for {guild_id}: {e}")
+                return {"error": str(e), "guild_id": guild_id, "connected": False}
+
     # Per-instance, server-named exclusive queue bound to the fanout exchange so
     # every replica receives every result; the one holding the matching pending
     # future resolves it, the rest no-op. Replaces pg LISTEN/NOTIFY.
@@ -492,15 +723,73 @@ def register_rabbit_handlers(broker: RabbitBroker) -> None:
         result_waiter.resolve(event.tournament_id, event.filename, event.status == "done")
 
 
+async def handle_member_subscription_change(guild_id: str, discord_user_id: str, reason: str) -> None:
+    """Re-evaluates Boosty subscription for a Discord user whose member state/roles changed."""
+    try:
+        async with async_session_maker() as session:
+            ws_stmt = select(models.Workspace.id).where(models.Workspace.discord_guild_id == guild_id)
+            workspace_ids = list((await session.scalars(ws_stmt)).all())
+            if not workspace_ids:
+                return
+
+            conn_stmt = select(models.OAuthConnection.auth_user_id).where(
+                models.OAuthConnection.provider == SocialProvider.DISCORD,
+                models.OAuthConnection.provider_user_id == discord_user_id,
+            )
+            auth_user_ids = list((await session.scalars(conn_stmt)).all())
+            if not auth_user_ids:
+                return
+
+            redis_client = None
+            try:
+                redis_client = Redis.from_url(str(settings.redis_url), decode_responses=True)
+            except Exception:
+                redis_client = None
+
+            try:
+                resolver = build_resolver(
+                    session,
+                    discord_bot_token=settings.discord_token,
+                    broker=rabbit_broker,
+                    redis=redis_client,
+                )
+                for ws_id in workspace_ids:
+                    await resolver.resolve(
+                        workspace_id=ws_id,
+                        auth_user_ids=auth_user_ids,
+                        providers=[SocialProvider.BOOSTY],
+                        force_refresh=True,
+                        source=SubscriptionCollectionSource.scheduled,
+                    )
+                await session.commit()
+                logger.info(
+                    f"⚡ Instant subscription update for user(s) {auth_user_ids} in workspace(s) {workspace_ids} (reason={reason})"
+                )
+            finally:
+                if redis_client is not None:
+                    await redis_client.aclose()
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error handling member subscription change for user {discord_user_id} in guild {guild_id}: {e}"
+        )
+
+
 async def start_rabbitmq_listener() -> None:
     global rabbit_broker
     if not settings.broker_url:
         logger.info("ℹ️ RABBITMQ_URL not set; RabbitMQ listener disabled")
         return
 
-    rabbit_broker = make_rabbit_broker(settings.broker_url, logger=logger)
-    register_rabbit_handlers(rabbit_broker)
-    await rabbit_broker.start()
+    # Publish to the global only once the broker is actually started: gateway
+    # member events fire as soon as discord.py connects and reach
+    # handle_member_subscription_change, which resolves subscriptions through
+    # this broker. A half-initialised global there means an RPC against a
+    # broker with no connection.
+    broker = make_rabbit_broker(settings.broker_url, logger=logger)
+    register_rabbit_handlers(broker)
+    await broker.start()
+    rabbit_broker = broker
     logger.success(f"✅ RabbitMQ listener started (queue='{DISCORD_COMMANDS_QUEUE}')")
 
 
@@ -523,7 +812,8 @@ async def channel_monitor_task():
 
     while not client.is_closed():
         try:
-            await load_active_channels()
+            async with observe_scheduled_job("discord_channel_monitor"):
+                await load_active_channels()
         except Exception as e:
             logger.error(f"❌ Error reloading channels: {e}")
 
@@ -594,6 +884,30 @@ async def on_guild_remove(guild: discord.Guild):
     logger.warning(f"👋 Removed from guild: {guild.name} (ID: {guild.id})")
 
 
+@client.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """Handle role changes on guild members for instant subscription updates"""
+    before_roles = {r.id for r in before.roles}
+    after_roles = {r.id for r in after.roles}
+    if before_roles != after_roles:
+        logger.info(f"🔄 Member roles updated in guild {after.guild.id} for user {after.id}")
+        await handle_member_subscription_change(str(after.guild.id), str(after.id), "role_update")
+
+
+@client.event
+async def on_member_join(member: discord.Member):
+    """Handle member joining guild"""
+    logger.info(f"➕ Member joined guild {member.guild.id}: user {member.id}")
+    await handle_member_subscription_change(str(member.guild.id), str(member.id), "member_join")
+
+
+@client.event
+async def on_member_remove(member: discord.Member):
+    """Handle member leaving guild"""
+    logger.warning(f"➖ Member left guild {member.guild.id}: user {member.id}")
+    await handle_member_subscription_change(str(member.guild.id), str(member.id), "member_remove")
+
+
 async def main():
     """Main entry point"""
     try:
@@ -604,6 +918,9 @@ async def main():
             enabled=settings.tracing_enabled,
             sampler_name=settings.otel_traces_sampler,
             sampler_arg=settings.otel_traces_sampler_arg,
+            environment=settings.environment,
+            release=settings.sentry_release,
+            engine=async_engine,
         )
         start_worker_metrics_server(settings.worker_metrics_port)
         await start_rabbitmq_listener()

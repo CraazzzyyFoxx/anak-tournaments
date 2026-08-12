@@ -10,6 +10,18 @@ class HeroClass(StrEnum):
     support = "Support"
 
 
+class CatalogEntityType(StrEnum):
+    """Catalog entity an alias (or an unresolved-name miss) belongs to.
+
+    Match logs carry map/gamemode/hero names in the reporting client's locale,
+    so every catalog entity keeps a list of alternative names it answers to.
+    """
+
+    hero = "hero"
+    map = "map"
+    gamemode = "gamemode"
+
+
 class RankPlatform(StrEnum):
     """Overwatch competitive platform as exposed by OverFast."""
 
@@ -62,6 +74,53 @@ class RankCollectionSource(StrEnum):
     scheduled = "scheduled"
     registration = "registration"
     manual = "manual"
+
+
+class SubscriptionCheckState(StrEnum):
+    """Outcome of one persisted subscription check.
+
+    The first three mirror ``shared.subscriptions.SubscriptionState`` (the
+    tri-state admission contract). ``error`` exists only in the check log: the
+    resolver deliberately answers ``unknown`` and persists nothing when a
+    provider strategy throws, so without a distinct log value an outage would be
+    indistinguishable from a misconfigured provider.
+    """
+
+    active = "active"
+    inactive = "inactive"
+    unknown = "unknown"
+    error = "error"
+
+
+class SubscriptionCollectionSource(StrEnum):
+    """What triggered a subscription check."""
+
+    scheduled = "scheduled"
+    registration = "registration"
+    check_in = "check_in"
+    manual = "manual"
+    redeem = "redeem"
+
+
+class SubscriptionEnforcementStage(StrEnum):
+    """The EARLIEST admission gate a subscription requirement blocks at.
+
+    Ordered, not a set: ``registration`` implies check-in too. Requiring a
+    subscription to sign up while admitting an unsubscribed player at check-in
+    would be incoherent, so there is no "registration only" value to pick wrongly.
+
+    Off is not a member -- that is ``registration_form.require_subscription``
+    being false. Same shape as ``require_open_profile`` + ``open_profile_scope``
+    in the same table: one flag for whether, one value for how.
+    """
+
+    #: Blocks at sign-up (and at check-in). Only the automatically provable part
+    #: refuses at sign-up; anything a challenge code could still fix is deferred,
+    #: because that field is only offered at check-in.
+    registration = "registration"
+    #: Blocks at check-in only. Sign-up stays open to everybody, which is the
+    #: default: a roster is built at check-in, so that is where the answer matters.
+    check_in = "check_in"
 
 
 class LogEventType(StrEnum):
@@ -275,11 +334,29 @@ class EncounterResultStatus(StrEnum):
     DISPUTED = "disputed"
 
 
+class EncounterResultAuditAction(StrEnum):
+    """What moved an encounter's result. One row per transition.
+
+    ``confirm``/``reopen`` are admin actions; ``auto_confirm``/``auto_dispute``
+    are derived from the two captain reports; ``import`` is Challonge pulling a
+    remote result in; ``cascade_reset`` is the bracket un-playing an encounter
+    whose team slots changed upstream.
+    """
+
+    CONFIRM = "confirm"
+    REOPEN = "reopen"
+    AUTO_CONFIRM = "auto_confirm"
+    AUTO_DISPUTE = "auto_dispute"
+    IMPORT = "import"
+    CASCADE_RESET = "cascade_reset"
+
+
 class MapPoolEntryStatus(StrEnum):
     AVAILABLE = "available"
     PICKED = "picked"
     BANNED = "banned"
     PLAYED = "played"
+    PROTECTED = "protected"
 
 
 class MapPickSide(StrEnum):
@@ -304,6 +381,56 @@ class VetoSeedSource(StrEnum):
 
 class FirstPickRule(StrEnum):
     HIGHER_SEED = "higher_seed"
+
+
+class MapVetoMode(StrEnum):
+    POOL = "pool"
+    SLOTS = "slots"
+
+
+class FirstBanRotation(StrEnum):
+    FIXED = "fixed"
+    ALTERNATE = "alternate"
+    RESULT_WINNER_FIRST = "result_winner_first"
+    RESULT_LOSER_FIRST = "result_loser_first"
+    RESULT_LOSER_CHOICE = "result_loser_choice"
+
+
+class PickBanKind(StrEnum):
+    """Which catalog a :class:`PickBanConfig`/session pool draws from."""
+
+    MAP = "map"
+    HERO = "hero"
+
+
+class PickBanNoRepeatScope(StrEnum):
+    """Cross-round BAN memory rule for :class:`EncounterPickBanLedger`
+    exclusion. Protects are never recorded there, so they neither exclude nor
+    are excluded by anything under any scope.
+
+    ``NONE``: no cross-round memory (today's flat/slot veto behavior).
+    ``ENCOUNTER``: an item banned by EITHER side, anywhere earlier in this
+    encounter's series, is excluded from every later round's pool.
+    ``ENCOUNTER_SAME_SIDE``: excluded only for the side that banned it; the
+    opponent may still target it.
+    """
+
+    NONE = "none"
+    ENCOUNTER = "encounter"
+    ENCOUNTER_SAME_SIDE = "encounter_same_side"
+
+
+class MatchSource(StrEnum):
+    """Provenance of a :class:`~shared.models.matches.match.Match` row.
+
+    ``LOG_PARSER``: written by ``MatchLogFlow`` from an uploaded OW log —
+    ``time``/``log_name`` are populated, kill-feed/stats may follow.
+    ``CAPTAIN_REPORT``: written from a per-map dual captain confirmation with
+    no log — ``time``/``log_name`` stay NULL, there is no kill-feed/stats.
+    """
+
+    LOG_PARSER = "log_parser"
+    CAPTAIN_REPORT = "captain_report"
 
 
 class EncounterStatus(StrEnum):
@@ -353,11 +480,14 @@ class AbilityEvent(StrEnum):
 # these names and never leaks re-imported stdlib/typing helpers.
 __all__ = [
     "HeroClass",
+    "CatalogEntityType",
     "RankPlatform",
     "RankRole",
     "RankDivision",
     "RankCollectionStatus",
     "RankCollectionSource",
+    "SubscriptionCheckState",
+    "SubscriptionCollectionSource",
     "LogEventType",
     "LogStatsName",
     "StatDirection",

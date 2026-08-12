@@ -1,10 +1,11 @@
 "use client";
 
-import { ChevronDown, Clock3, ShieldCheck, Users } from "lucide-react";
+import Link from "next/link";
+import { useId } from "react";
+import { ArrowUpRight, ChevronDown, Clock3, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,64 +16,93 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import FlexIcon from "@/components/icons/FlexIcon";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { TONE_CLASS } from "@/components/admin/tone";
+import { getRoleIconName, ROLE_ACCENT } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickStrategy, DraftFormat } from "@/types/draft.types";
+import { isRoleSlotCode, orderSlotCodes, type RosterShape } from "@/lib/roster-shape";
 
-import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT, roundsForTeamSize } from "./setup-model";
+import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT } from "./setup-model";
 import type { DraftSetupConfig } from "./setup-types";
 
 interface DraftConfigStepProps {
   value: DraftSetupConfig;
   onChange: (next: DraftSetupConfig) => void;
+  /** Resolved on the server from the tournament; never editable here (T14 owns it). */
+  rosterShape: RosterShape;
+  tournamentId: number;
   locked?: boolean;
 }
 
 const PICK_TIME_PRESETS = [30, 45, 60, 90];
 const FORMATS: DraftFormat[] = ["snake", "linear", "custom"];
 
-export function DraftConfigStep({ value, onChange, locked = false }: DraftConfigStepProps) {
+export function DraftConfigStep({
+  value,
+  onChange,
+  rosterShape,
+  tournamentId,
+  locked = false
+}: DraftConfigStepProps) {
   const t = useTranslations("draftAdmin");
-  const rounds = roundsForTeamSize(value.teamSize);
+  // Straight off the server shape: deriving rounds from a size here is exactly
+  // the mirror this feature removes.
+  const rounds = rosterShape.draft_rounds;
+  const pickTimeLabelId = useId();
+  const formatLabelId = useId();
+  const roundRulesLabelId = useId();
 
   const patch = (next: Partial<DraftSetupConfig>) => onChange({ ...value, ...next });
-  const setTeamSize = (teamSize: number) => {
-    const nextRounds = roundsForTeamSize(teamSize);
-    patch({
-      teamSize,
-      roundRules: Array.from(
-        { length: nextRounds },
-        (_, index) => value.roundRules[index] ?? "linear"
-      )
-    });
-  };
 
   return (
     <div className="space-y-6">
       {locked && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+        <div className={cn("rounded-xl border px-4 py-3 text-sm", TONE_CLASS.warning)}>
           {t("configLocked")}
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="draft-team-size">{t("teamSize")}</Label>
-          <div className="relative">
-            <Users className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <NumberInput
-              id="draft-team-size"
-              className="pl-9"
-              integer
-              min={2}
-              max={9}
-              disabled={locked}
-              value={value.teamSize}
-              onValueChange={(next) => setTeamSize(next ?? 2)}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
+          <Label>{t("teamSize")}</Label>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm tabular-nums">
+            <span className="font-semibold">{rosterShape.team_size}</span>
+            {orderSlotCodes(rosterShape.slots).map((code) => {
+              const label = isRoleSlotCode(code) ? t(`roles.${code}`) : t("roles.flex");
+              return (
+                <span
+                  key={code}
+                  className="inline-flex items-center gap-1 text-muted-foreground"
+                  title={label}
+                >
+                  {isRoleSlotCode(code) ? (
+                    <PlayerRoleIcon
+                      role={getRoleIconName(code)}
+                      size={16}
+                      color={ROLE_ACCENT[code]}
+                      decorative
+                    />
+                  ) : (
+                    <FlexIcon width={16} height={16} />
+                  )}
+                  <span className="sr-only">{label}</span>×{rosterShape.slots[code]}
+                </span>
+              );
+            })}
+          </p>
+          <p className="text-xs tabular-nums text-muted-foreground">
             {t("roundsDerived", { rounds })}
           </p>
+          <p className="text-xs text-muted-foreground">{t("rosterShapeHint")}</p>
+          <Link
+            href={`/admin/tournaments/${tournamentId}/settings`}
+            className="inline-flex items-center text-xs font-medium text-primary hover:underline"
+          >
+            {t("openTournamentSettings")}
+            <ArrowUpRight className="ml-1 h-3.5 w-3.5" aria-hidden />
+          </Link>
         </div>
         <div className="space-y-2">
           <Label htmlFor="draft-team-count">{t("teamCount")}</Label>
@@ -91,43 +121,88 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
 
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <Clock3 className="h-4 w-4 text-muted-foreground" />
-          <Label htmlFor="draft-pick-time">{t("pickTime")}</Label>
+          <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden />
+          <span id={pickTimeLabelId} className="text-sm font-medium leading-none">
+            {t("pickTime")}
+          </span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {PICK_TIME_PRESETS.map((seconds) => (
-            <Button
-              key={seconds}
-              type="button"
-              size="sm"
+        <div className="flex flex-wrap items-center gap-3" role="group" aria-labelledby={pickTimeLabelId}>
+          {/* One segmented control instead of four standalone buttons: the presets
+              are a single choice, so they must not read as four separate widgets
+              next to the custom field. */}
+          <div className="inline-flex h-9 items-center gap-0.5 rounded-md border border-border/70 bg-card p-0.5">
+            {PICK_TIME_PRESETS.map((seconds) => (
+              <button
+                key={seconds}
+                type="button"
+                disabled={locked}
+                aria-pressed={value.pickTimeSeconds === seconds}
+                onClick={() => patch({ pickTimeSeconds: seconds })}
+                className={cn(
+                  "inline-flex h-8 min-w-13 items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  value.pickTimeSeconds === seconds
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {seconds}s
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="draft-pick-time" className="text-xs font-normal text-muted-foreground">
+              {t("customPickTime")}
+            </Label>
+            <NumberInput
+              id="draft-pick-time"
+              integer
+              min={10}
+              max={600}
               disabled={locked}
-              variant={value.pickTimeSeconds === seconds ? "default" : "outline"}
-              onClick={() => patch({ pickTimeSeconds: seconds })}
-            >
-              {seconds}s
-            </Button>
-          ))}
-          <NumberInput
-            id="draft-pick-time"
-            aria-label={t("customPickTime")}
-            integer
-            min={10}
-            max={600}
-            disabled={locked}
-            value={value.pickTimeSeconds}
-            onValueChange={(next) => patch({ pickTimeSeconds: next ?? 45 })}
-            className="h-9 w-24"
-          />
+              value={value.pickTimeSeconds}
+              onValueChange={(next) => patch({ pickTimeSeconds: next ?? 45 })}
+              className="h-9 w-20 tabular-nums"
+            />
+          </div>
         </div>
       </div>
 
       <div className="space-y-3">
-        <Label>{t("format")}</Label>
-        <div className="grid gap-3 md:grid-cols-3">
+        <span id={formatLabelId} className="text-sm font-medium leading-none">
+          {t("format")}
+        </span>
+        {/* radiogroup promises arrow-key traversal and a single tab stop, so the
+            group owns the arrows and only the checked option stays tabbable. */}
+        <div
+          className="grid gap-3 md:grid-cols-3"
+          role="radiogroup"
+          aria-labelledby={formatLabelId}
+          onKeyDown={(event) => {
+            if (locked) return;
+            const delta =
+              event.key === "ArrowRight" || event.key === "ArrowDown"
+                ? 1
+                : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                  ? -1
+                  : 0;
+            if (delta === 0) return;
+            event.preventDefault();
+            const index = Math.max(0, FORMATS.indexOf(value.format));
+            const next = FORMATS[(index + delta + FORMATS.length) % FORMATS.length];
+            patch({ format: next });
+            event.currentTarget
+              .querySelector<HTMLButtonElement>(`[data-format="${next}"]`)
+              ?.focus();
+          }}
+        >
           {FORMATS.map((format) => (
             <button
               key={format}
               type="button"
+              role="radio"
+              data-format={format}
+              tabIndex={value.format === format ? 0 : -1}
+              aria-checked={value.format === format}
               disabled={locked}
               onClick={() => patch({ format })}
               className={cn(
@@ -146,7 +221,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
                   <span
                     key={seat}
                     className={cn(
-                      "grid h-6 w-6 place-items-center rounded-md bg-muted text-[10px] font-semibold",
+                      "grid h-6 w-6 place-items-center rounded-md bg-muted text-xs font-semibold tabular-nums",
                       format === "snake" && index > 1 && "bg-primary/15 text-primary"
                     )}
                   >
@@ -166,7 +241,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
           value={value.autopickStrategy}
           onValueChange={(next) => patch({ autopickStrategy: next as DraftAutopickStrategy })}
         >
-          <SelectTrigger id="draft-autopick">
+          <SelectTrigger id="draft-autopick" aria-label={t("autopick")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -183,7 +258,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
       <details className="group rounded-xl border border-border/70 bg-muted/20">
         <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium">
           {t("advanced")}
-          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
         </summary>
         <div className="space-y-4 border-t border-border/60 px-4 py-4">
           <div className="flex items-start justify-between gap-4">
@@ -201,11 +276,19 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
           {value.format === "custom" && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                <Label>{t("roundRules")}</Label>
-                <Badge variant="secondary">{rounds}</Badge>
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" aria-hidden />
+                <span id={roundRulesLabelId} className="text-sm font-medium leading-none">
+                  {t("roundRules")}
+                </span>
+                <Badge variant="secondary" className="tabular-nums">
+                  {rounds}
+                </Badge>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div
+                className="grid gap-2 sm:grid-cols-2"
+                role="group"
+                aria-labelledby={roundRulesLabelId}
+              >
                 {Array.from({ length: rounds }, (_, index) => (
                   <Select
                     key={index}

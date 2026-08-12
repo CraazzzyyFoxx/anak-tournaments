@@ -29,7 +29,7 @@ cache_invalidation = importlib.import_module("src.services.tournament.cache_inva
 # prefix the key starts with, so any pattern that does not start with one of
 # these is unroutable and raises ``NotConfiguredError`` at runtime.
 _CONFIGURED_PREFIXES = ("fastapi:", "backend:")
-_REASONS = ("bracket_changed", "results_changed", "structure_changed")
+_REASONS = ("bracket_changed", "results_changed", "structure_changed", "registration_changed")
 
 
 class TournamentCacheInvalidationTests(TestCase):
@@ -47,6 +47,21 @@ class TournamentCacheInvalidationTests(TestCase):
         self.assertTrue(any("encounters" in pattern for pattern in patterns))
         self.assertTrue(any("tournaments/42" in pattern for pattern in patterns))
         self.assertTrue(any("teams" in pattern for pattern in patterns))
+        self.assertTrue(any("standings" in pattern for pattern in patterns))
+
+    def test_registration_change_invalidates_only_the_tournament_detail_read(self) -> None:
+        # Registration/participants-list reads have no tournament-service-side
+        # cache today (only the gateway's response cache, invalidated off the
+        # same WS topic separately). But the tournament-detail read IS cached
+        # and embeds live participants_count/registrations_count, which DO
+        # change on every registration write — teams/standings/encounters do
+        # not, so a registration edit must not blow those away too.
+        patterns = cache_invalidation.tournament_cache_patterns(42, "registration_changed")
+
+        self.assertTrue(any("tournaments/42" in pattern for pattern in patterns))
+        self.assertFalse(any("teams" in pattern for pattern in patterns))
+        self.assertFalse(any("standings" in pattern for pattern in patterns))
+        self.assertFalse(any("encounters" in pattern for pattern in patterns))
 
     def test_every_pattern_is_routable(self) -> None:
         # cashews has no default backend, so a pattern that matches no registered

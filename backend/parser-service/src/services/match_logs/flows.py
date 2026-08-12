@@ -21,6 +21,7 @@ from shared.schemas.events import (
 from src import models
 from src.core import enums, errors, pagination
 from src.core.config import settings
+from src.services import catalog_aliases
 from src.services.baselines import service as baselines_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
@@ -45,10 +46,8 @@ def _winner_team_id(encounter: models.Encounter) -> int | None:
 
 
 def _encounter_is_completed(encounter: models.Encounter) -> bool:
-    return (
-        encounter.status == enums.EncounterStatus.COMPLETED
-        or encounter.result_status == enums.EncounterResultStatus.CONFIRMED
-    )
+    # Single form (encres0001 pins it to result_status == CONFIRMED).
+    return encounter.status == enums.EncounterStatus.COMPLETED
 
 
 async def _enqueue_match_log_tournament_events(
@@ -95,11 +94,26 @@ async def _enqueue_match_log_tournament_events(
 
 
 class MatchLogProcessor:
-    def __init__(self, tournament: models.Tournament, name: str, data_in: list[str], s3: S3Client):
+    def __init__(
+        self,
+        tournament: models.Tournament,
+        name: str,
+        data_in: list[str],
+        s3: S3Client,
+        log_record_id: int | None = None,
+    ):
         self.tournament: models.Tournament = tournament
         self.filename: str = name
+        # The ingestion row this run came from. Recorded on every match it
+        # writes so provenance is a foreign key, not a filename comparison
+        # across two differently normalised columns.
+        self.log_record_id: int | None = log_record_id
         self.df: pd.DataFrame = self._load_and_format_data(data_in)
-        self.heroes_map: dict[str, models.Hero] = {}  # Hero cache
+        self.heroes_map: dict[str, models.Hero] = {}  # Hero cache: canonical names + aliases
+        # Hero names that matched neither a canonical name nor an alias. Batched
+        # here rather than written on the spot: `get_hero` is synchronous (no
+        # `await` possible) and runs once per kill event. Flushed in `start()`.
+        self.hero_misses: set[str] = set()
         self._s3 = s3
 
     def _load_and_format_data(self, data_in: list[str]) -> pd.DataFrame:
@@ -244,28 +258,32 @@ class MatchLogProcessor:
 
         row_data = match_start_events.iloc[0]["data"]
         gamemode_raw, map_name_raw = row_data[1], row_data[0]
-        gamemode = enums.game_mode_dict.get(gamemode_raw, gamemode_raw)
-        map_name = enums.map_name_dict.get(map_name_raw, map_name_raw)
-        return await map_flows.get_by_name_and_gamemode(session, map_name, gamemode)
+        # Raw, untranslated: `aliases` in the catalog carries what the three
+        # hardcoded dicts used to, and an unresolved name lands in the miss queue.
+        return await map_flows.get_by_name_or_alias_and_gamemode(
+            session, map_name_raw, gamemode_raw, log_record_id=self.log_record_id
+        )
 
     async def _preload_data(self, session: AsyncSession):
         heroes_db, _ = await hero_service.get_all(session, pagination.PaginationSortParams(per_page=-1))
-        self.heroes_map = {hero.name: hero for hero in heroes_db}
-        for alias, real_name in enums.hero_translation.items():
-            if real_name in self.heroes_map and alias not in self.heroes_map:
-                self.heroes_map[alias] = self.heroes_map[real_name]
+        self.heroes_map = {}
+        for hero in heroes_db:
+            self.heroes_map[hero.name] = hero
+            # `setdefault`, not `[alias] =`: one hero's canonical name must never
+            # be shadowed by another hero's alias.
+            for alias in hero.aliases:
+                self.heroes_map.setdefault(alias, hero)
 
     def get_hero(self, hero_name: str) -> models.Hero:
-        hero_name_translated = enums.hero_translation.get(hero_name, hero_name)
-        hero = self.heroes_map.get(hero_name_translated)
+        hero = self.heroes_map.get(hero_name)
         if not hero:
+            # A hero miss is soft — all three callers swallow it (kill skipped,
+            # `hero_id=None`, stat row skipped). So the name has to reach the
+            # queue, otherwise the data loss shows up only in the service log.
+            self.hero_misses.add(hero_name)
             raise errors.ApiHTTPException(
                 status_code=404,
-                detail=[
-                    errors.ApiExc(
-                        code="hero_not_found", msg=f"Hero '{hero_name_translated}' not found in preloaded cache."
-                    )
-                ],
+                detail=[errors.ApiExc(code="hero_not_found", msg=f"Hero '{hero_name}' not found in preloaded cache.")],
             )
         return hero
 
@@ -975,6 +993,7 @@ class MatchLogProcessor:
                 away_team_id=away_team_db.id,
                 home_score=home_score,
                 away_score=away_score,
+                log_record_id=self.log_record_id,
                 commit=False,
             )
             encounter = await encounter_service.update_encounter_logs(
@@ -994,6 +1013,8 @@ class MatchLogProcessor:
             match_model.home_team_id = home_team_db.id
             match_model.away_team_id = away_team_db.id
             match_model.log_name = self.filename
+            if self.log_record_id is not None:
+                match_model.log_record_id = self.log_record_id
             session.add(match_model)
             await session.flush()
             logger.info(f"Match updated [id={match_model.id}] for log {self.filename}")
@@ -1013,6 +1034,13 @@ class MatchLogProcessor:
 
         logger.info(f"Processing stats for match {match_model.id}")
         stats = await self.create_stats(session, match_model, players_map, kill_feed=kill_feed_db_objects)
+
+        # Own transaction, and before the commit below, so the queue records the
+        # gaps whether this log ends up committed or rolled back.
+        if self.hero_misses:
+            await catalog_aliases.record_misses(
+                enums.CatalogEntityType.hero, self.hero_misses, log_record_id=self.log_record_id
+            )
 
         all_objects = kill_feed_db_objects + events + stats
         try:
@@ -1248,12 +1276,28 @@ async def process_match_log(
     from src.services.match_logs import log_records as record_service
 
     tournament = await tournament_flows.get(session, tournament_id, [])
+    # LogProcessingRecord.filename is always a bare object name — uploads.py
+    # rejects "/" outright — but the bulk path feeds us the full S3 key
+    # ("logs/{tournament_id}/{name}") straight from list_objects. Matching
+    # records on the prefixed form found nothing, forked a duplicate "manual"
+    # row and left the uploaded one on `pending` ("Queued") forever, so key
+    # every record lookup on the bare name.
+    object_name = filename.rsplit("/", 1)[-1]
     logger.info(f"Fetching logs from S3 for tournament {tournament.id} and file {filename}")
 
     raw_bytes = await s3_service.get_log_by_filename(s3, tournament.id, filename)
     if not raw_bytes:
         msg = f"Log file {filename} not found or empty in S3"
-        logger.error(msg)
+        # WARNING, not ERROR: a missing/empty object is a state of the uploaded
+        # data, not a service defect — and it is already reported three other
+        # ways (the terminal `failed` record below, the 404 raised to the caller,
+        # and the `failed` result published to the bot). As an ERROR it opened a
+        # second Sentry group for every occurrence that the raise below already
+        # reported, so one missing file cost two issues and 300+ events.
+        logger.warning(msg)
+        # Terminal, not silent: this fires before set_processing, so without it
+        # the row stays `pending` and the stall reaper requeues it forever.
+        await record_service.fail_unstarted(session, tournament_id, object_name, msg)
         if is_raise:
             raise errors.ApiHTTPException(
                 status_code=404,
@@ -1264,7 +1308,8 @@ async def process_match_log(
     max_log_bytes = settings.max_match_log_bytes
     if len(raw_bytes) > max_log_bytes:
         msg = f"Log file {filename} exceeds the maximum size of {max_log_bytes} bytes"
-        logger.error(msg)
+        logger.warning(msg)  # same rationale as the missing-object branch above
+        await record_service.fail_unstarted(session, tournament_id, object_name, msg)
         if is_raise:
             raise errors.ApiHTTPException(
                 status_code=413,
@@ -1274,17 +1319,23 @@ async def process_match_log(
 
     content_hash = record_service.compute_content_hash(raw_bytes)
 
-    if await record_service.is_already_processed(session, tournament_id, filename, content_hash):
+    if await record_service.is_already_processed(session, tournament_id, object_name, content_hash):
         logger.info(
-            f"Log {filename} (tournament {tournament_id}) already processed with hash {content_hash[:8]}…, skipping."
+            f"Log {object_name} (tournament {tournament_id}) already processed with hash {content_hash[:8]}…, skipping."
         )
-        await record_service.finish_duplicate_record(session, tournament_id, filename, content_hash)
+        await record_service.finish_duplicate_record(session, tournament_id, object_name, content_hash)
         return
 
-    record = await record_service.set_processing(session, tournament_id, filename, content_hash=content_hash)
+    record = await record_service.set_processing(session, tournament_id, object_name, content_hash=content_hash)
 
     decoded_lines = [line.decode() for line in raw_bytes.split(b"\n") if line]
-    processor = MatchLogProcessor(tournament, filename.split("/")[-1], decoded_lines, s3)
+    processor = MatchLogProcessor(
+        tournament,
+        object_name,
+        decoded_lines,
+        s3,
+        log_record_id=record.id if record is not None else None,
+    )
     try:
         await processor.start(session, is_raise=is_raise)
         if record is not None:

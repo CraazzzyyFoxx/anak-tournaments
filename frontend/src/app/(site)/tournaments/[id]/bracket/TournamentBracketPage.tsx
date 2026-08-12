@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 
 import { BracketView } from "@/components/BracketView";
 import StandingsTable from "@/components/StandingsTable";
@@ -11,7 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { notify } from "@/lib/notify";
-import { getApiErrorMessage, isConfirmOwnSubmissionError } from "@/lib/api-error";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import captainService from "@/services/captain.service";
@@ -24,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { TournamentPageState } from "../_components/TournamentPageState";
 import { TournamentBracketSkeleton } from "../_components/TournamentSkeletons";
+import { UpdatingBadge } from "../_components/UpdatingBadge";
+import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 import styles from "../TournamentDetail.module.css";
 import { isTournamentStatusEnded } from "@/lib/tournament-status";
 import { createBracketQueryPlan, deriveBracketLoadState } from "./bracketData";
@@ -32,7 +32,7 @@ const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
 
 export { getBracketRefetchInterval } from "./bracketData";
 
-interface TournamentBracketPageProps {
+interface TournamentBracketViewProps {
   tournament: Tournament;
 }
 
@@ -44,10 +44,8 @@ function GroupStagePanel({
   stages,
   onEdit,
   onReport,
-  onConfirm,
   canEdit,
   canReport,
-  canConfirm,
   bracketTabs
 }: {
   stage: Stage;
@@ -57,10 +55,8 @@ function GroupStagePanel({
   stages: Stage[];
   onEdit?: (encounter: Encounter) => void;
   onReport?: (encounter: Encounter) => void;
-  onConfirm?: (encounter: Encounter) => void;
   canEdit?: (encounter: Encounter) => boolean;
   canReport?: (encounter: Encounter) => boolean;
-  canConfirm?: (encounter: Encounter) => boolean;
   bracketTabs?: Array<{
     key: string;
     href: string;
@@ -77,10 +73,10 @@ function GroupStagePanel({
 
   return (
     <Tabs
-      defaultValue={hasStandings ? "matches" : "matches"}
-      className="overflow-hidden rounded-2xl border border-[var(--aqt-border)] bg-[var(--aqt-card)]"
+      defaultValue="matches"
+      className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
     >
-      <div className="flex flex-col gap-3 border-b border-[var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         {bracketTabs && bracketTabs.length > 1 ? (
           <div className="min-w-0">
             <div className="flex items-center gap-3">
@@ -96,32 +92,36 @@ function GroupStagePanel({
                 ))}
               </div>
               {stageItem && (
-                <span className="text-sm font-semibold text-white/35 uppercase tracking-[0.12em]">
+                <span className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
                   / {stageItem.name}
                 </span>
               )}
             </div>
-            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/35">{subtitle}</p>
+            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+              {subtitle}
+            </p>
           </div>
         ) : (
           <div className="min-w-0">
-            <h3 className="truncate text-lg font-semibold text-white">{title}</h3>
-            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/35">{subtitle}</p>
+            <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">{title}</h3>
+            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+              {subtitle}
+            </p>
           </div>
         )}
 
-        <TabsList className="h-auto justify-start rounded-xl border border-[var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[var(--aqt-fg-muted)]">
+        <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
           {hasStandings && (
             <TabsTrigger
               value="standings"
-              className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[var(--aqt-teal)] data-[state=active]:shadow-none"
+              className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
             >
               {t("common.standings")}
             </TabsTrigger>
           )}
           <TabsTrigger
             value="matches"
-            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[var(--aqt-teal)] data-[state=active]:shadow-none"
+            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
           >
             {t("common.bracket")}
           </TabsTrigger>
@@ -130,29 +130,34 @@ function GroupStagePanel({
 
       {hasStandings && (
         <TabsContent value="standings" className="mt-0">
-          <div className="overflow-x-auto">
+          <div className="min-w-0 overflow-x-auto">
             <StandingsTable standings={standings} stages={stages} is_groups />
           </div>
         </TabsContent>
       )}
 
       <TabsContent value="matches" className="mt-0 p-4">
-        <BracketView
-          encounters={encounters}
-          type={stage.stage_type}
-          onEdit={onEdit}
-          onReport={onReport}
-          onConfirm={onConfirm}
-          canEdit={canEdit}
-          canReport={canReport}
-          canConfirm={canConfirm}
-        />
+        <div
+          role="region"
+          aria-label={t("tournamentDetail.bracketRegion")}
+          tabIndex={0}
+          className={styles.bracketScroller}
+        >
+          <BracketView
+            encounters={encounters}
+            type={stage.stage_type}
+            onEdit={onEdit}
+            onReport={onReport}
+            canEdit={canEdit}
+            canReport={canReport}
+          />
+        </div>
       </TabsContent>
     </Tabs>
   );
 }
 
-export default function TournamentBracketPage({ tournament }: TournamentBracketPageProps) {
+function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
   const searchParams = useSearchParams();
   const selectedStageParam = searchParams.get("stage");
   const viewParam = searchParams.get("view");
@@ -183,95 +188,50 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
   const standingsQuery = useQuery(queryPlan.standings);
   const stages = stagesQuery.data ?? [];
 
+  const captainPlayerIds = useMemo(
+    () => new Set((authUser?.linkedPlayers ?? []).map((p) => p.playerId)),
+    [authUser?.linkedPlayers]
+  );
+  const isEncounterCaptain = (enc: Encounter) => {
+    const homeCaptain = enc.home_team?.captain_id;
+    const awayCaptain = enc.away_team?.captain_id;
+    return (
+      (homeCaptain != null && captainPlayerIds.has(homeCaptain)) ||
+      (awayCaptain != null && captainPlayerIds.has(awayCaptain))
+    );
+  };
   const canEdit = isAdmin ? () => true : undefined;
-  const canReport =
-    isAuthenticated && !isAdmin
-      ? (enc: Encounter) =>
-          enc.result_status === "none" || enc.result_status === "disputed"
-      : undefined;
+  const canReport = isAuthenticated
+    ? (enc: Encounter) => enc.result_status !== "confirmed" && isEncounterCaptain(enc)
+    : undefined;
   const handleEdit = isAdmin ? (enc: Encounter) => setEditEncounter(enc) : undefined;
-  const handleReport =
-    isAuthenticated && !isAdmin
-      ? async (enc: Encounter) => {
-          try {
-            const [fresh, role] = await Promise.all([
-              encounterService.getEncounter(enc.id),
-              captainService.getMyRole(enc.id)
-            ]);
-            if (fresh.result_status !== "none" && fresh.result_status !== "disputed") {
-              // The result was submitted/confirmed after this bracket data was
-              // cached; report is no longer valid. Tell the captain why, then
-              // refresh so the stale report action disappears.
-              const confirmed = fresh.result_status === "confirmed";
-              notify.error(
-                confirmed
-                  ? t("matchReport.alreadyConfirmedTitle")
-                  : t("matchReport.pendingSubmissionTitle"),
-                {
-                  description: confirmed
-                    ? t("matchReport.alreadyConfirmedBody")
-                    : t("matchReport.pendingSubmissionBody")
-                }
-              );
-              void encountersQuery.refetch();
-              return;
-            }
-            if (role.side === null) {
-              notify.error(t("common.noAccess"), { description: t("common.notCaptain") });
-              return;
-            }
-            setReportEncounter(fresh);
-          } catch {
-            notify.error(t("common.error"), { description: t("common.roleVerificationFailed") });
-          }
-        }
-      : undefined;
-
-  const canConfirm =
-    isAuthenticated && !isAdmin
-      ? (enc: Encounter) => enc.result_status === "pending_confirmation"
-      : undefined;
-  const handleConfirm =
-    isAuthenticated && !isAdmin
-      ? async (enc: Encounter) => {
-          try {
-            const [fresh, role] = await Promise.all([
-              encounterService.getEncounter(enc.id),
-              captainService.getMyRole(enc.id)
-            ]);
-            if (fresh.result_status !== "pending_confirmation") {
-              // Bracket data was stale — nothing pending to confirm anymore.
-              notify.error(t("matchReport.nothingToConfirmTitle"), {
-                description: t("matchReport.nothingToConfirmBody")
-              });
-              void encountersQuery.refetch();
-              return;
-            }
-            if (role.side === null) {
-              notify.error(t("common.noAccess"), { description: t("common.notCaptain") });
-              return;
-            }
-            await captainService.confirmResult(enc.id);
-            notify.success(t("matchReport.confirmedSuccess"));
-            // The encounter status flips synchronously, so refetch it now for
-            // instant feedback. Standings are rebuilt by an async recalc job —
-            // they refresh via the realtime `results_changed` event once the job
-            // finishes; refetching here would only re-fetch pre-recalc rows.
-            await encountersQuery.refetch();
-          } catch (error) {
-            if (isConfirmOwnSubmissionError(error)) {
-              notify.error(t("matchReport.cannotConfirmOwnTitle"), {
-                description: t("matchReport.cannotConfirmOwnBody")
-              });
-              return;
-            }
-            notify.apiError(error, {
-              title: t("matchReport.confirmErrorMessage"),
-              description: getApiErrorMessage(error)
+  const handleReport = isAuthenticated
+    ? async (enc: Encounter) => {
+        try {
+          const [fresh, role] = await Promise.all([
+            encounterService.getEncounter(enc.id),
+            captainService.getMyRole(enc.id)
+          ]);
+          if (fresh.result_status === "confirmed") {
+            // The result was confirmed after this bracket data was cached; the
+            // report action is no longer valid. Tell the captain why, then
+            // refresh so the stale report action disappears.
+            notify.error(t("matchReport.confirmedLockedTitle"), {
+              description: t("matchReport.confirmedLockedBody")
             });
+            void encountersQuery.refetch();
+            return;
           }
+          if (role.side === null) {
+            notify.error(t("common.noAccess"), { description: t("common.notCaptain") });
+            return;
+          }
+          setReportEncounter(fresh);
+        } catch {
+          notify.error(t("common.error"), { description: t("common.roleVerificationFailed") });
         }
-      : undefined;
+      }
+    : undefined;
 
   const groupStages = stages.filter(
     (stage) => stage.stage_type === "round_robin" || stage.stage_type === "swiss"
@@ -457,17 +417,7 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
 
   const content = (
     <div className={styles.publicDataPage} data-page-section="bracket">
-      {loadState.isUpdating && loadState.kind !== "refresh-error" ? (
-        <span
-          className={styles.updatingBadge}
-          role="status"
-          aria-live="polite"
-          aria-label={t("tournamentDetail.pageState.updating")}
-          title={t("tournamentDetail.pageState.updating")}
-        >
-          <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
-        </span>
-      ) : null}
+      {loadState.isUpdating && loadState.kind !== "refresh-error" ? <UpdatingBadge /> : null}
       {activeStages.length > 0 ? (
         <div className="space-y-6">
           {shouldShowGroupStage
@@ -481,10 +431,8 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
                   stages={stages}
                   onEdit={handleEdit}
                   onReport={handleReport}
-                  onConfirm={handleConfirm}
                   canEdit={canEdit}
                   canReport={canReport}
-                  canConfirm={canConfirm}
                   bracketTabs={index === 0 ? bracketTabs : undefined}
                 />
               ))
@@ -494,7 +442,7 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
                   return (
                     <div
                       key={stage.id}
-                      className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-8 text-center text-muted-foreground"
+                      className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-8 text-center text-[color:var(--aqt-fg-muted)]"
                     >
                       {t("common.noMatches", { stage: stage.name })}
                     </div>
@@ -510,9 +458,9 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
                   <Tabs
                     key={stage.id}
                     defaultValue="bracket"
-                    className="overflow-hidden rounded-2xl border border-[var(--aqt-border)] bg-[var(--aqt-card)]"
+                    className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
                   >
-                    <div className="flex flex-col gap-3 border-b border-[var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                       {bracketTabs.length > 1 ? (
                         <div className="min-w-0">
                           <div className="stage-tabs">
@@ -526,33 +474,33 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
                               </Link>
                             ))}
                           </div>
-                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/35">
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
                             {stage.stage_type.replace(/_/g, " ")}
                           </p>
                         </div>
                       ) : (
                         <div className="min-w-0">
-                          <h3 className="truncate text-lg font-semibold text-white">
+                          <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
                             {stage.name}
                           </h3>
-                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/35">
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
                             {stage.stage_type.replace(/_/g, " ")}
                           </p>
                         </div>
                       )}
 
-                      <TabsList className="h-auto justify-start rounded-xl border border-[var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[var(--aqt-fg-muted)]">
+                      <TabsList className="h-auto justify-start rounded-xl border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] p-1 text-[color:var(--aqt-fg-muted)]">
                         {hasPlayoffStandings && (
                           <TabsTrigger
                             value="standings"
-                            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[var(--aqt-teal)] data-[state=active]:shadow-none"
+                            className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
                           >
                             {t("common.standings")}
                           </TabsTrigger>
                         )}
                         <TabsTrigger
                           value="bracket"
-                          className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[var(--aqt-teal)] data-[state=active]:shadow-none"
+                          className="rounded-lg px-4 py-2 text-sm data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-none"
                         >
                           {t("common.bracket")}
                         </TabsTrigger>
@@ -561,7 +509,7 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
 
                     {hasPlayoffStandings && (
                       <TabsContent value="standings" className="mt-0">
-                        <div className="overflow-x-auto">
+                        <div className="min-w-0 overflow-x-auto">
                           <StandingsTable
                             standings={stagePlayoffStandings}
                             stages={stages}
@@ -574,20 +522,25 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
 
                     <TabsContent value="bracket" className="mt-0 p-4">
                       {encounters.length === 0 ? (
-                        <div className="py-8 text-center text-muted-foreground">
+                        <div className="py-8 text-center text-[color:var(--aqt-fg-muted)]">
                           {t("common.noMatches", { stage: stage.name })}
                         </div>
                       ) : (
-                        <BracketView
-                          encounters={encounters}
-                          type={stage.stage_type}
-                          onEdit={handleEdit}
-                          onReport={handleReport}
-                          onConfirm={handleConfirm}
-                          canEdit={canEdit}
-                          canReport={canReport}
-                          canConfirm={canConfirm}
-                        />
+                        <div
+                          role="region"
+                          aria-label={t("tournamentDetail.bracketRegion")}
+                          tabIndex={0}
+                          className={styles.bracketScroller}
+                        >
+                          <BracketView
+                            encounters={encounters}
+                            type={stage.stage_type}
+                            onEdit={handleEdit}
+                            onReport={handleReport}
+                            canEdit={canEdit}
+                            canReport={canReport}
+                          />
+                        </div>
                       )}
                     </TabsContent>
                   </Tabs>
@@ -633,4 +586,25 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
   }
 
   return content;
+}
+
+/**
+ * Resolves the shared tournament overview so the route file stays a one-line
+ * delegation, matching every other tournament sub-route. The overview is
+ * already primed by the layout, so this is a cache read in practice — the
+ * guards below only fire if that layout contract ever changes.
+ */
+export default function TournamentBracketPage({ tournamentId }: { tournamentId: number }) {
+  const tournamentQuery = useTournamentQuery(tournamentId);
+
+  if (!tournamentQuery.data) {
+    if (tournamentQuery.isError) {
+      return (
+        <TournamentPageState state="initial-error" onRetry={() => void tournamentQuery.refetch()} />
+      );
+    }
+    return <TournamentBracketSkeleton />;
+  }
+
+  return <TournamentBracketView tournament={tournamentQuery.data} />;
 }

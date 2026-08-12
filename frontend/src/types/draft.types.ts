@@ -1,5 +1,7 @@
 // Live Draft types — mirror the balancer-service DTOs (src/schemas/draft.py).
 
+import type { RosterShape, RosterSlotCode } from "@/lib/roster-shape";
+
 export type DraftStatus = "setup" | "ready" | "live" | "paused" | "completed" | "cancelled";
 
 export type DraftFormat = "snake" | "linear" | "custom";
@@ -18,7 +20,9 @@ export interface DraftSession {
   format: DraftFormat;
   rounds: number;
   pick_time_seconds: number;
-  team_size: number;
+  // The shape the session was created with. There is no `team_size` field: the
+  // server resolves the shape and every derived number lives on it.
+  roster_shape: RosterShape;
   current_pick_id: number | null;
   pool_source: DraftPoolSource;
   source_balance_id: number | null;
@@ -28,6 +32,8 @@ export interface DraftSession {
   export_status: string | null;
   settings_json: Record<string, any>;
   version: number;
+  /** Null only for a session the server has not persisted yet. */
+  created_at: string | null;
 }
 
 export interface DraftTeam {
@@ -102,14 +108,18 @@ export interface DraftSuggestionsResponse {
   suggestions: DraftSuggestion[];
 }
 
+// The server declares `slot_code` as a plain string, but the value set is closed:
+// `shared.domain.roster_shape` rejects anything outside `ROSTER_SLOT_CODES`. The
+// narrower type is what lets these codes index role-keyed lookups and message
+// keys without a cast.
 export interface DraftSlot {
   team_id: number;
-  role: DraftRole;
+  slot_code: RosterSlotCode;
   ordinal: number;
 }
 
-export interface DraftRoleDeficit {
-  role: DraftRole;
+export interface DraftSlotDeficit {
+  slot_code: RosterSlotCode;
   unmatched_slots: number;
   eligible_players: number;
 }
@@ -119,7 +129,7 @@ export interface DraftFeasibility {
   total_open_slots: number;
   matched_slots: number;
   unmatched_slots: DraftSlot[];
-  role_deficits: DraftRoleDeficit[];
+  slot_deficits: DraftSlotDeficit[];
   blocking_player_ids: number[];
   reason_code: string | null;
 }
@@ -189,9 +199,7 @@ export interface DraftSessionCreateRequest {
   pool_source?: DraftPoolSource;
   source_balance_id?: number | null;
   format?: DraftFormat;
-  rounds?: number;
   pick_time_seconds?: number;
-  team_size?: number;
   autopick_strategy?: DraftAutopickStrategy;
   allow_admin_override?: boolean;
   settings?: Record<string, unknown>;

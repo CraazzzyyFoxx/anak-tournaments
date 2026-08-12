@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.services import social_identity
 from src import models
@@ -64,16 +65,18 @@ async def list_active_registrations_for_balancer(
     session: AsyncSession,
     tournament_id: int,
 ) -> list[models.BalancerRegistration]:
+    workspace_id_expr = (
+        sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id).scalar_subquery()
+    )
     result = await session.execute(
         sa.select(models.BalancerRegistration)
         .where(
             models.BalancerRegistration.tournament_id == tournament_id,
             models.BalancerRegistration.deleted_at.is_(None),
             models.BalancerRegistration.status == "approved",
-            models.BalancerRegistration.exclude_from_balancer.is_(False),
             # Mirror the panel's "in balancer" rule (load_pool): a registration is
-            # part of the pool only once it has been added (balancer_status set).
-            models.BalancerRegistration.balancer_status != "not_in_balancer",
+            # part of the pool only once it has been added and isn't excluded.
+            balancer_pool_included_clause(models.BalancerRegistration.balancer_status, workspace_id_expr),
         )
         .options(selectinload(models.BalancerRegistration.roles))
         .order_by(models.BalancerRegistration.battle_tag_normalized.asc().nullslast())
@@ -122,6 +125,8 @@ def _registration_identity_handles(registration: models.BalancerRegistration) ->
         handles.append((SocialProvider.DISCORD, registration.discord_nick))
     if registration.twitch_nick:
         handles.append((SocialProvider.TWITCH, registration.twitch_nick))
+    if registration.boosty_nick:
+        handles.append((SocialProvider.BOOSTY, registration.boosty_nick))
     return handles
 
 
