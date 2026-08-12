@@ -50,6 +50,7 @@ import UnifiedRegistrationForm from "@/components/registration/UnifiedRegistrati
 import BalancerRegistrationsColumnPicker from "@/components/balancer/registrations/_components/BalancerRegistrationsColumnPicker";
 import RegistrationRowActions from "@/components/balancer/registrations/_components/RegistrationRowActions";
 import RankHistory from "@/components/RankHistory";
+import { AuditTrail } from "@/components/admin/AuditTrail";
 import {
   type BalancerRegistrationColumnDefinition,
   buildBalancerRegistrationColumns
@@ -1367,22 +1368,32 @@ export default function RegistrationsTable({
               public multi-step look and hierarchy.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3.5 sm:px-5">
+          <div className="max-h-[calc(100vh-12rem)] space-y-4 overflow-y-auto px-4 py-3.5 sm:px-5">
             {editingRegistration && (
-              <UnifiedRegistrationForm
-                mode="admin"
-                tournamentId={tournamentId as number}
-                workspaceId={workspaceId as number}
-                formConfig={roleForm}
-                initialData={editingRegistration}
-                onSubmit={async (payload) => {
-                  await updateMutation.mutateAsync(payload);
-                }}
-                onCancel={() => {
-                  setEditingRegistration(null);
-                }}
-                submitPending={updateMutation.isPending}
-              />
+              <>
+                <UnifiedRegistrationForm
+                  mode="admin"
+                  tournamentId={tournamentId as number}
+                  workspaceId={workspaceId as number}
+                  formConfig={roleForm}
+                  initialData={editingRegistration}
+                  onSubmit={async (payload) => {
+                    await updateMutation.mutateAsync(payload);
+                  }}
+                  onCancel={() => {
+                    setEditingRegistration(null);
+                  }}
+                  submitPending={updateMutation.isPending}
+                />
+                {/* Below the editor on purpose, as on the tournament settings tab:
+                    history is for after the fact, but it belongs on the same
+                    screen as the change it explains. */}
+                <AuditTrail
+                  entityType="registration"
+                  entityId={editingRegistration.id}
+                  workspaceId={workspaceId as number}
+                />
+              </>
             )}
           </div>
         </DialogContent>

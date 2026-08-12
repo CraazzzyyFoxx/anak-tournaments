@@ -27,6 +27,7 @@ const ENTITY_LABELS: Record<string, string> = {
   permission: "Permission",
   player: "Player",
   player_sub_role: "Sub-role",
+  registration: "Registration",
   role: "Role",
   stage: "Stage",
   stage_item: "Stage item",
@@ -67,6 +68,22 @@ const ACTION_PHRASES: Record<string, string> = {
   "player_sub_role.delete": "Sub-role deactivated",
   "role.assign": "Role granted to a user",
   "role.remove": "Role taken from a user",
+  // Registration lifecycle. The bespoke admin handlers write these; only
+  // create/update/delete fall out of `<entity> <verb>` on their own.
+  "registration.approve": "Registration approved",
+  "registration.balancer_include": "Registration added to the balancer pool",
+  "registration.balancer_status": "Registration balancer status changed",
+  // Bulk rows are filed on the tournament, not the registration: the phrase has
+  // to say so, or a reader takes the target for the row that changed.
+  "registration.bulk_approve": "Registrations approved in bulk",
+  "registration.bulk_balancer_include": "Registrations added to the balancer pool in bulk",
+  "registration.bulk_balancer_status": "Registration balancer statuses changed in bulk",
+  "registration.check_in": "Registration checked in",
+  "registration.check_in_undo": "Registration check-in undone",
+  "registration.rank_autofill": "Registration ranks autofilled",
+  "registration.reject": "Registration rejected",
+  "registration.restore": "Registration restored",
+  "registration.withdraw": "Registration withdrawn",
   "workspace.branding_update": "Workspace branding changed",
   // Kept alongside `domain_set`: clearing a custom domain is its own endpoint
   // with its own security meaning, and takes a workspace off its own hostname.
