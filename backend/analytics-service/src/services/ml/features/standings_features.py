@@ -1,14 +1,20 @@
-"""Standings v2 — pairwise encounter feature builder.
+"""Standings v2 — the two pairwise feature frames.
 
-For every historical ``Encounter`` we want a feature row with home/away
-strength summaries plus the realised label ``home_won``. The features are
-re-derived from the lighter-weight ``extract_encounter_features`` extractor
-and enriched with OpenSkill ``mu`` snapshots and per-team mean ``Performance v2
-raw_value`` (when available).
+:func:`build_standings_training_frame` is the **labelled** one: one row per
+historical ``Encounter``, carrying home/away strength summaries plus the
+realised ``home_won``. Features are re-derived from the lighter-weight
+``extract_encounter_features`` extractor and enriched with OpenSkill ``mu``
+snapshots and per-team mean ``Performance v2 raw_value`` (when available). It
+trains the win-probability classifier and also backs Match Quality scoring.
+
+:func:`build_standings_forecast_frame` is the **unlabelled** one that Stage B
+simulates: a virtual double round robin over the registered teams. It is
+deliberately not encounter-driven — see its docstring.
 """
 
 from __future__ import annotations
 
+import itertools
 import typing
 
 import numpy as np
@@ -21,9 +27,9 @@ from src.core.workspace import workspace_scope_filter
 
 from .cache import get_or_build_dataframe, scope_cache_params
 from .extractors import extract_encounter_features
-from .opponent_strength import snapshot_pre_encounter_team_mu
+from .opponent_strength import snapshot_pre_encounter_team_mu, snapshot_pre_tournament_team_mu
 
-__all__ = ("build_standings_training_frame",)
+__all__ = ("build_standings_forecast_frame", "build_standings_training_frame")
 
 
 async def _h2h_history(
@@ -174,6 +180,143 @@ async def _team_performance_mean(
     )
     result = await session.execute(query)
     return pd.DataFrame(result.mappings().all())
+
+
+async def _team_rank_stats(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    workspace_id: int | None = None,
+    workspace_ids: typing.Sequence[int] | None = None,
+) -> pd.DataFrame:
+    """Return ``(team_id, avg_rank, std_rank)`` for a tournament's rosters.
+
+    The same per-side aggregate ``extract_encounter_features`` computes for the
+    two teams of an encounter — identical ``is_substitution`` exclusion — but
+    keyed by team, so it still yields rows when the tournament has no encounters
+    to hang the aggregate off. Teams with no non-substitute players drop out:
+    there is nothing to rate them by.
+    """
+    query = (
+        sa.select(
+            models.Team.id.label("team_id"),
+            sa.func.avg(models.Player.rank).label("avg_rank"),
+            sa.func.coalesce(sa.func.stddev_samp(models.Player.rank), 0).label("std_rank"),
+        )
+        .select_from(models.Team)
+        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+        .join(
+            models.Player,
+            sa.and_(
+                models.Player.team_id == models.Team.id,
+                models.Player.is_substitution.is_(False),
+            ),
+        )
+        .where(
+            models.Team.tournament_id == tournament_id,
+            *workspace_scope_filter(workspace_id, workspace_ids),
+        )
+        .group_by(models.Team.id)
+    )
+    result = await session.execute(query)
+    df = pd.DataFrame(result.mappings().all())
+    if df.empty:
+        return pd.DataFrame(columns=["team_id", "avg_rank", "std_rank"])
+    # PostgreSQL returns ``AVG``/``STDDEV_SAMP`` as ``Decimal`` → object dtype.
+    df["team_id"] = df["team_id"].astype(int)
+    for col in ("avg_rank", "std_rank"):
+        df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
+    return df
+
+
+async def build_standings_forecast_frame(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    workspace_id: int | None = None,
+    workspace_ids: typing.Sequence[int] | None = None,
+) -> pd.DataFrame:
+    """Virtual double round robin over a tournament's registered teams.
+
+    This — not the tournament's own encounters — is what the Monte Carlo
+    simulator ranks, for two reasons.
+
+    **The realised schedule leaks the result.** Which teams meet in a semifinal
+    is decided by who won the quarterfinals, and ``_round_robin_standings``
+    ranks by win count over whatever pairings it is handed. An eliminated team
+    appears in one encounter and can bank at most one win; a finalist appears in
+    several. Simulating the played bracket therefore ranks teams by how far they
+    actually advanced: with eight *identical* teams (every ``p_home_wins`` at
+    0.5) the realised single-elimination bracket hands the finalists a ~28%
+    chance of first place and the round-one losers ~1.5%, purely from the shape
+    of the schedule. ``predicted_place`` would restate the standings instead of
+    forecasting them, and ``placement_delta`` — which the analytics summary
+    reads as over/underperformance — would be structurally squashed toward zero.
+    It is the same leak the model already refuses at the feature level, where
+    ``STANDINGS_FEATURE_ORDER`` excludes same-tournament Performance v2.
+
+    **An unplayed bracket has no schedule at all.** Before the first match there
+    is nothing to simulate, yet the field is fully known and worth forecasting.
+
+    An all-play-all needs neither. Pairs are emitted in **both** orders, so each
+    team meets every opponent once at home and once away and whatever home-side
+    bias the classifier learned cancels out instead of favouring one arbitrary
+    side of the pairing. Strength comes from registration ranks plus a strictly
+    pre-tournament OpenSkill snapshot, so nothing that happens inside the
+    tournament can reach its own forecast.
+
+    Emits every column of ``STANDINGS_FEATURE_ORDER`` plus ``tournament_id`` /
+    ``home_team_id`` / ``away_team_id``. There is no ``home_won`` label —
+    this frame is inference-only. Empty when fewer than two teams can be rated.
+    """
+    rank_stats = await _team_rank_stats(
+        session,
+        tournament_id,
+        workspace_id=workspace_id,
+        workspace_ids=workspace_ids,
+    )
+    if len(rank_stats) < 2:
+        return pd.DataFrame()
+
+    mu = await snapshot_pre_tournament_team_mu(
+        session,
+        tournament_id,
+        workspace_id=workspace_id,
+        workspace_ids=workspace_ids,
+    )
+    strength = rank_stats.merge(mu[["team_id", "avg_mu"]], on="team_id", how="left")
+
+    team_ids = sorted(int(team_id) for team_id in strength["team_id"])
+    pairs = pd.DataFrame(
+        itertools.permutations(team_ids, 2),
+        columns=["home_team_id", "away_team_id"],
+    )
+    home = strength.rename(
+        columns={
+            "team_id": "home_team_id",
+            "avg_rank": "home_avg_rank",
+            "std_rank": "home_std_rank",
+            "avg_mu": "home_avg_mu",
+        }
+    )
+    away = strength.rename(
+        columns={
+            "team_id": "away_team_id",
+            "avg_rank": "away_avg_rank",
+            "std_rank": "away_std_rank",
+            "avg_mu": "away_avg_mu",
+        }
+    )
+    df = pairs.merge(home, on="home_team_id", how="left").merge(away, on="away_team_id", how="left")
+    df["tournament_id"] = tournament_id
+    df["rank_gap"] = df["home_avg_rank"] - df["away_avg_rank"]
+    df["mu_gap"] = df["home_avg_mu"] - df["away_avg_mu"]
+    # No schedule means no head-to-head history to key off an encounter, so
+    # every pair looks like first-time opponents — the same neutral values the
+    # training frame falls back to when ``_h2h_history`` comes back empty.
+    df["h2h_winrate"] = 0.5
+    df["days_since_last_meet"] = np.nan
+    return df.replace([np.inf, -np.inf], np.nan)
 
 
 async def build_standings_training_frame(
