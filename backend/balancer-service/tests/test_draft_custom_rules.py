@@ -359,3 +359,21 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
             self.assertIsNone(draft.blocked_reason)
             self.assertIsNotNone(picks[3].clock_expires_at)
+
+            # A settings save must not undo the average-driven seating. The round
+            # is on the clock, so `resync_pick_order` treats it as history; only
+            # rounds that have not started are re-seated from the rules.
+            draft.settings_json = {"round_rules": ["linear", "team_avg_asc", "reverse", "linear"]}
+            moved = await lifecycle.resync_pick_order(s, draft)
+            await s.commit()
+
+            picks = (
+                await s.scalars(
+                    sa.select(DraftPick).where(DraftPick.session_id == draft.id).order_by(DraftPick.overall_no.asc())
+                )
+            ).all()
+
+            self.assertEqual([p.draft_team_id for p in picks[3:6]], [team_by_pos[2], team_by_pos[3], team_by_pos[1]])
+            # Round 3 became `reverse`, so its two outer seats swapped.
+            self.assertEqual(moved, 2)
+            self.assertEqual([p.draft_team_id for p in picks[6:9]], [team_by_pos[3], team_by_pos[2], team_by_pos[1]])
