@@ -15,7 +15,11 @@
 //  3. `ends_at` is presented as the phase's own closing time, with the footnote
 //     that says it does not advance the tournament;
 //  4. an unscheduled phase and a balancer tournament's draft row are absent;
-//  5. an unscheduled tournament says so instead of rendering a row of dashes.
+//  5. an unscheduled tournament says so instead of rendering a row of dashes;
+//  6. stamps land in the VIEWER's zone and name it, so nobody has to guess
+//     which clock a time is quoted in. `Europe/Moscow` stands in for that zone
+//     below precisely because it is not UTC — under UTC the shift and the label
+//     would both be invisible.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -40,6 +44,8 @@ vi.mock("@/services/tournament.service", () => ({
 
 const COPY = en.tournamentDetail.publicPages.schedule;
 const TOURNAMENT_ID = 91;
+/** The viewer's zone. Deliberately not UTC — see note 6 in the header. */
+const VIEWER_ZONE = "Europe/Moscow";
 
 const T = (hour: number, minute = 0) =>
   `2026-08-10T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`;
@@ -134,7 +140,7 @@ async function render(overrides: Partial<Tournament>, now: string) {
   await act(async () => {
     root?.render(
       <QueryClientProvider client={client}>
-        <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
+        <NextIntlClientProvider locale="en" messages={en} timeZone={VIEWER_ZONE}>
           <TournamentSchedulePage tournamentId={TOURNAMENT_ID} />
         </NextIntlClientProvider>
       </QueryClientProvider>
@@ -176,6 +182,18 @@ describe("public tournament schedule page", () => {
       T(20)
     ]);
     expect(rows()[2].text).not.toContain(COPY.closesLabel);
+  });
+
+  it("quotes every time in the viewer's own zone and names that zone", async () => {
+    await render({}, T(11));
+    const [registration] = rows();
+
+    // 10:00Z and 18:00Z, seen from UTC+3, with the offset spelled out.
+    expect(registration.stamps.map((stamp) => stamp.text)).toEqual([
+      "Aug 10, 01:00 PM GMT+3",
+      "Aug 10, 09:00 PM GMT+3"
+    ]);
+    expect(container.textContent).not.toContain("UTC");
   });
 
   it("takes the running phase from the status, not from the wall clock", async () => {

@@ -48,14 +48,14 @@ describe("buildTournamentSchedule", () => {
     expect(
       buildTournamentSchedule({
         tournament: tournament({ phase_schedule }),
-        now: null
+        now: at(9)
       }).segments.map((segment) => segment.status)
     ).toEqual(["registration", "live"]);
 
     expect(
       buildTournamentSchedule({
         tournament: tournament({ phase_schedule, team_formation: "draft" }),
-        now: null
+        now: at(9)
       }).segments.map((segment) => segment.status)
     ).toEqual(["registration", "draft", "live"]);
   });
@@ -125,25 +125,14 @@ describe("buildTournamentSchedule", () => {
     expect(segments[1]).toMatchObject({ state: "upcoming", countdownMs: null });
   });
 
-  it("omits countdown and progress before the viewer's clock is known", () => {
-    const { segments } = buildTournamentSchedule({
-      tournament: tournament({ status: "check_in" }),
-      now: null
-    });
-
-    expect(segments.map((segment) => segment.state)).toEqual(["done", "current", "upcoming"]);
-    expect(segments.every((segment) => segment.countdownMs === null)).toBe(true);
-    expect(segments.every((segment) => segment.progress === null)).toBe(true);
-  });
-
   it("reports automation being off so the view can label the times as a plan", () => {
-    expect(buildTournamentSchedule({ tournament: tournament(), now: null }).automationOff).toBe(
+    expect(buildTournamentSchedule({ tournament: tournament(), now: at(9) }).automationOff).toBe(
       false
     );
     expect(
       buildTournamentSchedule({
         tournament: tournament({ auto_transitions_enabled: false }),
-        now: null
+        now: at(9)
       }).automationOff
     ).toBe(true);
   });

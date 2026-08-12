@@ -56,11 +56,11 @@ type ScheduleInput = {
     "status" | "team_formation" | "phase_schedule" | "auto_transitions_enabled"
   >;
   /**
-   * `null` on the server and on the first client render — the caller only knows
-   * the viewer's clock after hydration. Countdown and progress are simply
-   * omitted then; the phase states and timestamps do not depend on it.
+   * The viewer's clock. Non-nullable on purpose: the page renders its skeleton
+   * until hydration supplies one, rather than dressing the pre-hydration render
+   * in a zone the viewer does not live in.
    */
-  now: number | null;
+  now: number;
 };
 
 /**
@@ -110,23 +110,21 @@ export function buildTournamentSchedule({
     });
   }
 
-  if (now !== null) {
-    const current = segments.find((segment) => segment.state === "current");
-    if (current) {
-      const startsAt = epoch(current.startsAt);
-      const endsAt = epoch(current.endsAt);
-      if (startsAt !== null && endsAt !== null && endsAt > startsAt) {
-        current.progress = Math.min(1, Math.max(0, (now - startsAt) / (endsAt - startsAt)));
-        if (endsAt > now) current.countdownMs = endsAt - now;
-      }
+  const current = segments.find((segment) => segment.state === "current");
+  if (current) {
+    const startsAt = epoch(current.startsAt);
+    const endsAt = epoch(current.endsAt);
+    if (startsAt !== null && endsAt !== null && endsAt > startsAt) {
+      current.progress = Math.min(1, Math.max(0, (now - startsAt) / (endsAt - startsAt)));
+      if (endsAt > now) current.countdownMs = endsAt - now;
     }
+  }
 
-    if (current?.countdownMs == null) {
-      const next = segments.find((segment) => segment.state === "upcoming");
-      const startsAt = next ? epoch(next.startsAt) : null;
-      if (next && startsAt !== null && startsAt > now) {
-        next.countdownMs = startsAt - now;
-      }
+  if (current?.countdownMs == null) {
+    const next = segments.find((segment) => segment.state === "upcoming");
+    const startsAt = next ? epoch(next.startsAt) : null;
+    if (next && startsAt !== null && startsAt > now) {
+      next.countdownMs = startsAt - now;
     }
   }
 

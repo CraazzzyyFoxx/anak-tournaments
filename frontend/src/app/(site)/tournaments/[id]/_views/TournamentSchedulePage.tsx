@@ -34,8 +34,9 @@ const clock = {
   now: () => Math.floor(Date.now() / TICK_MS) * TICK_MS,
   /**
    * `null` on the server AND during hydration, which React uses this snapshot
-   * for. Live figures are simply absent then, so the two renders cannot
-   * disagree about an instant neither of them shares.
+   * for. The page renders its skeleton until a real clock arrives: every stamp
+   * here is the viewer's own local time, and there is no honest way to render
+   * one before knowing which zone that is.
    */
   none: () => null
 };
@@ -52,20 +53,22 @@ const TournamentScheduleView = ({ tournament }: { tournament: Tournament }) => {
   const t = useTranslations();
   const format = useFormatter();
 
-  // Until hydration the stamps render in UTC and every live figure is omitted,
-  // so the server HTML and the first client render agree.
   const now = useSyncExternalStore(clock.subscribe, clock.now, clock.none);
+
+  // Server render and hydration render share this branch, so they cannot
+  // disagree about an instant neither of them has.
+  if (now === null) return <TournamentScheduleSkeleton />;
 
   const { segments, automationOff } = buildTournamentSchedule({ tournament, now });
 
   const stamp = (iso: string) => {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
-    return format.dateTime(date, now === null ? { ...STAMP, timeZone: "UTC" } : STAMP);
+    return format.dateTime(date, STAMP);
   };
 
   const countdown = (segment: PhaseSegment) => {
-    if (now === null || segment.countdownMs === null) return null;
+    if (segment.countdownMs === null) return null;
     const relative = format.relativeTime(new Date(now + segment.countdownMs), now);
     return segment.state === "current"
       ? t("tournamentDetail.publicPages.schedule.closesRelative", { relative })
