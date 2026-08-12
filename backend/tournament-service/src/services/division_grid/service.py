@@ -104,7 +104,7 @@ def get_default_ow2_tiers_write() -> list[schemas.DivisionGridTierWrite]:
             else:
                 rank_max = rank_min + 99
 
-            icon_url = f"https://minio.craazzzyyfoxx.me/aqt/assets/divisions/{slug}.png"
+            icon_url = f"https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/{slug}.png"
 
             tiers.append(
                 schemas.DivisionGridTierWrite(

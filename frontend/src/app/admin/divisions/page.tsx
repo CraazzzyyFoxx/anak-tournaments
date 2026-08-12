@@ -62,7 +62,7 @@ function buildDefaultTiers(): DivisionTier[] {
       const offset = (5 - tier_num) * 100;
       const rank_min = base + offset;
       const rank_max = div === "champion" && tier_num === 1 ? null : rank_min + 99;
-      const icon_url = `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/${slug}.png`;
+      const icon_url = `https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/${slug}.png`;
 
       tiers.push({
         slug,
@@ -89,7 +89,7 @@ function emptyTier(number: number, index: number): DivisionTier {
     sort_order: index,
     rank_min: 1000,
     rank_max: 1099,
-    icon_url: `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/bronze-5.png`,
+    icon_url: `https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/bronze-5.png`,
     ow_rank_min: null,
     ow_rank_max: null
   };

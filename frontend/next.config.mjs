@@ -98,6 +98,12 @@ const nextConfig = {
         port: '',
         pathname: '/aqt/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'static.nl.craazzzyyfoxx.me',
+        port: '',
+        pathname: '/aqt/**',
+      },
     ],
   },
 };
