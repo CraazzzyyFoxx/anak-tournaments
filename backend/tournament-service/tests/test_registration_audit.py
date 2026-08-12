@@ -30,7 +30,9 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 os.environ.setdefault("PROJECT_URL", "http://localhost")
-os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
+# Credential-free on purpose: AmqpDsn accepts it, and the `user:pass@` form the
+# older suites use is what GitGuardian reports as a leaked secret.
+os.environ.setdefault("RABBITMQ_URL", "amqp://localhost:5672")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("POSTGRES_USER", "postgres")
 os.environ.setdefault("POSTGRES_PASSWORD", "postgres")

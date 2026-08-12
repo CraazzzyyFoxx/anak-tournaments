@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # five missing-field ValidationErrors before a single test ran. Nothing here
 # connects; the values only have to parse.
 #
-# The AMQP URL deliberately carries no `user:pass@` (AmqpDsn accepts that) — the
-# `guest:guest@` form other suites use is what GitGuardian reports as a leaked
-# secret, and a placeholder is not worth a security finding on every PR.
+# The AMQP URL deliberately carries no embedded credentials (AmqpDsn accepts
+# that): the `user:pass@host` form the older suites use is what GitGuardian
+# reports as a leaked secret, and a placeholder is not worth a security finding
+# on every PR.
 os.environ.setdefault("DISCORD_TOKEN", "dummy_token")
 os.environ.setdefault("PARSER_URL", "http://parser:8002")
 os.environ.setdefault("SERVICE_CLIENT_ID", "dummy_id")
