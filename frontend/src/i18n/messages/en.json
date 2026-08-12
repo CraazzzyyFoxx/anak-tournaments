@@ -3501,6 +3501,10 @@
         "title": "Matches",
         "desc": "Every match played on the platform"
       },
+      "scrims": {
+        "title": "Scrims",
+        "desc": "Ad-hoc pre-game rooms for practice matches"
+      },
       "balancer": {
         "title": "Balancer",
         "desc": "Balance teams by player roles and ratings"
@@ -4718,5 +4722,106 @@
     "overriding": "This tournament pins its own shape instead of following the workspace.",
     "willInherit": "Saving hands this tournament back to the workspace shape.",
     "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
+  },
+  "scrims": {
+    "hero": {
+      "eyebrow": "SCRIMS // PRE-GAME",
+      "title": "Scrim rooms",
+      "lede": "Run a full pre-game — map veto, hero bans, per-map results — without a tournament. Open a room, send the link, play."
+    },
+    "signInTitle": "Sign in to run a scrim",
+    "signInDescription": "A room needs two captains, and a captain needs an account.",
+    "signIn": "Sign in",
+    "noWorkspaceTitle": "No workspace selected",
+    "noWorkspaceDescription": "Scrim rooms belong to a workspace. Pick one to see yours.",
+    "list": {
+      "emptyTitle": "No scrim rooms yet",
+      "emptyDescription": "Create one and share its link with the other captain.",
+      "retry": "Try again",
+      "privacyNote": "Scrims stay between the two teams: they never show up in encounters, statistics or tournament listings.",
+      "closedToast": "Room closed",
+      "closeFailed": "Unable to close the room",
+      "bestOf": "Bo{count}",
+      "closed": "Closed",
+      "awaitingOpponent": "Waiting for the opponent",
+      "sides": "{home} vs {away}",
+      "createdAt": "Created {date}",
+      "youAreHome": "you captain the home side",
+      "youAreAway": "you captain the away side",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "linkCopyFailed": "Unable to copy the link",
+      "close": "Close room",
+      "openRoom": "Open room"
+    },
+    "create": {
+      "open": "New room",
+      "title": "New scrim room",
+      "description": "Two teams, one series, the same pre-game loop an official match runs.",
+      "labelLabel": "Room name",
+      "labelPlaceholder": "Tuesday scrim",
+      "labelHint": "What both captains see at the top of the room.",
+      "homeLabel": "Home team",
+      "homePlaceholder": "Your team",
+      "homeHint": "You captain this side.",
+      "awayLabel": "Away team",
+      "awayPlaceholder": "Their team",
+      "awayHint": "The first person to open the link claims this side.",
+      "bestOfLabel": "Series length",
+      "bestOfValue": "Best of {count}",
+      "bestOfHint": "How many maps the series plays. It sets the veto order too.",
+      "poolSection": "Rules",
+      "poolSectionHint": "Copy a round you already play, or author the pool for this room.",
+      "sourceCopy": "Copy a round",
+      "sourceCustom": "Author it",
+      "tournamentLabel": "Tournament",
+      "tournamentPlaceholder": "Pick a tournament",
+      "stageLabel": "Stage",
+      "stageWhole": "Whole tournament",
+      "roundLabel": "Round",
+      "roundAll": "Whole stage",
+      "roundValue": "Round {round}",
+      "poolInvalid": "Fix these before creating the room",
+      "issueMap": "Maps: {issue}",
+      "issueHero": "Heroes: {issue}",
+      "cancel": "Cancel",
+      "submit": "Create room",
+      "created": "Room created",
+      "failed": "Unable to create the room"
+    },
+    "pool": {
+      "mapSection": "Map veto",
+      "mapSectionHint": "The order is generated from the pool and the series length: {steps, plural, =0 {no steps yet} one {# step} other {# steps}}.",
+      "mapsLabel": "Map pool",
+      "mapsHint": "Search to narrow the list, then tap a map to add or remove it.",
+      "searchMaps": "Search maps",
+      "noMatches": "Nothing matches that search.",
+      "loadingCatalogue": "Loading…",
+      "selectedCount": "{count} selected",
+      "turnTimer": "Turn timer, seconds",
+      "turnTimerPlaceholder": "No limit",
+      "turnTimerHint": "Countdown shown to the captain on their turn. Leave it empty and captains take as long as they need.",
+      "heroToggle": "Ban heroes too",
+      "heroToggleHint": "Adds a hero ban phase before each map, on top of the map veto.",
+      "heroesLabel": "Hero pool",
+      "heroesHint": "The heroes that can be banned. Everything outside the pool stays playable.",
+      "searchHeroes": "Search heroes",
+      "heroBans": "Bans per side",
+      "heroBansHint": "Sides alternate, starting with the side that bans first. Bans reset every map.",
+      "uniqueRole": "One hero per role per side each round",
+      "uniqueRoleHint": "Stops a side from banning two heroes of the same role in the same round."
+    },
+    "claim": {
+      "sides": "{home} vs {away}",
+      "prompt": "This room still needs a captain for {team}.",
+      "claim": "Captain {team}",
+      "watch": "Just watch",
+      "hint": "Only the two captains veto. Everyone else can follow along."
+    },
+    "room": {
+      "claimed": "You are the captain of this side",
+      "claimFailed": "Unable to claim the side",
+      "retry": "Try again"
+    }
   }
 }

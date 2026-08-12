@@ -59,6 +59,11 @@ async def tournament_ids_up_to(
         .where(
             models.Tournament.id <= cutoff_tournament_id,
             models.Tournament.id >= 1,
+            # Hidden tournaments are containers, not seasons. The per-workspace
+            # scrim container (docs/plans/2026-08-12-scrim-rooms.md) holds no
+            # ranked roster data, so admitting it here would insert a data-less
+            # fold boundary into the rolling-origin split.
+            models.Tournament.is_hidden.is_(False),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
         .order_by(models.Tournament.id)

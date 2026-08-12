@@ -40,6 +40,7 @@ from shared.schemas.events import EncounterCompletedEvent
 from shared.services.bracket import advancement
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.encounter.result_audit import record_result_transition
+from shared.services.scrim_scope import is_scrim_container
 from src import models
 from src.schemas.admin.encounter_reports import CaptainReportRead, EncounterMapCodeRead
 from src.services.challonge import sync as challonge_sync
@@ -63,6 +64,17 @@ async def _enqueue_encounter_completed(
     session: AsyncSession,
     encounter: models.Encounter,
 ) -> None:
+    # This event has exactly one consumer: parser-service republishes it as an
+    # AchievementEvaluateEvent (serve.py:368-398). For a scrim that evaluation is
+    # verifiably empty — every achievement condition reaches its users through an
+    # inner join on Player or through MatchStatistics, and a scrim room has
+    # neither (docs/plans/2026-08-12-scrim-rooms.md §4.1, §5). It is not free
+    # though: it costs an outbox row, a queue round trip, an EvaluationRun audit
+    # row and one full query per encounter-dependent rule, per scrim result. Not
+    # publishing beats publishing and discarding.
+    if await is_scrim_container(session, encounter.tournament_id):
+        return
+
     winner_team_id: int | None = None
     if encounter.home_score > encounter.away_score:
         winner_team_id = encounter.home_team_id

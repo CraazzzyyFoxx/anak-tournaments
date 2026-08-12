@@ -264,6 +264,15 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
+    # ── scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────────────
+    # Unlike the pre-game pick-ban subjects a room is played through, these five
+    # return whole typed models, so they carry request/response maps rather than
+    # falling back to a generic object.
+    "rpc.tournament.scrim_create": Op(request=schemas.ScrimCreateRequest, response=schemas.ScrimRoomRead),
+    "rpc.tournament.scrim_list_mine": Op(response=schemas.ScrimRoomListRead, query_params=(_WS,)),
+    "rpc.tournament.scrim_get": Op(response=schemas.ScrimRoomRead),
+    "rpc.tournament.scrim_claim": Op(response=schemas.ScrimRoomRead),
+    "rpc.tournament.scrim_close": Op(response=schemas.ScrimRoomRead),
     # ── match report form (per-tournament captain-report config) ───────────
     "rpc.tournament.report_form_get": Op(response=report_form_schemas.MatchReportFormRead),
     "rpc.tournament.report_form_upsert": Op(

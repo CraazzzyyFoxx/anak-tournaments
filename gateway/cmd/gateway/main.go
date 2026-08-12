@@ -279,6 +279,9 @@ func run() error {
 	// participants list rides here too — the heaviest anonymous read of a
 	// registration-phase tournament, with no backend cache at all.
 	respcache.RegisterCached(mux, tournamentEdge, tournament.PublicWriteRoutes, tournament.PublicWriteCacheableReads, respCache)
+	// Scrim rooms (docs/plans/2026-08-12-scrim-rooms.md): per-viewer reads
+	// (viewer_side / can_claim depend on the identity), so never cached.
+	tournamentEdge.Register(mux, tournament.ScrimRoutes)
 	// division-grids + admin/stages: ambiguous patterns under ServeMux -> subtree matcher.
 	mux.Handle("/api/v1/division-grids/", tournamentEdge.Subtree(tournament.DivisionGridRoutes))
 	mux.Handle("/api/v1/admin/stages/", tournamentEdge.Subtree(tournament.StageSubtreeRoutes))

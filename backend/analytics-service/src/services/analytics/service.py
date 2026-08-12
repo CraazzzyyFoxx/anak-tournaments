@@ -250,6 +250,14 @@ async def get_matches(
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
         .where(
             models.Encounter.tournament_id.between(start_range, end_range),
+            # NOT inert, unlike the player-scoped CTEs above: this read reaches
+            # the encounters through ``joinedload``, so a scrim encounter
+            # (docs/plans/2026-08-12-scrim-rooms.md) comes back with two real
+            # teams and empty rosters, and ``prepare_openskill_data`` then calls
+            # ``PlackettLuce.rate`` with two empty sides -- a hard ValueError
+            # for every tournament whose lookback window spans the hidden scrim
+            # container. Scope it out at the source.
+            models.Tournament.is_hidden.is_(False),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
         .order_by(models.Encounter.tournament_id, models.Encounter.id)
@@ -278,6 +286,11 @@ async def lookback_start_tournament_id(
         sa.select(models.Tournament.id)
         .where(
             models.Tournament.id <= end_tournament_id,
+            # Hidden tournaments are containers, not seasons. The per-workspace
+            # scrim container (docs/plans/2026-08-12-scrim-rooms.md) would occupy
+            # one of the ``look_back`` slots while contributing no encounters to
+            # the replay — the same window shrinkage this helper exists to fix.
+            models.Tournament.is_hidden.is_(False),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
         .order_by(models.Tournament.id.desc())

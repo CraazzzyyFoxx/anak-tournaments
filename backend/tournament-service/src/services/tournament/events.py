@@ -16,6 +16,7 @@ from shared.schemas.events import (
     TournamentStateChangedEvent,
 )
 from shared.services.encounter import events as shared_encounter_events
+from shared.services.scrim_scope import is_scrim_container
 from src import models
 from src.services.computation.jobs import request_standings_recalculation
 from src.services.tournament.realtime_commit import register_tournament_realtime_update
@@ -25,7 +26,23 @@ async def enqueue_tournament_recalculation(
     session: AsyncSession,
     tournament_id: int,
 ) -> None:
-    await request_standings_recalculation(session, tournament_id)
+    # A scrim container has nothing to recalculate: every one of its stages is a
+    # single ad-hoc room with no stage items, no seeds and no rosters
+    # (docs/plans/2026-08-12-scrim-rooms.md §4.1). Recalculating it does not
+    # merely waste a job — the elimination branch of the standings builder
+    # derives participants from encounters when seeds are absent, so it invents a
+    # "1st place" Standing row for every room's two rosterless teams and flips
+    # their Stage.is_completed, and it does that for EVERY room in the workspace
+    # on every captain report of any one of them.
+    #
+    # Skipped here, at the only automatic door into the standings queue, rather
+    # than no-opped in the worker: a job that is created, delivered and then
+    # discarded is a permanent per-report cost that looks like health.
+    if not await is_scrim_container(session, tournament_id):
+        await request_standings_recalculation(session, tournament_id)
+    # The realtime ping still goes out: it is a cache-invalidation notification,
+    # not a computation, and a room's participants are legitimate viewers of the
+    # container.
     register_tournament_realtime_update(session, tournament_id, "bracket_changed")
 
 

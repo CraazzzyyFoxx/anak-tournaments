@@ -28,7 +28,15 @@ from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
 from src.core.redis import close_realtime_redis
-from src.rpc import admin_misc, integrations, pick_ban_admin, public_rpc, registration_admin, stage_admin
+from src.rpc import (
+    admin_misc,
+    integrations,
+    pick_ban_admin,
+    public_rpc,
+    registration_admin,
+    scrim,
+    stage_admin,
+)
 from src.rpc import reads as rpc_reads
 from src.services.admin import registry as admin_registry
 from src.services.challonge import sync as challonge_sync
@@ -78,6 +86,9 @@ integrations.register(broker, logger)
 stage_admin.register(broker, logger)
 pick_ban_admin.register(broker, logger)
 public_rpc.register(broker, logger)
+# Ad-hoc scrim rooms (docs/plans/2026-08-12-scrim-rooms.md). Provisioning only —
+# a room is then played through the pre-game subjects registered just above.
+scrim.register(broker, logger)
 # Recalculation-event consumers (tournament.changed / standings.invalidated).
 # Previously mounted by the deleted HTTP main.py; the worker now hosts them so
 # cache invalidation + standings recalculation run on those domain events.

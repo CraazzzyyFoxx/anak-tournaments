@@ -16,17 +16,20 @@ from pydantic import BaseModel, Field, model_validator
 __all__ = (
     "SETTINGS_KEY_RANK_COLLECTION",
     "SETTINGS_KEY_RANK_MAPPING",
+    "SETTINGS_KEY_SCRIM",
     "SETTINGS_KEY_SUBSCRIPTION_COLLECTION",
     "SETTINGS_SCHEMAS",
     "RankCollectionConfig",
     "RankCollectionScope",
     "RankMappingConfig",
     "RankMappingEntry",
+    "ScrimConfig",
     "SubscriptionCollectionConfig",
 )
 
 SETTINGS_KEY_RANK_COLLECTION = "parser.rank_collection"
 SETTINGS_KEY_RANK_MAPPING = "parser.rank_mapping"
+SETTINGS_KEY_SCRIM = "tournament.scrim"
 SETTINGS_KEY_SUBSCRIPTION_COLLECTION = "parser.subscription_collection"
 
 
@@ -106,9 +109,26 @@ class RankMappingConfig(BaseModel):
         return self
 
 
+class ScrimConfig(BaseModel):
+    """Operational limits for ad-hoc scrim rooms.
+
+    Lives here rather than as a constant so the cap can be raised for a busy
+    community without a deploy — which is the whole reason it starts at 1: one
+    open room per creator is the conservative launch position, not a rule.
+
+    "Open" means ``ScrimRoom.closed_at IS NULL``; closed rooms are kept forever
+    and never count. ``max_best_of`` bounds the series a room may provision,
+    since ``best_of`` drives how many pick-ban rounds the engine will generate.
+    """
+
+    max_open_rooms_per_user: int = Field(default=1, ge=1, le=50)
+    max_best_of: int = Field(default=7, ge=1, le=9)
+
+
 #: Registry consumed by the admin layer to validate writes per key.
 SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_RANK_COLLECTION: RankCollectionConfig,
     SETTINGS_KEY_RANK_MAPPING: RankMappingConfig,
+    SETTINGS_KEY_SCRIM: ScrimConfig,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION: SubscriptionCollectionConfig,
 }

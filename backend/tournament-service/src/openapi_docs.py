@@ -347,6 +347,27 @@ DOCS: dict[str, dict] = {
         "summary": "Delete pick-ban config",
         "description": "Deletes a pick-ban config by id (running sessions keep their snapshot); requires match-update permission on its workspace.",
     },
+    # ── bespoke: scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────
+    "rpc.tournament.scrim_create": {
+        "summary": "Create scrim room",
+        "description": "Creates an ad-hoc pre-game room outside any tournament: the workspace's hidden scrims container (lazily), an isolating stage, that stage's map and optional hero pick-ban configs either copied from an existing tournament round or authored ad hoc, both teams and the encounter; returns the room with its share token. Requires membership of the workspace, and 409s when the caller's active-room cap is reached.",
+    },
+    "rpc.tournament.scrim_list_mine": {
+        "summary": "List my scrim rooms",
+        "description": "Returns the calling user's scrim rooms in a workspace, open and closed alike (scrim history is kept forever); requires authentication.",
+    },
+    "rpc.tournament.scrim_get": {
+        "summary": "Get scrim room",
+        "description": "Returns one scrim room by share token, annotating the requesting viewer's captain side and whether they may still claim the free one; visible only to a participant, a workspace insider or a preview-allowlisted user, everyone else gets 404.",
+    },
+    "rpc.tournament.scrim_claim": {
+        "summary": "Claim a scrim side",
+        "description": "Claims the scrim room's free captain side for the calling user and grants them preview access to the hidden scrims container, so the pre-game room resolves their side from then on; idempotent and first-writer-wins, 409 once both sides are taken; requires membership of the room's workspace.",
+    },
+    "rpc.tournament.scrim_close": {
+        "summary": "Close scrim room",
+        "description": "Closes a scrim room so it stops counting against its creator's active-room cap, leaving the encounter and its pick-ban history readable by the participants forever; requires membership of the room's workspace.",
+    },
     # ── bespoke: stage workflow ────────────────────────────────────────────
     "rpc.tournament.stage_progress": {
         "summary": "Get stage progress",

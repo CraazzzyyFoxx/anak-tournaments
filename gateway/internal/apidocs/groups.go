@@ -52,8 +52,8 @@ func Groups() (public, admin []openapi.Group) {
 	auditRoutes, metadataRoutes := splitQueue(app.MetadataAdminRoutes, "rpc.app.audit_list")
 
 	public = []openapi.Group{
-		{Tag: "Tournaments", Description: "Public tournament, encounter, match & team reads + captain/registration actions.",
-			Routes: concat(tournament.PublicReadRoutes, tournament.PublicWriteRoutes)},
+		{Tag: "Tournaments", Description: "Public tournament, encounter, match & team reads + captain/registration actions + scrim rooms.",
+			Routes: concat(tournament.PublicReadRoutes, tournament.PublicWriteRoutes, tournament.ScrimRoutes)},
 		{Tag: "Game Data", Description: "Heroes, maps, gamemodes, achievements & statistics (public reads).",
 			Routes: concat(app.ReadRoutes, app.AchievementsSubtreeRoutes)},
 		{Tag: "Analytics", Description: "Analytics reads (v1 public; v2 require analytics.read).",

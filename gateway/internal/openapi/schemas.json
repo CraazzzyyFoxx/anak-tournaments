@@ -7850,6 +7850,59 @@
       },
       "summary": "List saved encounter views"
     },
+    "rpc.tournament.scrim_claim": {
+      "description": "Claims the scrim room's free captain side for the calling user and grants them preview access to the hidden scrims container, so the pre-game room resolves their side from then on; idempotent and first-writer-wins, 409 once both sides are taken; requires membership of the room's workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Claim a scrim side"
+    },
+    "rpc.tournament.scrim_close": {
+      "description": "Closes a scrim room so it stops counting against its creator's active-room cap, leaving the encounter and its pick-ban history readable by the participants forever; requires membership of the room's workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Close scrim room"
+    },
+    "rpc.tournament.scrim_create": {
+      "description": "Creates an ad-hoc pre-game room outside any tournament: the workspace's hidden scrims container (lazily), an isolating stage, that stage's map and optional hero pick-ban configs either copied from an existing tournament round or authored ad hoc, both teams and the encounter; returns the room with its share token. Requires membership of the workspace, and 409s when the caller's active-room cap is reached.",
+      "request": {
+        "array": false,
+        "ref": "tournament.ScrimCreateRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Create scrim room"
+    },
+    "rpc.tournament.scrim_get": {
+      "description": "Returns one scrim room by share token, annotating the requesting viewer's captain side and whether they may still claim the free one; visible only to a participant, a workspace insider or a preview-allowlisted user, everyone else gets 404.",
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Get scrim room"
+    },
+    "rpc.tournament.scrim_list_mine": {
+      "description": "Returns the calling user's scrim rooms in a workspace, open and closed alike (scrim history is kept forever); requires authentication.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomListRead"
+      },
+      "summary": "List my scrim rooms"
+    },
     "rpc.tournament.sheet_get": {
       "description": "Returns a tournament's registration Google Sheets feed config, or null if none; requires team-read permission on the tournament.",
       "response": {
@@ -11325,10 +11378,12 @@
       "type": "object"
     },
     "app.HeroClass": {
+      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.",
       "enum": [
         "Tank",
         "Damage",
-        "Support"
+        "Support",
+        "Flex"
       ],
       "title": "HeroClass",
       "type": "string"
@@ -11380,7 +11435,13 @@
           "type": "string"
         },
         "role": {
-          "$ref": "#/components/schemas/app.HeroClass"
+          "enum": [
+            "Tank",
+            "Damage",
+            "Support"
+          ],
+          "title": "Role",
+          "type": "string"
         }
       },
       "required": [
@@ -11891,13 +11952,19 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "enum": [
+                "Tank",
+                "Damage",
+                "Support"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "title": "Role"
         }
       },
       "title": "HeroUpdate",
@@ -12072,6 +12139,18 @@
           "title": "Gamemode Id",
           "type": "integer"
         },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Path"
+        },
         "in_competitive": {
           "default": true,
           "title": "In Competitive",
@@ -12170,6 +12249,18 @@
           ],
           "default": null,
           "title": "Gamemode Id"
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Path"
         },
         "in_competitive": {
           "anyOf": [
@@ -18240,6 +18331,18 @@
             }
           ],
           "title": "Drafted By Team Id"
+        },
+        "effective_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective Rank"
         },
         "id": {
           "title": "Id",
@@ -32475,6 +32578,24 @@
       "title": "FieldValidationConfig",
       "type": "object"
     },
+    "tournament.FirstBanRotation": {
+      "enum": [
+        "fixed",
+        "alternate",
+        "result_winner_first",
+        "result_loser_first",
+        "result_loser_choice"
+      ],
+      "title": "FirstBanRotation",
+      "type": "string"
+    },
+    "tournament.FirstPickRule": {
+      "enum": [
+        "higher_seed"
+      ],
+      "title": "FirstPickRule",
+      "type": "string"
+    },
     "tournament.GamemodeRead": {
       "properties": {
         "description": {
@@ -32516,10 +32637,12 @@
       "type": "object"
     },
     "tournament.HeroClass": {
+      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.",
       "enum": [
         "Tank",
         "Damage",
-        "Support"
+        "Support",
+        "Flex"
       ],
       "title": "HeroClass",
       "type": "string"
@@ -32874,6 +32997,14 @@
       ],
       "title": "MapRead",
       "type": "object"
+    },
+    "tournament.MapVetoMode": {
+      "enum": [
+        "pool",
+        "slots"
+      ],
+      "title": "MapVetoMode",
+      "type": "string"
     },
     "tournament.MappingParserRead": {
       "properties": {
@@ -33883,6 +34014,25 @@
       ],
       "title": "Paginated[TournamentRead]",
       "type": "object"
+    },
+    "tournament.PickBanKind": {
+      "description": "Which catalog a :class:`PickBanConfig`/session pool draws from.",
+      "enum": [
+        "map",
+        "hero"
+      ],
+      "title": "PickBanKind",
+      "type": "string"
+    },
+    "tournament.PickBanNoRepeatScope": {
+      "description": "Cross-round BAN memory rule for :class:`EncounterPickBanLedger`\nexclusion. Protects are never recorded there, so they neither exclude nor\nare excluded by anything under any scope.\n\n``NONE``: no cross-round memory (today's flat/slot veto behavior).\n``ENCOUNTER``: an item banned by EITHER side, anywhere earlier in this\nencounter's series, is excluded from every later round's pool.\n``ENCOUNTER_SAME_SIDE``: excluded only for the side that banned it; the\nopponent may still target it.",
+      "enum": [
+        "none",
+        "encounter",
+        "encounter_same_side"
+      ],
+      "title": "PickBanNoRepeatScope",
+      "type": "string"
     },
     "tournament.PlayerCreate": {
       "description": "Schema for creating a player",
@@ -35461,6 +35611,390 @@
         "away"
       ],
       "title": "Score",
+      "type": "object"
+    },
+    "tournament.ScrimCreateRequest": {
+      "properties": {
+        "away_team_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Away Team Name",
+          "type": "string"
+        },
+        "best_of": {
+          "minimum": 1,
+          "title": "Best Of",
+          "type": "integer"
+        },
+        "home_team_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Home Team Name",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "pool": {
+          "discriminator": {
+            "mapping": {
+              "copy": "#/components/schemas/tournament.ScrimPoolCopy",
+              "custom": "#/components/schemas/tournament.ScrimPoolCustom"
+            },
+            "propertyName": "source"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/tournament.ScrimPoolCopy"
+            },
+            {
+              "$ref": "#/components/schemas/tournament.ScrimPoolCustom"
+            }
+          ],
+          "title": "Pool"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "label",
+        "best_of",
+        "home_team_name",
+        "away_team_name",
+        "pool"
+      ],
+      "title": "ScrimCreateRequest",
+      "type": "object"
+    },
+    "tournament.ScrimPoolConfigInput": {
+      "properties": {
+        "allow_protect": {
+          "default": false,
+          "title": "Allow Protect",
+          "type": "boolean"
+        },
+        "first_ban_rotation": {
+          "$ref": "#/components/schemas/tournament.FirstBanRotation",
+          "default": "fixed"
+        },
+        "first_pick_rule": {
+          "$ref": "#/components/schemas/tournament.FirstPickRule",
+          "default": "higher_seed"
+        },
+        "item_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Item Ids",
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/components/schemas/tournament.PickBanKind"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/tournament.MapVetoMode",
+          "default": "pool"
+        },
+        "no_repeat_scope": {
+          "$ref": "#/components/schemas/tournament.PickBanNoRepeatScope",
+          "default": "none"
+        },
+        "preset": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset"
+        },
+        "sequence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sequence",
+          "type": "array"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ScrimPoolSlotInput"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "turn_timer_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Timer Seconds"
+        },
+        "unique_attribute_per_side_per_round": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unique Attribute Per Side Per Round"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ScrimPoolConfigInput",
+      "type": "object"
+    },
+    "tournament.ScrimPoolCopy": {
+      "description": "\"We play this round's maps\" \u2014 clone whatever the cascade resolves there.\n\n``stage_id``/``round`` may be null to copy a tournament-wide or stage-wide\nconfig; resolution uses the engine's own ranking\n(``pick_ban_session.resolve_config_at_level``), so what a room copies is\nexactly what an encounter at that coordinate would have played.",
+      "properties": {
+        "round": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Round"
+        },
+        "source": {
+          "const": "copy",
+          "title": "Source",
+          "type": "string"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Id"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source",
+        "tournament_id"
+      ],
+      "title": "ScrimPoolCopy",
+      "type": "object"
+    },
+    "tournament.ScrimPoolCustom": {
+      "description": "A pool authored for this room only. At most one entry per ``kind``.",
+      "properties": {
+        "configs": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ScrimPoolConfigInput"
+          },
+          "minItems": 1,
+          "title": "Configs",
+          "type": "array"
+        },
+        "source": {
+          "const": "custom",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "configs"
+      ],
+      "title": "ScrimPoolCustom",
+      "type": "object"
+    },
+    "tournament.ScrimPoolSlotInput": {
+      "description": "One slot of a slot-mode pool. List order IS play order \u2014 same contract as\n``PickBanConfigSlotUpsert``.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "reserve_item_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reserve Item Id"
+        }
+      },
+      "required": [
+        "candidates"
+      ],
+      "title": "ScrimPoolSlotInput",
+      "type": "object"
+    },
+    "tournament.ScrimRoomListRead": {
+      "properties": {
+        "rooms": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ScrimRoomRead"
+          },
+          "title": "Rooms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rooms"
+      ],
+      "title": "ScrimRoomListRead",
+      "type": "object"
+    },
+    "tournament.ScrimRoomRead": {
+      "properties": {
+        "away_team": {
+          "$ref": "#/components/schemas/tournament.ScrimTeamRead"
+        },
+        "best_of": {
+          "title": "Best Of",
+          "type": "integer"
+        },
+        "can_claim": {
+          "title": "Can Claim",
+          "type": "boolean"
+        },
+        "closed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Closed At"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "home_team": {
+          "$ref": "#/components/schemas/tournament.ScrimTeamRead"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "stage_id": {
+          "title": "Stage Id",
+          "type": "integer"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "viewer_side": {
+          "anyOf": [
+            {
+              "enum": [
+                "home",
+                "away"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Viewer Side"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "token",
+        "label",
+        "workspace_id",
+        "tournament_id",
+        "stage_id",
+        "encounter_id",
+        "best_of",
+        "home_team",
+        "away_team",
+        "viewer_side",
+        "can_claim",
+        "created_at",
+        "closed_at"
+      ],
+      "title": "ScrimRoomRead",
+      "type": "object"
+    },
+    "tournament.ScrimTeamRead": {
+      "properties": {
+        "captain_claimed": {
+          "title": "Captain Claimed",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "captain_claimed"
+      ],
+      "title": "ScrimTeamRead",
       "type": "object"
     },
     "tournament.SeedTeamsRequest": {

@@ -350,7 +350,13 @@ async def run_rolling_backtest(
 
 
 async def _latest_tournament_id(session: AsyncSession) -> int:
-    tid = await session.scalar(sa.select(sa.func.max(models.Tournament.id)))
+    # Same exclusion as ``tournament_ids_up_to``: the per-workspace scrim
+    # container (docs/plans/2026-08-12-scrim-rooms.md) is hidden and carries no
+    # ranked roster data, so letting it win ``max()`` would shift the timeline
+    # maximum onto a tournament the backtest can score nothing against.
+    tid = await session.scalar(
+        sa.select(sa.func.max(models.Tournament.id)).where(models.Tournament.is_hidden.is_(False))
+    )
     return int(tid or 0)
 
 

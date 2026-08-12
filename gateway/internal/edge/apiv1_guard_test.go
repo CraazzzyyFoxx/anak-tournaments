@@ -48,6 +48,7 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, tournament.RegistrationAdminRoutes)
 	d.Register(mux, tournament.IntegrationsRoutes)
 	d.Register(mux, tournament.PublicWriteRoutes)
+	d.Register(mux, tournament.ScrimRoutes)
 	mux.Handle("/api/v1/division-grids/", d.Subtree(tournament.DivisionGridRoutes))
 	mux.Handle("/api/v1/admin/stages/", d.Subtree(tournament.StageSubtreeRoutes))
 	// app-service typed routes (reads + workspace/metadata/users admin) + the
@@ -160,6 +161,41 @@ func TestApiV1Guard_MatchSurfaceRoutesAreRegistered(t *testing.T) {
 			defer resp.Body.Close()
 			if route := resp.Header.Get("X-Route"); route == "guard" {
 				t.Fatalf("GET %s hit the /api/v1/ guard — the route is not registered", path)
+			}
+		})
+	}
+}
+
+// Scrim rooms ride their own table (tournament.ScrimRoutes,
+// docs/plans/2026-08-12-scrim-rooms.md), so a missing main.go registration
+// would leave every path answered by the /api/v1/ guard with no compile error.
+// The bare collection and the {token} routes must also not shadow each other:
+// the share token is an opaque string, so /api/v1/scrims must keep matching the
+// collection rather than being read as a token.
+func TestApiV1Guard_ScrimRoutesAreRegistered(t *testing.T) {
+	mux := buildGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/scrims"},
+		{http.MethodGet, "/api/v1/scrims?workspace_id=1"},
+		{http.MethodGet, "/api/v1/scrims/aBc123"},
+		{http.MethodPost, "/api/v1/scrims/aBc123/claim"},
+		{http.MethodPost, "/api/v1/scrims/aBc123/close"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, srv.URL+tc.path, http.NoBody)
+			if err != nil {
+				t.Fatalf("build %s %s: %v", tc.method, tc.path, err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
+			}
+			defer resp.Body.Close()
+			if route := resp.Header.Get("X-Route"); route == "guard" {
+				t.Fatalf("%s %s hit the /api/v1/ guard — the route is not registered", tc.method, tc.path)
 			}
 		})
 	}

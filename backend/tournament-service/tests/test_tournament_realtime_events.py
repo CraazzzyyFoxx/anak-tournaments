@@ -51,7 +51,10 @@ class TournamentRealtimeEventsTests(IsolatedAsyncioTestCase):
         self.assertEqual(updates, [(42, "structure_changed")])
 
     async def test_recalculation_outbox_event_registers_bracket_realtime_update(self) -> None:
-        session = SimpleNamespace(info={}, add=Mock(), flush=AsyncMock())
+        # ``scalar`` answers the scrim-container probe the recalculation now makes
+        # before queueing a job (docs/plans/2026-08-12-scrim-rooms.md §5);
+        # ``None`` means "an ordinary tournament".
+        session = SimpleNamespace(info={}, add=Mock(), flush=AsyncMock(), scalar=AsyncMock(return_value=None))
 
         with patch.object(tournament_events, "request_standings_recalculation", AsyncMock()) as request:
             await tournament_events.enqueue_tournament_recalculation(session, 42)
