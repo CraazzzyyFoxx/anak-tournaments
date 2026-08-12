@@ -36,3 +36,17 @@ func From(r *http.Request) string {
 	}
 	return r.RemoteAddr
 }
+
+// UserAgent returns the ORIGINAL client user-agent. nginx preserves it in
+// X-Original-User-Agent when it rewrites User-Agent for an upstream hop, so that
+// header wins; otherwise the request's own User-Agent stands.
+//
+// Lives here rather than beside either caller because the identity handlers and
+// the generic edge dispatcher both stamp this onto outgoing RPC bodies, and two
+// copies of "which header do we trust" is exactly the pair that drifts.
+func UserAgent(r *http.Request) string {
+	if v := strings.TrimSpace(r.Header.Get("X-Original-User-Agent")); v != "" {
+		return v
+	}
+	return r.Header.Get("User-Agent")
+}

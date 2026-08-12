@@ -793,13 +793,13 @@ func bearerToken(r *http.Request) string {
 }
 
 // clientMeta extracts the original user-agent and the trusted client IP written
-// to the session/audit record. The IP comes from clientip.From, which trusts the
-// nginx-set X-Real-IP (and the right-most, non-spoofable X-Forwarded-For hop) —
+// to the session/audit record. Both come from the clientip package, which is
+// also what edge.Dispatcher stamps onto every other route's RPC body -- one
+// definition of which headers are trustworthy, not two. The IP trusts the
+// nginx-set X-Real-IP (and the right-most, non-spoofable X-Forwarded-For hop) --
 // never the left-most, client-controlled X-Forwarded-For entry.
 func clientMeta(r *http.Request) (userAgent, ip string) {
-	userAgent = firstNonEmpty(r.Header.Get("X-Original-User-Agent"), r.Header.Get("User-Agent"))
-	ip = clientip.From(r)
-	return userAgent, ip
+	return clientip.UserAgent(r), clientip.From(r)
 }
 
 // setClientMeta stamps the trusted client IP/user-agent onto an outgoing RPC
@@ -816,15 +816,6 @@ func setClientMeta(r *http.Request, body map[string]any) {
 	ua, ip := clientMeta(r)
 	body["user_agent"] = ua
 	body["ip_address"] = ip
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // writeDetail emits a FastAPI-style error body: {"detail": "..."}.

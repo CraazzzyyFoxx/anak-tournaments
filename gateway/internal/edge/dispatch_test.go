@@ -323,3 +323,70 @@ func TestDispatch_PerRouteTimeout(t *testing.T) {
 		})
 	}
 }
+
+// Every worker's record_audit reads data["ip_address"]/data["user_agent"]. Only
+// the identity handlers used to stamp them, so audit rows from app-service and
+// tournament-service -- the CRUD engine and every registration mutation --
+// stored NULL for both and the journal could not say where a change came from.
+// The key names are load-bearing: a synonym silently drops the forensics again.
+func TestDispatch_ForwardsTrustedClientMeta(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{}}`)}
+	d := newTestDispatcher(m, nil)
+	spec := RouteSpec{Method: "GET", Pattern: "/api/v1/things", Queue: "rpc.q", Auth: AuthNone}
+
+	mux := http.NewServeMux()
+	d.Register(mux, []RouteSpec{spec})
+	r := httptest.NewRequest("GET", "/api/v1/things", nil)
+	r.Header.Set("X-Real-IP", "203.0.113.7")
+	r.Header.Set("User-Agent", "UA/1")
+	mux.ServeHTTP(httptest.NewRecorder(), r)
+
+	var sent map[string]any
+	if err := json.Unmarshal(m.lastBody, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent["ip_address"] != "203.0.113.7" {
+		t.Fatalf("ip_address = %v", sent["ip_address"])
+	}
+	if sent["user_agent"] != "UA/1" {
+		t.Fatalf("user_agent = %v", sent["user_agent"])
+	}
+}
+
+// The recorded origin of a mutation must not be something its author can choose.
+// The body lands under data["payload"], so body values can never reach the keys
+// the workers read -- and the left-most X-Forwarded-For hop, which the client
+// controls, must lose to the nginx-set X-Real-IP.
+func TestDispatch_ClientCannotForgeClientMeta(t *testing.T) {
+	m := &mockCaller{reply: []byte(`{"ok":true,"data":{}}`)}
+	d := newTestDispatcher(m, func(*http.Request) (map[string]any, bool, error) {
+		return map[string]any{"user_id": 1.0}, true, nil
+	})
+	spec := RouteSpec{Method: "POST", Pattern: "/api/v1/things", Queue: "rpc.q", Body: true, Auth: AuthRequired}
+
+	mux := http.NewServeMux()
+	d.Register(mux, []RouteSpec{spec})
+	r := httptest.NewRequest("POST", "/api/v1/things",
+		strings.NewReader(`{"ip_address":"6.6.6.6","user_agent":"forged"}`))
+	r.Header.Set("X-Real-IP", "203.0.113.7")
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.7")
+	r.Header.Set("User-Agent", "UA/1")
+	mux.ServeHTTP(httptest.NewRecorder(), r)
+
+	var sent map[string]any
+	if err := json.Unmarshal(m.lastBody, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent["ip_address"] != "203.0.113.7" {
+		t.Fatalf("ip_address = %v, want the nginx-trusted hop", sent["ip_address"])
+	}
+	if sent["user_agent"] != "UA/1" {
+		t.Fatalf("user_agent = %v, want the real header", sent["user_agent"])
+	}
+	// The forged values are still visible where they belong -- inside the body
+	// the worker validates -- and nowhere else.
+	payload, _ := sent["payload"].(map[string]any)
+	if payload["ip_address"] != "6.6.6.6" {
+		t.Fatalf("payload lost the caller's own body: %v", sent["payload"])
+	}
+}

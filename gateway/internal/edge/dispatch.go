@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/clientip"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
@@ -133,6 +134,24 @@ func (d *Dispatcher) serve(w http.ResponseWriter, r *http.Request, spec RouteSpe
 		}
 		data["payload"] = body
 	}
+
+	// The trusted origin of this request, under the exact keys every worker's
+	// record_audit call already reads. Until this was here, the identity
+	// handlers were the only ones stamping it (setClientMeta), so every audit
+	// row written from app-service or tournament-service -- the whole CRUD
+	// engine, every registration mutation -- stored NULL for both columns and
+	// the journal could not say where a change came from.
+	//
+	// TOP LEVEL, never inside data["payload"]: the request body lands there, so
+	// a caller cannot forge the recorded origin of its own mutation. Set after
+	// the body is decoded for the same reason.
+	//
+	// Unconditional rather than write-only: it is two short strings on an AMQP
+	// message, and no route has to remember to opt in. Cache keys are the URL
+	// (respcache.cacheKey), not the RPC body, so this cannot fragment the
+	// shared response cache.
+	data["ip_address"] = clientip.From(r)
+	data["user_agent"] = clientip.UserAgent(r)
 
 	raw, _ := json.Marshal(data)
 	d.call(w, r, spec.Queue, raw, spec.successStatus(), spec.callTimeout())
