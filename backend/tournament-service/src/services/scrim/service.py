@@ -369,6 +369,14 @@ async def list_rooms_for_viewer(session: AsyncSession, user: models.AuthUser, wo
     Its own read rather than ``/encounters?scope=my_team``: that browse joins
     ``Player`` rows (a scrim team has none) and unconditionally excludes hidden
     tournaments, so it can never surface a scrim by construction.
+
+    Deliberately NOT ``DISTINCT``. Every join below is to a primary key --
+    ``ScrimRoom.encounter_id`` is unique, and each side resolves one ``Team`` row
+    -- so the result is exactly one row per room and there is nothing to
+    de-duplicate. A ``DISTINCT`` here is also outright invalid: Postgres requires
+    every ORDER BY expression to appear in the select list under it, and the
+    ordering below sorts on a computed ``closed_at IS NULL``, which raises
+    ``InvalidColumnReferenceError``. It shipped with one and 500'd the list.
     """
     require_workspace_member(user, workspace_id)
     player_ids = sa.select(models.User.id).where(models.User.auth_user_id == user.id).scalar_subquery()
@@ -391,10 +399,8 @@ async def list_rooms_for_viewer(session: AsyncSession, user: models.AuthUser, wo
         # Open rooms first, then newest closed: the list's job is "what am I in
         # right now", with history underneath it.
         .order_by(ScrimRoom.closed_at.is_(None).desc(), ScrimRoom.id.desc())
-        .distinct()
     )
-    rooms = rows.scalars().unique().all()
-    return [await serialize_room(session, room, user) for room in rooms]
+    return [await serialize_room(session, room, user) for room in rows.scalars().all()]
 
 
 async def _viewer_side(session: AsyncSession, room: ScrimRoom, user: models.AuthUser | None) -> Side | None:
