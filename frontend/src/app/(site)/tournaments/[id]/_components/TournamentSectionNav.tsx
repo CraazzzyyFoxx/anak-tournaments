@@ -60,6 +60,7 @@ type TournamentSectionNavProps = {
   stages?: StageSummary[];
   teamFormation?: string;
   hasSchedule?: boolean;
+  hasTeams?: boolean;
   // Retained for call-site compatibility; both variants render the same adaptive rail.
   variant?: "desktop" | "mobile";
   className?: string;
@@ -71,6 +72,7 @@ export default function TournamentSectionNav({
   stages = [],
   teamFormation,
   hasSchedule,
+  hasTeams,
   className
 }: TournamentSectionNavProps) {
   const t = useTranslations();
@@ -88,9 +90,10 @@ export default function TournamentSectionNav({
         stages,
         teamFormation,
         hasSchedule,
+        hasTeams,
         pathname
       }),
-    [hasSchedule, pathname, stages, status, teamFormation, tournamentId]
+    [hasSchedule, hasTeams, pathname, stages, status, teamFormation, tournamentId]
   );
   const setActiveRef = (node: HTMLElement | null) => {
     activeRef.current = node;

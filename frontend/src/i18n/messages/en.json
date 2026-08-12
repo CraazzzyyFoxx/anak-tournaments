@@ -1670,7 +1670,8 @@
       "reasons": {
         "competitionNotStarted": "Available when tournament play begins.",
         "noStages": "The organizer has not published tournament stages yet.",
-        "noSchedule": "The organizer has not published a phase schedule yet."
+        "noSchedule": "The organizer has not published a phase schedule yet.",
+        "noTeams": "Available once teams are formed."
       }
     },
     "loading": {

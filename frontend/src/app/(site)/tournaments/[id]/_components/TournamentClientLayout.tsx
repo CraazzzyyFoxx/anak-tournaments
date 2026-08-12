@@ -171,6 +171,7 @@ export default function TournamentClientLayout({
         stages={stages}
         teamFormation={tournament.team_formation}
         hasSchedule={(tournament.phase_schedule?.length ?? 0) > 0}
+        hasTeams={teamsCount > 0}
       />
 
       <section className="min-w-0">{children}</section>

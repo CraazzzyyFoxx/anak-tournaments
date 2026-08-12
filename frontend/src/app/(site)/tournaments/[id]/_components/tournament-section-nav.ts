@@ -6,7 +6,8 @@ export type TournamentSectionId =
 export type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.competitionNotStarted"
   | "tournamentDetail.nav.reasons.noStages"
-  | "tournamentDetail.nav.reasons.noSchedule";
+  | "tournamentDetail.nav.reasons.noSchedule"
+  | "tournamentDetail.nav.reasons.noTeams";
 
 export type TournamentSectionNavItem = {
   id: TournamentSectionId;
@@ -28,6 +29,12 @@ type BuildTournamentSectionNavInput = {
    * leading to an empty page.
    */
   hasSchedule?: boolean;
+  /**
+   * Whether any team exists yet. Teams are formed before play starts (balancer
+   * run or draft), so the section opens as soon as there is a roster to show
+   * rather than waiting for the competition phase.
+   */
+  hasTeams?: boolean;
   pathname: string;
 };
 
@@ -40,7 +47,6 @@ const competitionStatuses = new Set<TournamentStatus>([
 
 const competitionOnlySections = new Set<TournamentSectionId>([
   "bracket",
-  "teams",
   "matches",
   "heroes",
   "standings"
@@ -84,6 +90,7 @@ export function buildTournamentSectionNav({
   stages,
   teamFormation,
   hasSchedule = false,
+  hasTeams = false,
   pathname
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
   const competitionStarted = competitionStatuses.has(status);
@@ -102,20 +109,23 @@ export function buildTournamentSectionNav({
     const phaseLocked = competitionOnlySections.has(id) && !competitionStarted;
     const stageLocked = id === "bracket" && competitionStarted && stages.length === 0;
     const scheduleLocked = id === "schedule" && !hasSchedule;
+    const teamsLocked = id === "teams" && !hasTeams && !competitionStarted;
 
     return {
       id,
       labelKey: `common.${id}`,
       href,
       active: currentPath === canonicalPath,
-      available: !phaseLocked && !stageLocked && !scheduleLocked,
+      available: !phaseLocked && !stageLocked && !scheduleLocked && !teamsLocked,
       reasonKey: phaseLocked
         ? "tournamentDetail.nav.reasons.competitionNotStarted"
         : stageLocked
           ? "tournamentDetail.nav.reasons.noStages"
           : scheduleLocked
             ? "tournamentDetail.nav.reasons.noSchedule"
-            : null
+            : teamsLocked
+              ? "tournamentDetail.nav.reasons.noTeams"
+              : null
     };
   });
 }
