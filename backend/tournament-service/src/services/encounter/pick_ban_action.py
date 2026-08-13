@@ -61,10 +61,19 @@ async def get_pick_ban_pool(
 def auto_complete_decider_entry(sequence: list[str], pool: list[PickBanEntry]) -> PickBanEntry | None:
     """Generalizes ``map_veto.auto_complete_decider_entry``: ``slot``/
     ``current_slot`` -> ``round``/``current_round``, ``map_id`` -> ``item_id``.
-    Returns ``None`` when there is no pending decider step to resolve; raises
-    if a decider step is current but the round does not hold exactly one
-    available candidate (a config/data invariant violation, not a normal
-    state)."""
+    Returns ``None`` when there is no pending decider step to resolve.
+
+    A well-formed bracket-driven config (``build_sequence_for_best_of``) bans
+    and picks the round's pool down to exactly one survivor before the
+    decider step, so the common case is a single candidate. But nothing
+    enforces that pool size against ``best_of`` at config-upsert time, so a
+    pool oversized for its series length (e.g. the full map catalog on a Bo5)
+    reaches this step with several survivors still standing. Rather than 400
+    the room dead for every future read — the config's mistake, not the
+    captains' — resolve it the same way ``auto_resolve_timeout`` already
+    resolves an abandoned captain step: pick uniformly at random among the
+    survivors. Only an EMPTY round (a genuine config/data invariant
+    violation — nothing at all left to award) still raises."""
     step = engine.get_current_step(sequence, pool)
     if step is None:
         return None
@@ -79,13 +88,13 @@ def auto_complete_decider_entry(sequence: list[str], pool: list[PickBanEntry]) -
         for entry in pool
         if entry.status == MapPoolEntryStatus.AVAILABLE.value and engine.in_current_round(entry, active_round)
     ]
-    if len(available) != 1:
+    if not available:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Decider step requires exactly one available item",
+            detail="Decider step has no available item",
         )
 
-    entry = available[0]
+    entry = random.choice(available)
     entry.action_index = sum(1 for pool_entry in pool if pool_entry.status != MapPoolEntryStatus.AVAILABLE.value)
     entry.status = MapPoolEntryStatus.PICKED.value
     entry.picked_by = MapPickSide.DECIDER.value

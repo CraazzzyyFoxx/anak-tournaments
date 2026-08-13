@@ -203,8 +203,9 @@ def build_round_sequence(
     round instead runs the config's own sequence verbatim, once per map --
     minus any ``decider``, which asks "whatever survived the bans is the pick"
     and is a map-veto idea: a hero round leaves the whole unbanned pool
-    playable, so that step could never resolve (``auto_complete_decider_entry``
-    needs exactly one available item) and would stall the room.
+    playable, and handing that survivor set to ``auto_complete_decider_entry``
+    would auto-pick ONE hero at random and take the rest out of captains'
+    control -- exactly what a hero round must never do.
     """
     tokens = (
         build_slot_sequence([candidate_count], rotation=FirstBanRotation.FIXED.value)
@@ -615,11 +616,10 @@ async def advance_to_next_round(
         # `ensure_pick_ban_session` re-checks this floor against the raw slot
         # size before round 1 starts; nothing re-checked it here once
         # no-repeat exclusion (`no_repeat_scope != none`) has eaten into a
-        # later round's pool. Left unguarded, `build_slot_sequence` still
         # emits a bare `decider` for < 2 candidates and the round's entries
         # come up short, so `auto_complete_decider_entry` failed later with
-        # an opaque "requires exactly one available item" instead of naming
-        # the actual cause here, at round-creation time.
+        # an opaque "has no available item" instead of naming the actual
+        # cause here, at round-creation time.
         raise HTTPException(
             status_code=422,
             detail=(

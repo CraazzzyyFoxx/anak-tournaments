@@ -2381,6 +2381,7 @@
         "pick": "Pick",
         "protect": "Protect",
         "decider": "Decider",
+        "deciderHint": "If more than one item is still available at this step, one is chosen at random.",
         "done": "done",
         "current": "current step",
         "pending": "pending"
@@ -2597,7 +2598,7 @@
       "orderLabel": "Step order",
       "orderBracket": "From the bracket",
       "orderCustom": "Custom",
-      "orderBracketHint": "Generated for each match from its series length: two opening bans, then alternating picks, then a decider when the length is odd.",
+      "orderBracketHint": "Generated for each match from its series length: two opening bans, then alternating picks, then a decider when the length is odd. If the pool holds more maps than the series needs, the decider is chosen at random among whatever is left instead of blocking the room.",
       "orderCustomHint": "Your exact list of steps, used as written for every match in this scope regardless of its series length.",
       "orderPreview": "Generated order",
       "orderSteps": "Steps",

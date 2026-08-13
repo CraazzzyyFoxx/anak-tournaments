@@ -112,16 +112,34 @@ class AutoCompleteDeciderEntryTests(TestCase):
         with self.assertRaises(HTTPException) as ctx:
             auto_complete_decider_entry(["ban_home", "ban_away", "decider"], pool)
         self.assertEqual(400, ctx.exception.status_code)
-        self.assertEqual("Decider step requires exactly one available item", ctx.exception.detail)
+        self.assertEqual("Decider step has no available item", ctx.exception.detail)
 
-    def test_multiple_available_candidates_raises(self) -> None:
-        pool = [
-            make_entry(1, status=MapPoolEntryStatus.AVAILABLE),
-            make_entry(2, status=MapPoolEntryStatus.AVAILABLE),
-        ]
+    def test_multiple_available_candidates_picks_one_at_random(self) -> None:
+        """A pool oversized for its series length (config mistake, not a
+        captain's) must not 400 the room dead forever -- it resolves the
+        decider the same way an abandoned captain step already does:
+        uniformly at random among the survivors, leaving the rest untouched,
+        and every survivor gets a turn across enough draws."""
+        chosen_ids: set[int] = set()
+        for _ in range(50):
+            pool = [
+                make_entry(1, status=MapPoolEntryStatus.AVAILABLE),
+                make_entry(2, status=MapPoolEntryStatus.AVAILABLE),
+                make_entry(3, status=MapPoolEntryStatus.AVAILABLE),
+            ]
 
-        with self.assertRaises(HTTPException):
-            auto_complete_decider_entry(["decider"], pool)
+            entry = auto_complete_decider_entry(["decider"], pool)
+
+            self.assertIn(entry, pool)
+            self.assertEqual(MapPoolEntryStatus.PICKED.value, entry.status)
+            self.assertEqual(MapPickSide.DECIDER.value, entry.picked_by)
+            untouched = [candidate for candidate in pool if candidate is not entry]
+            self.assertEqual(2, len(untouched))
+            for candidate in untouched:
+                self.assertEqual(MapPoolEntryStatus.AVAILABLE, candidate.status)
+            chosen_ids.add(entry.item_id)
+
+        self.assertEqual({1, 2, 3}, chosen_ids)
 
     def test_protected_entries_still_count_as_available_for_the_floor(self) -> None:
         # `protected_by` only blocks a `ban`; a decider auto-resolve does not
