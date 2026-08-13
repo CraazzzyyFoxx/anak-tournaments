@@ -150,12 +150,39 @@ Two sources, both writing the same stage-scoped `PickBanConfig`:
    (`pickBanConfig.helpers.ts`) and the existing server validators
    `validate_pick_ban_config` / `validate_pick_ban_slot_config`.
 
-### 4.4 History
+### 4.4 Visibility and history
 
-No new column on `Encounter`. `is_hidden` + `TournamentPreviewAccess` already
-give: participants (and workspace admins) can open the finished room and its
-encounter page indefinitely; everyone else gets 404; it never appears in
-`/encounters`, public stats, dashboards or tournament pickers.
+No new column on `Encounter`. The container is `is_hidden`, so it never appears
+in `/encounters`, public stats, dashboards or tournament pickers, and a finished
+room stays readable indefinitely.
+
+**Who may read it took a correction.** The original design used
+`TournamentPreviewAccess`, granting the creator on create and the opponent on
+claim. That cannot work, and shipped broken: `assert_tournament_viewable` admits
+only workspace **admins** and allowlisted users, so the opponent following a
+share link — a plain member, not yet allowlisted — got 404 on every read of the
+room, and the row that would have added them is written by the claim they could
+no longer reach. Teammates could not watch either.
+
+So `assert_tournament_viewable` now admits any **member of the owning workspace**
+to a **scrim container**, and the preview grants are gone: one rule instead of
+two overlapping ones, and a member who leaves the workspace loses access instead
+of keeping it through a stale allowlist row.
+
+Deliberately narrow in two directions:
+
+* Only the container. A hidden **preview** tournament is an unpublished real one,
+  and admitting every member is what preview mode exists to prevent.
+* Only the direct-read gate. `visible_tournaments_predicate` is untouched, so the
+  container is readable by a member holding a link and never *listed* to one.
+  (Workspace admins do see hidden rows in listings — pre-existing, and the only
+  way an admin learns the container exists.)
+
+This also closes a divergence: the realtime ACL already treated workspace
+membership as the insider signal for spectating a hidden tournament
+(`gateway/internal/acl/acl.go:allowSpectate`), so a member could receive a room's
+realtime signal while the state read 404'd. The token is an address, not a
+security boundary: any member of the workspace can reach any room.
 
 "My scrims" is a dedicated read off `ScrimRoom` — **not** `/encounters?scope=my_team`,
 which joins `Player` rows (scrim teams have none) and hard-excludes hidden

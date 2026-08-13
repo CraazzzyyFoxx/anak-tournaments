@@ -48,7 +48,6 @@ from shared.models.tournament.pick_ban import (
     PickBanConfigSlot,
     PickBanConfigSlotItem,
 )
-from shared.models.tournament.preview_access import TournamentPreviewAccess
 from shared.models.tournament.scrim import ScrimRoom
 from shared.services.settings_provider import get_scrim_config
 from shared.services.tournament_visibility import assert_tournament_viewable
@@ -117,24 +116,6 @@ async def _ensure_player(session: AsyncSession, user: models.AuthUser) -> models
     session.add(player)
     await session.flush()
     return player
-
-
-async def _grant_preview_access(session: AsyncSession, tournament_id: int, auth_user_id: int) -> None:
-    """Let this participant read the room — now and after it is closed.
-
-    The container is hidden, so every read of the room's encounter, matches and
-    pick-ban state is gated by ``assert_tournament_viewable``. This allowlist row
-    IS the "scrim history is visible to its participants" half of the design;
-    without it a captain loses their own room the moment they navigate away.
-    """
-    existing = await session.scalar(
-        sa.select(TournamentPreviewAccess.id).where(
-            TournamentPreviewAccess.tournament_id == tournament_id,
-            TournamentPreviewAccess.auth_user_id == auth_user_id,
-        )
-    )
-    if existing is None:
-        session.add(TournamentPreviewAccess(tournament_id=tournament_id, auth_user_id=auth_user_id))
 
 
 # ── container ────────────────────────────────────────────────────────────────
@@ -641,7 +622,6 @@ async def create_room(
         created_by_auth_user_id=user.id,
     )
     session.add(room)
-    await _grant_preview_access(session, container.id, user.id)
     await session.commit()
 
     return await get_room_by_token(session, user, room.token)
@@ -683,7 +663,6 @@ async def claim_side(session: AsyncSession, user: models.AuthUser, token: str) -
     )
     if claimed.rowcount == 0:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That side was just claimed")
-    await _grant_preview_access(session, room.tournament_id, user.id)
     await session.commit()
     await session.refresh(room.encounter)
     return await get_room_by_token(session, user, token)
