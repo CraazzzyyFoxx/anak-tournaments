@@ -1460,14 +1460,21 @@ def _compare_metrics_query_v2(
     )
     has_scope_filter = role is not None or div_min is not None or div_max is not None or tournament_id is not None
 
+    # The cohort, expressed once as something pushable into a subquery. Everything
+    # downstream that would otherwise scan a whole table and only meet the cohort at
+    # the final join takes this instead.
+    cohort_scope: typing.Any | None = None
+    if user_ids is not None:
+        cohort_scope = user_ids
+    elif has_scope_filter:
+        cohort_scope = sa.select(scoped_players.c.user_id).distinct()
+
     candidates_query = sa.select(
         models.User.id.label("id"),
         models.User.name.label("name"),
     )
-    if user_ids is not None:
-        candidates_query = candidates_query.where(models.User.id.in_(user_ids))
-    elif has_scope_filter:
-        candidates_query = candidates_query.where(models.User.id.in_(sa.select(scoped_players.c.user_id).distinct()))
+    if cohort_scope is not None:
+        candidates_query = candidates_query.where(models.User.id.in_(cohort_scope))
     candidates = candidates_query.cte("compare_candidates")
 
     tournament_counts = (
@@ -1573,8 +1580,14 @@ def _compare_metrics_query_v2(
         .cte("compare_average_closeness")
     )
 
+    # Unrestricted, this scans every evaluation result and grant in the database and
+    # runs the correlated revoke NOT EXISTS over all of them before grouping -- and
+    # the cohort was only met at the ``candidates`` join below, which cannot be
+    # pushed through the subquery's GROUP BY. Same rows, whole-table cost, and it is
+    # what timed the compare page out. ``candidates.id`` is a primary key, so
+    # joining it and filtering by membership in it are the same thing.
     effective_achievements = build_effective_achievement_rows_subquery(
-        user_ids=None,
+        user_ids=cohort_scope,
         name="compare_effective_achievement_rows_v2",
     )
     achievement_match = aliased(models.Match)

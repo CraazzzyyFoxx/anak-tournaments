@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import typing
 from collections.abc import Iterable
 
 import sqlalchemy as sa
+from sqlalchemy.sql.elements import ClauseElement
 
 from shared.models.achievements.achievement import (
     AchievementEvaluationResult,
@@ -57,7 +59,7 @@ def build_effective_achievement_rows_subquery(
     *,
     workspace_id: int | None = None,
     achievement_rule_ids: Iterable[int] | None = None,
-    user_ids: Iterable[int] | None = None,
+    user_ids: Iterable[int] | sa.Select | sa.ScalarSelect | None = None,
     name: str = "effective_achievement_rows",
 ) -> sa.Subquery:
     """Build a reusable subquery for effective achievement rows.
@@ -66,9 +68,24 @@ def build_effective_achievement_rows_subquery(
       evaluation_result
       UNION grant overrides
       MINUS revoke overrides scoped by global/tournament/match precedence
+
+    ``user_ids`` may be a SELECTABLE, not just a list. Narrowing matters more here
+    than anywhere else: unrestricted, this scans every evaluation result and grant
+    in the database and evaluates the correlated revoke ``NOT EXISTS`` against each
+    one before grouping. A caller that then inner-joins its own cohort gets the
+    same rows either way -- the join to a unique key IS a membership test -- but
+    pays for the whole table first, which is what timed the compare page out. Pass
+    the cohort as a subquery so the restriction happens before the scan, and NEVER
+    resolve it to a list first: a 560-element ``IN`` list is its own pathology.
     """
     achievement_rule_ids = list(achievement_rule_ids or [])
-    user_ids = list(user_ids or [])
+    user_scope: typing.Any
+    if user_ids is None:
+        user_scope = None
+    elif isinstance(user_ids, ClauseElement):
+        user_scope = user_ids
+    else:
+        user_scope = list(user_ids) or None
 
     # ``AchievementEvaluationResult``/``AchievementOverride`` are anchored on
     # ``workspace_member_id`` now, not the player identity directly. Every
@@ -122,9 +139,9 @@ def build_effective_achievement_rows_subquery(
         )
         grant_rows = grant_rows.where(AchievementOverride.achievement_rule_id.in_(achievement_rule_ids))
 
-    if user_ids:
-        evaluation_rows = evaluation_rows.where(eval_member.player_id.in_(user_ids))
-        grant_rows = grant_rows.where(grant_member.player_id.in_(user_ids))
+    if user_scope is not None:
+        evaluation_rows = evaluation_rows.where(eval_member.player_id.in_(user_scope))
+        grant_rows = grant_rows.where(grant_member.player_id.in_(user_scope))
 
     candidates = evaluation_rows.union_all(grant_rows).subquery(f"{name}_candidates")
 
