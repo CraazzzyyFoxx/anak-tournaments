@@ -57,12 +57,44 @@ _TRANSPORT_CHURN_EXCEPTIONS: frozenset[str] = frozenset(
 # a tracing-pipeline availability problem, visible in the collector's own metrics
 # and retried by the exporter itself; as Sentry issues it contributed ~800 events
 # that no code change can address.
-_NOISY_LOGGERS: tuple[str, ...] = ("faststream", "opentelemetry")
+#
+# ``aiormq``/``aio_pika`` log a refused broker connect at ERROR on every attempt
+# while the broker is down, and the message embeds the exception rather than
+# raising it — so it arrives as a log record and misses
+# ``_TRANSPORT_CHURN_EXCEPTIONS`` even though ``AMQPConnectionError`` is already
+# listed there. One stack restart produced 1248 events across two groups that way.
+# This closes that gap; it is the same policy, not a new one.
+#
+# NB: ``asyncio`` is deliberately absent. "Task was destroyed but it is pending!"
+# and "Event loop is closed" look like restart noise and are not: both mean a
+# background task was never anchored or never cancelled, which is a real defect
+# (see the fire-and-forget publishers fixed in ``realtime_publisher`` and
+# ``balancer-service/serve.py``). Silencing that logger would have hidden them.
+_NOISY_LOGGERS: tuple[str, ...] = ("faststream", "opentelemetry", "aiormq", "aio_pika")
+
+# Reachability errors whose bare ``__name__`` is too generic to list above.
+# ``redis.exceptions.TimeoutError`` is churn -- the same class of thing as the
+# ``ConnectionError`` already listed, and one Redis blip produced 282 events
+# across three groups -- but it shadows the stdlib/asyncio ``TimeoutError``, which
+# is real signal about a slow dependency. Only the fully qualified name tells them
+# apart. Deliberately NOT the whole ``redis.exceptions`` module: ``ResponseError``
+# (WRONGTYPE) and ``DataError`` are defects in our own commands.
+_CHURN_EXCEPTION_QUALNAMES: frozenset[str] = frozenset(
+    {
+        "redis.exceptions.BusyLoadingError",
+        "redis.exceptions.ConnectionError",
+        "redis.exceptions.TimeoutError",
+    }
+)
 
 
 def _is_transport_churn(exc: BaseException) -> bool:
-    """True for connection/channel lifecycle errors from the AMQP or DB drivers."""
-    return any(klass.__name__ in _TRANSPORT_CHURN_EXCEPTIONS for klass in type(exc).__mro__)
+    """True for connection/channel lifecycle errors from the AMQP, Redis or DB drivers."""
+    return any(
+        klass.__name__ in _TRANSPORT_CHURN_EXCEPTIONS
+        or f"{getattr(klass, '__module__', '')}.{klass.__name__}" in _CHURN_EXCEPTION_QUALNAMES
+        for klass in type(exc).__mro__
+    )
 
 
 def _is_expected_client_error(exc: BaseException) -> bool:
@@ -158,7 +190,18 @@ def setup_sentry(
 
     integrations: list[Any] = [
         AsyncioIntegration(),
-        LoguruIntegration(sentry_logs_level=_resolve_level(logs_level)),
+        LoguruIntegration(
+            sentry_logs_level=_resolve_level(logs_level),
+            # ``event_format`` defaults to loguru's LOGURU_FORMAT, and the SDK uses
+            # the RENDERED line as the event's message -- so every ERROR record
+            # arrived titled ``2026-08-07 15:44:15.785 | ERROR | mod:fn:12 - ...``.
+            # A timestamp in the title is unique per millisecond, so grouping never
+            # happened: one Sentry group per occurrence, thousands of them, and the
+            # same fault unrecognizable across restarts. The bare message groups the
+            # way it should. Breadcrumbs keep the full format -- there the timestamp
+            # is the point.
+            event_format="{message}",
+        ),
     ]
     if _OTLP_AVAILABLE:
         # Trace linking only. Both side effects are off on purpose:

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 )
 
 // fanoutHandler dispatches each slog record to several underlying handlers.
@@ -103,7 +104,7 @@ func (h *accessLogFilter) Handle(ctx context.Context, record slog.Record) error 
 			drop = true
 			return false
 		}
-		if a.Key == "err" && isClientGone(a.Value) {
+		if a.Key == "err" && (isClientGone(a.Value) || isBrokerChurn(a.Value)) {
 			drop = true
 			return false
 		}
@@ -124,6 +125,23 @@ func isClientGone(v slog.Value) bool {
 		return false
 	}
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+// isBrokerChurn reports whether an "err" log attribute is the broker connection
+// being absent or dropping mid-call. Both mean RabbitMQ is unreachable, which is
+// what Prometheus alerts on; as Sentry Issues they only bury faults, because
+// every in-flight request fails at once and each queue name opens its own group
+// (one stack restart produced 91 events across two of them).
+//
+// ErrOverloaded is deliberately NOT churn: the per-queue in-flight cap shedding
+// requests is the avalanche signal the cap exists to raise, and it fires while
+// the broker is perfectly healthy.
+func isBrokerChurn(v slog.Value) bool {
+	err, ok := v.Resolve().Any().(error)
+	if !ok {
+		return false
+	}
+	return errors.Is(err, rpc.ErrNotConnected) || errors.Is(err, rpc.ErrDisconnected)
 }
 
 func (h *accessLogFilter) WithAttrs(attrs []slog.Attr) slog.Handler {
