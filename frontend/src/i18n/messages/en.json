@@ -2519,7 +2519,9 @@
       "seriesDone": {
         "title": "Nothing left to decide",
         "hint": "Every map of this series has been picked, banned and reported. The result is with the organizers now.",
-        "hintNoReport": "Every map of this series has been picked, banned and reported. A scrim keeps no result, so there is nothing to file."
+        "hintNoReport": "Every map of this series has been picked, banned and reported. A scrim keeps no result, so there is nothing to file.",
+        "won": "{team} won the series {home}:{away}",
+        "drawn": "The series ended {home}:{away}"
       },
       "finalReport": {
         "title": "Report the match",

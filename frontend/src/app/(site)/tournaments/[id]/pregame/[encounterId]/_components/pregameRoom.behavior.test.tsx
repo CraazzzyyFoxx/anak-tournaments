@@ -1170,6 +1170,105 @@ describe("phase selection", () => {
     expect(document.body.querySelector('input[aria-label="Score for Bright Wolves"]')).toBeNull();
   });
 
+  it("names the winner on the closing screen when there is no report to file", async () => {
+    // "Who won and that's it" is the whole point of a scrim's closing screen:
+    // ending a finished series without saying how it ended is what made the room
+    // feel broken once the report was removed. Read off the encounter's own
+    // running score, which the per-map reports advance.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 2, away: 1 }
+    } as unknown as Encounter);
+    settledSeries("home");
+    await render({ seriesReport: false });
+
+    expect(document.body.textContent).toContain("Bright Wolves won the series 2:1");
+  });
+
+  it("charts a played map's score from the captains' claims when no Match row exists", async () => {
+    // A scrim writes no `matches.match` rows at all, so the filmstrip's score
+    // has to come from the agreed claims instead — otherwise every map of a
+    // scrim showed as played with nothing on it, which is what made the loop
+    // look stuck even though it was advancing correctly.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 1, away: 0 },
+      matches: []
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "picked", action_index: 5 })
+        ],
+        map_reports: [
+          { map_id: 21, map_index: 1, side: "home", home_score: 2, away_score: 1 },
+          { map_id: 21, map_index: 1, side: "away", home_score: 2, away_score: 1 }
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_home"],
+        pool: [
+          entry({ id: 3, item_id: 101, round: 1, status: "banned" }),
+          entry({ id: 4, item_id: 102, round: 2, status: "banned" })
+        ]
+      })
+    );
+    await render({ seriesReport: false });
+
+    const items = Array.from(
+      document.body.querySelectorAll(`ol[aria-label="${ROOM.series.label}"] li`)
+    );
+    expect(items[0].textContent).toContain("2:1");
+    // Map 2 is picked but not played: still no score, and still the one awaited.
+    expect(items[1].textContent).toContain(ROOM.series.awaiting);
+    expect(items[1].textContent).not.toMatch(/\d:\d/);
+  });
+
+  it("shows no score for a map whose captains disagree", async () => {
+    // A dispute is exactly when there is no agreed number, and the server will
+    // not advance the series either — inventing one here would tell the captains
+    // the map was settled.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      matches: []
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 })],
+        map_reports: [
+          { map_id: 21, map_index: 1, side: "home", home_score: 2, away_score: 1 },
+          { map_id: 21, map_index: 1, side: "away", home_score: 0, away_score: 2 }
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render({ seriesReport: false });
+
+    const items = Array.from(
+      document.body.querySelectorAll(`ol[aria-label="${ROOM.series.label}"] li`)
+    );
+    expect(items[0].textContent).not.toMatch(/\d:\d/);
+  });
+
   it("goes straight to hero when the encounter has no map rule set at all", async () => {
     mockStates(
       unavailableState("not_configured"),

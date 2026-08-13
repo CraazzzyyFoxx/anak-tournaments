@@ -12,9 +12,10 @@ import type {
   PickBanAction,
   PickBanEntry,
   PickBanEntryStatus,
+  PickBanMapReport,
   PickBanSession,
   PickBanState,
-  VetoUnavailableReason,
+  VetoUnavailableReason
 } from "@/types/tournament.types";
 
 export type PickBanSide = "home" | "away";
@@ -32,11 +33,12 @@ export function parseStepToken(token: string): ParsedPickBanStep {
     return { token, action: "decider", side: null };
   }
   const [action, side] = token.split("_");
-  const resolvedAction: PickBanAction = action === "pick" ? "pick" : action === "protect" ? "protect" : "ban";
+  const resolvedAction: PickBanAction =
+    action === "pick" ? "pick" : action === "protect" ? "protect" : "ban";
   return {
     token,
     action: resolvedAction,
-    side: side === "away" ? "away" : "home",
+    side: side === "away" ? "away" : "home"
   };
 }
 
@@ -96,6 +98,34 @@ export function seriesMatchesByPosition<T extends SeriesMatchLike>(
 }
 
 /**
+ * The score BOTH captains agreed on for one 1-based position of the series, or
+ * `null` while they have not, or disagree.
+ *
+ * Read as the fallback for a series position with no `Match` row. A scrim writes
+ * none — its per-map score exists to run the series, not to record it
+ * (docs/plans/2026-08-12-scrim-rooms.md §4.5) — so without this the room showed
+ * a captain's own agreed maps as played with no score at all.
+ *
+ * Keyed on `map_index`, the same position `seriesMatchesByPosition` aligns on:
+ * a series may play one map twice, and keying on the map alone printed the
+ * earlier play's score on the later one.
+ */
+export function agreedMapScore(
+  reports: PickBanMapReport[],
+  position: number
+): { home: number; away: number } | null {
+  const forPosition = reports.filter((report) => report.map_index === position);
+  const home = forPosition.find((report) => report.side === "home");
+  const away = forPosition.find((report) => report.side === "away");
+  if (home == null || away == null) return null;
+  // Both filed, and their claims match — the same reconciliation the server
+  // applies before it advances the series. A dispute shows no score, because
+  // there is not yet one to show.
+  if (home.home_score !== away.home_score || home.away_score !== away.away_score) return null;
+  return { home: home.home_score, away: home.away_score };
+}
+
+/**
  * The highest round `pool` holds entries for, or null for a flat pool.
  *
  * Read instead of `PickBanState.current_round` when the question is "which
@@ -148,33 +178,33 @@ export const PICK_BAN_UNAVAILABLE_COPY = {
   not_configured: {
     titleKey: "notConfiguredTitle",
     hintKey: "notConfiguredHint",
-    icon: "unconfigured",
+    icon: "unconfigured"
   },
   teams_unknown: {
     titleKey: "teamsUnknownTitle",
     hintKey: "teamsUnknownHint",
-    icon: "teams",
+    icon: "teams"
   },
   slot_count_mismatch: {
     titleKey: "slotCountMismatchTitle",
     hintKey: "slotCountMismatchHint",
-    icon: "misconfigured",
+    icon: "misconfigured"
   },
   slot_underfilled: {
     titleKey: "slotUnderfilledTitle",
     hintKey: "slotUnderfilledHint",
-    icon: "misconfigured",
+    icon: "misconfigured"
   },
   not_ready: {
     titleKey: "notReadyTitle",
     hintKey: "notReadyHint",
-    icon: "teams",
+    icon: "teams"
   },
   waiting_map: {
     titleKey: "waitingMapTitle",
     hintKey: "waitingMapHint",
-    icon: "teams",
-  },
+    icon: "teams"
+  }
 } as const satisfies Record<VetoUnavailableReason, PickBanUnavailableCopy>;
 
 /**
@@ -184,7 +214,12 @@ export const PICK_BAN_UNAVAILABLE_COPY = {
  * is null for `kind: "hero"`, so this is always empty there.
  */
 export function pickBanReserveMap(session: PickBanSession | null): Map<number, number> {
-  return new Map(Object.entries(session?.slot_reserves ?? {}).map(([position, itemId]) => [Number(position), itemId]));
+  return new Map(
+    Object.entries(session?.slot_reserves ?? {}).map(([position, itemId]) => [
+      Number(position),
+      itemId
+    ])
+  );
 }
 
 export interface PickBanRoundGroup {
@@ -226,7 +261,10 @@ export interface PickBanStepRoundGroup extends PickBanRoundGroup {
  * consecutive steps as it has pool entries, riding the entries along so the
  * timeline can ask `roundState` about a group directly.
  */
-export function stepRoundGroups(sequence: string[], pool: PickBanEntry[]): PickBanStepRoundGroup[] | null {
+export function stepRoundGroups(
+  sequence: string[],
+  pool: PickBanEntry[]
+): PickBanStepRoundGroup[] | null {
   const groups = poolRoundGroups(pool);
   if (groups === null) return null;
   let cursor = 0;
@@ -248,7 +286,10 @@ export type PickBanRoundState = "current" | "resolved" | "upcoming";
  * "resolved" is decided by the group having nothing left to act on rather
  * than by comparing against it.
  */
-export function roundState(group: PickBanRoundGroup, currentRound: number | null): PickBanRoundState {
+export function roundState(
+  group: PickBanRoundGroup,
+  currentRound: number | null
+): PickBanRoundState {
   if (group.round === currentRound) return "current";
   return group.entries.some((entry) => entry.status === "available") ? "upcoming" : "resolved";
 }
@@ -265,7 +306,7 @@ export function roundState(group: PickBanRoundGroup, currentRound: number | null
  */
 export function isEntrySelectable(
   entry: PickBanEntry,
-  { canSelect, currentRound }: { canSelect: boolean; currentRound: number | null },
+  { canSelect, currentRound }: { canSelect: boolean; currentRound: number | null }
 ): boolean {
   if (!canSelect || entry.status !== "available") return false;
   return entry.round == null || entry.round === currentRound;

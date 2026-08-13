@@ -23,6 +23,13 @@ interface PregameFinalReportProps {
    * organizers now" would name a role a scrim has nobody in.
    */
   reportable?: boolean;
+  /**
+   * One line naming who won the series, shown only when there is no report to
+   * file. Built by the room, which already has both team names and the
+   * encounter's running score — the closing screen would otherwise end a
+   * finished series without saying how it ended.
+   */
+  outcome?: string | null;
   header: ReactNode;
   /** Where the room hands the viewer back — the page they opened it from. */
   returnTo: string;
@@ -48,6 +55,7 @@ export function PregameFinalReport({
   encounter,
   viewerSide,
   reportable = true,
+  outcome = null,
   header,
   returnTo
 }: PregameFinalReportProps) {
@@ -77,6 +85,9 @@ export function PregameFinalReport({
           <h2 className="font-onest text-lg font-semibold">
             {settled ? t("seriesDone.title") : t("finalReport.title")}
           </h2>
+          {settled && !reportable && outcome ? (
+            <p className="font-onest text-base font-semibold">{outcome}</p>
+          ) : null}
           <p className="text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
             {!settled
               ? t("finalReport.hint")

@@ -25,6 +25,7 @@ import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournamen
 
 import {
   PICK_BAN_UNAVAILABLE_COPY,
+  agreedMapScore,
   attributeLocks,
   highestPoolRound,
   isSessionActive,
@@ -330,11 +331,21 @@ export function PregameRoom({ encounterId, seriesReport = true }: PregameRoomPro
   const series: PregameSeriesMap[] = seriesMaps.map((entry, index) => {
     const played = entry.status === "played";
     const match = played ? seriesMatches[index] : null;
+    // A `Match` row is authoritative where one exists — a parsed log corrects a
+    // captain claim. Where none does, the captains' own agreed claims are the
+    // score: a scrim writes no match rows at all, and without this fallback its
+    // played maps showed as played with nothing on them.
+    const score =
+      match != null
+        ? { home: match.score.home, away: match.score.away }
+        : played
+          ? agreedMapScore(mapState.map_reports ?? [], index + 1)
+          : null;
     return {
       round: index + 1,
       name: mapsById[entry.item_id]?.name ?? t("map.itemNumber", { id: entry.item_id }),
       item: mapsById[entry.item_id],
-      score: match != null ? { home: match.score.home, away: match.score.away } : null,
+      score,
       state: played ? "played" : index === pendingIndex ? "awaiting" : "upcoming"
     };
   });
@@ -445,12 +456,27 @@ export function PregameRoom({ encounterId, seriesReport = true }: PregameRoomPro
   }
 
   if (phase === "done") {
+    // Without a report to file, the closing screen still owes the captains the
+    // one thing they came for: who won. Read off the encounter's own series
+    // score, which `submit_map_report` advances map by map — no extra request,
+    // and it is the same number the header's filmstrip adds up.
+    const home = encounter.score?.home ?? 0;
+    const away = encounter.score?.away ?? 0;
+    const outcome =
+      home === away
+        ? t("seriesDone.drawn", { home, away })
+        : t("seriesDone.won", {
+            team: sideNameOf(home > away ? "home" : "away"),
+            home,
+            away
+          });
     return (
       <div className="flex flex-col gap-4">
         <PregameFinalReport
           encounter={encounter}
           viewerSide={mapState.viewer_side ?? viewerSide}
           reportable={seriesReport}
+          outcome={outcome}
           header={header}
           returnTo={returnTo}
         />

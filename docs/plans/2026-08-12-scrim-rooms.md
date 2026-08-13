@@ -209,6 +209,17 @@ for a scrim, so `match_id` comes back null. Everything the loop needs still
 happens — the entry flips to `played`, the series score advances, the next round
 opens.
 
+Dropping the match row had a consequence the first cut missed: the room's series
+filmstrip read each map's score off `Match`, so a scrim showed every played map as
+played with **no score** — the loop was advancing correctly and looked stuck. The
+score now falls back to the captains' own agreed claims (`agreedMapScore`, keyed
+on the same series position), with `Match` still authoritative wherever one
+exists so a parsed log keeps correcting a claim.
+
+The closing screen names the winner — "who won and that's it" — off the
+encounter's running score, which the per-map reports advance. That is the whole
+of a scrim's final result: nothing to fill in, nothing published.
+
 ## 5. Required exclusions — the real work beyond plumbing
 
 The scrims container is a real tournament row, so anything that enumerates
