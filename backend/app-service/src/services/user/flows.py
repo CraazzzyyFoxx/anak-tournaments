@@ -778,24 +778,27 @@ async def get_hero_compare(
         baseline_target = target
         sample_size = 1
     else:
-        population_users = await service.get_compare_population_users(
+        # Only "is the cohort empty?" is needed here, to tell the two 404s apart.
+        # This used to materialize the whole population -- ~560 (id, name) rows --
+        # and hand the ids straight back as an ``IN`` list, so the statistics query
+        # arrived with 584 bind parameters and timed out. The population is now
+        # resolved inside that query; the names were never read.
+        if not await service.compare_population_exists(
             session,
             role=compare_role,
             div_min=compare_div_min,
             div_max=compare_div_max,
             tournament_id=params.tournament_id,
             grid=grid,
-        )
-        if not population_users:
+        ):
             raise errors.ApiHTTPException(
                 status_code=404,
                 detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
             )
 
-        population_user_ids = [user_id for user_id, _ in population_users]
         baseline_playtime_by_user, baseline_stats_by_user = await service.get_users_hero_compare_stats(
             session,
-            user_ids=population_user_ids,
+            user_ids=None,
             hero_id=params.right_hero_id,
             map_id=params.map_id,
             stats=requested_stats,

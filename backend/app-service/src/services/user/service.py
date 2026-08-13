@@ -2058,7 +2058,7 @@ async def get_compare_population(
     return payload
 
 
-async def get_compare_population_users(
+async def compare_population_exists(
     session: AsyncSession,
     *,
     role: enums.HeroClass | None = None,
@@ -2066,9 +2066,15 @@ async def get_compare_population_users(
     div_max: int | None = None,
     tournament_id: int | None = None,
     grid: DivisionGrid,
-) -> list[tuple[int, str]]:
-    query = sa.select(models.User.id, models.User.name)
+) -> bool:
+    """Does the baseline cohort contain anybody?
 
+    ``_compare_user_scope_exists`` without materializing the cohort. Its caller
+    only needs this to tell "empty cohort" from "empty result" apart — the two are
+    different 404s — and used to pull the whole population (~560 ``(id, name)``
+    rows) to evaluate ``if not population_users``.
+    """
+    query = sa.select(sa.literal(1)).select_from(models.User)
     if role is not None or div_min is not None or div_max is not None or tournament_id is not None:
         query = query.where(
             _compare_user_scope_exists(
@@ -2080,14 +2086,48 @@ async def get_compare_population_users(
                 grid=grid,
             )
         )
+    return await session.scalar(query.limit(1)) is not None
 
-    result = await session.execute(query)
-    return [(int(user_id), str(name)) for user_id, name in result.all()]
+
+def compare_hero_candidates_select(
+    *,
+    user_ids: list[int] | None,
+    role: enums.HeroClass | None,
+    div_min: int | None,
+    div_max: int | None,
+    tournament_id: int | None,
+    grid: DivisionGrid,
+) -> sa.Select:
+    """The users a hero-compare baseline covers, as a selectable.
+
+    Public (not ``_``-prefixed) so a test can execute the real thing instead of a
+    re-implementation of the predicate: the whole point of the change is that this
+    set must stay identical while it stops travelling through Python.
+
+    ``user_ids=None`` = the whole cohort, filtered exactly the way
+    ``compare_population_exists`` tests it. An explicit list is passed through
+    unchanged for callers that really do hold a few ids.
+    """
+    query = sa.select(models.User.id.label("user_id"))
+    if user_ids is not None:
+        return query.where(models.User.id.in_(user_ids))
+    if role is None and div_min is None and div_max is None and tournament_id is None:
+        return query
+    return query.where(
+        _compare_user_scope_exists(
+            models.User.id,
+            role=role,
+            div_min=div_min,
+            div_max=div_max,
+            tournament_id=tournament_id,
+            grid=grid,
+        )
+    )
 
 
 def _users_hero_compare_query_v2(
     *,
-    user_ids: list[int],
+    user_ids: list[int] | None,
     hero_id: int | None,
     map_id: int | None,
     stats: list[enums.LogStatsName],
@@ -2097,12 +2137,35 @@ def _users_hero_compare_query_v2(
     tournament_id: int | None,
     grid: DivisionGrid,
 ) -> sa.Select:
-    """Return playtime and per-stat rows for all candidates in one statement."""
+    """Return playtime and per-stat rows for all candidates in one statement.
+
+    ``user_ids=None`` means "the whole baseline population", resolved HERE as a
+    subquery rather than handed in as a list. The list form is still supported for
+    callers that genuinely hold a few ids, but the population must not travel
+    through Python: the caller used to resolve the cohort and hand ~560 ids straight
+    back as an ``IN`` list, so this statement arrived with 584 bind
+    parameters. That is slow twice over -- the planner cannot estimate selectivity
+    through a list that long, and under pgBouncer (``prepared_statement_cache_size
+    = 0``) the plan is rebuilt on every call, on a statement whose text changes
+    whenever the population size does, so nothing is ever reused. It timed out.
+
+    The predicate is ``_compare_user_scope_exists``, the same one the caller applied when it
+    resolved the cohort itself, so the
+    candidate set is unchanged. It is NOT the same as ``scoped_players`` below,
+    which deliberately drops the finished/non-league restriction
+    (``require_finished_nonleague=False``) -- reusing that CTE here would silently
+    widen the baseline.
+    """
 
     requested_stats = stats or list(DEFAULT_HERO_COMPARE_STATS)
-    candidates = (
-        sa.select(models.User.id.label("user_id")).where(models.User.id.in_(user_ids)).cte("compare_hero_candidates")
-    )
+    candidates = compare_hero_candidates_select(
+        user_ids=user_ids,
+        role=role,
+        div_min=div_min,
+        div_max=div_max,
+        tournament_id=tournament_id,
+        grid=grid,
+    ).cte("compare_hero_candidates")
     scoped_players = _compare_scoped_players_cte(
         role=role,
         div_min=div_min,
@@ -2459,7 +2522,7 @@ async def _get_users_hero_compare_stats_legacy(
 async def get_users_hero_compare_stats(
     session: AsyncSession,
     *,
-    user_ids: list[int],
+    user_ids: list[int] | None,
     hero_id: int | None,
     map_id: int | None,
     stats: list[enums.LogStatsName],
@@ -2469,7 +2532,9 @@ async def get_users_hero_compare_stats(
     tournament_id: int | None = None,
     grid: DivisionGrid,
 ) -> tuple[dict[int, float], dict[tuple[int, enums.LogStatsName], float]]:
-    if not user_ids:
+    """``user_ids=None`` resolves the baseline population in SQL — see
+    ``_users_hero_compare_query_v2``. An empty LIST still means "nobody"."""
+    if user_ids is not None and not user_ids:
         return {}, {}
 
     result = await session.execute(
