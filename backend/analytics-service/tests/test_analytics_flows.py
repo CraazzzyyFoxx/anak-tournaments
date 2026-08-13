@@ -46,6 +46,7 @@ def _team(
         created_at=NOW,
         updated_at=None,
         name=name,
+        image_url=None,
         avg_sr=avg_sr,
         total_sr=avg_sr * 5,
         captain_id=1,

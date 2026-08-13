@@ -96,6 +96,7 @@ class UserFlowsTests(IsolatedAsyncioTestCase):
         team = SimpleNamespace(
             id=20,
             name="Team",
+            image_url=None,
             avg_sr=2500.0,
             total_sr=15000,
             tournament_id=68,

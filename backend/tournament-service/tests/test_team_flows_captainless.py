@@ -42,6 +42,7 @@ def _team(*, captain: object | None) -> SimpleNamespace:
     return SimpleNamespace(
         id=701,
         name="Team B",
+        image_url=None,
         avg_sr=0.0,
         total_sr=0,
         captain_id=getattr(captain, "id", None),

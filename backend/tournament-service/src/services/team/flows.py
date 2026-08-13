@@ -76,6 +76,7 @@ async def to_pydantic(
     return schemas.TeamRead(
         id=team.id,
         name=team.name,
+        image_url=team.image_url,
         avg_sr=team.avg_sr,
         total_sr=team.total_sr,
         captain_id=team.captain_id,
