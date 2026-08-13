@@ -5,18 +5,19 @@
 which is what a role-less roster shape drafts for), while ``overwatch.hero.type``
 and ``matches.stat_baselines.role`` may not -- no hero has a class of "flex" and
 no baseline can be computed for one. Postgres cannot narrow a shared enum per
-column, so the split lives in two places: ``HERO_TYPE_CLASSES``/``HeroTypeClass``
-in the schema layer, and CHECK constraints from migration ``heroflex0001``.
+column, so the schema layer carries the split as
+``HERO_TYPE_CLASSES``/``HeroTypeClass``, mirrored in the database by CHECK
+constraints.
 
-These tests pin the three things that would silently break that split: the
-stored label the migration writes, the membership of the narrowed tuple, and the
-presence of both CHECKs.
+These tests pin the Python half: the membership of the narrowed tuple, the static
+type derived from it, and the column that actually accepts ``flex``. The
+assertions that read the ``heroflex0001`` revision file -- its ``ALTER TYPE``, its
+two CHECKs, its label-preserving downgrade -- went away with the ``initial_v6``
+squash, which replaced every per-revision file with one generated baseline.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import pathlib
 import typing
 
 import sqlalchemy as sa
@@ -24,39 +25,8 @@ import sqlalchemy as sa
 from shared import models
 from shared.core.enums import HERO_TYPE_CLASSES, HeroClass, HeroTypeClass
 
-MIGRATION = pathlib.Path(__file__).resolve().parents[2] / "migrations" / "versions" / "heroflex0001_heroclass_flex.py"
 
-
-def _migration_text() -> str:
-    return MIGRATION.read_text(encoding="utf-8")
-
-
-def _migration_module():
-    """Import the revision without alembic's env, for its module constants."""
-    spec = importlib.util.spec_from_file_location("heroflex0001_under_test", MIGRATION)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-class TestStoredLabels:
-    def test_the_migration_adds_the_label_sqlalchemy_will_actually_write(self):
-        # SQLAlchemy persists member NAMES, so the DB label is lowercase `flex`
-        # while the Python value is "Flex". Getting this backwards would make
-        # every flex insert fail on a type that looks correctly extended.
-        assert sa.Enum(HeroClass).enums == ["tank", "damage", "support", "flex"]
-        assert HeroClass.flex.value == "Flex"
-        # Asserted against the enum rather than spelled a second time: the
-        # migration builds its statement from ``_FLEX_LABEL``.
-        assert _migration_module()._FLEX_LABEL == HeroClass.flex.name == "flex"
-        assert "ALTER TYPE heroclass ADD VALUE IF NOT EXISTS" in _migration_text()
-
-    def test_revision_chains_off_the_previous_head(self):
-        module = _migration_module()
-        assert module.revision == "heroflex0001"
-        assert module.down_revision == "audit0001"
-
+class TestPlayerRoleColumn:
     def test_player_role_is_the_column_that_gained_the_value(self):
         role = models.Player.__table__.c.role
         assert isinstance(role.type, sa.Enum)
@@ -72,23 +42,3 @@ class TestHeroSideNarrowing:
 
     def test_the_static_type_matches_the_tuple(self):
         assert typing.get_args(HeroTypeClass) == HERO_TYPE_CLASSES
-
-    def test_both_hero_side_columns_are_check_constrained(self):
-        text = _migration_text()
-        # Compared as text on purpose: PG12+ forbids USING a freshly added enum
-        # value in the same transaction that adds it, so `type <> 'flex'::heroclass`
-        # would fail while the cast keeps both statements in one migration.
-        assert "type::text <>" in text
-        assert "role::text <>" in text
-        for table, schema in (("hero", "overwatch"), ("stat_baselines", "matches")):
-            assert f'"{table}"' in text
-            assert f'schema="{schema}"' in text
-
-    def test_downgrade_keeps_the_label_and_only_drops_the_checks(self):
-        # Postgres cannot remove an enum value, so `flex` is forward-only; the
-        # constraints are the reversible half. A downgrade that tried to rebuild
-        # the type would have to rewrite every dependent column.
-        downgrade = _migration_text().split("def downgrade()")[1]
-        assert "drop_constraint" in downgrade
-        assert "ADD VALUE" not in downgrade
-        assert "DROP TYPE" not in downgrade
