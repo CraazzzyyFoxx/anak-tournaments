@@ -120,7 +120,18 @@ class Encounter(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="EncounterResultAudit.created_at.desc()",
     )
-    matches: Mapped[list["Match"]] = relationship()
+    # Same shape as the two collections around it, and for the same reason:
+    # ``Match.encounter_id`` is NOT NULL, so the default cascade -- which nulls a
+    # child's foreign key when the parent goes -- made ``delete_encounter`` emit
+    # ``UPDATE matches.match SET encounter_id = NULL`` and die on the constraint.
+    # ``passive_deletes`` hands the job to the ``ON DELETE CASCADE`` the column
+    # already carries (and every ``match_id`` child carries in turn), so deleting
+    # an encounter never loads its series just to rewrite it.
+    matches: Mapped[list["Match"]] = relationship(
+        back_populates="encounter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     captain_reports: Mapped[list["EncounterCaptainReport"]] = relationship(
         back_populates="encounter",
         cascade="all, delete-orphan",
