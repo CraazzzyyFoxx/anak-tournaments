@@ -147,14 +147,19 @@ class BeforeSendLogTests(TestCase):
 class LoguruEventGroupingTests(TestCase):
     """An ERROR log must be titled by its MESSAGE, never by a rendered log line.
 
-    ``LoguruIntegration.event_format`` defaults to loguru's ``LOGURU_FORMAT``, and
-    the SDK uses the rendered line as the event message — so every record arrived
-    titled ``2026-08-07 15:44:15.785 | ERROR | mod:fn:12 - ...``. A millisecond
-    timestamp is unique per occurrence, so grouping never happened: one group per
-    event, the same fault unrecognizable across restarts, and thousands of
-    single-event issues. This is the mechanism behind the loudest groups in the
-    project, and it is invisible in the filters above — nothing was being dropped,
-    the titles were simply never grouping.
+    ``LoguruIntegration.event_format`` defaults to loguru's ``LOGURU_FORMAT`` and the
+    SDK uses the rendered line as the event message, so every record arrived titled
+    ``2026-08-07 15:44:15.785 | ERROR | mod:fn:12 - ...``.
+
+    What that actually cost, checked against the real issue stream rather than
+    assumed: a record carrying a usable stacktrace still grouped by that stacktrace
+    — one such group held 510 events under a single frozen title — so the damage
+    there is the TITLE, which names one arbitrary instant instead of the fault. A
+    message-only record is the severe case: with no stacktrace it groups by the
+    message, and the millisecond makes that unique per event, splitting one fault
+    into a group per occurrence (the 400+ single-event faststream groups the module
+    already documents). The bare message fixes both, and neither is visible in the
+    filters above — nothing was being dropped.
     """
 
     def test_an_error_record_is_titled_by_its_bare_message(self) -> None:

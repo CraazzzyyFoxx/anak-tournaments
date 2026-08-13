@@ -192,14 +192,22 @@ def setup_sentry(
         AsyncioIntegration(),
         LoguruIntegration(
             sentry_logs_level=_resolve_level(logs_level),
-            # ``event_format`` defaults to loguru's LOGURU_FORMAT, and the SDK uses
-            # the RENDERED line as the event's message -- so every ERROR record
-            # arrived titled ``2026-08-07 15:44:15.785 | ERROR | mod:fn:12 - ...``.
-            # A timestamp in the title is unique per millisecond, so grouping never
-            # happened: one Sentry group per occurrence, thousands of them, and the
-            # same fault unrecognizable across restarts. The bare message groups the
-            # way it should. Breadcrumbs keep the full format -- there the timestamp
-            # is the point.
+            # ``event_format`` defaults to loguru's LOGURU_FORMAT and the SDK uses the
+            # RENDERED line as the event's message, so every ERROR record arrived
+            # titled ``2026-08-07 15:44:15.785 | ERROR | mod:fn:12 - ...``.
+            #
+            # Two costs, and they are NOT the same size -- measured, not assumed:
+            # a record that carries a usable stacktrace still groups by that
+            # stacktrace, so those issues held together (one had 510 events under a
+            # single frozen title). What breaks there is only the title: it is
+            # whichever occurrence Sentry saw last, so the group reads as a one-off
+            # instant instead of naming the fault. But a MESSAGE-ONLY record has no
+            # stacktrace to fall back on and groups by the message itself -- which
+            # the timestamp makes unique per millisecond, fragmenting one fault into
+            # a group per event (the 400+ single-event faststream groups noted
+            # above). The bare message fixes both.
+            #
+            # Breadcrumbs keep the full format -- there the timestamp is the point.
             event_format="{message}",
         ),
     ]
