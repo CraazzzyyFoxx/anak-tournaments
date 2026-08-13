@@ -2222,29 +2222,6 @@
 .aqt-tn .feat-now .team.right {
   flex-direction: row-reverse;
 }
-.aqt-tn .feat-now .team .av {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3a5168, #1c2937);
-  border: 1px solid var(--border-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 11px;
-  color: var(--fg-muted);
-  flex-shrink: 0;
-}
-.aqt-tn .feat-now .team .av.t1 {
-  background: linear-gradient(135deg, var(--teal), color-mix(in srgb, var(--teal) 55%, black));
-  color: hsl(220 30% 8%);
-}
-.aqt-tn .feat-now .team .av.t2 {
-  background: linear-gradient(135deg, hsl(340 75% 65%), hsl(340 60% 38%));
-  color: hsl(220 30% 8%);
-}
 .aqt-tn .feat-now .team .nm {
   font-weight: 600;
   font-size: 13.5px;
@@ -2295,20 +2272,6 @@
   align-items: center;
   gap: 8px;
   font-size: 11.5px;
-  color: var(--fg-muted);
-}
-.aqt-tn .feat-foot .lead-team .av {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3a5168, #1c2937);
-  border: 1px solid var(--border-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 9px;
   color: var(--fg-muted);
 }
 .aqt-tn .feat-foot .lead-team .nm {
@@ -2542,43 +2505,6 @@
 .aqt-tn .tn-teams .sub {
   font-size: 10.5px;
   color: var(--fg-dim);
-}
-.aqt-tn .tn-teams .av-strip {
-  display: inline-flex;
-  align-items: center;
-}
-.aqt-tn .tn-teams .av-strip .av {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3a5168, #1c2937);
-  border: 2px solid var(--tn-card);
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 9px;
-  color: var(--fg-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: -7px;
-}
-.aqt-tn .tn-teams .av-strip .av:first-child {
-  margin-left: 0;
-}
-.aqt-tn .tn-teams .av-strip .more {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--aqt-overlay-3);
-  border: 2px solid var(--tn-card);
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--fg-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: -7px;
-  font-weight: 600;
 }
 .aqt-tn .tn-actions {
   display: flex;
@@ -3165,20 +3091,6 @@
   gap: 12px;
   min-width: 130px;
 }
-.aqt-tn .st-team .av {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--border-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 12px;
-  color: hsl(220 30% 8%);
-  flex-shrink: 0;
-}
 .aqt-tn .st-team .stack {
   display: flex;
   flex-direction: column;
@@ -3631,20 +3543,6 @@
   gap: 9px;
   font-size: 13px;
 }
-.aqt-matches .m-up .row .av {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid var(--border-2);
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 10px;
-  color: hsl(220 30% 8%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
 .aqt-matches .m-up .row .nm {
   font-weight: 600;
   color: var(--fg-muted);
@@ -3655,12 +3553,6 @@
 .aqt-matches .m-up .row.winner .nm {
   color: var(--tn-fg);
   font-weight: 700;
-}
-.aqt-matches .m-up .row.winner .av {
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--teal) 60%, transparent);
-}
-.aqt-matches .m-up .row.loser .av {
-  opacity: 0.6;
 }
 .aqt-matches .m-score {
   display: flex;

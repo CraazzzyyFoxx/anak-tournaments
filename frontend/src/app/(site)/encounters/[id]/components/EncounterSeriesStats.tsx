@@ -9,6 +9,7 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
+import TeamName from "@/components/TeamName";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import MatchTeamComparison from "@/app/(site)/matches/[id]/components/MatchTeamComparison";
 import MatchLeaders from "@/app/(site)/matches/[id]/components/MatchLeaders";
@@ -196,7 +197,9 @@ function SeriesPlayerTable({
           ].map(({ side, team }) => (
             <tbody key={side} className={side === "home" ? styles.sideHome : styles.sideAway}>
               <tr className={styles.seriesSideHead}>
-                <td colSpan={5 + columns.length}>{team.name}</td>
+                <td colSpan={5 + columns.length}>
+                  <TeamName team={team} size="xs" />
+                </td>
               </tr>
               {sortTeamPlayers(team.players).map((player) => (
                 <SeriesPlayerRow

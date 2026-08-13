@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Trash2, Users } from "lucide-react";
 
+import TeamName from "@/components/TeamName";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -108,7 +109,7 @@ export default function TeamsPage() {
     {
       accessorKey: "name",
       header: "Name",
-      cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>
+      cell: ({ row }) => <TeamName team={row.original} size="xs" nameClassName="font-medium" />
     },
     {
       accessorKey: "avg_sr",

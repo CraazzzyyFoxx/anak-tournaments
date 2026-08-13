@@ -63,6 +63,7 @@ class PlayerRead(BaseRead):
 
 class TeamRead(BaseRead):
     name: str
+    image_url: str | None = None
     avg_sr: float
     total_sr: int
     tournament_id: int

@@ -37,6 +37,8 @@ export interface AchievementTournamentLink {
 export interface AchievementMatchTeamRef {
   id: number;
   name: string;
+  /** Uploaded team image (S3 URL); `null` when the team has none. */
+  image_url: string | null;
 }
 
 export interface AchievementMatchLink {

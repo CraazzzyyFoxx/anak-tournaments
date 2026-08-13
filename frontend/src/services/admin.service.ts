@@ -313,6 +313,25 @@ class AdminService {
     });
   }
 
+  // ─── Team image ────────────────────────────────────────────────────────────
+
+  async uploadTeamImage(teamId: number, file: File): Promise<Team> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiFetch(`/api/v1/admin/teams/${teamId}/image`, {
+      method: "POST",
+      body: formData
+    });
+    return response.json();
+  }
+
+  async deleteTeamImage(teamId: number): Promise<Team> {
+    const response = await apiFetch(`/api/v1/admin/teams/${teamId}/image`, {
+      method: "DELETE"
+    });
+    return response.json();
+  }
+
   async addPlayerToTeam(teamId: number, data: PlayerCreateInput): Promise<Player> {
     const response = await apiFetch(`/api/v1/admin/teams/${teamId}/players`, {
       method: "POST",

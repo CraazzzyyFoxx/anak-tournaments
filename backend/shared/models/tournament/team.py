@@ -35,6 +35,9 @@ class Team(db.TimeStampIntegerMixin):
 
     balancer_name: Mapped[str] = mapped_column(String())
     name: Mapped[str] = mapped_column(String())
+    #: Public S3 URL of the team's uploaded image, or NULL when it has none.
+    #: Readers render the image only when it is set — there is no placeholder.
+    image_url: Mapped[str | None] = mapped_column(String(), nullable=True)
 
     if typing.TYPE_CHECKING:
         # Computed roster aggregates over non-substitute players; mapped via

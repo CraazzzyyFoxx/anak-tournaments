@@ -8162,6 +8162,22 @@
       },
       "summary": "Set workspace subscription requirement"
     },
+    "rpc.tournament.teams.image_delete": {
+      "description": "Removes a team's image from S3 and clears its URL; requires team-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.TeamRead"
+      },
+      "summary": "Delete team image"
+    },
+    "rpc.tournament.teams.image_upload": {
+      "description": "Uploads a team's image to S3 and stores its URL; requires team-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.TeamRead"
+      },
+      "summary": "Upload team image"
+    },
     "rpc.tournament.tournament_finish": {
       "description": "Toggles a tournament's legacy finished flag and returns it with stages; superuser-only.",
       "response": {
@@ -9664,6 +9680,18 @@
           "title": "Id",
           "type": "integer"
         },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
+        },
         "losses": {
           "title": "Losses",
           "type": "integer"
@@ -10201,6 +10229,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
         },
         "name": {
           "title": "Name",
@@ -37812,6 +37852,18 @@
           "title": "Id",
           "type": "integer"
         },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -37952,6 +38004,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
         },
         "name": {
           "title": "Name",

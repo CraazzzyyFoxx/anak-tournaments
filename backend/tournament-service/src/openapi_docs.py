@@ -129,6 +129,15 @@ DOCS: dict[str, dict] = {
         "summary": "Delete team",
         "description": "Deletes a team by id (204 no body); requires team-delete permission on its workspace.",
     },
+    # ── bespoke: team image (binary upload + delete) ───────────────────────
+    "rpc.tournament.teams.image_upload": {
+        "summary": "Upload team image",
+        "description": "Uploads a team's image to S3 and stores its URL; requires team-update permission on its workspace.",
+    },
+    "rpc.tournament.teams.image_delete": {
+        "summary": "Delete team image",
+        "description": "Removes a team's image from S3 and clears its URL; requires team-update permission on its workspace.",
+    },
     # ── generic CRUD engine: player ────────────────────────────────────────
     "rpc.tournament.admin.create#player": {
         "summary": "Create player",

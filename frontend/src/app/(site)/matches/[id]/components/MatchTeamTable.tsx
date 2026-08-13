@@ -11,6 +11,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
 import DivisionIcon from "@/components/DivisionIcon";
 import { HeroStrip } from "@/components/hero/HeroImage";
+import { TeamLogo } from "@/components/TeamName";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import {
   STAT_META,
@@ -91,7 +92,10 @@ const MatchTeamTable = ({
             background: `linear-gradient(to right, color-mix(in srgb, ${teamAccent} 26%, var(--aqt-card)), color-mix(in srgb, ${teamAccent} 12%, var(--aqt-card)) 60%)`
           }}
         >
-          {t("matches.teamLabel", { name: team.name })}
+          <span className="inline-flex items-center gap-2">
+            <TeamLogo team={team} size="xs" />
+            {t("matches.teamLabel", { name: team.name })}
+          </span>
         </TableHead>
         <TableHead scope="col" className="text-center">
           {t("matches.col.division")}

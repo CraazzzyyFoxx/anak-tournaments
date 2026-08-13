@@ -51,6 +51,7 @@ import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SearchField } from "@/components/ui/search-field";
 import { EncountersDataTable, FULL_ENCOUNTER_COLUMNS } from "@/components/EncountersTable";
+import TeamName, { type TeamNameInput } from "@/components/TeamName";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
@@ -71,8 +72,6 @@ import {
   formatDuration,
   formatPercent,
   getSeriesDuration,
-  getTeamColor,
-  getTeamInitials,
   type TeamColor
 } from "./encounters-redesign.helpers";
 import styles from "./EncountersRedesign.module.css";
@@ -87,14 +86,6 @@ type EncountersRedesignClientProps = {
   initialFilters: EncounterFilterState;
   initialPage: number;
   initialError?: string | null;
-};
-
-const TEAM_COLOR_CLASS: Record<TeamColor, string> = {
-  teal: styles.tgTeal,
-  amber: styles.tgAmber,
-  rose: styles.tgRose,
-  violet: styles.tgViolet,
-  blue: styles.tgBlue
 };
 
 const VIEW_SWATCH_COLOR: Record<TeamColor, string> = {
@@ -1105,8 +1096,6 @@ function FeaturedPanel({
       <div>
         {encounters.length ? (
           encounters.slice(0, 4).map((encounter) => {
-            const homeName = encounter.home_team?.name ?? t("common.tbd");
-            const awayName = encounter.away_team?.name ?? t("common.tbd");
             const winner = getEncounterWinner(encounter);
             const state = getEncounterState(encounter);
             const isLive = variant === "live" && state === "Live";
@@ -1128,9 +1117,9 @@ function FeaturedPanel({
                         {t("encounters.state.soon")}
                       </span>
                     ) : null}
-                    <TeamChip name={homeName} />
+                    <TeamChip team={encounter.home_team} />
                     <span className={styles.vs}>{t("common.vs")}</span>
-                    <TeamChip name={awayName} />
+                    <TeamChip team={encounter.away_team} />
                   </div>
                   <div className={styles.featMeta}>
                     {[
@@ -1190,14 +1179,11 @@ function FeaturedPanel({
   );
 }
 
-function TeamChip({ name }: { name: string }) {
-  const color = getTeamColor(name);
+function TeamChip({ team }: { team?: TeamNameInput | null }) {
+  const t = useTranslations();
   return (
     <span className={styles.teamChip}>
-      <span aria-hidden className={cn(styles.tg, TEAM_COLOR_CLASS[color])}>
-        {getTeamInitials(name)}
-      </span>
-      <span>{name}</span>
+      <TeamName team={team} fallback={t("common.tbd")} size="xs" />
     </span>
   );
 }

@@ -5,6 +5,7 @@ import { CircleMinus, CirclePlus, Crown, Repeat2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import TeamName from "@/components/TeamName";
 import type { Team } from "@/types/team.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import { sortTeamPlayers } from "@/utils/player";
@@ -40,7 +41,9 @@ export default function EncounterRosterPanel({
     // panel, and one landmark per card would flood the rotor.
     <div className={cn(styles.card, side === "home" ? styles.sideHome : styles.sideAway)}>
       <div className={styles.rosterHead}>
-        <h3 className={styles.rosterName}>{team?.name ?? t("common.tbd")}</h3>
+        <h3 className={styles.rosterName}>
+          <TeamName team={team} fallback={t("common.tbd")} size="md" />
+        </h3>
         <div className={styles.rosterFacts}>
           {/* No avg/total SR here. Public pages express skill rating as the
               division icon only — raw SR numbers live in /admin (or behind the

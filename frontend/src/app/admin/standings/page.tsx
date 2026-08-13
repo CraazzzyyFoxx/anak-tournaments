@@ -9,6 +9,7 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { notify } from "@/lib/notify";
@@ -269,8 +270,8 @@ export default function StandingsPage() {
       header: "Team",
       enableSorting: false,
       cell: ({ row }) => {
-        const team = row.getValue<any>("team");
-        return team ? <div className="font-medium">{team.name}</div> : "—";
+        const team = row.getValue<Standings["team"]>("team");
+        return team ? <TeamName team={team} size="xs" nameClassName="font-medium" /> : "—";
       }
     },
     {

@@ -3,7 +3,7 @@ import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
-import { getTeamInitials } from "@/app/(site)/encounters/_components/encounters-redesign.helpers";
+import { TeamLogo } from "@/components/TeamName";
 import {
   buildSeriesSlots,
   getSeriesVerdict,
@@ -72,9 +72,7 @@ function TeamBlock({ encounter, side }: { encounter: Encounter; side: SeriesSide
         side === "away" && styles.boardSideAway
       )}
     >
-      <span aria-hidden className={styles.boardCrest}>
-        {getTeamInitials(team?.name)}
-      </span>
+      <TeamLogo team={team} size="xl" />
       <div className={styles.boardIdentity}>
         {/* Deliberately not a heading. These are scoreboard labels, not section
             titles — as <h2>s they injected two context-free entries ("Onyx

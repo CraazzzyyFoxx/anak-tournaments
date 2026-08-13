@@ -11,6 +11,7 @@ import {
   type PublicPageQueryState
 } from "@/app/(site)/tournaments/[id]/_views/publicPageQueryPresentation";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
+import TeamName from "@/components/TeamName";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -324,10 +325,20 @@ export function EncountersDataTable({
           <td key={column}>
             <div className="m-up">
               <div className={cn("row", winner === "home" && "winner", winner === "away" && "loser")}>
-                <span className="nm">{encounter.home_team?.name ?? t("common.tbd")}</span>
+                <TeamName
+                  team={encounter.home_team}
+                  fallback={t("common.tbd")}
+                  size="xs"
+                  nameClassName="nm"
+                />
               </div>
               <div className={cn("row", winner === "away" && "winner", winner === "home" && "loser")}>
-                <span className="nm">{encounter.away_team?.name ?? t("common.tbd")}</span>
+                <TeamName
+                  team={encounter.away_team}
+                  fallback={t("common.tbd")}
+                  size="xs"
+                  nameClassName="nm"
+                />
               </div>
             </div>
           </td>

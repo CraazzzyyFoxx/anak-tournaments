@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
-import { teamCrest } from "@/lib/draft-crest";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { PickBanSession } from "@/types/tournament.types";
@@ -145,8 +145,8 @@ export function PregameHeader({
       <Scoreboard
         homeName={homeTeam?.name ?? t("side.home")}
         awayName={awayTeam?.name ?? t("side.away")}
-        homeHue={homeTeam != null ? teamCrest(homeTeam).hue : null}
-        awayHue={awayTeam != null ? teamCrest(awayTeam).hue : null}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
         homeSeed={session?.home_seed ?? null}
         awaySeed={session?.away_seed ?? null}
         firstSide={session?.first_side ?? null}
@@ -190,17 +190,15 @@ function StatusMark({ status }: { status: PickBanSession["status"] }) {
 }
 
 /**
- * The matchup as a broadcast scoreboard: each side's crest and seed flanking
+ * The matchup as a broadcast scoreboard: each side's logo and seed flanking
  * the series score, with a dot per map of the Bo-N underneath so "2–1 of a
- * Bo5" reads as position in the series and not just two digits. Crest hue is
- * `teamCrest`'s stable per-id colour, the same identity the draft room's
- * captain tiles use.
+ * Bo5" reads as position in the series and not just two digits.
  */
 function Scoreboard({
   homeName,
   awayName,
-  homeHue,
-  awayHue,
+  homeTeam,
+  awayTeam,
   homeSeed,
   awaySeed,
   firstSide,
@@ -209,8 +207,8 @@ function Scoreboard({
 }: {
   homeName: string;
   awayName: string;
-  homeHue: number | null;
-  awayHue: number | null;
+  homeTeam: TeamNameInput | null | undefined;
+  awayTeam: TeamNameInput | null | undefined;
   homeSeed: number | null;
   awaySeed: number | null;
   firstSide: "home" | "away" | null;
@@ -235,7 +233,7 @@ function Scoreboard({
     >
       <TeamSide
         name={homeName}
-        hue={homeHue}
+        team={homeTeam}
         seed={homeSeed}
         accentVar="--aqt-teal"
         opens={firstSide === "home"}
@@ -290,7 +288,7 @@ function Scoreboard({
 
       <TeamSide
         name={awayName}
-        hue={awayHue}
+        team={awayTeam}
         seed={awaySeed}
         accentVar="--aqt-rose"
         opens={firstSide === "away"}
@@ -302,22 +300,20 @@ function Scoreboard({
 
 function TeamSide({
   name,
-  hue,
+  team,
   seed,
   accentVar,
   opens,
   align
 }: {
   name: string;
-  hue: number | null;
+  team: TeamNameInput | null | undefined;
   seed: number | null;
   accentVar: "--aqt-teal" | "--aqt-rose";
   opens: boolean;
   align: "start" | "end";
 }) {
   const t = useTranslations("pickBan.room");
-  const crestInitial = (name.match(/[\p{L}\p{N}]/u)?.[0] ?? "#").toUpperCase();
-  const crestHue = hue ?? 0;
 
   return (
     <div
@@ -326,17 +322,7 @@ function TeamSide({
         align === "end" ? "flex-row-reverse" : null
       )}
     >
-      <span
-        aria-hidden
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg font-onest text-sm font-bold"
-        style={
-          hue != null
-            ? { background: `hsl(${crestHue} 55% 22%)`, color: `hsl(${crestHue} 70% 72%)` }
-            : { background: "var(--aqt-card-2)", color: "var(--aqt-fg-faint)" }
-        }
-      >
-        {crestInitial}
-      </span>
+      <TeamLogo team={team} size="md" />
       {/* `flex-1`, never `items-end`: a non-stretch cross alignment sizes the
           name to its own min-content, so `truncate` stops clamping and a long
           team name rides over the score. The block stretches; `text-right` and

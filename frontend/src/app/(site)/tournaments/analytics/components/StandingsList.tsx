@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import TeamName from "@/components/TeamName";
 import { useTranslations, useLocale } from "next-intl";
 import { TeamVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
 import { formatPlace } from "@/app/(site)/tournaments/analytics/analytics.helpers";
@@ -151,7 +152,7 @@ export default function StandingsList({
                   {team.placement ?? "—"}
                 </span>
                 <span className={styles.cTeamId}>
-                  <span className={styles.cTeamName}>{team.name}</span>
+                  <TeamName team={team} size="xs" nameClassName={styles.cTeamName} />
                   <span className={styles.cTeamMeta}>
                     <span>
                       {team.wins}–{team.losses}

@@ -4,6 +4,7 @@ import { Metadata } from "next";
 import Image from "next/image";
 import MatchStatsSection from "@/app/(site)/matches/[id]/components/MatchStatsSection";
 import { Card, CardHeader } from "@/components/ui/card";
+import TeamName from "@/components/TeamName";
 import { getTranslations } from "next-intl/server";
 import { SITE_NAME, SITE_URL } from "@/config/site";
 
@@ -76,7 +77,12 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
             </div>
             <div className="flex flex-row gap-4">
               <div className="flex flex-col text-right">
-                <p className="leading-7 text-[color:var(--aqt-teal)]">{match.home_team.name}</p>
+                <TeamName
+                  team={match.home_team}
+                  size="sm"
+                  className="justify-end"
+                  nameClassName="leading-7 text-[color:var(--aqt-teal)]"
+                />
                 <h4 className="scroll-m-20 text-xl font-semibold tracking-tight text-[color:var(--aqt-teal)]">
                   {match.score.home}
                 </h4>
@@ -85,7 +91,11 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
                 <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">:</h4>
               </div>
               <div className="flex flex-col text-left">
-                <p className="leading-7  text-[color:var(--aqt-rose)]">{match.away_team.name}</p>
+                <TeamName
+                  team={match.away_team}
+                  size="sm"
+                  nameClassName="leading-7 text-[color:var(--aqt-rose)]"
+                />
                 <h4 className="scroll-m-20 text-xl font-semibold tracking-tight text-[color:var(--aqt-rose)]">
                   {match.score.away}
                 </h4>

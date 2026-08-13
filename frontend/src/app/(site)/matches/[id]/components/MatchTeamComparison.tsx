@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { TeamWithStats } from "@/types/team.types";
 import { LogStatsName } from "@/types/stats.types";
 import { COMPARISON_STATS, STAT_META, formatStat, teamTotal } from "@/utils/matchStats";
+import TeamName from "@/components/TeamName";
 
 interface MatchTeamComparisonProps {
   home: TeamWithStats;
@@ -52,13 +53,21 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
       <div className="flex items-center justify-between border-b border-[color:var(--aqt-border)] px-4 py-3">
-        <span className="aqt-tnum truncate text-sm font-semibold text-[color:var(--aqt-teal)]">{home.name}</span>
+        <TeamName
+          team={home}
+          size="xs"
+          nameClassName="aqt-tnum text-sm font-semibold text-[color:var(--aqt-teal)]"
+        />
         <span className="aqt-mono px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
           {t("matches.comparison.title")}
         </span>
-        <span className="aqt-tnum truncate text-right text-sm font-semibold text-[color:var(--aqt-rose)]">
-          {away.name}
-        </span>
+        <TeamName
+          team={away}
+          size="xs"
+          reverse
+          className="justify-end"
+          nameClassName="aqt-tnum text-sm font-semibold text-[color:var(--aqt-rose)]"
+        />
       </div>
       <div className="flex flex-col gap-2.5 px-4 py-4">
         {rows.map((row) => (

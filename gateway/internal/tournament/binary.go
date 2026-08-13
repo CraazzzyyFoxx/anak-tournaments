@@ -1,0 +1,147 @@
+package tournament
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
+)
+
+const (
+	// Matches the edge dispatcher's RPC ceiling (old Kong edge allowance).
+	binaryRPCTimeout = 120 * time.Second
+	maxUpload        = 12 << 20 // 12 MiB upload cap before base64 into the RPC body
+)
+
+// Binary serves the tournament-service endpoint the generic JSON edge.Dispatcher
+// can't: the team-image multipart upload, base64-encoded into the RPC body. The
+// paired delete is plain JSON and rides the typed dispatcher (admin_routes.go).
+// Permission is enforced in the worker; the gateway only injects the resolved
+// identity.
+type Binary struct {
+	rpc      edge.RPCCaller
+	identity edge.IdentityResolver
+	log      *slog.Logger
+}
+
+// NewBinary builds the binary handler set. identity must be non-nil (the route is
+// authenticated).
+func NewBinary(caller edge.RPCCaller, identity edge.IdentityResolver, log *slog.Logger) *Binary {
+	return &Binary{rpc: caller, identity: identity, log: log}
+}
+
+// TeamImageUpload: POST /api/v1/admin/teams/{team_id}/image (team.update in the
+// worker). Multipart "file" -> base64 RPC body, same shape as the user-avatar
+// upload in internal/app.
+func (b *Binary) TeamImageUpload(w http.ResponseWriter, r *http.Request) {
+	data, ok := b.identityInto(w, r, map[string]any{"id": r.PathValue("team_id")})
+	if !ok {
+		return
+	}
+	if !b.attachFile(w, r, data) {
+		return
+	}
+	b.relayJSON(w, r, "rpc.tournament.teams.image_upload", data, http.StatusOK)
+}
+
+// identityInto resolves the bearer identity (required) and injects it into data.
+// Returns ok=false (and writes 401) when no valid identity is present.
+func (b *Binary) identityInto(w http.ResponseWriter, r *http.Request, data map[string]any) (map[string]any, bool) {
+	if b.identity == nil {
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
+		return nil, false
+	}
+	id, ok, err := b.identity(r)
+	if err != nil {
+		b.log.Error("identity resolution unavailable", "err", err)
+		w.Header().Set("Retry-After", "1")
+		writeDetail(w, http.StatusServiceUnavailable, "service unavailable")
+		return nil, false
+	}
+	if !ok {
+		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
+		return nil, false
+	}
+	data["identity"] = id
+	return data, true
+}
+
+// attachFile parses the multipart "file" part and base64-encodes it into data.
+func (b *Binary) attachFile(w http.ResponseWriter, r *http.Request, data map[string]any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
+	if err := r.ParseMultipartForm(maxUpload); err != nil {
+		writeDetail(w, http.StatusBadRequest, "invalid multipart form")
+		return false
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		writeDetail(w, http.StatusBadRequest, "file is required")
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(f, maxUpload))
+	if err != nil {
+		writeDetail(w, http.StatusBadRequest, "failed to read file")
+		return false
+	}
+	data["content_b64"] = base64.StdEncoding.EncodeToString(raw)
+	data["content_type"] = hdr.Header.Get("Content-Type")
+	return true
+}
+
+// relayJSON calls the RPC and relays the success envelope data as a JSON response.
+func (b *Binary) relayJSON(w http.ResponseWriter, r *http.Request, queue string, data map[string]any, success int) {
+	body, _ := json.Marshal(data)
+	ctx, cancel := context.WithTimeout(r.Context(), binaryRPCTimeout)
+	defer cancel()
+
+	reply, err := b.rpc.Call(ctx, queue, body)
+	if err != nil {
+		if rpc.IsUnavailable(err) {
+			b.log.Error("rpc unavailable", "queue", queue, "err", err)
+			w.Header().Set("Retry-After", "1")
+			writeDetail(w, http.StatusServiceUnavailable, "service unavailable")
+			return
+		}
+		b.log.Error("rpc failed", "queue", queue, "err", err)
+		writeDetail(w, http.StatusGatewayTimeout, "service timeout")
+		return
+	}
+
+	var env rpc.Envelope
+	if err := json.Unmarshal(reply, &env); err != nil {
+		b.log.Error("invalid rpc envelope", "queue", queue, "err", err)
+		writeDetail(w, http.StatusBadGateway, "invalid service response")
+		return
+	}
+	if !env.OK {
+		status := http.StatusInternalServerError
+		msg := "internal error"
+		if env.Error != nil {
+			status = rpc.StatusForCode(env.Error.Code)
+			msg = env.Error.Message
+		}
+		writeDetail(w, status, msg)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(success)
+	// Relay a literal JSON `null` rather than an empty body (see edge/dispatch.go).
+	if len(env.Data) > 0 {
+		_, _ = w.Write(env.Data)
+	}
+}
+
+// writeDetail emits a FastAPI-style error body: {"detail": "..."}.
+func writeDetail(w http.ResponseWriter, status int, detail string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"detail": detail})
+}

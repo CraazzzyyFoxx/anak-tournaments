@@ -3,6 +3,7 @@
 import { Ban, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import TeamName, { type TeamNameInput } from "@/components/TeamName";
 import type { AqtRoleKey } from "@/components/hero/heroRole";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
@@ -25,9 +26,10 @@ export interface PregameHeroAction {
 /** Tank-damage-support, the order the game's own hero list uses. */
 const ROLE_RANK: Record<AqtRoleKey, number> = { tank: 0, damage: 1, support: 2 };
 
+/** The side's accent, as a class because it colours the team name itself. */
 const SIDE_ACCENT = {
-  home: "--aqt-teal",
-  away: "--aqt-rose"
+  home: "text-[color:var(--aqt-teal)]",
+  away: "text-[color:var(--aqt-rose)]"
 } as const;
 
 /**
@@ -49,15 +51,15 @@ export function PregameHeroBans({
   actions,
   homeName,
   awayName,
-  homeHue,
-  awayHue
+  homeTeam,
+  awayTeam
 }: {
   actions: PregameHeroAction[];
   homeName: string;
   awayName: string;
-  /** Crest hue per side, from `teamCrest` — null when the team is unknown. */
-  homeHue: number | null;
-  awayHue: number | null;
+  /** The side's team, for its logo — undefined when the encounter has none. */
+  homeTeam: TeamNameInput | null | undefined;
+  awayTeam: TeamNameInput | null | undefined;
 }) {
   const t = useTranslations("pickBan.room");
 
@@ -81,13 +83,13 @@ export function PregameHeroBans({
         <SideBans
           side="home"
           name={homeName}
-          hue={homeHue}
+          team={homeTeam}
           actions={actions.filter((action) => action.side === "home")}
         />
         <SideBans
           side="away"
           name={awayName}
-          hue={awayHue}
+          team={awayTeam}
           actions={actions.filter((action) => action.side === "away")}
         />
       </div>
@@ -103,17 +105,16 @@ export function PregameHeroBans({
 function SideBans({
   side,
   name,
-  hue,
+  team,
   actions
 }: {
   side: "home" | "away";
   name: string;
-  hue: number | null;
+  team: TeamNameInput | null | undefined;
   actions: PregameHeroAction[];
 }) {
   const t = useTranslations("pickBan.room");
-  const accent = `var(${SIDE_ACCENT[side]})`;
-  const crestInitial = (name.match(/[\p{L}\p{N}]/u)?.[0] ?? "#").toUpperCase();
+  const accent = SIDE_ACCENT[side];
   const ordered = [...actions].sort(
     (left, right) =>
       (left.action === "ban" ? 0 : 1) - (right.action === "ban" ? 0 : 1) ||
@@ -126,26 +127,13 @@ function SideBans({
       data-hero-bans={side}
       className="flex flex-col gap-1.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/40 p-2.5"
     >
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span
-          aria-hidden
-          className="grid h-5 w-5 shrink-0 place-items-center rounded font-onest text-[10px] font-bold"
-          style={
-            hue != null
-              ? { background: `hsl(${hue} 55% 22%)`, color: `hsl(${hue} 70% 72%)` }
-              : { background: "var(--aqt-card-2)", color: "var(--aqt-fg-faint)" }
-          }
-        >
-          {crestInitial}
-        </span>
-        <span
-          title={name}
-          className="min-w-0 truncate text-xs font-semibold"
-          style={{ color: accent }}
-        >
-          {name}
-        </span>
-      </span>
+      <TeamName
+        team={team}
+        fallback={name}
+        size="sm"
+        className="gap-1.5"
+        nameClassName={cn("text-xs font-semibold", accent)}
+      />
 
       {ordered.length === 0 ? (
         <span className="px-0.5 py-1 text-xs text-[color:var(--aqt-fg-faint)]">

@@ -17,6 +17,7 @@ import {
   Users
 } from "lucide-react";
 
+import TeamName from "@/components/TeamName";
 import {
   AdminDetailTableShell,
   getAdminDetailTableStyles
@@ -356,7 +357,7 @@ export function TournamentTeamsTab({
                   teams.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT).map((team) => (
                     <TableRow key={team.id} className={tableStyles.row}>
                       <TableCell className={tableStyles.cell}>
-                        <span className="font-medium">{team.name}</span>
+                        <TeamName team={team} size="xs" nameClassName="font-medium" />
                       </TableCell>
                       <TableCell className={`${tableStyles.cell} tabular-nums`}>
                         {team.avg_sr.toFixed(0)}

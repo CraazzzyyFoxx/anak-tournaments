@@ -67,7 +67,7 @@ func Groups() (public, admin []openapi.Group) {
 	}
 	admin = []openapi.Group{
 		{Tag: "Admin: Tournaments", Description: "Tournament/team/player/encounter/standing CRUD, stages & bespoke admin actions.",
-			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, app.TournamentAdminRoutes)},
+			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, tournament.BinaryDocRoutes, app.TournamentAdminRoutes)},
 		{Tag: "Admin: Registration", Description: "Registration management & balancer statuses.",
 			Routes: tournament.RegistrationAdminRoutes},
 		{Tag: "Admin: Integrations", Description: "Challonge sync, Google Sheets, division grids.",

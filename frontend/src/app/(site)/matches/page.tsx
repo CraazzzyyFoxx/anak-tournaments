@@ -21,6 +21,7 @@ import { DataPagination } from "@/components/ui/data-pagination";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import TeamName from "@/components/TeamName";
 import { useQueryParams } from "@/hooks/useQueryParams";
 
 const PAGE_SIZE = 10;
@@ -184,15 +185,19 @@ const MatchesPage = () => {
                           </span>
                         </td>
                         <td className="px-3 py-2.5 align-middle">
-                          <span className="text-sm text-[color:var(--aqt-fg)]">
-                            {match.home_team?.name}
-                          </span>
+                          <TeamName
+                            team={match.home_team}
+                            size="xs"
+                            nameClassName="text-sm text-[color:var(--aqt-fg)]"
+                          />
                           <span className="mx-1.5 text-sm text-[color:var(--aqt-fg-faint)]">
                             {t("common.vs")}
                           </span>
-                          <span className="text-sm text-[color:var(--aqt-fg)]">
-                            {match.away_team?.name}
-                          </span>
+                          <TeamName
+                            team={match.away_team}
+                            size="xs"
+                            nameClassName="text-sm text-[color:var(--aqt-fg)]"
+                          />
                         </td>
                         <td className="px-3 py-2.5 align-middle">
                           <span className="text-sm font-semibold tabular-nums text-[color:var(--aqt-fg)]">

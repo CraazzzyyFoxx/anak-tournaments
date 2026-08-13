@@ -18,6 +18,7 @@ import AnomalyTooltip from "@/app/(site)/tournaments/analytics/components/Anomal
 import ExplanationPopover from "@/app/(site)/tournaments/analytics/components/ExplanationPopover";
 import ForecastChip from "@/app/(site)/tournaments/analytics/components/ForecastChip";
 import MetricTooltip from "@/app/(site)/tournaments/analytics/components/MetricTooltip";
+import TeamName from "@/components/TeamName";
 import { useTranslations } from "next-intl";
 import { sortTeamPlayers } from "@/utils/player";
 import { cn } from "@/lib/utils";
@@ -475,8 +476,8 @@ const TeamRow = ({
           </div>
         </div>
         <div className={styles.teamName}>
-          <div className={styles.teamTitle} title={team.name}>
-            {team.name}
+          <div className={styles.teamTitle}>
+            <TeamName team={team} size="xs" />
           </div>
           <div className={styles.teamMeta}>
             <span>{t("common.group")} {groupName}</span>

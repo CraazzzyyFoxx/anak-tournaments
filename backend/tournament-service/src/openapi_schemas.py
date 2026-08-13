@@ -115,6 +115,9 @@ OPERATIONS: dict[str, Op] = {
         response_array=True,
         query_params=(_WS, QueryParam("role"), QueryParam("include_inactive", "boolean")),
     ),
+    # ── bespoke: team image (binary upload + delete) ───────────────────────
+    "rpc.tournament.teams.image_upload": Op(response=schemas.TeamRead),
+    "rpc.tournament.teams.image_delete": Op(response=schemas.TeamRead),
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": Op(response=schemas.TournamentRead),
     "rpc.tournament.tournament_status": Op(

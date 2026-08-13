@@ -6,18 +6,6 @@ export type EncounterSortKey = "date" | "closeness" | "upcoming";
 
 export type TeamColor = "teal" | "amber" | "rose" | "violet" | "blue";
 
-const TEAM_COLOR_PALETTE: TeamColor[] = ["teal", "amber", "rose", "violet", "blue"];
-
-export function getTeamColor(name: string | null | undefined): TeamColor {
-  if (!name) return "teal";
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
-  const index = Math.abs(hash) % TEAM_COLOR_PALETTE.length;
-  return TEAM_COLOR_PALETTE[index];
-}
-
 export type EncounterFilterState = Required<
   Pick<EncounterFilters, "scope">
 > & {
@@ -172,11 +160,4 @@ export function formatPercent(value: number | null | undefined, fallback = "-"):
 
 export function getSeriesDuration(encounter: Encounter): number {
   return encounter.matches?.reduce((sum, match) => sum + (match.time || 0), 0) ?? 0;
-}
-
-export function getTeamInitials(name: string | null | undefined): string {
-  if (!name) return "--";
-  const words = name.trim().split(/\s+/);
-  const value = words.length > 1 ? `${words[0][0]}${words[1][0]}` : name.slice(0, 2);
-  return value.toUpperCase();
 }

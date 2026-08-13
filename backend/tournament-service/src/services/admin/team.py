@@ -244,6 +244,26 @@ async def update_team(session: AsyncSession, team_id: int, data: admin_schemas.T
     return await get_team(session, team.id)
 
 
+async def set_team_image(session: AsyncSession, team_id: int, image_url: str | None) -> models.Team:
+    """Set (or clear, with ``None``) a team's logo URL.
+
+    Deliberately separate from ``update_team``: the image is only ever written by
+    the dedicated upload/delete RPC subjects after S3 succeeded, never through the
+    generic PATCH body (``TeamUpdate`` has no ``image_url`` field).
+    """
+    result = await session.execute(select(models.Team).where(models.Team.id == team_id))
+    team = result.scalar_one_or_none()
+
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+
+    team.image_url = image_url
+
+    await _enqueue_team_changed(session, team.tournament_id)
+    await session.commit()
+    return await get_team(session, team.id)
+
+
 async def delete_team(session: AsyncSession, team_id: int) -> None:
     """Delete team (cascade deletes players)"""
     result = await session.execute(select(models.Team).where(models.Team.id == team_id))

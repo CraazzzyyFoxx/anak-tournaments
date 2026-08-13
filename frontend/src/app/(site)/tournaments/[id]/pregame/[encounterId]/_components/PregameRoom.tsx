@@ -13,7 +13,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeRole } from "@/components/hero/heroRole";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { usePermissions } from "@/hooks/usePermissions";
-import { teamCrest } from "@/lib/draft-crest";
 import { notify } from "@/lib/notify";
 import { RETURN_TO_PARAM, safeReturnPath } from "@/lib/return-to";
 import captainService from "@/services/captain.service";
@@ -417,8 +416,8 @@ export function PregameRoom({ encounterId, seriesReport = true }: PregameRoomPro
           viewerSide={mapState.viewer_side}
           homeName={sideNameOf("home")}
           awayName={sideNameOf("away")}
-          homeHue={encounter.home_team != null ? teamCrest(encounter.home_team).hue : null}
-          awayHue={encounter.away_team != null ? teamCrest(encounter.away_team).hue : null}
+          homeTeam={encounter.home_team ?? null}
+          awayTeam={encounter.away_team ?? null}
           // By POSITION in the series, not by map: a series may play the same
           // map twice, and filtering on `map_id` alone carried the earlier
           // play's claims onto the later one — which read as "both captains

@@ -5,10 +5,10 @@ import Image from "next/image";
 import { AlertTriangle, Check, Equal, Hourglass, Lock, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
-import { teamCrest } from "@/lib/draft-crest";
 import { cn } from "@/lib/utils";
 import type { PickBanMapReport } from "@/types/tournament.types";
 
@@ -27,9 +27,9 @@ interface PregameMapResultProps {
   viewerSide: "home" | "away" | null;
   homeName: string;
   awayName: string;
-  /** Crest hue per side, from `teamCrest` — null when the team is unknown. */
-  homeHue: number | null;
-  awayHue: number | null;
+  /** The side's team, for its logo — undefined when the encounter has none. */
+  homeTeam: TeamNameInput | null | undefined;
+  awayTeam: TeamNameInput | null | undefined;
   /** Every report filed for THIS map (both sides), from the map pick-ban state. */
   reports: PickBanMapReport[];
   /**
@@ -80,8 +80,8 @@ export function PregameMapResult({
   viewerSide,
   homeName,
   awayName,
-  homeHue,
-  awayHue,
+  homeTeam,
+  awayTeam,
   reports,
   heroActions,
   heroUndo,
@@ -169,8 +169,8 @@ export function PregameMapResult({
                   actions={heroActions}
                   homeName={homeName}
                   awayName={awayName}
-                  homeHue={homeHue}
-                  awayHue={awayHue}
+                  homeTeam={homeTeam}
+                  awayTeam={awayTeam}
                 />
                 {/* Directly under the list it corrects: a wrong ban is noticed
                     HERE, reading the lobby setup, not back in the closed grid. */}
@@ -186,7 +186,7 @@ export function PregameMapResult({
               <div className="mx-auto grid w-full max-w-2xl grid-cols-1 items-stretch gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-4">
                 <ClaimTile
                   name={homeName}
-                  hue={homeHue}
+                  team={homeTeam}
                   report={homeReport}
                   revealed={visibleTo("home")}
                   accentVar="--aqt-teal"
@@ -194,7 +194,7 @@ export function PregameMapResult({
                 <Verdict bothFiled={bothFiled} disputed={disputed} />
                 <ClaimTile
                   name={awayName}
-                  hue={awayHue}
+                  team={awayTeam}
                   report={awayReport}
                   revealed={visibleTo("away")}
                   accentVar="--aqt-rose"
@@ -244,19 +244,19 @@ export function PregameMapResult({
 }
 
 /**
- * One side's claim: crest, team, and either its two digits or the reason they
+ * One side's claim: logo, team, and either its two digits or the reason they
  * are not on screen. The digit slab stays the same size in every state, so the
  * tile does not resize under the reader as reports land.
  */
 function ClaimTile({
   name,
-  hue,
+  team,
   report,
   revealed,
   accentVar
 }: {
   name: string;
-  hue: number | null;
+  team: TeamNameInput | null | undefined;
   report: PickBanMapReport | null;
   revealed: boolean;
   accentVar: "--aqt-teal" | "--aqt-rose";
@@ -264,7 +264,6 @@ function ClaimTile({
   const t = useTranslations("pickBan.room");
   const state: ClaimState = report == null ? "waiting" : revealed ? "filed" : "sealed";
   const StateIcon = state === "waiting" ? Hourglass : state === "sealed" ? Lock : Check;
-  const crestInitial = (name.match(/[\p{L}\p{N}]/u)?.[0] ?? "#").toUpperCase();
   const announced =
     report == null
       ? t("mapResult.pending", { team: name })
@@ -291,17 +290,7 @@ function ClaimTile({
           a non-stretch cross alignment would size this row to min-content and
           the team name would overflow the tile instead of truncating. */}
       <span className="flex min-w-0 items-center justify-center gap-1.5">
-        <span
-          aria-hidden
-          className="grid h-5 w-5 shrink-0 place-items-center rounded font-onest text-[10px] font-bold"
-          style={
-            hue != null
-              ? { background: `hsl(${hue} 55% 22%)`, color: `hsl(${hue} 70% 72%)` }
-              : { background: "var(--aqt-card-2)", color: "var(--aqt-fg-faint)" }
-          }
-        >
-          {crestInitial}
-        </span>
+        <TeamLogo team={team} size="sm" />
         <span
           title={name}
           className="min-w-0 truncate text-xs font-semibold"

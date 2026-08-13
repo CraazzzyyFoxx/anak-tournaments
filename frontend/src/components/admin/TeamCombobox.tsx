@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import type { Team } from "@/types/team.types";
 import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
+import TeamName from "@/components/TeamName";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 
 interface TeamComboboxProps {
@@ -71,7 +72,7 @@ export function TeamCombobox({
             onSelect={() => handleSelect(team)}
           >
             <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-              <span className="truncate">{team.name}</span>
+              <TeamName team={team} size="xs" />
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">#{team.id}</span>
             </div>
             <AdminComboboxCheck selected={value === team.id} />

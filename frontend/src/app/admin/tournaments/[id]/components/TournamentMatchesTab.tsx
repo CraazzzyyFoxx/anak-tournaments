@@ -33,6 +33,7 @@ import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
+import TeamName from "@/components/TeamName";
 import { buildEncounterName } from "@/components/admin/encounter-name";
 import { isGroupStageScoreContext } from "@/components/admin/encounter-score";
 import { Button } from "@/components/ui/button";
@@ -594,9 +595,10 @@ export function TournamentMatchesTab({
                         <TableCell className={tableStyles.cell}>
                           <div className="space-y-1">
                             <span className="font-medium">{encounter.name}</span>
-                            <p className="text-sm text-muted-foreground">
-                              {encounter.home_team?.name ?? "TBD"} vs{" "}
-                              {encounter.away_team?.name ?? "TBD"}
+                            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <TeamName team={encounter.home_team} fallback="TBD" size="xs" />
+                              <span>vs</span>
+                              <TeamName team={encounter.away_team} fallback="TBD" size="xs" />
                             </p>
                           </div>
                         </TableCell>

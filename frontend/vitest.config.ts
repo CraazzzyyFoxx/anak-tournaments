@@ -120,6 +120,9 @@ export default defineConfig({
       "src/lib/draft-workspace-model.test.ts",
       "src/components/Header.mobile-layout.test.ts",
       "src/components/WorkspaceBootstrap.helpers.test.ts",
+      // File-level: `src/components` holds both runners' tests, so a directory
+      // glob here would drag the `bun:test` files into vitest.
+      "src/components/TeamName.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx"
     ]

@@ -30,6 +30,8 @@ export interface Team {
   created_at: Date;
   updated_at: Date | null;
   name: string;
+  /** Uploaded team image (S3 URL). `null` means the team has none — render no image. */
+  image_url: string | null;
   avg_sr: number;
   total_sr: number;
   captain_id: number;

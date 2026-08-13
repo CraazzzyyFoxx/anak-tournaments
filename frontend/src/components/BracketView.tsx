@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
 import { EncounterMapPoolModal } from "@/components/veto/EncounterMapPoolModal";
+import TeamName from "@/components/TeamName";
 import { withReturnTo } from "@/lib/return-to";
 import {
   buildRoundGroups as buildBracketRoundGroups,
@@ -532,6 +533,11 @@ function MatchCard({
   const renderRow = (side: "home" | "away") => {
     const score = side === "home" ? data.homeScore : data.awayScore;
     const won = data.winner === side;
+    // An unfilled slot shows a hint ("Winner of M3") rather than a team, so it
+    // gets no logo — `data.*Name` is also the source of a name parsed out of the
+    // encounter title when the team relation itself is missing.
+    const isTbd = isTbdSlot(side);
+    const slotTeam = isTbd ? null : (side === "home" ? encounter.home_team : encounter.away_team);
     return (
       <div
         className={cn(
@@ -547,14 +553,14 @@ function MatchCard({
         onPointerLeave={() => handlePointerLeave(side)}
         style={{ height: CARD_ROW_HEIGHT }}
       >
-        <span
-          className={cn(
-            "min-w-0 truncate",
-            isTbdSlot(side) ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
-          )}
-        >
-          {getDisplayName(side)}
-        </span>
+        <TeamName
+          team={slotTeam}
+          fallback={getDisplayName(side)}
+          size="xs"
+          nameClassName={
+            isTbd ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
+          }
+        />
         <span
           className={cn(
             "shrink-0 text-[13px] font-semibold tabular-nums",
