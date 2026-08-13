@@ -21,6 +21,7 @@
 * [🏛️ Architecture](#-architecture)
 * [🐋 Docker development](#-docker-development)
 * [📈 Monitoring](#-monitoring)
+* [💾 Backups](#-backups)
 * [👨‍💻 Technical details](#-technical-details)
 * [🙏 Credits](#-credits)
 * [📝 License](#-license)
@@ -157,6 +158,15 @@ You can also use `make dev-up` and `make dev-up-full`.
 Monitoring deployment and operations are documented in [monitoring/README.md](./monitoring/README.md).
 
 The monitoring stack runs as its own Compose project and includes Prometheus, Alertmanager, Grafana, Loki, Promtail, Tempo, the OpenTelemetry Collector, and Redis/RabbitMQ exporters.
+
+## 💾 Backups
+
+Postgres dumps and secrets are stored in a two-site rustfs setup (source on the
+deployment host, replica on a home server) with native S3 bucket replication and
+per-run verification that the copy actually reached the replica.
+
+Install, verification and restore procedures: [docs/backup-rustfs.md](./docs/backup-rustfs.md).
+Commands: `make backup-up`, `make backup-setup`, `make backup-run`, `make backup-ls`.
 
 ## Backend Development
 

@@ -1,0 +1,71 @@
+name: owt-backup
+
+# ==============================================================================
+# Контур резервных копий, ИСТОЧНИК (хост dd-new).
+#
+# Отдельный compose-проект, а не сервис в docker-compose.production.yml:
+# `make prod-down`, пересборка стека или неудачный релиз не должны трогать
+# хранилище бэкапов, а `docker compose up` контура не должен ждать rabbitmq.
+#
+# Сеть тоже своя: подключаться к внешнему owt_app-network значило бы, что без
+# поднятого прода бэкапы не стартуют. Метрики отдаёт не rustfs, а джоба
+# (ops/backup/backup.sh -> textfile collector, см. monitoring/README).
+#
+# Порты биндятся в loopback: опубликованные Docker'ом порты не проходят через
+# filter-цепочки ufw на этом хосте (docs/superpowers/specs/
+# 2026-08-06-nginx-dos-hardening-design.md §8.2). Снаружи S3 источника не нужен —
+# в него пишет только локальная джоба, а вычитывает его сам rustfs при
+# репликации на home.
+#
+#   docker compose -f docker-compose.backup.yml --env-file ops/backup/backup.env up -d
+#
+# Первый запуск — через ops/backup/setup.sh (создаёт каталоги с владельцем
+# 10001:10001, бакеты, версионирование, ILM и правило репликации).
+# ==============================================================================
+
+services:
+  rustfs:
+    image: ${RUSTFS_IMAGE:?set RUSTFS_IMAGE in ops/backup/backup.env}
+    restart: unless-stopped
+    # Консоль выключена: всё управление идёт через mc (ops/backup/*.sh), а образ
+    # по умолчанию поднимает её с RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=*.
+    # Включить на время разбора: RUSTFS_CONSOLE_ENABLE=true + ssh -L 9001.
+    ports:
+      - "127.0.0.1:9000:9000"
+    environment:
+      # Один каталог = одиночный диск, паритет НУЛЕВОЙ (rustfs: 1 диск -> 0
+      # parity). Битрот при этом детектируется, но не лечится — единственный
+      # путь восстановления — копия на home. Локальный EC на одном физическом
+      # диске от смерти хоста всё равно не спасает.
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ROOT_USER:?}
+      RUSTFS_SECRET_KEY: ${RUSTFS_ROOT_PASSWORD:?}
+      # Обязательно оба: процессный дефолт strict, но НОВЫЕ бакеты создаются в
+      # relaxed, где xl.meta и inline-объекты не fsync'ается — при потере питания
+      # подтверждённая запись может остаться без метаданных.
+      RUSTFS_DURABILITY_MODE: strict
+      RUSTFS_NEW_BUCKET_DURABILITY_MODE: strict
+    volumes:
+      # Bind-mount, а не named volume: каталог с бэкапами должен лежать на
+      # выбранном (большом) разделе, а не в /var/lib/docker. Цена — ручной
+      # chown: контейнер работает под uid:gid 10001:10001 (делает setup, см.
+      # docs/backup-rustfs.md).
+      - ${RUSTFS_DATA_DIR:?}:/data
+      - ${RUSTFS_LOG_DIR:?}:/logs
+    healthcheck:
+      # /health не требует подписи и включён по умолчанию; curl есть в образе.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1G
+        reservations:
+          cpus: '0.05'
+          memory: 128M

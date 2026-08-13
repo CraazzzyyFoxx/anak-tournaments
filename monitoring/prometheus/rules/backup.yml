@@ -1,0 +1,64 @@
+groups:
+  # Метрики пишет ops/backup/backup.sh в textfile collector node-exporter'а
+  # (/var/lib/node_exporter/textfile/owt_backup.prom), поэтому job здесь — `node`.
+  #
+  # Ключевая идея алертов: молчание — тоже отказ. Джоба может не запуститься
+  # (таймер выключен, хост перезагружен, docker не поднялся) — тогда метрика не
+  # обновляется, и ловит это только проверка на возраст, а не на значение.
+  - name: backup
+    rules:
+      - alert: BackupMissing
+        # Таймер суточный; 30 часов = один пропуск + запас на RandomizedDelaySec.
+        expr: |
+          time() - max(owt_backup_last_success_timestamp_seconds) > 30 * 3600
+          or absent(owt_backup_last_success_timestamp_seconds)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Дампа Postgres нет больше 30 часов"
+          description: >-
+            owt_backup_last_success_timestamp_seconds не обновлялся 30+ часов.
+            Проверить: systemctl status owt-backup.timer; journalctl -u owt-backup.
+
+      - alert: BackupReplicaStale
+        # Дамп снят и лежит на dd-new, но в реплике его нет: репликация встала,
+        # home недоступен или у ключа отобрали права на запись. Именно этот алерт
+        # отвечает на вопрос «если dd-new умрёт сейчас, копия на home есть?».
+        expr: |
+          time() - max(owt_backup_last_replica_success_timestamp_seconds) > 30 * 3600
+          or absent(owt_backup_last_replica_success_timestamp_seconds)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Копия бэкапа не подтверждена на home больше 30 часов"
+          description: >-
+            Дамп мог сняться, но в реплике его нет. Проверить home и правило:
+            mc replicate export local/owt-backups; docker compose -f ops/backup/compose.home.yml ps.
+
+      - alert: BackupRunFailed
+        expr: max(owt_backup_last_status) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Последний прогон бэкапа упал"
+          description: >-
+            owt_backup_last_status=0. Причина — в journalctl -u owt-backup -n 100.
+            Предыдущий успех: {{ with query "max(owt_backup_last_success_timestamp_seconds)" }}{{ . | first | value | humanizeTimestamp }}{{ end }}.
+
+      - alert: BackupDumpSuspiciouslySmall
+        # Дамп внезапно вдвое меньше — это не «маленький бэкап», это молча
+        # сломанный дамп (не та база, оборванный pg_dump, пустая схема).
+        expr: |
+          max(owt_backup_last_bytes) > 0
+          and max(owt_backup_last_bytes) < 0.5 * max(max_over_time(owt_backup_last_bytes[14d]))
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Размер бэкапа упал более чем вдвое"
+          description: >-
+            Текущий прогон выгрузил {{ $value | humanize1024 }}B против максимума за 14 дней.
+            Проверить, что дампится нужная база и pg_dump не обрывается.
