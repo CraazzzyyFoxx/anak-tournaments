@@ -245,7 +245,10 @@ export function stageBestOfRoundSections({
       }))
     });
   }
-  return withUnlistedRounds(sections, configuredRounds);
+  // The grand final is `upperRounds + 1` (`double_elimination.generate`). It is
+  // never an editable row — `final` owns it — but a stale `by_round` key on it
+  // reads as a bare "Round N", so name it "Grand Final" where it surfaces.
+  return withUnlistedRounds(sections, configuredRounds, upperRounds + 1);
 }
 
 function countUp(count: number): number[] {
@@ -266,25 +269,29 @@ function upperBracketRoundLabel(round: number, upperRounds: number): string {
  * than the derivation assumed (or one configured before this editor grouped its
  * rounds) can carry a `by_round` key with nowhere to render. Such a key still
  * changes matches, so it gets a row rather than becoming an invisible override.
+ * A key on the grand-final round is named "Grand Final" rather than a bare
+ * "Round N", since that number means nothing to an organizer.
  */
 function withUnlistedRounds(
   sections: BestOfRoundSection[],
-  configuredRounds: number[]
+  configuredRounds: number[],
+  grandFinalRound?: number
 ): BestOfRoundSection[] {
   const offered = new Set(sections.flatMap((section) => section.rounds.map((row) => row.round)));
   const unlisted = [...new Set(configuredRounds)]
     .filter((round) => !offered.has(round))
     .sort((left, right) => right - left);
   if (unlisted.length === 0) return sections;
+  const label = (round: number) => {
+    if (round === grandFinalRound) return "Grand Final";
+    return round < 0 ? `LB Round ${-round}` : `Round ${round}`;
+  };
   return [
     ...sections,
     {
       key: "other",
       label: "Other configured rounds",
-      rounds: unlisted.map((round) => ({
-        round,
-        label: round < 0 ? `LB Round ${-round}` : `Round ${round}`
-      }))
+      rounds: unlisted.map((round) => ({ round, label: label(round) }))
     }
   ];
 }

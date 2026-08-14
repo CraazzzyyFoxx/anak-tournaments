@@ -228,6 +228,23 @@ describe("stageBestOfRoundSections", () => {
       }).map((section) => section.key)
     ).toEqual(["upper", "lower"]);
   });
+
+  it("names a stale grand-final override 'Grand Final', not a bare round", () => {
+    // 4 upper teams -> upper rounds 1..2, grand final = round 3. A leftover
+    // `by_round` on the grand final (owned by `final`) and a dead round 4 land
+    // in the extras; the grand final reads by name so an admin can recognize it.
+    const sections = stageBestOfRoundSections({
+      stageType: "double_elimination",
+      maxRounds: 5,
+      bracketTeamCount: 4,
+      splitLowerBracket: true,
+      configuredRounds: [3, 4]
+    });
+    expect(sections.find((section) => section.key === "other")?.rounds).toEqual([
+      { round: 4, label: "Round 4" },
+      { round: 3, label: "Grand Final" }
+    ]);
+  });
 });
 
 describe("buildSequenceForBestOf", () => {
