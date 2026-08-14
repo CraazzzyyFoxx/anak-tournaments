@@ -1,9 +1,13 @@
-"""Tests for the two admin/stage.py guards added alongside the bracket-generation
-duplicate-match bug and the Draft-revert feature:
+"""Tests for the admin/stage.py guards around bracket generation, plus the
+ahead-of-seeding bracket the same entry point builds:
 
 * ``generate_encounters`` must never insert a second set of matches on top of
   ones that already exist -- a grouped stage skips already-generated groups
   and only fills in new ones; a non-grouped stage refuses outright.
+* A bracket stage with no seeds is built from the preceding group stage's
+  ``advance_count`` × groups with every slot TBD, and the teams are written
+  into that same bracket once they resolve -- but only while it is provably
+  untouched.
 * ``deactivate_stage`` must only revert ``is_active``/``is_published`` back to
   Draft while every one of the stage's encounters is still OPEN -- the moment
   any encounter has been reported or started, it refuses instead of stranding
@@ -50,8 +54,30 @@ def _scalar_result(value: int) -> SimpleNamespace:
     return SimpleNamespace(scalar_one=lambda: value)
 
 
-def _item(item_id: int, name: str = "Group") -> SimpleNamespace:
-    return SimpleNamespace(id=item_id, name=name)
+def _item(item_id: int, name: str = "Group", order: int = 0, item_type=None) -> SimpleNamespace:
+    return SimpleNamespace(id=item_id, name=name, order=order, type=item_type, inputs=[])
+
+
+def _scalars_result(rows: list) -> SimpleNamespace:
+    return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
+
+
+def _encounter(round_number: int, encounter_id: int, **overrides) -> SimpleNamespace:
+    fields = {
+        "id": encounter_id,
+        "round": round_number,
+        "home_team_id": None,
+        "away_team_id": None,
+        "status": enums.EncounterStatus.OPEN,
+        "name": "TBD vs TBD",
+    }
+    return SimpleNamespace(**{**fields, **overrides})
+
+
+def _queued_session(results: list) -> SimpleNamespace:
+    """A session whose ``execute`` hands back ``results`` in call order."""
+    queue = list(results)
+    return SimpleNamespace(execute=AsyncMock(side_effect=lambda *_a, **_kw: queue.pop(0)), flush=AsyncMock())
 
 
 class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
@@ -88,9 +114,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(
-                stage_service, "_create_encounters_from_skeleton", AsyncMock()
-            ) as create,
+            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:
                 await stage_service.generate_encounters(session, 77, commit=False)
@@ -106,9 +130,8 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(
-                stage_service, "_create_encounters_from_skeleton", AsyncMock()
-            ) as create,
+            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=None)),
+            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
         ):
             with self.assertRaises(HTTPException) as ctx:
                 await stage_service.generate_encounters(session, 88, commit=False)
@@ -120,8 +143,6 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
         """Regression guard: a stage with zero existing encounters must still
         generate normally through the (now-guarded) non-grouped path."""
         item = _item(1, "Bracket")
-        item.order = 0
-        item.type = None
         stage = SimpleNamespace(
             id=99,
             tournament_id=1,
@@ -148,6 +169,116 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(new_encounters, result)
         create.assert_awaited_once()
+
+    async def test_builds_a_tbd_bracket_from_the_group_stage_advance_count(self) -> None:
+        """The playoff has no seeds yet -- 2 advance from each of 4 groups, so
+        the 8-team bracket is generated now with every slot left TBD."""
+        stage = SimpleNamespace(
+            id=99,
+            tournament_id=1,
+            stage_type=enums.StageType.SINGLE_ELIMINATION,
+            items=[_item(1, "Bracket")],
+            split_lower_bracket=False,
+            settings_json={},
+        )
+        source = SimpleNamespace(id=4, advance_count=2, items=[_item(i, order=i) for i in range(4)])
+        session = _queued_session([_rows_result([])])
+
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
+            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[])) as create,
+            patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
+        ):
+            await stage_service.generate_encounters(session, 99, commit=False)
+
+        skeleton = create.await_args.args[2]
+        # 8 teams → 7 matches over 3 rounds, and not one of them names a team:
+        # the seeds only exist as group placements until the groups finish.
+        self.assertEqual(7, len(skeleton.pairings))
+        self.assertEqual([1, 2, 3], sorted({p.round_number for p in skeleton.pairings}))
+        self.assertTrue(all(p.home_team_id is None and p.away_team_id is None for p in skeleton.pairings))
+
+    async def test_seeds_resolved_teams_into_the_bracket_it_already_generated(self) -> None:
+        stage = SimpleNamespace(
+            id=99,
+            tournament_id=1,
+            stage_type=enums.StageType.SINGLE_ELIMINATION,
+            items=[_item(1, "Bracket")],
+            split_lower_bracket=False,
+            settings_json={},
+        )
+        # The TBD bracket generated earlier: two semifinals and a final.
+        existing = [_encounter(1, 10), _encounter(1, 11), _encounter(2, 12)]
+        session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
+
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
+            patch.object(stage_service, "_load_team_names", AsyncMock(return_value={1: "A", 2: "B", 3: "C", 4: "D"})),
+            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+            patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
+        ):
+            result = await stage_service.generate_encounters(session, 99, commit=False)
+
+        # Same encounters, now seeded 1v4 / 2v3 the way the generator pairs them
+        # — no second bracket, so ids, schedule and links all survive.
+        self.assertEqual(existing, result)
+        create.assert_not_awaited()
+        self.assertEqual([(1, 4), (2, 3)], [(e.home_team_id, e.away_team_id) for e in existing[:2]])
+        self.assertEqual("A vs D", existing[0].name)
+        self.assertEqual((None, None), (existing[2].home_team_id, existing[2].away_team_id))
+
+    async def test_refuses_to_reseed_a_bracket_that_is_already_being_played(self) -> None:
+        stage = SimpleNamespace(
+            id=99,
+            tournament_id=1,
+            stage_type=enums.StageType.SINGLE_ELIMINATION,
+            items=[_item(1, "Bracket")],
+            split_lower_bracket=False,
+            settings_json={},
+        )
+        existing = [_encounter(1, 10, home_team_id=7), _encounter(1, 11), _encounter(2, 12)]
+        session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
+
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "_collect_item_team_ids", lambda item: [1, 2, 3, 4]),
+            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await stage_service.generate_encounters(session, 99, commit=False)
+
+        self.assertEqual(409, ctx.exception.status_code)
+        create.assert_not_awaited()
+
+    async def test_refuses_to_reseed_when_the_resolved_teams_change_the_shape(self) -> None:
+        stage = SimpleNamespace(
+            id=99,
+            tournament_id=1,
+            stage_type=enums.StageType.SINGLE_ELIMINATION,
+            items=[_item(1, "Bracket")],
+            split_lower_bracket=False,
+            settings_json={},
+        )
+        # A 4-team bracket was generated; 8 teams resolved. Reseeding in place
+        # would leave half of them out, so it refuses and asks for a rebuild.
+        existing = [_encounter(1, 10), _encounter(1, 11), _encounter(2, 12)]
+        session = _queued_session([_rows_result([(1, 3)]), _scalars_result(existing)])
+
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "_collect_item_team_ids", lambda item: list(range(1, 9))),
+            patch.object(stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await stage_service.generate_encounters(session, 99, commit=False)
+
+        self.assertEqual(409, ctx.exception.status_code)
+        create.assert_not_awaited()
+        self.assertTrue(all(e.home_team_id is None for e in existing))
 
 
 class DeactivateStageGuardTests(IsolatedAsyncioTestCase):

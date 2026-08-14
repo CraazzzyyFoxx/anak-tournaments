@@ -178,19 +178,22 @@ function getStageBracketTeamCount(stage: Stage, splitLowerBracket: boolean, stag
   }
 
   // Nothing wired yet: project from the group stage that will seed this one.
-  const total = projectedUpstreamTeams(stage, stages);
-  if (total <= 0) return 0;
-  if (!isSplitDe) return total;
-  if (hasLowerItem) return total - Math.floor(total / 2); // upper half
-  return Math.floor(total / 2);
+  return projectedBracketSeedCounts(stage, splitLowerBracket, stages).upper;
 }
 
 /**
- * Total teams the preceding group stage feeds into `stage`, mirroring
- * `_preceding_group_stage` + `_auto_wire_from_groups`: the nearest earlier
- * Swiss/round-robin stage seeds `advance_count` teams from EACH of its groups.
+ * The upper/lower seed counts the preceding group stage feeds into `stage`,
+ * mirroring `_preceding_group_stage` + `_projected_bracket_seed_counts`: the
+ * nearest earlier Swiss/round-robin stage seeds `advance_count` teams from EACH
+ * of its groups, and a split double elimination splits EACH group's share (the
+ * odd team out goes up) rather than halving the total — which for an odd
+ * `advance_count` is a differently shaped bracket.
  */
-function projectedUpstreamTeams(stage: Stage, stages: Stage[]): number {
+function projectedBracketSeedCounts(
+  stage: Stage,
+  splitLowerBracket: boolean,
+  stages: Stage[]
+): { upper: number; lower: number } {
   const source = stages
     .filter(
       (candidate) =>
@@ -198,9 +201,23 @@ function projectedUpstreamTeams(stage: Stage, stages: Stage[]): number {
         (candidate.stage_type === "swiss" || candidate.stage_type === "round_robin")
     )
     .sort((left, right) => right.order - left.order)[0];
-  if (!source || !source.advance_count || source.advance_count <= 0) return 0;
+  if (!source || !source.advance_count || source.advance_count <= 0) return { upper: 0, lower: 0 };
+
   const groups = source.items.length || 1;
-  return source.advance_count * groups;
+  const advance = source.advance_count;
+  const isSplitDe = stage.stage_type === "double_elimination" && splitLowerBracket;
+
+  if (isSplitDe && stage.items.some((item) => item.type === "bracket_lower")) {
+    const lowerPerGroup = Math.floor(advance / 2);
+    return { upper: groups * (advance - lowerPerGroup), lower: groups * lowerPerGroup };
+  }
+
+  const total = groups * advance;
+  if (isSplitDe) {
+    // One bracket item holds both halves; the seed list is split down the middle.
+    return { upper: Math.floor(total / 2), lower: total - Math.floor(total / 2) };
+  }
+  return { upper: total, lower: 0 };
 }
 
 function getDefaultStageItemType(stageType: StageType): StageItemType {
@@ -1103,7 +1120,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                             generateMutation.mutate(selectedStage.id);
                           }
                         }}
-                        title="Generates the bracket as a preview without activating the stage — captains cannot report or veto until it is activated"
+                        title="Generates the bracket as a preview without activating the stage — captains cannot report or veto until it is activated. With no teams seeded yet, a playoff is built from the group stage's advancing count and filled in once the groups finish."
                       >
                         {generateMutation.isPending &&
                         generateMutation.variables === selectedStage.id ? (
@@ -2287,7 +2304,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         title="Generate bracket again"
         description={
           regenerateStageConfirm
-            ? `"${regenerateStageConfirm.name}" already has generated matches. Existing matches are left untouched: for a grouped stage, only groups with no matches yet get a new bracket; for a single bracket, this is blocked until you delete its existing matches.`
+            ? `"${regenerateStageConfirm.name}" already has generated matches. Existing matches are left untouched: for a grouped stage, only groups with no matches yet get a new bracket; for a bracket that is still all TBD, the seeded teams are written into it; otherwise this is blocked until you delete its existing matches.`
             : undefined
         }
         confirmLabel="Generate"
