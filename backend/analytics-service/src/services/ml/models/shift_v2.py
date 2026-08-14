@@ -100,8 +100,8 @@ DOMINANCE_CAP: float = 3.0
 # not promoted. Floor 0.0 = full gate at last place.
 PLACEMENT_FLOOR: float = 0.0
 
-# Canonical OW grid bounds (number 1 = top … 40 = bottom); the ramp is keyed on
-# the division number so it stays comparable across workspace grids.
+# Canonical OW grid bounds (number 1 = top … max_division = bottom); the ramp is
+# keyed on the division number so it stays comparable across workspace grids.
 _GRID_MIN_DIV: float = float(DEFAULT_GRID.min_division)
 _GRID_MAX_DIV: float = float(DEFAULT_GRID.max_division)
 _GRID_MID_DIV: float = (_GRID_MIN_DIV + _GRID_MAX_DIV) / 2.0
@@ -128,7 +128,7 @@ def _os_shift(df: pd.DataFrame) -> pd.Series:
 
 
 def _rank_ramp(div: pd.Series, *, top: float, bottom: float) -> pd.Series:
-    """Linear ramp on the canonical division number (1 = top … 40 = bottom).
+    """Linear ramp on the canonical division number (1 = top … max = bottom).
 
     Returns ``top`` at the highest rank (division 1) and ``bottom`` at the lowest;
     rows with an unknown division fall back to the mid-ladder value (neutral).
@@ -150,8 +150,9 @@ def _output_clamp(
     Top of the ladder (canonical division 1) is capped at
     ``grid_n_div / top_grid_ref`` divisions (a 20-division grid → 1.0, a 40 → 2.0)
     so the cap means the same real rank distance regardless of granularity; the
-    cap ramps up to ``shift_range`` at the bottom (division 40). Missing grid size
-    falls back to the canonical 40-tier grid; missing division → mid-ladder.
+    cap ramps up to ``shift_range`` at the bottom of the canonical ladder. Missing
+    grid size falls back to the canonical grid's division count; missing division
+    → mid-ladder.
     """
     div = pd.to_numeric(df.get("current_div", pd.Series(np.nan, index=df.index)), errors="coerce").fillna(_GRID_MID_DIV)
     n_div = pd.to_numeric(df.get("grid_n_div", pd.Series(_GRID_MAX_DIV, index=df.index)), errors="coerce").fillna(

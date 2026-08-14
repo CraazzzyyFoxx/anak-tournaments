@@ -5,22 +5,35 @@ export interface OW2RankOption {
   value: number;
 }
 
+/**
+ * Identity of the backend's built-in division+tier -> rank_value table
+ * (`DEFAULT_RANK_MAPPING_VERSION` in `shared/schemas/settings.py`). Bumped
+ * whenever that table is rebased — a bare `rank_value` is ambiguous across
+ * versions (2500 was Platinum 5 under v1, Emerald 5 under v2).
+ */
+export const DEFAULT_RANK_MAPPING_VERSION = "ow2-default-v2";
+
 export const OW2_DIVISIONS_DESC = [
   "ultimate",
   "grandmaster",
   "master",
   "diamond",
+  "emerald",
   "platinum",
   "gold",
   "silver",
   "bronze"
 ] as const;
 
+// Mirrors the backend default table (DEFAULT_OW2_DIVISION_BASE, mapping version
+// ow2-default-v2): nine 500-wide divisions anchored at Bronze 5 = 500. Emerald
+// took the 2500 band platinum used to hold, so diamond and above are unchanged.
 const DIVISION_BASE: Record<string, number> = {
-  bronze: 1000,
-  silver: 1500,
-  gold: 2000,
-  platinum: 2500,
+  bronze: 500,
+  silver: 1000,
+  gold: 1500,
+  platinum: 2000,
+  emerald: 2500,
   diamond: 3000,
   master: 3500,
   grandmaster: 4000,

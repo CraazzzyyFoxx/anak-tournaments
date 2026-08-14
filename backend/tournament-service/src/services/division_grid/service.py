@@ -75,12 +75,27 @@ async def get_workspace_grids(session: AsyncSession, workspace_id: int) -> list[
 
 
 def get_default_ow2_tiers_write() -> list[schemas.DivisionGridTierWrite]:
-    divisions = ["champion", "grandmaster", "master", "diamond", "platinum", "gold", "silver", "bronze"]
+    divisions = [
+        "champion",
+        "grandmaster",
+        "master",
+        "diamond",
+        "emerald",
+        "platinum",
+        "gold",
+        "silver",
+        "bronze",
+    ]
+    # Nine 500-wide divisions anchored at Bronze 5 = 500 (Champion 1 open-ended
+    # above 4900). Emerald took the 2500 band platinum used to hold, so diamond
+    # and above keep their pre-emerald anchors. Mirrors
+    # ``shared.division_grid._build_default_grid``.
     bases = {
-        "bronze": 1000,
-        "silver": 1500,
-        "gold": 2000,
-        "platinum": 2500,
+        "bronze": 500,
+        "silver": 1000,
+        "gold": 1500,
+        "platinum": 2000,
+        "emerald": 2500,
         "diamond": 3000,
         "master": 3500,
         "grandmaster": 4000,

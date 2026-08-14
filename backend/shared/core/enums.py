@@ -73,6 +73,7 @@ class RankDivision(StrEnum):
     silver = "silver"
     gold = "gold"
     platinum = "platinum"
+    emerald = "emerald"
     diamond = "diamond"
     master = "master"
     grandmaster = "grandmaster"

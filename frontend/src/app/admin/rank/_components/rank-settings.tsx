@@ -27,6 +27,7 @@ import {
   sortTiersDescending
 } from "@/lib/division-grid";
 import {
+  DEFAULT_RANK_MAPPING_VERSION,
   buildMappingCells,
   defaultRankForCell
 } from "@/lib/ow-rank-mapping";
@@ -281,7 +282,7 @@ function RankMappingSection({
 
   const initial = useMemo<RankMappingConfig>(() => {
     const value = (setting?.value as Partial<RankMappingConfig>) ?? {};
-    return { version: value.version ?? "ow2-default-v1", entries: value.entries ?? [] };
+    return { version: value.version ?? DEFAULT_RANK_MAPPING_VERSION, entries: value.entries ?? [] };
   }, [setting]);
   const [cells, setCells] = useState<RankMappingEntry[]>(() => buildMappingCells(initial.entries));
   const [prevInitial, setPrevInitial] = useState<RankMappingConfig>(initial);

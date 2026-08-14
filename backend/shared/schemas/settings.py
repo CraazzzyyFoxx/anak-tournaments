@@ -79,6 +79,14 @@ class SubscriptionCollectionConfig(BaseModel):
     batch_size: int = Field(default=50, ge=1, le=500)
 
 
+#: Identity of the built-in OverFast division+tier -> rank_value table (see
+#: ``parser-service``'s ``overwatch_rank.mapping``). Bumped whenever that table
+#: is rebased: a bare ``rank_value`` is ambiguous across versions (2500 was
+#: Platinum 5 under v1, Emerald 5 under v2), so the version stamped on each
+#: snapshot is what makes a backfill possible.
+DEFAULT_RANK_MAPPING_VERSION = "ow2-default-v2"
+
+
 class RankMappingEntry(BaseModel):
     """One native division+tier → integer rank_value mapping row."""
 
@@ -95,7 +103,7 @@ class RankMappingConfig(BaseModel):
     single division+tier here only overrides that one cell.
     """
 
-    version: str = Field(default="ow2-default-v1", min_length=1, max_length=64)
+    version: str = Field(default=DEFAULT_RANK_MAPPING_VERSION, min_length=1, max_length=64)
     entries: list[RankMappingEntry] = Field(default_factory=list)
 
     @model_validator(mode="after")

@@ -34,16 +34,22 @@ function buildDefaultTiers(): DivisionTier[] {
     "grandmaster",
     "master",
     "diamond",
+    "emerald",
     "platinum",
     "gold",
     "silver",
     "bronze"
   ];
+  // Nine 500-wide divisions anchored at Bronze 5 = 500 (Champion 1 open-ended
+  // above 4900). Emerald took the 2500 band platinum used to hold, so diamond
+  // and above keep their pre-emerald anchors. Mirrors the backend's
+  // get_default_ow2_tiers_write().
   const bases: Record<string, number> = {
-    bronze: 1000,
-    silver: 1500,
-    gold: 2000,
-    platinum: 2500,
+    bronze: 500,
+    silver: 1000,
+    gold: 1500,
+    platinum: 2000,
+    emerald: 2500,
     diamond: 3000,
     master: 3500,
     grandmaster: 4000,
@@ -87,8 +93,8 @@ function emptyTier(number: number, index: number): DivisionTier {
     number,
     name: `Division ${number}`,
     sort_order: index,
-    rank_min: 1000,
-    rank_max: 1099,
+    rank_min: 500,
+    rank_max: 599,
     icon_url: `https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/bronze-5.png`,
     ow_rank_min: null,
     ow_rank_max: null

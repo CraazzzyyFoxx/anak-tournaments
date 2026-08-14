@@ -32,6 +32,15 @@ performance_v2 = importlib.import_module("src.services.ml.models.performance_v2"
 shift_features = importlib.import_module("src.services.ml.features.shift_features")
 shift_v2 = importlib.import_module("src.services.ml.models.shift_v2")
 
+from shared.division_grid import DEFAULT_GRID  # noqa: E402
+
+# The shift ramps are keyed on the canonical ladder (DEFAULT_GRID), so tests that
+# mean "at the bottom" / "mid-ladder" name those positions instead of hardcoding
+# a number: adding a division (Emerald) lengthens the ladder below the top and
+# moves both.
+CANONICAL_BOTTOM_DIV = DEFAULT_GRID.max_division
+CANONICAL_MID_DIV = (DEFAULT_GRID.min_division + DEFAULT_GRID.max_division) // 2
+
 
 def _identity_assign(df, grids, *, rank_col, version_col="version_id", out_col="div"):
     """Stub: canonical division == the supplied rank (1:1), for mechanics tests."""
@@ -173,7 +182,7 @@ class ShiftBlendTests(TestCase):
 
     def test_individual_modifier_ramps_with_rank(self) -> None:
         # Same outlier, flat team: the individual lift is small near the ceiling
-        # (canonical division 1) and large at the bottom (division 40).
+        # (canonical division 1) and large at the bottom of the canonical ladder.
         model = shift_v2.ShiftModelV2(
             w_team=0.7,
             w_os=0.3,
@@ -190,8 +199,8 @@ class ShiftBlendTests(TestCase):
             "performance_v2_local_zscore": [2.0],
         }
         top = float(model.predict(pd.DataFrame({**base, "current_div": [1]})).iloc[0])
-        bottom = float(model.predict(pd.DataFrame({**base, "current_div": [40]})).iloc[0])
-        # div 1: 0.2*2 = 0.40 ; div 40: 0.8*2 = 1.60.
+        bottom = float(model.predict(pd.DataFrame({**base, "current_div": [CANONICAL_BOTTOM_DIV]})).iloc[0])
+        # top: 0.2*2 = 0.40 ; bottom: 0.8*2 = 1.60.
         self.assertAlmostEqual(0.40, top, places=6)
         self.assertAlmostEqual(1.60, bottom, places=6)
         self.assertLess(top, bottom)
@@ -214,7 +223,7 @@ class ShiftBlendTests(TestCase):
             "performance_v2_local_zscore": [9.0],
         }
         top = float(model.predict(pd.DataFrame({**base, "current_div": [1]})).iloc[0])
-        bottom = float(model.predict(pd.DataFrame({**base, "current_div": [40]})).iloc[0])
+        bottom = float(model.predict(pd.DataFrame({**base, "current_div": [CANONICAL_BOTTOM_DIV]})).iloc[0])
         self.assertAlmostEqual(0.75, top, places=6)  # capped tight near the ceiling
         self.assertAlmostEqual(2.0, bottom, places=6)  # full range at the bottom
 
@@ -267,16 +276,20 @@ class ShiftBlendTests(TestCase):
                 "performance_v2_local_zscore": [0.0],
                 "tournaments_played": [3],
                 "is_newcomer": [False],
-                "current_div": [40],
+                "current_div": [CANONICAL_BOTTOM_DIV],
                 "grid_n_div": [20],
             }
         )
         self.assertAlmostEqual(3.0, float(model.predict(frame).iloc[0]), places=6)
 
     def test_output_clamp_regression_tref_case(self) -> None:
-        # Real prod case (tournament 73, Tref): GM-zone player in a 20-tier grid
-        # whose +3 came from a huge os_shift. With the rank/grid output clamp the
-        # OpenSkill+ML shift is held near +1.4 instead of saturating at +3.
+        # Real prod case (tournament 73, Tref): GM-zone player (canonical division
+        # 9 = Grandmaster 4) in a 20-tier grid whose +3 came from a huge os_shift.
+        # With the rank/grid output clamp the OpenSkill+ML shift is held near +1.4
+        # instead of saturating at +3. The expected value tracks the canonical
+        # ladder length: Emerald added five divisions BELOW this player, so the
+        # same real rank now sits proportionally higher (t = 8/44, was 8/39) and
+        # the clamp tightens from 1.41 to 1.36.
         model = shift_v2.ShiftModelV2()  # config defaults
         frame = pd.DataFrame(
             {
@@ -289,7 +302,7 @@ class ShiftBlendTests(TestCase):
                 "grid_n_div": [20],
             }
         )
-        self.assertAlmostEqual(1.41, float(model.predict(frame).iloc[0]), places=2)
+        self.assertAlmostEqual(1.36, float(model.predict(frame).iloc[0]), places=2)
 
     def test_raw_mvp_dominance_lifts_bounded_only_by_output_clamp(self) -> None:
         # A consistent scoreboard-topper: the dominance lift bypasses the softer
@@ -342,11 +355,12 @@ class ShiftBlendTests(TestCase):
             "mvp_dominance": [1.0],
         }
         top = float(model.predict(pd.DataFrame({**base, "current_div": [1]})).iloc[0])
-        mid = float(model.predict(pd.DataFrame({**base, "current_div": [20]})).iloc[0])
+        mid = float(model.predict(pd.DataFrame({**base, "current_div": [CANONICAL_MID_DIV]})).iloc[0])
         # div 1 (grid 20): output clamp = 1.0 → lift capped at 1.0.
         self.assertAlmostEqual(1.0, top, places=2)
-        # div 20: output clamp ≈ 1.0+(3-1)*0.487 = 1.97 → dominance_z 3.0 capped to it.
-        self.assertAlmostEqual(1.97, mid, places=2)
+        # mid-ladder (t = 0.5): output clamp = 1.0+(3-1)*0.5 = 2.0 → dominance_z 3.0
+        # capped to it.
+        self.assertAlmostEqual(2.0, mid, places=2)
         self.assertGreater(mid, top)
 
     def test_placement_gates_whole_positive_shift(self) -> None:

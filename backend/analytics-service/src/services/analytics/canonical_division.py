@@ -1,14 +1,14 @@
 """Canonical division normalization for analytics.
 
 Every analytics division value is mapped to ONE canonical scale — the in-code
-standard grid :data:`shared.division_grid.DEFAULT_GRID` (40-tier OW2, Bronze 5..
+standard grid :data:`shared.division_grid.DEFAULT_GRID` (45-tier OW2, Bronze 5..
 Champion 1) — so divisions from different workspace grids are comparable.
 
 Per the source tier:
 - if the grid tier carries an OW-rank binding (``ow_rank_min``/``ow_rank_max``),
   resolve that OW SR on the canonical grid (accurate, division-aligned);
 - otherwise rescale the division NUMBER proportionally into the canonical
-  grid's division range (a grid with N divisions spreads onto the canonical 40).
+  grid's division range (a grid with N divisions spreads onto the canonical 45).
 
 No DB grid-mappings and no configuration required: the canonical grid lives in
 code and the mapping is derived from each source grid's own structure.
