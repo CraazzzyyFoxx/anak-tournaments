@@ -31,12 +31,19 @@ export type PhaseSegment = {
    */
   endsAt: string | null;
   /**
-   * ms left until this segment's next boundary. Set on at most one segment: the
-   * current one counts down to its `endsAt`, otherwise the nearest upcoming one
-   * counts down to its `startsAt`. Null once that boundary is in the past, so a
-   * plan automation did not execute never renders as a negative countdown.
+   * ms left until this segment's next boundary. Set on at most one segment, so
+   * two timers can never disagree about what happens next. Null once that
+   * boundary is in the past, so a plan automation did not execute never renders
+   * as a negative countdown.
    */
   countdownMs: number | null;
+  /**
+   * Which boundary `countdownMs` targets. The label follows this rather than the
+   * segment's state: a phase can be marked current before its planned start —
+   * the organizer advanced the status by hand, or automation is off — and then
+   * the phase's own start is the boundary worth counting.
+   */
+  countdownTo: "start" | "close" | null;
   /** Elapsed fraction (0..1) of a current segment with a closed window. */
   progress: number | null;
 };
@@ -106,6 +113,7 @@ export function buildTournamentSchedule({
       startsAt: row.starts_at,
       endsAt: row.ends_at,
       countdownMs: null,
+      countdownTo: null,
       progress: null
     });
   }
@@ -114,9 +122,20 @@ export function buildTournamentSchedule({
   if (current) {
     const startsAt = epoch(current.startsAt);
     const endsAt = epoch(current.endsAt);
+    // The phase is marked current but its planned start has not arrived: the
+    // status moved ahead of the plan, which is exactly what a manual advance
+    // looks like. Its own start is then the nearest boundary, and the only
+    // answer to "when does this actually begin".
+    if (startsAt !== null && startsAt > now) {
+      current.countdownMs = startsAt - now;
+      current.countdownTo = "start";
+    }
     if (startsAt !== null && endsAt !== null && endsAt > startsAt) {
       current.progress = Math.min(1, Math.max(0, (now - startsAt) / (endsAt - startsAt)));
-      if (endsAt > now) current.countdownMs = endsAt - now;
+      if (current.countdownMs === null && endsAt > now) {
+        current.countdownMs = endsAt - now;
+        current.countdownTo = "close";
+      }
     }
   }
 
@@ -125,6 +144,7 @@ export function buildTournamentSchedule({
     const startsAt = next ? epoch(next.startsAt) : null;
     if (next && startsAt !== null && startsAt > now) {
       next.countdownMs = startsAt - now;
+      next.countdownTo = "start";
     }
   }
 

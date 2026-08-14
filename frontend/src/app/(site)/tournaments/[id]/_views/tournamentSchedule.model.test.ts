@@ -101,6 +101,22 @@ describe("buildTournamentSchedule", () => {
     expect(live.countdownMs).toBeNull();
   });
 
+  it("counts a current phase down to its own start when the plan has not landed yet", () => {
+    // Status moved to live before the planned kickoff — a manual advance. The
+    // phase's own start is the nearest boundary, so it wins over both the
+    // closing time and any later phase.
+    const { segments } = buildTournamentSchedule({
+      tournament: tournament({
+        status: "check_in",
+        phase_schedule: [row("check_in", T(19), T(19, 45)), row("live", T(20))]
+      }),
+      now: at(18, 40)
+    });
+
+    expect(segments[0]).toMatchObject({ countdownMs: 20 * 60_000, countdownTo: "start" });
+    expect(segments[1].countdownMs).toBeNull();
+  });
+
   it("counts down to the next phase when the current one has no closing time", () => {
     const { segments } = buildTournamentSchedule({
       tournament: tournament({

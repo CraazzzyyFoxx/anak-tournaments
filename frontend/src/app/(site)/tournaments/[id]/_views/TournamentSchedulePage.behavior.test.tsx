@@ -19,7 +19,11 @@
 //  6. stamps land in the VIEWER's zone and name it, so nobody has to guess
 //     which clock a time is quoted in. `Europe/Moscow` stands in for that zone
 //     below precisely because it is not UTC — under UTC the shift and the label
-//     would both be invisible.
+//     would both be invisible. The provider is deliberately given the WRONG
+//     zone: in production next-intl resolves its default on the server (UTC in
+//     the container) and `NextIntlClientProvider` inherits it, so a page that
+//     trusts the formatter's default quotes every time in the deployment's
+//     clock. The viewer's zone has to come from the browser.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -44,8 +48,15 @@ vi.mock("@/services/tournament.service", () => ({
 
 const COPY = en.tournamentDetail.publicPages.schedule;
 const TOURNAMENT_ID = 91;
-/** The viewer's zone. Deliberately not UTC — see note 6 in the header. */
+/**
+ * The viewer's zone — the browser's, so the page must read it from `Intl`. Set
+ * on `process.env.TZ` rather than left to the runner's machine: a suite that
+ * only passes in UTC+3 pins nothing.
+ */
 const VIEWER_ZONE = "Europe/Moscow";
+process.env.TZ = VIEWER_ZONE;
+/** What the provider carries in production: the deployment's zone, not the viewer's. */
+const DEPLOYMENT_ZONE = "UTC";
 
 const T = (hour: number, minute = 0) =>
   `2026-08-10T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`;
@@ -140,7 +151,7 @@ async function render(overrides: Partial<Tournament>, now: string) {
   await act(async () => {
     root?.render(
       <QueryClientProvider client={client}>
-        <NextIntlClientProvider locale="en" messages={en} timeZone={VIEWER_ZONE}>
+        <NextIntlClientProvider locale="en" messages={en} timeZone={DEPLOYMENT_ZONE}>
           <TournamentSchedulePage tournamentId={TOURNAMENT_ID} />
         </NextIntlClientProvider>
       </QueryClientProvider>
@@ -216,6 +227,20 @@ describe("public tournament schedule page", () => {
     // Exactly one boundary is live, so two timers can never disagree about what
     // happens next.
     expect(live.text).not.toContain("in ");
+  });
+
+  it("counts the running phase down to its own start when the plan has not landed", async () => {
+    // The organizer flipped the tournament to live ten minutes before the
+    // planned kickoff — the phase is running, the play is not. "When does this
+    // begin" is the only question the page can still answer here, and an
+    // absolute stamp alone does not answer it.
+    await render({ status: "live" }, T(19, 50));
+    const [registration, checkIn, live] = rows();
+
+    expect(live.current).toBe(true);
+    expect(live.text).toContain("Starts in 10 minutes");
+    expect(live.text).not.toContain(COPY.closesLabel);
+    for (const done of [registration, checkIn]) expect(done.text).not.toContain("in ");
   });
 
   it("counts down to the next phase when the running one never closes", async () => {

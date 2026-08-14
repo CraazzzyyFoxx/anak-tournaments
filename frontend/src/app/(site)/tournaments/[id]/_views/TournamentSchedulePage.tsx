@@ -61,16 +61,26 @@ const TournamentScheduleView = ({ tournament }: { tournament: Tournament }) => {
 
   const { segments, automationOff } = buildTournamentSchedule({ tournament, now });
 
+  /**
+   * next-intl resolves its default zone on the SERVER — the deployment's, UTC in
+   * the container — and `NextIntlClientProvider` inherits that value, so the
+   * formatter's own default quotes every time in a clock no viewer lives in.
+   * These stamps are the viewer's local time, so the zone is named explicitly.
+   * Reading the browser is safe here: nothing renders before hydration (see
+   * `clock.none`).
+   */
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   const stamp = (iso: string) => {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
-    return format.dateTime(date, STAMP);
+    return format.dateTime(date, { ...STAMP, timeZone });
   };
 
   const countdown = (segment: PhaseSegment) => {
-    if (segment.countdownMs === null) return null;
+    if (segment.countdownMs === null || segment.countdownTo === null) return null;
     const relative = format.relativeTime(new Date(now + segment.countdownMs), now);
-    return segment.state === "current"
+    return segment.countdownTo === "close"
       ? t("tournamentDetail.publicPages.schedule.closesRelative", { relative })
       : t("tournamentDetail.publicPages.schedule.startsRelative", { relative });
   };
@@ -204,9 +214,15 @@ const TournamentScheduleView = ({ tournament }: { tournament: Tournament }) => {
 
           {hasWindow || automationOff ? (
             <div className="mt-4 space-y-1 border-t border-[color:var(--aqt-border)] pt-3 text-xs text-[color:var(--aqt-fg-dim)]">
-              {hasWindow ? <p>{t("tournamentDetail.publicPages.schedule.windowHint")}</p> : null}
+              {hasWindow ? (
+                <p className="max-w-[68ch] text-pretty">
+                  {t("tournamentDetail.publicPages.schedule.windowHint")}
+                </p>
+              ) : null}
               {automationOff ? (
-                <p>{t("tournamentDetail.publicPages.schedule.manualHint")}</p>
+                <p className="max-w-[68ch] text-pretty">
+                  {t("tournamentDetail.publicPages.schedule.manualHint")}
+                </p>
               ) : null}
             </div>
           ) : null}
