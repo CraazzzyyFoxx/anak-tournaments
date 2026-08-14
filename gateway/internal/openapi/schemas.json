@@ -25094,6 +25094,11 @@
           "title": "Is Completed",
           "type": "boolean"
         },
+        "is_published": {
+          "default": false,
+          "title": "Is Published",
+          "type": "boolean"
+        },
         "items": {
           "default": [],
           "items": {
@@ -36628,6 +36633,11 @@
           "title": "Is Completed",
           "type": "boolean"
         },
+        "is_published": {
+          "default": false,
+          "title": "Is Published",
+          "type": "boolean"
+        },
         "items": {
           "default": [],
           "items": {
@@ -36747,6 +36757,11 @@
         },
         "is_completed": {
           "title": "Is Completed",
+          "type": "boolean"
+        },
+        "is_published": {
+          "default": false,
+          "title": "Is Published",
           "type": "boolean"
         },
         "max_rounds": {

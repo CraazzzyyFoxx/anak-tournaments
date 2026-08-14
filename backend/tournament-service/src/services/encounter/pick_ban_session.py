@@ -46,8 +46,10 @@ from shared.models.tournament.pick_ban import (
     PickBanSession,
 )
 from shared.services import pick_ban_engine as engine
+from shared.services.bracket.usability import is_encounter_live
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 from src.services.encounter.veto_session import (
+    REASON_BRACKET_PREVIEW,
     REASON_NOT_CONFIGURED,
     REASON_SLOT_COUNT_MISMATCH,
     REASON_SLOT_UNDERFILLED,
@@ -292,6 +294,8 @@ async def unavailable_reason(session: AsyncSession, encounter: Encounter, kind: 
     ``ensure_pick_ban_session`` itself applies, so the two cannot diverge."""
     if encounter.home_team_id is None or encounter.away_team_id is None:
         return REASON_TEAMS_UNKNOWN
+    if not await is_encounter_live(session, encounter):
+        return REASON_BRACKET_PREVIEW
     config = await _resolve_config(session, encounter, kind)
     if config is None:
         return REASON_NOT_CONFIGURED
@@ -332,6 +336,8 @@ async def ensure_pick_ban_session(
     if existing is not None:
         return existing
     if encounter.home_team_id is None or encounter.away_team_id is None:
+        return None
+    if not await is_encounter_live(session, encounter):
         return None
     config = await _resolve_config(session, encounter, kind)
     if config is None:

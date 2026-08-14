@@ -255,15 +255,19 @@ function getProgressPercent(completed: number, total: number) {
   return Math.round((completed / total) * 100);
 }
 
-function getStageStatus(stage: Stage) {
+function getStageStatus(stage: Stage, hasEncounters: boolean) {
   if (stage.is_completed) return "Completed";
   if (stage.is_active) return "Active";
+  // Bracket generated ahead of activation: visible to organizers, not yet
+  // usable by captains (`shared.services.bracket.usability.is_encounter_live`).
+  if (!stage.is_published && hasEncounters) return "Preview";
   return "Draft";
 }
 
-function getStageStatusClass(stage: Stage) {
+function getStageStatusClass(stage: Stage, hasEncounters: boolean) {
   if (stage.is_completed) return TONE_CLASS.success;
   if (stage.is_active) return TONE_CLASS.accent;
+  if (!stage.is_published && hasEncounters) return TONE_CLASS.info;
   return TONE_CLASS.neutral;
 }
 
@@ -876,6 +880,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                 <div className="flex flex-col gap-2 p-2">
                   {orderedStages.map((stage, index) => {
                     const progress = progressByStageId.get(stage.id);
+                    const hasEncounters = (progress?.total ?? 0) > 0;
                     const stageSlots = getStageTeamSlots(stage);
                     const assignedTeams = getStageAssignedTeams(stage);
                     const progressPercent = progress
@@ -916,9 +921,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               </button>
                               <Badge
                                 variant="outline"
-                                className={cn("shrink-0", getStageStatusClass(stage))}
+                                className={cn("shrink-0", getStageStatusClass(stage, hasEncounters))}
                               >
-                                {getStageStatus(stage)}
+                                {getStageStatus(stage, hasEncounters)}
                               </Badge>
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -1053,6 +1058,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                         variant="outline"
                         disabled={generateMutation.isPending}
                         onClick={() => generateMutation.mutate(selectedStage.id)}
+                        title="Generates the bracket as a preview without activating the stage — captains cannot report or veto until it is activated"
                       >
                         {generateMutation.isPending &&
                         generateMutation.variables === selectedStage.id ? (

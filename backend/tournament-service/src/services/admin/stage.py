@@ -516,6 +516,10 @@ async def merge_group_stages(
     if next_target_name:
         target_stage.name = next_target_name
     target_stage.is_active = target_stage.is_active or any(stage.is_active for stage in source_stages)
+    # A merge retargets the source stages' encounters onto `target_stage`
+    # (`_retarget_stage_rows` above); if any source was already published,
+    # those encounters must stay reportable under their new stage.
+    target_stage.is_published = target_stage.is_published or any(stage.is_published for stage in source_stages)
     target_stage.is_completed = target_stage.is_completed and all(stage.is_completed for stage in source_stages)
 
     await session.flush()
@@ -739,6 +743,11 @@ async def activate_stage(
             other.is_active = False
 
     stage.is_active = True
+    # Sticky: unlike ``is_active`` this never gets cleared by another
+    # stage's activation, so a bracket generated as a preview becomes -- and
+    # stays -- reportable/veto-able from here on (see ``shared.services.
+    # bracket.usability.is_encounter_live``).
+    stage.is_published = True
 
     # Resolve tentative inputs
     for item in stage.items:

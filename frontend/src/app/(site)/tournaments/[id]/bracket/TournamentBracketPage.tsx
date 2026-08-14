@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BracketView } from "@/components/BracketView";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { notify } from "@/lib/notify";
@@ -26,7 +27,12 @@ import { UpdatingBadge } from "../_components/UpdatingBadge";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 import styles from "../TournamentDetail.module.css";
 import { isTournamentStatusEnded } from "@/lib/tournament-status";
-import { createBracketQueryPlan, deriveBracketLoadState } from "./bracketData";
+import {
+  createBracketQueryPlan,
+  deriveBracketLoadState,
+  isStageReportable,
+  isStageVisibleToViewer
+} from "./bracketData";
 
 const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
 
@@ -66,6 +72,7 @@ function GroupStagePanel({
 }) {
   const t = useTranslations();
   const hasStandings = standings.length > 0;
+  const isPreview = !stage.is_published && !stage.is_completed;
   const title = stageItem?.name ?? stage.name;
   const subtitle = stageItem
     ? `${stage.name} - ${stage.stage_type.replace(/_/g, " ")}`
@@ -96,6 +103,7 @@ function GroupStagePanel({
                   / {stageItem.name}
                 </span>
               )}
+              {isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
             </div>
             <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               {subtitle}
@@ -103,7 +111,14 @@ function GroupStagePanel({
           </div>
         ) : (
           <div className="min-w-0">
-            <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">{title}</h3>
+            <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
+              {title}
+              {isPreview && (
+                <Badge variant="outline" className="ml-2 align-middle">
+                  {t("common.bracketPreview")}
+                </Badge>
+              )}
+            </h3>
             <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               {subtitle}
             </p>
@@ -186,7 +201,12 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
   );
   const encountersQuery = useQuery(queryPlan.encounters);
   const standingsQuery = useQuery(queryPlan.standings);
-  const stages = stagesQuery.data ?? [];
+  // A stage the organizer generated ahead of time (`is_published=false`) is a
+  // preview: hidden from spectators entirely, visible to admins with a badge
+  // and no report action (the backend rejects captain reports/veto for it
+  // regardless — see `shared.services.bracket.usability.is_encounter_live`).
+  const stages = (stagesQuery.data ?? []).filter((stage) => isStageVisibleToViewer(stage, isAdmin));
+  const stageById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
 
   const captainPlayerIds = useMemo(
     () => new Set((authUser?.linkedPlayers ?? []).map((p) => p.playerId)),
@@ -202,7 +222,10 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
   };
   const canEdit = isAdmin ? () => true : undefined;
   const canReport = isAuthenticated
-    ? (enc: Encounter) => enc.result_status !== "confirmed" && isEncounterCaptain(enc)
+    ? (enc: Encounter) =>
+        enc.result_status !== "confirmed" &&
+        isEncounterCaptain(enc) &&
+        isStageReportable(enc.stage_id == null ? undefined : stageById.get(enc.stage_id))
     : undefined;
   const handleEdit = isAdmin ? (enc: Encounter) => setEditEncounter(enc) : undefined;
   const handleReport = isAuthenticated
@@ -482,6 +505,11 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
                         <div className="min-w-0">
                           <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
                             {stage.name}
+                            {!stage.is_published && !stage.is_completed && (
+                              <Badge variant="outline" className="ml-2 align-middle">
+                                {t("common.bracketPreview")}
+                              </Badge>
+                            )}
                           </h3>
                           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
                             {stage.stage_type.replace(/_/g, " ")}

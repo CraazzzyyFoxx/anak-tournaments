@@ -152,6 +152,7 @@ describe("VETO_UNAVAILABLE_COPY", () => {
     "slot_underfilled",
     "not_ready",
     "waiting_map",
+    "bracket_preview",
   ];
 
   it("covers exactly the reasons the union carries", () => {

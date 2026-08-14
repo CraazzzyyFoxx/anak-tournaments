@@ -116,6 +116,11 @@ class _AsyncSessionShim:
             warnings.simplefilter("ignore")
             return self.sync_session.scalar(statement, *args, **kwargs)
 
+    async def get(self, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return self.sync_session.get(*args, **kwargs)
+
     def __getattr__(self, name):  # noqa: ANN001, ANN204
         return getattr(self.sync_session, name)
 
@@ -155,6 +160,10 @@ class _Fixture:
             stage_type="single_elimination",
             max_rounds=1,
             order=1,
+            # A scrim room's stage is published immediately in production
+            # (``scrim/service.py::create_room``) -- mirrored here so the fake
+            # room is never mistaken for an organizer's un-activated preview.
+            is_published=True,
         )
 
     def close(self) -> None:

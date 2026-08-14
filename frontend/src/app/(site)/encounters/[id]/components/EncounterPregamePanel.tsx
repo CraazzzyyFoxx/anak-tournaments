@@ -185,6 +185,8 @@ function reasonKey(state: PickBanState): string {
       return "notReadyTitle";
     case "waiting_map":
       return "waitingMapTitle";
+    case "bracket_preview":
+      return "bracketPreviewTitle";
     default:
       return "notConfiguredTitle";
   }

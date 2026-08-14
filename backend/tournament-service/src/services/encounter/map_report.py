@@ -25,12 +25,15 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core import http_status as status
 from shared.core.enums import MapPoolEntryStatus, MatchSource, PickBanKind
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.matches.match import Match
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.encounter_report import EncounterMapReport
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from shared.services import pick_ban_engine as engine
+from shared.services.bracket.usability import is_encounter_live
 from shared.services.scrim_scope import is_scrim_container
 from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
@@ -76,6 +79,11 @@ async def submit_map_report(
     """Upsert this captain's report for ``map_id``; reconcile if both sides
     have now reported. Returns
     ``{"disputed": bool, "resolved": bool, "match_id": int | None}``."""
+    if not await is_encounter_live(session, encounter):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Stage bracket is a preview and is not active yet; wait for the organizer to activate it",
+        )
     map_pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter.id, PickBanKind.MAP)
     map_index, entry = await _pending_play(session, map_pick_ban, map_id)
 

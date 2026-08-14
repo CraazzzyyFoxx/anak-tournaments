@@ -85,6 +85,7 @@ def _mk_encounter(
         away_team_id=away_team.id,
         home_team=home_team,
         away_team=away_team,
+        stage_id=1,
         stage=SimpleNamespace(stage_type="round_robin"),
         result_status=result_status,
         status=enums.EncounterStatus.OPEN,
@@ -103,6 +104,10 @@ def _mk_session(
     *,
     settled_rows: list[tuple[int, int | None, int]] | None = None,
     report_form_row: SimpleNamespace | None = None,
+    # Defaults to published so every pre-existing test (all written before
+    # the bracket-preview gate existed) keeps exercising report logic
+    # unchanged; only tests that care about the gate pass ``False``.
+    stage_published: bool = True,
 ) -> SimpleNamespace:
     linked_player_id = captain_player_ids[0] if captain_player_ids else None
     execute_count = 0
@@ -135,10 +140,16 @@ def _mk_session(
             result_mock.scalar_one_or_none.return_value = None
         return result_mock
 
+    async def fake_get(model, _pk):
+        if model.__name__ == "Stage":
+            return SimpleNamespace(is_published=stage_published)
+        raise AssertionError(f"unexpected get() model: {model}")
+
     added: list[object] = []
 
     return SimpleNamespace(
         execute=AsyncMock(side_effect=fake_execute),
+        get=AsyncMock(side_effect=fake_get),
         commit=AsyncMock(),
         refresh=AsyncMock(),
         flush=AsyncMock(),
@@ -191,6 +202,15 @@ class CaptainReportValidation(IsolatedAsyncioTestCase):
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.CONFIRMED)
         session = _mk_session(encounter, [100])
         with assert_http_status(self, 400):
+            await captain_service.submit_captain_report(
+                session, _mk_user(), 10, home_score=2, away_score=1, closeness=5
+            )
+
+    async def test_stage_not_published_rejects_report(self) -> None:
+        """A bracket generated ahead of the stage's activation (organizer
+        preview) must not be reportable until the stage goes live."""
+        session = _mk_session(_mk_encounter(), [100], stage_published=False)
+        with assert_http_status(self, 409):
             await captain_service.submit_captain_report(
                 session, _mk_user(), 10, home_score=2, away_score=1, closeness=5
             )

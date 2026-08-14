@@ -53,7 +53,7 @@ export function turnDeadlineMs(state: EncounterMapPoolState): number | null {
 }
 
 /** Which empty-room icon a cause warrants; the room resolves it to a component. */
-export type VetoUnavailableIcon = "teams" | "unconfigured" | "misconfigured";
+export type VetoUnavailableIcon = "teams" | "unconfigured" | "misconfigured" | "preview";
 
 export interface VetoUnavailableCopy {
   /** Keys relative to the `encounters.veto.room` namespace. */
@@ -125,6 +125,13 @@ export const VETO_UNAVAILABLE_COPY = {
     titleKey: "empty.waitingMapTitle",
     hintKey: "empty.waitingMapHint",
     icon: "teams",
+  },
+  // Generated ahead of the stage's activation: an organizer preview, not a
+  // live match (`shared.services.bracket.usability.is_encounter_live`).
+  bracket_preview: {
+    titleKey: "empty.bracketPreviewTitle",
+    hintKey: "empty.bracketPreviewHint",
+    icon: "preview",
   },
 } as const satisfies Record<VetoUnavailableReason, VetoUnavailableCopy>;
 

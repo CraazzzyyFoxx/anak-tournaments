@@ -375,7 +375,8 @@ describe("PICK_BAN_UNAVAILABLE_COPY", () => {
     "slot_count_mismatch",
     "slot_underfilled",
     "not_ready",
-    "waiting_map"
+    "waiting_map",
+    "bracket_preview"
   ];
 
   it("covers exactly the reasons the union carries", () => {

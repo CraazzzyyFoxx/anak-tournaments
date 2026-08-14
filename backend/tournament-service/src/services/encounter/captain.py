@@ -38,6 +38,7 @@ from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from shared.schemas.events import EncounterCompletedEvent
 from shared.services.bracket import advancement
+from shared.services.bracket.usability import is_encounter_live
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.encounter.result_audit import record_result_transition
 from shared.services.scrim_scope import is_scrim_container
@@ -491,6 +492,12 @@ async def submit_captain_report(
         seen_indices.add(map_index)
 
     encounter = await _load_encounter_with_reports(session, encounter_id)
+
+    if not await is_encounter_live(session, encounter):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Stage bracket is a preview and is not active yet; wait for the organizer to activate it",
+        )
 
     if encounter.result_status == EncounterResultStatus.CONFIRMED:
         raise HTTPException(

@@ -67,6 +67,7 @@ export interface StageSummary {
   split_lower_bracket: boolean;
   order: number;
   is_active: boolean;
+  is_published: boolean;
   is_completed: boolean;
   settings_json: Record<string, unknown> | null;
   challonge_id: number | null;
@@ -196,7 +197,11 @@ export type VetoUnavailableReason =
   | "not_ready"
   /** Hero bans only: this round's map has not been picked yet, and heroes are
    * banned for a known map. Resolves on its own as the map phase progresses. */
-  | "waiting_map";
+  | "waiting_map"
+  /** The bracket exists but its stage has not been activated yet — an
+   * organizer preview, not a live match. Resolves once the organizer
+   * activates the stage (`Stage.is_published`). */
+  | "bracket_preview";
 
 export interface EncounterMapPoolState {
   session: EncounterVetoSession | null;

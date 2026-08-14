@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { CalendarOff, Map as MapIcon, SlidersHorizontal, Users } from "lucide-react";
+import { CalendarOff, Clock, Map as MapIcon, SlidersHorizontal, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,7 +35,8 @@ interface EncounterMapPoolModalProps {
 const UNAVAILABLE_ICON: Record<VetoUnavailableIcon, ReactNode> = {
   teams: <Users className="h-6 w-6 text-[color:var(--aqt-teal)]" aria-hidden />,
   unconfigured: <CalendarOff className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
-  misconfigured: <SlidersHorizontal className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />
+  misconfigured: <SlidersHorizontal className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
+  preview: <Clock className="h-6 w-6 text-[color:var(--aqt-fg-muted)]" aria-hidden />
 };
 
 /**

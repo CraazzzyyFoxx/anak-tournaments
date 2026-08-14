@@ -81,6 +81,7 @@ APPROVED_DIRECT_WRITE_FILES = {
     "shared/messaging/outbox.py",
     "shared/rbac/bootstrap.py",
     "shared/services/bracket/advancement.py",
+    "shared/services/bracket/usability.py",
     "shared/services/division_grid_access.py",
     "shared/services/realtime_publisher.py",
     "shared/services/stage_refs.py",

@@ -44,6 +44,7 @@ class StageSummaryRead(BaseRead):
     split_lower_bracket: bool = False
     order: int
     is_active: bool
+    is_published: bool = False
     is_completed: bool
     settings_json: dict | None = None
     challonge_id: int | None = None
@@ -60,6 +61,7 @@ class StageRead(BaseRead):
     split_lower_bracket: bool = False
     order: int
     is_active: bool
+    is_published: bool = False
     is_completed: bool
     settings_json: dict | None = None
     challonge_id: int | None = None

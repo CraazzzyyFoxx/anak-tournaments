@@ -33,6 +33,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.tests import eager_loading  # noqa: E402
 from src import models  # noqa: E402
 from src.services.encounter.veto_session import (  # noqa: E402
+    REASON_BRACKET_PREVIEW,
     REASON_NOT_CONFIGURED,
     REASON_SLOT_COUNT_MISMATCH,
     REASON_SLOT_UNDERFILLED,
@@ -642,14 +643,25 @@ class _FakeSession:
         slot_rows: list[Any] | None = None,
         existing: Any = None,
         pool_count: int = 0,
+        stage_published: bool = True,
     ) -> None:
         self.config = config
         self.slot_rows = list(slot_rows or [])
         self.existing = existing
         self.pool_count = pool_count
+        # Defaults to published so every pre-existing test (all written
+        # before the bracket-preview gate existed) keeps exercising
+        # config/team logic unchanged; only tests that care about the gate
+        # pass ``stage_published=False``.
+        self.stage_published = stage_published
         self.added: list[Any] = []
         self.slot_statements: list[Any] = []
         self.commits = 0
+
+    async def get(self, model: Any, pk: Any) -> Any:
+        if model is models.Stage:
+            return SimpleNamespace(is_published=self.stage_published)
+        raise AssertionError(f"unexpected get() model: {model}")
 
     async def execute(self, statement: Any) -> _Result:
         entity = statement.column_descriptions[0]["entity"]
@@ -1116,3 +1128,13 @@ class UnavailableReasonTests(IsolatedAsyncioTestCase):
         self.assertNotEqual(REASON_SLOT_COUNT_MISMATCH, REASON_SLOT_UNDERFILLED)
         self.assertNotIn(REASON_SLOT_COUNT_MISMATCH, {REASON_NOT_CONFIGURED, REASON_TEAMS_UNKNOWN})
         self.assertNotIn(REASON_SLOT_UNDERFILLED, {REASON_NOT_CONFIGURED, REASON_TEAMS_UNKNOWN})
+
+    async def test_stage_not_published_is_bracket_preview(self) -> None:
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]), stage_published=False)
+
+        self.assertEqual(REASON_BRACKET_PREVIEW, await unavailable_reason(session, _encounter(best_of=3)))
+
+    async def test_ensure_veto_session_returns_none_when_stage_not_published(self) -> None:
+        session = _FakeSession(config=_config(mode=MapVetoMode.POOL, map_pool=[11, 12, 13]), stage_published=False)
+
+        self.assertIsNone(await ensure_veto_session(session, _encounter(best_of=3)))

@@ -158,7 +158,7 @@ export function turnDeadlineMs(state: PickBanState): number | null {
 }
 
 /** Which empty-room icon a cause warrants; the room resolves it to a component. */
-export type PickBanUnavailableIcon = "teams" | "unconfigured" | "misconfigured";
+export type PickBanUnavailableIcon = "teams" | "unconfigured" | "misconfigured" | "preview";
 
 export interface PickBanUnavailableCopy {
   /** Keys relative to the `pickBan.room` namespace. */
@@ -204,6 +204,11 @@ export const PICK_BAN_UNAVAILABLE_COPY = {
     titleKey: "waitingMapTitle",
     hintKey: "waitingMapHint",
     icon: "teams"
+  },
+  bracket_preview: {
+    titleKey: "bracketPreviewTitle",
+    hintKey: "bracketPreviewHint",
+    icon: "preview"
   }
 } as const satisfies Record<VetoUnavailableReason, PickBanUnavailableCopy>;
 

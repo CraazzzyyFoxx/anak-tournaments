@@ -9,6 +9,29 @@ export function getBracketRefetchInterval(status: TournamentStatus): number | fa
   return status === "live" || status === "playoffs" ? 15_000 : false;
 }
 
+/**
+ * Whether a stage's bracket is visible to this viewer. Admins see every
+ * stage, including an organizer's un-activated preview (`is_published=
+ * false`); everyone else only sees stages that are published or already
+ * finished -- a preview stays hidden from spectators until it goes live.
+ */
+export function isStageVisibleToViewer(stage: StageSummary, isAdmin: boolean): boolean {
+  return isAdmin || stage.is_published || stage.is_completed;
+}
+
+/**
+ * Whether a captain report action is available for an encounter's stage. A
+ * bracket generated ahead of activation (`is_published=false`, not yet
+ * `is_completed`) is a preview: the backend rejects the report regardless
+ * (`shared.services.bracket.usability.is_encounter_live`), so the report
+ * action must not appear as available here either. `undefined` (stage not
+ * yet loaded, or a scrim encounter with no stage) defaults to reportable so
+ * a data-loading race never hides a legitimate action.
+ */
+export function isStageReportable(stage: StageSummary | undefined): boolean {
+  return stage === undefined || stage.is_published || stage.is_completed;
+}
+
 function requestedStageId(value: string | null): number | null {
   if (value == null || !/^\d+$/.test(value)) return null;
   const id = Number(value);

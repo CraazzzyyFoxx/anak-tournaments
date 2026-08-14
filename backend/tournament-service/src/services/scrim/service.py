@@ -580,6 +580,10 @@ async def create_room(
         stage_type=StageType.SINGLE_ELIMINATION,
         max_rounds=1,
         order=int(next_order or 1),
+        # A scrim room has no preview phase -- it is live the instant it is
+        # created, so its stage must not read as an organizer's un-activated
+        # bracket (``shared.services.bracket.usability.is_encounter_live``).
+        is_published=True,
     )
     session.add(stage)
     await session.flush()

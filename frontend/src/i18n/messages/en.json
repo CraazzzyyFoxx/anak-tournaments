@@ -25,6 +25,7 @@
     "schedule": "Schedule",
     "standings": "Standings",
     "bracket": "Bracket",
+    "bracketPreview": "Preview",
     "rolesList": "Roles",
     "ranks": "Ranks",
     "bracketInstructions": "Drag to pan the bracket / Press Esc to exit",
@@ -2215,6 +2216,8 @@
           "slotUnderfilledHint": "One of this match's slots has fewer than two candidate maps, so there is nothing to ban there. The organizer has to fill it before the veto can open.",
           "notReadyTitle": "Waiting for both captains",
           "notReadyHint": "The veto room opens once both captains confirm they are ready.",
+          "bracketPreviewTitle": "Bracket preview",
+          "bracketPreviewHint": "The organizer generated this bracket ahead of time. It opens once they activate the stage.",
           "waitingMapTitle": "Waiting for this round's map",
           "waitingMapHint": "This phase opens once the map for this round of the series is picked."
         },
@@ -2366,6 +2369,8 @@
       "slotUnderfilledHint": "One of this match's slots has fewer than two candidates, so there is nothing to ban there. The organizer has to fill it before this room can open.",
       "notReadyTitle": "Waiting for both captains",
       "notReadyHint": "This room opens once both captains confirm they are ready.",
+      "bracketPreviewTitle": "Bracket preview",
+      "bracketPreviewHint": "The organizer generated this bracket ahead of time. It opens once they activate the stage.",
       "ready": {
         "button": "I'm ready",
         "sending": "Confirming...",

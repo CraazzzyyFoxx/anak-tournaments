@@ -52,6 +52,7 @@ from src.services.encounter.pick_ban_session import (  # noqa: E402
     unavailable_reason,
 )
 from src.services.encounter.veto_session import (  # noqa: E402
+    REASON_BRACKET_PREVIEW,
     REASON_NOT_CONFIGURED,
     REASON_SLOT_COUNT_MISMATCH,
     REASON_SLOT_UNDERFILLED,
@@ -185,6 +186,7 @@ class _FakeSession:
         entries: list[Any] | None = None,
         encounter: Any = None,
         map_session: Any = _INHERIT,
+        stage_published: bool = True,
     ) -> None:
         self.map_session = map_session
         self.config = config
@@ -206,6 +208,11 @@ class _FakeSession:
         # `advance_to_next_round` reads `best_of` off the encounter to cap the
         # rounds it will ever open.
         self.encounter = encounter
+        # Defaults to published so every pre-existing test (all written
+        # before the bracket-preview gate existed) keeps exercising
+        # config/team logic unchanged; only tests that care about the gate
+        # pass ``stage_published=False``.
+        self.stage_published = stage_published
         self.added: list[Any] = []
         self.deletes: list[Any] = []
         self.commits = 0
@@ -225,6 +232,8 @@ class _FakeSession:
             return None if self.config is None else _PoolUnloadedConfig(self.config)
         if model is Encounter:
             return self.encounter
+        if model is Stage:
+            return SimpleNamespace(is_published=self.stage_published)
         raise AssertionError(f"unexpected get() model: {model}")
 
     async def execute(self, statement: Any) -> _Result:
@@ -556,6 +565,45 @@ class ReadinessGateTests(IsolatedAsyncioTestCase):
         reason = await unavailable_reason(session, _encounter(best_of=3), PickBanKind.MAP)
 
         self.assertEqual(REASON_NOT_CONFIGURED, reason)
+
+
+class BracketPreviewGateTests(IsolatedAsyncioTestCase):
+    """``ensure_pick_ban_session``/``unavailable_reason`` refuse a bracket
+    generated as an organizer preview -- the encounter's stage exists but has
+    never been activated (``Stage.is_published=False``). Checked ahead of
+    config/readiness so a preview never reads as merely unready."""
+
+    async def test_ensure_returns_none_when_stage_not_published(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(config=config, stage_published=False)
+
+        pick_ban = await ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertIsNone(pick_ban)
+        self.assertEqual([], session.pool_rows)
+
+    async def test_unavailable_reason_is_bracket_preview_when_stage_not_published(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(config=config, stage_published=False)
+
+        reason = await unavailable_reason(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertEqual(REASON_BRACKET_PREVIEW, reason)
+
+    async def test_unavailable_reason_prefers_teams_unknown_over_bracket_preview(self) -> None:
+        session = _FakeSession(config=None, stage_published=False)
+
+        reason = await unavailable_reason(session, _encounter(best_of=3, home=None), PickBanKind.MAP)
+
+        self.assertEqual(REASON_TEAMS_UNKNOWN, reason)
+
+    async def test_ensure_creates_when_stage_published(self) -> None:
+        config = _config(mode=MapVetoMode.POOL, items=[11, 12, 13])
+        session = _FakeSession(config=config, stage_published=True)
+
+        pick_ban = await ensure_pick_ban_session(session, _encounter(best_of=3), PickBanKind.MAP)
+
+        self.assertIsNotNone(pick_ban)
 
 
 class ReadinessHelperTests(IsolatedAsyncioTestCase):
