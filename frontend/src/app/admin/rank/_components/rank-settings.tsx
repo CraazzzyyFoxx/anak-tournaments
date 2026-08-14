@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
-  getDefaultDivisionGrid,
+  OW_REFERENCE_GRID,
   getTierForRank,
   resolveDivisionFromRank,
   resolveExactRankFromDivision,
@@ -277,7 +277,11 @@ function RankMappingSection({
   setting: SettingRead | undefined;
   onSaved: () => void;
 }) {
-  const grid = getDefaultDivisionGrid();
+  // The OW ladder, NOT the current workspace's grid: `parser.rank_mapping` is a
+  // global setting, and the backend re-resolves each stored rank_value through a
+  // tournament's own grid at autofill time (rank_sources._map_ow_rank_value), so
+  // the value written here has to stay on the OW/SR scale.
+  const grid = OW_REFERENCE_GRID;
   const internalTiers = useMemo(() => sortTiersDescending(grid), [grid]);
 
   const initial = useMemo<RankMappingConfig>(() => {
@@ -323,15 +327,16 @@ function RankMappingSection({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Map each competitive rank to an internal division from the workspace grid. The
-          division&apos;s lower bound is stored as the rank value.
+          Map each competitive rank to a rank value on the Overwatch ladder. The
+          division&apos;s lower bound is stored; each workspace resolves it against
+          its own grid.
         </p>
 
         <div className="overflow-hidden rounded-md border">
           <div className="grid grid-cols-[minmax(140px,1fr)_24px_minmax(0,1.4fr)] gap-3 border-b bg-muted/40 px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             <span>OverFast rank</span>
             <span />
-            <span>Internal division</span>
+            <span>Ladder division</span>
           </div>
           {cells.map((cell, index) => {
             const tier = getTierForRank(grid, cell.rank_value);
@@ -358,7 +363,7 @@ function RankMappingSection({
                 >
                   <SelectTrigger
                     className="h-9 w-full max-w-xs"
-                    aria-label={`Internal division for ${cell.division} tier ${cell.tier}`}
+                    aria-label={`Ladder division for ${cell.division} tier ${cell.tier}`}
                   >
                     <SelectValue>
                       {tier ? (

@@ -36,3 +36,11 @@ jobs:
       - name: OpenAPI manifest is up to date
         run: bash scripts/export_openapi_schemas.sh --check
         working-directory: backend
+      # The OW ladder is written down once in shared/domain/ow_ladder.py; the
+      # frontend reads a generated artifact (frontend/src/lib/ow-ladder.generated.json)
+      # because its default division grid must resolve synchronously during SSR.
+      # Without this gate a rebase of the ladder ships a frontend that renders the
+      # previous one.
+      - name: OW ladder artifact is up to date
+        run: uv run python scripts/export_ow_ladder.py --check
+        working-directory: backend

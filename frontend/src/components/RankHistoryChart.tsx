@@ -11,7 +11,7 @@ import {
   ChartTooltipContent
 } from "@/components/ui/chart";
 import { RankSeries } from "@/types/rank.types";
-import { getTierForRank, DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
+import { getTierForRank, OW_REFERENCE_GRID } from "@/lib/division-grid";
 import {
   Select,
   SelectContent,
@@ -369,7 +369,7 @@ export default function RankHistoryChart({
                 tickCount={5}
                 domain={yDomain}
                 tickFormatter={(val) => {
-                  const tier = getTierForRank(DEFAULT_DIVISION_GRID, val);
+                  const tier = getTierForRank(OW_REFERENCE_GRID, val);
                   return tier ? tier.name : val.toString();
                 }}
               />
@@ -395,7 +395,7 @@ export default function RankHistoryChart({
                     }}
                     formatter={(value, name, item) => {
                       const rank = Number(value);
-                      const tier = getTierForRank(DEFAULT_DIVISION_GRID, rank);
+                      const tier = getTierForRank(OW_REFERENCE_GRID, rank);
                       const label = tier ? `${tier.name} (${rank})` : rank.toString();
                       return (
                         <>

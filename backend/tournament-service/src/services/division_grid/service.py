@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.division_grid import DEFAULT_GRID
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_source_version_ids
 from src import models, schemas
@@ -75,67 +76,27 @@ async def get_workspace_grids(session: AsyncSession, workspace_id: int) -> list[
 
 
 def get_default_ow2_tiers_write() -> list[schemas.DivisionGridTierWrite]:
-    divisions = [
-        "champion",
-        "grandmaster",
-        "master",
-        "diamond",
-        "emerald",
-        "platinum",
-        "gold",
-        "silver",
-        "bronze",
+    """Project the in-code default grid into this service's write DTO.
+
+    The ladder itself lives in :data:`shared.domain.ow_ladder.LADDER` and reaches
+    here through ``DEFAULT_GRID``; nothing about it is re-derived. The DTO's only
+    extra field is ``sort_order``, which is the tier's position in the grid — and
+    ``DEFAULT_GRID.tiers`` is ordered top-first, so position and ``number`` agree.
+    """
+    return [
+        schemas.DivisionGridTierWrite(
+            slug=tier.slug or f"division-{tier.number}",
+            number=tier.number,
+            name=tier.name,
+            sort_order=index,
+            rank_min=tier.rank_min,
+            rank_max=tier.rank_max,
+            icon_url=tier.icon_url,
+            ow_rank_min=tier.ow_rank_min,
+            ow_rank_max=tier.ow_rank_max,
+        )
+        for index, tier in enumerate(DEFAULT_GRID.tiers)
     ]
-    # Nine 500-wide divisions anchored at Bronze 5 = 500 (Champion 1 open-ended
-    # above 4900). Emerald took the 2500 band platinum used to hold, so diamond
-    # and above keep their pre-emerald anchors. Mirrors
-    # ``shared.division_grid._build_default_grid``.
-    bases = {
-        "bronze": 500,
-        "silver": 1000,
-        "gold": 1500,
-        "platinum": 2000,
-        "emerald": 2500,
-        "diamond": 3000,
-        "master": 3500,
-        "grandmaster": 4000,
-        "champion": 4500,
-    }
-
-    tiers = []
-    sort_order = 0
-    number = 1
-
-    for div in divisions:
-        base = bases[div]
-        for tier_num in range(1, 6):
-            slug = f"{div}-{tier_num}"
-            name = f"{div.capitalize()} {tier_num}"
-            offset = (5 - tier_num) * 100
-            rank_min = base + offset
-
-            if div == "champion" and tier_num == 1:
-                rank_max = None
-            else:
-                rank_max = rank_min + 99
-
-            icon_url = f"https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/{slug}.png"
-
-            tiers.append(
-                schemas.DivisionGridTierWrite(
-                    slug=slug,
-                    number=number,
-                    name=name,
-                    sort_order=sort_order,
-                    rank_min=rank_min,
-                    rank_max=rank_max,
-                    icon_url=icon_url,
-                )
-            )
-            sort_order += 1
-            number += 1
-
-    return tiers
 
 
 async def seed_default_grid_version(

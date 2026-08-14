@@ -1,3 +1,4 @@
+import { DIVISION_ICON_BASE, LADDER_TIERS } from "@/lib/ow-ladder";
 import type {
   DivisionGrid,
   DivisionGridVersion,
@@ -6,71 +7,52 @@ import type {
 
 type DivisionGridLike = Pick<DivisionGrid, "tiers"> | Pick<DivisionGridVersion, "tiers">;
 
-const DEFAULT_DIVISION_ICON_BASE =
-  "https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions";
+/**
+ * The Overwatch ladder as a grid, derived from `@/lib/ow-ladder`.
+ *
+ * Tiers come out top-first, which for this grid is already descending by
+ * `rank_min` — the order a stored grid arrives in — so both paths hand callers
+ * the same ordering. `sort_order` is the tier's position, which here equals
+ * `number - 1`.
+ */
+const OW_LADDER_TIERS: DivisionTier[] = LADDER_TIERS.map((tier, index) => ({
+  slug: tier.slug,
+  number: tier.number,
+  name: tier.name,
+  sort_order: index,
+  rank_min: tier.rank_min,
+  rank_max: tier.rank_max,
+  icon_url: tier.icon_url,
+}));
 
-const DEFAULT_DIVISION_GRID_TIERS: DivisionTier[] = (() => {
-  const divisions = [
-    "champion",
-    "grandmaster",
-    "master",
-    "diamond",
-    "emerald",
-    "platinum",
-    "gold",
-    "silver",
-    "bronze",
-  ];
-  // Nine 500-wide divisions anchored at Bronze 5 = 500 (Champion 1 open-ended
-  // above 4900). Emerald took the 2500 band platinum used to hold, so diamond
-  // and above keep their pre-emerald anchors. Mirrors the backend's
-  // shared/division_grid.py::_build_default_grid.
-  const bases: Record<string, number> = {
-    bronze: 500,
-    silver: 1000,
-    gold: 1500,
-    platinum: 2000,
-    emerald: 2500,
-    diamond: 3000,
-    master: 3500,
-    grandmaster: 4000,
-    champion: 4500,
-  };
-  
-  const tiers: DivisionTier[] = [];
-  let sort_order = 0;
-  let number = 1;
-  
-  for (const div of divisions) {
-    const base = bases[div];
-    for (let tier_num = 1; tier_num <= 5; tier_num++) {
-      const slug = `${div}-${tier_num}`;
-      const name = `${div.charAt(0).toUpperCase() + div.slice(1)} ${tier_num}`;
-      const offset = (5 - tier_num) * 100;
-      const rank_min = base + offset;
-      const rank_max = (div === "champion" && tier_num === 1) ? null : rank_min + 99;
-      const icon_url = `${DEFAULT_DIVISION_ICON_BASE}/${slug}.png`;
-      
-      tiers.push({
-        slug,
-        number,
-        name,
-        sort_order,
-        rank_min,
-        rank_max,
-        icon_url,
-      });
-      sort_order++;
-      number++;
-    }
-  }
-  
-  return tiers.sort((left, right) => right.rank_min - left.rank_min);
-})();
-
-export const DEFAULT_DIVISION_GRID: DivisionGrid = {
-  tiers: DEFAULT_DIVISION_GRID_TIERS,
+/**
+ * The OW ladder itself — Bronze 5 = 500 … Champion 1 = 4900+.
+ *
+ * Use this wherever the numbers on hand are on the **OW/SR scale**: OverFast
+ * snapshot `rank_value`s, and the global `parser.rank_mapping` cells (whose
+ * values the backend re-resolves per workspace at autofill time, so they must
+ * stay OW-scale). Reaching for a workspace grid there is wrong, not more
+ * correct: an SR of 3200 is Diamond 3 in OW terms no matter what a workspace
+ * calls its 14th division.
+ *
+ * Same object as {@link DEFAULT_DIVISION_GRID}, deliberately a second name: that
+ * one means "we could not get the real grid", and reading a fallback where an
+ * absolute reference was meant invites swapping in `useDivisionGrid()` and
+ * silently corrupting OW-scale values.
+ */
+export const OW_REFERENCE_GRID: DivisionGrid = {
+  tiers: OW_LADDER_TIERS,
 };
+
+/**
+ * Fallback grid for when the workspace's real one is not available yet.
+ *
+ * That happens on every server render and every first client render: the
+ * workspace store persists only `currentWorkspaceId` and fetches the workspace
+ * (which carries the grid) in a client effect. Prefer `useDivisionGrid()`, which
+ * falls back to this on its own.
+ */
+export const DEFAULT_DIVISION_GRID: DivisionGrid = OW_REFERENCE_GRID;
 
 export function getDefaultDivisionGrid(): DivisionGrid {
   return DEFAULT_DIVISION_GRID;
@@ -201,5 +183,5 @@ export function getDivisionIconSrc(
     return defaultTier.icon_url;
   }
 
-  return `${DEFAULT_DIVISION_ICON_BASE}/bronze-5.png`;
+  return `${DIVISION_ICON_BASE}/bronze-5.png`;
 }

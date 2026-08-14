@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 
-from shared.domain import division_rank
+from shared.domain import division_rank, ow_ladder
 
 if TYPE_CHECKING:
     from shared.models.division_grid import DivisionGridVersion
@@ -120,65 +120,25 @@ class DivisionGrid:
 
 
 def _build_default_grid() -> DivisionGrid:
-    divisions = [
-        "champion",
-        "grandmaster",
-        "master",
-        "diamond",
-        "emerald",
-        "platinum",
-        "gold",
-        "silver",
-        "bronze",
-    ]
-    # Nine 500-wide divisions anchored at Bronze 5 = 500 (Champion 1 open-ended
-    # above 4900). Emerald took the 2500 band platinum used to hold, so diamond
-    # and above keep their pre-emerald anchors.
-    bases = {
-        "bronze": 500,
-        "silver": 1000,
-        "gold": 1500,
-        "platinum": 2000,
-        "emerald": 2500,
-        "diamond": 3000,
-        "master": 3500,
-        "grandmaster": 4000,
-        "champion": 4500,
-    }
+    """The in-code fallback grid, derived from :data:`shared.domain.ow_ladder.LADDER`.
 
-    tiers = []
-    number = 1
-
-    for div in divisions:
-        base = bases[div]
-        for tier_num in range(1, 6):
-            slug = f"{div}-{tier_num}"
-            name = f"{div.capitalize()} {tier_num}"
-            offset = (5 - tier_num) * 100
-            rank_min = base + offset
-
-            if div == "champion" and tier_num == 1:
-                rank_max = None
-            else:
-                rank_max = rank_min + 99
-
-            icon_url = f"https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/{slug}.png"
-
-            tiers.append(
-                DivisionTier(
-                    id=None,
-                    slug=slug,
-                    number=number,
-                    name=name,
-                    rank_min=rank_min,
-                    rank_max=rank_max,
-                    icon_url=icon_url,
-                )
-            )
-            number += 1
-
-    tiers.sort(key=lambda t: t.rank_min, reverse=True)
-    return DivisionGrid(version_id=None, tiers=tuple(tiers))
+    Tiers come out top-first, which for this grid is already descending by
+    ``rank_min`` — the order :meth:`DivisionGrid.from_version` produces for a
+    stored grid, so both paths hand callers the same ordering.
+    """
+    tiers = tuple(
+        DivisionTier(
+            id=None,
+            slug=tier.slug,
+            number=tier.number,
+            name=tier.name,
+            rank_min=tier.rank_min,
+            rank_max=tier.rank_max,
+            icon_url=tier.icon_url,
+        )
+        for tier in ow_ladder.iter_tiers()
+    )
+    return DivisionGrid(version_id=None, tiers=tiers)
 
 
 DEFAULT_GRID: DivisionGrid = _build_default_grid()
