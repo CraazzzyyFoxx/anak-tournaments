@@ -7991,6 +7991,14 @@
       "description": "Rewrites best_of on the stage's existing encounters from its settings_json best-of config (in place, preserving scores); requires stage-update permission on its workspace.",
       "summary": "Apply best-of to existing matches"
     },
+    "rpc.tournament.stage_deactivate": {
+      "description": "Reverts an accidentally-activated stage back to Draft/preview; refuses (409) once any of its matches has been reported or started; requires stage-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.StageRead"
+      },
+      "summary": "Deactivate stage"
+    },
     "rpc.tournament.stage_generate": {
       "description": "Enqueues a bracket-generation job (202 Accepted) for the stage; requires stage-update permission on its workspace.",
       "response": {
@@ -31328,6 +31336,14 @@
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
         },
+        "sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterSlotSourceRead"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
         "stage": {
           "anyOf": [
             {
@@ -32239,6 +32255,30 @@
         "away_win_pct"
       ],
       "title": "EncounterSideBalanceRead",
+      "type": "object"
+    },
+    "tournament.EncounterSlotSourceRead": {
+      "description": "Where an unresolved slot's team comes from: the ``role`` of\n``encounter_id`` fills ``slot`` of this encounter.\n\nThe bracket's real advancement edges (``EncounterLink``). A reader labels an\nempty slot from them (\"L M3\") instead of inferring the bracket's shape from\nround numbers, which cannot tell a lower bracket seeded from the group stage\napart from one fed by the upper bracket's first losers.",
+      "properties": {
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encounter_id",
+        "role",
+        "slot"
+      ],
+      "title": "EncounterSlotSourceRead",
       "type": "object"
     },
     "tournament.EncounterStageSplitRead": {
@@ -34082,11 +34122,6 @@
     "tournament.PlayerCreate": {
       "description": "Schema for creating a player",
       "properties": {
-        "div": {
-          "default": 0,
-          "title": "Div",
-          "type": "integer"
-        },
         "is_newcomer": {
           "default": false,
           "title": "Is Newcomer",
@@ -34489,18 +34524,6 @@
     "tournament.PlayerUpdate": {
       "description": "Schema for updating a player",
       "properties": {
-        "div": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div"
-        },
         "is_newcomer": {
           "anyOf": [
             {

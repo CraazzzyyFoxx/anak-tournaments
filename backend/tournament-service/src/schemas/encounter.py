@@ -29,6 +29,7 @@ __all__ = (
     "EncounterSavedViewCreate",
     "EncounterSavedViewRead",
     "EncounterScoreHeatmapCellRead",
+    "EncounterSlotSourceRead",
     "EncounterSummaryRead",
     "EncounterSideBalanceRead",
     "EncounterStageSplitRead",
@@ -54,6 +55,21 @@ class EncounterSummaryRead(BaseRead):
     result_status: str = "none"
 
 
+class EncounterSlotSourceRead(BaseModel):
+    """Where an unresolved slot's team comes from: the ``role`` of
+    ``encounter_id`` fills ``slot`` of this encounter.
+
+    The bracket's real advancement edges (``EncounterLink``). A reader labels an
+    empty slot from them ("L M3") instead of inferring the bracket's shape from
+    round numbers, which cannot tell a lower bracket seeded from the group stage
+    apart from one fed by the upper bracket's first losers.
+    """
+
+    encounter_id: int
+    role: str
+    slot: str
+
+
 class EncounterRead(BaseRead):
     name: str
     home_team_id: int | None = None
@@ -69,6 +85,7 @@ class EncounterRead(BaseRead):
     has_logs: bool
     status: str
     result_status: str = "none"
+    sources: list[EncounterSlotSourceRead] = []
     scheduled_at: datetime | None = None
     started_at: datetime | None = None
     ended_at: datetime | None = None

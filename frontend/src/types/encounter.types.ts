@@ -13,6 +13,18 @@ export interface Score {
   away: number;
 }
 
+/**
+ * One incoming advancement edge: `role` of `encounter_id` fills `slot` of this
+ * encounter. The bracket's real topology, so a reader can label an unresolved
+ * slot without inferring the bracket's shape. Absent on a bracket generated
+ * before advancement edges were recorded.
+ */
+export interface EncounterSlotSource {
+  encounter_id: number;
+  role: "winner" | "loser";
+  slot: "home" | "away";
+}
+
 export interface Encounter {
   id: number;
   created_at: Date;
@@ -40,6 +52,8 @@ export interface Encounter {
   // Who decided the result — and every earlier decision — lives in the result
   // audit, not in a single slot that only ever remembered the last writer.
   confirmed_at: Date | string | null;
+  /** Empty on a bracket whose advancement edges were never recorded. */
+  sources?: EncounterSlotSource[];
 
   matches: Match[];
   home_team: Team;

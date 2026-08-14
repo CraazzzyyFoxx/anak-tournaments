@@ -158,7 +158,61 @@ export function bracketRoundLabel(round: number, finalRounds: number[]): Bracket
   return { key: finalIndex === 0 ? "grandFinal" : "grandFinalReset" };
 }
 
+/**
+ * Where each unresolved slot's team will come from, as "W M3" / "L M7".
+ *
+ * Reads the bracket's own advancement edges (`Encounter.sources`) when it has
+ * them, so the hints are the real topology rather than a shape inferred from
+ * round numbers -- an inference that cannot tell a lower bracket seeded straight
+ * from the group stage (round 1 holds seeds, so those slots really are TBD) from
+ * a standard one (round 1 holds the upper bracket's first losers), and got the
+ * former wrong. `inferBracketSlotHints` remains for a bracket generated before
+ * the edges were recorded.
+ */
 export function computeSlotHints(
+  upperRounds: RoundGroup[],
+  lowerRounds: RoundGroup[],
+  finalRounds: RoundGroup[],
+  matchNumbers: Map<number, number>,
+  isDE: boolean,
+  hasBracketConnections: boolean
+): Map<number, SlotHint> {
+  const groups = [...upperRounds, ...lowerRounds, ...finalRounds];
+  const recorded = groups.some((group) => group.matches.some((match) => (match.sources?.length ?? 0) > 0));
+  if (recorded) {
+    const hints = new Map<number, SlotHint>();
+    for (const group of groups) {
+      for (const match of group.matches) {
+        for (const source of match.sources ?? []) {
+          const matchNumber = matchNumbers.get(source.encounter_id);
+          if (matchNumber == null) continue;
+          const existing = hints.get(match.id) ?? { home: null, away: null };
+          hints.set(match.id, {
+            ...existing,
+            [source.slot]: `${source.role === "winner" ? "W" : "L"} M${matchNumber}`
+          });
+        }
+      }
+    }
+    return hints;
+  }
+
+  return inferBracketSlotHints(
+    upperRounds,
+    lowerRounds,
+    finalRounds,
+    matchNumbers,
+    isDE,
+    hasBracketConnections
+  );
+}
+
+/**
+ * The pre-`sources` fallback: guesses each slot's origin from the standard
+ * double-elimination shape. Only correct for a bracket that has that shape, so
+ * it is reached only when no encounter carries a recorded edge.
+ */
+function inferBracketSlotHints(
   upperRounds: RoundGroup[],
   lowerRounds: RoundGroup[],
   finalRounds: RoundGroup[],

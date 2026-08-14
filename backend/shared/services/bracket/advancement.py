@@ -14,6 +14,7 @@ Called from:
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 import sqlalchemy as sa
 from loguru import logger
@@ -32,7 +33,50 @@ __all__ = (
     "persist_advancement_edges",
     "advance_winner",
     "reset_encounter_result",
+    "SlotSource",
+    "resolve_slot_sources",
 )
+
+
+@dataclass(frozen=True)
+class SlotSource:
+    """One incoming advancement edge, from the target's point of view: ``slot``
+    is filled by the ``role`` ("winner"/"loser") of ``encounter_id``."""
+
+    encounter_id: int
+    role: str
+    slot: str
+
+
+async def resolve_slot_sources(session: AsyncSession, encounter_ids: Iterable[int]) -> dict[int, list[SlotSource]]:
+    """Incoming advancement edges, keyed by TARGET encounter id.
+
+    ``EncounterLink`` is the bracket's real topology, but until now only the
+    engine read it: a reader had to infer where an empty slot's team would come
+    from out of round numbers and match counts. That inference cannot tell a
+    lower bracket seeded straight from the group stage — whose round 1 holds
+    seeds, so its slots really are TBD — from a standard one whose round 1 holds
+    the upper bracket's first losers. Handing the edges out removes the guess.
+    """
+    targets = {encounter_id for encounter_id in encounter_ids if encounter_id is not None}
+    if not targets:
+        return {}
+
+    rows = await session.execute(
+        sa.select(
+            EncounterLink.target_encounter_id,
+            EncounterLink.source_encounter_id,
+            EncounterLink.role,
+            EncounterLink.target_slot,
+        )
+        .where(EncounterLink.target_encounter_id.in_(targets))
+        .order_by(EncounterLink.target_encounter_id, EncounterLink.id)
+    )
+
+    sources: dict[int, list[SlotSource]] = {}
+    for target_id, source_id, role, slot in rows.all():
+        sources.setdefault(target_id, []).append(SlotSource(encounter_id=source_id, role=role.value, slot=slot.value))
+    return sources
 
 
 async def persist_advancement_edges(
