@@ -141,16 +141,20 @@ function getStageAssignedTeams(stage: Stage) {
 }
 
 /**
- * Teams that start in the UPPER bracket, mirroring `generate_encounters`
- * (services/admin/stage.py): split seeding sends the lower half of the seeds to
- * the lower bracket, either from a dedicated Lower bracket item or — with a
- * single bracket item — from the second half of its seed order.
+ * The team count that fixes a bracket's depth, mirroring `generate_encounters`
+ * (services/admin/stage.py): total teams for single elimination or a non-split
+ * double elimination; the upper-bracket half for a split double elimination
+ * (a dedicated Lower bracket item, or the first half of a single bracket item's
+ * seeds).
  *
- * Falls back to the item's empty slots before seeding, so the best-of editor
- * offers the bracket the organizer is building rather than nothing.
+ * Seeded inputs — then empty slots — are ground truth when present. Before
+ * either exists (the common case: a playoff wired only after its groups finish)
+ * the count is projected from the preceding group stage's `advance_count ×
+ * groups`, so the best-of editor offers the bracket that WILL be generated
+ * rather than a `max_rounds` guess that has no relation to the team count.
  */
-function getStageUpperTeamCount(stage: Stage, splitLowerBracket: boolean) {
-  const countTeams = (items: StageItem[]) => {
+function getStageBracketTeamCount(stage: Stage, splitLowerBracket: boolean, stages: Stage[]) {
+  const countInputs = (items: StageItem[]) => {
     const assigned = items.reduce(
       (acc, item) => acc + item.inputs.filter((input) => input.team_id != null).length,
       0
@@ -158,14 +162,44 @@ function getStageUpperTeamCount(stage: Stage, splitLowerBracket: boolean) {
     return assigned > 0 ? assigned : items.reduce((acc, item) => acc + item.inputs.length, 0);
   };
 
-  if (stage.stage_type !== "double_elimination" || !splitLowerBracket) {
-    return countTeams(stage.items);
+  const isSplitDe = stage.stage_type === "double_elimination" && splitLowerBracket;
+  const hasLowerItem = stage.items.some((item) => item.type === "bracket_lower");
+
+  if (!isSplitDe) {
+    const own = countInputs(stage.items);
+    if (own > 0) return own;
+  } else if (hasLowerItem) {
+    const own = countInputs(stage.items.filter((item) => item.type !== "bracket_lower"));
+    if (own > 0) return own;
+  } else {
+    const own = countInputs(stage.items);
+    if (own > 0) return Math.floor(own / 2);
   }
-  const lowerItems = stage.items.filter((item) => item.type === "bracket_lower");
-  if (lowerItems.length > 0) {
-    return countTeams(stage.items.filter((item) => item.type !== "bracket_lower"));
-  }
-  return Math.floor(countTeams(stage.items) / 2);
+
+  // Nothing wired yet: project from the group stage that will seed this one.
+  const total = projectedUpstreamTeams(stage, stages);
+  if (total <= 0) return 0;
+  if (!isSplitDe) return total;
+  if (hasLowerItem) return total - Math.floor(total / 2); // upper half
+  return Math.floor(total / 2);
+}
+
+/**
+ * Total teams the preceding group stage feeds into `stage`, mirroring
+ * `_preceding_group_stage` + `_auto_wire_from_groups`: the nearest earlier
+ * Swiss/round-robin stage seeds `advance_count` teams from EACH of its groups.
+ */
+function projectedUpstreamTeams(stage: Stage, stages: Stage[]): number {
+  const source = stages
+    .filter(
+      (candidate) =>
+        candidate.order < stage.order &&
+        (candidate.stage_type === "swiss" || candidate.stage_type === "round_robin")
+    )
+    .sort((left, right) => right.order - left.order)[0];
+  if (!source || !source.advance_count || source.advance_count <= 0) return 0;
+  const groups = source.items.length || 1;
+  return source.advance_count * groups;
 }
 
 function getDefaultStageItemType(stageType: StageType): StageItemType {
@@ -750,7 +784,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const bestOfRoundSections = stageBestOfRoundSections({
     stageType: selectedStageTypeDraft,
     maxRounds: maxRoundsDraftValue,
-    upperTeamCount: selectedStage ? getStageUpperTeamCount(selectedStage, selectedStageSplitLbDraft) : 0,
+    bracketTeamCount: selectedStage
+      ? getStageBracketTeamCount(selectedStage, selectedStageSplitLbDraft, stages)
+      : 0,
     splitLowerBracket: selectedStageSplitLbDraft,
     configuredRounds: Object.keys(selectedBestOfDraft.by_round ?? {}).map(Number)
   });

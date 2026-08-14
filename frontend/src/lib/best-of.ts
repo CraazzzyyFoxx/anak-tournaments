@@ -139,13 +139,15 @@ export interface BestOfRoundSection {
 
 export interface StageBestOfShape {
   stageType: StageType;
-  /** `Stage.max_rounds`. The only round count a stage carries before seeding. */
+  /** `Stage.max_rounds`. A fallback used only when the team count is unknown. */
   maxRounds: number;
   /**
-   * Teams starting in the upper bracket. `0` when nothing is seeded yet, which
-   * falls back to `maxRounds`.
+   * The team count that fixes this bracket's depth: total teams for single
+   * elimination, upper-bracket teams (post-split) for double elimination.
+   * `0` when nothing is seeded and no count can be derived, which falls back
+   * to `maxRounds`.
    */
-  upperTeamCount?: number;
+  bracketTeamCount?: number;
   /** DE "split" seeding: half the teams start in the lower bracket. */
   splitLowerBracket?: boolean;
   /** Round keys already configured, so an override is never hidden. */
@@ -166,22 +168,42 @@ export interface StageBestOfShape {
  * precedence over `by_round`), so giving it a second key would let the two
  * disagree with `final` silently winning.
  *
- * The depth is derived from the bracket's shape, which is exact for the
- * power-of-two sizes the generator builds cleanly and may over-count a lower
- * bracket shortened by first-round byes. Over-counting is the safe direction: a
- * key no encounter carries is inert, while a missing row is a round the
- * organizer cannot configure at all.
+ * The depth is derived from the team count, exact for the power-of-two sizes
+ * the generator builds cleanly and possibly over-counting a lower bracket
+ * shortened by first-round byes. Over-counting is the safe direction: a key no
+ * encounter carries is inert, while a missing row is a round the organizer
+ * cannot configure at all. `maxRounds` is only a last-resort fallback for a
+ * bracket whose team count is still unknown — it is an independent admin
+ * planning field, not the real round count.
  */
 export function stageBestOfRoundSections({
   stageType,
   maxRounds,
-  upperTeamCount = 0,
+  bracketTeamCount = 0,
   splitLowerBracket = false,
   configuredRounds = []
 }: StageBestOfShape): BestOfRoundSection[] {
   const flatRounds = Math.max(1, Math.floor(maxRounds) || 1);
 
+  if (stageType === "single_elimination") {
+    // Round count is `ceil(log2(teams))` (`services/bracket/single_elimination.py`),
+    // NOT `max_rounds` — a 5-team and a 32-team bracket carry different depths a
+    // shared planning default cannot express.
+    const rounds = bracketTeamCount >= 2 ? Math.ceil(Math.log2(bracketTeamCount)) : flatRounds;
+    return withUnlistedRounds(
+      [
+        {
+          key: "rounds",
+          label: null,
+          rounds: countUp(rounds).map((round) => ({ round, label: `Round ${round}` }))
+        }
+      ],
+      configuredRounds
+    );
+  }
+
   if (stageType !== "double_elimination") {
+    // Swiss / round-robin play a flat `1..max_rounds` the caller already knows.
     return withUnlistedRounds(
       [
         {
@@ -196,7 +218,8 @@ export function stageBestOfRoundSections({
 
   // `maxRounds` counts the grand final, the bracket's rounds do not.
   const upperRounds =
-    upperTeamCount >= 2 ? Math.ceil(Math.log2(upperTeamCount)) : Math.max(1, flatRounds - 1);
+    bracketTeamCount >= 2 ? Math.ceil(Math.log2(bracketTeamCount)) : Math.max(1, flatRounds - 1);
+
   // Each upper round after the first drops losers into a lower round and the
   // survivors play a reduction round; lower-bracket seeds add an opening round
   // plus the reduction that merges them with the upper bracket's first losers.
