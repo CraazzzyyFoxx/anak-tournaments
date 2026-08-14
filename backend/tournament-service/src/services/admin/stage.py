@@ -90,16 +90,34 @@ async def get_planned_rounds(session: AsyncSession, stage_id: int) -> list[int]:
     team_ids: list[int] = []
     for item in sorted(stage.items, key=lambda it: (it.order, it.id)):
         team_ids.extend(_collect_item_team_ids(item))
-    if len(team_ids) < 2:
+    team_count = len(team_ids)
+    if team_count < 2:
+        # No teams wired yet (the common case for a playoff seeded only after
+        # its groups finish): project the count the preceding group stage will
+        # feed in, so pick-ban rules can be scoped per round before seeding.
+        team_count = await _projected_upstream_team_count(session, stage)
+    if team_count < 2:
         return []
 
     return predict_rounds(
         stage.stage_type,
-        len(team_ids),
+        team_count,
         split_lower_bracket=(
             stage.stage_type == enums.StageType.DOUBLE_ELIMINATION and getattr(stage, "split_lower_bracket", False)
         ),
     )
+
+
+async def _projected_upstream_team_count(session: AsyncSession, stage: models.Stage) -> int:
+    """Teams the preceding group stage will seed into ``stage`` before any are
+    wired, mirroring ``_auto_wire_from_groups``: ``advance_count`` teams from
+    EACH group of the nearest earlier Swiss/round-robin stage. ``0`` when there
+    is no such source or it has no ``advance_count``."""
+    source = await _preceding_group_stage(session, stage)
+    if source is None or not source.advance_count or source.advance_count <= 0:
+        return 0
+    groups = len(source.items) or 1
+    return source.advance_count * groups
 
 
 async def get_stage_item(session: AsyncSession, stage_item_id: int) -> models.StageItem:
@@ -1273,6 +1291,7 @@ async def _preceding_group_stage(session: AsyncSession, stage: models.Stage) -> 
             models.Stage.stage_type.in_(GROUPED_GENERATION_STAGE_TYPES),
             models.Stage.order < stage.order,
         )
+        .options(selectinload(models.Stage.items))
         .order_by(models.Stage.order.desc())
     )
     return result.scalars().first()

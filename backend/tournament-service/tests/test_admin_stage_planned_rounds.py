@@ -117,7 +117,37 @@ class GetPlannedRoundsTests(IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
 
-        with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=None)),
+        ):
             rounds = await stage_service.get_planned_rounds(session, 5)
 
         self.assertEqual([], rounds)
+
+    async def test_projects_rounds_from_the_preceding_group_stage(self) -> None:
+        # An unseeded split double elimination playoff: no teams are wired yet,
+        # so the rounds are projected from the group stage that will seed it --
+        # `advance_count` (4) per group × 2 groups = 8 teams, split into a
+        # 4-team upper bracket and 4 lower-bracket seeds. Matches the rounds
+        # `generate_encounters` will build once the groups finish.
+        stage = SimpleNamespace(
+            id=5,
+            stage_type=enums.StageType.DOUBLE_ELIMINATION,
+            items=[_item(1, [])],
+            split_lower_bracket=True,
+        )
+        source = SimpleNamespace(
+            id=4,
+            advance_count=4,
+            items=[_item(10, []), _item(11, [])],
+        )
+        session = SimpleNamespace(execute=AsyncMock(return_value=_rows_result([])))
+
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "_preceding_group_stage", AsyncMock(return_value=source)),
+        ):
+            rounds = await stage_service.get_planned_rounds(session, 5)
+
+        self.assertEqual([-4, -3, -2, -1, 1, 2, 3], rounds)
