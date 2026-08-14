@@ -14,6 +14,7 @@ import {
   CommunityVerdict,
   KpiVM,
   resolveImpact,
+  standingsRank,
 } from "@/app/(site)/tournaments/analytics/analytics.helpers";
 
 /** A player enriched with a resolved 0–100 impact (v2 score or derived). */
@@ -28,16 +29,12 @@ export interface TeamVM extends TeamAnalytics {
 }
 
 export interface AnalyticsViewModel {
-  /** Teams sorted by actual placement (ascending, unranked last). */
+  /** Teams sorted by actual placement, or by forecast until the bracket is played. */
   teams: TeamVM[];
   kpis: KpiVM[];
   verdict: CommunityVerdict;
   /** Distinct group count across the bracket (for the hero stat block). */
   groupCount: number;
-}
-
-function placementRank(placement: number | null): number {
-  return placement == null ? Number.MAX_SAFE_INTEGER : placement;
 }
 
 /**
@@ -65,7 +62,7 @@ export function useAnalyticsViewModel(
       return { ...team, players, flagCount };
     });
 
-    teams.sort((a, b) => placementRank(a.placement) - placementRank(b.placement));
+    teams.sort((a, b) => standingsRank(a) - standingsRank(b));
 
     const groups = new Set<string>();
     for (const team of analytics.teams) {

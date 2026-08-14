@@ -91,7 +91,7 @@ export default function TeamDetail({
   const tournamentGrid = team.tournament?.division_grid_version;
   const players = useMemo(() => sortTeamPlayers(team.players), [team.players]);
   const groupName = team.group?.name ?? "—";
-  const hasForecast = team.predicted_place != null && team.placement != null;
+  const hasForecast = team.predicted_place != null;
   const color = moveColor(team.placement_delta);
 
   return (
@@ -122,11 +122,15 @@ export default function TeamDetail({
             {t("analytics.community.team.predictedShort", {
               place: formatPlace(team.predicted_place, locale),
             })}
-            <ArrowRight size={13} aria-hidden="true" />
-            <span className={styles.cPvaDot} style={{ background: color }} />
-            {t("analytics.community.team.finishedShort", {
-              place: formatPlace(team.placement, locale),
-            })}
+            {team.placement != null ? (
+              <>
+                <ArrowRight size={13} aria-hidden="true" />
+                <span className={styles.cPvaDot} style={{ background: color }} />
+                {t("analytics.community.team.finishedShort", {
+                  place: formatPlace(team.placement, locale),
+                })}
+              </>
+            ) : null}
             <InfoDot term="predicted_move" onExplain={onExplain} />
           </div>
         ) : null}

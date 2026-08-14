@@ -12,7 +12,8 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 import {
   confidenceWord,
   formatAnalyticsNumber,
-  formatConfidencePercent
+  formatConfidencePercent,
+  standingsRank
 } from "@/app/(site)/tournaments/analytics/analytics.helpers";
 import AnomalyTooltip from "@/app/(site)/tournaments/analytics/components/AnomalyTooltip";
 import ExplanationPopover from "@/app/(site)/tournaments/analytics/components/ExplanationPopover";
@@ -567,10 +568,7 @@ const sortedTeams = (teams: TeamAnalytics[], mode: SortMode) => {
   }
 
   return [...teams].sort(
-    (left, right) =>
-      (left.placement ?? Number.MAX_SAFE_INTEGER) -
-        (right.placement ?? Number.MAX_SAFE_INTEGER) ||
-      left.name.localeCompare(right.name)
+    (left, right) => standingsRank(left) - standingsRank(right) || left.name.localeCompare(right.name)
   );
 };
 

@@ -278,6 +278,18 @@ export function formatPlace(n: number | null | undefined, locale: "en" | "ru"): 
   return locale === "en" ? ordinal(n) : String(n);
 }
 
+/**
+ * Sort key for the standings order: the actual place once the bracket has been
+ * played, the forecast while it has not, unrated teams last. Without the
+ * fallback an unplayed tournament has no places at all and the standings
+ * collapse to alphabetical order instead of showing the predicted finish.
+ */
+export function standingsRank(
+  team: Pick<TeamAnalytics, "placement" | "predicted_place">,
+): number {
+  return team.placement ?? team.predicted_place ?? Number.MAX_SAFE_INTEGER;
+}
+
 export type CommunityRoleKey = "tank" | "damage" | "support" | "flex";
 
 /**
