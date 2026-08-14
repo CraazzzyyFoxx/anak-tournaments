@@ -1,4 +1,5 @@
 import type { Encounter } from "@/types/encounter.types";
+import type { StageType } from "@/types/tournament.types";
 
 export interface RoundGroup {
   round: number;
@@ -65,37 +66,96 @@ export function computeMatchNumbers(
   return numbers;
 }
 
-export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<number> {
-  const positiveRoundGroups = buildRoundGroups(encounters.filter((match) => match.round > 0));
+/**
+ * The signed rounds a bracket's Grand Final (and its reset) occupy — empty for
+ * anything that has none.
+ *
+ * ``matchesPerRound`` tells the Grand Final apart from its reset the way the
+ * bracket itself does: both are trailing single-match rounds, so the last
+ * `trailing - 1` of them are finals and the one before is the upper-bracket
+ * final. Without it — a bracket predicted before it exists, which never carries
+ * a reset (`placeholder_bracket` omits it) — the highest positive round is the
+ * Grand Final.
+ */
+export function getFinalRounds(
+  isDoubleElimination: boolean,
+  rounds: number[],
+  matchesPerRound?: Map<number, number>
+): number[] {
+  if (!isDoubleElimination) return [];
 
-  if (positiveRoundGroups.length === 0) {
-    return new Set();
-  }
+  const positive = rounds.filter((round) => round > 0).sort((left, right) => left - right);
+  if (positive.length === 0) return [];
+  if (!matchesPerRound) return positive.slice(-1);
 
   let trailingSingleMatchRounds = 0;
-  for (let index = positiveRoundGroups.length - 1; index >= 0; index -= 1) {
-    if (positiveRoundGroups[index].matches.length !== 1) {
-      break;
-    }
+  for (let index = positive.length - 1; index >= 0; index -= 1) {
+    if ((matchesPerRound.get(positive[index]) ?? 0) !== 1) break;
     trailingSingleMatchRounds += 1;
   }
 
-  const finalRoundCount = Math.max(1, trailingSingleMatchRounds - 1);
-  return new Set(positiveRoundGroups.slice(-finalRoundCount).map((group) => group.round));
+  return positive.slice(-Math.max(1, trailingSingleMatchRounds - 1));
 }
 
-export function getGrandFinalLabel(round: number, groups: RoundGroup[]): string {
-  const index = groups.findIndex((group) => group.round === round);
-
-  if (index < 0) {
-    return `Round ${round}`;
+export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<number> {
+  const matchesPerRound = new Map<number, number>();
+  for (const match of encounters) {
+    matchesPerRound.set(match.round, (matchesPerRound.get(match.round) ?? 0) + 1);
   }
+  return new Set(getFinalRounds(true, [...matchesPerRound.keys()], matchesPerRound));
+}
 
-  if (groups.length === 1) {
-    return "Grand Final";
+/** The encounter fields `stageFinalRounds` reads. */
+export interface StageScopedRound {
+  stage_id: number | null;
+  round: number;
+}
+
+/**
+ * `getFinalRounds` for a screen that offers a stage's rounds as a list — the
+ * pick-ban scope picker, the scrim pool copier — rather than laying the bracket
+ * out. Counts the matches per round from the stage's encounters when they
+ * exist; before that the round list alone decides, which is exact because a
+ * predicted bracket never carries a Grand Final Reset.
+ */
+export function stageFinalRounds(
+  stageId: number | null,
+  stageType: StageType | undefined,
+  rounds: number[],
+  encounters: StageScopedRound[] | undefined
+): number[] {
+  if (stageType !== "double_elimination") return [];
+
+  const matchesPerRound = new Map<number, number>();
+  for (const encounter of encounters ?? []) {
+    if (encounter.stage_id !== stageId) continue;
+    matchesPerRound.set(encounter.round, (matchesPerRound.get(encounter.round) ?? 0) + 1);
   }
+  return getFinalRounds(true, rounds, matchesPerRound.size > 0 ? matchesPerRound : undefined);
+}
 
-  return index === 0 ? "Grand Final" : "Grand Final Reset";
+/** A round's name, as a `bracket.*` message key plus the depth it interpolates. */
+export interface BracketRoundLabel {
+  key: "round" | "lowerRound" | "grandFinal" | "grandFinalReset";
+  /** Depth for the keys that interpolate `{n}`; absent for the finals. */
+  n?: number;
+}
+
+/**
+ * What the bracket calls this round. The one place that decides a round's name,
+ * so every screen that offers one — the bracket itself, the pick-ban scope
+ * picker — shows the organizer the same name for it. Render it with
+ * `useBracketRoundLabel`.
+ *
+ * ``finalRounds`` comes from `getFinalRounds`; its first entry is the Grand
+ * Final and anything after it a reset.
+ */
+export function bracketRoundLabel(round: number, finalRounds: number[]): BracketRoundLabel {
+  if (round < 0) return { key: "lowerRound", n: -round };
+
+  const finalIndex = finalRounds.indexOf(round);
+  if (finalIndex < 0) return { key: "round", n: round };
+  return { key: finalIndex === 0 ? "grandFinal" : "grandFinalReset" };
 }
 
 export function computeSlotHints(

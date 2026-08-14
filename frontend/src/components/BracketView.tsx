@@ -25,9 +25,12 @@ import {
   computeMatchNumbers as computeBracketMatchNumbers,
   computeSlotHints as computeBracketSlotHints,
   getDoubleEliminationFinalRounds as getBracketFinalRounds,
-  getGrandFinalLabel as getBracketGrandFinalLabel,
   getRoundSectionMatchCapacity
 } from "@/components/bracket-view.helpers";
+import {
+  useBracketRoundLabel,
+  type BracketRoundLabelFormatter
+} from "@/hooks/useBracketRoundLabel";
 
 type Translate = ReturnType<typeof useTranslations<never>>;
 
@@ -220,11 +223,19 @@ function addSequentialEdges(
   }
 }
 
-function buildLayout(encounters: Encounter[], type: StageType, t: Translate): BracketLayout {
+function buildLayout(
+  encounters: Encounter[],
+  type: StageType,
+  t: Translate,
+  roundLabel: BracketRoundLabelFormatter
+): BracketLayout {
   const hasBracketConnections = type === "single_elimination" || type === "double_elimination";
 
   const isDE = type === "double_elimination";
   const finalRoundNumbers = isDE ? getBracketFinalRounds(encounters) : new Set<number>();
+  // Ascending, so `bracketRoundLabel` reads the first entry as the Grand Final
+  // and any later one as its reset.
+  const finalRoundList = [...finalRoundNumbers].sort((left, right) => left - right);
 
   // For DE: split upper encounters into regular UB and Grand Final section.
   const ubEncounters = isDE
@@ -290,7 +301,7 @@ function buildLayout(encounters: Encounter[], type: StageType, t: Translate): Br
       id: `upper-header-${group.round}`,
       x,
       y: upperHeaderY,
-      label: t("bracket.round", { n: String(group.round) }),
+      label: roundLabel(group.round, finalRoundList),
       section: "upper"
     });
 
@@ -325,7 +336,7 @@ function buildLayout(encounters: Encounter[], type: StageType, t: Translate): Br
       id: `lower-header-${group.round}`,
       x,
       y: lowerHeaderY,
-      label: t("bracket.lowerRound", { n: String(Math.abs(group.round)) }),
+      label: roundLabel(group.round, finalRoundList),
       section: "lower"
     });
 
@@ -362,7 +373,7 @@ function buildLayout(encounters: Encounter[], type: StageType, t: Translate): Br
       id: `final-header-${group.round}`,
       x,
       y: PADDING_Y,
-      label: getBracketGrandFinalLabel(group.round, finalRounds),
+      label: roundLabel(group.round, finalRoundList),
       section: "upper"
     });
 
@@ -696,7 +707,11 @@ export function BracketView({
   const [isGrabbing, setIsGrabbing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const layout = useMemo(() => buildLayout(encounters, type, t), [encounters, type, t]);
+  const roundLabel = useBracketRoundLabel();
+  const layout = useMemo(
+    () => buildLayout(encounters, type, t, roundLabel),
+    [encounters, type, t, roundLabel]
+  );
 
   // Drag-to-pan with the mouse; touch keeps native scrolling. The scroller is
   // the event target, so the same handlers serve the inline and the fullscreen

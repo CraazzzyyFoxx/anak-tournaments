@@ -165,7 +165,11 @@ async function settle(times = 12) {
   }
 }
 
-async function mount(configs: PickBanConfig[] = [], maps: unknown[] = MAPS) {
+async function mount(
+  configs: PickBanConfig[] = [],
+  maps: unknown[] = MAPS,
+  stages: Stage[] = STAGES
+) {
   listConfigs.mockResolvedValue({ configs });
   getHeroes.mockResolvedValue({ results: HEROES });
   getMaps.mockResolvedValue({ results: maps });
@@ -179,7 +183,7 @@ async function mount(configs: PickBanConfig[] = [], maps: unknown[] = MAPS) {
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
           <PickBanConfigsTab
             tournamentId={84}
-            stages={STAGES}
+            stages={stages}
             encounters={ENCOUNTERS}
             canManage
           />
@@ -548,11 +552,18 @@ describe("PickBanConfigsTab's picker searches by name and adds/clears in bulk", 
 // `max_rounds`). The round list now comes from the server, which predicts
 // it from the stage's planned team inputs using the real bracket generator.
 describe("PickBanConfigsTab predicts a round scope before the bracket is built", () => {
-  async function openHeroEditorScopedToPlayoffs() {
-    await mount();
+  async function openHeroEditorScopedToPlayoffs(stages: Stage[] = STAGES) {
+    await mount([], MAPS, stages);
     await click(only("Add hero rules"));
     await click(editor().querySelector<HTMLElement>('[id$="-scope"]')!);
     await choose("Playoffs");
+  }
+
+  async function roundOptions() {
+    await click(editor().querySelector<HTMLElement>('[id$="-round"]')!);
+    return [...document.querySelectorAll<HTMLElement>('[role="option"]')].map((element) =>
+      (element.textContent ?? "").trim()
+    );
   }
 
   it("asks the server for stage 11's planned rounds -- it has no generated encounters", async () => {
@@ -580,19 +591,34 @@ describe("PickBanConfigsTab predicts a round scope before the bracket is built",
     expect(editor().textContent).toContain("Narrow these rules to one round of the stage.");
   });
 
-  it("labels a lower-bracket round distinctly from an upper-bracket one", async () => {
+  // The picker and the bracket name the same round: an organizer who scopes
+  // rules to a round has to recognize it on the bracket they are looking at,
+  // so both go through `bracketRoundLabel` (see `useBracketRoundLabel`).
+  it("names a lower-bracket round the way the bracket does", async () => {
     getStagePlannedRounds.mockResolvedValue([-2, -1, 1, 2]);
     await openHeroEditorScopedToPlayoffs();
     await settle();
 
-    await click(editor().querySelector<HTMLElement>('[id$="-round"]')!);
-    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')].map((element) =>
-      (element.textContent ?? "").trim()
-    );
+    const options = await roundOptions();
 
-    expect(options).toContain("Lower bracket round 1");
-    expect(options).toContain("Lower bracket round 2");
+    expect(options).toContain("Lower R1");
+    expect(options).toContain("Lower R2");
     expect(options).toContain("Round 1");
+    expect(options).toContain("Round 2");
+  });
+
+  it("calls a double elimination's deciding round the Grand Final, not a bare round number", async () => {
+    const stages = STAGES.map((stage) =>
+      stage.id === 11 ? { ...stage, stage_type: "double_elimination" } : stage
+    ) as unknown as Stage[];
+    getStagePlannedRounds.mockResolvedValue([-2, -1, 1, 2, 3]);
+    await openHeroEditorScopedToPlayoffs(stages);
+    await settle();
+
+    const options = await roundOptions();
+
+    expect(options).toContain("Grand Final");
+    expect(options).not.toContain("Round 3");
     expect(options).toContain("Round 2");
   });
 

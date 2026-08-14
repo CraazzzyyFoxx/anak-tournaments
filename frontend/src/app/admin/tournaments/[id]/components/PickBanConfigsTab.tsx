@@ -56,6 +56,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
+import { stageFinalRounds } from "@/components/bracket-view.helpers";
+import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import adminService from "@/services/admin.service";
 import heroService from "@/services/hero.service";
 import mapService from "@/services/map.service";
@@ -980,6 +982,20 @@ function ConfigEditor({
   const rounds = generatedRounds.length > 0 ? generatedRounds : (plannedRoundsQuery.data ?? []);
   const roundsLoading = draft.stageId != null && generatedRounds.length === 0 && plannedRoundsQuery.isPending;
 
+  // Name each round exactly as the bracket does, so an organizer scoping rules
+  // to "Grand Final" recognizes the round they are looking at there.
+  const roundLabel = useBracketRoundLabel();
+  const finalRounds = useMemo(
+    () =>
+      stageFinalRounds(
+        draft.stageId,
+        stages.find((candidate) => candidate.id === draft.stageId)?.stage_type,
+        rounds,
+        encounters
+      ),
+    [draft.stageId, encounters, rounds, stages]
+  );
+
   const series = resolveSeriesLength(draft.stageId, draft.round, stages, encounters);
   const sequence = effectiveSequence(draft, series.bestOf);
   const issues = validatePickBanDraft(draft, series.bestOf);
@@ -1072,9 +1088,7 @@ function ConfigEditor({
                   <SelectItem value={ALL_ROUNDS_SCOPE}>{t("roundAll")}</SelectItem>
                   {rounds.map((round) => (
                     <SelectItem key={round} value={String(round)}>
-                      {round < 0
-                        ? t("roundNumberLower", { n: Math.abs(round) })
-                        : t("roundNumber", { n: round })}
+                      {roundLabel(round, finalRounds)}
                     </SelectItem>
                   ))}
                 </SelectContent>
