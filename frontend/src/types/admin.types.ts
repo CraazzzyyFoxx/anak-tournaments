@@ -451,7 +451,6 @@ export interface PlayerCreateInput {
   tournament_id: number;
   role: string;
   rank?: number;
-  div?: number;
   sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
@@ -463,7 +462,6 @@ export interface PlayerUpdateInput {
   name?: string;
   role?: string;
   rank?: number;
-  div?: number;
   sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;

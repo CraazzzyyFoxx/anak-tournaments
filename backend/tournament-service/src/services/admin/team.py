@@ -19,7 +19,6 @@ async def _enqueue_team_changed(session: AsyncSession, tournament_id: int) -> No
 
 def _prepare_player_create_data(data: admin_schemas.PlayerCreate) -> dict:
     player_data = data.model_dump()
-    player_data.pop("div", None)
     player_data["sub_role"] = normalize_sub_role(player_data.get("sub_role"))
     if not player_data.get("is_substitution"):
         player_data["related_player_id"] = None
@@ -31,7 +30,6 @@ def _prepare_player_update_data(
     data: admin_schemas.PlayerUpdate,
 ) -> dict:
     update_data = data.model_dump(exclude_unset=True)
-    update_data.pop("div", None)
     if "sub_role" in update_data:
         update_data["sub_role"] = normalize_sub_role(update_data["sub_role"])
     if update_data.get("is_substitution") is False:

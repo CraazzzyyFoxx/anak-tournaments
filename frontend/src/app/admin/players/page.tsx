@@ -50,6 +50,9 @@ import {
   type PlayerRoleOption
 } from "@/lib/player-role";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { resolveDivisionFromRank } from "@/lib/division-grid";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 import { MinimizedUser } from "@/types/user.types";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -68,7 +71,6 @@ interface PlayerFormData {
   role: string;
   sub_role: string;
   rank: number;
-  division: number;
   is_newcomer: boolean;
   is_substitution: boolean;
 }
@@ -152,6 +154,28 @@ function SearchableSelect({
   );
 }
 
+/**
+ * Division is derived from rank by the division grid, so the form renders it
+ * read-only as the grid icon instead of an editable number the API discards.
+ */
+function DivisionField({ rank, grid }: { rank: number; grid: DivisionGridVersion | null }) {
+  const workspaceGrid = useDivisionGrid();
+  const division = resolveDivisionFromRank(grid ?? workspaceGrid, rank);
+
+  return (
+    <div>
+      <Label>Division</Label>
+      <div className="flex h-9 items-center">
+        {division == null ? (
+          <span className="text-sm text-muted-foreground">—</span>
+        ) : (
+          <DivisionIcon division={division} tournamentGrid={grid} width={28} height={28} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 const defaultFormData: PlayerFormData = {
   name: "",
   user_id: 0,
@@ -160,7 +184,6 @@ const defaultFormData: PlayerFormData = {
   role: "Damage",
   sub_role: "",
   rank: 0,
-  division: 0,
   is_newcomer: false,
   is_substitution: false
 };
@@ -176,7 +199,6 @@ function getEditPlayerForm(player: Player): PlayerFormData {
     role: normalizePlayerRole(player.role),
     sub_role: player.sub_role ?? "",
     rank: player.rank,
-    division: player.division,
     is_newcomer: player.is_newcomer,
     is_substitution: player.is_substitution
   };
@@ -213,7 +235,6 @@ function buildPlayerCreateInput(formData: PlayerFormData): PlayerCreateInput {
     tournament_id: formData.tournament_id,
     role,
     rank: formData.rank,
-    div: formData.division,
     is_newcomer: formData.is_newcomer,
     is_substitution: formData.is_substitution,
     ...buildSubRolePayload(role, formData.sub_role)
@@ -226,7 +247,6 @@ function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
     name: formData.name.trim(),
     role,
     rank: formData.rank,
-    div: formData.division,
     is_newcomer: formData.is_newcomer,
     is_substitution: formData.is_substitution,
     ...buildSubRolePayload(role, formData.sub_role)
@@ -253,7 +273,7 @@ export default function PlayersPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerRow | null>(null);
   const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
   const [selectedUserName, setSelectedUserName] = useState("");
   const createHintId = useId();
@@ -329,14 +349,14 @@ export default function PlayersPage() {
     resetForm();
   };
 
-  const handleEdit = (player: Player) => {
+  const handleEdit = (player: PlayerRow) => {
     updateMutation.reset();
     setSelectedPlayer(player);
     setFormData(getEditPlayerForm(player));
     setEditDialogOpen(true);
   };
 
-  const handleDelete = (player: Player) => {
+  const handleDelete = (player: PlayerRow) => {
     setSelectedPlayer(player);
     setDeleteDialogOpen(true);
   };
@@ -717,16 +737,10 @@ export default function PlayersPage() {
               />
             </div>
 
-            <div>
-              <Label htmlFor="division">Division</Label>
-              <NumberInput
-                id="division"
-                integer
-                min={0}
-                value={formData.division}
-                onValueChange={(division) => setFormData({ ...formData, division: division ?? 0 })}
-              />
-            </div>
+            <DivisionField
+              rank={formData.rank}
+              grid={selectedTournament?.division_grid_version ?? null}
+            />
           </div>
 
           <div className="space-y-2">
@@ -834,16 +848,10 @@ export default function PlayersPage() {
               />
             </div>
 
-            <div>
-              <Label htmlFor="edit-division">Division</Label>
-              <NumberInput
-                id="edit-division"
-                integer
-                min={0}
-                value={formData.division}
-                onValueChange={(division) => setFormData({ ...formData, division: division ?? 0 })}
-              />
-            </div>
+            <DivisionField
+              rank={formData.rank}
+              grid={getPlayerRowDivisionGrid(selectedPlayer?.team)}
+            />
           </div>
 
           <div className="space-y-2">
