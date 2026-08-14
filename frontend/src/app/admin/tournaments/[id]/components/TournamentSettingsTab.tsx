@@ -43,6 +43,7 @@ import type {
 import {
   getPhaseSchedulePayload,
   getTournamentForm,
+  getTournamentUpdatePayload,
   SCHEDULABLE_PHASES,
   type SchedulablePhase,
   type TournamentFormState
@@ -168,26 +169,7 @@ export function TournamentSettingsTab({
       return;
     }
 
-    const payload: TournamentUpdateInput = {
-      name: formData.name.trim(),
-      description: formData.description.trim() || null,
-      challonge_slug: formData.challonge_slug
-        ? normalizeChallongeSlug(formData.challonge_slug)
-        : null,
-      is_league: formData.is_league,
-      is_finished: formData.is_finished,
-      is_hidden: formData.is_hidden,
-      start_date: formData.start_date,
-      end_date: formData.end_date,
-      win_points: formData.win_points,
-      draw_points: formData.draw_points,
-      loss_points: formData.loss_points,
-      auto_transitions_enabled: formData.auto_transitions_enabled,
-      allow_late_registration: formData.allow_late_registration,
-      division_grid_version_id: formData.division_grid_version_id,
-      team_formation: formData.team_formation,
-      roster_slots_json: formData.roster_slots_json
-    };
+    const payload = getTournamentUpdatePayload(formData, initialFormData);
 
     updateMutation.mutate({
       payload,

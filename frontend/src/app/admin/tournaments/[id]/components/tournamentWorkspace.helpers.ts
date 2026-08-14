@@ -2,10 +2,11 @@ import { Layers3, Trophy, type LucideIcon } from "lucide-react";
 import type { Encounter } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
 import type { Stage, Standings, Tournament } from "@/types/tournament.types";
-import type { TournamentPhaseScheduleEntryInput } from "@/types/admin.types";
+import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
 import type { RosterSlotMap } from "@/lib/roster-shape";
 import { normalizeSlots } from "@/components/admin/tournaments/roster-shape-editor.model";
+import { normalizeChallongeSlug } from "@/lib/challonge";
 
 export const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;
 
@@ -159,6 +160,61 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
       ? normalizeSlots(tournament.roster_slots_json)
       : null
   };
+}
+
+// Every field `TournamentUpdateInput` can carry, keyed the same as
+// `TournamentFormState` (minus `phase_schedule`, which travels through
+// `setTournamentSchedule` instead). Kept in one place so the diff below and
+// `getTournamentForm` above cannot drift out of sync field-by-field.
+type TournamentUpdateValues = Required<Omit<TournamentUpdateInput, "description" | "challonge_slug" | "division_grid_version_id" | "roster_slots_json">> & {
+  description: string | null;
+  challonge_slug: string | null;
+  division_grid_version_id: number | null;
+  roster_slots_json: RosterSlotMap | null;
+};
+
+function normalizeTournamentFormValues(form: TournamentFormState): TournamentUpdateValues {
+  return {
+    name: form.name.trim(),
+    description: form.description.trim() || null,
+    challonge_slug: form.challonge_slug ? normalizeChallongeSlug(form.challonge_slug) : null,
+    is_league: form.is_league,
+    is_finished: form.is_finished,
+    is_hidden: form.is_hidden,
+    start_date: form.start_date,
+    end_date: form.end_date,
+    win_points: form.win_points,
+    draw_points: form.draw_points,
+    loss_points: form.loss_points,
+    auto_transitions_enabled: form.auto_transitions_enabled,
+    allow_late_registration: form.allow_late_registration,
+    division_grid_version_id: form.division_grid_version_id,
+    team_formation: form.team_formation,
+    roster_slots_json: form.roster_slots_json
+  };
+}
+
+/**
+ * Diffs the (normalized) current form against the (normalized) initial form
+ * and keeps only the fields that actually changed. The admin audit trail
+ * records exactly the keys a PATCH sends (`TournamentUpdate.model_dump(exclude_unset=True)`
+ * on the backend), so sending every field on every save -- even ones the
+ * admin never touched -- made every edit look like a full rewrite of the
+ * tournament in the audit log.
+ */
+export function getTournamentUpdatePayload(
+  current: TournamentFormState,
+  initial: TournamentFormState
+): TournamentUpdateInput {
+  const next = normalizeTournamentFormValues(current);
+  const prev = normalizeTournamentFormValues(initial);
+  const payload: TournamentUpdateInput = {};
+  for (const key of Object.keys(next) as (keyof TournamentUpdateValues)[]) {
+    if (JSON.stringify(next[key]) !== JSON.stringify(prev[key])) {
+      (payload as Record<string, unknown>)[key] = next[key];
+    }
+  }
+  return payload;
 }
 
 export function getEmptyEncounterForm(
