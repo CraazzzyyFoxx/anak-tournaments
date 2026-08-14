@@ -1484,6 +1484,13 @@ class AdminService {
     return response.json();
   }
 
+  async deactivateStage(stageId: number): Promise<Stage> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/deactivate`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async generateBracket(stageId: number): Promise<{ generated: number }> {
     const response = await apiFetch(`/api/v1/admin/stages/${stageId}/generate`, {
       method: "POST"

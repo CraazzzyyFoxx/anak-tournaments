@@ -394,6 +394,10 @@ DOCS: dict[str, dict] = {
         "summary": "Activate stage",
         "description": "Activates a stage; requires stage-update permission on its workspace.",
     },
+    "rpc.tournament.stage_deactivate": {
+        "summary": "Deactivate stage",
+        "description": "Reverts an accidentally-activated stage back to Draft/preview; refuses (409) once any of its matches has been reported or started; requires stage-update permission on its workspace.",
+    },
     "rpc.tournament.stage_generate": {
         "summary": "Generate stage bracket",
         "description": "Enqueues a bracket-generation job (202 Accepted) for the stage; requires stage-update permission on its workspace.",

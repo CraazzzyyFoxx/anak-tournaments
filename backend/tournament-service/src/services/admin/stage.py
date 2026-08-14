@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 
 from loguru import logger
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -781,6 +781,55 @@ async def activate_stage(
     return await get_stage(session, stage.id)
 
 
+async def deactivate_stage(
+    session: AsyncSession,
+    stage_id: int,
+    *,
+    notify: bool = True,
+    commit: bool = True,
+) -> models.Stage:
+    """Revert an accidentally-activated stage back to Draft/preview.
+
+    ``is_published`` is documented (and, until now, enforced) as sticky
+    because it gates whether an encounter is live for reporting/pick-ban
+    (``shared.services.bracket.usability.is_encounter_live``) -- once a
+    captain has acted on a match, taking that gate back down would strand
+    real data behind a bracket that looks like a preview again. So this only
+    allows the revert while every one of the stage's encounters is still
+    ``OPEN``: nothing has been reported or started yet, so there is nothing
+    to strand. Refuses with 409 the moment any encounter left ``OPEN``.
+
+    Does not unwind ``activate_stage``'s resolution of TENTATIVE inputs to
+    FINAL -- re-wire from the source stage (``wire_from_groups``) if that
+    also needs undoing.
+    """
+    stage = await get_stage(session, stage_id)
+    touched = await session.execute(
+        select(func.count())
+        .select_from(models.Encounter)
+        .where(
+            models.Encounter.stage_id == stage_id,
+            models.Encounter.status != enums.EncounterStatus.OPEN,
+        )
+    )
+    if touched.scalar_one() > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot revert to draft: this stage already has reported or in-progress matches.",
+        )
+
+    stage.is_active = False
+    stage.is_published = False
+
+    if notify:
+        await _publish_tournament_changed(session, stage.tournament_id, "structure_changed")
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
+    return await get_stage(session, stage.id)
+
+
 def _collect_item_team_ids(item: models.StageItem) -> list[int]:
     return [inp.team_id for inp in sorted(item.inputs, key=lambda value: value.slot) if inp.team_id is not None]
 
@@ -1415,14 +1464,36 @@ async def generate_encounters(
     commit: bool = True,
     schedule_standings: bool = True,
 ) -> list[models.Encounter]:
-    """Generate bracket encounters for a stage based on its type and team inputs."""
+    """Generate bracket encounters for a stage based on its type and team inputs.
+
+    Never overwrites: an item (or, for a non-grouped stage, the stage as a
+    whole) that already has encounters is left alone rather than getting a
+    second set of matches. A grouped stage (Swiss/Round Robin with multiple
+    groups) lets a newly added group generate on its own once earlier groups
+    are already underway; a non-grouped stage refuses outright, since there
+    is no partial bracket to preserve there -- delete its matches first to
+    regenerate.
+    """
     stage = await get_stage(session, stage_id)
+
+    existing_by_item_result = await session.execute(
+        select(models.Encounter.stage_item_id, func.count())
+        .where(models.Encounter.stage_id == stage_id)
+        .group_by(models.Encounter.stage_item_id)
+    )
+    existing_by_item: dict[int | None, int] = dict(existing_by_item_result.all())
 
     should_generate_by_item = stage.stage_type in GROUPED_GENERATION_STAGE_TYPES and len(stage.items) > 1
 
     if should_generate_by_item:
         encounters: list[models.Encounter] = []
-        for item in stage.items:
+        eligible_items = [item for item in stage.items if existing_by_item.get(item.id, 0) == 0]
+        if not eligible_items:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Every group already has generated matches. Delete a group's matches first to regenerate it.",
+            )
+        for item in eligible_items:
             team_ids = _collect_item_team_ids(item)
             if len(team_ids) < 2:
                 raise HTTPException(
@@ -1451,6 +1522,12 @@ async def generate_encounters(
         else:
             await session.flush()
         return encounters
+
+    if sum(existing_by_item.values()) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This stage already has generated matches. Delete them first to regenerate the bracket.",
+        )
 
     sorted_items = sorted(stage.items, key=lambda it: (it.order, it.id))
     primary_item_id = sorted_items[0].id if sorted_items else None

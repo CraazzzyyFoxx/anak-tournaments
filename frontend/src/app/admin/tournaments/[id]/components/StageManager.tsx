@@ -17,6 +17,7 @@ import {
   Shield,
   Shuffle,
   Trash2,
+  Undo2,
   Wand2,
   Zap
 } from "lucide-react";
@@ -322,6 +323,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [seedStageConfirm, setSeedStageConfirm] = useState<Stage | null>(null);
   const [mergeStageConfirm, setMergeStageConfirm] = useState<Stage | null>(null);
   const [forceActivateStage, setForceActivateStage] = useState<Stage | null>(null);
+  const [deactivateStageConfirm, setDeactivateStageConfirm] = useState<Stage | null>(null);
+  const [regenerateStageConfirm, setRegenerateStageConfirm] = useState<Stage | null>(null);
   const [newStageName, setNewStageName] = useState("");
   const [newStageType, setNewStageType] = useState<StageType>("round_robin");
   const [newStageMaxRounds, setNewStageMaxRounds] = useState("5");
@@ -515,11 +518,25 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }
   });
 
+  const deactivateMutation = useMutation({
+    mutationFn: (stageId: number) => adminService.deactivateStage(stageId),
+    onSuccess: () => {
+      setDeactivateStageConfirm(null);
+      invalidateStageData();
+      notify.success("Stage reverted to draft");
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not revert this stage to draft" })
+  });
+
   const generateMutation = useMutation({
     mutationFn: (stageId: number) => adminService.generateBracket(stageId),
     onSuccess: () => {
+      setRegenerateStageConfirm(null);
       invalidateStageData();
-    }
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not generate the bracket" })
   });
 
   const applyBestOfMutation = useMutation({
@@ -1053,11 +1070,39 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                         </Button>
                       ) : null}
 
+                      {(selectedStage.is_active || selectedStage.is_published) &&
+                      !selectedStage.is_completed ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={deactivateMutation.isPending}
+                          onClick={() => setDeactivateStageConfirm(selectedStage)}
+                          title="Reverts this stage to Draft/preview — only possible while every one of its matches is still unplayed"
+                        >
+                          {deactivateMutation.isPending &&
+                          deactivateMutation.variables === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Undo2 className="size-4" aria-hidden />
+                          )}
+                          {deactivateMutation.isPending &&
+                          deactivateMutation.variables === selectedStage.id
+                            ? "Reverting…"
+                            : "Revert to draft"}
+                        </Button>
+                      ) : null}
+
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={generateMutation.isPending}
-                        onClick={() => generateMutation.mutate(selectedStage.id)}
+                        onClick={() => {
+                          if ((selectedStageProgress?.total ?? 0) > 0) {
+                            setRegenerateStageConfirm(selectedStage);
+                          } else {
+                            generateMutation.mutate(selectedStage.id);
+                          }
+                        }}
                         title="Generates the bracket as a preview without activating the stage — captains cannot report or veto until it is activated"
                       >
                         {generateMutation.isPending &&
@@ -2205,6 +2250,50 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         confirmingLabel="Activating…"
         confirmVariant="default"
         isDeleting={activateAndGenerateMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(deactivateStageConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setDeactivateStageConfirm(null);
+        }}
+        onConfirm={() => {
+          if (deactivateStageConfirm) {
+            deactivateMutation.mutate(deactivateStageConfirm.id);
+          }
+        }}
+        title="Revert stage to draft"
+        description={
+          deactivateStageConfirm
+            ? `Revert "${deactivateStageConfirm.name}" back to Draft/preview. This only succeeds while every one of its matches is still unplayed — any reported or in-progress match blocks it.`
+            : undefined
+        }
+        confirmLabel="Revert to draft"
+        confirmingLabel="Reverting…"
+        confirmVariant="default"
+        isDeleting={deactivateMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(regenerateStageConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setRegenerateStageConfirm(null);
+        }}
+        onConfirm={() => {
+          if (regenerateStageConfirm) {
+            generateMutation.mutate(regenerateStageConfirm.id);
+          }
+        }}
+        title="Generate bracket again"
+        description={
+          regenerateStageConfirm
+            ? `"${regenerateStageConfirm.name}" already has generated matches. Existing matches are left untouched: for a grouped stage, only groups with no matches yet get a new bracket; for a single bracket, this is blocked until you delete its existing matches.`
+            : undefined
+        }
+        confirmLabel="Generate"
+        confirmingLabel="Generating…"
+        confirmVariant="default"
+        isDeleting={generateMutation.isPending}
       />
     </>
   );

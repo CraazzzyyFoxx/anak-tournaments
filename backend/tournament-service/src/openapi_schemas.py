@@ -130,6 +130,7 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: stage workflow ────────────────────────────────────────────
     "rpc.tournament.stage_merge": Op(request=admin_stage.MergeGroupStagesRequest, response=schemas.StageRead),
     "rpc.tournament.stage_activate": Op(response=schemas.StageRead),
+    "rpc.tournament.stage_deactivate": Op(response=schemas.StageRead),
     "rpc.tournament.stage_generate": Op(response=TournamentComputationJobRead),
     "rpc.tournament.stage_activate_and_generate": Op(response=TournamentComputationJobRead),
     "rpc.tournament.stage_wire": Op(request=admin_stage.WireFromGroupsRequest, response=schemas.StageRead),
