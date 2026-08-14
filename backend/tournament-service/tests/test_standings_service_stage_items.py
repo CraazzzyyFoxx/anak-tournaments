@@ -97,6 +97,138 @@ class StandingsServiceStageItemTests(TestCase):
         self.assertEqual([0.0, 0.0], [standing.points for standing in standings])
         self.assertEqual([stage_item.id, stage_item.id], [standing.stage_item_id for standing in standings])
 
+    def test_overall_positions_stay_unranked_before_any_match_is_played(self) -> None:
+        """Pre-match state (seeded teams, zero completed encounters) must not
+        report a fabricated 1..N overall ranking - that would present pure
+        seed/tiebreak order as if it were a real standing (see standings
+        widget showing "1st/2nd/3rd..." with every team at 0-0).
+        """
+        tournament = models.Tournament(
+            workspace_id=1,
+            name="Tournament",
+            is_league=False,
+            win_points=1.0,
+            draw_points=0.5,
+            loss_points=0.0,
+        )
+        tournament.id = 200
+        group = models.TournamentGroup(
+            tournament_id=tournament.id,
+            name="Group A",
+            is_groups=True,
+            stage_id=7,
+        )
+        group.id = 55
+        tournament.groups = [group]
+
+        stage = models.Stage(
+            tournament_id=tournament.id,
+            name="Group Stage",
+            stage_type=enums.StageType.ROUND_ROBIN,
+            order=0,
+        )
+        stage.id = 7
+        stage_item = models.StageItem(
+            stage_id=stage.id,
+            name="Group A",
+            type=enums.StageItemType.GROUP,
+            order=0,
+        )
+        stage_item.id = 147
+        stage_item.inputs = [
+            models.StageItemInput(stage_item_id=stage_item.id, slot=1, team_id=10),
+            models.StageItemInput(stage_item_id=stage_item.id, slot=2, team_id=20),
+            models.StageItemInput(stage_item_id=stage_item.id, slot=3, team_id=30),
+        ]
+
+        standings = standings_service._build_group_stage_standings(
+            tournament,
+            stage,
+            stage_item,
+            [],
+        )
+        for standing in standings:
+            standing.stage = stage
+
+        ranked = standings_service.calculate_overall_positions(standings, [stage])
+
+        self.assertEqual({10, 20, 30}, {standing.team_id for standing in ranked})
+        self.assertEqual([0, 0, 0], [standing.overall_position for standing in ranked])
+
+    def test_overall_positions_rank_only_teams_that_have_played(self) -> None:
+        """Once some teams have played, they get ranked by real results even
+        though an unplayed team ties them on points (0) - the unplayed team
+        must stay unranked (overall_position 0) rather than sorting in by
+        seed order alongside real results.
+        """
+        tournament = models.Tournament(
+            workspace_id=1,
+            name="Tournament",
+            is_league=False,
+            win_points=1.0,
+            draw_points=0.5,
+            loss_points=0.0,
+        )
+        tournament.id = 201
+        group = models.TournamentGroup(
+            tournament_id=tournament.id,
+            name="Group A",
+            is_groups=True,
+            stage_id=8,
+        )
+        group.id = 56
+        tournament.groups = [group]
+
+        stage = models.Stage(
+            tournament_id=tournament.id,
+            name="Group Stage",
+            stage_type=enums.StageType.ROUND_ROBIN,
+            order=0,
+        )
+        stage.id = 8
+        stage_item = models.StageItem(
+            stage_id=stage.id,
+            name="Group A",
+            type=enums.StageItemType.GROUP,
+            order=0,
+        )
+        stage_item.id = 247
+        stage_item.inputs = [
+            models.StageItemInput(stage_item_id=stage_item.id, slot=1, team_id=10),
+            models.StageItemInput(stage_item_id=stage_item.id, slot=2, team_id=20),
+            models.StageItemInput(stage_item_id=stage_item.id, slot=3, team_id=30),
+        ]
+
+        encounters = [
+            self._encounter(
+                home_team_id=10,
+                away_team_id=20,
+                home_score=2,
+                away_score=0,
+                round_number=1,
+                status=enums.EncounterStatus.COMPLETED,
+            )
+        ]
+
+        standings = standings_service._build_group_stage_standings(
+            tournament,
+            stage,
+            stage_item,
+            encounters,
+        )
+        for standing in standings:
+            standing.stage = stage
+
+        ranked = standings_service.calculate_overall_positions(standings, [stage])
+        overall_by_team = {standing.team_id: standing.overall_position for standing in ranked}
+
+        # Team 30 never played: 0 points ties team 20's loss, but must not
+        # be ranked alongside it.
+        self.assertEqual(0, overall_by_team[30])
+        # The winner and the loser both actually played, so both are ranked.
+        self.assertEqual(1, overall_by_team[10])
+        self.assertEqual(2, overall_by_team[20])
+
     def test_swiss_standings_award_configured_bye_points(self) -> None:
         tournament = models.Tournament(
             workspace_id=1,
