@@ -152,6 +152,26 @@ const CUSTOM_HERO_CONFIG: PickBanConfig = {
   slots: [],
 };
 
+/** The tournament-wide map rules a narrower scope inherits from. */
+const TOURNAMENT_MAP_CONFIG: PickBanConfig = {
+  id: 3,
+  tournament_id: 84,
+  kind: "map",
+  stage_id: null,
+  round: null,
+  mode: "pool",
+  first_pick_rule: "higher_seed",
+  first_ban_rotation: "alternate",
+  turn_timer_seconds: 30,
+  preset: "bracket",
+  sequence: ["ban_first", "ban_second", "pick_first", "pick_second", "decider"],
+  no_repeat_scope: "encounter",
+  unique_attribute_per_side_per_round: null,
+  allow_protect: false,
+  item_ids: [1, 2, 3, 4],
+  slots: [],
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -630,5 +650,96 @@ describe("PickBanConfigsTab predicts a round scope before the bracket is built",
     expect(editor().textContent).toContain(
       "isn't built yet, and no teams are wired into it either"
     );
+  });
+});
+
+// 2026-08-14: scoping rules to a round meant retyping the tournament's timer,
+// rotation, no-repeat scope and whole pool by hand, per round -- so organizers
+// did not, and rounds kept playing by rules nobody had chosen for them. A new
+// draft now opens on whatever its scope resolves to today, and says so.
+describe("PickBanConfigsTab prefills a narrower scope from the rules above it", () => {
+  /** Pick a round by its position in the picker; its label is the bracket's. */
+  async function chooseRoundAt(index: number) {
+    await click(editor().querySelector<HTMLElement>('[id$="-round"]')!);
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+    await click(options[index]);
+  }
+
+  async function openMapEditorScopedTo(stageName: string, configs: PickBanConfig[]) {
+    await mount(configs);
+    editorHeading = "New map rules";
+    await click(only("Add map rules"));
+    await click(editor().querySelector<HTMLElement>('[id$="-scope"]')!);
+    await choose(stageName);
+  }
+
+  it("copies the tournament's rules onto a stage scope, marked with where they came from", async () => {
+    await openMapEditorScopedTo("Group stage", [TOURNAMENT_MAP_CONFIG]);
+
+    expect(editor().textContent).toContain("Prefilled from Whole tournament");
+    expect(editor().querySelector<HTMLInputElement>('input[id$="-timer"]')?.value).toBe("30");
+    expect(editor().textContent).toContain("4 selected");
+    expect(editor().textContent).toContain("Busan");
+  });
+
+  it("saves the inherited values as the new scope's own", async () => {
+    await openMapEditorScopedTo("Group stage", [TOURNAMENT_MAP_CONFIG]);
+    await click(only("Save rules"));
+
+    const body = upsertConfig.mock.calls[0][1];
+    expect(body.stage_id).toBe(10);
+    expect(body.round).toBeNull();
+    expect(body.item_ids).toEqual([1, 2, 3, 4]);
+    expect(body.turn_timer_seconds).toBe(30);
+    expect(body.first_ban_rotation).toBe("alternate");
+    expect(body.no_repeat_scope).toBe("encounter");
+  });
+
+  // The cascade the engine walks (`resolve_config_at_level`): a round takes its
+  // stage's rules over the tournament's, so the prefill has to agree with it.
+  it("prefills a round from its stage's rules, not the tournament's", async () => {
+    const stageWide: PickBanConfig = {
+      ...TOURNAMENT_MAP_CONFIG,
+      id: 4,
+      stage_id: 10,
+      turn_timer_seconds: 15,
+      item_ids: [1, 2],
+    };
+    await openMapEditorScopedTo("Group stage", [TOURNAMENT_MAP_CONFIG, stageWide]);
+    await chooseRoundAt(1);
+
+    expect(editor().textContent).toContain("Prefilled from Group stage — all rounds");
+    expect(editor().querySelector<HTMLInputElement>('input[id$="-timer"]')?.value).toBe("15");
+    expect(editor().textContent).toContain("2 selected");
+  });
+
+  it("leaves a hand-authored draft alone when its scope changes", async () => {
+    await mount([TOURNAMENT_MAP_CONFIG]);
+    editorHeading = "New map rules";
+    await click(only("Add map rules"));
+    await click(only("Add maps"));
+    await click(only("Ilios"));
+
+    await click(editor().querySelector<HTMLElement>('[id$="-scope"]')!);
+    await choose("Group stage");
+
+    expect(editor().textContent).toContain("1 selected");
+    expect(editor().textContent).not.toContain("Prefilled from");
+  });
+
+  it("marks a saved rule set that only repeats the scope above it", async () => {
+    const copy: PickBanConfig = { ...TOURNAMENT_MAP_CONFIG, id: 5, stage_id: 10, round: 1 };
+    const different: PickBanConfig = {
+      ...TOURNAMENT_MAP_CONFIG,
+      id: 6,
+      stage_id: 11,
+      turn_timer_seconds: 90,
+    };
+    await mount([TOURNAMENT_MAP_CONFIG, copy, different]);
+
+    expect(container.textContent).toContain("Same as Whole tournament");
+    expect(byName("Delete the rules for Playoffs — all rounds")).not.toHaveLength(0);
+    // One badge, on the copy alone: the Playoffs row decides something of its own.
+    expect(container.textContent?.match(/Same as/g)).toHaveLength(1);
   });
 });

@@ -2536,8 +2536,6 @@
       }
     },
     "admin": {
-      "title": "Pre-game Phase",
-      "intro": "A rule set decides what captains ban and pick before a match, and in which order. This is one config system for two catalogs — maps and heroes — each with its own independent rule sets below. Matches use the most specific rule set that covers them: a round's own beats its stage's, and a stage's beats the tournament-wide one.",
       "readOnly": "You do not have permission to change these rule sets.",
       "loadFailed": "Unable to load the rule sets.",
       "retry": "Try again",
@@ -2570,6 +2568,8 @@
       "roundHintLoading": "Checking the stage's planned bracket…",
       "roundHintUnknown": "This stage's bracket isn't built yet, and no teams are wired into it either, so its rounds aren't known. Add teams to the stage, or scope these rules to the whole stage for now.",
       "scopeTaken": "A rule set already covers this scope. Saving replaces it.",
+      "inheritedPrefill": "Prefilled from {scope} — the rules this scope plays by today. Change only what has to differ; saving stores these values as this scope's own.",
+      "sameAsScope": "Same as {scope}",
       "poolSection": "2 · What captains choose from",
       "poolSectionHint": "The candidates a match draws on, and how they are grouped.",
       "modeLabel": "Pool shape",

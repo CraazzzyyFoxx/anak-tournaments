@@ -11,6 +11,7 @@ import {
   Check,
   ChevronsUpDown,
   Clock,
+  Copy,
   LoaderCircle,
   Plus,
   RotateCcw,
@@ -85,14 +86,17 @@ import {
   effectiveSequence,
   emptyPickBanDraft,
   encodeScope,
+  findInheritedConfig,
   findScopeCollision,
   matchesItemName,
   parseStepToken,
   pickBanDraftFromConfig,
   pickBanDraftToInput,
   protectHasNoStep,
+  rescopePickBanDraft,
   resolveSeriesLength,
   roundsPlayed,
+  sameRuleValues,
   stageRoundOptions,
   validatePickBanDraft,
   type PickBanDraft,
@@ -865,12 +869,19 @@ function StepList({
 function ConfigRow({
   config,
   scopeLabel,
+  inheritedLabel,
   canManage,
   onEdit,
   onDelete,
 }: {
   config: PickBanConfig;
   scopeLabel: string;
+  /**
+   * Scope this config's rules are a copy of, if any: a round or stage whose
+   * saved values still match what it would have inherited anyway. Naming it
+   * keeps the list honest about which rows actually decide something.
+   */
+  inheritedLabel: string | null;
   canManage: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -890,6 +901,12 @@ function ConfigRow({
       <Badge variant="outline">
         {config.mode === "pool" ? t("modePool") : t("modeSlots")}
       </Badge>
+      {inheritedLabel != null ? (
+        <Badge variant="secondary" className="gap-1">
+          <Copy aria-hidden className="size-3" />
+          {t("sameAsScope", { scope: inheritedLabel })}
+        </Badge>
+      ) : null}
       <span className="text-muted-foreground text-sm">{poolSize}</span>
       <span className="text-muted-foreground text-sm">
         {config.preset === "custom" ? t("summaryOrderCustom") : t("summaryOrderBracket")}
@@ -938,6 +955,7 @@ function ConfigEditor({
   catalogue,
   catalogueLoading,
   isSaving,
+  describeScope,
   onChange,
   onSave,
   onCancel,
@@ -950,6 +968,7 @@ function ConfigEditor({
   catalogue: ItemOption[];
   catalogueLoading: boolean;
   isSaving: boolean;
+  describeScope: (config: Pick<PickBanConfig, "stage_id" | "round">) => string;
   onChange: (next: PickBanDraft) => void;
   onSave: () => void;
   onCancel: () => void;
@@ -1051,7 +1070,7 @@ function ConfigEditor({
               <Select
                 value={encodeScope(draft.stageId)}
                 onValueChange={(value) =>
-                  onChange({ ...draft, stageId: decodeScope(value), round: null })
+                  onChange(rescopePickBanDraft(draft, decodeScope(value), null, configs))
                 }
               >
                 <SelectTrigger id={`${ids}-scope`} aria-describedby={`${ids}-scope-hint`}>
@@ -1075,10 +1094,14 @@ function ConfigEditor({
                 value={draft.round == null ? ALL_ROUNDS_SCOPE : String(draft.round)}
                 disabled={draft.stageId == null || roundsLoading}
                 onValueChange={(value) =>
-                  onChange({
-                    ...draft,
-                    round: value === ALL_ROUNDS_SCOPE ? null : Number(value),
-                  })
+                  onChange(
+                    rescopePickBanDraft(
+                      draft,
+                      draft.stageId,
+                      value === ALL_ROUNDS_SCOPE ? null : Number(value),
+                      configs
+                    )
+                  )
                 }
               >
                 <SelectTrigger id={`${ids}-round`} aria-describedby={`${ids}-round-hint`}>
@@ -1109,6 +1132,20 @@ function ConfigEditor({
             <Alert>
               <AlertTriangle aria-hidden className="size-4" />
               <AlertDescription>{t("scopeTaken")}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {draft.inheritedFrom != null ? (
+            <Alert>
+              <Copy aria-hidden className="size-4" />
+              <AlertDescription>
+                {t("inheritedPrefill", {
+                  scope: describeScope({
+                    stage_id: draft.inheritedFrom.stageId,
+                    round: draft.inheritedFrom.round,
+                  }),
+                })}
+              </AlertDescription>
             </Alert>
           ) : null}
         </FieldGroup>
@@ -1631,7 +1668,7 @@ function KindSection({
   addLabel: string;
   noConfigsHint: string;
   draft: PickBanDraft | null;
-  editorProps: Omit<Parameters<typeof ConfigEditor>[0], "draft"> | null;
+  editorProps: Omit<Parameters<typeof ConfigEditor>[0], "draft" | "describeScope"> | null;
   onAdd: () => void;
   onEdit: (config: PickBanConfig) => void;
   onDelete: (config: PickBanConfig) => void;
@@ -1660,20 +1697,30 @@ function KindSection({
             <p className="text-muted-foreground text-sm">{noConfigsHint}</p>
           </div>
         ) : (
-          configs.map((config) => (
-            <ConfigRow
-              key={config.id}
-              config={config}
-              scopeLabel={describeScope(config)}
-              canManage={canManage}
-              onEdit={() => onEdit(config)}
-              onDelete={() => onDelete(config)}
-            />
-          ))
+          configs.map((config) => {
+            // A row whose stored rules still match the scope above it adds
+            // nothing to the cascade -- worth saying, since prefilling makes
+            // that the default outcome of narrowing a scope.
+            const source = findInheritedConfig(config.kind, config.stage_id, config.round, configs);
+            const inherited =
+              source != null &&
+              sameRuleValues(pickBanDraftFromConfig(config), pickBanDraftFromConfig(source));
+            return (
+              <ConfigRow
+                key={config.id}
+                config={config}
+                scopeLabel={describeScope(config)}
+                inheritedLabel={inherited ? describeScope(source) : null}
+                canManage={canManage}
+                onEdit={() => onEdit(config)}
+                onDelete={() => onDelete(config)}
+              />
+            );
+          })
         )}
 
         {draft != null && draft.kind === kind && editorProps != null ? (
-          <ConfigEditor draft={draft} {...editorProps} />
+          <ConfigEditor draft={draft} describeScope={describeScope} {...editorProps} />
         ) : null}
       </CardContent>
     </Card>
@@ -1793,11 +1840,9 @@ export function PickBanConfigsTab({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1.5">
-        <h2 className="font-onest text-lg font-semibold">{t("title")}</h2>
-        <p className="text-muted-foreground max-w-2xl text-sm">{t("intro")}</p>
-        {canManage ? null : <p className="text-muted-foreground text-sm">{t("readOnly")}</p>}
-      </div>
+      {canManage ? null : (
+        <p className="text-muted-foreground text-sm">{t("readOnly")}</p>
+      )}
 
       {configsQuery.isError ? (
         <Alert variant="destructive">
