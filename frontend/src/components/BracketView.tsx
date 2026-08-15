@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Pencil, FileEdit, ListChecks, Maximize2, Search } from "lucide-react";
-import Link from "next/link";
+import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { useTranslations } from "next-intl";
@@ -603,7 +603,7 @@ function MatchCard({
         style={{ height: footerHeight }}
       >
         <div className="flex items-center gap-2">
-          <Link
+          <HoverPrefetchLink
             href={`/encounters/${encounter.id}`}
             className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
             aria-label={t("bracket.viewMatch")}
@@ -613,13 +613,13 @@ function MatchCard({
             }}
           >
             <Search className="size-3.5" aria-hidden />
-          </Link>
+          </HoverPrefetchLink>
           <EncounterMapPoolModal
             encounterId={encounter.id}
             homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
             awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
           />
-          <Link
+          <HoverPrefetchLink
             href={withReturnTo(
               `/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`,
               returnTo
@@ -631,7 +631,7 @@ function MatchCard({
             }}
           >
             <ListChecks className="size-3.5" aria-hidden />
-          </Link>
+          </HoverPrefetchLink>
         </div>
         {meta.timeLabel && (
           <span

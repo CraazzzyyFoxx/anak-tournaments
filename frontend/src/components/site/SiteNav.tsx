@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
+import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -93,7 +93,7 @@ export function SiteNav({ variant, className }: SiteNavProps) {
           const [only] = group.items;
           if (group.items.length === 1) {
             return (
-              <Link
+              <HoverPrefetchLink
                 key={group.key}
                 href={only.href}
                 aria-current={isNavGroupActive(group.items, pathname) ? "page" : undefined}
@@ -105,7 +105,7 @@ export function SiteNav({ variant, className }: SiteNavProps) {
                 )}
               >
                 {titleOf(only.key)}
-              </Link>
+              </HoverPrefetchLink>
             );
           }
 
@@ -117,13 +117,13 @@ export function SiteNav({ variant, className }: SiteNavProps) {
               <AccordionContent>
                 <div className="grid gap-4 pl-4">
                   {group.items.map((item) => (
-                    <Link
+                    <HoverPrefetchLink
                       key={item.key}
                       href={item.href}
                       className="text-sm text-muted-foreground hover:text-foreground"
                     >
                       {titleOf(item.key)}
-                    </Link>
+                    </HoverPrefetchLink>
                   ))}
                 </div>
               </AccordionContent>
@@ -147,7 +147,7 @@ export function SiteNav({ variant, className }: SiteNavProps) {
             return (
               <NavigationMenuItem key={group.key}>
                 <NavigationMenuLink asChild>
-                  <Link
+                  <HoverPrefetchLink
                     href={only.href}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
@@ -157,7 +157,7 @@ export function SiteNav({ variant, className }: SiteNavProps) {
                     )}
                   >
                     {titleOf(only.key)}
-                  </Link>
+                  </HoverPrefetchLink>
                 </NavigationMenuLink>
               </NavigationMenuItem>
             );

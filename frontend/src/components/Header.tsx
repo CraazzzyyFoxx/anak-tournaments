@@ -62,7 +62,13 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
       </a>
       {tenantMode ? (
         tenantWorkspace ? (
+          // prefetch={false} on both logo links: the header is on every page, so
+          // these sit in the viewport of every page, and `/` is force-dynamic —
+          // Next's default would server-render the home page for every visitor
+          // who never clicks the logo. Measured 463 such renders in 23 minutes
+          // on 2026-08-15.
           <Link
+            prefetch={false}
             href="/"
             aria-label={`${tenantWorkspace.name} — ${t("common.homeLink")}`}
             className="flex items-center gap-2 rounded-lg outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
@@ -94,6 +100,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
           <SheetTitle className="sr-only">{t("nav.mobileMenuTitle")}</SheetTitle>
           <nav className="grid gap-2 text-lg font-medium">
             <Link
+              prefetch={false}
               href="/"
               aria-label={t("common.homeLink")}
               className="mb-4 flex items-center gap-2 text-lg font-semibold"

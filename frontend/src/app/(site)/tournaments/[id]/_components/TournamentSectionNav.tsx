@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
@@ -199,7 +199,7 @@ export default function TournamentSectionNav({
                 }
 
                 return (
-                  <Link
+                  <HoverPrefetchLink
                     key={item.id}
                     ref={item.active ? setActiveRef : undefined}
                     href={item.href}
@@ -207,7 +207,7 @@ export default function TournamentSectionNav({
                     aria-current={item.active ? "page" : undefined}
                   >
                     {content}
-                  </Link>
+                  </HoverPrefetchLink>
                 );
               })}
             </div>
