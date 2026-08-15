@@ -525,6 +525,15 @@ async def submit_captain_report(
     report = next((r for r in encounter.captain_reports if r.team_id == team_id), None)
     if report is None:
         report = models.EncounterCaptainReport(encounter_id=encounter.id, team_id=team_id)
+        # An empty collection assigned BEFORE the flush below, so the append that
+        # follows it never reads the table. Once the row is persistent a
+        # ``map_codes`` touch that was never loaded emits a lazy SELECT --
+        # ``lazy="selectin"`` is a QUERY-time strategy and falls back to a plain
+        # lazy load for a single instance -- and that implicit IO from sync
+        # attribute access is ``MissingGreenlet`` under async SQLAlchemy. Only
+        # the first report of a team hit this: the branch below re-uses a report
+        # whose codes ``_load_encounter_with_reports`` already eager-loaded.
+        report.map_codes = []
         session.add(report)
         encounter.captain_reports.append(report)
     else:

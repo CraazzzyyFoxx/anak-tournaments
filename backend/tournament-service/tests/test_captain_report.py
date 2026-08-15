@@ -11,6 +11,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, patch
 
+from sqlalchemy import inspect as sa_inspect
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -147,12 +149,27 @@ def _mk_session(
 
     added: list[object] = []
 
+    async def fake_flush():
+        # A real flush turns a pending report persistent, and from then on the
+        # first touch of a collection it never loaded emits a lazy SELECT --
+        # implicit IO from sync attribute access, i.e. MissingGreenlet under an
+        # async session. That is how a team's FIRST report crashed in production
+        # (captain.py attaching map codes after the flush), so the writer must
+        # seed the collection before flushing. An AsyncMock session can never
+        # emit that load, so the invariant is asserted here instead.
+        for obj in added:
+            if type(obj).__name__ == "EncounterCaptainReport" and "map_codes" in sa_inspect(obj).unloaded:
+                raise AssertionError(
+                    "flushed a new EncounterCaptainReport whose map_codes collection was never "
+                    "loaded; the next touch of it lazy-loads (MissingGreenlet under asyncio)"
+                )
+
     return SimpleNamespace(
         execute=AsyncMock(side_effect=fake_execute),
         get=AsyncMock(side_effect=fake_get),
         commit=AsyncMock(),
         refresh=AsyncMock(),
-        flush=AsyncMock(),
+        flush=AsyncMock(side_effect=fake_flush),
         add=lambda obj: added.append(obj),
         _added=added,
     )
@@ -334,6 +351,28 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         self.assertEqual(by_index[2].map_id, 55)
         self.assertIsNone(by_index[3].map_id)  # soft: index beyond the settled maps
         self.assertEqual(by_index[1].code, "AAA")
+
+    async def test_a_first_report_carries_its_codes_without_reading_them(self) -> None:
+        """A team's first report is a brand-new row, so nothing eager-loaded its
+        codes: ``submit_captain_report`` has to seed the collection itself before
+        it flushes, or attaching the codes lazy-loads and raises MissingGreenlet
+        (Sentry, captain.py, 2026-07-24 .. 2026-08-15). ``_mk_session``'s flush
+        enforces the seeding; this pins the codes still landing on the report."""
+        encounter = _mk_encounter()
+        session = _mk_session(encounter, [100])
+        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
+            await captain_service.submit_captain_report(
+                session,
+                _mk_user(),
+                10,
+                home_score=2,
+                away_score=0,
+                closeness=7,
+                map_codes=[(1, "AAA"), (2, "BBB")],
+            )
+        report = encounter.captain_reports[0]
+        self.assertNotIn("map_codes", sa_inspect(report).unloaded)
+        self.assertEqual(["AAA", "BBB"], [mc.code for mc in report.map_codes])
 
 
 class ConfigurableReportFields(IsolatedAsyncioTestCase):
