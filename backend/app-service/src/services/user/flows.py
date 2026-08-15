@@ -1130,11 +1130,16 @@ async def get_profile(
         if team.tournament.is_league:
             continue
 
+        # Participation, not scoring: a live tournament has no final placement
+        # yet, but the player is already in it — counting only scored events
+        # reported 0 tournaments and collapsed the whole profile into the
+        # empty-career panel.
+        tournaments_count += 1
+
         placement = _mappers.resolve_team_placement(team)
         if placement is None:
             continue
         placements.append(placement)
-        tournaments_count += 1
         if placement == 1:
             tournaments_won += 1
         for standing in team.standings:

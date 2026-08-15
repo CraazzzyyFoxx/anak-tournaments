@@ -2793,6 +2793,13 @@ async def get_teams(
     """
     Retrieves a paginated list of teams associated with a user, optionally including related entities.
 
+    Scoped exactly like ``get_tournaments_with_stats`` (which powers the
+    Tournaments tab): a tournament belongs to a user's history as soon as the
+    user has played an encounter in it, not once ``is_finished`` flips. Gating on
+    ``is_finished`` left the profile of a player whose only event is the live one
+    completely empty even though every other read (maps, heroes, roles,
+    encounters) already counted it. Hidden tournaments (issue #115) never appear.
+
     Args:
         session: An SQLAlchemy `AsyncSession` for database interaction.
         user_id: The ID of the user to retrieve teams for.
@@ -2803,18 +2810,30 @@ async def get_teams(
         1. A sequence of `Team` model instances.
         2. The total count of teams associated with the user.
     """
+    played_encounter = (
+        sa.select(1)
+        .select_from(models.Encounter)
+        .where(
+            sa.or_(
+                models.Encounter.home_team_id == models.Team.id,
+                models.Encounter.away_team_id == models.Team.id,
+            )
+        )
+        .exists()
+    )
+    scope = (
+        models.WorkspaceMember.player_id == user_id,
+        models.Player.is_substitution.is_(False),
+        models.Tournament.is_hidden.is_(False),
+        played_encounter,
+    )
+
     total_query = (
         sa.select(sa.func.count(sa.distinct(models.Team.id)))
         .join(models.Player, models.Player.team_id == models.Team.id)
         .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.WorkspaceMember.player_id == user_id,
-                models.Player.is_substitution.is_(False),
-                models.Tournament.is_finished.is_(True),
-            )
-        )
+        .where(sa.and_(*scope))
     )
 
     query = (
@@ -2823,13 +2842,7 @@ async def get_teams(
         .join(models.Player, models.Player.team_id == models.Team.id)
         .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.WorkspaceMember.player_id == user_id,
-                models.Player.is_substitution.is_(False),
-                models.Tournament.is_finished.is_(True),
-            )
-        )
+        .where(sa.and_(*scope))
     )
     if workspace_id is not None:
         total_query = total_query.where(models.Tournament.workspace_id == workspace_id)
