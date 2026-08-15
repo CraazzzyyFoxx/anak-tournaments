@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import patch
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -36,6 +37,7 @@ from shared.models.tournament.pick_ban import (  # noqa: E402
     PickBanSession,
 )
 from shared.models.tournament.stage import Stage  # noqa: E402
+from src.services.encounter import pick_ban_session as pick_ban_session_module  # noqa: E402
 from src.services.encounter.pick_ban_session import (  # noqa: E402
     REASON_NOT_READY,
     REASON_WAITING_MAP,
@@ -705,6 +707,7 @@ class AdvanceToNextRoundCandidateFloorTests(IsolatedAsyncioTestCase):
             encounter=_encounter(best_of=2),
         )
         pick_ban = self._pick_ban(config)
+        session.existing = pick_ban  # `advance_to_next_round` re-reads it under FOR UPDATE
 
         with self.assertRaises(HTTPException) as ctx:
             await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
@@ -731,6 +734,7 @@ class AdvanceToNextRoundCandidateFloorTests(IsolatedAsyncioTestCase):
             encounter=_encounter(best_of=2),
         )
         pick_ban = self._pick_ban(config)
+        session.existing = pick_ban
 
         result = await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
 
@@ -837,6 +841,7 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
         config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
         session = _FakeSession(config=config, entries=RESOLVED_ROUND_ONE, encounter=_encounter(best_of=2))
         pick_ban = self._pick_ban(config)
+        session.existing = pick_ban
 
         await advance_to_next_round(session, pick_ban, completed_round=1, winner=None)
 
@@ -852,6 +857,7 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
             encounter=_encounter(best_of=2),
         )
         pick_ban = self._pick_ban(config)
+        session.existing = pick_ban
 
         await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
 
@@ -863,6 +869,7 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
         config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
         session = _FakeSession(config=config, entries=RESOLVED_ROUND_ONE, encounter=_encounter(best_of=1))
         pick_ban = self._pick_ban(config)
+        session.existing = pick_ban
 
         await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
 
@@ -882,6 +889,7 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
             encounter=_encounter(best_of=3),
         )
         pick_ban = self._pick_ban(config, kind=PickBanKind.HERO, sequence=["ban_home", "ban_away"])
+        session.existing = pick_ban
 
         await advance_to_next_round(session, pick_ban, completed_round=1, winner="away")
 
@@ -903,6 +911,7 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
         )
         session = _FakeSession(config=config, entries=RESOLVED_ROUND_ONE, encounter=_encounter(best_of=2))
         pick_ban = self._pick_ban(config)
+        session.existing = pick_ban
 
         await advance_to_next_round(session, pick_ban, completed_round=1, winner=None)
 
@@ -917,6 +926,7 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
         config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
         session = _FakeSession(config=config, entries=RESOLVED_ROUND_ONE, encounter=_encounter(best_of=2))
         pick_ban = self._pick_ban(config)
+        session.existing = pick_ban
 
         unloaded = await session.get(PickBanConfig, config.id)
         with self.assertRaises(MissingGreenlet):
@@ -924,4 +934,40 @@ class AdvanceToNextRoundLoopTests(IsolatedAsyncioTestCase):
 
         await advance_to_next_round(session, pick_ban, completed_round=1, winner="home")
 
+        self.assertEqual([21, 22], [row.item_id for row in session.pool_rows])
+
+
+class AdvanceLocksTheSessionTests(IsolatedAsyncioTestCase):
+    """Appending a round is a write gated on a read -- "has round N+1 already
+    been appended". Unlocked, two simultaneous readers both answered no and
+    both inserted the round's candidates, so the round offered every item
+    twice. It locks its own row rather than trusting the caller: a state read,
+    a map result and ``elect_opener`` all reach it."""
+
+    async def test_it_locks_before_deciding_anything(self) -> None:
+        config = _config(slots=[_slot(1, [11, 12]), _slot(2, [21, 22])])
+        session = _FakeSession(config=config, entries=RESOLVED_ROUND_ONE, encounter=_encounter(best_of=2))
+        pick_ban = SimpleNamespace(
+            id=900,
+            encounter_id=500,
+            kind=PickBanKind.MAP,
+            config_id=config.id,
+            first_side="home",
+            resolved_sequence_json=["ban_home", "decider"],
+            awaiting_choice=False,
+            pending_loser_side=None,
+            status="completed",
+            current_step_started_at=None,
+        )
+        session.existing = pick_ban
+        locked: list[int] = []
+
+        async def spy(_session, target):
+            locked.append(target.id)
+            return target
+
+        with patch.object(pick_ban_session_module, "lock_pick_ban_session", spy):
+            await advance_to_next_round(session, pick_ban, completed_round=1, winner=None)
+
+        self.assertEqual([900], locked)
         self.assertEqual([21, 22], [row.item_id for row in session.pool_rows])

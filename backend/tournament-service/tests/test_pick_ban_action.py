@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import patch
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -23,6 +24,7 @@ os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 from shared.core.enums import MapPickSide, MapPoolEntryStatus, MapVetoSessionStatus, PickBanKind  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
+from src.services.encounter import pick_ban_action  # noqa: E402
 from src.services.encounter.pick_ban_action import (  # noqa: E402
     apply_pick_ban_action,
     auto_complete_decider,
@@ -153,20 +155,39 @@ class AutoCompleteDeciderEntryTests(TestCase):
 
 
 class _FakeAutoCompleteSession:
-    """Just enough ``AsyncSession`` for ``auto_complete_decider``: it never
-    queries when ``pick_ban``/``pool`` are supplied directly, only commits and
-    refreshes."""
+    """Just enough ``AsyncSession`` for the self-healing resolvers.
 
-    def __init__(self) -> None:
+    Both of them re-read the session row and its pool once their cheap check
+    says there is work — that re-read is where the ``FOR UPDATE`` lives — so the
+    double has to answer it. ``pick_ban``/``pool`` are the stored state; passing
+    them to the resolver as well only supplies its unlocked pre-check.
+    """
+
+    def __init__(self, pick_ban: object | None = None, pool: list | None = None) -> None:
         self.commits = 0
         self.refreshed: list[object] = []
+        self.pick_ban = pick_ban
+        self.pool = pool if pool is not None else []
 
     async def execute(self, statement: object) -> object:
-        class _EmptyResult:
-            def scalar_one_or_none(self_inner) -> None:
-                return None
+        entity = statement.column_descriptions[0]["entity"]
+        rows = self.pool if getattr(entity, "__name__", "") == "PickBanEntry" else [self.pick_ban]
+        rows = [row for row in rows if row is not None]
 
-        return _EmptyResult()
+        class _Result:
+            def scalar_one_or_none(self_inner) -> object | None:
+                return rows[0] if rows else None
+
+            def scalars(self_inner) -> object:
+                return self_inner
+
+            def all(self_inner) -> list:
+                return list(rows)
+
+        return _Result()
+
+    async def get(self, model: type, pk: object) -> None:
+        return None
 
     async def commit(self) -> None:
         self.commits += 1
@@ -178,6 +199,7 @@ class _FakeAutoCompleteSession:
 class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
     async def test_resolves_and_commits_when_a_decider_is_pending(self) -> None:
         pick_ban = SimpleNamespace(
+            id=1,
             resolved_sequence_json=["ban_home", "ban_away", "decider"],
             status=MapVetoSessionStatus.ACTIVE.value,
             current_step_started_at=None,
@@ -187,7 +209,7 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
             make_entry(2, status=MapPoolEntryStatus.BANNED, picked_by=MapPickSide.AWAY),
             make_entry(3, status=MapPoolEntryStatus.AVAILABLE),
         ]
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, pool)
 
         entry = await auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
 
@@ -199,11 +221,12 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
 
     async def test_inactive_session_is_a_no_op(self) -> None:
         pick_ban = SimpleNamespace(
+            id=1,
             resolved_sequence_json=["decider"],
             status=MapVetoSessionStatus.COMPLETED.value,
             current_step_started_at=None,
         )
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban)
 
         entry = await auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=[make_entry(1)])
 
@@ -220,11 +243,12 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
 
     async def test_not_yet_at_a_decider_step_is_a_no_op(self) -> None:
         pick_ban = SimpleNamespace(
+            id=1,
             resolved_sequence_json=["ban_home", "decider"],
             status=MapVetoSessionStatus.ACTIVE.value,
             current_step_started_at=None,
         )
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban)
 
         entry = await auto_complete_decider(
             session,
@@ -237,6 +261,35 @@ class AutoCompleteDeciderTests(IsolatedAsyncioTestCase):
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
 
+    async def test_a_stale_reader_no_longer_awards_the_decider_twice(self) -> None:
+        """Same race, same shape: the survivor is a committed step too, so two
+        readers resolving it would consume two positions of the sequence. The
+        award is decided under the lock against a re-read, so a caller holding
+        the pre-award pool finds nothing to do."""
+        stored = SimpleNamespace(
+            id=1,
+            resolved_sequence_json=["ban_home", "decider", "ban_home"],
+            status=MapVetoSessionStatus.ACTIVE.value,
+            current_step_started_at=None,
+        )
+        pool = [
+            make_entry(1, status=MapPoolEntryStatus.BANNED, picked_by=MapPickSide.HOME, action_index=0),
+            make_entry(2),
+            make_entry(3),
+        ]
+        session = _FakeAutoCompleteSession(stored, pool)
+        stale_pool = [SimpleNamespace(**vars(candidate)) for candidate in pool]
+
+        awarded = await auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=stored, pool=pool)
+        self.assertIsNotNone(awarded)
+        commits = session.commits
+
+        second = await auto_complete_decider(session, 500, PickBanKind.MAP, pick_ban=stored, pool=stale_pool)
+
+        self.assertIsNone(second)
+        self.assertEqual(commits, session.commits)
+        self.assertEqual(1, len([e for e in pool if e.status == MapPoolEntryStatus.PICKED.value]))
+
 
 class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
     """``auto_resolve_timeout`` stands in for a captain who let their turn
@@ -246,6 +299,7 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
 
     def _expired_pick_ban(self, sequence: list[str], *, timer: int | None = 30) -> SimpleNamespace:
         return SimpleNamespace(
+            id=1,
             resolved_sequence_json=sequence,
             status=MapVetoSessionStatus.ACTIVE.value,
             turn_timer_seconds=timer,
@@ -256,9 +310,9 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
     async def test_auto_bans_a_random_available_item_once_expired(self) -> None:
         pick_ban = self._expired_pick_ban(["ban_home", "decider"])
         pool = [make_entry(1), make_entry(2)]
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, pool)
 
-        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban)
 
         self.assertIsNotNone(entry)
         self.assertEqual(MapPoolEntryStatus.BANNED.value, entry.status)
@@ -273,6 +327,7 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
 
     async def test_not_yet_expired_is_a_no_op(self) -> None:
         pick_ban = SimpleNamespace(
+            id=1,
             resolved_sequence_json=["ban_home", "decider"],
             status=MapVetoSessionStatus.ACTIVE.value,
             turn_timer_seconds=30,
@@ -280,9 +335,9 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
             config_id=None,
         )
         pool = [make_entry(1), make_entry(2)]
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, pool)
 
-        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban)
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
@@ -290,6 +345,7 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
 
     async def test_no_timer_configured_is_a_no_op(self) -> None:
         pick_ban = SimpleNamespace(
+            id=1,
             resolved_sequence_json=["ban_home", "decider"],
             status=MapVetoSessionStatus.ACTIVE.value,
             turn_timer_seconds=None,
@@ -297,9 +353,9 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
             config_id=None,
         )
         pool = [make_entry(1), make_entry(2)]
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, pool)
 
-        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban)
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
@@ -307,11 +363,9 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
     async def test_inactive_session_is_a_no_op(self) -> None:
         pick_ban = self._expired_pick_ban(["ban_home", "decider"])
         pick_ban.status = MapVetoSessionStatus.COMPLETED.value
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, [make_entry(1), make_entry(2)])
 
-        entry = await auto_resolve_timeout(
-            session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=[make_entry(1), make_entry(2)]
-        )
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban)
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
@@ -321,9 +375,9 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
         owns it, unconditionally, not this function."""
         pick_ban = self._expired_pick_ban(["decider"])
         pool = [make_entry(1)]
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, pool)
 
-        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban)
 
         self.assertIsNone(entry)
         self.assertEqual(0, session.commits)
@@ -332,9 +386,9 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
     async def test_only_the_side_on_the_clock_is_picked(self) -> None:
         pick_ban = self._expired_pick_ban(["ban_away", "ban_home", "decider"])
         pool = [make_entry(1), make_entry(2), make_entry(3)]
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, pool)
 
-        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban)
 
         self.assertIsNotNone(entry)
         self.assertEqual("away", entry.picked_by)
@@ -346,12 +400,66 @@ class AutoResolveTimeoutTests(IsolatedAsyncioTestCase):
             make_entry(2),
             make_entry(3),
         ]
-        session = _FakeAutoCompleteSession()
+        session = _FakeAutoCompleteSession(pick_ban, pool)
 
-        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban, pool=pool)
+        entry = await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=pick_ban)
 
         self.assertIsNotNone(entry)
         self.assertIn(entry.item_id, (2, 3))
+
+    async def test_a_stale_reader_no_longer_re_resolves_the_same_turn(self) -> None:
+        """The room is polled by every client in it, and they all refetch at
+        once on a realtime event. One expired turn was therefore resolved by
+        every reader that got its read in before the first commit -- each
+        auto-action landing on the SAME side and eating the opposite side's
+        next step. The resolver now decides under the session lock, against a
+        re-read: a reader holding a pre-commit snapshot finds the clock already
+        bumped and does nothing."""
+        stored = self._expired_pick_ban(["ban_home", "ban_away", "decider"])
+        pool = [make_entry(1), make_entry(2), make_entry(3)]
+        session = _FakeAutoCompleteSession(stored, pool)
+        stale = SimpleNamespace(**vars(stored))
+
+        self.assertIsNotNone(await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=stored))
+        commits = session.commits
+
+        self.assertIsNone(await auto_resolve_timeout(session, 500, PickBanKind.MAP, pick_ban=stale))
+        self.assertEqual(commits, session.commits)
+        self.assertEqual(1, len([e for e in pool if e.status == MapPoolEntryStatus.BANNED.value]))
+
+
+class _StopAfterLookup(Exception):
+    """Cuts a service short the moment it has asked for its session row."""
+
+
+class SessionLockContractTests(IsolatedAsyncioTestCase):
+    """Every path that COMMITS a step must ask for the session row locked.
+
+    White-box on purpose: the lock is the whole correctness argument, and a
+    committing path that quietly drops ``for_update`` reintroduces the raced
+    step with no other visible symptom until a room comes out lopsided.
+    """
+
+    async def _for_update_flag(self, run) -> list[bool]:
+        seen: list[bool] = []
+
+        async def spy(_session, _encounter_id, _kind, *, for_update: bool = False):
+            seen.append(for_update)
+            raise _StopAfterLookup
+
+        with patch.object(pick_ban_action.pick_ban_session_service, "get_pick_ban_session", spy):
+            with self.assertRaises(_StopAfterLookup):
+                await run()
+        return seen
+
+    async def test_the_captain_act_path_locks_before_it_reads_anything(self) -> None:
+        flags = await self._for_update_flag(
+            lambda: pick_ban_action.perform_pick_ban_action(
+                _FakeAutoCompleteSession(), 500, PickBanKind.MAP, "home", 1, "ban"
+            )
+        )
+
+        self.assertEqual([True], flags)
 
 
 class ApplyPickBanActionUniquenessTests(TestCase):

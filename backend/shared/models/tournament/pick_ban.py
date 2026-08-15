@@ -16,7 +16,18 @@ dropping the old tables).
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, Enum, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
@@ -321,7 +332,25 @@ class PickBanEntry(db.TimeStampIntegerMixin):
     """
 
     __tablename__ = "pick_ban_entry"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        # One committed step, one entry. ``action_index`` IS the position in the
+        # session's resolved sequence that produced this entry, so two rows
+        # claiming the same position means one step was resolved twice -- the
+        # shape a lost race leaves behind (see
+        # ``pick_ban_session.get_pick_ban_session``). Locking is what prevents
+        # it; this is the backstop that turns a slipped-through duplicate into a
+        # failed write instead of a silently lopsided ban phase. Partial,
+        # because an AVAILABLE candidate (and an undone action) carries no
+        # position at all and there are many of those per session.
+        Index(
+            "uq_pick_ban_entry_session_action_index",
+            "session_id",
+            "action_index",
+            unique=True,
+            postgresql_where=text("action_index IS NOT NULL"),
+        ),
+        {"schema": "tournament"},
+    )
 
     session_id: Mapped[int] = mapped_column(ForeignKey(PickBanSession.id, ondelete="CASCADE"), index=True)
     item_id: Mapped[int] = mapped_column(Integer(), index=True)

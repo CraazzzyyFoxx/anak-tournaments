@@ -83,9 +83,47 @@ async def highest_round_of(session: AsyncSession, pick_ban: PickBanSession) -> i
     return max(rounds) if rounds else None
 
 
-async def get_pick_ban_session(session: AsyncSession, encounter_id: int, kind: PickBanKind) -> PickBanSession | None:
+async def get_pick_ban_session(
+    session: AsyncSession,
+    encounter_id: int,
+    kind: PickBanKind,
+    *,
+    for_update: bool = False,
+) -> PickBanSession | None:
+    """The encounter's ``kind``-scoped session, optionally locked for writing.
+
+    ``for_update`` is REQUIRED of every path that commits a step, and it is the
+    only thing serializing them. The step cursor is derived from a read --
+    ``engine.get_current_step`` counts the session's committed entries and
+    indexes that into the cumulative sequence -- and written back as a new
+    committed entry. Two unlocked requests overlapping on one step therefore
+    both resolve it, both pass the turn check, and both commit: the count jumps
+    by two, one side gets an extra action and the opposite side's step is
+    silently swallowed. Landing on a round's LAST step it is worse still, since
+    the session then holds one entry MORE than its sequence and every later
+    round of the series loses an action.
+
+    ``populate_existing`` matters as much as the lock: the row is usually
+    already in the identity map (the read path loaded it before deciding it had
+    work to do), and without it SQLAlchemy hands back that pre-lock snapshot --
+    which is exactly the stale state the lock was taken to escape.
+    """
+    query = select(PickBanSession).where(PickBanSession.encounter_id == encounter_id, PickBanSession.kind == kind)
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    result = await session.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def lock_pick_ban_session(session: AsyncSession, pick_ban: PickBanSession) -> PickBanSession | None:
+    """Lock an already-loaded session row and refresh it, for a committing path
+    that was handed the object rather than fetching it. Returns ``None`` when
+    the row is gone (a concurrent reset dropped it)."""
     result = await session.execute(
-        select(PickBanSession).where(PickBanSession.encounter_id == encounter_id, PickBanSession.kind == kind)
+        select(PickBanSession)
+        .where(PickBanSession.id == pick_ban.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
@@ -554,12 +592,24 @@ async def advance_to_next_round(
     ``result_loser_choice`` and ``loser_choice`` was not supplied — the caller
     must catch this, set ``awaiting_choice=True`` and wait for an explicit
     ``elect_opener`` call instead of resolving a side here.
+
+    Takes the session lock itself rather than trusting its caller: it is
+    reached from a state read, from a map result and from ``elect_opener``, and
+    the idempotency check below ("has round N+1 already been appended") is a
+    read the appending INSERT depends on. Two unlocked appenders both passed it
+    and both wrote the round's candidates.
     """
+    locked = await lock_pick_ban_session(session, pick_ban)
+    if locked is None:
+        return pick_ban  # a concurrent reset dropped the session
+    pick_ban = locked
     config = await _load_config(session, pick_ban.config_id) if pick_ban.config_id else None
     if config is None or not rounds_are_progressive(config, pick_ban.kind):
         return pick_ban
 
-    entries_result = await session.execute(select(PickBanEntry).where(PickBanEntry.session_id == pick_ban.id))
+    entries_result = await session.execute(
+        select(PickBanEntry).where(PickBanEntry.session_id == pick_ban.id).execution_options(populate_existing=True)
+    )
     entries = list(entries_result.scalars().all())
     if engine.get_current_step(pick_ban.resolved_sequence_json, entries) is not None:
         return pick_ban  # the round in play still has steps left to take
@@ -755,11 +805,23 @@ async def sync_hero_rounds(session: AsyncSession, encounter: Encounter, *, commi
     anyone reads or acts on it. One round per call in practice —
     ``advance_to_next_round`` refuses to open round N+1 while round N is
     unfinished, which is exactly the loop's own barrier.
+
+    Double-checked like the room's other self-healing steps: the unlocked read
+    below only answers "is a round owed at all", and the append itself runs
+    under the session lock. Unlocked, two simultaneous readers both saw the
+    round missing and both inserted its candidates — the round then offered
+    every hero twice.
     """
     hero = await get_pick_ban_session(session, encounter.id, PickBanKind.HERO)
     if hero is None or hero.status == MapVetoSessionStatus.CANCELLED:
         return
     target = min(await settled_map_rounds(session, encounter.id), encounter.best_of)
+    if (await highest_round_of(session, hero) or 0) >= target:
+        return
+
+    hero = await get_pick_ban_session(session, encounter.id, PickBanKind.HERO, for_update=True)
+    if hero is None or hero.status == MapVetoSessionStatus.CANCELLED:
+        return
     highest = await highest_round_of(session, hero) or 0
     while highest < target:
         winner = await map_round_winner(session, encounter, highest)
