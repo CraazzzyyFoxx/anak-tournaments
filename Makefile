@@ -27,8 +27,13 @@ BACKUP_COMPOSE = docker compose -f docker-compose.backup.yml --env-file $(BACKUP
 # `prod-up` applies this scale-out itself on every start (auth/identity +
 # tournament run replicated from boot, no separate `prod-scale` call needed).
 # Override on the CLI, e.g.
-#   make prod-up PROD_SCALE='app-svc=3 balancer-svc=2'
-PROD_SCALE ?= app-svc=2 identity-svc=2 tournament-svc=2
+#   make prod-up PROD_SCALE='app-svc=2 balancer-svc=2'
+# frontend is deliberately NOT here: it is replicated declaratively via
+# `deploy.replicas` in docker-compose.production.yml, because the production
+# deploy path is a GitHub release running plain `docker compose up -d` with no
+# --scale flag. A count that only exists in this variable would silently not
+# apply there.
+PROD_SCALE ?= app-svc=2 identity-svc=2 tournament-svc=4
 
 help:
 	@echo "Available commands:"
