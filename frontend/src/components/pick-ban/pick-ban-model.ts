@@ -1,12 +1,10 @@
 /**
  * Pure helpers for the generic pick-ban room (map + hero kinds).
  *
- * Sibling of `@/components/veto/veto-model.ts`, NOT a drop-in replacement:
- * the new engine is round-based (`PickBanEntry.round`) rather than slot-based,
- * adds `protect` as a third action, and drops the `map_id`/`slot` naming for
- * the pool-agnostic `item_id`/`round`. The legacy map-veto room keeps using
- * its own model until the cutover (design:
- * docs/plans/2026-08-09-generic-pickban-engine.md).
+ * Successor to the retired slot-based map-veto model: this engine is
+ * round-based (`PickBanEntry.round`), adds `protect` as a third action, and
+ * drops the `map_id`/`slot` naming for the pool-agnostic `item_id`/`round`
+ * (design: docs/plans/2026-08-09-generic-pickban-engine.md).
  */
 import type {
   PickBanAction,
@@ -213,10 +211,11 @@ export const PICK_BAN_UNAVAILABLE_COPY = {
 } as const satisfies Record<VetoUnavailableReason, PickBanUnavailableCopy>;
 
 /**
- * A session's reserve snapshot as a lookup by slot position. Mirrors
- * `@/components/veto/veto-model.ts`'s `slotReserveMaps` exactly (see its
- * docstring for the string-key rationale) — `PickBanSession.slot_reserves`
- * is null for `kind: "hero"`, so this is always empty there.
+ * A session's reserve snapshot as a lookup by slot position. The column is
+ * JSON, so the wire's keys arrive stringified while every slot number in the
+ * room is a number — this is where that boundary is crossed.
+ * `PickBanSession.slot_reserves` is null for `kind: "hero"`, so this is always
+ * empty there.
  */
 export function pickBanReserveMap(session: PickBanSession | null): Map<number, number> {
   return new Map(
@@ -262,9 +261,9 @@ export interface PickBanStepRoundGroup extends PickBanRoundGroup {
 
 /**
  * The session `sequence` split across the rounds it resolves, or null for a
- * flat pool. Mirrors `veto-model.stepSlotGroups`: each round claims as many
- * consecutive steps as it has pool entries, riding the entries along so the
- * timeline can ask `roundState` about a group directly.
+ * flat pool. Each round claims as many consecutive steps as it has pool
+ * entries, riding the entries along so the timeline can ask `roundState`
+ * about a group directly.
  */
 export function stepRoundGroups(
   sequence: string[],
@@ -302,9 +301,8 @@ export function roundState(
 /**
  * Whether the viewer may select `entry` right now.
  *
- * Mirrors `veto-model.isEntrySelectable`, generalized to `round` and to the
- * `protected` status: a protected entry is never selectable by a `ban` (the
- * grid still shows it as `available`-looking to no one, since `protect` is
+ * A protected entry is never selectable by a `ban` (the grid still shows it as
+ * `available`-looking to no one, since `protect` is
  * a same-side immunity, not a public "safe" marker other sides can act around
  * differently — the server is the single source of truth for what a click
  * resolves to, this only gates whether the click fires at all).
@@ -398,9 +396,8 @@ export type PickBanStatusLabelKey = `status.${PickBanEntryStatus | "remaining"}`
 /**
  * Which `status.*` key labels `entry`.
  *
- * `remaining` mirrors `veto-model.statusLabelKey`'s decider-survivor case:
- * reachable only in round mode, when nobody picked the entry and it is simply
- * what the sequence left standing.
+ * `remaining` is the decider-survivor case: reachable only in round mode, when
+ * nobody picked the entry and it is simply what the sequence left standing.
  */
 export function statusLabelKey(entry: PickBanEntry): PickBanStatusLabelKey {
   if (entry.round != null && entry.status === "picked" && entry.picked_by === "decider") {

@@ -15,10 +15,9 @@ interface PickBanCountdownProps {
 }
 
 /**
- * Client-side turn-timer indicator for the generic pick-ban room. Sibling of
- * `@/components/veto/VetoCountdown`, kept separate only because it reads the
- * `pickBan.room` translation namespace instead of `encounters.veto.room` —
- * the rendering logic is otherwise identical.
+ * Client-side turn-timer indicator for the generic pick-ban room: it reads the
+ * `pickBan.room` translation namespace and renders the deadline as a shrinking
+ * bar plus a mm:ss readout.
  */
 export function PickBanCountdown({ deadline, totalSeconds }: PickBanCountdownProps) {
   const t = useTranslations("pickBan.room");

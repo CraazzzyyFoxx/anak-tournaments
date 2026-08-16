@@ -74,8 +74,6 @@ export default defineConfig({
       "src/app/(site)/tournaments/[id]/_views/TournamentParticipantsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_views/TournamentSchedulePage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
-      "src/components/veto/**/*.test.ts",
-      "src/components/veto/**/*.test.tsx",
       "src/components/pick-ban/**/*.test.ts",
       "src/components/pick-ban/**/*.test.tsx",
       // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
@@ -95,6 +93,10 @@ export default defineConfig({
       "src/components/ui/toggle-group.test.tsx",
       "src/components/ui/resizable.test.tsx",
       "src/components/status/**/*.test.tsx",
+      // `src/components/stream` is vitest-only, so a directory glob is safe here
+      // and covers the next test added without another edit to this allow-list.
+      "src/components/stream/**/*.test.ts",
+      "src/components/stream/**/*.test.tsx",
       // File-level, not a directory glob: this folder holds BOTH runners'
       // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
       // so a directory glob here drags it into vitest and it fails on the import.
