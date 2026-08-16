@@ -69,10 +69,16 @@ logger = logging.getLogger(__name__)
 #
 # The mu spread features (max/std) carry what the roster average hides: a
 # star-carried roster and a flat one with the same ``avg_mu`` do not win the
-# same matches. Role mu gaps compare like against like (a weak tank behind
-# strong supports vanishes from ``avg_mu``); the synergy pair features measure
-# how much of the roster has already played together and how well — the one
-# thing the balancer deliberately does NOT equalize.
+# same matches.
+#
+# The frames ALSO emit role mu gaps (``role_mu_gap_{tank,damage,support}``) and
+# roster synergy (``{home,away}_synergy_{pairs,winrate}``, ``synergy_winrate_gap``)
+# — deliberately NOT modelled yet. The 2026-08 walk-forward ablation over the
+# last 6 tournaments (chronological cuts, standings Spearman vs realised
+# places) measured: base13 0.310, +synergy 0.263, +role gaps 0.065, all 0.170 —
+# on ~4k encounters both additions are noise the booster overfits. They stay in
+# the frames so the ablation can be re-run as data grows; extend this tuple only
+# with a walk-forward win in hand.
 STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "home_avg_rank",
     "away_avg_rank",
@@ -87,14 +93,6 @@ STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "max_mu_gap",
     "home_std_mu",
     "away_std_mu",
-    "role_mu_gap_tank",
-    "role_mu_gap_damage",
-    "role_mu_gap_support",
-    "home_synergy_pairs",
-    "away_synergy_pairs",
-    "home_synergy_winrate",
-    "away_synergy_winrate",
-    "synergy_winrate_gap",
 )
 
 
