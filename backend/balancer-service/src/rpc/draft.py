@@ -659,9 +659,7 @@ def register(broker: Any, logger: Any) -> None:
                 c.require_workspace_permission(data, user, ws_id, "team", "create")
                 # Only ``start`` has a phase gate, and only a superuser may skip it.
                 extra = {"force": bool(user.is_superuser)} if superuser_forces else {}
-                return await _lifecycle_action(
-                    session, _redis(logger), session_id, action, event_type, user, **extra
-                )
+                return await _lifecycle_action(session, _redis(logger), session_id, action, event_type, user, **extra)
 
             return await c.envelope(logger, subject, op, session_factory=_SF)
 

@@ -92,9 +92,7 @@ async def _finalize(
     return result.rowcount == 1
 
 
-async def _apply_dynamic_round_order(
-    session: AsyncSession, draft_session: DraftSession, next_pick: DraftPick
-) -> bool:
+async def _apply_dynamic_round_order(session: AsyncSession, draft_session: DraftSession, next_pick: DraftPick) -> bool:
     """Re-seat a CUSTOM round whose rule ranks teams by their live average.
 
     Runs on the first pick of a round only. Returns True when the seating
@@ -263,9 +261,7 @@ def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftR
     return {role: max(0, targets.get(role.value, 0) - counts.get(role.value, 0)) + free_flex for role in DraftRole}
 
 
-async def _team_avg_drafted_rank(
-    session: AsyncSession, draft_session_id: int, shape: RosterShape
-) -> dict[int, float]:
+async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int, shape: RosterShape) -> dict[int, float]:
     """Average drafted-role rank per team (picked players + captains).
 
     Uses each pick's frozen ``target_rank_value``; falls back to the rank the

@@ -338,9 +338,7 @@ async def resync_pick_order(session: AsyncSession, draft_session: DraftSession) 
         return 0
     picks = (
         await session.scalars(
-            sa.select(DraftPick)
-            .where(DraftPick.session_id == draft_session.id)
-            .order_by(DraftPick.overall_no.asc())
+            sa.select(DraftPick).where(DraftPick.session_id == draft_session.id).order_by(DraftPick.overall_no.asc())
         )
     ).all()
     if not picks:
