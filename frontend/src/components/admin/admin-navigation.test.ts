@@ -103,9 +103,18 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
       "/admin/users",
       "/admin/rank",
       "/admin/subscriptions",
+      "/admin/streams",
       "/admin/workspaces",
       "/admin/audit",
     ]);
+  });
+
+  it("gates /admin/streams on a GLOBAL stream.read", () => {
+    // One poller, one Redis key: `GET /api/streams/health` has no workspace
+    // dimension to authorize against, so a workspace-scoped grant must not open
+    // the page (it would 403 on the only request behind it).
+    expect(getMatchingAdminRoute("/admin/streams")?.permissions).toEqual(["stream.read"]);
+    expect(getMatchingAdminRoute("/admin/streams")?.globalOnly).toBe(true);
   });
 
   it("keeps per-tab access route gating after the single-entry collapse", () => {

@@ -17,6 +17,11 @@ import { Hero } from "@/types/hero.types";
 import { Achievement } from "@/types/achievement.types";
 import { Gamemode } from "@/types/gamemode.types";
 import { MapRead } from "@/types/map.types";
+import type {
+  TournamentLink,
+  TournamentLinkCreateInput,
+  TournamentLinkUpdateInput
+} from "@/types/stream.types";
 import {
   TournamentCreateInput,
   TournamentUpdateInput,
@@ -104,6 +109,7 @@ import {
   SubscriptionUserCollectionRow,
   SubscriptionCollectTriggerInput,
   SubscriptionCollectTriggerResult,
+  StreamPollHealth,
   EncounterResultAuditRead,
   EncounterResultRead,
   EncounterSetResultInput,
@@ -280,6 +286,52 @@ class AdminService {
 
   async removeTournamentPreviewUser(tournamentId: number, authUserId: number): Promise<void> {
     await apiFetch(`/api/v1/admin/tournaments/${tournamentId}/preview-access/${authUserId}`, {
+      method: "DELETE"
+    });
+  }
+
+  // ─── Tournament links (typed Discord/stream/VOD/... links) ─────────────────
+
+  /**
+   * Flat array, not a `PaginatedResponse`: a tournament carries a handful of
+   * links and the backend returns them already ordered by `(sort_order, id)`.
+   */
+  async listTournamentLinks(
+    tournamentId: number,
+    opts?: { activeOnly?: boolean }
+  ): Promise<TournamentLink[]> {
+    const response = await apiFetch("/api/v1/admin/tournament-links", {
+      query: {
+        tournament_id: tournamentId,
+        ...(opts?.activeOnly != null && { active_only: opts.activeOnly })
+      }
+    });
+    return response.json();
+  }
+
+  async createTournamentLink(data: TournamentLinkCreateInput): Promise<TournamentLink> {
+    const response = await apiFetch("/api/v1/admin/tournament-links", {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async updateTournamentLink(
+    linkId: number,
+    data: TournamentLinkUpdateInput
+  ): Promise<TournamentLink> {
+    const response = await apiFetch(`/api/v1/admin/tournament-links/${linkId}`, {
+      method: "PATCH",
+      body: data
+    });
+    return response.json();
+  }
+
+  /** Soft delete — the row is flipped to `is_active: false`, not destroyed.
+   *  Restoring is `updateTournamentLink(id, { is_active: true })`. */
+  async deleteTournamentLink(linkId: number): Promise<void> {
+    await apiFetch(`/api/v1/admin/tournament-links/${linkId}`, {
       method: "DELETE"
     });
   }
@@ -1736,6 +1788,21 @@ class AdminService {
       method: "POST",
       body: data
     });
+    return response.json();
+  }
+
+  // ─── Twitch stream poller ──────────────────────────────────────────────────
+
+  /**
+   * Poller health. Note the domain: `/api/streams`, not `/api/v1`, so
+   * `domainBehavior` gives it `no-store` (no cache-policy dance) but still
+   * injects `workspace_id` by default — hence the explicit `skipWorkspace`.
+   * There is one poller and one Redis key behind this, so the read is
+   * platform-wide and authorizes against the GLOBAL `stream.read`; sending a
+   * workspace would be a scope the endpoint does not have.
+   */
+  async getStreamPollHealth(): Promise<StreamPollHealth> {
+    const response = await apiFetch("/api/streams/health", { skipWorkspace: true });
     return response.json();
   }
 

@@ -16,6 +16,7 @@ const NO_PERMS = {
   canUpdateTournament: false,
   canUpdateEncounter: false,
   canTeamRead: false,
+  canReadTournamentLink: false,
   teamFormation: "balancer"
 } as const;
 
@@ -23,6 +24,7 @@ const ALL_PERMS = {
   canUpdateTournament: true,
   canUpdateEncounter: true,
   canTeamRead: true,
+  canReadTournamentLink: true,
   teamFormation: "draft"
 } as const;
 
@@ -39,7 +41,8 @@ describe("allowedTab", () => {
     ["settings", false],
     ["pickBan", false],
     ["registration", false],
-    ["draft", false]
+    ["draft", false],
+    ["links", false]
   ])("without permissions: %s → %s", (tab, expected) => {
     expect(allowedTab(tab, NO_PERMS)).toBe(expected);
   });
@@ -65,6 +68,13 @@ describe("allowedTab", () => {
     expect(allowedTab("registration", { ...ALL_PERMS, canTeamRead: false })).toBe(false);
   });
 
+  // Without its own `case` the tab would fall into `default: return true` and
+  // be visible to every hub visitor — a leak, not a cosmetic slip.
+  test("links follows canReadTournamentLink alone", () => {
+    expect(allowedTab("links", { ...NO_PERMS, canReadTournamentLink: true })).toBe(true);
+    expect(allowedTab("links", { ...ALL_PERMS, canReadTournamentLink: false })).toBe(false);
+  });
+
   test("draft follows team formation, not permissions", () => {
     expect(allowedTab("draft", { ...NO_PERMS, teamFormation: "draft" })).toBe(true);
     expect(allowedTab("draft", { ...ALL_PERMS, teamFormation: "balancer" })).toBe(false);
@@ -75,6 +85,7 @@ describe("isTabKey", () => {
   test("accepts known tabs and rejects arbitrary segments", () => {
     expect(isTabKey("overview")).toBe(true);
     expect(isTabKey("settings")).toBe(true);
+    expect(isTabKey("links")).toBe(true);
     expect(isTabKey("rank-autofill")).toBe(false);
     expect(isTabKey("")).toBe(false);
   });

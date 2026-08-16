@@ -69,3 +69,21 @@ export interface TournamentLink {
   sort_order: number;
   is_active: boolean;
 }
+
+/**
+ * Create/update payloads of `/api/v1/admin/tournament-links`.
+ *
+ * `id` is server-assigned and `tournament_id` is immutable once created, so the
+ * update payload is a partial of the editable columns only.
+ */
+export interface TournamentLinkCreateInput {
+  tournament_id: number;
+  kind: TournamentLinkKind;
+  label?: string | null;
+  url: string;
+  sort_order?: number;
+}
+
+export type TournamentLinkUpdateInput = Partial<
+  Pick<TournamentLink, "kind" | "label" | "url" | "sort_order" | "is_active">
+>;

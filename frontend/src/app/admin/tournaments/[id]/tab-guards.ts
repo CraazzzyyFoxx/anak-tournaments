@@ -14,6 +14,7 @@ export const TAB_KEYS = [
   "settings",
   "draft",
   "pickBan",
+  "links",
   "logs"
 ] as const;
 
@@ -29,6 +30,7 @@ export function allowedTab(
     canUpdateTournament: boolean;
     canUpdateEncounter: boolean;
     canTeamRead: boolean;
+    canReadTournamentLink: boolean;
     teamFormation: "balancer" | "draft";
   }
 ): boolean {
@@ -39,6 +41,8 @@ export function allowedTab(
       return p.canUpdateEncounter;
     case "registration":
       return p.canTeamRead;
+    case "links":
+      return p.canReadTournamentLink;
     case "draft":
       return p.teamFormation === "draft";
     default:

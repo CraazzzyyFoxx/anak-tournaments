@@ -206,6 +206,58 @@ export interface SubscriptionCollectionConfig {
   batch_size: number;
 }
 
+// ─── Twitch stream poller ────────────────────────────────────────────────────
+
+/** Value of the `stream.collection` setting. Backend bounds: interval 30..3600s,
+ *  batch 1..100 (Helix `GET /streams` caps at 100 ids per call). */
+export interface StreamCollectionConfig {
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+}
+
+/** Outcome of the last poll tick. Mirrors the backend `StreamPollStatus` literal
+ *  (and the `status` label on `stream_poll_ticks_total`) so the panel, the API and
+ *  Grafana never disagree. */
+export type StreamPollStatus =
+  | "ok"
+  | "empty"
+  | "truncated"
+  | "not_configured"
+  | "rate_limited"
+  | "unauthorized"
+  | "unavailable"
+  | "error";
+
+/**
+ * Poller health. Platform-wide, not per-workspace: there is one poller and one
+ * Redis key, so the read wants the GLOBAL `stream.read` and carries no
+ * `workspace_id`.
+ */
+export interface StreamPollHealth {
+  /** The live config, echoed so the panel shows interval/batch next to the
+   *  outcome they produced instead of reading the settings table separately. */
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+  /** `null` = no tick has been recorded yet — the scheduler has not reached a due
+   *  tick. That is NOT a recorded failure, and the panel must not render it as
+   *  one: a failure names what went wrong, never-ran names nothing. */
+  status: StreamPollStatus | null;
+  /** `null` for the same reason as `status`: no tick has been recorded yet. */
+  last_run_at: string | null;
+  tournaments_active: number | null;
+  tournaments_updated: number | null;
+  channels_polled: number | null;
+  live_channels: number | null;
+  /** Twitch's `Ratelimit-Remaining` at the last call, out of an 800/min bucket
+   *  shared with identity-service's OAuth logins. */
+  ratelimit_remaining: number | null;
+  /** Twitch app credentials present in the worker's environment. Separates
+   *  "operator never set them" from "Twitch refused them" (`unauthorized`). */
+  credentials_configured: boolean;
+}
+
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
 import type { RosterSlotMap } from "@/lib/roster-shape";
