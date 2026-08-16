@@ -2,7 +2,15 @@
 
 import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Pencil, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ArrowUpToLine,
+  ExternalLink,
+  Pencil,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Trash2
+} from "lucide-react";
 
 import {
   entityFormError,
@@ -42,6 +50,7 @@ import type {
   TournamentLinkKind,
   TournamentLinkUpdateInput
 } from "@/types/stream.types";
+import { primaryStreamLinkSortOrder } from "./tournamentLinks.helpers";
 
 /** Mirrors `TOURNAMENT_LINK_KINDS` in `backend/shared/models/tournament/link.py`. */
 const LINK_KINDS: ReadonlyArray<{ value: TournamentLinkKind; label: string }> = [
@@ -220,6 +229,28 @@ export function TournamentLinksTab({
     onError: (error) => notify.apiError(error, { title: "Could not restore the link" })
   });
 
+  // Same PATCH as `restoreMutation` above, just a different field — "primary"
+  // is not a flag of its own, only a position in the stream order. Kept as its
+  // own mutation rather than folded into `updateMutation` because that one
+  // belongs to the dialog: it closes the form and reports "Link updated".
+  const makePrimaryMutation = useMutation({
+    mutationFn: ({ id, sortOrder }: { id: number; sortOrder: number }) =>
+      adminService.updateTournamentLink(id, { sort_order: sortOrder }),
+    onSuccess: async () => {
+      await invalidateLinks();
+      // Leading the order does NOT put the channel on screen: the public block
+      // only embeds a player for a channel that is live, and shows a plain link
+      // otherwise. Promising an embed here would be a lie the organizer finds
+      // out about by reloading the tournament page.
+      notify.success("Made the primary broadcast", {
+        description:
+          "It now leads the official links. The player only embeds a channel that is live, so an offline one stays a link until it goes live."
+      });
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not make it the primary broadcast" })
+  });
+
   const repollMutation = useMutation({
     // `POST /api/streams/tournament/{id}/repoll` already has a client in
     // `stream.service`, so there is no admin-service twin of it. `workspace_id`
@@ -246,6 +277,15 @@ export function TournamentLinksTab({
 
   const hasActiveStreamLink = links.some((link) => link.kind === "stream" && link.is_active);
 
+  // Zipped up front so each row carries the single answer to both halves of the
+  // "Make primary" question: it offers the action iff `primarySortOrder` is a
+  // number, and then sends exactly that number.
+  const rows = useMemo(
+    () =>
+      links.map((link) => ({ link, primarySortOrder: primaryStreamLinkSortOrder(link, links) })),
+    [links]
+  );
+
   const isDialogOpen = createDialogOpen || !!editingLink;
   const activeError = editingLink ? updateMutation.error : createMutation.error;
   const fieldErrors = linkFieldErrors(activeError);
@@ -260,7 +300,8 @@ export function TournamentLinksTab({
     createMutation.isPending ||
     updateMutation.isPending ||
     deactivateMutation.isPending ||
-    restoreMutation.isPending;
+    restoreMutation.isPending ||
+    makePrimaryMutation.isPending;
 
   const openCreate = () => {
     createMutation.reset();
@@ -358,11 +399,11 @@ export function TournamentLinksTab({
                 <TableHead>URL</TableHead>
                 <TableHead className="w-20 text-right">Order</TableHead>
                 <TableHead className="w-24">State</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <TableHead className="w-36 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {links.map((link) => (
+              {rows.map(({ link, primarySortOrder }) => (
                 <TableRow key={link.id} className={link.is_active ? undefined : "opacity-60"}>
                   <TableCell>
                     <Badge variant="secondary">{KIND_LABELS[link.kind] ?? link.kind}</Badge>
@@ -399,6 +440,27 @@ export function TournamentLinksTab({
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
+                      {/* Absent, not disabled, on rows that cannot be promoted —
+                          the same choice the archive/restore pair above makes.
+                          `primarySortOrder` is null for non-broadcasts, archived
+                          rows and the link that already leads the order. */}
+                      {canUpdate && primarySortOrder !== null && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Make ${link.label ?? link.url} the primary broadcast`}
+                          disabled={isMutating}
+                          onClick={() =>
+                            makePrimaryMutation.mutate({
+                              id: link.id,
+                              sortOrder: primarySortOrder
+                            })
+                          }
+                        >
+                          <ArrowUpToLine aria-hidden className="h-4 w-4" />
+                        </Button>
+                      )}
                       {canUpdate && (
                         <Button
                           type="button"
