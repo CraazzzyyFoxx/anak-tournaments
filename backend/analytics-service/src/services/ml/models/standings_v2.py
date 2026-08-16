@@ -157,17 +157,20 @@ def _train_standings_v2_with_device(
     X = _feature_matrix(labelled, STANDINGS_FEATURE_ORDER)
     y = labelled["home_won"].astype(int).to_numpy()
 
-    # ~4k labelled encounters and a low-signal domain (balancer-equalized
-    # teams): shallow trees + a high min_child_weight keep the booster from
-    # memorising the training bracket — the previous depth-5/400 fit sat at
-    # train-brier 0.187 vs val-brier 0.241 (coin flip is 0.25).
+    # Hyperparameters picked by walk-forward Spearman of the SIMULATED STANDINGS
+    # against realised places over the last 6 prod tournaments (2026-08 A/B):
+    # depth-5/400/mcw-1 averaged 0.251 vs 0.015 for a heavily regularised
+    # depth-3/mcw-10 fit — in this low-signal, balancer-equalized domain the
+    # per-encounter logloss barely moves between variants, but the deeper trees
+    # separate team strength far better. Calibration flatness is isotonic's
+    # job (5-fold on ~4k rows), not the booster's.
     base_xgb = xgb.XGBClassifier(
         objective="binary:logistic",
         eval_metric="logloss",
-        max_depth=3,
-        n_estimators=300,
+        max_depth=5,
+        n_estimators=400,
         learning_rate=0.05,
-        min_child_weight=10,
+        min_child_weight=1,
         subsample=0.8,
         colsample_bytree=0.8,
         verbosity=0,
