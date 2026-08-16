@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import TournamentBroadcastDock from "./TournamentBroadcastDock";
+import TournamentLinkChips from "./TournamentLinkChips";
 import TournamentRegisterButton from "./TournamentRegisterButton";
 import { getTournamentStatusMeta, isTournamentStatusEnded } from "@/lib/tournament-status";
 import { cn, formatDateRange } from "@/lib/utils";
@@ -175,6 +176,14 @@ export default function TournamentClientLayout({
           </div>
         }
       />
+
+      {/* Between the hero and the nav, because Discord, the rules doc, an
+          external bracket and the VODs are wanted from every section — and
+          `tournament` is the payload this component already holds, so the row
+          costs no read of its own. It fits here only because the broadcast moved
+          to the fixed dock below: a chip row is one line tall and does not push
+          the nav off a phone screen the way a second card would. */}
+      <TournamentLinkChips links={tournament.links} />
 
       <TournamentSectionNav
         tournamentId={String(tournamentId)}

@@ -3,6 +3,7 @@ import { Team } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
 import { DivisionGridVersion } from "@/types/workspace.types";
 import type { RosterShape, RosterSlotMap } from "@/lib/roster-shape";
+import type { TournamentLink } from "@/types/stream.types";
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,13 @@ export interface Tournament {
    * would reject a roster-shape change. `null` on reads that did not opt in.
    */
   roster_locked_by_draft: boolean | null;
+  /**
+   * Active external links (Discord, VODs, bracket, rules), already ordered by
+   * the backend. Optional rather than `| null`: the `links` entity is opt-in, so
+   * the key is ABSENT on every read that did not ask for it — including
+   * responses still sitting in a client cache from before this field existed.
+   */
+  links?: TournamentLink[];
 }
 
 // ─── Map Pool ───────────────────────────────────────────────────────────────

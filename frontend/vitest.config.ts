@@ -135,6 +135,7 @@ export default defineConfig({
       "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/TournamentBroadcastDock.behavior.test.tsx",
+      "src/app/(site)/tournaments/[id]/_components/TournamentLinkChips.behavior.test.tsx",
       // Same file-level rule as `src/components`: the bracket folder also holds a
       // `bun:test` file (`TournamentBracketPage.test.ts`).
       "src/app/(site)/tournaments/[id]/bracket/bracketLiveStreams.test.ts"

@@ -1759,6 +1759,16 @@
         "title": "No results match these filters",
         "description": "Change or reset the current filters to see more results."
       }
+    },
+    "links": {
+      "heading": "Tournament links",
+      "kinds": {
+        "discord": "Discord",
+        "vod": "VOD",
+        "bracket": "Bracket",
+        "rules": "Rules",
+        "other": "Link"
+      }
     }
   },
   "home": {
