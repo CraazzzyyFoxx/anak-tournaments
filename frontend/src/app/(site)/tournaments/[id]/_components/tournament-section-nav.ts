@@ -1,7 +1,7 @@
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
-  | "bracket" | "teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
+  | "bracket" | "stream" | "teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
 
 export type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.competitionNotStarted"
@@ -35,6 +35,14 @@ type BuildTournamentSectionNavInput = {
    * rather than waiting for the competition phase.
    */
   hasTeams?: boolean;
+  /**
+   * Whether the tournament has any stream at all — an official broadcast link
+   * or a participant currently live. Unlike Schedule and Teams, the Stream
+   * section does not lock when it is empty: it disappears. A lock advertises
+   * content the organizer has not published YET, and every tournament would
+   * carry that promise forever, because most of them never have a stream.
+   */
+  hasStreams?: boolean;
   pathname: string;
 };
 
@@ -54,6 +62,7 @@ const competitionOnlySections = new Set<TournamentSectionId>([
 
 const tournamentSections: Exclude<TournamentSectionId, "draft">[] = [
   "bracket",
+  "stream",
   "teams",
   "participants",
   "schedule",
@@ -91,12 +100,20 @@ export function buildTournamentSectionNav({
   teamFormation,
   hasSchedule = false,
   hasTeams = false,
+  hasStreams = false,
   pathname
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
   const competitionStarted = competitionStatuses.has(status);
   const currentPath = normalizePathname(pathname);
-  const sections: TournamentSectionId[] =
-    teamFormation === "draft" ? [...tournamentSections, "draft"] : tournamentSections;
+  // Two sections are present-or-absent rather than open-or-locked, because a
+  // locked tab claims the content exists somewhere: `draft`, which only a draft
+  // tournament has at all, and `stream`, which needs a broadcast link or a live
+  // participant. `stream` is filtered from its display position instead of
+  // appended like `draft`, so the rail keeps one order in both cases.
+  const sections: TournamentSectionId[] = [
+    ...tournamentSections.filter((id) => id !== "stream" || hasStreams),
+    ...(teamFormation === "draft" ? (["draft"] as const) : [])
+  ];
 
   return sections.map((id) => {
     const href =

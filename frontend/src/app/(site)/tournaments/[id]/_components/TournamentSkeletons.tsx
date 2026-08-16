@@ -19,7 +19,7 @@ function SkeletonRegion({
   message,
   children
 }: {
-  variant: "shell" | "bracket" | "teams" | "participants" | "schedule" | "matches" | "heroes" | "standings" | "maps";
+  variant: "shell" | "bracket" | "teams" | "participants" | "schedule" | "matches" | "heroes" | "standings" | "maps" | "stream";
   message: string;
   children: React.ReactNode;
 }) {
@@ -338,6 +338,30 @@ export function TournamentScheduleSkeleton() {
               </div>
             ))}
           </div>
+        </div>
+      </TournamentPageSkeletonLayout>
+    </SkeletonRegion>
+  );
+}
+
+export function TournamentStreamSkeleton() {
+  const t = useTranslations();
+
+  return (
+    <SkeletonRegion variant="stream" message={t("tournamentDetail.loading.pages.stream")}>
+      <TournamentPageSkeletonLayout>
+        {/* Three cards of thumbnail-over-title, the shape `StreamCard` renders,
+            so the arriving grid does not reflow. Fewer than the teams grid's
+            six: a tournament with more than a handful of participants live at
+            once is the rare case, not the one to reserve space for. */}
+        <div className={styles.teamsSkeletonGrid}>
+          {Array.from({ length: 3 }, (_, card) => (
+            <div className={styles.skeletonCard} key={card}>
+              <SkeletonBlock style={{ width: "100%", height: "6.5rem" }} />
+              <SkeletonBlock style={{ width: "78%", height: "1.15rem" }} />
+              <SkeletonBlock style={{ width: "42%", height: "0.65rem" }} />
+            </div>
+          ))}
         </div>
       </TournamentPageSkeletonLayout>
     </SkeletonRegion>

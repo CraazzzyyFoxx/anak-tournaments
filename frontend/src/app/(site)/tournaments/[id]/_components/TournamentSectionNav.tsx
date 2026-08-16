@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   ListOrdered,
   Map,
+  Radio,
   Trophy,
   Users
 } from "lucide-react";
@@ -34,6 +35,7 @@ import {
 
 const icons: Record<TournamentSectionId, React.ComponentType<{ className?: string }>> = {
   bracket: LayoutGrid,
+  stream: Radio,
   teams: Users,
   participants: ClipboardList,
   schedule: CalendarClock,
@@ -61,6 +63,7 @@ type TournamentSectionNavProps = {
   teamFormation?: string;
   hasSchedule?: boolean;
   hasTeams?: boolean;
+  hasStreams?: boolean;
   // Retained for call-site compatibility; both variants render the same adaptive rail.
   variant?: "desktop" | "mobile";
   className?: string;
@@ -73,6 +76,7 @@ export default function TournamentSectionNav({
   teamFormation,
   hasSchedule,
   hasTeams,
+  hasStreams,
   className
 }: TournamentSectionNavProps) {
   const t = useTranslations();
@@ -91,9 +95,10 @@ export default function TournamentSectionNav({
         teamFormation,
         hasSchedule,
         hasTeams,
+        hasStreams,
         pathname
       }),
-    [hasSchedule, hasTeams, pathname, stages, status, teamFormation, tournamentId]
+    [hasSchedule, hasTeams, hasStreams, pathname, stages, status, teamFormation, tournamentId]
   );
   const setActiveRef = (node: HTMLElement | null) => {
     activeRef.current = node;

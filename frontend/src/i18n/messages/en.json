@@ -25,6 +25,7 @@
     "schedule": "Schedule",
     "standings": "Standings",
     "bracket": "Bracket",
+    "stream": "Streams",
     "bracketPreview": "Preview",
     "rolesList": "Roles",
     "ranks": "Ranks",
@@ -1684,7 +1685,8 @@
         "heroes": "Loading hero statistics",
         "standings": "Loading tournament standings",
         "maps": "Loading the tournament map pool",
-        "schedule": "Loading the tournament schedule"
+        "schedule": "Loading the tournament schedule",
+        "stream": "Loading tournament streams"
       }
     },
     "participants": {
@@ -2664,8 +2666,8 @@
       "noRepeatScope": "Repeats across rounds",
       "noRepeatScopeHint": {
         "none": "Nothing carries over: the same map or hero can be banned again in a later round.",
-        "encounter": "Once either side bans or protects a candidate, it is out for both sides for the rest of the series.",
-        "encounter_same_side": "Once a side bans or protects a candidate, only that side is blocked from it again; the opponent still can."
+        "encounter": "Only bans carry over: once either side bans a candidate, it is out for both sides for the rest of the series. Protects are round-local and never carry over.",
+        "encounter_same_side": "Only bans carry over: once a side bans a candidate, that side may not ban it again; the opponent still can. Protects are round-local and never carry over."
       },
       "noRepeatScopeValue": {
         "none": "Allowed",
@@ -4832,6 +4834,24 @@
       "claimed": "You are the captain of this side",
       "claimFailed": "Unable to claim the side",
       "retry": "Try again"
+    }
+  },
+  "stream": {
+    "status": {
+      "live": "Live",
+      "offline": "Offline"
+    },
+    "broadcast": {
+      "heading": "Official broadcast",
+      "channelLive": "Channel is live",
+      "channelOffline": "Channel is offline",
+      "playerLabel": "Twitch player · {channel}",
+      "watchOn": "Watch on {platform}",
+      "moreLinks": "Other broadcast links"
+    },
+    "page": {
+      "emptyTitle": "Nobody is streaming right now",
+      "emptyDescription": "Participant streams appear here while they are live."
     }
   }
 }
