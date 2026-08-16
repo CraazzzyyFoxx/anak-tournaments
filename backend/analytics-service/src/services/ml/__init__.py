@@ -15,4 +15,6 @@ Subpackages:
 # Bump on any change to feature-frame semantics so the file/disk feature cache
 # is invalidated. v1.1: divisions normalized to the canonical OW grid.
 # v1.2: pre-encounter mu snapshot drops self-encounters (no fan-out).
-FEATURE_VERSION = "v1.2"
+# v1.3: standings frames — pre-tournament mu (train == serve), mu max/std
+#       spread features, h2h features removed.
+FEATURE_VERSION = "v1.3"

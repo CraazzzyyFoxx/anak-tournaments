@@ -152,8 +152,10 @@ class ForecastFrameTests(IsolatedAsyncioTestCase):
         row = frame[(frame["home_team_id"] == 10) & (frame["away_team_id"] == 20)].iloc[0]
         self.assertEqual(500.0, row["rank_gap"])
         self.assertEqual(700.0, row["mu_gap"])
-        self.assertEqual(0.5, row["h2h_winrate"])
-        self.assertTrue(np.isnan(row["days_since_last_meet"]))
+        # The mu spread features ride the same snapshot; the helper pins them
+        # to zero, so their gaps are exactly zero — present and numeric.
+        self.assertEqual(0.0, row["max_mu_gap"])
+        self.assertEqual(0.0, row["home_std_mu"])
         self.assertEqual(7, row["tournament_id"])
 
     async def test_single_team_field_yields_nothing_to_simulate(self) -> None:

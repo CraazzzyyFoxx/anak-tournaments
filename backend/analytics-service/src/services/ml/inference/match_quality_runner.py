@@ -16,9 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models
 
 from ..features.standings_features import build_standings_training_frame
+from ..models.base import load_artifact
 from ..models.match_quality import compute_match_quality
-from ..training.orchestrator import MATCH_QUALITY_ALGORITHM_NAME
-from ..training.registry import ensure_algorithm
+from ..models.standings_v2 import WinProbabilityModel
+from ..training.orchestrator import (
+    MATCH_QUALITY_ALGORITHM_NAME,
+    STANDINGS_ALGORITHM_NAME,
+    STANDINGS_MODEL_KIND,
+)
+from ..training.registry import ensure_algorithm, load_active_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +59,39 @@ async def _standings_p_home(
         [tournament_id],
         workspace_id=workspace_id,
     )
+
+
+async def _standings_win_probability(
+    session: AsyncSession,
+    encounters: pd.DataFrame,
+) -> pd.Series | None:
+    """``P(home wins)`` per encounter from the active Standings v2 artifact.
+
+    The predictability score is "how expected was the result" — it needs the
+    pre-match win probability. The feature frame never carries one (it is the
+    classifier's INPUT), so this used to silently stay ``None`` and every
+    encounter scored a neutral 50. Returns ``None`` (neutral everywhere) when
+    no usable artifact exists rather than failing the whole quality pass.
+    """
+    algorithm_id = await session.scalar(
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == STANDINGS_ALGORITHM_NAME)
+    )
+    if algorithm_id is None:
+        return None
+    artifact = await load_active_artifact(
+        session,
+        algorithm_id=algorithm_id,
+        model_kind=STANDINGS_MODEL_KIND,
+        role=None,
+    )
+    if artifact is None:
+        return None
+    try:
+        model: WinProbabilityModel = load_artifact(artifact.storage_uri)
+    except FileNotFoundError:
+        logger.warning("Missing standings v2 artifact at %s; predictability stays neutral", artifact.storage_uri)
+        return None
+    return pd.Series(model.predict_proba(encounters), index=encounters.index, name="p_home_wins")
 
 
 async def _player_anomalies(
@@ -122,8 +161,8 @@ async def run_match_quality_for_tournament(
         return 0
 
     encounters = encounters.copy()
-    if "p_home_wins" not in encounters.columns:
-        encounters["p_home_wins"] = None
+    p_home = await _standings_win_probability(session, encounters)
+    encounters["p_home_wins"] = p_home if p_home is not None else None
 
     quality = compute_match_quality(
         encounters,
