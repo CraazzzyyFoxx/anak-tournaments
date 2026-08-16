@@ -1,6 +1,6 @@
 """Contract guards on ``rpc.stream.tournament_streams``.
 
-Four properties, each of which fails silently in production if it drifts:
+Five properties, each of which fails silently in production if it drifts:
 
 1. **The visibility gate runs first.** The gateway caches this response with
    ``respcache.TTLOnly`` — no viewer in the cache key — so a hidden tournament
@@ -12,8 +12,11 @@ Four properties, each of which fails silently in production if it drifts:
 3. **``live=None`` is not ``live=False``.** A YouTube link is never polled, so
    claiming it is offline invents a fact. Same for a Twitch URL that is not a
    channel page: there is no login to ask Helix about.
-4. **Player enrichment is one query.** A tournament page can carry dozens of live
-   channels, and this read is public.
+4. **Player enrichment is one query**, team included. A tournament page can carry
+   dozens of live channels, and this read is public.
+5. **The team pick is a function of the data, not of row order.** A participant can
+   have two roster rows in one tournament (a substitute covering their slot), so an
+   unranked pick would move them between teams from tick to tick.
 
 No database and no Redis: the gate and the batched lookup are exercised against a
 fake session that answers the two statement shapes this path issues.
@@ -108,8 +111,28 @@ def _link(url: str, label: str | None = None, sort_order: int = 0) -> Tournament
     return TournamentLink(tournament_id=1, kind="stream", url=url, label=label, sort_order=sort_order, is_active=True)
 
 
-def _player_row(player_id: int, name: str) -> SimpleNamespace:
-    return SimpleNamespace(id=player_id, name=name, avatar_url=None)
+def _player_row(
+    player_id: int,
+    name: str,
+    *,
+    roster_id: int | None = None,
+    is_substitution: bool = False,
+    team: tuple[int, str] | None = None,
+) -> SimpleNamespace:
+    """One row of the batched player+roster join.
+
+    ``team=None`` is the pre-draft state, and the shape the LEFT JOINs really
+    produce: no roster row matched, so every roster column comes back NULL.
+    """
+    return SimpleNamespace(
+        id=player_id,
+        name=name,
+        avatar_url=None,
+        roster_id=roster_id,
+        is_substitution=is_substitution,
+        team_id=None if team is None else team[0],
+        team_name=None if team is None else team[1],
+    )
 
 
 class HiddenTournamentGateTests(IsolatedAsyncioTestCase):
@@ -298,3 +321,113 @@ class NonTwitchPlatformStampTests(IsolatedAsyncioTestCase):
             result = await reads.tournament_streams(session, _FakeRedis({}), {"tournament_id": "1"})
 
         self.assertEqual(result.official[0].channel, "youtube.com")
+
+
+class ParticipantTeamTests(IsolatedAsyncioTestCase):
+    """The team behind a participant entry.
+
+    The interesting case is not "a team is returned" but WHICH roster row answers
+    when a participant has more than one, because every candidate row carries a
+    plausible team and the wrong pick looks like a working feature.
+    """
+
+    async def _run(
+        self,
+        rows: list[Any],
+        *,
+        channels: dict[str, int] | None = None,
+    ) -> tuple[Any, _FakeSession]:
+        channels = channels or {"alice": 11}
+        snapshots = {
+            f"twitch:{channel}": _snapshot(channel, source="self_declared", player_id=player_id)
+            for channel, player_id in channels.items()
+        }
+        session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False), rows)
+        with patch.object(reads.targets, "official_stream_links", AsyncMock(return_value=[])):
+            result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
+        return result, session
+
+    async def test_one_roster_row_gives_the_participant_their_team(self) -> None:
+        result, _ = await self._run([_player_row(11, "Alice", roster_id=5, team=(3, "Team Rocket"))])
+
+        team = result.participants[0].player.team  # type: ignore[union-attr]
+        self.assertEqual((team.id, team.name), (3, "Team Rocket"))
+
+    async def test_the_starting_row_wins_over_the_substitution_row(self) -> None:
+        # The substitute deliberately has the LOWER roster id: a pick that only
+        # ordered by id would answer "Bench" here. Both row orders are asserted --
+        # a naive first-row-wins and a naive last-row-wins each fail one of them,
+        # which is the whole point of ranking the rows.
+        sub = _player_row(11, "Alice", roster_id=1, is_substitution=True, team=(9, "Bench"))
+        starter = _player_row(11, "Alice", roster_id=2, team=(3, "Team Rocket"))
+
+        for rows in ([sub, starter], [starter, sub]):
+            with self.subTest(order=[row.roster_id for row in rows]):
+                result, _ = await self._run(rows)
+                self.assertEqual(result.participants[0].player.team.name, "Team Rocket")  # type: ignore[union-attr]
+
+    async def test_the_lowest_roster_id_breaks_a_tie_between_starting_rows(self) -> None:
+        result, _ = await self._run(
+            [
+                _player_row(11, "Alice", roster_id=7, team=(9, "Later")),
+                _player_row(11, "Alice", roster_id=3, team=(3, "Earlier")),
+            ]
+        )
+
+        self.assertEqual(result.participants[0].player.team.name, "Earlier")  # type: ignore[union-attr]
+
+    async def test_a_row_that_found_a_roster_beats_one_that_did_not(self) -> None:
+        # A user who belongs to several workspaces matches several
+        # ``workspace_member`` rows, and only one of them can own a roster row in
+        # this tournament; the rest arrive with the roster columns NULL.
+        matched = _player_row(11, "Alice", roster_id=5, team=(3, "Team Rocket"))
+        unmatched = _player_row(11, "Alice")
+
+        for rows in ([unmatched, matched], [matched, unmatched]):
+            with self.subTest(first="unmatched" if rows[0] is unmatched else "matched"):
+                result, _ = await self._run(rows)
+                self.assertEqual(result.participants[0].player.team.name, "Team Rocket")  # type: ignore[union-attr]
+
+    async def test_participant_without_a_roster_is_served_with_a_null_team(self) -> None:
+        result, _ = await self._run([_player_row(11, "Alice")])
+
+        player = result.participants[0].player
+        self.assertEqual(player.name, "Alice")  # type: ignore[union-attr]
+        # No roster is the normal state before the draft, so the entry is served
+        # with ``team: null`` rather than failing validation on a missing field.
+        self.assertIsNone(player.team)  # type: ignore[union-attr]
+        self.assertIn("team", player.model_dump())  # type: ignore[union-attr]
+
+    async def test_official_broadcast_carries_no_player_and_therefore_no_team(self) -> None:
+        session = _FakeSession(
+            Tournament(id=1, workspace_id=5, is_hidden=False),
+            [_player_row(11, "Alice", roster_id=5, team=(3, "Team Rocket"))],
+        )
+        snapshots = {"twitch:caster": _snapshot("caster", source="official", player_id=11)}
+
+        with patch.object(
+            reads.targets,
+            "official_stream_links",
+            AsyncMock(return_value=[_link("https://twitch.tv/caster")]),
+        ):
+            result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
+
+        self.assertIsNone(result.official[0].player)
+        self.assertEqual(result.participants, [])
+        # Nothing to enrich, so the roster query never runs at all.
+        self.assertEqual(session.executed, [])
+
+    async def test_team_enrichment_does_not_add_a_query_per_participant(self) -> None:
+        channels = {f"p{index}": 20 + index for index in range(6)}
+        rows = [
+            _player_row(20 + index, f"P{index}", roster_id=100 + index, team=(3 + index, f"Team {index}"))
+            for index in range(6)
+        ]
+
+        result, session = await self._run(rows, channels=channels)
+
+        self.assertEqual(len(result.participants), 6)
+        self.assertEqual({entry.player.team.name for entry in result.participants}, {f"Team {i}" for i in range(6)})  # type: ignore[union-attr]
+        # Six participants, one round trip -- the team join rides along instead of
+        # adding a statement.
+        self.assertEqual(len(session.executed), 1)

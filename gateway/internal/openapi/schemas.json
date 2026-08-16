@@ -5386,7 +5386,7 @@
       "summary": "Re-poll tournament streams"
     },
     "rpc.stream.tournament_streams": {
-      "description": "Returns the tournament's stream block: official broadcast links from its typed links (included whether or not they are on air) and the participant channels that are live right now. Public; a hidden tournament answers 404 for an ineligible viewer. Twitch channels report live true/false; YouTube and other hosts report live null, meaning there is no live detection for them rather than offline.",
+      "description": "Returns the tournament's stream block: official broadcast links from its typed links (included whether or not they are on air) and the participant channels that are live right now. Public; a hidden tournament answers 404 for an ineligible viewer. Twitch channels report live true/false; YouTube and other hosts report live null, meaning there is no live detection for them rather than offline. A participant entry carries the player behind the channel together with the team they play for in this tournament; that team is null until rosters are drafted, and the player itself is null on an official broadcast, which belongs to the organizer rather than to any participant.",
       "response": {
         "array": false,
         "ref": "stream.TournamentStreamsRead"
@@ -26032,6 +26032,17 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/stream.StreamTeamRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -26177,6 +26188,25 @@
         "tournament_id"
       ],
       "title": "StreamRepollRead",
+      "type": "object"
+    },
+    "stream.StreamTeamRead": {
+      "description": "The team a streaming participant plays for in THIS tournament.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "StreamTeamRead",
       "type": "object"
     },
     "stream.TournamentStreamsRead": {

@@ -35,10 +35,18 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.identity.user import User
+from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament.link import TournamentLink
+from shared.models.tournament.team import Player, Team
 from shared.services.tournament_visibility import assert_tournament_viewable
 from src.core import db
-from src.schemas.stream import StreamEntryRead, StreamPlatform, StreamPlayerRead, TournamentStreamsRead
+from src.schemas.stream import (
+    StreamEntryRead,
+    StreamPlatform,
+    StreamPlayerRead,
+    StreamTeamRead,
+    TournamentStreamsRead,
+)
 from src.services import state, targets
 
 from . import _common as c
@@ -81,17 +89,73 @@ def _player_id(snapshot: dict[str, Any]) -> int | None:
         return None
 
 
-async def _load_players(session: AsyncSession, player_ids: set[int]) -> dict[int, StreamPlayerRead]:
-    """Names and avatars for every streaming participant, in ONE query.
+async def _load_players(
+    session: AsyncSession,
+    player_ids: set[int],
+    tournament_id: int,
+) -> dict[int, StreamPlayerRead]:
+    """Name, avatar and tournament team for every streaming participant, in ONE query.
 
     Batched deliberately: a tournament page can carry dozens of live channels and a
     per-entry lookup would put that many round-trips on a public, cacheable read.
+    The team rides along as a LEFT JOIN rather than a second batch — it hangs off
+    rows this query already fetches, so one round-trip covers both and there is no
+    second statement to keep in step with the first.
+
+    The join walks the anchor the roster actually uses. A snapshot's ``player_id``
+    is a ``players.user.id``, and ``tournament.player`` no longer carries one
+    (``user_id`` was dropped in iwrefac07), so the only path to a roster row is
+    through ``workspace_member``.
     """
     if not player_ids:
         return {}
-    rows = await session.execute(sa.select(User.id, User.name, User.avatar_url).where(User.id.in_(player_ids)))
+    stmt = (
+        sa.select(
+            User.id,
+            User.name,
+            User.avatar_url,
+            Player.id.label("roster_id"),
+            Player.is_substitution,
+            Team.id.label("team_id"),
+            Team.name.label("team_name"),
+        )
+        .select_from(User)
+        .outerjoin(WorkspaceMember, WorkspaceMember.player_id == User.id)
+        .outerjoin(
+            Player,
+            sa.and_(Player.workspace_member_id == WorkspaceMember.id, Player.tournament_id == tournament_id),
+        )
+        .outerjoin(Team, Team.id == Player.team_id)
+        .where(User.id.in_(player_ids))
+    )
+    rows = (await session.execute(stmt)).all()
+
+    # One user can come back on several rows, so the pick has to be total rather
+    # than "whatever arrived first": ``ix_player_member_not_sub`` is NOT unique, a
+    # substitute covering a slot is a SECOND roster row in the same tournament, and
+    # a user who belongs to more than one workspace also contributes rows where the
+    # roster join matched nothing. Ranking makes the answer a function of the data
+    # alone — otherwise identical data would attribute the participant to a
+    # different team on every tick, which reads as switching teams mid-broadcast.
+    best: dict[int, tuple[tuple[bool, bool, int], Any]] = {}
+    for row in rows:
+        user_id = int(row.id)
+        roster_id = None if row.roster_id is None else int(row.roster_id)
+        # A real roster row beats none, a starter beats a substitute, and the lowest
+        # roster id breaks any remaining tie.
+        rank = (roster_id is None, bool(row.is_substitution), roster_id or 0)
+        if (previous := best.get(user_id)) is None or rank < previous[0]:
+            best[user_id] = (rank, row)
     return {
-        int(row.id): StreamPlayerRead(id=int(row.id), name=row.name, avatar_url=row.avatar_url) for row in rows.all()
+        user_id: StreamPlayerRead(
+            id=user_id,
+            name=row.name,
+            avatar_url=row.avatar_url,
+            # No roster yet is the normal pre-draft state, so this is ``None``, not
+            # an error and not an empty name.
+            team=StreamTeamRead(id=int(row.team_id), name=row.team_name) if row.team_id is not None else None,
+        )
+        for user_id, (_, row) in best.items()
     }
 
 
@@ -177,7 +241,9 @@ async def build_tournament_streams(
         if snapshot.get("source") != "official" and _player_id(snapshot) is not None
     ]
     players = await _load_players(
-        session, {pid for _, snapshot in live_participants if (pid := _player_id(snapshot)) is not None}
+        session,
+        {pid for _, snapshot in live_participants if (pid := _player_id(snapshot)) is not None},
+        tournament_id,
     )
     participants = [
         _entry_from_snapshot(field, snapshot, player=players.get(_player_id(snapshot) or 0))

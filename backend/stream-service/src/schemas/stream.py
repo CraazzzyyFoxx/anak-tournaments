@@ -22,6 +22,7 @@ __all__ = (
     "StreamPollHealthRead",
     "StreamPollStatus",
     "StreamRepollRead",
+    "StreamTeamRead",
     "TournamentStreamsRead",
 )
 
@@ -30,11 +31,25 @@ __all__ = (
 StreamPlatform = Literal["twitch", "youtube", "other"]
 
 
+class StreamTeamRead(BaseRead):
+    """The team a streaming participant plays for in THIS tournament."""
+
+    name: str
+
+
 class StreamPlayerRead(BaseRead):
     """The player behind a participant stream. Absent for an official broadcast."""
 
     name: str
     avatar_url: str | None = None
+    team: StreamTeamRead | None = None
+    """``None`` whenever the player has no roster row in this tournament.
+
+    Rosters are drafted after registration opens, so a participant can be on air
+    days before any team exists — absence is the normal early state, not a failure
+    to resolve. The frontend renders the team caption only when it is set; an empty
+    string would claim a nameless team.
+    """
 
 
 class StreamEntryRead(BaseModel):

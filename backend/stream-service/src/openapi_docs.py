@@ -14,7 +14,10 @@ DOCS: dict[str, dict] = {
             "(included whether or not they are on air) and the participant channels that are live "
             "right now. Public; a hidden tournament answers 404 for an ineligible viewer. Twitch "
             "channels report live true/false; YouTube and other hosts report live null, meaning "
-            "there is no live detection for them rather than offline."
+            "there is no live detection for them rather than offline. A participant entry carries "
+            "the player behind the channel together with the team they play for in this tournament; "
+            "that team is null until rosters are drafted, and the player itself is null on an "
+            "official broadcast, which belongs to the organizer rather than to any participant."
         ),
     },
     "rpc.stream.repoll": {
