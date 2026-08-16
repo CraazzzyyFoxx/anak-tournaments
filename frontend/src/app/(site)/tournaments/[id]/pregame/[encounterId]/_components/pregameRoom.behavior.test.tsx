@@ -1186,6 +1186,111 @@ describe("phase selection", () => {
     expect(document.body.textContent).toContain("Bright Wolves won the series 2:1");
   });
 
+  it("replays every map's hero bans on the closing screen", async () => {
+    // The closing screen used to be the one place in the loop that named
+    // nothing about the heroes: `heroActions` keys off the PENDING map, and by
+    // the time the series is done there is none, so the record of what each map
+    // was played under vanished with the last grid that closed.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 2, away: 0 }
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: null,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "played", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: null,
+        sequence: ["ban_home", "ban_away"],
+        pool: [
+          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" }),
+          entry({ id: 4, item_id: 102, round: 2, status: "banned", picked_by: "away" })
+        ]
+      })
+    );
+    await render();
+
+    const text = document.body.textContent ?? "";
+    expect(text).toContain(ROOM.heroBans.seriesTitle);
+    // One block per map, each naming its own map — not one caption claiming to
+    // describe "this map" on a screen where there is no single map left.
+    expect(text).toContain("Round 1 · Map 21");
+    expect(text).toContain("Round 2 · Map 22");
+    expect(text).toContain("Hero 101");
+    expect(text).toContain("Hero 102");
+    // The lobby-setup hint belongs to a map about to be played, never here.
+    expect(text).not.toContain(ROOM.heroBans.hint);
+  });
+
+  it("states a flat hero pool once, not once per map", async () => {
+    // A round-less pool bans for the whole series; repeating it under every map
+    // would invent per-map decisions nobody made.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 2, away: 0 }
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: null,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "played", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: null,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: null, status: "banned", picked_by: "home" })]
+      })
+    );
+    await render();
+
+    const text = document.body.textContent ?? "";
+    expect(text).toContain(ROOM.heroBans.seriesEyebrow);
+    expect(text).not.toContain("Round 1 · Map 21");
+    // Two sides, one block — not two blocks of two sides.
+    expect(document.body.querySelectorAll("[data-hero-bans]")).toHaveLength(2);
+  });
+
+  it("leaves the closing screen without a bans block when nothing was banned", async () => {
+    settledSeries(null);
+    getPickBanState.mockImplementation(async (kind: "map" | "hero") =>
+      kind === "map"
+        ? readyState({
+            session: session({ kind: "map" }),
+            is_complete: true,
+            viewer_side: null,
+            pool: [entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 })]
+          })
+        : readyState({
+            session: session({ kind: "hero" }),
+            is_complete: true,
+            viewer_side: null,
+            sequence: ["ban_home"],
+            pool: [entry({ id: 3, item_id: 101, round: 1, status: "available" })]
+          })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.seriesDone.title);
+    expect(document.body.textContent).not.toContain(ROOM.heroBans.seriesTitle);
+    expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+  });
+
   it("charts a played map's score from the captains' claims when no Match row exists", async () => {
     // A scrim writes no `matches.match` rows at all, so the filmstrip's score
     // has to come from the agreed claims instead — otherwise every map of a

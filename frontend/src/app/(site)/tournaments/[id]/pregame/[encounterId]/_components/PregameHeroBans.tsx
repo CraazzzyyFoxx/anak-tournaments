@@ -23,6 +23,15 @@ export interface PregameHeroAction {
   side: "home" | "away";
 }
 
+/** One map's worth of hero actions, for replaying a finished series. */
+export interface PregameHeroRound {
+  /** Null for a flat (round-less) pool: one set of bans covered every map. */
+  round: number | null;
+  /** Null alongside a null round — there is no single map to name. */
+  mapName: string | null;
+  actions: PregameHeroAction[];
+}
+
 /** Tank-damage-support, the order the game's own hero list uses. */
 const ROLE_RANK: Record<AqtRoleKey, number> = { tank: 0, damage: 1, support: 2 };
 
@@ -52,7 +61,9 @@ export function PregameHeroBans({
   homeName,
   awayName,
   homeTeam,
-  awayTeam
+  awayTeam,
+  eyebrow,
+  hint
 }: {
   actions: PregameHeroAction[];
   homeName: string;
@@ -60,8 +71,18 @@ export function PregameHeroBans({
   /** The side's team, for its logo — undefined when the encounter has none. */
   homeTeam: TeamNameInput | null | undefined;
   awayTeam: TeamNameInput | null | undefined;
+  /**
+   * Overrides the default "bans for this map" caption. The closing screen
+   * replays every map of the series, so each block names its own map instead
+   * of repeating a caption that would then be true of none of them.
+   */
+  eyebrow?: string;
+  /** Pass `null` to drop the lobby-setup hint: it only applies before a map is played. */
+  hint?: string | null;
 }) {
   const t = useTranslations("pickBan.room");
+  const caption = eyebrow ?? t("heroBans.eyebrow");
+  const note = hint === undefined ? t("heroBans.hint") : hint;
 
   if (actions.length === 0) {
     return null;
@@ -71,11 +92,11 @@ export function PregameHeroBans({
     <section className="mx-auto flex w-full max-w-2xl flex-col gap-2">
       <div className="flex flex-col gap-0.5">
         <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
-          {t("heroBans.eyebrow")}
+          {caption}
         </span>
-        <p className="text-xs leading-relaxed text-[color:var(--aqt-fg-muted)]">
-          {t("heroBans.hint")}
-        </p>
+        {note ? (
+          <p className="text-xs leading-relaxed text-[color:var(--aqt-fg-muted)]">{note}</p>
+        ) : null}
       </div>
       {/* Stacked below `sm` for the same reason the claim row is: two columns of
           hero names on a phone truncate to initials. */}

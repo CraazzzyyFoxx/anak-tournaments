@@ -11,6 +11,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MatchReportForm, matchReportDraftKey } from "@/components/tournaments/MatchReportForm";
 import type { Encounter } from "@/types/encounter.types";
 
+import { PregameHeroBans, type PregameHeroRound } from "./PregameHeroBans";
+
 interface PregameFinalReportProps {
   encounter: Encounter;
   /** Null for anyone who captains neither side: the report is per-team. */
@@ -30,6 +32,16 @@ interface PregameFinalReportProps {
    * finished series without saying how it ended.
    */
   outcome?: string | null;
+  /**
+   * Every map's hero bans, in play order — the series' own record, kept on the
+   * screen that closes it. Nothing else here names what the maps were played
+   * under, and a captain filing the report (or an organizer reading a dispute)
+   * would otherwise have to reopen a grid that is already complete.
+   */
+  heroRounds?: PregameHeroRound[];
+  /** Side names for the hero blocks, resolved by the room (it owns the fallbacks). */
+  homeName?: string;
+  awayName?: string;
   header: ReactNode;
   /** Where the room hands the viewer back — the page they opened it from. */
   returnTo: string;
@@ -56,6 +68,9 @@ export function PregameFinalReport({
   viewerSide,
   reportable = true,
   outcome = null,
+  heroRounds = [],
+  homeName,
+  awayName,
   header,
   returnTo
 }: PregameFinalReportProps) {
@@ -107,6 +122,32 @@ export function PregameFinalReport({
             />
           )}
         </section>
+
+        {/* Below the report, not above it: the report is what the captain came
+            to file, and a Bo5's worth of ban blocks between the header and the
+            form would push it off the first screen. Here it reads as what it
+            is — the series' record, once the deciding is over. */}
+        {heroRounds.length > 0 ? (
+          <section className="flex flex-col gap-4 rounded-xl border border-[color:var(--aqt-border)] p-4">
+            <h2 className="font-onest text-lg font-semibold">{t("heroBans.seriesTitle")}</h2>
+            {heroRounds.map((block) => (
+              <PregameHeroBans
+                key={block.round ?? "series"}
+                actions={block.actions}
+                homeName={homeName ?? t("side.home")}
+                awayName={awayName ?? t("side.away")}
+                homeTeam={encounter.home_team ?? null}
+                awayTeam={encounter.away_team ?? null}
+                eyebrow={
+                  block.round == null || block.mapName == null
+                    ? t("heroBans.seriesEyebrow")
+                    : `${t("round.label", { n: block.round })} · ${block.mapName}`
+                }
+                hint={null}
+              />
+            ))}
+          </section>
+        ) : null}
       </CardContent>
     </Card>
   );

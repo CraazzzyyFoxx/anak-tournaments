@@ -2508,6 +2508,8 @@
       "heroBans": {
         "eyebrow": "Hero bans for this map",
         "hint": "Disable these heroes in the custom game before you start. Protected heroes stay in — the shield marks them.",
+        "seriesTitle": "Hero bans of this series",
+        "seriesEyebrow": "Bans for the whole series",
         "none": "No bans this map",
         "state": {
           "ban": "Banned:",
