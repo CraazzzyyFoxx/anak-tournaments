@@ -180,7 +180,9 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
         processor.create_stats = AsyncMock(side_effect=lambda *a, **kw: calls.append(("create_stats",)) or [])
 
         with (
-            patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))),
+            patch.object(
+                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9, has_logs=True))
+            ),
             patch.object(
                 flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
             ),
@@ -225,7 +227,9 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
         processor.create_stats = AsyncMock(return_value=[])
 
         with (
-            patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))),
+            patch.object(
+                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9, has_logs=True))
+            ),
             patch.object(
                 flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
             ),
@@ -235,3 +239,91 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
             await processor.start(session)
 
         record_misses.assert_not_awaited()
+
+
+class HasLogsBackfillOnExistingMatchTests(IsolatedAsyncioTestCase):
+    """A match row can pre-exist with ``source=captain_report`` (upserted by
+    ``map_report.submit_map_report`` before any log arrives). When the real
+    log is later processed, ``get_match_by_encounter_and_map`` finds that row
+    and ``start`` takes the update branch — which must still flip the
+    encounter's ``has_logs`` flag, or a genuinely parsed log leaves the
+    public log-availability badge permanently off.
+    """
+
+    async def test_start_sets_has_logs_when_an_existing_match_gets_a_real_log(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        team = SimpleNamespace(id=1)
+        match_model = SimpleNamespace(
+            id=5, time=0.0, home_score=0, away_score=0, map_id=0, home_team_id=0, away_team_id=0, log_name=""
+        )
+        encounter = SimpleNamespace(id=9, has_logs=False)
+
+        processor = _processor()
+        processor.filename = "match.log"
+        processor.tournament = SimpleNamespace(id=1, name="Spring Cup")
+        processor.df = pd.DataFrame({"event_type": ["match_end"]})
+        processor.validate = AsyncMock(return_value=True)
+        processor._preload_data = AsyncMock()
+        processor.process_teams = AsyncMock(return_value=((team, {}), (team, {})))
+        processor.get_map = AsyncMock(return_value=SimpleNamespace(id=3, name="Ilios"))
+        processor.get_match_score_and_time = Mock(return_value=(1.0, 2, 1))
+        processor.process_kills = AsyncMock(return_value=[])
+        processor.process_events = AsyncMock(return_value=[])
+        processor.create_stats = AsyncMock(return_value=[])
+
+        update_encounter_logs = AsyncMock(return_value=SimpleNamespace(id=9, has_logs=True))
+
+        with (
+            patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=encounter)),
+            patch.object(
+                flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
+            ),
+            patch.object(flows.encounter_service, "update_encounter_logs", update_encounter_logs),
+            patch.object(flows, "_enqueue_match_log_tournament_events", AsyncMock()),
+        ):
+            await processor.start(session)
+
+        update_encounter_logs.assert_awaited_once_with(session, 9, has_logs=True, commit=False)
+
+    async def test_start_does_not_recheck_when_already_flagged(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        team = SimpleNamespace(id=1)
+        match_model = SimpleNamespace(
+            id=5, time=0.0, home_score=0, away_score=0, map_id=0, home_team_id=0, away_team_id=0, log_name=""
+        )
+        encounter = SimpleNamespace(id=9, has_logs=True)
+
+        processor = _processor()
+        processor.filename = "match.log"
+        processor.tournament = SimpleNamespace(id=1, name="Spring Cup")
+        processor.df = pd.DataFrame({"event_type": ["match_end"]})
+        processor.validate = AsyncMock(return_value=True)
+        processor._preload_data = AsyncMock()
+        processor.process_teams = AsyncMock(return_value=((team, {}), (team, {})))
+        processor.get_map = AsyncMock(return_value=SimpleNamespace(id=3, name="Ilios"))
+        processor.get_match_score_and_time = Mock(return_value=(1.0, 2, 1))
+        processor.process_kills = AsyncMock(return_value=[])
+        processor.process_events = AsyncMock(return_value=[])
+        processor.create_stats = AsyncMock(return_value=[])
+
+        update_encounter_logs = AsyncMock()
+
+        with (
+            patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=encounter)),
+            patch.object(
+                flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
+            ),
+            patch.object(flows.encounter_service, "update_encounter_logs", update_encounter_logs),
+            patch.object(flows, "_enqueue_match_log_tournament_events", AsyncMock()),
+        ):
+            await processor.start(session)
+
+        update_encounter_logs.assert_not_awaited()

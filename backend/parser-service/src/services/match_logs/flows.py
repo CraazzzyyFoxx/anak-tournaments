@@ -996,12 +996,6 @@ class MatchLogProcessor:
                 log_record_id=self.log_record_id,
                 commit=False,
             )
-            encounter = await encounter_service.update_encounter_logs(
-                session,
-                encounter.id,
-                has_logs=True,
-                commit=False,
-            )
             logger.info(
                 f"Match created [id={match_model.id}] in match log {self.filename} in tournament {self.tournament.name}"
             )
@@ -1018,6 +1012,20 @@ class MatchLogProcessor:
             session.add(match_model)
             await session.flush()
             logger.info(f"Match updated [id={match_model.id}] for log {self.filename}")
+
+        # A real log was just linked to this match. This also covers the case
+        # where ``match_model`` pre-existed as a ``source=captain_report`` row
+        # (per-map captain report, upserted by ``map_report.submit_map_report``
+        # before the actual log arrived): the ``else`` branch above only
+        # updates the match row, so without this the encounter's ``has_logs``
+        # flag would stay ``False`` forever despite a genuinely parsed log.
+        if not encounter.has_logs:
+            encounter = await encounter_service.update_encounter_logs(
+                session,
+                encounter.id,
+                has_logs=True,
+                commit=False,
+            )
 
         logger.info(f"Clearing existing stats/events/kills for match {match_model.id}")
         await session.execute(
