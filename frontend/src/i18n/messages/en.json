@@ -4862,14 +4862,22 @@
       "participantNotice": "No cast is live right now — this frame is the POV of {player}.",
       "participantNoticeWithTeam": "No cast is live right now — this frame is the POV of {player} ({team}).",
       "watchOn": "Watch on {platform}",
-      "moreLinks": "Other broadcast links"
+      "moreLinks": "Other broadcast links",
+      "hide": "Hide the broadcast",
+      "show": "Show the broadcast"
     },
     "card": {
-      "team": "Team {team}"
+      "team": "Team {team}",
+      "watching": "{count, plural, one {# watching} other {# watching}}",
+      "onAir": "On air for {duration}",
+      "select": "Watch {name}"
     },
     "page": {
       "emptyTitle": "Nobody is streaming right now",
-      "emptyDescription": "Participant streams appear here while they are live."
+      "emptyDescription": "Participant streams appear here while they are live.",
+      "liveCount": "{count} live",
+      "channels": "Live channels",
+      "play": "Play {name}"
     }
   }
 }

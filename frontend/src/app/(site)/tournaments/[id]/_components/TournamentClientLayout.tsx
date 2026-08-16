@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import TournamentBroadcastBlock from "./TournamentBroadcastBlock";
+import TournamentBroadcastDock from "./TournamentBroadcastDock";
 import TournamentRegisterButton from "./TournamentRegisterButton";
 import { getTournamentStatusMeta, isTournamentStatusEnded } from "@/lib/tournament-status";
 import { cn, formatDateRange } from "@/lib/utils";
@@ -176,8 +176,6 @@ export default function TournamentClientLayout({
         }
       />
 
-      <TournamentBroadcastBlock streams={streams} />
-
       <TournamentSectionNav
         tournamentId={String(tournamentId)}
         status={tournament.status}
@@ -189,6 +187,12 @@ export default function TournamentClientLayout({
       />
 
       <section className="min-w-0">{children}</section>
+
+      {/* Fixed to the bottom-trailing corner, so it takes no room in this
+          stack. Rendered LAST on purpose: a complementary panel that a
+          keyboard user reaches after the section content, rather than two tab
+          stops standing in front of every page. */}
+      <TournamentBroadcastDock streams={streams} />
     </div>
   );
 }

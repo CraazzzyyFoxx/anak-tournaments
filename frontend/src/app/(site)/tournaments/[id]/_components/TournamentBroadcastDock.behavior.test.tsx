@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import en from "@/i18n/messages/en.json";
 import type { StreamEntry, TournamentStreams } from "@/types/stream.types";
 
-import { TournamentBroadcastBlock } from "./TournamentBroadcastBlock";
+import { TournamentBroadcastDock } from "./TournamentBroadcastDock";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -68,7 +68,7 @@ function render(streams: TournamentStreams) {
   act(() =>
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <TournamentBroadcastBlock streams={streams} />
+        <TournamentBroadcastDock streams={streams} />
       </NextIntlClientProvider>
     )
   );
@@ -93,7 +93,7 @@ afterEach(() => {
   container.remove();
 });
 
-describe("TournamentBroadcastBlock featured pick", () => {
+describe("TournamentBroadcastDock featured pick", () => {
   it("keeps a live official cast in the frame over a bigger participant", () => {
     expect(
       playingChannel({
@@ -157,7 +157,7 @@ describe("TournamentBroadcastBlock featured pick", () => {
   });
 });
 
-describe("TournamentBroadcastBlock fallback labelling", () => {
+describe("TournamentBroadcastDock fallback labelling", () => {
   const streams: TournamentStreams = {
     official: [
       streamEntry({
@@ -214,5 +214,148 @@ describe("TournamentBroadcastBlock fallback labelling", () => {
     expect(container.textContent).toContain(
       en.stream.broadcast.participantNotice.replace("{player}", "someplayer")
     );
+  });
+});
+
+// A corner panel is watched, not read. The channel's own title used to sit
+// under the frame and said nothing the heading, the live pill and Twitch's own
+// overlay were not already saying — for two more lines of a 380px panel. With
+// it gone, the footer has to disappear WITH it in the ordinary case, or the
+// panel keeps a 24px padded strip of nothing under the video.
+describe("TournamentBroadcastDock panel body", () => {
+  it("shows no stream description under the frame", () => {
+    render({
+      official: [
+        streamEntry({
+          channel: "owtcast",
+          url: "https://twitch.tv/owtcast",
+          title: "[DROPS] day two, watch the finals"
+        })
+      ],
+      participants: []
+    });
+
+    expect(container.textContent).not.toContain("[DROPS] day two, watch the finals");
+  });
+
+  it("ends at the frame when there is nothing else to say", () => {
+    render({
+      official: [
+        streamEntry({ channel: "owtcast", url: "https://twitch.tv/owtcast", title: "a title" })
+      ],
+      participants: []
+    });
+
+    // Header, then the frame's ratio box — and nothing after it.
+    expect(container.querySelector("aside")?.children).toHaveLength(2);
+  });
+
+  // The footer is not dead code: it still carries what the frame cannot say.
+  it("keeps the footer for the other official channels", () => {
+    render({
+      official: [
+        streamEntry({ channel: "owtcast", url: "https://twitch.tv/owtcast" }),
+        streamEntry({ channel: "owtcast2", url: "https://twitch.tv/owtcast2" })
+      ],
+      participants: []
+    });
+
+    expect(container.querySelector('a[href="https://twitch.tv/owtcast2"]')).not.toBeNull();
+  });
+});
+
+// Dismissing a floating player has two ways to go wrong, and both are silent.
+// If "hide" only styled the panel away, the iframe would keep streaming to a
+// viewer who asked it to stop — the whole point of the control is the
+// bandwidth. And because both controls unmount the moment they are used,
+// focus falls to <body> unless it is moved explicitly, which restarts a
+// keyboard user's traversal at the top of the document on every toggle.
+describe("TournamentBroadcastDock hide and restore", () => {
+  const streams: TournamentStreams = {
+    official: [streamEntry({ channel: "owtcast", url: "https://twitch.tv/owtcast" })],
+    participants: []
+  };
+
+  /** The control carrying `label`, or `null`. */
+  function control(label: string): HTMLButtonElement | null {
+    return (
+      [...container.querySelectorAll("button")].find(
+        (button) =>
+          button.getAttribute("aria-label") === label || button.textContent?.includes(label)
+      ) ?? null
+    );
+  }
+
+  it("shows the frame, and no restore control, on arrival", () => {
+    render(streams);
+
+    expect(container.querySelector("iframe")).not.toBeNull();
+    expect(control(en.stream.broadcast.show)).toBeNull();
+  });
+
+  // The dock arrives on every section of the tournament; taking focus would
+  // move the caret out from under whoever was already reading.
+  it("takes no focus when it mounts", () => {
+    render(streams);
+
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("unmounts the player when hidden, rather than parking it out of sight", () => {
+    render(streams);
+
+    act(() => control(en.stream.broadcast.hide)?.click());
+
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("keeps the broadcast one click away after hiding", () => {
+    render(streams);
+    act(() => control(en.stream.broadcast.hide)?.click());
+
+    const restore = control(en.stream.broadcast.show);
+    expect(restore).not.toBeNull();
+
+    act(() => restore?.click());
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain("channel=owtcast");
+  });
+
+  it("moves focus to the restore control when the panel goes away", () => {
+    render(streams);
+
+    act(() => control(en.stream.broadcast.hide)?.click());
+
+    expect(document.activeElement).toBe(control(en.stream.broadcast.show));
+  });
+
+  it("moves focus to the close control when the panel comes back", () => {
+    render(streams);
+    act(() => control(en.stream.broadcast.hide)?.click());
+
+    act(() => control(en.stream.broadcast.show)?.click());
+
+    expect(document.activeElement).toBe(control(en.stream.broadcast.hide));
+  });
+
+  // Escape is the convenience for whoever is already inside the panel. It is
+  // NOT a modal: nothing is trapped, so this must not be the only way out.
+  it("closes on Escape from inside the panel", () => {
+    render(streams);
+
+    act(() => {
+      container
+        .querySelector("aside")
+        ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("announces itself as a landmark rather than a modal dialog", () => {
+    render(streams);
+    const panel = container.querySelector("aside");
+
+    expect(panel?.getAttribute("aria-label")).toBe(en.stream.broadcast.heading);
+    expect(panel?.getAttribute("aria-modal")).toBeNull();
   });
 });

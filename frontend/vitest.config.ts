@@ -120,6 +120,7 @@ export default defineConfig({
       "src/lib/draft-logic.test.ts",
       "src/lib/draft-visual.test.ts",
       "src/lib/draft-workspace-model.test.ts",
+      "src/lib/stream-platform.test.ts",
       "src/components/Header.mobile-layout.test.ts",
       "src/components/WorkspaceBootstrap.helpers.test.ts",
       // File-level: `src/components` holds both runners' tests, so a directory
@@ -133,7 +134,7 @@ export default defineConfig({
       "src/components/account-settings/MyAccountSection.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx",
-      "src/app/(site)/tournaments/[id]/_components/TournamentBroadcastBlock.behavior.test.tsx",
+      "src/app/(site)/tournaments/[id]/_components/TournamentBroadcastDock.behavior.test.tsx",
       // Same file-level rule as `src/components`: the bracket folder also holds a
       // `bun:test` file (`TournamentBracketPage.test.ts`).
       "src/app/(site)/tournaments/[id]/bracket/bracketLiveStreams.test.ts"

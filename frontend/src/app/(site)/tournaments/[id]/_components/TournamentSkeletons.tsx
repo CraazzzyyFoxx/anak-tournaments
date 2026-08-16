@@ -350,18 +350,38 @@ export function TournamentStreamSkeleton() {
   return (
     <SkeletonRegion variant="stream" message={t("tournamentDetail.loading.pages.stream")}>
       <TournamentPageSkeletonLayout>
-        {/* Three cards of thumbnail-over-title, the shape `StreamCard` renders,
-            so the arriving grid does not reflow. Fewer than the teams grid's
-            six: a tournament with more than a handful of participants live at
-            once is the rare case, not the one to reserve space for. */}
-        <div className={styles.teamsSkeletonGrid}>
-          {Array.from({ length: 3 }, (_, card) => (
-            <div className={styles.skeletonCard} key={card}>
-              <SkeletonBlock style={{ width: "100%", height: "6.5rem" }} />
-              <SkeletonBlock style={{ width: "78%", height: "1.15rem" }} />
-              <SkeletonBlock style={{ width: "42%", height: "0.65rem" }} />
+        {/* The theater-and-rail shape `TournamentStreamPage` renders, at the
+            same breakpoint, so the arriving player does not shove the rail
+            down the page. Four rail rows: more than a handful of participants
+            live at once is the rare case, not the one to reserve space for. */}
+        <div className={styles.skeletonSurface}>
+          <div className="flex items-center justify-between gap-4 border-b border-[color:var(--aqt-border)] px-[18px] py-[14px]">
+            <SkeletonBlock style={{ width: "7rem", height: "1rem" }} />
+            <SkeletonBlock style={{ width: "8rem", height: "1.4rem" }} />
+          </div>
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_368px]">
+            <div className="flex min-w-0 flex-col">
+              <SkeletonBlock className="aspect-video min-h-[300px] w-full rounded-none border-0" />
+              <div className="flex flex-col gap-2.5 p-4">
+                <SkeletonBlock style={{ width: "12rem", height: "1.4rem" }} />
+                <SkeletonBlock style={{ width: "16rem", height: "1.15rem" }} />
+                <SkeletonBlock style={{ width: "70%", height: "0.85rem" }} />
+                <SkeletonBlock style={{ width: "9rem", height: "2.2rem" }} />
+              </div>
             </div>
-          ))}
+            <div className="grid content-start gap-2 border-t border-[color:var(--aqt-border)] p-3 md:grid-cols-2 xl:grid-cols-1 xl:border-t-0 xl:border-s">
+              {Array.from({ length: 4 }, (_, row) => (
+                <div className="flex items-center gap-3 p-2" key={row}>
+                  <SkeletonBlock className="aspect-video w-[104px] shrink-0" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <SkeletonBlock style={{ width: row % 2 ? "58%" : "72%", height: "0.85rem" }} />
+                    <SkeletonBlock style={{ width: "40%", height: "0.7rem" }} />
+                    <SkeletonBlock style={{ width: row % 2 ? "80%" : "64%", height: "0.7rem" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </TournamentPageSkeletonLayout>
     </SkeletonRegion>

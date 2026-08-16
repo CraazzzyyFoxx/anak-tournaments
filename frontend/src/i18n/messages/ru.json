@@ -4862,14 +4862,22 @@
       "participantNotice": "Каста сейчас нет — в плеере POV участника {player}.",
       "participantNoticeWithTeam": "Каста сейчас нет — в плеере POV участника {player} ({team}).",
       "watchOn": "Смотреть на {platform}",
-      "moreLinks": "Другие ссылки на трансляцию"
+      "moreLinks": "Другие ссылки на трансляцию",
+      "hide": "Скрыть трансляцию",
+      "show": "Показать трансляцию"
     },
     "card": {
-      "team": "Команда {team}"
+      "team": "Команда {team}",
+      "watching": "{count, plural, one {# смотрит} few {# смотрят} many {# смотрят} other {# смотрят}}",
+      "onAir": "В эфире {duration}",
+      "select": "Смотреть {name}"
     },
     "page": {
       "emptyTitle": "Сейчас никто не стримит",
-      "emptyDescription": "Стримы участников появляются здесь, пока они в эфире."
+      "emptyDescription": "Стримы участников появляются здесь, пока они в эфире.",
+      "liveCount": "{count} в эфире",
+      "channels": "Каналы в эфире",
+      "play": "Включить {name}"
     }
   }
 }
