@@ -316,7 +316,7 @@ class MatchLogProcessor:
                         f"found by battle name {player} in team {team_name}"
                     )
                 else:
-                    logger.error(f"User not found by battle name {player} in team {team_name}")
+                    logger.warning(f"User not found by battle name {player} in team {team_name}")
         return teams
 
     async def find_team_by_players(
@@ -404,7 +404,7 @@ class MatchLogProcessor:
                     f"found for battle name '{battle_name_log}' in team '{team.name}'"
                 )
             else:
-                logger.error(f"Player object not found for battle name '{battle_name_log}' in team '{team.name}'")
+                logger.warning(f"Player object not found for battle name '{battle_name_log}' in team '{team.name}'")
         return players_out
 
     async def process_kills(
@@ -557,7 +557,7 @@ class MatchLogProcessor:
                     match_event_obj = self._format_match_event_generic(match, players_map, row_series, match_event_enum)
                     all_match_event_objects.append(match_event_obj)
                 except ValueError as e:
-                    logger.error(f"Skipping event creation due to error: {e}")
+                    logger.warning(f"Skipping event creation due to error: {e}")
                     continue
 
         return all_match_event_objects
