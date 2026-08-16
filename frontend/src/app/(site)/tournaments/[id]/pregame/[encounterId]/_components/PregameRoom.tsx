@@ -606,8 +606,13 @@ function PickBanPanel({
   // Same reading, from the ledger instead of the round: what the side on the
   // clock already banned earlier in this SERIES and may not ban again
   // (`no_repeat_scope=encounter_same_side`). Those items stay in the pool, so
-  // without this the only feedback was the 400 after the click.
-  const repeatBanned = new Set(state.repeat_banned ?? []);
+  // without this the only feedback was the 400 after the click. Gated on a BAN
+  // step because the ledger is ban memory only: a `protect` on an item this
+  // side already banned is legal and meaningful — the OPPONENT is not barred
+  // from banning it — so it must stay clickable.
+  const repeatBanned = new Set(
+    state.expected_action === "ban" ? (state.repeat_banned ?? []) : []
+  );
 
   // The backend enforces who may elect (pending_loser_side); this only gates
   // whether the losing captain's own client shows the modal at all.

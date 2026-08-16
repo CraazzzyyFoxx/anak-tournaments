@@ -573,6 +573,44 @@ describe("phase selection", () => {
     expect(tile("Support A")?.className).not.toContain("grayscale");
   });
 
+  it("still lets this side protect a hero it already banned earlier in the series", async () => {
+    // The ledger is BAN memory: `repeat_banned` bars a second ban by this side,
+    // never a protect. The OPPONENT can still ban the hero, so protecting it is
+    // both legal and the whole point -- the grid used to grey it out on every
+    // step, protect included, leaving the immunity unreachable.
+    getAllHeroes.mockResolvedValue({
+      results: [
+        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
+        { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+      ]
+    });
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 22, round: 2, status: "picked", action_index: 5 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["protect_home"],
+        viewer_side: "home",
+        viewer_can_act: true,
+        allowed_actions: ["protect"],
+        expected_action: "protect",
+        turn_side: "home",
+        current_round: 2,
+        repeat_banned: [201],
+        pool: [entry({ id: 3, item_id: 201, round: 2 }), entry({ id: 4, item_id: 203, round: 2 })]
+      })
+    );
+    await render();
+
+    const tank = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank A"]');
+    expect(tank?.disabled).toBe(false);
+    expect(tank?.className).not.toContain("grayscale");
+  });
+
   it("charts the series' play order once, in the header", async () => {
     // The pool card used to repeat the whole play order under the grid — the
     // same maps the header's series filmstrip already charts, twice on one

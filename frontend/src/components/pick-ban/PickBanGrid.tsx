@@ -52,7 +52,9 @@ interface PickBanGridProps {
    * Items the side on the clock may no longer BAN, because it already banned
    * them earlier in this series (`PickBanState.repeat_banned`). Empty under
    * every no-repeat scope but `encounter_same_side` — the only one that leaves
-   * them in the pool for the other side to still take.
+   * them in the pool for the other side to still take — and empty on any step
+   * that is not a `ban`: the ledger is ban memory, so protecting an item this
+   * side already banned is legal (see `PregameRoom`).
    */
   repeatBanned: Set<number>;
   /**
