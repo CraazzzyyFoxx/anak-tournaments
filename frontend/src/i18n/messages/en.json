@@ -1889,6 +1889,8 @@
     "viewMatch": "View match",
     "pregameRoom": "Open pre-game room",
     "viewRosters": "Team rosters",
+    "liveTeamStream": "{player} is streaming live",
+    "liveTeamStreamWithViewers": "{player} is streaming live · {count, plural, one {# viewer} other {# viewers}}",
     "rosters": {
       "title": "Team Rosters",
       "description": "{home} vs {away}"
@@ -4843,11 +4845,18 @@
     },
     "broadcast": {
       "heading": "Official broadcast",
+      "participantHeading": "Participant stream",
       "channelLive": "Channel is live",
       "channelOffline": "Channel is offline",
       "playerLabel": "Twitch player · {channel}",
+      "participantPlayerLabel": "Participant stream · {channel}",
+      "participantNotice": "No cast is live right now — this frame is the POV of {player}.",
+      "participantNoticeWithTeam": "No cast is live right now — this frame is the POV of {player} ({team}).",
       "watchOn": "Watch on {platform}",
       "moreLinks": "Other broadcast links"
+    },
+    "card": {
+      "team": "Team {team}"
     },
     "page": {
       "emptyTitle": "Nobody is streaming right now",

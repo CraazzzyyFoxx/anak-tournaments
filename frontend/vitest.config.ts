@@ -127,8 +127,13 @@ export default defineConfig({
       "src/components/TeamName.behavior.test.tsx",
       "src/components/HoverPrefetchLink.behavior.test.tsx",
       "src/components/EncounterRostersModal.behavior.test.tsx",
+      "src/components/BracketView.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
-      "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx"
+      "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx",
+      "src/app/(site)/tournaments/[id]/_components/TournamentBroadcastBlock.behavior.test.tsx",
+      // Same file-level rule as `src/components`: the bracket folder also holds a
+      // `bun:test` file (`TournamentBracketPage.test.ts`).
+      "src/app/(site)/tournaments/[id]/bracket/bracketLiveStreams.test.ts"
     ]
   }
 });

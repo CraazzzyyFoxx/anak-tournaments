@@ -58,6 +58,28 @@ function platformLabel(entry: StreamEntry): string {
 }
 
 /**
+ * The live participant whose own POV stands in for an official player, or
+ * `null` when none can fill the frame.
+ *
+ * The order is spelled out rather than left to whatever the read returned,
+ * because this list is refetched on every poller tick: a pick that moves with
+ * input order would tear down and restart the iframe on each one. Most viewers
+ * first; a `null` `viewer_count` (the poller has not stamped one yet) sinks
+ * BELOW a counted zero rather than outranking a channel with a real number; and
+ * ties break on `channel`, which is unique per entry, so equal counts still
+ * resolve to the same participant tick after tick.
+ */
+function pickParticipantFallback(participants: StreamEntry[]): StreamEntry | null {
+  // `filter` already copied, so the in-place sort touches nothing shared.
+  const embeddable = participants.filter((entry) => embeddableTwitchChannel(entry) !== null);
+  embeddable.sort((a, b) => {
+    const byViewers = (b.viewer_count ?? -1) - (a.viewer_count ?? -1);
+    return byViewers !== 0 ? byViewers : a.channel.localeCompare(b.channel);
+  });
+  return embeddable[0] ?? null;
+}
+
+/**
  * The tournament's official broadcast, on every section of the page.
  *
  * It is persistent by design: a spectator who came to watch should not have to
@@ -77,6 +99,16 @@ function platformLabel(entry: StreamEntry): string {
  * Offline or unembeddable broadcasts keep their link: a YouTube or VK link has
  * no live detection at all (`live === null`), and hiding it would lose the only
  * way to reach the broadcast.
+ *
+ * ## Why a participant can end up in the frame
+ *
+ * `embeddable` is true only for `live`, so between casts the block used to fall
+ * back to a bare "Watch on …" link and the page had nothing playing — while
+ * participants were on air the whole time. When NO official entry can carry the
+ * player, the busiest live participant's POV fills it instead. It is announced
+ * as exactly that, named by player and team, because a spectator who thinks a
+ * one-sided POV is the cast will read the match wrong. An official channel is
+ * never displaced, and every official link stays listed.
  */
 export function TournamentBroadcastBlock({ streams, className }: TournamentBroadcastBlockProps) {
   const t = useTranslations();
@@ -86,13 +118,22 @@ export function TournamentBroadcastBlock({ streams, className }: TournamentBroad
     return null;
   }
 
-  // One player, for the first broadcast that can carry one. An organizer with
-  // two simultaneously live official channels is not a case worth a switcher;
-  // the rest stay reachable as links below.
-  const featured = official.find((entry) => embeddableTwitchChannel(entry) !== null) ?? official[0];
+  // One player, for the first OFFICIAL broadcast that can carry one. An
+  // organizer with two simultaneously live official channels is not a case
+  // worth a switcher; the rest stay reachable as links below.
+  const officialFeatured =
+    official.find((entry) => embeddableTwitchChannel(entry) !== null) ?? null;
+  // Consulted only once the official channels have all declined the frame, so
+  // a live cast always outranks a participant however many viewers they have.
+  const participantFallback = officialFeatured
+    ? null
+    : pickParticipantFallback(streams?.participants ?? []);
+  const featured = officialFeatured ?? participantFallback ?? official[0];
   const featuredChannel = embeddableTwitchChannel(featured);
   const featuredStatus = getStreamStatus(featured.live);
   const featuredMeta = STREAM_STATUS_META[featuredStatus];
+  // In fallback mode `featured` is a participant, so nothing is subtracted here
+  // and every official link survives — the fallback hides no way to the cast.
   const secondary = official.filter((entry) => entry !== featured);
 
   return (
@@ -102,7 +143,9 @@ export function TournamentBroadcastBlock({ streams, className }: TournamentBroad
           <span className="aqt-card-title-ic">
             <Radio className="size-4" aria-hidden />
           </span>
-          {t("stream.broadcast.heading")}
+          {participantFallback
+            ? t("stream.broadcast.participantHeading")
+            : t("stream.broadcast.heading")}
         </h2>
         {featuredMeta.labelKey ? (
           <span className={cn(featuredMeta.pillClassName, "shrink-0")}>
@@ -118,7 +161,11 @@ export function TournamentBroadcastBlock({ streams, className }: TournamentBroad
         {featuredChannel ? (
           <TwitchEmbed
             channel={featuredChannel}
-            title={t("stream.broadcast.playerLabel", { channel: featuredChannel })}
+            title={
+              participantFallback
+                ? t("stream.broadcast.participantPlayerLabel", { channel: featuredChannel })
+                : t("stream.broadcast.playerLabel", { channel: featuredChannel })
+            }
           />
         ) : (
           <a
@@ -132,6 +179,22 @@ export function TournamentBroadcastBlock({ streams, className }: TournamentBroad
             <ExternalLink className="size-3.5 opacity-70" aria-hidden />
           </a>
         )}
+
+        {/* Directly under the frame and not muted like the stream title below:
+            this is the disclaimer that the frame is one player's POV, so it has
+            to be read, not skimmed past. */}
+        {participantFallback ? (
+          <p className="mt-2.5 mb-0 text-[13px] font-medium text-[color:var(--aqt-fg)]">
+            {participantFallback.player?.team
+              ? t("stream.broadcast.participantNoticeWithTeam", {
+                  player: participantFallback.player.name,
+                  team: participantFallback.player.team.name
+                })
+              : t("stream.broadcast.participantNotice", {
+                  player: participantFallback.player?.name ?? participantFallback.channel
+                })}
+          </p>
+        ) : null}
 
         {featured.title ? (
           <p className="mt-2.5 mb-0 text-[13px] text-[color:var(--aqt-fg-muted)]">

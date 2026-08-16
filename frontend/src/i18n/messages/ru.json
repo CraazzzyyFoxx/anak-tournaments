@@ -1889,6 +1889,8 @@
     "viewMatch": "Посмотреть матч",
     "pregameRoom": "Открыть предигровую комнату",
     "viewRosters": "Составы команд",
+    "liveTeamStream": "{player} сейчас в эфире",
+    "liveTeamStreamWithViewers": "{player} сейчас в эфире · {count, plural, one {# зритель} few {# зрителя} many {# зрителей} other {# зрителя}}",
     "rosters": {
       "title": "Составы команд",
       "description": "{home} vs {away}"
@@ -4843,11 +4845,18 @@
     },
     "broadcast": {
       "heading": "Официальная трансляция",
+      "participantHeading": "Стрим участника",
       "channelLive": "Канал в эфире",
       "channelOffline": "Канал не в эфире",
       "playerLabel": "Плеер Twitch · {channel}",
+      "participantPlayerLabel": "Стрим участника · {channel}",
+      "participantNotice": "Каста сейчас нет — в плеере POV участника {player}.",
+      "participantNoticeWithTeam": "Каста сейчас нет — в плеере POV участника {player} ({team}).",
       "watchOn": "Смотреть на {platform}",
       "moreLinks": "Другие ссылки на трансляцию"
+    },
+    "card": {
+      "team": "Команда {team}"
     },
     "page": {
       "emptyTitle": "Сейчас никто не стримит",

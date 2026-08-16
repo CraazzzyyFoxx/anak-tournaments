@@ -107,24 +107,38 @@ export function StreamCard({ entry, className }: StreamCardProps) {
         </div>
 
         {entry.player ? (
-          <Link
-            href={`/users/${getPlayerSlug(entry.player.name)}`}
-            className="inline-flex w-fit items-center gap-2 text-[12.5px] font-semibold text-inherit no-underline outline-none hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
-          >
-            {entry.player.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={entry.player.avatar_url}
-                alt=""
-                aria-hidden
-                loading="lazy"
-                width={20}
-                height={20}
-                className="size-5 rounded-full object-cover"
-              />
+          // The team is a caption ON the player, not a row of its own: a bare
+          // team name under the card reads as a second, unrelated subject. It
+          // stays plain text because there is no team detail route to link to —
+          // `(site)/teams` is a list page and takes no id.
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <Link
+              href={`/users/${getPlayerSlug(entry.player.name)}`}
+              className="inline-flex w-fit items-center gap-2 text-[12.5px] font-semibold text-inherit no-underline outline-none hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+            >
+              {entry.player.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={entry.player.avatar_url}
+                  alt=""
+                  aria-hidden
+                  loading="lazy"
+                  width={20}
+                  height={20}
+                  className="size-5 rounded-full object-cover"
+                />
+              ) : null}
+              <span className="truncate">{entry.player.name}</span>
+            </Link>
+            {/* No team is the ordinary state before the balancer forms rosters,
+                so it renders nothing at all — an empty caption or a dash would
+                claim the roster exists and is blank. */}
+            {entry.player.team ? (
+              <span className="truncate text-[12px] text-[color:var(--aqt-fg-muted)]">
+                {t("stream.card.team", { team: entry.player.team.name })}
+              </span>
             ) : null}
-            <span className="truncate">{entry.player.name}</span>
-          </Link>
+          </div>
         ) : null}
       </div>
     </article>

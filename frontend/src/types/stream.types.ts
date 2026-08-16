@@ -9,11 +9,28 @@
 
 export type StreamPlatform = "twitch" | "youtube" | "other";
 
+/**
+ * The team a streaming participant plays for in THIS tournament.
+ *
+ * Nullable for two ordinary reasons, not one: rosters may not exist yet (a
+ * player streams during `check_in`, long before the balancer forms teams), and
+ * an official broadcast has no team at all. Both read as "no team caption".
+ *
+ * `id` is load-bearing beyond display: it is the join key the bracket uses to
+ * mark which slots have someone on air, so it must be the tournament team id
+ * that `Encounter.home_team_id`/`away_team_id` carry.
+ */
+export interface StreamTeam {
+  id: number;
+  name: string;
+}
+
 /** The player behind a participant stream. `null` for an official broadcast. */
 export interface StreamStreamer {
   id: number;
   name: string;
   avatar_url: string | null;
+  team: StreamTeam | null;
 }
 
 export interface StreamEntry {

@@ -15,7 +15,9 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { STREAM_STATUS_META } from "@/lib/stream-platform";
 import type { Encounter } from "@/types/encounter.types";
+import type { StreamEntry } from "@/types/stream.types";
 import type { StageType } from "@/types/tournament.types";
 import { EncounterRostersModal } from "@/components/EncounterRostersModal";
 import TeamName from "@/components/TeamName";
@@ -41,6 +43,15 @@ interface BracketViewProps {
   onReport?: (encounter: Encounter) => void;
   canEdit?: (encounter: Encounter) => boolean;
   canReport?: (encounter: Encounter) => boolean;
+  /**
+   * Team id → the stream of whoever from that team is on air, keyed by the same
+   * id `Encounter.home_team_id`/`away_team_id` carry.
+   *
+   * Optional on purpose: this component is shared with the admin bracket, which
+   * has no stream query behind it. Making a public-only affordance required
+   * would force that call site to invent an empty map for nothing.
+   */
+  liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
 }
 
 interface MatchNodeData {
@@ -492,7 +503,8 @@ function MatchCard({
   encounter,
   hoveredTeamId,
   onHoveredTeamChange,
-  returnTo
+  returnTo,
+  liveTeamStreams
 }: {
   data: MatchNodeData;
   encounter: Encounter;
@@ -500,6 +512,7 @@ function MatchCard({
   onHoveredTeamChange: (teamId: number | null) => void;
   /** This bracket's own location, so the pre-game room can send viewers back to it. */
   returnTo: string;
+  liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
 }) {
   const t = useTranslations();
   const meta = getMatchMeta(encounter, t);
@@ -541,6 +554,14 @@ function MatchCard({
   const isTbdSlot = (side: "home" | "away") =>
     (side === "home" ? data.homeName : data.awayName) === "TBD";
 
+  // The participant stream on air for this slot's team, if any. A TBD slot has
+  // no team, so it can never carry the indicator.
+  const liveStreamFor = (side: "home" | "away") => {
+    if (liveTeamStreams === undefined || isTbdSlot(side)) return undefined;
+    const teamId = getTeamId(side);
+    return teamId == null ? undefined : liveTeamStreams.get(teamId);
+  };
+
   const renderRow = (side: "home" | "away") => {
     const score = side === "home" ? data.homeScore : data.awayScore;
     const won = data.winner === side;
@@ -549,6 +570,24 @@ function MatchCard({
     // encounter title when the team relation itself is missing.
     const isTbd = isTbdSlot(side);
     const slotTeam = isTbd ? null : (side === "home" ? encounter.home_team : encounter.away_team);
+    const liveStream = liveStreamFor(side);
+    // The map only ever holds participant entries, which always carry a player;
+    // the channel fallback exists because `player` is nullable on the wire (an
+    // official broadcast has none).
+    const streamer =
+      liveStream === undefined ? null : (liveStream.player?.name ?? liveStream.channel);
+    // A bare dot says "something is happening" and nothing else, so the whole
+    // point of the indicator is this string: it names the player and, when the
+    // platform reports one, the audience.
+    const liveLabel =
+      liveStream === undefined || streamer === null
+        ? null
+        : liveStream.viewer_count == null
+          ? t("bracket.liveTeamStream", { player: streamer })
+          : t("bracket.liveTeamStreamWithViewers", {
+              player: streamer,
+              count: liveStream.viewer_count
+            });
     return (
       <div
         className={cn(
@@ -564,14 +603,43 @@ function MatchCard({
         onPointerLeave={() => handlePointerLeave(side)}
         style={{ height: CARD_ROW_HEIGHT }}
       >
-        <TeamName
-          team={slotTeam}
-          fallback={getDisplayName(side)}
-          size="xs"
-          nameClassName={
-            isTbd ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
-          }
-        />
+        {/* Name and dot share one shrinking group so the score stays pinned to
+            the right edge at exactly the position it had before the indicator
+            existed — the row is a fixed CARD_ROW_HEIGHT with nowhere to spill. */}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <TeamName
+            team={slotTeam}
+            fallback={getDisplayName(side)}
+            size="xs"
+            nameClassName={
+              isTbd ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
+            }
+          />
+          {liveStream !== undefined && liveLabel !== null ? (
+            <span
+              // Indication, NOT navigation. A ~13px target wedged between a
+              // truncated team name and its score is a pointer-target defect on
+              // touch and a pointless extra tab stop on a 32-team tree, and the
+              // Streams tab already lists every channel as a full-sized link. So
+              // this is a labelled image with no href.
+              role="img"
+              aria-label={liveLabel}
+              title={liveLabel}
+              data-live-team-stream={liveStream.channel}
+              // The site's one liveness language: the pulsing rose `.dot` exists
+              // only under `.status-pill.live` in `globals.css`, so the class has
+              // to be here for the descendant selector to match. The inline style
+              // strips the pill's own chrome, which does not belong in a 30px row
+              // — same mechanism `TournamentsTable` uses to shrink this pill for
+              // its dense rows, and the only one that beats an `.aqt-tn`-scoped
+              // selector's specificity.
+              className={cn(STREAM_STATUS_META.live.pillClassName, "shrink-0")}
+              style={{ padding: 0, border: "none", background: "none" }}
+            >
+              <span aria-hidden className="dot" />
+            </span>
+          ) : null}
+        </span>
         <span
           className={cn(
             "shrink-0 text-[13px] font-semibold tabular-nums",
@@ -692,6 +760,7 @@ export function BracketView({
   onReport,
   canEdit,
   canReport,
+  liveTeamStreams
 }: BracketViewProps) {
   const t = useTranslations();
   // The bracket's own location, stage/view query included: the pre-game room
@@ -843,6 +912,7 @@ export function BracketView({
                 hoveredTeamId={hoveredTeamId}
                 onHoveredTeamChange={setHoveredTeamId}
                 returnTo={returnTo}
+                liveTeamStreams={liveTeamStreams}
               />
               <div
                 className="pointer-events-none absolute top-1/2 -translate-y-1/2"
