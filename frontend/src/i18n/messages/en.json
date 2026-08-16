@@ -1887,8 +1887,14 @@
     "viewMatch": "View match",
     "viewMapPool": "View map pool",
     "pregameRoom": "Open pre-game room",
+    "viewRosters": "Team rosters",
+    "viewPregame": "Pre-game: map pool and room",
     "mapPool": {
       "title": "Map Pool",
+      "description": "{home} vs {away}"
+    },
+    "rosters": {
+      "title": "Team Rosters",
       "description": "{home} vs {away}"
     },
     "pending": "Pending",

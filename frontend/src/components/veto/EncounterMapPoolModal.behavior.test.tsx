@@ -119,13 +119,18 @@ async function settle(ticks = 3) {
   }
 }
 
-async function mount() {
+async function mount(props: { roomHref?: string } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en}>
-          <EncounterMapPoolModal encounterId={4242} homeTeamName="Bright Wolves" awayTeamName="Quiet Foxes" />
+          <EncounterMapPoolModal
+            encounterId={4242}
+            homeTeamName="Bright Wolves"
+            awayTeamName="Quiet Foxes"
+            {...props}
+          />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -133,17 +138,15 @@ async function mount() {
   await settle();
 }
 
-function trigger(): HTMLButtonElement {
-  const button = container.querySelector<HTMLButtonElement>(
-    `button[aria-label="${en.bracket.viewMapPool}"]`
-  );
-  if (!button) throw new Error("map-pool trigger not rendered");
+function trigger(label: string = en.bracket.viewMapPool): HTMLButtonElement {
+  const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  if (!button) throw new Error(`trigger not rendered for label ${label}`);
   return button;
 }
 
-async function open() {
+async function open(label?: string) {
   await act(async () => {
-    trigger().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    trigger(label).dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await settle();
 }
@@ -191,5 +194,32 @@ describe("EncounterMapPoolModal", () => {
       button.textContent?.includes("Kings Row")
     );
     expect(availableTile?.disabled).toBe(true);
+  });
+
+  // The bracket card used to spend two icons on one phase: this peek beside a
+  // separate link into the pre-game room. Merged into one control, the room is
+  // reachable from inside the peek — losing it would strand every captain who
+  // opened the room from the bracket.
+  it("carries the pre-game room link when the bracket passes one", async () => {
+    getMapPoolState.mockResolvedValue(state({ session: null, reason: "not_configured" }));
+    await mount({ roomHref: "/tournaments/7/pregame/4242?returnTo=%2Fbracket" });
+    await open(en.bracket.viewPregame);
+
+    const link = Array.from(document.body.querySelectorAll("a")).find((anchor) =>
+      anchor.textContent?.includes(en.bracket.pregameRoom)
+    );
+    expect(link?.getAttribute("href")).toBe("/tournaments/7/pregame/4242?returnTo=%2Fbracket");
+  });
+
+  it("keeps the map-pool-only label when no room link is given", async () => {
+    getMapPoolState.mockResolvedValue(state({ session: null, reason: "not_configured" }));
+    await mount();
+    await open();
+
+    expect(
+      Array.from(document.body.querySelectorAll("a")).some((anchor) =>
+        anchor.textContent?.includes(en.bracket.pregameRoom)
+      )
+    ).toBe(false);
   });
 });

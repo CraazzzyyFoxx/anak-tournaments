@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Pencil, FileEdit, ListChecks, Maximize2, Search } from "lucide-react";
+import { Pencil, FileEdit, Maximize2, Search } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useSearchParams } from "next/navigation";
 
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
 import { EncounterMapPoolModal } from "@/components/veto/EncounterMapPoolModal";
+import { EncounterRostersModal } from "@/components/EncounterRostersModal";
 import TeamName from "@/components/TeamName";
 import { withReturnTo } from "@/lib/return-to";
 import {
@@ -614,24 +615,24 @@ function MatchCard({
           >
             <Search className="size-3.5" aria-hidden />
           </HoverPrefetchLink>
-          <EncounterMapPoolModal
+          {/* Rosters and pre-game are two peeks, not two pages: both stay on
+              the bracket so a scroll position built up over a 32-team tree
+              survives looking at who is playing. The pre-game peek also carries
+              the link into the live room — one control for one phase. */}
+          <EncounterRostersModal
             encounterId={encounter.id}
             homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
             awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
           />
-          <HoverPrefetchLink
-            href={withReturnTo(
+          <EncounterMapPoolModal
+            encounterId={encounter.id}
+            homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
+            awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
+            roomHref={withReturnTo(
               `/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`,
               returnTo
             )}
-            className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-            aria-label={t("bracket.pregameRoom")}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            <ListChecks className="size-3.5" aria-hidden />
-          </HoverPrefetchLink>
+          />
         </div>
         {meta.timeLabel && (
           <span

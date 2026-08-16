@@ -1887,8 +1887,14 @@
     "viewMatch": "Посмотреть матч",
     "viewMapPool": "Пул карт",
     "pregameRoom": "Открыть предигровую комнату",
+    "viewRosters": "Составы команд",
+    "viewPregame": "Предыгровая: пул карт и комната",
     "mapPool": {
       "title": "Пул карт",
+      "description": "{home} vs {away}"
+    },
+    "rosters": {
+      "title": "Составы команд",
       "description": "{home} vs {away}"
     },
     "pending": "Ожидает",

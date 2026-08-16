@@ -2,10 +2,19 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { CalendarOff, Clock, Map as MapIcon, SlidersHorizontal, Users } from "lucide-react";
+import {
+  CalendarOff,
+  Clock,
+  ListChecks,
+  Map as MapIcon,
+  SlidersHorizontal,
+  Users
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +38,13 @@ interface EncounterMapPoolModalProps {
   encounterId: number;
   homeTeamName: string;
   awayTeamName: string;
+  /**
+   * The full pre-game room for this encounter. When given, the dialog carries
+   * the way into it, so the bracket card spends ONE control on the pre-game
+   * loop instead of two: a peek button beside a room link that opened the same
+   * veto at a different fidelity.
+   */
+  roomHref?: string;
 }
 
 /** One icon per cause, keyed by what `VETO_UNAVAILABLE_COPY` names. */
@@ -45,11 +61,16 @@ const UNAVAILABLE_ICON: Record<VetoUnavailableIcon, ReactNode> = {
  * difference is `canSelect={false}`: no captain actions, no admin controls, no
  * session hero. A spectator clicking through the bracket wants to see what got
  * banned/picked, not to act on it.
+ *
+ * With `roomHref` it is also the bracket's single entry point to the pre-game
+ * loop: the peek is the default (a spectator scanning the bracket), and the
+ * link in the header is the way through for whoever actually has to act.
  */
 export function EncounterMapPoolModal({
   encounterId,
   homeTeamName,
-  awayTeamName
+  awayTeamName,
+  roomHref
 }: EncounterMapPoolModalProps) {
   const t = useTranslations();
   const tRoom = useTranslations("encounters.veto.room");
@@ -162,7 +183,7 @@ export function EncounterMapPoolModal({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-        aria-label={t("bracket.viewMapPool")}
+        aria-label={roomHref ? t("bracket.viewPregame") : t("bracket.viewMapPool")}
         onClick={(e) => {
           // Keep any future card-level click handler from also firing.
           e.stopPropagation();
@@ -171,11 +192,24 @@ export function EncounterMapPoolModal({
         <MapIcon className="size-3.5" aria-hidden />
       </DialogTrigger>
       <DialogContent className="flex max-h-[85vh] w-[95vw] max-w-[900px] flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="shrink-0 space-y-1 border-b border-[color:var(--aqt-border)] p-4 pr-14 text-left">
-          <DialogTitle>{t("bracket.mapPool.title")}</DialogTitle>
-          <DialogDescription>
-            {t("bracket.mapPool.description", { home: homeTeamName, away: awayTeamName })}
-          </DialogDescription>
+        <DialogHeader className="shrink-0 flex-row items-start justify-between gap-3 space-y-0 border-b border-[color:var(--aqt-border)] p-4 pr-14 text-left">
+          <div className="min-w-0 space-y-1">
+            <DialogTitle>{t("bracket.mapPool.title")}</DialogTitle>
+            <DialogDescription>
+              {t("bracket.mapPool.description", { home: homeTeamName, away: awayTeamName })}
+            </DialogDescription>
+          </div>
+          {/* The one way from the bracket into the live loop. It sits inside the
+              peek rather than beside its trigger: a 210px card footer cannot
+              spend two icons on the same pre-game phase. */}
+          {roomHref ? (
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href={roomHref}>
+                <ListChecks className="mr-2 h-4 w-4" aria-hidden />
+                {t("bracket.pregameRoom")}
+              </Link>
+            </Button>
+          ) : null}
         </DialogHeader>
         <div className="flex-1 overflow-y-auto p-4">{content}</div>
       </DialogContent>
