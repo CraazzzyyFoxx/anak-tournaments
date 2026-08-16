@@ -41,4 +41,9 @@ var AdminCrudRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/player-sub-roles", Queue: "rpc.tournament.admin.create", Entity: "player_sub_role", Action: "create", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/admin/player-sub-roles/{sub_role_id}", Queue: "rpc.tournament.admin.update", Entity: "player_sub_role", Action: "update", IDParam: "sub_role_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/player-sub-roles/{sub_role_id}", Queue: "rpc.tournament.admin.delete", Entity: "player_sub_role", Action: "delete", IDParam: "sub_role_id", Auth: edge.AuthRequired, Success: 204},
+	// tournament_link
+	{Method: "GET", Pattern: "/api/v1/admin/tournament-links", Queue: "rpc.tournament.admin.list", Entity: "tournament_link", Action: "list", Query: []string{"tournament_id", "active_only"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/tournament-links", Queue: "rpc.tournament.admin.create", Entity: "tournament_link", Action: "create", Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "PATCH", Pattern: "/api/v1/admin/tournament-links/{link_id}", Queue: "rpc.tournament.admin.update", Entity: "tournament_link", Action: "update", IDParam: "link_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/v1/admin/tournament-links/{link_id}", Queue: "rpc.tournament.admin.delete", Entity: "tournament_link", Action: "delete", IDParam: "link_id", Auth: edge.AuthRequired, Success: 204},
 }

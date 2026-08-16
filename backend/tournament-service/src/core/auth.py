@@ -162,6 +162,22 @@ async def get_registration_workspace_id(session: AsyncSession, registration_id: 
     return int(workspace_id)
 
 
+async def get_tournament_link_workspace_id(session: AsyncSession, link_id: int) -> int:
+    # TournamentLink has no denormalized workspace_id column — derive it via the
+    # owning tournament (links are always tournament-scoped).
+    workspace_id = await session.scalar(
+        sa.select(models.Tournament.workspace_id)
+        .join(models.TournamentLink, models.TournamentLink.tournament_id == models.Tournament.id)
+        .where(models.TournamentLink.id == link_id)
+    )
+    if workspace_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tournament link not found",
+        )
+    return int(workspace_id)
+
+
 async def require_tournament_id_permission(
     session: AsyncSession,
     current_user: AuthUser,

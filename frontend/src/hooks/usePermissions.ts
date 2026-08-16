@@ -28,6 +28,7 @@ const resourcesWithCrud = [
   "discord_channel",
   "challonge",
   "asset",
+  "tournament_link",
 ] as const;
 
 type CrudResource = (typeof resourcesWithCrud)[number];
@@ -49,6 +50,8 @@ type SpecialPermission =
   | "rank.update"
   | "subscription.read"
   | "subscription.update"
+  | "stream.read"
+  | "stream.update"
   | "account.avatar"
   | "account.social"
   | "registration.self_register";

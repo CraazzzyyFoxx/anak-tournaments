@@ -317,6 +317,23 @@ DOCS: dict[str, dict] = {
         "summary": "List player sub-roles",
         "description": "Lists a workspace's player sub-roles, optionally filtered by role and including inactive ones; requires player-read permission on the workspace.",
     },
+    # ── generic CRUD engine: tournament_link ───────────────────────────────
+    "rpc.tournament.admin.create#tournament_link": {
+        "summary": "Create tournament link",
+        "description": "Attaches one typed external link (Discord, stream, VOD, bracket, rules, other) to a tournament; requires tournament_link-create permission on the workspace derived from the body's tournament_id. Rejects a duplicate kind+url pair with 409.",
+    },
+    "rpc.tournament.admin.update#tournament_link": {
+        "summary": "Update tournament link",
+        "description": "Updates a tournament link by id; requires tournament_link-update permission on its tournament's workspace. Rejects a duplicate kind+url pair with 409.",
+    },
+    "rpc.tournament.admin.delete#tournament_link": {
+        "summary": "Delete tournament link",
+        "description": "Deactivates a tournament link by id (204 no body, soft delete via is_active); requires tournament_link-delete permission on its tournament's workspace.",
+    },
+    "rpc.tournament.admin.list#tournament_link": {
+        "summary": "List tournament links",
+        "description": "Lists a tournament's links ordered by sort_order then id, optionally only the active ones; requires tournament_link-read permission on the tournament's workspace.",
+    },
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": {
         "summary": "Toggle tournament finished",

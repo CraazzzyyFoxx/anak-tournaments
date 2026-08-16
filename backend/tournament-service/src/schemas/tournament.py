@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from src.core import enums, pagination
 from src.schemas import UserRead
+from src.schemas.admin.tournament_link import TournamentLinkRead
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.roster_shape import RosterShapeRead
@@ -75,6 +76,9 @@ class TournamentRead(BaseRead):
     # would reject a roster-shape change. Lets the admin form disable the editor
     # up front instead of surfacing the block as a 400 on save.
     roster_locked_by_draft: bool | None = None
+    # Opt-in too, and for the same reason: the rows live in their own table, so
+    # filling them unconditionally would cost a query per nested TournamentRead.
+    links: list[TournamentLinkRead] = []
 
 
 class OwalStandingDay(BaseModel):
