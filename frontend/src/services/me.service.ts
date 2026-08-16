@@ -25,6 +25,19 @@ const meService = {
     return res.json();
   },
 
+  /** Global stream-privacy veto for the current user's own player. Separate
+   *  from `setSocialVisibility`: that one hides a social account from the
+   *  public profile, this one keeps the live stream off tournament pages and
+   *  overrides the per-tournament Stream POV opt-in. Returns the refreshed
+   *  `User`, so callers can write it straight back into the cache. */
+  async setStreamVisibility(visible: boolean): Promise<User> {
+    const res = await apiFetch("/api/v1/me/stream-visibility", {
+      method: "POST",
+      body: { visible },
+    });
+    return res.json();
+  },
+
   /** Self-service unlink of an OAuth connection (Discord/Twitch/Battle.net).
    *  Removes the OAuth link and un-verifies the matching social account (the row
    *  itself is kept — re-verify by re-linking). The provider key matches the

@@ -444,6 +444,12 @@
       "disconnectConfirm": "Disconnect your {provider} account? You can reconnect it later via OAuth.",
       "footnote": "Accounts can only be added through OAuth, which also verifies them. Disconnect removes the OAuth link (the account stays, unverified, until you reconnect); hiding removes it from your public profile. Only an administrator can erase a linked account from your profile entirely."
     },
+    "stream": {
+      "title": "Stream privacy",
+      "toggleLabel": "Show my live stream on tournament pages",
+      "toggleDesc": "While you are live on Twitch, your broadcast is surfaced on the pages of tournaments you take part in. Turn this off to keep it hidden — your Twitch account stays on your public profile, only the live broadcast is withheld.",
+      "footnote": "This switch is global and overrides everything else: while it is off, ticking “Stream POV” in a tournament registration will not put your stream on the site."
+    },
     "danger": {
       "title": "Danger zone",
       "deleteDesc": "Delete this account permanently. Sessions, linked OAuth connections and API keys are removed and you are signed out immediately. This cannot be undone.",

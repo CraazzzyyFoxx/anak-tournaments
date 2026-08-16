@@ -202,6 +202,41 @@ func TestApiV1Guard_ScrimRoutesAreRegistered(t *testing.T) {
 	}
 }
 
+// The self-service /api/v1/me/* surface rides app.UsersAdminRoutes. Two things
+// can break it silently: a missing registration (the /api/v1/ guard answers 404
+// with no compile error), and a new leaf being read as a {account_id} of the
+// social routes. /me/stream-visibility is a sibling leaf of /me/social/..., so
+// this pins that it keeps its own pattern instead of being swallowed.
+func TestApiV1Guard_MeRoutesAreRegistered(t *testing.T) {
+	mux := buildGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/me/social"},
+		{http.MethodPost, "/api/v1/me/social/5/primary"},
+		{http.MethodPost, "/api/v1/me/social/5/visibility"},
+		{http.MethodPost, "/api/v1/me/stream-visibility"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, srv.URL+tc.path, http.NoBody)
+			if err != nil {
+				t.Fatalf("build %s %s: %v", tc.method, tc.path, err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
+			}
+			defer resp.Body.Close()
+			switch route := resp.Header.Get("X-Route"); route {
+			case "frontend", "guard":
+				t.Fatalf("%s %s: routed to %q, want the typed dispatcher — the route is not registered",
+					tc.method, tc.path, route)
+			}
+		})
+	}
+}
+
 // buildBalancerGuardedMux mirrors gateway/cmd/gateway/main.go's /api/balancer
 // wiring. Building it must NOT panic (a ServeMux pattern conflict would crash the
 // gateway at startup). The HTTP balancer-service is decommissioned: every

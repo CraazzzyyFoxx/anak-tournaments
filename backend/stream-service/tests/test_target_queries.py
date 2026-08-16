@@ -10,6 +10,11 @@ response; drop the JOIN, or relax it to a LEFT OUTER, and the feature starts
 publishing channels players hid from their profile
 (``backend/app-service/src/services/user/flows.py`` ``visible_only``).
 
+The second privacy rule is the owner's own veto (``players.user.stream_visible``).
+It has to hold in BOTH source queries, which is the interesting part: the verified
+path had no off switch at all before it, and a veto honoured by one query and not
+the other publishes the channel anyway.
+
 Statements are compiled, not executed: the shape is the contract, and a DB
 fixture would test SQLAlchemy rather than this module.
 """
@@ -165,6 +170,56 @@ class ParticipantSelfDeclaredTests(IsolatedAsyncioTestCase):
 
         self.assertIn("JOIN workspace_member ON", sql)
         self.assertIn("workspace_member.player_id", sql)
+
+
+class StreamVetoCollectionGateTests(IsolatedAsyncioTestCase):
+    """``players.user.stream_visible`` must gate BOTH sources, or it gates neither.
+
+    A veto in only one query is worse than none: the player believes they opted out
+    while the other source keeps feeding their channel to the poller.
+    ``user`` is a reserved word, so the compiled SQL quotes it: ``players."user"``.
+    """
+
+    # The veto predicate as PostgreSQL renders it. One constant, because the point of
+    # these tests is that the two statements carry the SAME condition.
+    VETO = 'players."user".stream_visible IS true'
+
+    async def _both_sql(self) -> tuple[str, str]:
+        session = _CapturingSession([], [])
+        await targets.participant_channels(session, 7)
+        # [0] is the self-declared source, [1] the verified one.
+        return _compiled(session.statements[0]), _compiled(session.statements[1])
+
+    async def test_the_self_declared_source_drops_a_vetoed_player(self) -> None:
+        # Even with ``stream_pov`` set and a nick filled in: the veto outranks the
+        # per-tournament opt-in, so both predicates have to be in the same WHERE.
+        self_declared, _ = await self._both_sql()
+
+        self.assertIn("balancer.registration.stream_pov IS true", self_declared)
+        self.assertIn(self.VETO, self_declared)
+
+    async def test_the_self_declared_source_joins_user_to_reach_the_flag(self) -> None:
+        """Without the join there is no column to test, and the filter silently
+        becomes a cartesian condition on some other ``user`` alias."""
+        self_declared, _ = await self._both_sql()
+
+        self.assertIn('JOIN players."user" ON workspace_member.player_id = players."user".id', self_declared)
+        self.assertNotIn('LEFT OUTER JOIN players."user"', self_declared)
+
+    async def test_the_verified_source_drops_a_vetoed_player(self) -> None:
+        # The gap this closes: a verified + globally visible Twitch account used to be
+        # consent enough, with no per-tournament or per-player way to say no.
+        _, verified = await self._both_sql()
+
+        self.assertIn("players.social_account.is_verified IS true", verified)
+        self.assertIn(self.VETO, verified)
+
+    async def test_the_predicate_is_the_same_in_both_sources(self) -> None:
+        """The anti-drift guard: one shared helper, not two hand-written copies."""
+        self_declared, verified = await self._both_sql()
+
+        self.assertEqual(self_declared.count(self.VETO), 1)
+        self.assertEqual(verified.count(self.VETO), 1)
 
 
 class ParticipantMergeTests(IsolatedAsyncioTestCase):

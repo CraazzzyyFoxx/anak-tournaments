@@ -182,15 +182,35 @@ def _approved_registration_filters(tournament_id: int) -> list[Any]:
     ]
 
 
+def _stream_veto_filters() -> list[Any]:
+    """The owner's "do not broadcast me" veto, shared by both sources for the same
+    reason ``_approved_registration_filters`` is: a veto honoured by one of the two
+    queries and not the other is not a veto at all.
+
+    Outranks both opt-ins. Self-declared channels pass ``stream_pov``, verified ones
+    pass a global visibility row — neither may resurrect a player who said no.
+
+    Requires ``models.User`` to be joined by the caller. ``is_(True)`` (not
+    ``isnot(False)``) because the column is NOT NULL, so the positive form is
+    equivalent and reads like the flag it tests.
+    """
+    return [models.User.stream_visible.is_(True)]
+
+
 def _self_declared_stmt(tournament_id: int) -> Any:
     registration = models.BalancerRegistration
     member = models.WorkspaceMember
+    user = models.User
     return (
         sa.select(member.player_id, registration.twitch_nick)
         .select_from(registration)
         .join(member, registration.workspace_member_id == member.id)
+        # PRIVACY: joined only to reach ``stream_visible``. Inner, so a player row
+        # that vanished cannot smuggle a channel through on the registration alone.
+        .join(user, member.player_id == user.id)
         .where(
             *_approved_registration_filters(tournament_id),
+            *_stream_veto_filters(),
             registration.stream_pov.is_(True),
             registration.twitch_nick.isnot(None),
             member.player_id.isnot(None),
@@ -220,6 +240,7 @@ def _verified_stmt(tournament_id: int) -> Any:
         )
         .where(
             *_approved_registration_filters(tournament_id),
+            *_stream_veto_filters(),
             account.provider == SocialProvider.TWITCH,
             account.is_verified.is_(True),
         )

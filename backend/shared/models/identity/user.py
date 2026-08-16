@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import Boolean, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -28,6 +28,20 @@ class User(db.TimeStampIntegerMixin):
 
     name: Mapped[str] = mapped_column(String(), unique=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Owner's veto on having their live stream surfaced on tournament pages.
+    # Positive name so the call-site predicate reads as an assertion
+    # (``User.stream_visible.is_(True)``) next to the ``is_verified`` check it
+    # sits beside in stream-service's target queries.
+    #
+    # A veto OUTRANKS every opt-in: a false value wins over the per-tournament
+    # ``registration.stream_pov`` flag and over a verified, publicly visible
+    # Twitch account. It is the only safe direction for a privacy switch — an
+    # opt-in that some other path can override is not a privacy switch.
+    #
+    # Defaults to true because deploying this column must not make anyone
+    # vanish from a page they were already on; hiding is an explicit act.
+    stream_visible: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="true", default=True)
 
     # 1:0..1 link to the auth identity (auth.user). Nullable + unique so a
     # player may exist without an auth account, and an auth account links to

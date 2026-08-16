@@ -33,6 +33,7 @@ from src.schemas.admin.user import (
     SocialAccountCreate,
     SocialAccountUpdate,
     SocialVisibilityUpdate,
+    StreamVisibilityUpdate,
     UserCreate,
     UserUpdate,
 )
@@ -204,6 +205,8 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.social_delete": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_primary": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_visibility": Op(request=SocialVisibilityUpdate, response=schemas.UserRead),
+    # ── users self-service (capability ``account.social``) ──────────────────
+    "rpc.app.users.me_set_stream_visibility": Op(request=StreamVisibilityUpdate, response=schemas.UserRead),
     "rpc.app.users.avatar_delete": Op(response=schemas.UserRead),
     "rpc.app.users.avatar_upload": Op(response=schemas.UserRead),
 }

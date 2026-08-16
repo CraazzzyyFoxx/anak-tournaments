@@ -394,6 +394,18 @@ DOCS: dict[str, dict] = {
         "summary": "Delete Twitch identity",
         "description": "Removes a player's Twitch identity by identity id; requires the global user.delete permission, returns 204.",
     },
+    # ── user self-service (own player, capability account.social) ───────────────────────────────────
+    "rpc.app.users.me_set_stream_visibility": {
+        "summary": "Set my stream visibility",
+        "description": (
+            "Sets whether the caller's own live stream may be surfaced on tournament pages and returns"
+            " their updated player. A false value is a veto: it outranks the per-tournament stream-POV"
+            " opt-in and the Twitch account's public visibility, and takes effect immediately rather"
+            " than at the next poll tick. Independent of social-account visibility, so the handle stays"
+            " on the public profile. Requires a linked player (404 otherwise) and the account.social"
+            " capability."
+        ),
+    },
     # ── user avatar (binary upload + delete) ────────────────────────────────────────────────────────
     "rpc.app.users.avatar_upload": {
         "summary": "Upload user avatar",

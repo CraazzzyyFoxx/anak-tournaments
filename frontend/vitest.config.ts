@@ -128,6 +128,9 @@ export default defineConfig({
       "src/components/HoverPrefetchLink.behavior.test.tsx",
       "src/components/EncounterRostersModal.behavior.test.tsx",
       "src/components/BracketView.behavior.test.tsx",
+      // Same file-level rule: `account-settings` is under `src/components`, and
+      // this is its only vitest file so far.
+      "src/components/account-settings/MyAccountSection.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/TournamentBroadcastBlock.behavior.test.tsx",

@@ -94,7 +94,7 @@ async def _load_players(
     player_ids: set[int],
     tournament_id: int,
 ) -> dict[int, StreamPlayerRead]:
-    """Name, avatar and tournament team for every streaming participant, in ONE query.
+    """Name, avatar and tournament team for every *publishable* streaming participant, in ONE query.
 
     Batched deliberately: a tournament page can carry dozens of live channels and a
     per-entry lookup would put that many round-trips on a public, cacheable read.
@@ -106,6 +106,14 @@ async def _load_players(
     is a ``players.user.id``, and ``tournament.player`` no longer carries one
     (``user_id`` was dropped in iwrefac07), so the only path to a roster row is
     through ``workspace_member``.
+
+    PRIVACY: also the display half of the stream veto. ``stream_visible`` rides
+    along in the same SELECT (the row is already being fetched, so the gate costs
+    no extra round-trip) and a vetoed player is simply left out of the map. The
+    poll-target query in ``services/targets.py`` already keeps them out of Redis,
+    but that only takes effect on the next tick — for a privacy switch, a 30-60s
+    window during which the page still shows you is not acceptable, and the
+    entries already in the hash have to be dropped at read time too.
     """
     if not player_ids:
         return {}
@@ -114,6 +122,7 @@ async def _load_players(
             User.id,
             User.name,
             User.avatar_url,
+            User.stream_visible,
             Player.id.label("roster_id"),
             Player.is_substitution,
             Team.id.label("team_id"),
@@ -139,6 +148,12 @@ async def _load_players(
     # different team on every tick, which reads as switching teams mid-broadcast.
     best: dict[int, tuple[tuple[bool, bool, int], Any]] = {}
     for row in rows:
+        # PRIVACY: the veto, applied before ranking so a vetoed user cannot even
+        # become a map entry. ``is False`` and not ``not row.stream_visible``: only
+        # an explicit false is a veto, so a NULL from an older row (or a fake row in
+        # a test) fails open rather than silently un-publishing a whole tournament.
+        if row.stream_visible is False:
+            continue
         user_id = int(row.id)
         roster_id = None if row.roster_id is None else int(row.roster_id)
         # A real roster row beats none, a starter beats a substitute, and the lowest
@@ -163,7 +178,7 @@ def _entry_from_snapshot(
     field: str,
     snapshot: dict[str, Any],
     *,
-    player: StreamPlayerRead | None,
+    player: StreamPlayerRead,
 ) -> StreamEntryRead:
     """Build a live entry from a Redis snapshot.
 
@@ -171,6 +186,10 @@ def _entry_from_snapshot(
     live and ``state.write_live`` replaces the whole set each tick, so the field's
     existence IS the liveness signal. The snapshot carries no ``live`` key on
     purpose — an always-true field would invite a reader to trust a stale one.
+
+    ``player`` is required, not optional: the caller drops any entry it could not
+    resolve a publishable player for (see ``build_tournament_streams``), so an
+    unattributed participant entry is not a state this function can produce.
     """
     channel = str(snapshot.get("channel") or field.split(":", 1)[-1])
     return StreamEntryRead(
@@ -245,9 +264,19 @@ async def build_tournament_streams(
         {pid for _, snapshot in live_participants if (pid := _player_id(snapshot)) is not None},
         tournament_id,
     )
+    # PRIVACY, fail-closed: an entry survives only when ``_load_players`` returned a
+    # player for it. Two distinct cases converge here on purpose:
+    #   * vetoed player -- ``_load_players`` withheld them, so the stale Redis entry
+    #     goes with them;
+    #   * ``player_id`` that matches no ``players.user`` row at all -- we cannot
+    #     establish consent for a player we cannot read, so we do not publish.
+    # This cannot swallow the organizer's broadcast: official links never come from
+    # this list (``source == "official"`` is filtered out above) and are rendered by
+    # ``_official_entry``, whose ``player`` is always None by design.
     participants = [
-        _entry_from_snapshot(field, snapshot, player=players.get(_player_id(snapshot) or 0))
+        _entry_from_snapshot(field, snapshot, player=player)
         for field, snapshot in live_participants
+        if (player := players.get(cast(int, _player_id(snapshot)))) is not None
     ]
     # Redis hash order is arbitrary; sort so the response is stable across calls
     # (it is served from a TTL cache) and the biggest audience leads.

@@ -1,6 +1,6 @@
 """Contract guards on ``rpc.stream.tournament_streams``.
 
-Five properties, each of which fails silently in production if it drifts:
+Six properties, each of which fails silently in production if it drifts:
 
 1. **The visibility gate runs first.** The gateway caches this response with
    ``respcache.TTLOnly`` — no viewer in the cache key — so a hidden tournament
@@ -17,6 +17,10 @@ Five properties, each of which fails silently in production if it drifts:
 5. **The team pick is a function of the data, not of row order.** A participant can
    have two roster rows in one tournament (a substitute covering their slot), so an
    unranked pick would move them between teams from tick to tick.
+6. **A participant who vetoed being broadcast is not published**, even though the
+   poller left them in the Redis hash on the previous tick, and even when they are
+   verified. And an entry whose ``player_id`` resolves to nothing is withheld for the
+   same reason: consent we cannot read is consent we do not have.
 
 No database and no Redis: the gate and the batched lookup are exercised against a
 fake session that answers the two statement shapes this path issues.
@@ -118,16 +122,21 @@ def _player_row(
     roster_id: int | None = None,
     is_substitution: bool = False,
     team: tuple[int, str] | None = None,
+    stream_visible: bool = True,
 ) -> SimpleNamespace:
     """One row of the batched player+roster join.
 
     ``team=None`` is the pre-draft state, and the shape the LEFT JOINs really
     produce: no roster row matched, so every roster column comes back NULL.
+
+    ``stream_visible=False`` is the owner's veto on being broadcast — the row still
+    comes back from the DB, and the read is what must refuse to publish it.
     """
     return SimpleNamespace(
         id=player_id,
         name=name,
         avatar_url=None,
+        stream_visible=stream_visible,
         roster_id=roster_id,
         is_substitution=is_substitution,
         team_id=None if team is None else team[0],
@@ -431,3 +440,103 @@ class ParticipantTeamTests(IsolatedAsyncioTestCase):
         # Six participants, one round trip -- the team join rides along instead of
         # adding a statement.
         self.assertEqual(len(session.executed), 1)
+
+
+class StreamVetoDisplayGateTests(IsolatedAsyncioTestCase):
+    """The display half of ``players.user.stream_visible``.
+
+    The collection gate in ``services/targets.py`` keeps a vetoed channel out of the
+    NEXT poll, which leaves a 30-60s window where the hash still holds the previous
+    tick's entry. That window is the whole reason this gate exists, so these tests
+    always start from "the entry is already in Redis".
+    """
+
+    async def _run(
+        self,
+        rows: list[Any],
+        *,
+        channels: dict[str, tuple[int, str]],
+        links: list[TournamentLink] | None = None,
+    ) -> tuple[Any, _FakeSession]:
+        snapshots = {
+            f"twitch:{channel}": _snapshot(channel, source=source, player_id=player_id)
+            for channel, (player_id, source) in channels.items()
+        }
+        session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False), rows)
+        with patch.object(reads.targets, "official_stream_links", AsyncMock(return_value=links or [])):
+            result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
+        return result, session
+
+    async def test_a_vetoed_self_declared_participant_is_withheld(self) -> None:
+        result, _ = await self._run(
+            [_player_row(11, "Alice", stream_visible=False)],
+            channels={"alice": (11, "self_declared")},
+        )
+
+        self.assertEqual(result.participants, [])
+
+    async def test_a_vetoed_verified_participant_is_withheld(self) -> None:
+        # The path that had no off switch at all before this column: a verified,
+        # publicly visible Twitch account was consent enough.
+        result, _ = await self._run(
+            [_player_row(12, "Bob", roster_id=5, team=(3, "Team Rocket"), stream_visible=False)],
+            channels={"bob": (12, "verified")},
+        )
+
+        self.assertEqual(result.participants, [])
+
+    async def test_the_veto_removes_only_the_player_who_set_it(self) -> None:
+        result, _ = await self._run(
+            [
+                _player_row(11, "Alice", stream_visible=False),
+                _player_row(12, "Bob", roster_id=5, team=(3, "Team Rocket")),
+            ],
+            channels={"alice": (11, "self_declared"), "bob": (12, "verified")},
+        )
+
+        self.assertEqual([entry.channel for entry in result.participants], ["bob"])
+        self.assertEqual(result.participants[0].player.name, "Bob")  # type: ignore[union-attr]
+
+    async def test_both_consent_paths_still_publish_without_a_veto(self) -> None:
+        """Regression guard: the gate must not become a blanket "hide participants"."""
+        result, _ = await self._run(
+            [_player_row(11, "Alice"), _player_row(12, "Bob", roster_id=5, team=(3, "Team Rocket"))],
+            channels={"alice": (11, "self_declared"), "bob": (12, "verified")},
+        )
+
+        self.assertEqual({entry.channel for entry in result.participants}, {"alice", "bob"})
+        self.assertTrue(all(entry.player is not None for entry in result.participants))
+
+    async def test_a_player_id_that_resolves_to_nothing_is_withheld(self) -> None:
+        # Fail-closed, and deliberately indistinguishable from a veto: a player row we
+        # cannot read is a player whose consent we cannot establish.
+        result, _ = await self._run([], channels={"ghost": (99, "verified")})
+
+        self.assertEqual(result.participants, [])
+
+    async def test_the_official_broadcast_is_not_touched_by_the_veto(self) -> None:
+        # The organizer's slot carries ``player=None`` by design, so the fail-closed
+        # participant rule must not reach it -- that would take the tournament's own
+        # broadcast off the page whenever the caster happens to have opted out.
+        result, _ = await self._run(
+            [_player_row(11, "Alice", stream_visible=False)],
+            channels={"caster": (11, "official")},
+            links=[_link("https://twitch.tv/caster")],
+        )
+
+        self.assertEqual([entry.channel for entry in result.official], ["caster"])
+        self.assertTrue(result.official[0].live)
+        self.assertIsNone(result.official[0].player)
+        self.assertEqual(result.participants, [])
+
+    async def test_the_veto_column_rides_the_existing_query(self) -> None:
+        channels = {f"p{index}": (20 + index, "verified") for index in range(4)}
+        rows = [_player_row(20 + index, f"P{index}") for index in range(4)]
+
+        result, session = await self._run(rows, channels=channels)
+
+        self.assertEqual(len(result.participants), 4)
+        # The gate reads a column the batched join already selects, so it must not
+        # have cost a statement -- a per-entry consent check would make this len 4.
+        self.assertEqual(len(session.executed), 1)
+        self.assertIn("stream_visible", str(session.executed[0]))

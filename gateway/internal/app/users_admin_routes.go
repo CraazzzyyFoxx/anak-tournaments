@@ -35,4 +35,10 @@ var UsersAdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/me/social", Queue: "rpc.app.users.me_social_list", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/me/social/{account_id}/primary", Queue: "rpc.app.users.me_social_set_primary", Path: []string{"account_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/me/social/{account_id}/visibility", Queue: "rpc.app.users.me_social_set_visibility", Path: []string{"account_id"}, Body: true, Auth: edge.AuthRequired},
+	// Global stream-privacy veto for the current user's OWN player. Distinct
+	// from the per-account visibility above: that one hides a social account
+	// from the public profile, this one stops the live stream from surfacing on
+	// tournament pages at all (and overrides the per-tournament Stream POV
+	// opt-in in a registration).
+	{Method: "POST", Pattern: "/api/v1/me/stream-visibility", Queue: "rpc.app.users.me_set_stream_visibility", Body: true, Auth: edge.AuthRequired},
 }

@@ -133,7 +133,17 @@ async def to_pydantic(
         if visible_only:
             accounts = [account for account in accounts if _is_globally_visible(account)]
         social_accounts = [_social_account_read(account) for account in accounts]
-    return schemas.UserRead(id=user.id, name=user.name, avatar_url=user.avatar_url, social_accounts=social_accounts)
+    return schemas.UserRead(
+        id=user.id,
+        name=user.name,
+        avatar_url=user.avatar_url,
+        # ``is not False`` rather than a truthiness check: the column default lands
+        # at INSERT, so a transient (unflushed) ``User`` reads None here, and
+        # reporting that as "hidden" would show the owner a switch that lies about
+        # their own state. Same fail-open direction as ``_is_globally_visible``.
+        stream_visible=user.stream_visible is not False,
+        social_accounts=social_accounts,
+    )
 
 
 def _is_globally_visible(account: models.SocialAccount) -> bool:

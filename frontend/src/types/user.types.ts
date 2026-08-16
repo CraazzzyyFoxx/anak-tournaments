@@ -27,6 +27,12 @@ export interface User {
   name: string;
   avatar_url: string | null;
   social_accounts: SocialAccount[];
+  /** Stream-privacy veto for this player, and a veto is all it is: `false`
+   *  keeps the live stream off every tournament page, overriding both the
+   *  per-tournament Stream POV opt-in and any visible Twitch account. Optional
+   *  because responses cached before the field existed simply omit it —
+   *  `undefined` means the backend default, which is "allowed". */
+  stream_visible?: boolean;
 }
 
 export interface UserRole {

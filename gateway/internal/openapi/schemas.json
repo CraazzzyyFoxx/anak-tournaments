@@ -2620,6 +2620,18 @@
       },
       "summary": "User matches summary"
     },
+    "rpc.app.users.me_set_stream_visibility": {
+      "description": "Sets whether the caller's own live stream may be surfaced on tournament pages and returns their updated player. A false value is a veto: it outranks the per-tournament stream-POV opt-in and the Twitch account's public visibility, and takes effect immediately rather than at the next poll tick. Independent of social-account visibility, so the handle stays on the public profile. Requires a linked player (404 otherwise) and the account.social capability.",
+      "request": {
+        "array": false,
+        "ref": "app.StreamVisibilityUpdate"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.UserRead"
+      },
+      "summary": "Set my stream visibility"
+    },
     "rpc.app.users.merge_execute": {
       "description": "Merges one player profile into another, stamping the operator's auth-user id (superuser only).",
       "request": {
@@ -13623,6 +13635,20 @@
       "title": "SortOrder",
       "type": "string"
     },
+    "app.StreamVisibilityUpdate": {
+      "description": "Self-service veto on surfacing the owner's live stream on tournament pages.\n\nSeparate from ``SocialVisibilityUpdate``: that one governs whether a handle is\nshown on the public profile at all, this one only whether the live broadcast is\nsurfaced. Collapsing them is the bug this endpoint exists to fix.",
+      "properties": {
+        "visible": {
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "visible"
+      ],
+      "title": "StreamVisibilityUpdate",
+      "type": "object"
+    },
     "app.TournamentStatus": {
       "enum": [
         "registration",
@@ -15987,6 +16013,11 @@
           },
           "title": "Social Accounts",
           "type": "array"
+        },
+        "stream_visible": {
+          "default": true,
+          "title": "Stream Visible",
+          "type": "boolean"
         }
       },
       "required": [
