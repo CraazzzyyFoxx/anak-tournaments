@@ -300,6 +300,89 @@ async def lookback_start_tournament_id(
     return min(ids) if ids else int(end_tournament_id)
 
 
+async def lookback_tournament_ids(
+    session: AsyncSession,
+    end_tournament_id: int,
+    look_back: int,
+    workspace_id: int | None = None,
+    workspace_ids: typing.Sequence[int] | None = None,
+) -> list[int]:
+    """The ``look_back`` most recent tournament ids up to the end tournament, by START DATE.
+
+    Chronology is ``(coalesce(start_date, created_at), id)``. Unlike
+    :func:`lookback_start_tournament_id` this returns the explicit id list, not
+    an id interval: ids are not chronological in this database (tournament 62
+    started 2025-07-19, 61 started 2026-03-14), so an ``id BETWEEN`` window
+    around an out-of-order tournament silently pulls in events played after it.
+    Result is ordered oldest → newest and includes ``end_tournament_id`` itself.
+    """
+    chrono = sa.func.coalesce(models.Tournament.start_date, models.Tournament.created_at)
+    end_key = (
+        await session.execute(sa.select(chrono, models.Tournament.id).where(models.Tournament.id == end_tournament_id))
+    ).one_or_none()
+    if end_key is None:
+        return [int(end_tournament_id)]
+    rows = await session.execute(
+        sa.select(models.Tournament.id)
+        .where(
+            sa.tuple_(chrono, models.Tournament.id) <= sa.tuple_(*end_key),
+            # Same exclusion as ``lookback_start_tournament_id``: hidden
+            # containers occupy window slots while contributing no encounters.
+            models.Tournament.is_hidden.is_(False),
+            *workspace_scope_filter(workspace_id, workspace_ids),
+        )
+        .order_by(chrono.desc(), models.Tournament.id.desc())
+        .limit(max(int(look_back), 1))
+    )
+    ids = [int(row[0]) for row in rows.all()]
+    return list(reversed(ids)) if ids else [int(end_tournament_id)]
+
+
+async def get_matches_for_tournaments(
+    session: AsyncSession,
+    tournament_ids: typing.Sequence[int],
+    workspace_id: int | None = None,
+    workspace_ids: typing.Sequence[int] | None = None,
+) -> typing.Sequence[models.Encounter]:
+    """Encounters of the given tournaments in true chronological replay order.
+
+    Companion to :func:`lookback_tournament_ids` — takes the explicit id list a
+    date window resolves to (an id interval cannot express one) and orders the
+    replay by tournament start date so rating updates happen in the order the
+    games were actually played.
+    """
+    if not tournament_ids:
+        return []
+    chrono = sa.func.coalesce(models.Tournament.start_date, models.Tournament.created_at)
+    query = (
+        sa.select(models.Encounter)
+        .options(
+            sa.orm.joinedload(models.Encounter.home_team),
+            sa.orm.joinedload(models.Encounter.away_team),
+            sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players),
+            sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players),
+            sa.orm.joinedload(models.Encounter.home_team)
+            .joinedload(models.Team.players)
+            .joinedload(models.Player.workspace_member),
+            sa.orm.joinedload(models.Encounter.away_team)
+            .joinedload(models.Team.players)
+            .joinedload(models.Player.workspace_member),
+            sa.orm.joinedload(models.Encounter.tournament),
+        )
+        .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+        .where(
+            models.Encounter.tournament_id.in_([int(t) for t in tournament_ids]),
+            # See get_matches: scrim containers come back with empty rosters and
+            # crash the OpenSkill replay.
+            models.Tournament.is_hidden.is_(False),
+            *workspace_scope_filter(workspace_id, workspace_ids),
+        )
+        .order_by(chrono, models.Encounter.tournament_id, models.Encounter.id)
+    )
+    result = await session.scalars(query)
+    return result.unique().all()  # type: ignore
+
+
 async def get_algorithm(session: AsyncSession, name: str) -> models.AnalyticsAlgorithm:
     query = sa.select(models.AnalyticsAlgorithm).where(models.AnalyticsAlgorithm.name == name)
     result = await session.execute(query)

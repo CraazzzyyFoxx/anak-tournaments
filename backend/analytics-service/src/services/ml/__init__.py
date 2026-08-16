@@ -17,4 +17,6 @@ Subpackages:
 # v1.2: pre-encounter mu snapshot drops self-encounters (no fan-out).
 # v1.3: standings frames — pre-tournament mu (train == serve), mu max/std
 #       spread features, h2h features removed.
-FEATURE_VERSION = "v1.3"
+# v1.4: chronological (start_date) lookback windows and splits — ids are not
+#       time-ordered; role mu gaps + roster synergy features.
+FEATURE_VERSION = "v1.4"

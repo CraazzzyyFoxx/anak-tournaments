@@ -50,9 +50,13 @@ def _rank_stats(rows: list[tuple[int, float, float]]) -> pd.DataFrame:
 
 def _mu(rows: list[tuple[int, float]]) -> pd.DataFrame:
     frame = pd.DataFrame(rows, columns=["team_id", "avg_mu"])
-    for col in ("max_mu", "min_mu", "std_mu"):
+    for col in ("max_mu", "min_mu", "std_mu", "tank_mu", "damage_mu", "support_mu"):
         frame[col] = 0.0
     return frame
+
+
+def _synergy(rows: list[tuple[int, float, float]] | None = None) -> pd.DataFrame:
+    return pd.DataFrame(rows or [], columns=["team_id", "synergy_pairs", "synergy_winrate"])
 
 
 class ScheduleLeakageTests(TestCase):
@@ -113,13 +117,18 @@ class ScheduleLeakageTests(TestCase):
 
 
 class ForecastFrameTests(IsolatedAsyncioTestCase):
-    async def _build(self, ranks, mus):
+    async def _build(self, ranks, mus, synergy=None):
         with (
             patch.object(standings_features, "_team_rank_stats", AsyncMock(return_value=_rank_stats(ranks))),
             patch.object(
                 standings_features,
                 "snapshot_pre_tournament_team_mu",
                 AsyncMock(return_value=_mu(mus)),
+            ),
+            patch.object(
+                standings_features,
+                "team_synergy_features",
+                AsyncMock(return_value=_synergy(synergy)),
             ),
         ):
             return await standings_features.build_standings_forecast_frame(SimpleNamespace(), 7)
@@ -157,6 +166,27 @@ class ForecastFrameTests(IsolatedAsyncioTestCase):
         self.assertEqual(0.0, row["max_mu_gap"])
         self.assertEqual(0.0, row["home_std_mu"])
         self.assertEqual(7, row["tournament_id"])
+
+    async def test_synergy_reaches_both_sides_of_a_pairing(self) -> None:
+        frame = await self._build(
+            [(10, 3000.0, 100.0), (20, 2500.0, 50.0)],
+            [(10, 3100.0), (20, 2400.0)],
+            synergy=[(10, 0.4, 0.75), (20, 0.1, 0.25)],
+        )
+
+        row = frame[(frame["home_team_id"] == 10) & (frame["away_team_id"] == 20)].iloc[0]
+        self.assertEqual(0.4, row["home_synergy_pairs"])
+        self.assertEqual(0.25, row["away_synergy_winrate"])
+        self.assertAlmostEqual(0.5, row["synergy_winrate_gap"])
+
+    async def test_no_synergy_history_stays_missing_not_average(self) -> None:
+        frame = await self._build(
+            [(10, 3000.0, 100.0), (20, 2500.0, 50.0)],
+            [(10, 3100.0), (20, 2400.0)],
+            synergy=None,
+        )
+        self.assertTrue(frame["home_synergy_winrate"].isna().all())
+        self.assertTrue(frame["synergy_winrate_gap"].isna().all())
 
     async def test_single_team_field_yields_nothing_to_simulate(self) -> None:
         frame = await self._build([(10, 3000.0, 100.0)], [(10, 3100.0)])

@@ -69,7 +69,10 @@ logger = logging.getLogger(__name__)
 #
 # The mu spread features (max/std) carry what the roster average hides: a
 # star-carried roster and a flat one with the same ``avg_mu`` do not win the
-# same matches.
+# same matches. Role mu gaps compare like against like (a weak tank behind
+# strong supports vanishes from ``avg_mu``); the synergy pair features measure
+# how much of the roster has already played together and how well — the one
+# thing the balancer deliberately does NOT equalize.
 STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "home_avg_rank",
     "away_avg_rank",
@@ -84,6 +87,14 @@ STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "max_mu_gap",
     "home_std_mu",
     "away_std_mu",
+    "role_mu_gap_tank",
+    "role_mu_gap_damage",
+    "role_mu_gap_support",
+    "home_synergy_pairs",
+    "away_synergy_pairs",
+    "home_synergy_winrate",
+    "away_synergy_winrate",
+    "synergy_winrate_gap",
 )
 
 

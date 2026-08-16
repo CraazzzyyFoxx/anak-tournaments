@@ -94,17 +94,16 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     if df.empty:
         return pd.DataFrame(columns=["encounter_id", "team_id", "avg_mu", "max_mu", "min_mu", "std_mu"])
 
-    start_tid = await v1_service.lookback_start_tournament_id(
+    window_ids = await v1_service.lookback_tournament_ids(
         session,
         tournament_id,
         look_back,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
-    matches = await v1_service.get_matches(
+    matches = await v1_service.get_matches_for_tournaments(
         session,
-        start_tid,
-        tournament_id,
+        window_ids,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
@@ -219,18 +218,22 @@ async def snapshot_pre_tournament_team_mu(
     :func:`prepare_openskill_data` seeds every team player from their
     registration rank.
 
-    Output columns: ``team_id``, ``avg_mu``, ``max_mu``, ``min_mu``, ``std_mu``.
+    Output columns: ``team_id``, ``avg_mu``, ``max_mu``, ``min_mu``, ``std_mu``
+    plus per-role means ``tank_mu`` / ``damage_mu`` / ``support_mu`` (NaN when
+    the roster has no rated player on that role) — the roster average hides a
+    weak tank behind strong supports, and role gaps are how a balanced-looking
+    team actually loses.
 
     Deliberately uncached, unlike its per-encounter sibling: this frame exists
     for tournaments whose rosters are still being assembled, where a TTL'd
     snapshot would forecast a field that no longer exists.
     """
-    columns = ["team_id", "avg_mu", "max_mu", "min_mu", "std_mu"]
+    columns = ["team_id", "avg_mu", "max_mu", "min_mu", "std_mu", "tank_mu", "damage_mu", "support_mu"]
     teams = await v1_service.get_teams_with_players(session, tournament_id)
     if not teams:
         return pd.DataFrame(columns=columns)
 
-    start_tid = await v1_service.lookback_start_tournament_id(
+    window_ids = await v1_service.lookback_tournament_ids(
         session,
         tournament_id,
         look_back,
@@ -239,10 +242,9 @@ async def snapshot_pre_tournament_team_mu(
     )
     history = [
         encounter
-        for encounter in await v1_service.get_matches(
+        for encounter in await v1_service.get_matches_for_tournaments(
             session,
-            start_tid,
-            tournament_id,
+            window_ids,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
         )
@@ -256,11 +258,16 @@ async def snapshot_pre_tournament_team_mu(
 
     rows: list[dict[str, typing.Any]] = []
     for team in teams:
-        mus = [
-            float(rating.mu)
-            for rating in (players_rating.get(get_id_role(player)) for player in team.players)
-            if rating is not None
-        ]
+        mus: list[float] = []
+        role_mus: dict[str, list[float]] = {"tank": [], "damage": [], "support": []}
+        for player in team.players:
+            rating = players_rating.get(get_id_role(player))
+            if rating is None:
+                continue
+            value = float(rating.mu)
+            mus.append(value)
+            if player.role in role_mus:
+                role_mus[player.role].append(value)
         if not mus:
             continue
         rows.append(
@@ -270,6 +277,10 @@ async def snapshot_pre_tournament_team_mu(
                 "max_mu": float(max(mus)),
                 "min_mu": float(min(mus)),
                 "std_mu": float(pd.Series(mus).std(ddof=0)) if len(mus) > 1 else 0.0,
+                **{
+                    f"{role}_mu": (float(sum(values) / len(values)) if values else float("nan"))
+                    for role, values in role_mus.items()
+                },
             }
         )
     return pd.DataFrame(rows, columns=columns)

@@ -28,8 +28,33 @@ from src.core.workspace import workspace_scope_filter
 
 from .extractors import extract_encounter_features
 from .opponent_strength import snapshot_pre_tournament_team_mu
+from .synergy import team_synergy_features
 
 __all__ = ("build_standings_forecast_frame", "build_standings_training_frame")
+
+_ROLES = ("tank", "damage", "support")
+# Per-team pre-tournament strength columns carried onto each side of a pairing.
+_TEAM_MU_COLS = ("avg_mu", "max_mu", "std_mu", *(f"{role}_mu" for role in _ROLES))
+_TEAM_SYNERGY_COLS = ("synergy_pairs", "synergy_winrate")
+
+
+def _side_renames(side: str, extra: tuple[str, ...] = ()) -> dict[str, str]:
+    """``{col: f"{side}_{col}"}`` for every per-team strength/synergy column."""
+    return {col: f"{side}_{col}" for col in (*extra, *_TEAM_MU_COLS, *_TEAM_SYNERGY_COLS)}
+
+
+def _derive_pair_gaps(df: pd.DataFrame) -> pd.DataFrame:
+    """Home-minus-away gaps over the merged per-side strength columns.
+
+    NaN propagates: a missing side (unrated roster, no co-play history) yields a
+    missing gap, which the booster routes natively — see ``_feature_matrix``.
+    """
+    df["mu_gap"] = df["home_avg_mu"] - df["away_avg_mu"]
+    df["max_mu_gap"] = df["home_max_mu"] - df["away_max_mu"]
+    for role in _ROLES:
+        df[f"role_mu_gap_{role}"] = df[f"home_{role}_mu"] - df[f"away_{role}_mu"]
+    df["synergy_winrate_gap"] = df["home_synergy_winrate"] - df["away_synergy_winrate"]
+    return df
 
 
 async def _team_performance_mean(
@@ -165,38 +190,27 @@ async def build_standings_forecast_frame(
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
-    strength = rank_stats.merge(mu[["team_id", "avg_mu", "max_mu", "std_mu"]], on="team_id", how="left")
+    synergy = await team_synergy_features(
+        session,
+        tournament_id,
+        workspace_id=workspace_id,
+        workspace_ids=workspace_ids,
+    )
+    strength = rank_stats.merge(mu[["team_id", *_TEAM_MU_COLS]], on="team_id", how="left").merge(
+        synergy, on="team_id", how="left"
+    )
 
     team_ids = sorted(int(team_id) for team_id in strength["team_id"])
     pairs = pd.DataFrame(
         itertools.permutations(team_ids, 2),
         columns=["home_team_id", "away_team_id"],
     )
-    home = strength.rename(
-        columns={
-            "team_id": "home_team_id",
-            "avg_rank": "home_avg_rank",
-            "std_rank": "home_std_rank",
-            "avg_mu": "home_avg_mu",
-            "max_mu": "home_max_mu",
-            "std_mu": "home_std_mu",
-        }
-    )
-    away = strength.rename(
-        columns={
-            "team_id": "away_team_id",
-            "avg_rank": "away_avg_rank",
-            "std_rank": "away_std_rank",
-            "avg_mu": "away_avg_mu",
-            "max_mu": "away_max_mu",
-            "std_mu": "away_std_mu",
-        }
-    )
+    home = strength.rename(columns={"team_id": "home_team_id", **_side_renames("home", ("avg_rank", "std_rank"))})
+    away = strength.rename(columns={"team_id": "away_team_id", **_side_renames("away", ("avg_rank", "std_rank"))})
     df = pairs.merge(home, on="home_team_id", how="left").merge(away, on="away_team_id", how="left")
     df["tournament_id"] = tournament_id
     df["rank_gap"] = df["home_avg_rank"] - df["away_avg_rank"]
-    df["mu_gap"] = df["home_avg_mu"] - df["away_avg_mu"]
-    df["max_mu_gap"] = df["home_max_mu"] - df["away_max_mu"]
+    df = _derive_pair_gaps(df)
     return df.replace([np.inf, -np.inf], np.nan)
 
 
@@ -223,11 +237,14 @@ async def build_standings_training_frame(
 
     perf = await _team_performance_mean(session, tournament_ids)
 
-    # OpenSkill mu — the SAME pre-tournament snapshot inference uses, keyed by
-    # (tournament_id, team_id). The old per-encounter snapshot trained the model
-    # on mid-tournament ratings inference could never observe (train/serve skew)
-    # and once fanned the frame out ~88x through duplicate snapshot rows.
-    mu_frames: list[pd.DataFrame] = []
+    # OpenSkill mu + roster synergy — the SAME pre-tournament features inference
+    # uses, keyed by (tournament_id, team_id). The old per-encounter snapshot
+    # trained the model on mid-tournament ratings inference could never observe
+    # (train/serve skew) and once fanned the frame out ~88x through duplicate
+    # snapshot rows. Both are strictly pre-tournament BY DATE (ids are not
+    # chronological here), so nothing played after a tournament's start reaches
+    # its own training rows.
+    team_frames: list[pd.DataFrame] = []
     for tid in tournament_ids:
         snap = await snapshot_pre_tournament_team_mu(
             session,
@@ -235,29 +252,31 @@ async def build_standings_training_frame(
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
         )
-        if not snap.empty:
-            mu_frames.append(snap.assign(tournament_id=tid))
-    mu_df = (
-        pd.concat(mu_frames, ignore_index=True)
-        if mu_frames
-        else pd.DataFrame(columns=["tournament_id", "team_id", "avg_mu", "max_mu", "min_mu", "std_mu"])
+        if snap.empty:
+            continue
+        synergy = await team_synergy_features(
+            session,
+            tid,
+            workspace_id=workspace_id,
+            workspace_ids=workspace_ids,
+        )
+        team_frames.append(snap.merge(synergy, on="team_id", how="left").assign(tournament_id=tid))
+    team_df = (
+        pd.concat(team_frames, ignore_index=True)
+        if team_frames
+        else pd.DataFrame(columns=["tournament_id", "team_id", *_TEAM_MU_COLS, *_TEAM_SYNERGY_COLS])
     )
 
     df = encounters
     for side in ("home", "away"):
-        renames = {
-            "avg_mu": f"{side}_avg_mu",
-            "max_mu": f"{side}_max_mu",
-            "std_mu": f"{side}_std_mu",
-        }
+        renames = _side_renames(side)
         df = df.merge(
-            mu_df.rename(columns=renames)[["tournament_id", "team_id", *renames.values()]],
+            team_df.rename(columns=renames)[["tournament_id", "team_id", *renames.values()]],
             left_on=["tournament_id", f"{side}_team_id"],
             right_on=["tournament_id", "team_id"],
             how="left",
         ).drop(columns=["team_id"])
-    df["mu_gap"] = df["home_avg_mu"] - df["away_avg_mu"]
-    df["max_mu_gap"] = df["home_max_mu"] - df["away_max_mu"]
+    df = _derive_pair_gaps(df)
 
     if not perf.empty:
         perf_h = perf.rename(columns={"team_id": "home_team_id", "avg_perf": "home_avg_perf"})
@@ -278,14 +297,11 @@ async def build_standings_training_frame(
         "away_avg_rank",
         "home_std_rank",
         "away_std_rank",
-        "home_avg_mu",
-        "away_avg_mu",
+        *(f"{side}_{col}" for side in ("home", "away") for col in (*_TEAM_MU_COLS, *_TEAM_SYNERGY_COLS)),
         "mu_gap",
-        "home_max_mu",
-        "away_max_mu",
         "max_mu_gap",
-        "home_std_mu",
-        "away_std_mu",
+        *(f"role_mu_gap_{role}" for role in _ROLES),
+        "synergy_winrate_gap",
         "home_avg_perf",
         "away_avg_perf",
         "perf_gap",
