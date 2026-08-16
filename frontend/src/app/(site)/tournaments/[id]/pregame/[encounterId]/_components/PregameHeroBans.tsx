@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Ban, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -29,6 +30,8 @@ export interface PregameHeroRound {
   round: number | null;
   /** Null alongside a null round — there is no single map to name. */
   mapName: string | null;
+  /** The map's catalog entry, for its still. Undefined until the catalog loads. */
+  mapItem: PickBanItemLike | undefined;
   actions: PregameHeroAction[];
 }
 
@@ -72,35 +75,46 @@ export function PregameHeroBans({
   homeTeam: TeamNameInput | null | undefined;
   awayTeam: TeamNameInput | null | undefined;
   /**
-   * Overrides the default "bans for this map" caption. The closing screen
-   * replays every map of the series, so each block names its own map instead
-   * of repeating a caption that would then be true of none of them.
+   * Replaces the default "bans for this map" caption. Pass `null` to drop it:
+   * the closing screen captions each row itself, with the map's own still, so
+   * a caption here would name the map twice.
    */
-  eyebrow?: string;
+  eyebrow?: ReactNode | null;
   /** Pass `null` to drop the lobby-setup hint: it only applies before a map is played. */
   hint?: string | null;
 }) {
   const t = useTranslations("pickBan.room");
-  const caption = eyebrow ?? t("heroBans.eyebrow");
   const note = hint === undefined ? t("heroBans.hint") : hint;
+  const caption =
+    eyebrow === undefined ? (
+      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
+        {t("heroBans.eyebrow")}
+      </span>
+    ) : (
+      eyebrow
+    );
 
   if (actions.length === 0) {
     return null;
   }
 
+  // Width is the caller's call: the result screen aligns this with its claim
+  // row, the closing screen gives each map a row of its own. Owning a `max-w`
+  // here centred the block under a left-aligned heading and left a third of
+  // the card empty.
   return (
-    <section className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-      <div className="flex flex-col gap-0.5">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
+    <section className="flex w-full flex-col gap-2">
+      {caption != null || note != null ? (
+        <div className="flex flex-col gap-0.5">
           {caption}
-        </span>
-        {note ? (
-          <p className="text-xs leading-relaxed text-[color:var(--aqt-fg-muted)]">{note}</p>
-        ) : null}
-      </div>
+          {note ? (
+            <p className="text-xs leading-relaxed text-[color:var(--aqt-fg-muted)]">{note}</p>
+          ) : null}
+        </div>
+      ) : null}
       {/* Stacked below `sm` for the same reason the claim row is: two columns of
           hero names on a phone truncate to initials. */}
-      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 sm:gap-4">
+      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 sm:gap-3">
         <SideBans
           side="home"
           name={homeName}

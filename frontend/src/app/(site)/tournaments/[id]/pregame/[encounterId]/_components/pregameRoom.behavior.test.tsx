@@ -1219,16 +1219,21 @@ describe("phase selection", () => {
     );
     await render();
 
-    const text = document.body.textContent ?? "";
-    expect(text).toContain(ROOM.heroBans.seriesTitle);
-    // One block per map, each naming its own map — not one caption claiming to
-    // describe "this map" on a screen where there is no single map left.
-    expect(text).toContain("Round 1 · Map 21");
-    expect(text).toContain("Round 2 · Map 22");
+    const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
+    const text = record?.textContent ?? "";
+    expect(document.body.textContent).toContain(ROOM.heroBans.seriesTitle);
+    // One block per map, each captioned by its own round and map — not one
+    // caption claiming to describe "this map" on a screen where there is none.
+    expect(text).toContain("Round 1");
+    expect(text).toContain("Round 2");
+    expect(text).toContain("Map 21");
+    expect(text).toContain("Map 22");
     expect(text).toContain("Hero 101");
     expect(text).toContain("Hero 102");
+    expect(record?.querySelectorAll("[data-hero-bans]")).toHaveLength(4);
     // The lobby-setup hint belongs to a map about to be played, never here.
     expect(text).not.toContain(ROOM.heroBans.hint);
+    expect(text).not.toContain(ROOM.heroBans.seriesEyebrow);
   });
 
   it("states a flat hero pool once, not once per map", async () => {
@@ -1259,11 +1264,14 @@ describe("phase selection", () => {
     );
     await render();
 
-    const text = document.body.textContent ?? "";
-    expect(text).toContain(ROOM.heroBans.seriesEyebrow);
-    expect(text).not.toContain("Round 1 · Map 21");
+    const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
+    expect(record?.textContent).toContain(ROOM.heroBans.seriesEyebrow);
+    // No per-map caption inside the record: the set covered every map, so
+    // naming one of them would be a claim nobody made.
+    expect(record?.textContent).not.toContain("Map 21");
+    expect(record?.textContent).not.toContain("Map 22");
     // Two sides, one block — not two blocks of two sides.
-    expect(document.body.querySelectorAll("[data-hero-bans]")).toHaveLength(2);
+    expect(record?.querySelectorAll("[data-hero-bans]")).toHaveLength(2);
   });
 
   it("leaves the closing screen without a bans block when nothing was banned", async () => {

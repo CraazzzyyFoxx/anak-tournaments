@@ -501,7 +501,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
   const t = useTranslations("pickBan.room");
 
   return (
-    <ol aria-label={t("series.label")} className="flex flex-wrap items-start gap-3">
+    <ol aria-label={t("series.label")} className="flex flex-wrap items-start gap-4">
       {series.map((map) => {
         const awaiting = map.state === "awaiting";
         const stateLabel = awaiting
@@ -510,31 +510,37 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
             ? t("series.upcoming")
             : null;
         return (
-          <li key={map.round} className="flex w-[5.5rem] flex-col items-center gap-1">
+          <li key={map.round} className="flex w-[7.5rem] flex-col items-center gap-1.5">
             {/* Ring on the wrapper, not the thumb: the map thumb already carries
                 an inset hairline ring, and `ring-inset` has no counter-utility
                 for `twMerge` to strip. */}
             <span
               className={cn(
+                // `rounded-md` to match the thumb's own radius: the ring is
+                // offset, so a rounder wrapper reads as a second, wrong corner.
                 "relative inline-block rounded-md",
-                awaiting ? "ring-2 ring-[color:var(--aqt-teal)]" : null
+                awaiting
+                  ? "ring-2 ring-[color:var(--aqt-teal)] ring-offset-2 ring-offset-[color:var(--aqt-card)]"
+                  : null
               )}
             >
               <PickBanItemThumb
                 kind="map"
                 item={map.item}
                 name={map.name}
-                size={40}
+                // Big enough to recognise the art at a glance. At the old 40px
+                // every still was a smear of skybox, so the filmstrip read as
+                // decoration and the caption did all the work — which is
+                // backwards for a strip whose whole point is the map.
+                size={72}
                 // Only an unreached map is dimmed. A played one keeps its colour:
-                // `muted` is the timeline's "banned" treatment (45% + grayscale)
-                // and at 40px it left the art unrecognisable, so a settled map
-                // became a grey smudge you could not name. Its score below and
-                // the absence of the ring already mark it as done.
+                // `muted` is the pool's "banned" treatment (45% + grayscale) and
+                // a settled map is not a rejected one.
                 muted={map.state === "upcoming"}
               />
               <span
                 aria-hidden
-                className="absolute -left-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[color:var(--aqt-card)] px-1 font-mono text-[9px] font-bold leading-none text-[color:var(--aqt-fg-muted)] ring-1 ring-[color:var(--aqt-border-2)]"
+                className="absolute -left-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[color:var(--aqt-card)] px-1 font-mono text-[10px] font-bold leading-none text-[color:var(--aqt-fg-muted)] ring-1 ring-[color:var(--aqt-border-2)]"
               >
                 {map.round}
               </span>
@@ -543,7 +549,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
                   aria-hidden
                   className="absolute inset-0 grid place-items-center rounded-md bg-[color:var(--aqt-card)]/55"
                 >
-                  <Hourglass className="h-4 w-4 text-[color:var(--aqt-teal)]" />
+                  <Hourglass className="h-5 w-5 text-[color:var(--aqt-teal)]" />
                 </span>
               ) : null}
             </span>
@@ -556,7 +562,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
                 nothing. The fixed height keeps every column's score aligned. */}
             <span
               title={map.name}
-              className="line-clamp-2 h-[2.1rem] w-full text-center text-[11px] leading-tight"
+              className="line-clamp-2 h-[2.2rem] w-full text-center text-[12px] font-medium leading-tight"
             >
               {map.name}
             </span>
@@ -565,7 +571,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
                 caption here wrapped to two lines and knocked every column out
                 of alignment. */}
             {map.score != null ? (
-              <span className="font-onest text-xs font-semibold tabular-nums">
+              <span className="font-onest text-sm font-semibold tabular-nums">
                 <span style={{ color: "var(--aqt-teal)" }}>{map.score.home}</span>
                 <span className="text-[color:var(--aqt-fg-faint)]">:</span>
                 <span style={{ color: "var(--aqt-rose)" }}>{map.score.away}</span>

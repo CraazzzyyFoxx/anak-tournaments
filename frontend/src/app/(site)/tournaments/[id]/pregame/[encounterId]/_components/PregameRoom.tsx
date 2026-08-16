@@ -388,9 +388,10 @@ export function PregameRoom({ encounterId, seriesReport = true }: PregameRoomPro
       ? series.map((map) => ({
           round: map.round,
           mapName: map.name,
+          mapItem: map.item,
           actions: heroActionsFor(map.round)
         }))
-      : [{ round: null, mapName: null, actions: heroActionsFor(null) }]
+      : [{ round: null, mapName: null, mapItem: undefined, actions: heroActionsFor(null) }]
   ).filter((block) => block.actions.length > 0);
   const sideNameOf = (side: PickBanSide) =>
     side === "home"

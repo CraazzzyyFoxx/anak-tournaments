@@ -165,16 +165,22 @@ export function PregameMapResult({
                 file below. */}
             {heroActions.length > 0 ? (
               <div className="flex flex-col gap-3 border-y border-[color:var(--aqt-border)] p-4">
-                <PregameHeroBans
-                  actions={heroActions}
-                  homeName={homeName}
-                  awayName={awayName}
-                  homeTeam={homeTeam}
-                  awayTeam={awayTeam}
-                />
+                {/* Same width as the claim row below, so the bans and the score
+                    they belong to read as one column rather than two widths. */}
+                <div className="mx-auto w-full max-w-2xl">
+                  <PregameHeroBans
+                    actions={heroActions}
+                    homeName={homeName}
+                    awayName={awayName}
+                    homeTeam={homeTeam}
+                    awayTeam={awayTeam}
+                  />
+                </div>
                 {/* Directly under the list it corrects: a wrong ban is noticed
                     HERE, reading the lobby setup, not back in the closed grid. */}
-                {heroUndo != null ? <div className="mx-auto w-full max-w-2xl">{heroUndo}</div> : null}
+                {heroUndo != null ? (
+                  <div className="mx-auto w-full max-w-2xl">{heroUndo}</div>
+                ) : null}
               </div>
             ) : null}
 
