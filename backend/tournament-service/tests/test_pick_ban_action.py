@@ -557,6 +557,76 @@ class ApplyPickBanActionUniquenessTests(TestCase):
         self.assertEqual("Your side already banned this item earlier in the series", ctx.exception.detail)
 
 
+class ProtectIsRoundLocalAcrossRoundsTests(TestCase):
+    """A round's PROTECTED entry survives that round's close (only its untouched
+    `available` leftovers are dropped), so a series pool holds the same item
+    twice: the finished round's protected row and the new round's fresh
+    candidate. The step must resolve against the round IN PLAY -- a protect on
+    map 1 must not bar a ban of that hero on map 2."""
+
+    def _series_pool(self) -> list:
+        """Round 1 settled (101 protected by home, 102 banned by home), round 2
+        freshly appended with 101 back as a candidate."""
+        return [
+            make_entry(
+                101, status=MapPoolEntryStatus.PROTECTED, protected_by=MapPickSide.HOME, action_index=0, round=1
+            ),
+            make_entry(102, status=MapPoolEntryStatus.BANNED, picked_by=MapPickSide.HOME, action_index=1, round=1),
+            make_entry(101, round=2),
+            make_entry(103, round=2),
+        ]
+
+    def _ban(self, pool: list, *, item_id: int, side: str = "home"):
+        return apply_pick_ban_action(
+            SimpleNamespace(
+                # Two rounds' worth of steps: round 1's are spent, round 2 opens.
+                resolved_sequence_json=["protect_home", "ban_home", "ban_home", "ban_away"],
+                status=MapVetoSessionStatus.ACTIVE.value,
+                current_step_started_at=None,
+            ),
+            pool,
+            captain_side=side,
+            item_id=item_id,
+            action="ban",
+            attribute_lookup={},
+            unique_attribute=None,
+            now=datetime.now(UTC),
+        )
+
+    def test_the_side_that_protected_a_hero_may_ban_it_the_next_round(self) -> None:
+        pool = self._series_pool()
+
+        entry = self._ban(pool, item_id=101)
+
+        self.assertEqual(2, entry.round)
+        self.assertEqual(MapPoolEntryStatus.BANNED.value, entry.status)
+        # The finished round's protected row is untouched -- it is history.
+        self.assertEqual(MapPoolEntryStatus.PROTECTED.value, pool[0].status)
+
+    def test_the_role_rule_ignores_a_finished_rounds_protect(self) -> None:
+        """Role uniqueness is round-local, so round 1's tank protect must not
+        spend round 2's tank budget for that side."""
+        pool = self._series_pool()
+
+        entry = apply_pick_ban_action(
+            SimpleNamespace(
+                resolved_sequence_json=["protect_home", "ban_home", "protect_home", "ban_away"],
+                status=MapVetoSessionStatus.ACTIVE.value,
+                current_step_started_at=None,
+            ),
+            pool,
+            captain_side="home",
+            item_id=101,
+            action="protect",
+            attribute_lookup={101: "tank", 102: "tank", 103: "support"},
+            unique_attribute="role",
+            now=datetime.now(UTC),
+        )
+
+        self.assertEqual(2, entry.round)
+        self.assertEqual(MapPoolEntryStatus.PROTECTED.value, entry.status)
+
+
 class SerializePickBanSessionSlotReservesTests(TestCase):
     """Pins the ``slot_reserves`` wire key -- the byte-identical-shape
     requirement for the map-veto cutover (Decision #12)."""
