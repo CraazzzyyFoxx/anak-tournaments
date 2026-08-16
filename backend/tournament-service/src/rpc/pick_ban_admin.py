@@ -74,6 +74,15 @@ class PickBanAdminAct(BaseModel):
     action: Literal["pick", "ban", "protect"]
 
 
+class PickBanAdminElectOpener(BaseModel):
+    """Body for the admin elect-opener route: name who opens the round a
+    ``result_loser_choice`` rotation is holding, on behalf of a losing captain
+    who is not there to name it themselves."""
+
+    kind: PickBanKind
+    first_side: Literal["home", "away"]
+
+
 class PickBanConfigSlotUpsert(BaseModel):
     """One slot of a slot-mode upsert body. No ``position``: list order IS the
     play order (same rationale as ``veto_admin.VetoConfigSlotUpsert``)."""
@@ -308,5 +317,27 @@ def register(broker: Any, logger: Any) -> None:
                 body.action,
             )
             return pick_ban_action_service.serialize_pick_ban_entry(entry)
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.admin_pick_ban_elect_opener")
+    async def _admin_pick_ban_elect_opener(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
+            ensure_workspace_permission(user, ws_id, "match", "update")
+            body = PickBanAdminElectOpener.model_validate(_payload(data))
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, body.kind)
+            if pick_ban is None:
+                raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
+            # `acting_side=None` IS the override: the losing captain's exclusive
+            # right to choose does not apply to an organizer unsticking a room
+            # they are not playing in. Commits inside `advance_to_next_round`;
+            # the response is the state shape the room polls.
+            await pick_ban_session_service.elect_round_opener(
+                session, pick_ban, first_side=body.first_side, acting_side=None
+            )
+            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
 
         return await _run(logger, op)

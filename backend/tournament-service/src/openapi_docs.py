@@ -360,6 +360,10 @@ DOCS: dict[str, dict] = {
         "summary": "Act for a side",
         "description": "Performs a ban, pick, or protect on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
     },
+    "rpc.tournament.admin_pick_ban_elect_opener": {
+        "summary": "Elect a round's opener for a side",
+        "description": "Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state and requires match-update permission on its workspace.",
+    },
     # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
     "rpc.tournament.admin_pick_ban_config_list": {
         "summary": "List pick-ban configs",

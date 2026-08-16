@@ -2454,7 +2454,8 @@
         "chooseAway": "Away opens",
         "confirm": "Confirm",
         "sending": "Sending...",
-        "failed": "Failed to submit the choice"
+        "failed": "Failed to submit the choice",
+        "waiting": "Waiting for {team} to choose who bans first this round."
       },
       "mapReport": {
         "title": "Report this map's result",
@@ -2480,7 +2481,9 @@
         "resetConfirmHint": "The session and pool will be dropped and re-created with seeds re-resolved. All performed actions will be lost.",
         "resetConfirmAction": "Reset",
         "resetSuccess": "Session reset",
-        "resetFailed": "Failed to reset the session"
+        "resetFailed": "Failed to reset the session",
+        "electLabel": "Opens next round",
+        "electFailed": "Failed to elect the round's opener"
       },
       "waitingMapTitle": "Waiting for this round's map",
       "waitingMapHint": "Hero bans open once the map for this round of the series is picked — they are banned for a known map.",

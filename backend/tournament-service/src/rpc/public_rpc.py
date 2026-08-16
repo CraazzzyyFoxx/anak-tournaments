@@ -402,22 +402,10 @@ def register(broker: Any, logger: Any) -> None:
             encounter = await captain_service._load_encounter(session, encounter_id)
             captain_side = await captain_service.resolve_captain_side(session, user, encounter)
             pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
-            if pick_ban is None or not pick_ban.awaiting_choice:
+            if pick_ban is None:
                 raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
-            # Only the loser of the round that triggered the choice may elect —
-            # otherwise either captain could dictate who opens the next round.
-            if captain_side != pick_ban.pending_loser_side:
-                raise HTTPException(
-                    status_code=403, detail="Only the losing captain may choose who opens the next round"
-                )
-            pick_ban.first_side = body.first_side
-            actual_winner = "away" if pick_ban.pending_loser_side == "home" else "home"
-            await pick_ban_session_service.advance_to_next_round(
-                session,
-                pick_ban,
-                completed_round=await pick_ban_session_service.highest_round_of(session, pick_ban) or 0,
-                winner=actual_winner,
-                loser_choice=body.first_side,
+            await pick_ban_session_service.elect_round_opener(
+                session, pick_ban, first_side=body.first_side, acting_side=captain_side
             )
             return pick_ban_action_service.serialize_pick_ban_session(pick_ban)
 

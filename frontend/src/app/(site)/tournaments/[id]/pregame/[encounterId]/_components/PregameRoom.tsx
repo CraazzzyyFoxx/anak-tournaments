@@ -613,9 +613,22 @@ function PickBanPanel({
   // whether the losing captain's own client shows the modal at all.
   const showElectOpener =
     session.awaiting_choice && state.viewer_side === session.pending_loser_side;
+  // ...and everyone ELSE has to be told why the room stopped. The round the
+  // choice is holding does not exist yet, so a spectator, the winning captain
+  // and an organizer all saw a finished round with nothing to click and no
+  // reason given — the exact shape of a hung room.
+  const pendingOpenerSide = session.awaiting_choice ? session.pending_loser_side : null;
 
   return (
     <>
+      {pendingOpenerSide != null ? (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-3 text-sm">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--aqt-amber)]" aria-hidden />
+          <p className="text-[color:var(--aqt-fg-muted)]">
+            {t("electOpener.waiting", { team: sideName(pendingOpenerSide) })}
+          </p>
+        </div>
+      ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]">
         <PickBanStepTimeline
           kind={kind}

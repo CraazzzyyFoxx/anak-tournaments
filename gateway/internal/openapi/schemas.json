@@ -6235,6 +6235,10 @@
       "description": "Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the step sequence and item pool; requires match-update permission on its workspace.",
       "summary": "Upsert pick-ban config"
     },
+    "rpc.tournament.admin_pick_ban_elect_opener": {
+      "description": "Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state and requires match-update permission on its workspace.",
+      "summary": "Elect a round's opener for a side"
+    },
     "rpc.tournament.admin_pick_ban_session_reset": {
       "description": "Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
       "summary": "Reset pick-ban session"

@@ -603,14 +603,31 @@ async def advance_to_next_round(
     if locked is None:
         return pick_ban  # a concurrent reset dropped the session
     pick_ban = locked
-    config = await _load_config(session, pick_ban.config_id) if pick_ban.config_id else None
-    if config is None or not rounds_are_progressive(config, pick_ban.kind):
-        return pick_ban
-
     entries_result = await session.execute(
         select(PickBanEntry).where(PickBanEntry.session_id == pick_ban.id).execution_options(populate_existing=True)
     )
     entries = list(entries_result.scalars().all())
+
+    config = await _load_config(session, pick_ban.config_id) if pick_ban.config_id else None
+    if config is None:
+        # `PickBanSession.config_id` is `ondelete=SET NULL`, so a config deleted
+        # mid-series leaves a session that can never open another round. Declining
+        # silently froze the room on a finished round with nothing to click and
+        # nothing on screen naming why; a flat (round-less) session is genuinely
+        # done and has no later round to owe, so it still just returns.
+        if any(entry.round is not None for entry in entries):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"The {pick_ban.kind.value} pick-ban config this session was created from no longer "
+                    "exists, so round "
+                    f"{completed_round + 1} cannot be opened -- re-create the config, then reset the session."
+                ),
+            )
+        return pick_ban
+    if not rounds_are_progressive(config, pick_ban.kind):
+        return pick_ban
+
     if engine.get_current_step(pick_ban.resolved_sequence_json, entries) is not None:
         return pick_ban  # the round in play still has steps left to take
 
@@ -738,6 +755,40 @@ async def advance_to_next_round(
     else:
         await session.flush()
     return pick_ban
+
+
+async def elect_round_opener(
+    session: AsyncSession,
+    pick_ban: PickBanSession,
+    *,
+    first_side: str,
+    acting_side: str | None,
+) -> PickBanSession:
+    """Resolve an ``awaiting_choice`` round by naming who opens it, then append
+    it (``advance_to_next_round`` with the choice supplied).
+
+    ``acting_side`` is the captain making the call. ``None`` is the ADMIN
+    override: `result_loser_choice` is the one rotation whose next round cannot
+    open without a human, so an unreachable losing captain would otherwise
+    freeze the room with nothing on screen to act on and nothing but a
+    session-wiping reset to reach for (design §7's named escape hatch).
+    """
+    if not pick_ban.awaiting_choice:
+        raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
+    # Only the loser of the round that triggered the choice may elect --
+    # otherwise either captain could dictate who opens the next round.
+    if acting_side is not None and acting_side != pick_ban.pending_loser_side:
+        raise HTTPException(status_code=403, detail="Only the losing captain may choose who opens the next round")
+    winner = MapPickSide.AWAY.value if pick_ban.pending_loser_side == MapPickSide.HOME.value else MapPickSide.HOME.value
+    choice = MapPickSide(first_side)
+    pick_ban.first_side = choice
+    return await advance_to_next_round(
+        session,
+        pick_ban,
+        completed_round=await highest_round_of(session, pick_ban) or 0,
+        winner=winner,
+        loser_choice=choice,
+    )
 
 
 async def find_series_match(session: AsyncSession, encounter_id: int, map_id: int, map_index: int) -> Match | None:

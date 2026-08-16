@@ -1095,6 +1095,42 @@ describe("phase selection", () => {
     expect(document.body.textContent).not.toContain(ROOM.mapResult.report);
   });
 
+  it("names who the room is waiting on when a round needs its opener elected", async () => {
+    // `result_loser_choice`: round 2 does not exist until the losing captain
+    // names its opener, so the room shows a finished round 1 with nothing to
+    // click. Only that captain got the modal — everyone else (the winner, a
+    // spectator, the organizer holding the reset button) saw a hung room.
+    getMyRole.mockResolvedValue({ side: null });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: null,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "picked", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({
+          kind: "hero",
+          status: "completed",
+          awaiting_choice: true,
+          pending_loser_side: "away"
+        }),
+        is_complete: true,
+        viewer_side: null,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(
+      ROOM.electOpener.waiting.replace("{team}", "Quiet Foxes")
+    );
+  });
+
   /** A series with every map picked, banned, played and reconciled. */
   function settledSeries(viewerSide: "home" | "away" | null) {
     mockStates(
@@ -1601,6 +1637,43 @@ describe("admin controls", () => {
 
     expect(document.body.textContent).toContain(ROOM.admin.title);
     expect(document.body.textContent).toContain(ROOM.action.protect);
+  });
+
+  it("lets an admin elect the round's opener when the losing captain is unreachable", async () => {
+    // The only other control on this screen is a session-wiping reset — which
+    // re-creates round 1 and walks into the same wall one map later.
+    usePermissionsMock.mockReturnValue({
+      isSuperuser: true,
+      isWorkspaceAdmin: () => true,
+      hasWorkspacePermission: () => true
+    });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [
+          entry({ id: 10, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 11, item_id: 22, round: 2, status: "picked", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({
+          kind: "hero",
+          status: "completed",
+          awaiting_choice: true,
+          pending_loser_side: "away"
+        }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 1, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.admin.electLabel);
+    const panel = document.body.textContent ?? "";
+    expect(panel).toContain(ROOM.side.home);
+    expect(panel).toContain(ROOM.side.away);
   });
 
   it("omits the reset/act panel for a non-admin captain", async () => {

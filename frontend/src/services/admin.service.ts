@@ -1651,6 +1651,19 @@ class AdminService {
     return response.json();
   }
 
+  /** Name who opens the round a `result_loser_choice` rotation is holding, on
+   * behalf of a losing captain who is not there to name it (admin override). */
+  async adminPickBanElectOpener(
+    encounterId: number,
+    data: { kind: PickBanKind; first_side: "home" | "away" }
+  ): Promise<PickBanState> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-elect-opener`, {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
   // ─── Challonge Sync ─────────────────────────────────────────────────────────
 
   async challongeImport(tournamentId: number, dryRun = false): Promise<Record<string, unknown>> {
