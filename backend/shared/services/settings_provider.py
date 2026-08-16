@@ -22,10 +22,12 @@ from shared.schemas.settings import (
     SETTINGS_KEY_RANK_COLLECTION,
     SETTINGS_KEY_RANK_MAPPING,
     SETTINGS_KEY_SCRIM,
+    SETTINGS_KEY_STREAM_COLLECTION,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION,
     RankCollectionConfig,
     RankMappingConfig,
     ScrimConfig,
+    StreamCollectionConfig,
     SubscriptionCollectionConfig,
 )
 
@@ -96,6 +98,15 @@ async def get_subscription_collection_config(session: AsyncSession) -> Subscript
     except ValidationError as exc:
         logger.warning("invalid %s settings, using defaults: %s", SETTINGS_KEY_SUBSCRIPTION_COLLECTION, exc)
         return SubscriptionCollectionConfig()
+
+
+async def get_stream_collection_config(session: AsyncSession) -> StreamCollectionConfig:
+    raw = await get_setting_value(session, SETTINGS_KEY_STREAM_COLLECTION)
+    try:
+        return StreamCollectionConfig.model_validate(raw)
+    except ValidationError as exc:
+        logger.warning("invalid %s settings, using defaults: %s", SETTINGS_KEY_STREAM_COLLECTION, exc)
+        return StreamCollectionConfig()
 
 
 async def get_scrim_config(session: AsyncSession) -> ScrimConfig:

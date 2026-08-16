@@ -37,7 +37,7 @@ const nextConfig = {
     // are filesystem routes and take precedence over these afterFiles rewrites.
     const gateway = process.env.NEXT_INTERNAL_API_URL?.replace(/\/$/, "");
     if (!gateway) return [];
-    return ["/api/v1", "/api/balancer", "/api/analytics", "/api/auth"].map((prefix) => ({
+    return ["/api/v1", "/api/balancer", "/api/analytics", "/api/streams", "/api/auth"].map((prefix) => ({
       source: `${prefix}/:path*`,
       destination: `${gateway}${prefix}/:path*`,
     }));

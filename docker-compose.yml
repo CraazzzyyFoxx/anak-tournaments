@@ -355,6 +355,49 @@ services:
           cpus: '0.10'
           memory: 128M
 
+  # Tournament stream live-status: hosts rpc.stream.* for the gateway and runs
+  # the Twitch poll tick. Owns no Postgres schema — live state is Redis-only,
+  # and polling stays off until the `stream.collection` admin setting enables it.
+  stream-svc:
+    image: registry.craazzzyyfoxx.me/aqt-stream:dev
+    build:
+      context: ./backend
+      args:
+        APP_PATH: stream
+    command: faststream run serve:app --reload --reload-dir /app/stream-service --reload-dir /app/shared
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/stream.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_TRACES_SAMPLER_ARG=1.0
+      - WORKER_METRICS_PORT=9111
+      - WATCHFILES_FORCE_POLLING=true
+      - WATCHFILES_POLL_DELAY_MS=5000
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./backend/stream-service:/app/stream-service
+      - ./backend/shared:/app/shared
+      - ./logs/stream-svc:/logs
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
   discord-worker:
     image: registry.craazzzyyfoxx.me/aqt-discord:dev
     profiles: ["workers"]

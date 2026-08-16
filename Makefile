@@ -1,7 +1,7 @@
 .PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
 	prod-build prod-up prod-down prod-logs prod-scale migrate test clean \
 	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
-	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs \
+	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs stream-logs \
 	app-restart identity-restart parser-restart frontend-restart \
 	monitoring-up monitoring-down monitoring-logs monitoring-ps \
 	backup-up backup-down backup-logs backup-setup backup-run backup-ls \
@@ -171,6 +171,9 @@ discord-logs:
 
 balancer-logs:
 	$(COMPOSE) logs -f balancer-svc
+
+stream-logs:
+	$(COMPOSE) logs -f stream-svc
 
 app-restart:
 	$(COMPOSE) restart app-svc

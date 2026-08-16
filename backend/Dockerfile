@@ -31,6 +31,7 @@ COPY tournament-service/pyproject.toml /app/tournament-service/pyproject.toml
 COPY discord-service/pyproject.toml /app/discord-service/pyproject.toml
 COPY balancer-service/pyproject.toml /app/balancer-service/pyproject.toml
 COPY analytics-service/pyproject.toml /app/analytics-service/pyproject.toml
+COPY stream-service/pyproject.toml /app/stream-service/pyproject.toml
 
 ARG APP_PATH
 

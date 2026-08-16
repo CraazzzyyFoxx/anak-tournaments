@@ -105,14 +105,8 @@ def test_every_role_carries_a_rating_and_stated_ranks_survive(case: dict[str, An
     for a role, because it shows that number to the captain choosing the role.
     """
     expected_rank = case["expected"]["eff_rank"]
-    stated = {
-        spec["role"]: spec["rank_value"] for spec in case["roles"] if spec["rank_value"] is not None
-    }
-    expected = (
-        {}
-        if expected_rank is None
-        else {role: stated.get(role, expected_rank) for role in ALL_ROLE_VALUES}
-    )
+    stated = {spec["role"]: spec["rank_value"] for spec in case["roles"] if spec["rank_value"] is not None}
+    expected = {} if expected_rank is None else {role: stated.get(role, expected_rank) for role in ALL_ROLE_VALUES}
 
     assert _map(case)["role_ranks"] == expected
 

@@ -17,6 +17,7 @@ __all__ = (
     "SETTINGS_KEY_RANK_COLLECTION",
     "SETTINGS_KEY_RANK_MAPPING",
     "SETTINGS_KEY_SCRIM",
+    "SETTINGS_KEY_STREAM_COLLECTION",
     "SETTINGS_KEY_SUBSCRIPTION_COLLECTION",
     "SETTINGS_SCHEMAS",
     "RankCollectionConfig",
@@ -24,12 +25,14 @@ __all__ = (
     "RankMappingConfig",
     "RankMappingEntry",
     "ScrimConfig",
+    "StreamCollectionConfig",
     "SubscriptionCollectionConfig",
 )
 
 SETTINGS_KEY_RANK_COLLECTION = "parser.rank_collection"
 SETTINGS_KEY_RANK_MAPPING = "parser.rank_mapping"
 SETTINGS_KEY_SCRIM = "tournament.scrim"
+SETTINGS_KEY_STREAM_COLLECTION = "stream.collection"
 SETTINGS_KEY_SUBSCRIPTION_COLLECTION = "parser.subscription_collection"
 
 
@@ -77,6 +80,20 @@ class SubscriptionCollectionConfig(BaseModel):
     enabled: bool = True
     interval_seconds: int = Field(default=1800, ge=60, le=86_400)
     batch_size: int = Field(default=50, ge=1, le=500)
+
+
+class StreamCollectionConfig(BaseModel):
+    """Operational config for the periodic Twitch live-status poller.
+
+    ``enabled=False`` by default so a missing/empty key can never start hitting
+    Twitch Helix on the shared app-token bucket (800 points/min, shared with
+    identity-service). ``batch_size`` is capped at 100 -- the hard limit of
+    ``user_login``/``user_id`` values Helix ``GET /streams`` accepts per request.
+    """
+
+    enabled: bool = False
+    interval_seconds: int = Field(default=60, ge=30, le=3600)
+    batch_size: int = Field(default=100, ge=1, le=100)
 
 
 #: Identity of the built-in OverFast division+tier -> rank_value table (see
@@ -138,5 +155,6 @@ SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_RANK_COLLECTION: RankCollectionConfig,
     SETTINGS_KEY_RANK_MAPPING: RankMappingConfig,
     SETTINGS_KEY_SCRIM: ScrimConfig,
+    SETTINGS_KEY_STREAM_COLLECTION: StreamCollectionConfig,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION: SubscriptionCollectionConfig,
 }

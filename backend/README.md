@@ -22,6 +22,7 @@ directory; each service still keeps its own `pyproject.toml` as a workspace memb
 | [`parser-service`](./parser-service/README.md) | `parser-svc` | RPC + scheduler | Match-log ingestion/parsing, OverFast rank fetch (leader-locked), achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](./balancer-service/README.md) | `balancer-svc` | RPC worker | Genetic team balancing + live draft; heavy solve in native Rust `moo_core` (NSGA multi-objective) |
 | [`analytics-service`](./analytics-service/README.md) | `analytics-svc` + `analytics-worker` | RPC worker + compute worker | Post-tournament analytics, split into two processes: `analytics-svc` (light RPC reads/mutations/job-control) and `analytics-worker` (heavy ML: LightGBM/XGBoost + Bayesian + Monte Carlo) |
+| [`stream-service`](./stream-service/README.md) | `stream-svc` | RPC + scheduler | Tournament stream live-status: Twitch Helix `GET /streams` poll tick under an app token (leader-locked, admin-settings-gated) + public `rpc.stream.*` reads. Owns no Postgres schema — live state lives in Redis under a TTL |
 | [`discord-service`](./discord-service/README.md) | `discord-worker` | Bot | discord.py bot: watches tournament channels, uploads match-log attachments to the parser over RabbitMQ, delivers notifications, FastStream consumer |
 | [`shared`](./shared/README.md) | — | Library | Single-source ORM + cross-service kernel; not a running service |
 

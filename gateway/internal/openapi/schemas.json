@@ -5359,6 +5359,32 @@
       },
       "summary": "Create tournament with groups"
     },
+    "rpc.stream.repoll": {
+      "description": "Clears the live-status poll cursor so the next scheduler heartbeat polls immediately (202 Accepted \u2014 no poll runs inline). Requires stream-update permission on the workspace that owns the tournament, and is recorded in the audit log.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": true,
+          "schema": {
+            "description": "Workspace the stream.update permission is checked against; must own the tournament.",
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "stream.StreamRepollRead"
+      },
+      "summary": "Re-poll tournament streams"
+    },
+    "rpc.stream.tournament_streams": {
+      "description": "Returns the tournament's stream block: official broadcast links from its typed links (included whether or not they are on air) and the participant channels that are live right now. Public; a hidden tournament answers 404 for an ineligible viewer. Twitch channels report live true/false; YouTube and other hosts report live null, meaning there is no live detection for them rather than offline.",
+      "response": {
+        "array": false,
+        "ref": "stream.TournamentStreamsRead"
+      },
+      "summary": "Get tournament streams"
+    },
     "rpc.tournament.admin.create#encounter": {
       "description": "Creates an encounter; requires match-create permission on the workspace resolved from the body's tournament_id.",
       "request": {
@@ -5455,6 +5481,18 @@
       },
       "summary": "Create tournament"
     },
+    "rpc.tournament.admin.create#tournament_link": {
+      "description": "Attaches one typed external link (Discord, stream, VOD, bracket, rules, other) to a tournament; requires tournament_link-create permission on the workspace derived from the body's tournament_id. Rejects a duplicate kind+url pair with 409.",
+      "request": {
+        "array": false,
+        "ref": "tournament.TournamentLinkCreate"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentLinkRead"
+      },
+      "summary": "Create tournament link"
+    },
     "rpc.tournament.admin.delete#encounter": {
       "description": "Deletes an encounter by id (204 no body); requires match-delete permission on its workspace.",
       "summary": "Delete encounter"
@@ -5482,6 +5520,10 @@
     "rpc.tournament.admin.delete#tournament": {
       "description": "Deletes a tournament by id (204 no body); requires tournament-delete permission on its workspace.",
       "summary": "Delete tournament"
+    },
+    "rpc.tournament.admin.delete#tournament_link": {
+      "description": "Deactivates a tournament link by id (204 no body, soft delete via is_active); requires tournament_link-delete permission on its tournament's workspace.",
+      "summary": "Delete tournament link"
     },
     "rpc.tournament.admin.get#stage": {
       "description": "Returns one stage by id; requires stage-read permission on its workspace.",
@@ -5545,6 +5587,30 @@
         "ref": "tournament.StageRead"
       },
       "summary": "List stages (admin)"
+    },
+    "rpc.tournament.admin.list#tournament_link": {
+      "description": "Lists a tournament's links ordered by sort_order then id, optionally only the active ones; requires tournament_link-read permission on the tournament's workspace.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "active_only",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "tournament.TournamentLinkRead"
+      },
+      "summary": "List tournament links"
     },
     "rpc.tournament.admin.update#encounter": {
       "description": "Updates an encounter by id; requires match-update permission on its workspace.",
@@ -5653,6 +5719,18 @@
         "ref": "tournament.TournamentRead"
       },
       "summary": "Update tournament"
+    },
+    "rpc.tournament.admin.update#tournament_link": {
+      "description": "Updates a tournament link by id; requires tournament_link-update permission on its tournament's workspace. Rejects a duplicate kind+url pair with 409.",
+      "request": {
+        "array": false,
+        "ref": "tournament.TournamentLinkUpdate"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentLinkRead"
+      },
+      "summary": "Update tournament link"
     },
     "rpc.tournament.admin_encounter_reports_list": {
       "description": "Every encounter in the workspace with the pair of captain reports filed against it. The row is the encounter, not the report, because a dispute spans two reports and the action that settles it is per-encounter. `scores_match` is null until both sides have reported \u2014 that is a different state from disagreeing. `series_score_valid` is advisory: reports predate per-round best-of, so a mismatch is information, not an error. Filter with `tournament_id`, `stage_id`, `result_status`, `mismatch_only`, `reported_count` and a free-text `query` over team and encounter names. Requires `match.read` on the workspace named by `workspace_id`.",
@@ -25811,6 +25889,189 @@
       "title": "TournamentStatus",
       "type": "string"
     },
+    "stream.StreamEntryRead": {
+      "description": "One channel in the tournament's stream block.",
+      "properties": {
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "game_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Game Name"
+        },
+        "live": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Live"
+        },
+        "platform": {
+          "enum": [
+            "twitch",
+            "youtube",
+            "other"
+          ],
+          "title": "Platform",
+          "type": "string"
+        },
+        "player": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/stream.StreamPlayerRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "thumbnail_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thumbnail Url"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "viewer_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Viewer Count"
+        }
+      },
+      "required": [
+        "platform",
+        "channel",
+        "url",
+        "live"
+      ],
+      "title": "StreamEntryRead",
+      "type": "object"
+    },
+    "stream.StreamPlayerRead": {
+      "description": "The player behind a participant stream. Absent for an official broadcast.",
+      "properties": {
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "StreamPlayerRead",
+      "type": "object"
+    },
+    "stream.StreamRepollRead": {
+      "description": "202 body for ``rpc.stream.repoll``.\n\nDeliberately just the id: the handler does not run a poll tick, it clears the\npoll cursor so the next scheduler heartbeat is due immediately. \"Accepted, not\ndone\" is what the 202 already says, so a constant ``queued: true`` field would\nadd a word and no information.",
+      "properties": {
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tournament_id"
+      ],
+      "title": "StreamRepollRead",
+      "type": "object"
+    },
+    "stream.TournamentStreamsRead": {
+      "description": "The whole stream block for one tournament.",
+      "properties": {
+        "official": {
+          "items": {
+            "$ref": "#/components/schemas/stream.StreamEntryRead"
+          },
+          "title": "Official",
+          "type": "array"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/components/schemas/stream.StreamEntryRead"
+          },
+          "title": "Participants",
+          "type": "array"
+        }
+      },
+      "required": [
+        "official",
+        "participants"
+      ],
+      "title": "TournamentStreamsRead",
+      "type": "object"
+    },
     "tournament.AdminMatchDetail": {
       "description": "A single match with the per-match aggregates the list omits.\n\nNFR 3: ``matches.statistics`` / ``kill_feed`` / ``assists`` are the hot,\nhigh-volume tables. Counting them per row would put three aggregate scans\nbehind every page of the list, so they live here \u2014 one row at a time.",
       "properties": {
@@ -38451,6 +38712,167 @@
       "title": "TournamentGroupRead",
       "type": "object"
     },
+    "tournament.TournamentLinkCreate": {
+      "properties": {
+        "is_active": {
+          "default": true,
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "sort_order": {
+          "default": 0,
+          "title": "Sort Order",
+          "type": "integer"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tournament_id",
+        "kind",
+        "url"
+      ],
+      "title": "TournamentLinkCreate",
+      "type": "object"
+    },
+    "tournament.TournamentLinkRead": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "sort_order": {
+          "title": "Sort Order",
+          "type": "integer"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tournament_id",
+        "kind",
+        "label",
+        "url",
+        "sort_order",
+        "is_active"
+      ],
+      "title": "TournamentLinkRead",
+      "type": "object"
+    },
+    "tournament.TournamentLinkUpdate": {
+      "properties": {
+        "is_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Active"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "sort_order": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sort Order"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "title": "TournamentLinkUpdate",
+      "type": "object"
+    },
     "tournament.TournamentPaginationSortSearchQueryParams": {
       "properties": {
         "entities": {
@@ -38659,6 +39081,14 @@
         "is_league": {
           "title": "Is League",
           "type": "boolean"
+        },
+        "links": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.TournamentLinkRead"
+          },
+          "title": "Links",
+          "type": "array"
         },
         "loss_points": {
           "default": 0.0,

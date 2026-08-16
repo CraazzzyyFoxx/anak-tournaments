@@ -6,11 +6,13 @@
   "include": [
     "shared",
     "app-service",
-    "auth-service",
+    "identity-service",
     "parser-service",
-    "balancer-service",
+    "tournament-service",
     "discord-service",
-    "twitch-service"
+    "balancer-service",
+    "analytics-service",
+    "stream-service"
   ],
   "exclude": [
     "**/__pycache__",

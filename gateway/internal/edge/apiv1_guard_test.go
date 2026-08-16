@@ -13,6 +13,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 )
 
@@ -500,6 +501,99 @@ func TestApiAuth_TypedRoutesHitHandler(t *testing.T) {
 			case "frontend", "guard":
 				t.Fatalf("%s %s: routed to %q, want the typed identity handler (not proxied)",
 					c.method, c.path, resp.Header.Get("X-Route"))
+			}
+		})
+	}
+}
+
+// buildStreamsGuardedMux mirrors gateway/cmd/gateway/main.go's /api/streams
+// wiring. Building it must NOT panic (a ServeMux pattern conflict would crash
+// the gateway at startup): the repoll route nests under the read route's
+// {tournament_id}, so the two must coexist. There is no HTTP stream-service —
+// every /api/streams/* path is a typed RPC route here, and unmatched paths must
+// hit the /api/streams/ guard (404), never the "/" frontend catch-all (which
+// rewrites /api/streams/* back to the gateway -> infinite proxy loop).
+func buildStreamsGuardedMux(t *testing.T) *http.ServeMux {
+	t.Helper()
+	d := edge.New(errCaller{}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	mux := http.NewServeMux()
+	d.Register(mux, stream.PublicRoutes)
+	d.Register(mux, stream.AdminRoutes)
+	mux.HandleFunc("/api/streams/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Route", "guard")
+		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.Handle("/", marker("frontend"))
+	return mux
+}
+
+func TestApiStreamsGuard_NoConflictAndNoLoop(t *testing.T) {
+	mux := buildStreamsGuardedMux(t) // panics here on any ServeMux pattern conflict
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cases := []struct {
+		name      string
+		method    string
+		path      string
+		wantRoute string // "" => expect the /api/streams/ guard 404
+	}{
+		{"unmatched streams path", "GET", "/api/streams/does-not-exist", ""},
+		{"unmatched tournament leaf", "GET", "/api/streams/tournament/7/nope", ""},
+		{"read is GET-only", "DELETE", "/api/streams/tournament/7", ""},
+		{"non-api path hits frontend", "GET", "/users/someone", "frontend"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req, _ := http.NewRequest(c.method, srv.URL+c.path, nil)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", c.method, c.path, err)
+			}
+			defer resp.Body.Close()
+			route := resp.Header.Get("X-Route")
+			if c.wantRoute == "" {
+				if resp.StatusCode != http.StatusNotFound || route != "guard" {
+					t.Fatalf("%s %s: got route=%q status=%d, want the /api/streams/ guard (404). "+
+						"Falling through to the frontend would re-create the proxy loop.",
+						c.method, c.path, route, resp.StatusCode)
+				}
+				return
+			}
+			if route != c.wantRoute {
+				t.Fatalf("%s %s: routed to %q, want %q", c.method, c.path, route, c.wantRoute)
+			}
+		})
+	}
+}
+
+// The streams surface rides its own tables (stream.PublicRoutes /
+// stream.AdminRoutes), so a missing main.go registration would leave every path
+// answered by the /api/streams/ guard with 404 — the feature dead on arrival
+// with no compile error to warn anyone. This pins that both made it onto the mux.
+func TestApiStreamsGuard_RoutesAreRegistered(t *testing.T) {
+	mux := buildStreamsGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/streams/tournament/7"},
+		{http.MethodPost, "/api/streams/tournament/7/repoll?workspace_id=1"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, srv.URL+tc.path, http.NoBody)
+			if err != nil {
+				t.Fatalf("build %s %s: %v", tc.method, tc.path, err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
+			}
+			defer resp.Body.Close()
+			switch route := resp.Header.Get("X-Route"); route {
+			case "frontend", "guard":
+				t.Fatalf("%s %s: routed to %q, want the typed dispatcher — the route is not registered",
+					tc.method, tc.path, route)
 			}
 		})
 	}

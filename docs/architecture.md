@@ -40,6 +40,7 @@ flowchart TB
       BAL["balancer-svc"]
       ANARPC["analytics-svc (RPC)"]
       ANAW["analytics-worker (ML compute)"]
+      STREAM["stream-svc"]
       DISC["discord-worker (bot)"]
     end
 
@@ -53,11 +54,12 @@ flowchart TB
     Browser --> Traefik --> Nginx --> GW
     GW -- "reverse proxy /" --> FE
     GW -- "rpc.<svc>.<method>" --> MQ
-    MQ --> APP & ID & TOUR & PARSE & BAL & ANARPC
+    MQ --> APP & ID & TOUR & PARSE & BAL & ANARPC & STREAM
     GW -- "read-only: ACL, replay, custom domains" --> PG
     GW -- "realtime bus + cache invalidation + active users" --> RD
     Workers --> PG
     Workers --> RD
+    STREAM -. "read-only" .-> PG
     Workers --> MQ
     APP --> S3
     ID --> S3
@@ -123,6 +125,11 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   WebSocket clients with replay. `workspace:{id}:subscriptions` is non-durable (no event row,
   no replay): one thin `subscription.updated` per resolve pass that actually moved a verdict,
   which the admin subscription views and the tournament hub refetch on.
+  `tournament:{id}:streams` is likewise non-durable and, being spectator data, is
+  publicly subscribable under the same `allowSpectateTournament` ("public unless hidden")
+  rule as the bracket: `stream-svc` emits one thin `stream.updated` per tournament whose
+  set of live channels actually changed — never one per channel, and never for a hidden
+  tournament.
 - **Discord ingest.** The bot uploads match-log attachments as base64 to
   `UPLOAD_MATCH_LOG_QUEUE`; parser results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
   (per-replica exclusive queue) correlated by `ResultWaiter`.
@@ -138,6 +145,7 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 | [`parser-service`](../backend/parser-service/README.md) | RPC worker + scheduler | Match-log ingestion/parsing, OverFast rank fetch, achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](../backend/balancer-service/README.md) | RPC worker | Genetic team balancing (native Rust `moo_core`) + live draft + draft clock |
 | [`analytics-service`](../backend/analytics-service/README.md) | 2 workers | `analytics-svc` (RPC reads/mutations/job-control) + `analytics-worker` (heavy ML: v1 OpenSkill shifts, v2 ML pipeline) |
+| [`stream-service`](../backend/stream-service/README.md) | RPC worker + scheduler | Tournament stream live-status: Twitch Helix poll tick (app token), public `rpc.stream.*` reads. Owns no Postgres schema — live state is Redis-only |
 | [`discord-service`](../backend/discord-service/README.md) | bot | discord.py bot: match-log upload, notifications, commands |
 | [`shared`](../backend/shared/README.md) | library | Single-source ORM + cross-service kernel (models, repository, services, rpc, messaging, tenancy, rbac, observability, clients) |
 | [`frontend`](../frontend/README.md) | Next.js | User-facing app + white-label multidomain |

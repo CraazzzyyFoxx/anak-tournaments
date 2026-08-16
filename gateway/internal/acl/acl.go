@@ -84,6 +84,7 @@ func New(resolver WorkspaceResolver, members MembershipChecker, vis VisibilityCh
 	r.register("encounter:*:map-veto", r.allowSpectateEncounter)      // public unless hidden
 	r.register("encounter:*:pick-ban:hero", r.allowSpectateEncounter) // public unless hidden
 	r.register("tournament:*:balancer", r.allowBalancer)              // admin tool: workspace member
+	r.register("tournament:*:streams", r.allowSpectateTournament)     // public unless hidden
 	r.register("workspace:*:*", r.allowWorkspaceMember)               // workspace member
 	return r
 }
