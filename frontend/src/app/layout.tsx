@@ -1,28 +1,53 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Onest } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import React from "react";
 
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
+// Self-hosted, not `next/font/google`.
+//
+// `next/font/google` downloads the font files from fonts.gstatic.com DURING
+// THE BUILD, at URLs whose hashes Google rotates. A production build died on
+// four of them returning 404 while the CSS that named them had just been
+// fetched — the edge serving that build host was handing out a CSS generation
+// whose files had already been purged. There is no retry or fallback for that:
+// the build simply fails, after twenty minutes of image layers, on someone
+// else's CDN. Vendored, the frontend build has no network dependency at all.
+//
+// The files are the upstream variable TTFs from github.com/google/fonts,
+// subset to `latin` + Latin Extended-A + `cyrillic` and converted to woff2
+// (see `fonts/README.md` for the exact command). One file per family replaces
+// the eight-to-seventeen per-subset files Google served: 185 KB always, where
+// a Cyrillic page used to pull ~130 KB and a name with `ł` or `ş` in it pulled
+// another 85 KB of Inter's latin-ext on top.
+const inter = localFont({
+  src: "./fonts/inter-variable.woff2",
+  // The wght axis span, so the browser interpolates instead of synthesizing
+  // bold. Inter also carries an `opsz` axis, left free for `font-optical-sizing`.
+  weight: "100 900",
   variable: "--font-inter",
   display: "swap"
 });
 
 // Editorial Tactical display face (design-book): cyrillic-native geometric
 // grotesk used for page-hero titles. Mixed-case, never condensed-caps.
-const onest = Onest({
-  subsets: ["latin", "cyrillic"],
-  weight: ["500", "600", "700"],
+const onest = localFont({
+  src: "./fonts/onest-variable.woff2",
+  weight: "100 900",
   variable: "--font-onest",
   display: "swap"
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono-variable.woff2",
+  weight: "100 800",
   variable: "--font-jetbrains-mono",
-  display: "swap"
+  display: "swap",
+  // A local font can only borrow Arial's or Times' metrics for its fallback
+  // face, and Arial is proportional. Inserting it ahead of the real fallback
+  // would render every `tabular-nums` column in a proportional face for the
+  // length of the swap. `globals.css` already ends `--aqt-mono` with
+  // `ui-monospace, monospace`, which is the right fallback and is now reached.
+  adjustFontFallback: false
 });
 
 import { Providers } from "@/app/providers";
