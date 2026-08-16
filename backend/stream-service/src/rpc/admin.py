@@ -1,8 +1,8 @@
-"""Admin subscribers (``rpc.stream.repoll``).
+"""Admin subscribers (``rpc.stream.repoll``, ``rpc.stream.health``).
 
-Serves ``POST /api/streams/tournament/{tournament_id}/repoll`` — the operator
-escape hatch when a live badge looks wrong and waiting out the interval is not
-acceptable.
+``repoll`` serves ``POST /api/streams/tournament/{tournament_id}/repoll`` — the
+operator escape hatch when a live badge looks wrong and waiting out the interval
+is not acceptable.
 
 The handler does NOT run a poll tick. A tick walks every active tournament and
 talks to Helix over the proxy; the gateway puts a deadline on every RPC call
@@ -11,10 +11,18 @@ and leave the caller unable to tell a slow poll from a failed one. Instead it
 clears the poll cursor (``stream:poll:last_run``), which makes the next scheduler
 heartbeat — at most ``SCHEDULER_TICK_SECONDS`` away — consider a tick due. That is
 precisely what 202 Accepted describes, and why the route declares it.
+
+``health`` serves ``GET /api/streams/health`` and is the reason the tick records
+its outcome at all: every Helix failure is swallowed so an outage cannot kill the
+scheduler, which means a misconfigured poller is indistinguishable from a working
+one from the outside. It reads Redis only — no Postgres — and requires a GLOBAL
+``stream.read``, because there is one poller for the whole platform and a
+workspace-scoped grant must not be able to read platform-wide state.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -26,14 +34,45 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.tournament.tournament import Tournament
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_audit
+from shared.services.settings_provider import get_stream_collection_config
 from src.core import db
-from src.schemas.stream import StreamRepollRead
+from src.core.config import settings
+from src.schemas.stream import StreamPollHealthRead, StreamRepollRead
 from src.services import state
 
 from . import _common as c
 from ._clients import realtime_redis
 
-__all__ = ("register", "repoll")
+__all__ = ("health", "register", "repoll")
+
+
+async def health(session: AsyncSession, data: dict[str, Any]) -> StreamPollHealthRead:
+    """Report the last tick's outcome next to the config that produced it."""
+    user = c.actor(data)
+    c.require_active(user)
+    # Deliberately NOT ensure_workspace_permission: the poller is platform-wide,
+    # so a workspace-scoped grant would read numbers that are not about its
+    # workspace. Only a global holder (or a superuser) sees this.
+    if not user.has_permission("stream", "read"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied: stream.read required")
+
+    cfg = await get_stream_collection_config(session)
+
+    recorded = await state.read_poll_status(realtime_redis) or {}
+    ran_at = recorded.get("ran_at")
+    return StreamPollHealthRead(
+        enabled=cfg.enabled,
+        interval_seconds=cfg.interval_seconds,
+        batch_size=cfg.batch_size,
+        status=recorded.get("status"),
+        last_run_at=datetime.fromtimestamp(float(ran_at), tz=UTC) if ran_at is not None else None,
+        tournaments_active=recorded.get("tournaments_active"),
+        tournaments_updated=recorded.get("tournaments_updated"),
+        channels_polled=recorded.get("channels_polled"),
+        live_channels=recorded.get("live_channels"),
+        ratelimit_remaining=recorded.get("ratelimit_remaining"),
+        credentials_configured=bool(settings.twitch_client_id and settings.twitch_client_secret),
+    )
 
 
 async def repoll(session: AsyncSession, data: dict[str, Any]) -> StreamRepollRead:
@@ -103,3 +142,10 @@ def register(broker: Any, logger: Any) -> None:
             return await repoll(session, data)
 
         return await c.envelope(logger, "repoll", op, session_factory=sf)
+
+    @broker.subscriber("rpc.stream.health")
+    async def _health(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            return await health(session, data)
+
+        return await c.envelope(logger, "health", op, session_factory=sf)

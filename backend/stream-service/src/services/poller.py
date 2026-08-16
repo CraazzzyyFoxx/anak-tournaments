@@ -45,6 +45,13 @@ __all__ = ("STREAM_UPDATED", "run_poll_tick")
 
 STREAM_UPDATED = "stream.updated"
 
+#: Tick outcomes recorded for the admin health panel. Mirrors the ``status`` label
+#: on ``STREAM_POLL_TICKS_TOTAL`` so a Grafana series and the panel never disagree.
+POLL_STATUS_OK = "ok"
+POLL_STATUS_EMPTY = "empty"
+POLL_STATUS_TRUNCATED = "truncated"
+POLL_STATUS_ERROR = "error"
+
 
 #: Injection seam for the tick's only network call. Kept loose (``...``) rather
 #: than a Protocol because ``helix.fetch_live_streams`` carries defaulted knobs
@@ -69,6 +76,35 @@ class _Plan:
     channels: dict[str, _Channel]
 
 
+@dataclass(slots=True)
+class _TickReport:
+    """What the tick did, for ``stream:poll:last_status``.
+
+    Mutable and threaded through by hand rather than returned: the tick already
+    swallows every Helix failure on purpose (a Twitch outage must not kill the
+    scheduler), so the only way an operator can learn *which* failure happened is
+    if the failing branch records it on the way past.
+    """
+
+    status: str = POLL_STATUS_EMPTY
+    tournaments_active: int = 0
+    tournaments_updated: int = 0
+    channels_polled: int = 0
+    live_channels: int = 0
+    ratelimit_remaining: int | None = None
+
+    def as_status(self, *, ran_at: float) -> dict[str, Any]:
+        return {
+            "ran_at": ran_at,
+            "status": self.status,
+            "tournaments_active": self.tournaments_active,
+            "tournaments_updated": self.tournaments_updated,
+            "channels_polled": self.channels_polled,
+            "live_channels": self.live_channels,
+            "ratelimit_remaining": self.ratelimit_remaining,
+        }
+
+
 async def run_poll_tick(
     session: Any,
     redis: Redis,
@@ -85,31 +121,46 @@ async def run_poll_tick(
         logger.debug("Stream collection disabled in settings; skipping tick")
         return 0
 
+    report = _TickReport()
     try:
-        return await _run_tick(session, redis, cfg, fetch)
+        return await _run_tick(session, redis, cfg, fetch, report)
+    except Exception:
+        report.status = POLL_STATUS_ERROR
+        raise
     finally:
         # Set unconditionally, not only on success. The cursor spaces *attempts*,
         # and a Twitch outage that skipped it would turn the 30s heartbeat into a
         # retry storm on a rate-limit bucket identity-service also needs.
-        await state.set_last_run(redis, time.time())
+        ran_at = time.time()
+        await state.set_last_run(redis, ran_at)
+        # After the cursor: if this write is the one that fails, the interval is
+        # still respected and only the panel goes stale.
+        await state.write_poll_status(redis, report.as_status(ran_at=ran_at))
 
 
-async def _run_tick(session: Any, redis: Redis, cfg: StreamCollectionConfig, fetch: LiveStreamFetcher) -> int:
+async def _run_tick(
+    session: Any, redis: Redis, cfg: StreamCollectionConfig, fetch: LiveStreamFetcher, report: _TickReport
+) -> int:
     plans = await _build_plans(session)
+    report.tournaments_active = len(plans)
     if not plans:
-        metrics.STREAM_POLL_TICKS_TOTAL.labels(status="empty").inc()
+        metrics.STREAM_POLL_TICKS_TOTAL.labels(status=POLL_STATUS_EMPTY).inc()
+        report.status = POLL_STATUS_EMPTY
         return 0
 
     logins, user_ids, query_keys = _global_targets(plans)
     metrics.STREAM_CHANNELS_POLLED.set(len(query_keys))
+    report.channels_polled = len(query_keys)
 
-    result = await _fetch(redis, cfg, fetch, logins=logins, user_ids=user_ids)
+    result = await _fetch(redis, cfg, fetch, logins=logins, user_ids=user_ids, report=report)
     if result is None:
         return 0
 
     if result.ratelimit_remaining is not None:
         metrics.STREAM_HELIX_RATELIMIT_REMAINING.set(result.ratelimit_remaining)
+        report.ratelimit_remaining = result.ratelimit_remaining
     metrics.STREAM_LIVE_CHANNELS.set(len(result.snapshots))
+    report.live_channels = len(result.snapshots)
 
     live_by_login = {snapshot.channel: snapshot for snapshot in result.snapshots}
     polled = {
@@ -132,7 +183,9 @@ async def _run_tick(session: Any, redis: Redis, cfg: StreamCollectionConfig, fet
         await _apply(redis, cfg, plan, live_by_login)
         processed += 1
 
-    metrics.STREAM_POLL_TICKS_TOTAL.labels(status="truncated" if result.truncated else "ok").inc()
+    report.status = POLL_STATUS_TRUNCATED if result.truncated else POLL_STATUS_OK
+    report.tournaments_updated = processed
+    metrics.STREAM_POLL_TICKS_TOTAL.labels(status=report.status).inc()
     if result.truncated:
         logger.warning(
             "Helix rate-limit floor reached (remaining={}); polled {}/{} tournaments",
@@ -209,6 +262,7 @@ async def _fetch(
     *,
     logins: list[str],
     user_ids: list[str],
+    report: _TickReport,
 ) -> helix.HelixBatchResult | None:
     """Run the Helix call, mapping every failure onto a metric and a skipped tick.
 
@@ -236,21 +290,25 @@ async def _fetch(
     except helix.HelixNotConfigured:
         # Expected state, not an incident: the feature ships inert until an
         # operator sets TWITCH_CLIENT_ID/SECRET.
+        report.status = "not_configured"
         metrics.STREAM_HELIX_ERRORS_TOTAL.labels(kind="not_configured").inc()
         metrics.STREAM_POLL_TICKS_TOTAL.labels(status="not_configured").inc()
         logger.debug("Twitch credentials are not configured; skipping stream poll tick")
         return None
     except helix.HelixRateLimited as exc:
+        report.status = "rate_limited"
         metrics.STREAM_HELIX_ERRORS_TOTAL.labels(kind="rate_limited").inc()
         metrics.STREAM_POLL_TICKS_TOTAL.labels(status="rate_limited").inc()
         logger.warning("Helix rate-limited the poll tick (reset_at={})", exc.reset_at)
         return None
     except helix.HelixUnauthorized:
+        report.status = "unauthorized"
         metrics.STREAM_HELIX_ERRORS_TOTAL.labels(kind="unauthorized").inc()
         metrics.STREAM_POLL_TICKS_TOTAL.labels(status="unauthorized").inc()
         logger.error("Twitch rejected the app credentials; stream polling is disabled until they are fixed")
         return None
     except helix.HelixUnavailable as exc:
+        report.status = "unavailable"
         metrics.STREAM_HELIX_ERRORS_TOTAL.labels(kind="unavailable").inc()
         metrics.STREAM_POLL_TICKS_TOTAL.labels(status="unavailable").inc()
         logger.warning("Helix unavailable during stream poll tick: {}", exc)

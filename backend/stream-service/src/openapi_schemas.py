@@ -4,8 +4,9 @@ Schemas-only module consumed by the export script — see ``shared.rpc.openapi``
 Kept import-light (no broker/DB) so ``backend/scripts/export_openapi_schemas.sh``
 can import it with dummy connection env.
 
-Neither subject takes a request body, so there is no ``request=``: the public read
-carries only a path id, and the re-poll carries a path id plus ``workspace_id``.
+Only ``repoll`` takes query params and none of the subjects take a request body:
+the public read carries a path id, health carries nothing, and the re-poll carries
+a path id plus ``workspace_id``.
 """
 
 from __future__ import annotations
@@ -28,4 +29,6 @@ OPERATIONS: dict[str, Op] = {
             ),
         ),
     ),
+    # ── admin: poller health ───────────────────────────────────────────────
+    "rpc.stream.health": Op(response=stream_schemas.StreamPollHealthRead),
 }

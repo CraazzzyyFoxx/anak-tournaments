@@ -18,10 +18,17 @@ var PublicRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/streams/tournament/{tournament_id}", Queue: "rpc.stream.tournament_streams", Path: []string{"tournament_id"}, AllQuery: true, Auth: edge.AuthNone},
 }
 
-// AdminRoutes is the operator escape hatch: force the next poller heartbeat to
-// run a tick immediately instead of waiting out the configured interval.
-// Gated by the stream.update permission in the handler; 202 because the work
-// happens on the poller's own schedule, not in this request.
+// AdminRoutes carries the two operator surfaces:
+//
+//   - poller health — why nothing is live. The tick swallows every Helix failure
+//     so an outage cannot kill the scheduler, which means a broken poller and a
+//     working one look identical from outside; this read names the difference.
+//     Gated by a GLOBAL stream.read in the handler, not a workspace-scoped one:
+//     there is one poller for the whole platform.
+//   - re-poll — force the next heartbeat to run a tick instead of waiting out the
+//     configured interval. Gated by stream.update; 202 because the work happens on
+//     the poller's own schedule, not in this request.
 var AdminRoutes = []edge.RouteSpec{
+	{Method: "GET", Pattern: "/api/streams/health", Queue: "rpc.stream.health", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/streams/tournament/{tournament_id}/repoll", Queue: "rpc.stream.repoll", Path: []string{"tournament_id"}, Query: []string{"workspace_id"}, Auth: edge.AuthRequired, Success: 202},
 }

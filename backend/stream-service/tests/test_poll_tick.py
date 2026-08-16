@@ -363,6 +363,95 @@ class RateLimitGateTests(_TickCase):
         self.assertEqual([topic for topic, _ in self.redis.published], ["realtime:tournament:7:streams"])
 
 
+class PollStatusTests(_TickCase):
+    """What the admin health panel reads.
+
+    The tick swallows every Helix failure on purpose — an outage must not kill the
+    scheduler — so the recorded status is the ONLY way an operator can tell "polling
+    works" from "Twitch rejected the credentials". Both otherwise look like a
+    tournament page with no live badges.
+    """
+
+    async def _status(self) -> dict[str, Any]:
+        recorded = await state.read_poll_status(self.redis)
+        assert recorded is not None, "the tick recorded no status at all"
+        return recorded
+
+    async def test_successful_tick_records_ok_with_counts(self) -> None:
+        self._tournament(7)
+        self._participant(7, "castera")
+        self._participant(7, "casterb")
+
+        await poller.run_poll_tick(
+            object(), self.redis, self.cfg, fetch=_Fetcher(_batch(["castera"], logins=["castera", "casterb"]))
+        )
+
+        recorded = await self._status()
+        self.assertEqual(recorded["status"], "ok")
+        self.assertEqual(recorded["tournaments_active"], 1)
+        self.assertEqual(recorded["tournaments_updated"], 1)
+        self.assertEqual(recorded["channels_polled"], 2)
+        self.assertEqual(recorded["live_channels"], 1)
+        self.assertEqual(recorded["ratelimit_remaining"], 700)
+        self.assertIsInstance(recorded["ran_at"], float)
+
+    async def test_rejected_credentials_are_named_not_swallowed(self) -> None:
+        """The one diagnosis the panel exists for: creds present, Twitch said no."""
+        self._tournament(7)
+        self._participant(7, "caster")
+
+        await poller.run_poll_tick(
+            object(), self.redis, self.cfg, fetch=_Fetcher(error=helix.HelixUnauthorized("nope"))
+        )
+
+        self.assertEqual((await self._status())["status"], "unauthorized")
+
+    async def test_missing_credentials_are_distinguishable_from_rejected_ones(self) -> None:
+        self._tournament(7)
+        self._participant(7, "caster")
+
+        await poller.run_poll_tick(
+            object(), self.redis, self.cfg, fetch=_Fetcher(error=helix.HelixNotConfigured("no creds"))
+        )
+
+        self.assertEqual((await self._status())["status"], "not_configured")
+
+    async def test_no_active_tournaments_is_empty_not_a_failure(self) -> None:
+        await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=_Fetcher(_batch([])))
+
+        recorded = await self._status()
+        self.assertEqual(recorded["status"], "empty")
+        self.assertEqual(recorded["tournaments_active"], 0)
+
+    async def test_truncated_poll_says_so(self) -> None:
+        self._tournament(7)
+        self._participant(7, "caster")
+        result = helix.HelixBatchResult(
+            snapshots=[_snapshot("caster")],
+            ratelimit_remaining=40,
+            polled_logins=frozenset({"caster"}),
+            truncated=True,
+        )
+
+        await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=_Fetcher(result))
+
+        recorded = await self._status()
+        self.assertEqual(recorded["status"], "truncated")
+        self.assertEqual(recorded["ratelimit_remaining"], 40)
+
+    async def test_disabled_setting_records_nothing(self) -> None:
+        """A disabled poller has no outcome to report; the panel reads `enabled`
+        from the settings row instead and says "paused", not "never ran"."""
+        self._tournament(7)
+        self._participant(7, "caster")
+
+        await poller.run_poll_tick(
+            object(), self.redis, StreamCollectionConfig(enabled=False), fetch=_Fetcher(_batch([]))
+        )
+
+        self.assertIsNone(await state.read_poll_status(self.redis))
+
+
 def _batch(
     live: list[str],
     *,

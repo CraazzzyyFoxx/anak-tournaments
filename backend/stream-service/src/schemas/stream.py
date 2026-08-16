@@ -19,6 +19,8 @@ __all__ = (
     "StreamEntryRead",
     "StreamPlatform",
     "StreamPlayerRead",
+    "StreamPollHealthRead",
+    "StreamPollStatus",
     "StreamRepollRead",
     "TournamentStreamsRead",
 )
@@ -88,3 +90,53 @@ class StreamRepollRead(BaseModel):
     """
 
     tournament_id: int
+
+
+#: Outcome of the last poll tick. Mirrors the ``status`` label on
+#: ``STREAM_POLL_TICKS_TOTAL`` so the panel and Grafana never disagree.
+StreamPollStatus = Literal[
+    "ok",
+    "empty",
+    "truncated",
+    "not_configured",
+    "rate_limited",
+    "unauthorized",
+    "unavailable",
+    "error",
+]
+
+
+class StreamPollHealthRead(BaseModel):
+    """Poller health for the admin panel.
+
+    Exists because the tick swallows its own failures by design — a Twitch outage
+    must not kill the scheduler — so "polling works" and "Twitch rejected the
+    credentials" both look like a page with no live badges. Without this read the
+    only way to tell them apart is `docker compose logs`.
+
+    Platform-wide, not per-workspace: there is one poller and one Redis key, so
+    the numbers carry no workspace dimension and the read requires a GLOBAL
+    ``stream.read`` rather than a workspace-scoped grant.
+    """
+
+    #: The live config, echoed so the panel can show interval/batch next to the
+    #: outcome they produced instead of reading the settings table separately.
+    enabled: bool
+    interval_seconds: int
+    batch_size: int
+
+    #: ``None`` = no tick has been recorded yet. That is NOT the same as a
+    #: recorded failure, and the panel says so: never-ran means the scheduler has
+    #: not reached a due tick, a failure names what went wrong.
+    status: StreamPollStatus | None = None
+    last_run_at: datetime | None = None
+    tournaments_active: int | None = None
+    tournaments_updated: int | None = None
+    channels_polled: int | None = None
+    live_channels: int | None = None
+    #: Twitch's ``Ratelimit-Remaining`` at the last call, out of an 800/min bucket
+    #: shared with identity-service's OAuth logins.
+    ratelimit_remaining: int | None = None
+    #: Whether Twitch app credentials are present in this worker's environment.
+    #: Distinguishes "operator never set them" from "Twitch refused them".
+    credentials_configured: bool = False

@@ -5359,6 +5359,14 @@
       },
       "summary": "Create tournament with groups"
     },
+    "rpc.stream.health": {
+      "description": "Outcome of the last Twitch live-status poll tick next to the config that produced it: status, when it ran, how many tournaments and channels it covered, how many channels were live, and Twitch's remaining rate-limit budget. Exists because the tick swallows every Helix failure by design so an outage cannot kill the scheduler \u2014 without this a poller rejected by Twitch is indistinguishable from a working one. A null status means no tick has been recorded yet, which is not the same as a recorded failure. Requires a global stream-read permission: there is one poller for the whole platform, so the numbers carry no workspace dimension and a workspace-scoped grant is not enough.",
+      "response": {
+        "array": false,
+        "ref": "stream.StreamPollHealthRead"
+      },
+      "summary": "Stream poller health"
+    },
     "rpc.stream.repoll": {
       "description": "Clears the live-status poll cursor so the next scheduler heartbeat polls immediately (202 Accepted \u2014 no poll runs inline). Requires stream-update permission on the workspace that owns the tournament, and is recorded in the audit log.",
       "query_params": [
@@ -26031,6 +26039,130 @@
         "name"
       ],
       "title": "StreamPlayerRead",
+      "type": "object"
+    },
+    "stream.StreamPollHealthRead": {
+      "description": "Poller health for the admin panel.\n\nExists because the tick swallows its own failures by design \u2014 a Twitch outage\nmust not kill the scheduler \u2014 so \"polling works\" and \"Twitch rejected the\ncredentials\" both look like a page with no live badges. Without this read the\nonly way to tell them apart is `docker compose logs`.\n\nPlatform-wide, not per-workspace: there is one poller and one Redis key, so\nthe numbers carry no workspace dimension and the read requires a GLOBAL\n``stream.read`` rather than a workspace-scoped grant.",
+      "properties": {
+        "batch_size": {
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "channels_polled": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channels Polled"
+        },
+        "credentials_configured": {
+          "default": false,
+          "title": "Credentials Configured",
+          "type": "boolean"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "interval_seconds": {
+          "title": "Interval Seconds",
+          "type": "integer"
+        },
+        "last_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Run At"
+        },
+        "live_channels": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Live Channels"
+        },
+        "ratelimit_remaining": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratelimit Remaining"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ok",
+                "empty",
+                "truncated",
+                "not_configured",
+                "rate_limited",
+                "unauthorized",
+                "unavailable",
+                "error"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "tournaments_active": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournaments Active"
+        },
+        "tournaments_updated": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournaments Updated"
+        }
+      },
+      "required": [
+        "enabled",
+        "interval_seconds",
+        "batch_size"
+      ],
+      "title": "StreamPollHealthRead",
       "type": "object"
     },
     "stream.StreamRepollRead": {

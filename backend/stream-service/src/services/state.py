@@ -34,14 +34,18 @@ from redis.asyncio import Redis
 __all__ = (
     "LAST_RUN_KEY",
     "LAST_RUN_TTL_SECONDS",
+    "POLL_STATUS_KEY",
+    "POLL_STATUS_TTL_SECONDS",
     "TOKEN_KEY",
     "clear_last_run",
     "get_last_run",
     "live_key",
     "read_live",
+    "read_poll_status",
     "set_last_run",
     "snapshot_field",
     "write_live",
+    "write_poll_status",
 )
 
 TOKEN_KEY = "stream:token"
@@ -49,6 +53,15 @@ LAST_RUN_KEY = "stream:poll:last_run"
 #: The cursor only gates "is the next tick due"; a lost key costs one early tick,
 #: so it expires rather than accumulating forever in a shared Redis.
 LAST_RUN_TTL_SECONDS = 24 * 60 * 60
+
+#: Outcome of the last tick, for the admin health panel. An operator who flips the
+#: setting on has no other way to tell "polling works" from "Twitch rejected the
+#: credentials" — both look like an empty page, because the tick swallows its own
+#: failures on purpose so a Twitch outage cannot kill the scheduler.
+POLL_STATUS_KEY = "stream:poll:last_status"
+#: Longer than the cursor: a stale "unauthorized 3 days ago" is still the answer to
+#: "why is nothing live", whereas an absent key would read as "never ran".
+POLL_STATUS_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 def live_key(tournament_id: int) -> str:
@@ -124,3 +137,24 @@ async def set_last_run(redis: Redis, timestamp: float) -> None:
 async def clear_last_run(redis: Redis) -> None:
     """Make the next heartbeat due immediately — the admin re-poll's whole job."""
     await redis.delete(LAST_RUN_KEY)
+
+
+async def read_poll_status(redis: Redis) -> dict[str, Any] | None:
+    """Outcome of the last tick, or ``None`` when none has been recorded yet.
+
+    ``None`` and "recorded a failure" are different answers and the admin panel
+    renders them differently: never-ran means the scheduler has not reached a due
+    tick, a recorded failure names what Twitch said.
+    """
+    raw = await redis.get(POLL_STATUS_KEY)
+    if raw is None:
+        return None
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+async def write_poll_status(redis: Redis, status: dict[str, Any]) -> None:
+    await redis.set(POLL_STATUS_KEY, json.dumps(status), ex=POLL_STATUS_TTL_SECONDS)

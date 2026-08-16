@@ -25,4 +25,17 @@ DOCS: dict[str, dict] = {
             "workspace that owns the tournament, and is recorded in the audit log."
         ),
     },
+    "rpc.stream.health": {
+        "summary": "Stream poller health",
+        "description": (
+            "Outcome of the last Twitch live-status poll tick next to the config that produced it: "
+            "status, when it ran, how many tournaments and channels it covered, how many channels "
+            "were live, and Twitch's remaining rate-limit budget. Exists because the tick swallows "
+            "every Helix failure by design so an outage cannot kill the scheduler — without this a "
+            "poller rejected by Twitch is indistinguishable from a working one. A null status means "
+            "no tick has been recorded yet, which is not the same as a recorded failure. Requires a "
+            "global stream-read permission: there is one poller for the whole platform, so the "
+            "numbers carry no workspace dimension and a workspace-scoped grant is not enough."
+        ),
+    },
 }
