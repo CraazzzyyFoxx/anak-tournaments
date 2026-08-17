@@ -17,7 +17,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
 from shared import models
@@ -29,6 +28,7 @@ from shared.services.distributed_lock import (
     acquire_distributed_lock,
     release_distributed_lock,
 )
+from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.broker import optional_broker
 from src.core.config import settings
@@ -40,7 +40,7 @@ SCHEDULER_TICK_SECONDS = 60
 LEADER_LOCK_KEY = "subscription_collection:scheduler:leader"
 LEADER_LOCK_TTL_SECONDS = SCHEDULER_TICK_SECONDS * 2
 
-_scheduler: AsyncIOScheduler | None = None
+_scheduler = IntervalScheduler(job_id="subscription_collection", label="Subscription collection")
 
 
 async def last_scheduled_run_at(session: Any) -> datetime | None:
@@ -111,31 +111,13 @@ async def run_subscription_collection_tick(
 
 
 def start_scheduler(*, redis: Any | None = None) -> None:
-    global _scheduler
-    if _scheduler is not None:
-        return
-
     redis_client = redis or realtime_redis
-
-    _scheduler = AsyncIOScheduler(timezone="UTC")
-    _scheduler.add_job(
+    _scheduler.start(
         run_subscription_collection_tick,
-        "interval",
-        args=[db.async_session_maker, redis_client],
         seconds=SCHEDULER_TICK_SECONDS,
-        id="subscription_collection",
-        max_instances=1,
-        coalesce=True,
+        args=[db.async_session_maker, redis_client],
     )
-    _scheduler.start()
-    logger.info("Subscription collection scheduler started (tick={}s)", SCHEDULER_TICK_SECONDS)
 
 
 def shutdown_scheduler() -> None:
-    global _scheduler
-    if _scheduler is None:
-        return
-
-    _scheduler.shutdown(wait=False)
-    _scheduler = None
-    logger.info("Subscription collection scheduler stopped")
+    _scheduler.shutdown()

@@ -19,7 +19,6 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
 from shared.observability import observe_scheduled_job
@@ -29,6 +28,7 @@ from shared.services.distributed_lock import (
     acquire_distributed_lock,
     release_distributed_lock,
 )
+from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.rpc._clients import realtime_redis
 from src.services import poller, state
@@ -37,7 +37,7 @@ SCHEDULER_TICK_SECONDS = 30
 LEADER_LOCK_KEY = "stream_poll:scheduler:leader"
 LEADER_LOCK_TTL_SECONDS = SCHEDULER_TICK_SECONDS * 2
 
-_scheduler: AsyncIOScheduler | None = None
+_scheduler = IntervalScheduler(job_id="stream_poll", label="Stream poll")
 
 
 async def run_stream_poll_tick(
@@ -82,31 +82,13 @@ async def run_stream_poll_tick(
 
 
 def start_scheduler(*, redis: Any | None = None) -> None:
-    global _scheduler
-    if _scheduler is not None:
-        return
-
     redis_client = redis or realtime_redis
-
-    _scheduler = AsyncIOScheduler(timezone="UTC")
-    _scheduler.add_job(
+    _scheduler.start(
         run_stream_poll_tick,
-        "interval",
-        args=[db.async_session_maker, redis_client],
         seconds=SCHEDULER_TICK_SECONDS,
-        id="stream_poll",
-        max_instances=1,
-        coalesce=True,
+        args=[db.async_session_maker, redis_client],
     )
-    _scheduler.start()
-    logger.info("Stream poll scheduler started (tick={}s)", SCHEDULER_TICK_SECONDS)
 
 
 def shutdown_scheduler() -> None:
-    global _scheduler
-    if _scheduler is None:
-        return
-
-    _scheduler.shutdown(wait=False)
-    _scheduler = None
-    logger.info("Stream poll scheduler stopped")
+    _scheduler.shutdown()

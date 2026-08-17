@@ -32,7 +32,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
@@ -44,6 +43,7 @@ from shared.services.distributed_lock import (
     acquire_distributed_lock,
     release_distributed_lock,
 )
+from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.broker import require_broker
 from src.core.config import settings
@@ -51,7 +51,7 @@ from src.services.match_logs import realtime as logs_realtime
 
 LEADER_LOCK_KEY = "log_processing:reaper:leader"
 
-_scheduler: AsyncIOScheduler | None = None
+_scheduler = IntervalScheduler(job_id="match_log_stall_reaper", label="Match-log stall reaper")
 
 
 @dataclass(frozen=True)
@@ -241,27 +241,14 @@ async def reclaim_stalled_logs(
 
 
 def start_scheduler(*, redis: Any, broker: Any | None = None) -> None:
-    global _scheduler
-    if _scheduler is not None or not settings.log_reaper_enabled:
+    if not settings.log_reaper_enabled:
         return
-    tick = settings.log_reaper_tick_seconds
-    _scheduler = AsyncIOScheduler(timezone="UTC")
-    _scheduler.add_job(
+    _scheduler.start(
         reclaim_stalled_logs,
-        "interval",
-        seconds=tick,
-        id="match_log_stall_reaper",
-        max_instances=1,
-        coalesce=True,
+        seconds=settings.log_reaper_tick_seconds,
         kwargs={"redis": redis, "broker": broker},
     )
-    _scheduler.start()
-    logger.info("Match-log stall reaper started (tick={}s)", tick)
 
 
 def shutdown_scheduler() -> None:
-    global _scheduler
-    if _scheduler is None:
-        return
-    _scheduler.shutdown(wait=False)
-    _scheduler = None
+    _scheduler.shutdown()
