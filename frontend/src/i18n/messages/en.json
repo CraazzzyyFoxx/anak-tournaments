@@ -284,7 +284,11 @@
       "playtimeOnMap": "Playtime on this map",
       "countedNote": "Games are counted when hero time played is over 60s."
     },
-    "sortDirection": "Sort direction: {current}. Switch to {next}."
+    "sortDirection": "Sort direction: {current}. Switch to {next}.",
+    "favorite": {
+      "add": "Add to favorites",
+      "remove": "Remove from favorites"
+    }
   },
   "registration": {
     "wizard": {
@@ -3562,7 +3566,12 @@
       "empty": "No users found.",
       "minChars": "Type at least 2 characters.",
       "clear": "Clear search",
-      "resultsLabel": "User search results"
+      "resultsLabel": "User search results",
+      "mobileTrigger": "Search players",
+      "close": "Close search",
+      "recent": "Recent",
+      "clearHistory": "Clear history",
+      "removeFromHistory": "Remove from history"
     },
     "mobileMenuTitle": "Site navigation"
   },
