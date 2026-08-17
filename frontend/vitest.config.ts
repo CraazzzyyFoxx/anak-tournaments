@@ -132,8 +132,9 @@ export default defineConfig({
       "src/components/FavoriteStarButton.behavior.test.tsx",
       "src/components/UserSearch.behavior.test.tsx",
       // Same file-level rule: `account-settings` is under `src/components`, and
-      // this is its only vitest file so far.
+      // these are its only vitest files so far.
       "src/components/account-settings/MyAccountSection.behavior.test.tsx",
+      "src/components/account-settings/FavoritesSection.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
       "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/TournamentBroadcastDock.behavior.test.tsx",

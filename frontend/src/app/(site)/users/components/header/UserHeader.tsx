@@ -90,6 +90,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
           <span className="text-[color:var(--aqt-fg-muted)]">{name}</span>
         </p>
         <ProfileToolbar
+          playerId={user.id}
           card={{
             name,
             tag: tag ?? null,

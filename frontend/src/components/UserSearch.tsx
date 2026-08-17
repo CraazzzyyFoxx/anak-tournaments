@@ -4,6 +4,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Loader2, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import FavoriteStarButton from "@/components/FavoriteStarButton";
 import { usePlayerSearch } from "@/hooks/usePlayerSearch";
 import {
   Command,
@@ -192,6 +193,14 @@ const UserSearch = () => {
                   >
                     <div className="flex w-full items-center justify-between gap-2">
                       <span className="truncate font-medium">{item.name}</span>
+                      <div
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                      >
+                        <FavoriteStarButton playerId={item.id} size="sm" />
+                      </div>
                     </div>
                   </CommandItem>
                 ))}

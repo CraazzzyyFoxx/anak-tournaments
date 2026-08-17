@@ -6,10 +6,13 @@ import { useTranslations } from "next-intl";
 import { GitCompare } from "lucide-react";
 
 import SharePlayerCard, { type ShareCardData } from "@/app/(site)/users/components/header/SharePlayerCard";
+import FavoriteStarButton from "@/components/FavoriteStarButton";
 
 interface ProfileToolbarProps {
   /** Player data used to render the shareable card. */
   card: ShareCardData;
+  /** Id of the player this toolbar belongs to, for the favorite star. */
+  playerId: number;
   /** Destination for the Compare action. Defaults to the players compare page. */
   comparePath?: string;
 }
@@ -20,9 +23,10 @@ const BTN =
 /**
  * Header toolbar for the player profile. Share opens the player-card dialog
  * (copy image / download PNG / copy link — design-book §6/§9); Compare links to
- * the existing players-compare page. (Follow is a later backend phase.)
+ * the existing players-compare page; the star toggles this player in the
+ * visitor's favorites (account-scoped, `FavoriteStarButton`/`useFavoritePlayers`).
  */
-const ProfileToolbar = ({ card, comparePath = "/users/compare" }: ProfileToolbarProps) => {
+const ProfileToolbar = ({ card, playerId, comparePath = "/users/compare" }: ProfileToolbarProps) => {
   const t = useTranslations();
 
   return (
@@ -32,6 +36,7 @@ const ProfileToolbar = ({ card, comparePath = "/users/compare" }: ProfileToolbar
         <GitCompare size={13} aria-hidden />
         {t("users.profile.toolbar.compare")}
       </Link>
+      <FavoriteStarButton playerId={playerId} size="sm" />
     </div>
   );
 };

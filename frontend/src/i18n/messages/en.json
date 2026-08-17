@@ -415,6 +415,7 @@
     "tabs": {
       "profile": "My Account",
       "preferences": "Preferences",
+      "favorites": "Favorites",
       "sessions": "Sessions"
     },
     "profile": {
@@ -425,6 +426,11 @@
       "title": "Preferences",
       "desc": "Customize your tournament experience.",
       "comingSoon": "App preferences coming soon"
+    },
+    "favorites": {
+      "title": "Favorites",
+      "desc": "Players you have starred for quick access.",
+      "empty": "No favorite players yet — star a player from their profile or from search."
     },
     "avatar": {
       "title": "Avatar",

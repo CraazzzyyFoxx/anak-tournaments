@@ -4,6 +4,7 @@ import React, { useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Loader2, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import FavoriteStarButton from "@/components/FavoriteStarButton";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -195,6 +196,14 @@ const MobilePlayerSearchSheet = () => {
                 >
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className="truncate font-medium">{item.name}</span>
+                    <div
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      <FavoriteStarButton playerId={item.id} size="sm" />
+                    </div>
                   </div>
                 </CommandItem>
               ))}
