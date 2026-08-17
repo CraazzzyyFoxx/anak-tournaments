@@ -18,6 +18,11 @@ superuser-only, so the verified identity is never destroyed by its owner. The sa
 capability covers ``me_set_stream_visibility``, the veto on surfacing the owner's
 live stream on tournament pages — a separate switch from account visibility on
 purpose, so staying off a tournament page does not cost you your public handle.
+
+The same ``_account_gate`` also covers ``me_favorites_*`` (list/add/remove a
+favorite player), but those never call ``_resolve_my_player_id`` -- a favorite
+is keyed by the caller's own ``auth_user_id`` directly, so it needs no player
+of the caller's own to exist and survives that player being re-linked/merged.
 """
 
 from __future__ import annotations
@@ -411,6 +416,56 @@ def register(broker: Any, logger: Any) -> None:
             return await _refresh_user(session, player_id)
 
         return await c.envelope(logger, "users.me_set_stream_visibility", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.users.me_favorites_list")
+    async def _me_favorites_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _account_gate(data)
+            rows = await session.execute(
+                sa.select(models.User.id, models.User.name)
+                .join(models.FavoritePlayer, models.FavoritePlayer.player_id == models.User.id)
+                .where(models.FavoritePlayer.auth_user_id == user.id)
+                .order_by(models.FavoritePlayer.created_at.desc())
+            )
+            return [schemas.LookupItem(id=r.id, name=r.name) for r in rows]
+
+        return await c.envelope(logger, "users.me_favorites_list", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.users.me_favorite_add")
+    async def _me_favorite_add(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _account_gate(data)
+            player_id = c.require_id(data)
+            exists = await session.scalar(sa.select(models.User.id).where(models.User.id == player_id))
+            if exists is None:
+                raise HTTPException(status_code=404, detail="Player not found")
+            already = await session.scalar(
+                sa.select(models.FavoritePlayer.id).where(
+                    models.FavoritePlayer.auth_user_id == user.id, models.FavoritePlayer.player_id == player_id
+                )
+            )
+            if already is None:
+                session.add(models.FavoritePlayer(auth_user_id=user.id, player_id=player_id))
+                await session.commit()
+            return {"ok": True}
+
+        return await c.envelope(logger, "users.me_favorite_add", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.users.me_favorite_remove")
+    async def _me_favorite_remove(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _account_gate(data)
+            player_id = c.require_id(data)
+            row = await session.scalar(
+                sa.select(models.FavoritePlayer).where(
+                    models.FavoritePlayer.auth_user_id == user.id, models.FavoritePlayer.player_id == player_id
+                )
+            )
+            if row is not None:
+                await session.delete(row)
+                await session.commit()
+
+        return await c.envelope(logger, "users.me_favorite_remove", op, session_factory=_SF)
 
     # ── Avatar (binary base64) ────────────────────────────────────────────────
     @broker.subscriber("rpc.app.users.avatar_upload")
