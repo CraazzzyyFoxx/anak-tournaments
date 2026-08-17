@@ -2620,6 +2620,22 @@
       },
       "summary": "User matches summary"
     },
+    "rpc.app.users.me_favorite_add": {
+      "description": "Bookmarks a player for the caller's own account. Idempotent (favoriting an already-favorited player is a no-op), 404s if the player id does not exist.",
+      "summary": "Favorite a player"
+    },
+    "rpc.app.users.me_favorite_remove": {
+      "description": "Removes a player from the caller's own favorites, returns 204. Idempotent (unfavoriting a player that isn't favorited is a no-op, not an error).",
+      "summary": "Unfavorite a player"
+    },
+    "rpc.app.users.me_favorites_list": {
+      "description": "Returns the caller's own favorited players (id + name), newest favorite first. Scoped to the caller's auth account, not a linked player, so it works even without one.",
+      "response": {
+        "array": true,
+        "ref": "app.LookupItem"
+      },
+      "summary": "List my favorite players"
+    },
     "rpc.app.users.me_set_stream_visibility": {
       "description": "Sets whether the caller's own live stream may be surfaced on tournament pages and returns their updated player. A false value is a veto: it outranks the per-tournament stream-POV opt-in and the Twitch account's public visibility, and takes effect immediately rather than at the next poll tick. Independent of social-account visibility, so the handle stays on the public profile. Requires a linked player (404 otherwise) and the account.social capability.",
       "request": {

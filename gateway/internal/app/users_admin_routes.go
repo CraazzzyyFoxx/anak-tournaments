@@ -41,4 +41,10 @@ var UsersAdminRoutes = []edge.RouteSpec{
 	// tournament pages at all (and overrides the per-tournament Stream POV
 	// opt-in in a registration).
 	{Method: "POST", Pattern: "/api/v1/me/stream-visibility", Queue: "rpc.app.users.me_set_stream_visibility", Body: true, Auth: edge.AuthRequired},
+	// Favorite players: account-scoped bookmarks keyed by the caller's own
+	// auth_user_id (not by a linked player of their own), so no capability
+	// beyond "this is my account" is required.
+	{Method: "GET", Pattern: "/api/v1/me/favorite-players", Queue: "rpc.app.users.me_favorites_list", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/me/favorite-players/{id}", Queue: "rpc.app.users.me_favorite_add", IDParam: "id", Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/v1/me/favorite-players/{id}", Queue: "rpc.app.users.me_favorite_remove", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
 }

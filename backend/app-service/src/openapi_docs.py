@@ -406,6 +406,28 @@ DOCS: dict[str, dict] = {
             " capability."
         ),
     },
+    # ── favorite players (own account, no account.social capability needed) ─────────────────────────
+    "rpc.app.users.me_favorites_list": {
+        "summary": "List my favorite players",
+        "description": (
+            "Returns the caller's own favorited players (id + name), newest favorite first. Scoped to"
+            " the caller's auth account, not a linked player, so it works even without one."
+        ),
+    },
+    "rpc.app.users.me_favorite_add": {
+        "summary": "Favorite a player",
+        "description": (
+            "Bookmarks a player for the caller's own account. Idempotent (favoriting an"
+            " already-favorited player is a no-op), 404s if the player id does not exist."
+        ),
+    },
+    "rpc.app.users.me_favorite_remove": {
+        "summary": "Unfavorite a player",
+        "description": (
+            "Removes a player from the caller's own favorites, returns 204. Idempotent (unfavoriting a"
+            " player that isn't favorited is a no-op, not an error)."
+        ),
+    },
     # ── user avatar (binary upload + delete) ────────────────────────────────────────────────────────
     "rpc.app.users.avatar_upload": {
         "summary": "Upload user avatar",
