@@ -1007,25 +1007,19 @@ class MatchLogProcessor:
             match_model.home_team_id = home_team_db.id
             match_model.away_team_id = away_team_db.id
             match_model.log_name = self.filename
+            # A genuine log just superseded this row (most often a
+            # pre-existing ``source=captain_report`` row upserted by
+            # ``map_report.submit_map_report`` before the log arrived) — stamp
+            # it ``log_parser`` so both the row's own provenance and the
+            # derived ``Encounter.has_logs`` (filtered on this column, see
+            # ``shared/models/matches/match.py``) reflect that a real log now
+            # backs it.
+            match_model.source = enums.MatchSource.LOG_PARSER
             if self.log_record_id is not None:
                 match_model.log_record_id = self.log_record_id
             session.add(match_model)
             await session.flush()
             logger.info(f"Match updated [id={match_model.id}] for log {self.filename}")
-
-        # A real log was just linked to this match. This also covers the case
-        # where ``match_model`` pre-existed as a ``source=captain_report`` row
-        # (per-map captain report, upserted by ``map_report.submit_map_report``
-        # before the actual log arrived): the ``else`` branch above only
-        # updates the match row, so without this the encounter's ``has_logs``
-        # flag would stay ``False`` forever despite a genuinely parsed log.
-        if not encounter.has_logs:
-            encounter = await encounter_service.update_encounter_logs(
-                session,
-                encounter.id,
-                has_logs=True,
-                commit=False,
-            )
 
         logger.info(f"Clearing existing stats/events/kills for match {match_model.id}")
         await session.execute(

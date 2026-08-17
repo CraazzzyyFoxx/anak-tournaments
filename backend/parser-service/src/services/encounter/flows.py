@@ -87,6 +87,11 @@ async def to_pydantic(
     # read from the deprecated ``encounter.challonge_id`` column. Always override so
     # the value survives the column being dropped; ``None`` when not prefetched.
     encounter_dict["challonge_id"] = challonge_match_ids.get(encounter.id) if challonge_match_ids is not None else None
+    # ``has_logs`` is a ``column_property`` (derived EXISTS over ``matches.match``,
+    # see ``shared/models/matches/match.py``), not a real column on
+    # ``__table__`` -- ``to_dict()`` only walks ``__table__.columns`` and
+    # silently drops it.
+    encounter_dict["has_logs"] = encounter.has_logs
     return schemas.EncounterRead(
         **encounter_dict,
         score=schemas.Score(home=encounter.home_score, away=encounter.away_score),

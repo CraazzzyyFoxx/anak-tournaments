@@ -544,4 +544,5 @@ __all__ = [
     "EncounterLinkSlot",
     "MatchEvent",
     "AbilityEvent",
+    "MatchSource",
 ]

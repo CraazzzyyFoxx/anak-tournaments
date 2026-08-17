@@ -181,7 +181,7 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9, has_logs=True))
+                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))
             ),
             patch.object(
                 flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
@@ -228,7 +228,7 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9, has_logs=True))
+                flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=SimpleNamespace(id=9))
             ),
             patch.object(
                 flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
@@ -241,16 +241,18 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
         record_misses.assert_not_awaited()
 
 
-class HasLogsBackfillOnExistingMatchTests(IsolatedAsyncioTestCase):
+class SourceStampedOnExistingMatchTests(IsolatedAsyncioTestCase):
     """A match row can pre-exist with ``source=captain_report`` (upserted by
     ``map_report.submit_map_report`` before any log arrives). When the real
     log is later processed, ``get_match_by_encounter_and_map`` finds that row
-    and ``start`` takes the update branch — which must still flip the
-    encounter's ``has_logs`` flag, or a genuinely parsed log leaves the
-    public log-availability badge permanently off.
+    and ``start`` takes the update branch — which must stamp
+    ``source=log_parser``, or the derived ``Encounter.has_logs`` (a
+    ``column_property`` filtered on that column, see
+    ``shared/models/matches/match.py``) stays false forever despite a
+    genuinely parsed log.
     """
 
-    async def test_start_sets_has_logs_when_an_existing_match_gets_a_real_log(self) -> None:
+    async def test_start_stamps_source_log_parser_on_an_existing_match_update(self) -> None:
         session = MagicMock()
         session.execute = AsyncMock()
         session.flush = AsyncMock()
@@ -258,9 +260,17 @@ class HasLogsBackfillOnExistingMatchTests(IsolatedAsyncioTestCase):
 
         team = SimpleNamespace(id=1)
         match_model = SimpleNamespace(
-            id=5, time=0.0, home_score=0, away_score=0, map_id=0, home_team_id=0, away_team_id=0, log_name=""
+            id=5,
+            time=0.0,
+            home_score=0,
+            away_score=0,
+            map_id=0,
+            home_team_id=0,
+            away_team_id=0,
+            log_name="",
+            source=shared_enums.MatchSource.CAPTAIN_REPORT,
         )
-        encounter = SimpleNamespace(id=9, has_logs=False)
+        encounter = SimpleNamespace(id=9)
 
         processor = _processor()
         processor.filename = "match.log"
@@ -275,31 +285,29 @@ class HasLogsBackfillOnExistingMatchTests(IsolatedAsyncioTestCase):
         processor.process_events = AsyncMock(return_value=[])
         processor.create_stats = AsyncMock(return_value=[])
 
-        update_encounter_logs = AsyncMock(return_value=SimpleNamespace(id=9, has_logs=True))
-
         with (
             patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=encounter)),
             patch.object(
                 flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
             ),
-            patch.object(flows.encounter_service, "update_encounter_logs", update_encounter_logs),
             patch.object(flows, "_enqueue_match_log_tournament_events", AsyncMock()),
         ):
             await processor.start(session)
 
-        update_encounter_logs.assert_awaited_once_with(session, 9, has_logs=True, commit=False)
+        self.assertEqual(match_model.source, shared_enums.MatchSource.LOG_PARSER)
 
-    async def test_start_does_not_recheck_when_already_flagged(self) -> None:
+    async def test_start_leaves_source_alone_when_creating_a_fresh_match(self) -> None:
+        """A brand-new row already defaults to ``log_parser`` at the model
+        level (see ``Match.source``) — ``start`` must not need to touch it on
+        the create branch."""
         session = MagicMock()
         session.execute = AsyncMock()
         session.flush = AsyncMock()
         session.commit = AsyncMock()
 
         team = SimpleNamespace(id=1)
-        match_model = SimpleNamespace(
-            id=5, time=0.0, home_score=0, away_score=0, map_id=0, home_team_id=0, away_team_id=0, log_name=""
-        )
-        encounter = SimpleNamespace(id=9, has_logs=True)
+        created_match = SimpleNamespace(id=5)
+        encounter = SimpleNamespace(id=9)
 
         processor = _processor()
         processor.filename = "match.log"
@@ -314,16 +322,15 @@ class HasLogsBackfillOnExistingMatchTests(IsolatedAsyncioTestCase):
         processor.process_events = AsyncMock(return_value=[])
         processor.create_stats = AsyncMock(return_value=[])
 
-        update_encounter_logs = AsyncMock()
+        create_match = AsyncMock(return_value=created_match)
 
         with (
             patch.object(flows.encounter_flows, "get_by_teams_ids", AsyncMock(return_value=encounter)),
-            patch.object(
-                flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match_model)
-            ),
-            patch.object(flows.encounter_service, "update_encounter_logs", update_encounter_logs),
+            patch.object(flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=None)),
+            patch.object(flows.encounter_service, "create_match", create_match),
             patch.object(flows, "_enqueue_match_log_tournament_events", AsyncMock()),
         ):
             await processor.start(session)
 
-        update_encounter_logs.assert_not_awaited()
+        create_match.assert_awaited_once()
+        self.assertNotIn("source", create_match.await_args.kwargs)

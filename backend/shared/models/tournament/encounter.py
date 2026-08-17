@@ -1,7 +1,7 @@
 import typing
 from datetime import datetime
 
-from sqlalchemy import Boolean, Enum, Float, ForeignKey, Index, Integer, String, text
+from sqlalchemy import Enum, Float, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
@@ -92,7 +92,11 @@ class Encounter(db.TimeStampIntegerMixin):
     # TABLE ... SET SCHEMA does not move dependent types); dbarch01 finally moved
     # it into the tournament schema.
     status: Mapped[enums.EncounterStatus] = mapped_column(ENCOUNTER_STATUS_ENUM, default=enums.EncounterStatus.OPEN)
-    has_logs: Mapped[bool] = mapped_column(Boolean(), default=False)
+
+    if typing.TYPE_CHECKING:
+        # Derived from ``Match`` existence via ``column_property`` after
+        # ``Match`` is defined (see ``shared/models/matches/match.py``).
+        has_logs: Mapped[bool]
 
     # Captain result submission
     result_status: Mapped[enums.EncounterResultStatus] = mapped_column(

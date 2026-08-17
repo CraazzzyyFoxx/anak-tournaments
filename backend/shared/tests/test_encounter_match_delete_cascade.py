@@ -100,7 +100,6 @@ class EncounterMatchDeleteCascadeTests(TestCase):
                 round=1,
                 best_of=3,
                 closeness=0.0,
-                has_logs=True,
                 status=enums.EncounterStatus.COMPLETED,
                 result_status=enums.EncounterResultStatus.NONE,
             )

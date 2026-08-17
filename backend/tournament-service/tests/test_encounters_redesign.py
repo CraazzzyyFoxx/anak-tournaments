@@ -62,14 +62,18 @@ class EncounterRedesignFilterTests(TestCase):
         )
 
         query = service._encounter_ids_query(params, workspace_id=7)
-        compiled = str(query.compile(compile_kwargs={"literal_binds": True})).lower()
+        compiled = " ".join(str(query.compile(compile_kwargs={"literal_binds": True})).lower().split())
 
         self.assertIn("encounter.tournament_id = 1", compiled)
         self.assertIn("encounter.stage_id = 2", compiled)
         self.assertIn("encounter.stage_item_id = 3", compiled)
         self.assertIn("encounter.best_of = 5", compiled)
         self.assertIn("encounter.status = 'completed'", compiled)
-        self.assertIn("encounter.has_logs is true", compiled)
+        self.assertIn(
+            "exists (select * from matches.match where matches.match.encounter_id = tournament.encounter.id "
+            "and matches.match.source = 'log_parser')) is true",
+            compiled,
+        )
         self.assertIn("encounter.closeness >= 0.25", compiled)
         self.assertIn("encounter.closeness <= 0.9", compiled)
         self.assertIn("tournament.workspace_id = 7", compiled)

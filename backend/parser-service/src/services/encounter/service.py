@@ -324,7 +324,6 @@ async def create(
     tournament: models.Tournament,
     group_id: int | None,
     status: enums.EncounterStatus,
-    has_logs: bool = False,
     stage_id: int | None = None,
     stage_item_id: int | None = None,
 ) -> models.Encounter:
@@ -359,7 +358,6 @@ async def create(
         stage_id=refs.stage_id,
         stage_item_id=refs.stage_item_id,
         status=status,
-        has_logs=has_logs,
     )
     session.add(encounter)
     await session.commit()
@@ -379,7 +377,6 @@ async def update(
     tournament_id: int | None = None,
     group_id: int | None = None,
     status: enums.EncounterStatus | None = None,
-    has_logs: bool | None = None,
 ) -> models.Encounter:
     encounter.name = name or encounter.name
     encounter.home_team_id = home_team_id or encounter.home_team_id
@@ -389,9 +386,6 @@ async def update(
     encounter.round = round or encounter.round
     encounter.tournament_id = tournament_id or encounter.tournament_id
     encounter.status = status or encounter.status
-    if has_logs is not None:
-        encounter.has_logs = has_logs
-
     if group_id is not None and group_id != encounter.tournament_group_id:
         encounter.tournament_group_id = group_id
         # При смене группы — пересчитать stage refs, чтобы сетка и админка
@@ -417,28 +411,6 @@ async def update(
         encounter.stage_item_id = refs.stage_item_id
 
     await session.commit()
-    return encounter
-
-
-async def update_encounter_logs(
-    session: AsyncSession,
-    encounter_id: int,
-    *,
-    has_logs: bool,
-    commit: bool = True,
-) -> models.Encounter:
-    result = await session.execute(
-        sa.select(models.Encounter).where(models.Encounter.id == encounter_id).with_for_update(nowait=False)
-    )
-    encounter = result.scalar_one_or_none()
-    if encounter is None:
-        raise ValueError(f"Encounter {encounter_id} not found")
-
-    encounter.has_logs = has_logs
-    if commit:
-        await session.commit()
-    else:
-        await session.flush()
     return encounter
 
 
