@@ -8,6 +8,7 @@
 //     independently of an active search;
 //  3. picking the same player twice never duplicates the entry;
 //  4. "Clear all" empties history entirely.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,7 +88,12 @@ async function settle(ticks = 3) {
 async function mount() {
   await act(async () => {
     root = createRoot(container);
-    root.render(<UserSearch />);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    root.render(
+      <QueryClientProvider client={client}>
+        <UserSearch />
+      </QueryClientProvider>
+    );
   });
   // Flushes useLocalStorageState's deferred `setTimeout(..., 0)` load.
   await settle();
