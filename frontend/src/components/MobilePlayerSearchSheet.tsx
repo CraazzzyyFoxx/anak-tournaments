@@ -6,7 +6,7 @@ import { Loader2, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import FavoriteStarButton from "@/components/FavoriteStarButton";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Command,
   CommandEmpty,
@@ -78,55 +78,48 @@ const MobilePlayerSearchSheet = () => {
         className="flex h-[100dvh] max-h-[100dvh] w-full flex-col gap-4 overflow-hidden border-none p-4"
       >
         <SheetTitle className="sr-only">{t("nav.search.mobileTrigger")}</SheetTitle>
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search
+        <div className="relative pr-10">
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground"
+          />
+          <Input
+            id={inputId}
+            ref={inputRef}
+            value={searchValue}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            inputMode="search"
+            enterKeyHint="search"
+            autoFocus
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isOpen}
+            aria-controls={listId}
+            aria-activedescendant={activeIndex >= 0 ? `${listId}-item-${activeIndex}` : undefined}
+            aria-label={t("nav.search.placeholder")}
+            placeholder={t("nav.search.placeholder")}
+            className="h-10 rounded-xl border-border/60 bg-background/15 pl-9 pr-10 shadow-sm"
+          />
+          {isSearching ? (
+            <Loader2
               aria-hidden
-              className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground"
+              className="pointer-events-none absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground"
             />
-            <Input
-              id={inputId}
-              ref={inputRef}
-              value={searchValue}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              inputMode="search"
-              enterKeyHint="search"
-              autoFocus
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={isOpen}
-              aria-controls={listId}
-              aria-activedescendant={activeIndex >= 0 ? `${listId}-item-${activeIndex}` : undefined}
-              aria-label={t("nav.search.placeholder")}
-              placeholder={t("nav.search.placeholder")}
-              className="h-10 rounded-xl border-border/60 bg-background/15 pl-9 pr-10 shadow-sm"
-            />
-            {isSearching ? (
-              <Loader2
-                aria-hidden
-                className="pointer-events-none absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground"
-              />
-            ) : searchValue.length > 0 ? (
-              <button
-                type="button"
-                aria-label={t("nav.search.clear")}
-                className="absolute right-2.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={handleClear}
-              >
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            ) : null}
-          </div>
-          <SheetClose asChild>
-            <Button variant="ghost" size="icon" aria-label={t("nav.search.close")}>
-              <X className="h-5 w-5" aria-hidden />
-            </Button>
-          </SheetClose>
+          ) : searchValue.length > 0 ? (
+            <button
+              type="button"
+              aria-label={t("nav.search.clear")}
+              className="absolute right-2.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={handleClear}
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
         </div>
         <Command className="flex-1 overflow-hidden rounded-xl border border-border/60">
           <CommandList
