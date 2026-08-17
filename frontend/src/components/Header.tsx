@@ -7,6 +7,7 @@ import { LogIn, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import UserSearch from "@/components/UserSearch";
+import MobilePlayerSearchSheet from "@/components/MobilePlayerSearchSheet";
 import { useTranslations } from "next-intl";
 import { SITE_ICON } from "@/config/site";
 import UserMenu from "@/components/UserMenu";
@@ -87,6 +88,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
         <WorkspaceSwitcher />
       )}
       <SiteNav variant="desktop" />
+      <MobilePlayerSearchSheet />
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="outline" size="icon" className="shrink-0 md:hidden">

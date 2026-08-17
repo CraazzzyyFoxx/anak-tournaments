@@ -130,6 +130,7 @@ export default defineConfig({
       "src/components/EncounterRostersModal.behavior.test.tsx",
       "src/components/BracketView.behavior.test.tsx",
       "src/components/FavoriteStarButton.behavior.test.tsx",
+      "src/components/UserSearch.behavior.test.tsx",
       // Same file-level rule: `account-settings` is under `src/components`, and
       // this is its only vitest file so far.
       "src/components/account-settings/MyAccountSection.behavior.test.tsx",
