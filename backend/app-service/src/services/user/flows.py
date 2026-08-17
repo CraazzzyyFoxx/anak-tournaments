@@ -1418,7 +1418,7 @@ async def get_tournament_with_stats(
         session,
         team.tournament,
         user.id,
-        tournament_stats,
+        [name for name in tournament_stats if name != enums.LogStatsName.Performance],
     ):
         if not values:
             continue
@@ -1427,6 +1427,15 @@ async def get_tournament_with_stats(
         rank = rank_asc if enums.is_ascending_stat(stat) else rank_desc
 
         stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
+
+    # MVP placement spans two LogStatsName columns (COALESCE(ImpactRank, Performance) —
+    # see get_tournament_mvp_stat_for_user), so it can't ride the generic single-name
+    # loop above. Slots into the same "performance" key the frontend already reads.
+    mvp_row = await statistics_service.get_tournament_mvp_stat_for_user(session, team.tournament, user.id)
+    if mvp_row:
+        stats[enums.LogStatsName.Performance] = schemas.UserTournamentStat(
+            value=mvp_row.value, rank=mvp_row.rank, total=mvp_row.total
+        )
 
     for placement in team.standings:
         if placement.buchholz is None:
@@ -1462,11 +1471,14 @@ async def get_tournament_leaderboard(
 
     Exposes the full ranked population that backs a single user's
     ``UserTournamentWithStats.stats[stat].{rank,total}`` on the tournament-stats
-    page. It reuses the exact ranking scheme
-    (``statistics_service.get_tournament_stat_leaderboard``, a generalization of
-    ``get_tournament_avg_match_stat_for_user_bulk``) — same AVG + dense_rank
-    window and same inverse-stat direction handling — so an entry's rank/value
-    here matches that user's row.
+    page. For every stat except ``Performance`` it reuses the exact ranking
+    scheme (``statistics_service.get_tournament_stat_leaderboard``, a
+    generalization of ``get_tournament_avg_match_stat_for_user_bulk``) — same
+    AVG + dense_rank window and same inverse-stat direction handling — so an
+    entry's rank/value here matches that user's row. ``Performance`` is the MVP
+    placement stat and spans two ``LogStatsName`` columns (see
+    ``get_tournament_mvp_stat_leaderboard`` / ``get_tournament_mvp_stat_for_user``),
+    so it routes to its own query instead.
 
     ``stat`` must be one of the tournament-stats feature's ranked stats
     (``tournament_stats``); any other stat raises 400.
@@ -1482,7 +1494,10 @@ async def get_tournament_leaderboard(
             ],
         )
 
-    rows = await statistics_service.get_tournament_stat_leaderboard(session, tournament_id, stat)
+    if stat == enums.LogStatsName.Performance:
+        rows = await statistics_service.get_tournament_mvp_stat_leaderboard(session, tournament_id)
+    else:
+        rows = await statistics_service.get_tournament_stat_leaderboard(session, tournament_id, stat)
     entries = [
         schemas.LobbyLeaderboardEntry(rank=row.rank, player_id=row.user_id, name=row.name, value=row.value)
         for row in rows

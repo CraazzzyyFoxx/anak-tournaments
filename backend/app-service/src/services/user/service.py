@@ -731,50 +731,6 @@ def _overview_maps_lost_expr(
     )
 
 
-def _overview_match_stat_avg(
-    user_id_column: sa.ColumnElement[typing.Any],
-    stat: enums.LogStatsName,
-    hero_id_is_not_none: bool = True,
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    where_conditions: list[typing.Any] = [
-        models.MatchStatistics.user_id == user_id_column,
-        models.MatchStatistics.round == 0,
-        models.MatchStatistics.hero_id.isnot(None) if hero_id_is_not_none else sa.literal(True),
-        models.MatchStatistics.name == stat,
-    ]
-
-    if role is not None or div_min is not None or div_max is not None:
-        where_conditions.append(
-            _compare_team_scope_exists(
-                user_id_column,
-                models.MatchStatistics.team_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
-        )
-
-    query = (
-        sa.select(sa.func.avg(models.MatchStatistics.value))
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-    )
-
-    if tournament_id is not None:
-        query = query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        where_conditions.append(models.Encounter.tournament_id == tournament_id)
-
-    return query.where(*where_conditions).scalar_subquery()
-
-
 def _overview_match_stat_avg_10_expr(
     user_id_column: sa.ColumnElement[typing.Any],
     stat: enums.LogStatsName,
@@ -1687,21 +1643,38 @@ def _compare_metrics_query_v2(
         ).where(models.Encounter.tournament_id == tournament_id)
     per_10_stats = per_10_stats.group_by(models.MatchStatistics.user_id).cte("compare_match_stats")
 
-    mvp_stats = (
+    # MVP placement spans two LogStatsName columns: ImpactRank when the
+    # impact-scoring pipeline computed it for a match, legacy Performance
+    # otherwise — same COALESCE(ImpactRank, Performance) per-match average as
+    # services.user._repositories.get_roster_avg_mvp_bulk. First collapse each
+    # match's two candidate rows into one (impact_rank, performance) pair, THEN
+    # average the coalesced placement per user.
+    mvp_per_match = (
         sa.select(
-            models.MatchStatistics.user_id,
-            sa.func.avg(models.MatchStatistics.value).label("mvp_score_avg"),
+            models.MatchStatistics.user_id.label("user_id"),
+            models.MatchStatistics.match_id.label("match_id"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
+                )
+            ).label("impact_rank"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
+                )
+            ).label("performance"),
         )
         .select_from(models.MatchStatistics)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(candidates, candidates.c.id == models.MatchStatistics.user_id)
         .where(
             models.MatchStatistics.round == 0,
-            models.MatchStatistics.name == enums.LogStatsName.Performance,
+            models.MatchStatistics.hero_id.is_(None),
+            models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
         )
     )
     if role is not None or div_min is not None or div_max is not None:
-        mvp_stats = mvp_stats.join(
+        mvp_per_match = mvp_per_match.join(
             stat_scoped_players,
             sa.and_(
                 stat_scoped_players.c.user_id == models.MatchStatistics.user_id,
@@ -1709,11 +1682,23 @@ def _compare_metrics_query_v2(
             ),
         )
     if tournament_id is not None:
-        mvp_stats = mvp_stats.join(
+        mvp_per_match = mvp_per_match.join(
             models.Encounter,
             models.Encounter.id == models.Match.encounter_id,
         ).where(models.Encounter.tournament_id == tournament_id)
-    mvp_stats = mvp_stats.group_by(models.MatchStatistics.user_id).cte("compare_mvp_stats")
+    mvp_per_match = mvp_per_match.group_by(
+        models.MatchStatistics.user_id, models.MatchStatistics.match_id
+    ).cte("compare_mvp_per_match")
+
+    mvp_placement = sa.func.coalesce(mvp_per_match.c.impact_rank, mvp_per_match.c.performance)
+    mvp_stats = (
+        sa.select(
+            mvp_per_match.c.user_id,
+            sa.func.avg(mvp_placement).label("mvp_score_avg"),
+        )
+        .where(mvp_placement.isnot(None))
+        .group_by(mvp_per_match.c.user_id)
+    ).cte("compare_mvp_stats")
 
     maps_won = sa.func.coalesce(map_totals.c.maps_won, 0)
     maps_total = maps_won + sa.func.coalesce(map_totals.c.maps_lost, 0)
@@ -1745,43 +1730,6 @@ def _compare_metrics_query_v2(
         .outerjoin(average_closeness, average_closeness.c.user_id == candidates.c.id)
         .outerjoin(mvp_stats, mvp_stats.c.user_id == candidates.c.id)
         .outerjoin(per_10_stats, per_10_stats.c.user_id == candidates.c.id)
-    )
-
-
-def _compare_metrics_query(
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.Select:
-    gk = {"role": role, "div_min": div_min, "div_max": div_max, "tournament_id": tournament_id, "grid": grid}
-    maps_won_expr = _overview_maps_won_expr(models.User.id, **gk)
-    maps_lost_expr = _overview_maps_lost_expr(models.User.id, **gk)
-    maps_total_expr = sa.func.coalesce(maps_won_expr, 0) + sa.func.coalesce(maps_lost_expr, 0)
-    maps_winrate_expr = sa.func.coalesce(maps_won_expr / sa.func.nullif(maps_total_expr, 0), 0)
-
-    uid = models.User.id
-    return sa.select(
-        uid.label("id"),
-        models.User.name.label("name"),
-        _overview_tournaments_count_expr(uid, **gk).label("tournaments_count"),
-        _overview_achievements_count_expr(uid, **gk).label("achievements_count"),
-        maps_won_expr.label("maps_won"),
-        maps_total_expr.label("maps_total"),
-        maps_winrate_expr.label("maps_winrate"),
-        _overview_avg_placement_expr(uid, **gk).label("avg_placement"),
-        _overview_avg_playoff_placement_expr(uid, **gk).label("avg_playoff_placement"),
-        _overview_avg_group_placement_expr(uid, **gk).label("avg_group_placement"),
-        _overview_avg_closeness_expr(uid, **gk).label("avg_closeness"),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.Eliminations, **gk).label("eliminations_avg_10"),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.FinalBlows, **gk).label("final_blows_avg_10"),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.HeroDamageDealt, **gk).label(
-            "hero_damage_dealt_avg_10"
-        ),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.HealingDealt, **gk).label("healing_dealt_avg_10"),
-        _overview_match_stat_avg(uid, enums.LogStatsName.Performance, False, **gk).label("mvp_score_avg"),
     )
 
 
@@ -3371,15 +3319,30 @@ async def get_best_teammates(
         .having(sa.func.count(sa.distinct(teammate_encounters.c.tournament_id)) > 1)
     ).cte("teammates_query")
 
-    stats_query = (
+    # Teammate "MVP" column spans two LogStatsName columns: ImpactRank when the
+    # impact-scoring pipeline computed it for a match, legacy Performance
+    # otherwise — same COALESCE(ImpactRank, Performance) per-match average as
+    # services.user._repositories.get_roster_avg_mvp_bulk. First collapse each
+    # match's rows into one (impact_rank, performance, kda) tuple via an
+    # outer join (keeps a teammate with zero stat rows in the result with
+    # NULLs, matching the prior behaviour), THEN average per teammate.
+    stats_per_match = (
         sa.select(
             shared_teams.c.teammate_id.label("user_id"),
-            sa.func.avg(models.MatchStatistics.value)
-            .filter(models.MatchStatistics.name == enums.LogStatsName.Performance)
-            .label("performance"),
-            sa.func.avg(models.MatchStatistics.value)
-            .filter(models.MatchStatistics.name == enums.LogStatsName.KDA)
-            .label("kda"),
+            models.MatchStatistics.match_id.label("match_id"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
+                )
+            ).label("impact_rank"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
+                )
+            ).label("performance"),
+            sa.func.max(
+                sa.case((models.MatchStatistics.name == enums.LogStatsName.KDA, models.MatchStatistics.value))
+            ).label("kda"),
         )
         .select_from(shared_teams)
         .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id)
@@ -3392,13 +3355,24 @@ async def get_best_teammates(
                 models.MatchStatistics.hero_id.is_(None),
                 models.MatchStatistics.name.in_(
                     [
+                        enums.LogStatsName.ImpactRank,
                         enums.LogStatsName.Performance,
                         enums.LogStatsName.KDA,
                     ]
                 ),
             ),
         )
-        .group_by(shared_teams.c.teammate_id)
+        .group_by(shared_teams.c.teammate_id, models.MatchStatistics.match_id)
+    ).cte("teammate_stats_per_match")
+
+    mvp_placement = sa.func.coalesce(stats_per_match.c.impact_rank, stats_per_match.c.performance)
+    stats_query = (
+        sa.select(
+            stats_per_match.c.user_id,
+            sa.func.avg(mvp_placement).label("performance"),
+            sa.func.avg(stats_per_match.c.kda).label("kda"),
+        )
+        .group_by(stats_per_match.c.user_id)
     ).cte("stats_query")
 
     # Distinct maps played together (separate CTE so the encounter→match fan-out

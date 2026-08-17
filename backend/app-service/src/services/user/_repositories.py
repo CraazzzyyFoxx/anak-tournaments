@@ -361,15 +361,46 @@ async def get_user_encounters_paginated(
                 q = q.where(sa.or_(stage_name.ilike("%group%"), stage_name.op("~*")("^[a-h]$")))
 
         if mvp1:
-            mvp_subq = (
-                sa.select(models.Match.encounter_id)
-                .join(models.MatchStatistics, models.MatchStatistics.match_id == models.Match.id)
+            # MVP placement spans two LogStatsName columns: ImpactRank when the
+            # impact-scoring pipeline computed it for a match, legacy Performance
+            # otherwise — same COALESCE(ImpactRank, Performance) == 1 (best) the
+            # dossier/leaderboard use (see get_roster_avg_mvp_bulk).
+            mvp_placement_cte = (
+                sa.select(
+                    models.MatchStatistics.match_id.label("match_id"),
+                    sa.func.max(
+                        sa.case(
+                            (
+                                models.MatchStatistics.name == enums.LogStatsName.ImpactRank,
+                                models.MatchStatistics.value,
+                            )
+                        )
+                    ).label("impact_rank"),
+                    sa.func.max(
+                        sa.case(
+                            (
+                                models.MatchStatistics.name == enums.LogStatsName.Performance,
+                                models.MatchStatistics.value,
+                            )
+                        )
+                    ).label("performance"),
+                )
                 .where(
                     models.MatchStatistics.user_id == user_id,
-                    models.MatchStatistics.name == enums.LogStatsName.Performance,
+                    models.MatchStatistics.name.in_(
+                        [enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]
+                    ),
                     models.MatchStatistics.hero_id.is_(None),
                     models.MatchStatistics.round == 0,
-                    models.MatchStatistics.value == 1,
+                )
+                .group_by(models.MatchStatistics.match_id)
+                .cte("mvp1_placement_cte")
+            )
+            mvp_subq = (
+                sa.select(models.Match.encounter_id)
+                .join(mvp_placement_cte, mvp_placement_cte.c.match_id == models.Match.id)
+                .where(
+                    sa.func.coalesce(mvp_placement_cte.c.impact_rank, mvp_placement_cte.c.performance) == 1
                 )
             )
             q = q.where(models.Encounter.id.in_(mvp_subq))

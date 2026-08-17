@@ -286,6 +286,147 @@ async def get_tournament_avg_match_stat_for_user_bulk(
     return result.all()  # type: ignore
 
 
+async def get_tournament_mvp_stat_for_user(
+    session: AsyncSession,
+    tournament: models.Tournament,
+    user_id: int,
+) -> sa.Row | None:
+    """Average MVP placement + rank/total for ONE user in a tournament.
+
+    The MVP placement stat spans two ``LogStatsName`` columns instead of one:
+    ``ImpactRank`` (the newer impact-scoring rank) when the impact pipeline
+    computed it for a match, the legacy ``Performance`` rank otherwise — same
+    ``COALESCE(ImpactRank, Performance)`` per-match average as
+    ``services.user._repositories.get_roster_avg_mvp_bulk``. Mirrors the
+    ``(value, rank, total)`` shape ``get_tournament_avg_match_stat_for_user_bulk``
+    returns for the other ranked tournament stats, so ``get_tournament_with_stats``
+    can slot it into that same ``stats[LogStatsName.Performance]`` entry.
+
+    Ranked ascending (1 = best, dense-ranked so ties share a rank) among every
+    player with an MVP placement in this tournament. Returns ``None`` when the
+    user has no such matches.
+    """
+    per_match = (
+        sa.select(
+            models.MatchStatistics.user_id.label("user_id"),
+            models.MatchStatistics.match_id.label("match_id"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
+                )
+            ).label("impact_rank"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
+                )
+            ).label("performance"),
+        )
+        .select_from(models.MatchStatistics)
+        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
+        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+        .where(
+            sa.and_(
+                models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
+                models.MatchStatistics.hero_id.is_(None),
+                models.MatchStatistics.round == 0,
+                models.Encounter.tournament_id == tournament.id,
+            )
+        )
+        .group_by(models.MatchStatistics.user_id, models.MatchStatistics.match_id)
+        .cte("tournament_mvp_per_match")
+    )
+    placement = sa.func.coalesce(per_match.c.impact_rank, per_match.c.performance)
+
+    stats_query = (
+        sa.select(
+            per_match.c.user_id.label("user_id"),
+            sa.func.avg(placement).cast(sa.Numeric(10, 2)).label("value"),
+            sa.func.dense_rank().over(order_by=sa.asc(sa.func.avg(placement))).label("rank"),
+        )
+        .where(placement.isnot(None))
+        .group_by(per_match.c.user_id)
+    ).cte("tournament_mvp_stats")
+
+    query = sa.select(
+        stats_query,
+        sa.select(sa.func.count(stats_query.c.user_id)).scalar_subquery().label("total"),
+    ).where(stats_query.c.user_id == user_id)
+
+    result = await session.execute(query)
+    return result.first()
+
+
+async def get_tournament_mvp_stat_leaderboard(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    limit: int = 500,
+) -> typing.Sequence[tuple[int, str, float, int]]:
+    """Full ranked MVP-placement list of every player in a tournament.
+
+    ``get_tournament_stat_leaderboard``'s counterpart for the MVP placement
+    stat — see ``get_tournament_mvp_stat_for_user`` for why it needs its own
+    query instead of that function's single-``MatchStatistics.name`` shape.
+    Returns rows shaped ``(user_id, name, value, rank)`` ordered by rank, same
+    contract as ``get_tournament_stat_leaderboard``.
+    """
+    per_match = (
+        sa.select(
+            models.MatchStatistics.user_id.label("user_id"),
+            models.MatchStatistics.match_id.label("match_id"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
+                )
+            ).label("impact_rank"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
+                )
+            ).label("performance"),
+        )
+        .select_from(models.MatchStatistics)
+        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
+        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+        .where(
+            sa.and_(
+                models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
+                models.MatchStatistics.hero_id.is_(None),
+                models.MatchStatistics.round == 0,
+                models.Encounter.tournament_id == tournament_id,
+            )
+        )
+        .group_by(models.MatchStatistics.user_id, models.MatchStatistics.match_id)
+        .cte("tournament_mvp_leaderboard_per_match")
+    )
+    placement = sa.func.coalesce(per_match.c.impact_rank, per_match.c.performance)
+
+    stats_query = (
+        sa.select(
+            per_match.c.user_id.label("user_id"),
+            sa.func.avg(placement).cast(sa.Numeric(10, 2)).label("value"),
+            sa.func.dense_rank().over(order_by=sa.asc(sa.func.avg(placement))).label("rank"),
+        )
+        .where(placement.isnot(None))
+        .group_by(per_match.c.user_id)
+    ).cte("tournament_mvp_leaderboard_stats")
+
+    query = (
+        sa.select(
+            stats_query.c.user_id,
+            models.User.name.label("name"),
+            stats_query.c.value,
+            stats_query.c.rank,
+        )
+        .join(models.User, models.User.id == stats_query.c.user_id)
+        .order_by(stats_query.c.rank.asc(), models.User.name.asc())
+        .limit(limit)
+    )
+
+    result = await session.execute(query)
+    return result.all()  # type: ignore
+
+
 async def get_tournament_stat_leaderboard(
     session: AsyncSession,
     tournament_id: int,

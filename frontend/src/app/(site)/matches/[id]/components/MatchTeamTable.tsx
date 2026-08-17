@@ -18,7 +18,8 @@ import {
   GROUP_COLOR,
   formatStat,
   playerStat,
-  activePlayers
+  activePlayers,
+  resolveMatchMvpPlacement
 } from "@/utils/matchStats";
 
 interface MatchTeamTableProps {
@@ -157,7 +158,7 @@ const MatchTeamTable = ({
                 <span className="aqt-tnum text-[15px] font-bold leading-none text-[color:var(--aqt-teal)]">
                   {formatStat(LogStatsName.ImpactPoints, player.stats[matchRound]?.impact_points)}
                 </span>
-                <PerformanceBadge performance={player.stats[matchRound]?.performance} />
+                <PerformanceBadge performance={resolveMatchMvpPlacement(player, matchRound)} />
               </div>
             </TableCell>
             {columns.map((name) => (

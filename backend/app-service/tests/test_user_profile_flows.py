@@ -305,6 +305,11 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 "get_tournament_avg_match_stat_for_user_bulk",
                 AsyncMock(return_value=[]),
             ),
+            patch.object(
+                user_flows.statistics_service,
+                "get_tournament_mvp_stat_for_user",
+                AsyncMock(return_value=None),
+            ),
         ):
             result = await user_flows.get_tournament_with_stats(
                 session,
