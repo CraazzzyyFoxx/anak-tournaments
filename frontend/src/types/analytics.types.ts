@@ -72,11 +72,6 @@ export interface TournamentAnalytics {
   summary: TournamentAnalyticsSummary;
 }
 
-export interface AnalyticsRecalculateResponse {
-  message: string;
-  algorithms: string[];
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // v2 ML — new analytics-service endpoints (Performance / Shift / Standings /
 // Match Quality / Explainability).
@@ -102,7 +97,7 @@ export interface PerformanceV2 {
   top_features: TopFeatureContribution[] | null;
 }
 
-export interface TopFeatureContribution {
+interface TopFeatureContribution {
   feature: string;
   shap: number;
   value: number | null;
@@ -125,7 +120,7 @@ export interface StandingsDistribution {
 
 export type AnomalyKind = "smurf" | "troll" | "throw" | "sandbag";
 
-export interface AnomalyFlag {
+interface AnomalyFlag {
   player_id: number;
   kind: AnomalyKind;
   score: number;
@@ -175,7 +170,7 @@ export interface AnomalyFeedbackInput {
   note?: string;
 }
 
-export interface ExplanationContribution {
+interface ExplanationContribution {
   feature: string;
   shap: number;
   value: number | null;
@@ -219,7 +214,7 @@ export interface JobAcceptedResponse {
 // ────────────────────────────────────────────────────────────────────────────
 
 export type AnalyticsJobKind = "compute" | "train_ml";
-export type AnalyticsJobStatus = "pending" | "running" | "succeeded" | "failed";
+type AnalyticsJobStatus = "pending" | "running" | "succeeded" | "failed";
 
 export interface AnalyticsJobProgressStage {
   state: "running" | "done" | "failed";

@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from enum import StrEnum
+from enum import Enum, StrEnum
 from types import MappingProxyType
 from typing import Final, Literal
 
@@ -18,12 +18,59 @@ class HeroClass(StrEnum):
 
     Member NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),
     so the DB sees ``flex`` while the Python value is ``"Flex"``.
+
+    THE single role enum for the whole backend (frontend mirror:
+    ``PlayerRoleOption`` in ``lib/player-role.ts``). Draft/balancer/registration
+    code historically spelled ``damage`` as ``dps`` -- that spelling is a wire
+    format, not a second role vocabulary, and lives on as :attr:`slot_code`.
     """
 
     tank = "Tank"
     damage = "Damage"
     support = "Support"
     flex = "Flex"
+
+    @property
+    def slot_code(self) -> str:
+        """Draft/balancer/registration wire spelling: ``tank``/``dps``/``support``/``flex``.
+
+        Diverges from the canonical value only for ``damage`` -> ``dps``. This is
+        what ``DraftPlayerRole.role``, ``BalancerRegistrationRole.role``,
+        ``Tournament.roster_slots_json`` keys and the Rust ``moo_core`` payload
+        already persist/expect -- unchanged by this being one enum instead of three.
+        """
+        return "dps" if self is HeroClass.damage else self.name
+
+    @classmethod
+    def from_slot_code(cls, code: str) -> "HeroClass":
+        """Inverse of :attr:`slot_code`. Raises ``ValueError`` for an unknown code."""
+        if code == "dps":
+            return cls.damage
+        return cls(code.capitalize())
+
+    @classmethod
+    def parse(cls, value: object) -> "HeroClass | None":
+        """Lenient parse: case-insensitive, accepts ``Enum`` members, the canonical
+        name/value, and the :attr:`slot_code` spelling. No other aliases --
+        this is the strict boundary for the single role vocabulary; a caller
+        needing free-text synonyms (e.g. sheet-import value maps) owns that
+        mapping itself instead of this parser silently widening it.
+        ``None`` for missing/unrecognised input -- never raises.
+        """
+        if value is None:
+            return None
+        if isinstance(value, Enum):
+            value = value.value
+        key = str(value).strip().lower()
+        if key in ("damage", "dps"):
+            return cls.damage
+        if key == "support":
+            return cls.support
+        if key == "tank":
+            return cls.tank
+        if key == "flex":
+            return cls.flex
+        return None
 
 
 #: The classes a *hero* can have -- ``HeroClass`` minus ``flex``. Use these
@@ -51,14 +98,6 @@ class RankPlatform(StrEnum):
 
     pc = "pc"
     console = "console"
-
-
-class RankRole(StrEnum):
-    """Competitive role keys as returned by OverFast (lowercase)."""
-
-    tank = "tank"
-    damage = "damage"
-    support = "support"
 
 
 class RankDivision(StrEnum):
@@ -312,12 +351,6 @@ class DraftAutopickStrategy(StrEnum):
     ROLE_NEED = "role_need"
 
 
-class DraftRole(StrEnum):
-    TANK = "tank"
-    DPS = "dps"
-    SUPPORT = "support"
-
-
 class DraftPlayerStatus(StrEnum):
     AVAILABLE = "available"
     PICKED = "picked"
@@ -534,7 +567,6 @@ __all__ = [
     "HeroTypeClass",
     "CatalogEntityType",
     "RankPlatform",
-    "RankRole",
     "RankDivision",
     "RankCollectionStatus",
     "RankCollectionSource",
@@ -552,7 +584,6 @@ __all__ = [
     "DraftCaptainOrder",
     "DraftPoolSource",
     "DraftAutopickStrategy",
-    "DraftRole",
     "DraftPlayerStatus",
     "DraftPickStatus",
     "StageType",

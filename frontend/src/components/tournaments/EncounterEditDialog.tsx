@@ -28,6 +28,7 @@ import { useTranslations } from "next-intl";
 import adminService from "@/services/admin.service";
 import captainService from "@/services/captain.service";
 import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
+import { refreshEncounterViews } from "@/components/tournaments/refreshEncounterViews";
 import type { EncounterEditableStatus, EncounterUpdateInput } from "@/types/admin.types";
 import { Encounter } from "@/types/encounter.types";
 import { cn } from "@/lib/utils";
@@ -103,16 +104,6 @@ function EncounterEditDialogBody({
     queryFn: () => captainService.getReports(encounter.id)
   });
 
-  const refreshEncounterViews = async () => {
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: ["encounters"] }),
-      qc.invalidateQueries({ queryKey: ["standings", encounter.tournament_id] }),
-      qc.invalidateQueries({ queryKey: ["tournament"] }),
-      qc.invalidateQueries({ queryKey: ["encounter"] }),
-      qc.invalidateQueries({ queryKey: ["bracket"] })
-    ]);
-  };
-
   const validationError = useMemo(() => {
     if (homeScore < 0 || awayScore < 0) {
       return t("matchEdit.negativeScoreError");
@@ -133,7 +124,7 @@ function EncounterEditDialogBody({
     },
     onSuccess: async () => {
       notify.success(t("matchEdit.matchUpdated"));
-      await refreshEncounterViews();
+      await refreshEncounterViews(qc, encounter.tournament_id);
       onOpenChange(false);
     }
   });
@@ -149,7 +140,7 @@ function EncounterEditDialogBody({
       }),
     onSuccess: async () => {
       notify.success(t("matchEdit.resultConfirmed"));
-      await refreshEncounterViews();
+      await refreshEncounterViews(qc, encounter.tournament_id);
       onOpenChange(false);
     },
     onError: (error) => {
@@ -161,7 +152,7 @@ function EncounterEditDialogBody({
     mutationFn: () => adminService.reopenEncounterResult(encounter.id),
     onSuccess: async () => {
       notify.success(t("matchEdit.resultReopened"));
-      await refreshEncounterViews();
+      await refreshEncounterViews(qc, encounter.tournament_id);
       onOpenChange(false);
     },
     onError: (error) => {

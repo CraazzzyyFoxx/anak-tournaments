@@ -92,7 +92,7 @@ const ACTION_PHRASES: Record<string, string> = {
   "workspace.domain_verified": "Custom domain verified",
 };
 
-export const AUDIT_SOURCE_LABELS: Record<AuditSource, string> = {
+const AUDIT_SOURCE_LABELS: Record<AuditSource, string> = {
   admin: "Admin panel",
   challonge: "Challonge sync",
   discord: "Discord",
@@ -205,7 +205,7 @@ export interface AuditDiffRow {
 }
 
 /** Compact, readable rendering. Strings stay bare so they are not double-quoted. */
-export function formatAuditValue(value: unknown): string {
+function formatAuditValue(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "—";
   if (typeof value === "string") return value.length > 0 ? value : "(empty)";

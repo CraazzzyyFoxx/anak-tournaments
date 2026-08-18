@@ -4,9 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Pause, Play, RefreshCw } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { StatTileGridSkeleton } from "@/components/admin/StatTileGridSkeleton";
 import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -105,17 +105,7 @@ export function SubscriptionHealthDashboard() {
   });
 
   if (statsQuery.isLoading || !stats) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-9 w-full" />
-        <StatTileGrid>
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-        </StatTileGrid>
-      </div>
-    );
+    return <StatTileGridSkeleton />;
   }
 
   const errRate = Math.round((stats.error_rate_24h ?? 0) * 100);

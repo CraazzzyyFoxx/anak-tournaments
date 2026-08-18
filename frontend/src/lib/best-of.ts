@@ -22,39 +22,6 @@ export const DEFAULT_BEST_OF = 3;
 /** Series lengths the stage editor offers. Bo4/Bo6 are legal but unused. */
 export const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
 
-/**
- * The `mapVeto.preset.*` message for a series length, or null when it has none.
- *
- * A bare template literal (`` `mapVeto.preset.bo${n}` ``) does not typecheck
- * against next-intl's key union, and a runtime membership check alone does not
- * narrow it. Returning the literal keys makes both the guard and the type one
- * decision, so a Bo4 stage renders `Bo4` instead of emitting a missing key.
- */
-export function bestOfMessageKey(
-  bestOf: number
-):
-  | "mapVeto.preset.bo1"
-  | "mapVeto.preset.bo2"
-  | "mapVeto.preset.bo3"
-  | "mapVeto.preset.bo5"
-  | "mapVeto.preset.bo7"
-  | null {
-  switch (bestOf) {
-    case 1:
-      return "mapVeto.preset.bo1";
-    case 2:
-      return "mapVeto.preset.bo2";
-    case 3:
-      return "mapVeto.preset.bo3";
-    case 5:
-      return "mapVeto.preset.bo5";
-    case 7:
-      return "mapVeto.preset.bo7";
-    default:
-      return null;
-  }
-}
-
 /** Opening bans a generated sequence uses when the pool can spare them. */
 const LEAD_BANS = 2;
 
@@ -124,7 +91,7 @@ export function hasPerRoundBestOf(config: StageBestOfConfig): boolean {
 }
 
 /** A round the best-of editor can target, identified by its `by_round` key. */
-export interface BestOfRoundOption {
+interface BestOfRoundOption {
   /** Signed round number — negative is a lower-bracket round. */
   round: number;
   label: string;

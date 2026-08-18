@@ -5,9 +5,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from shared.domain.roster_shape import RegistrationRoleCode
 from src.schemas.base import BaseRead
 
-BalancerRole = Literal["tank", "dps", "support"]
 BalancerRoleSubtype = str
 RegistrationStatus = str
 BalancerStatus = str
@@ -203,7 +203,7 @@ class BalancerGoogleSheetMappingCatalogResponse(BaseModel):
 
 
 class BalancerRegistrationRoleRead(BaseModel):
-    role: BalancerRole
+    role: RegistrationRoleCode
     subrole: BalancerRoleSubtype | None = None
     priority: int = 0
     is_primary: bool = False
@@ -216,7 +216,7 @@ class BalancerRegistrationRoleRead(BaseModel):
 
 
 class BalancerRegistrationRoleInput(BaseModel):
-    role: BalancerRole
+    role: RegistrationRoleCode
     subrole: BalancerRoleSubtype | None = None
     priority: int = 0
     is_primary: bool = False
@@ -254,7 +254,7 @@ class BalancerRegistrationRankAutofillRequest(BaseModel):
 
 
 class BalancerRegistrationRankAutofillRole(BaseModel):
-    role: BalancerRole
+    role: RegistrationRoleCode
     current_rank_value: int | None = None
     parsed_rank_value: int | None = None
     action: RankAutofillRoleAction
@@ -303,7 +303,7 @@ class BalancerRegistrationRankAutofillResponse(BaseModel):
 class BalancerRegistrationRankHistoryEntry(BaseModel):
     tournament_id: int
     tournament_name: str | None = None
-    role: BalancerRole
+    role: RegistrationRoleCode
     rank_value: int
 
 

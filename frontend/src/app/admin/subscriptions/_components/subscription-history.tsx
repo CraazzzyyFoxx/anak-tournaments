@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { ClickableLogCell, ClickableLogRow } from "@/components/admin/ClickableLogRow";
+import { LiveIndicator } from "@/components/admin/LiveIndicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -70,10 +72,7 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
           <CardTitle asChild>
             <h2>Check history</h2>
           </CardTitle>
-          <span className="flex items-center gap-1 text-xs font-normal text-success">
-          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-success motion-reduce:animate-none" />
-            live
-          </span>
+          <LiveIndicator />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={state} onValueChange={setState}>
@@ -145,33 +144,11 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
                   const open = () => onSelectUser(userId as number, label);
                   const reason = row.error ?? (row.reason ? (REASON_LABELS[row.reason] ?? row.reason) : null);
                   return (
-                    <TableRow
-                      key={row.id}
-                      className={cn(clickable && "cursor-pointer hover:bg-muted/50")}
-                      onClick={clickable ? open : undefined}
-                    >
+                    <ClickableLogRow key={row.id} clickable={clickable} onOpen={open}>
                       <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
                         {formatDate(row.created_at)}
                       </TableCell>
-                      <TableCell className="font-medium">
-                        {clickable ? (
-                          // The row is clickable for the mouse; this button is what
-                          // keyboard users reach. `stopPropagation` keeps the row
-                          // handler from firing the same open twice.
-                          <button
-                            type="button"
-                            className="text-primary underline-offset-2 hover:underline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              open();
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ) : (
-                          label
-                        )}
-                      </TableCell>
+                      <ClickableLogCell clickable={clickable} onOpen={open} label={label} />
                       <TableCell className="text-sm">
                         {PROVIDER_LABELS[row.provider] ?? row.provider}
                       </TableCell>
@@ -190,7 +167,7 @@ export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryPro
                       >
                         {reason ?? "—"}
                       </TableCell>
-                    </TableRow>
+                    </ClickableLogRow>
                   );
                 })}
               </TableBody>

@@ -771,16 +771,6 @@ export function PlayerEditModal({
           });
         }
       }
-    } else {
-      // Fallback defaults
-      options.dps = [
-        { value: "hitscan", label: "Hitscan" },
-        { value: "projectile", label: "Projectile" }
-      ];
-      options.support = [
-        { value: "main_heal", label: "Main Heal" },
-        { value: "light_heal", label: "Light Heal" }
-      ];
     }
     return options;
   }, [subRoles]);

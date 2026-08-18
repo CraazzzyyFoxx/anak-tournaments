@@ -36,10 +36,7 @@ export interface LadderTier {
 }
 
 /** Sub-tiers per division, tier 1 the top and tier `TIERS_PER_DIVISION` the bottom. */
-export const TIERS_PER_DIVISION: number = generated.tiers_per_division;
-
-/** SR span of a single sub-tier; a division therefore spans `5 * 100 = 500`. */
-export const TIER_SPAN: number = generated.tier_span;
+const TIERS_PER_DIVISION: number = generated.tiers_per_division;
 
 /** Public bucket holding one PNG per tier slug (`bronze-5.png` … `champion-1.png`). */
 export const DIVISION_ICON_BASE: string = generated.division_icon_base;

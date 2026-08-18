@@ -38,7 +38,7 @@ function requestedStageId(value: string | null): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-export function selectBracketStageId(
+function selectBracketStageId(
   stages: readonly StageSummary[],
   selectedStageParam: string | null
 ): number | null {
@@ -103,7 +103,7 @@ export function createBracketQueryPlan(
   };
 }
 
-export interface BracketQuerySnapshot {
+interface BracketQuerySnapshot {
   hasData: boolean;
   isPending: boolean;
   isError: boolean;

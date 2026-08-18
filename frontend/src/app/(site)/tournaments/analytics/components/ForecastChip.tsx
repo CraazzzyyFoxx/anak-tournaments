@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { confidenceWord, formatAnalyticsNumber } from "../analytics.helpers";
 
-export type ForecastDirection = "promote" | "demote" | "flat";
+type ForecastDirection = "promote" | "demote" | "flat";
 
 interface ForecastChipProps {
   direction: ForecastDirection;

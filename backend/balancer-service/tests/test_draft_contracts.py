@@ -29,8 +29,8 @@ from shared.core.enums import (  # noqa: E402
     DraftPickStatus,
     DraftPlayerStatus,
     DraftPoolSource,
-    DraftRole,
     DraftStatus,
+    HeroClass,
 )
 from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession  # noqa: E402
@@ -108,7 +108,7 @@ def test_role_edit_contract_requires_reason_and_explicit_missing_rank_confirmati
         expected_version=2,
         preview_only=True,
     )
-    assert request.role is DraftRole.SUPPORT
+    assert request.role == "support"
     assert request.preview_only is True
 
 
@@ -157,7 +157,7 @@ def test_pick_event_payload_contains_resolved_role_rank_and_version() -> None:
         pick_in_round=1,
         draft_team_id=10,
         picked_player_id=20,
-        target_role=DraftRole.SUPPORT.value,
+        target_role=HeroClass.support.slot_code,
         target_rank_value=2875,
         status=DraftPickStatus.COMPLETED.value,
         version=4,
@@ -218,7 +218,7 @@ def test_player_updated_event_does_not_expose_private_reason() -> None:
     payload = draft_rpc._player_updated_payload(
         session_id=1,
         player_id=20,
-        role=DraftRole.SUPPORT,
+        role=HeroClass.support,
         player_version=3,
         is_feasible=True,
     )
@@ -452,7 +452,7 @@ def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) ->
         id=20,
         session_id=1,
         battle_tag="Ana#1",
-        primary_role=DraftRole.SUPPORT.value,
+        primary_role=HeroClass.support.slot_code,
         sub_role=None,
         is_flex=False,
         division_number=None,

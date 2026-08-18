@@ -57,7 +57,7 @@ type TeamExportEntry = {
   teamIndex: number;
 };
 
-export function chunkBalanceTeams(teams: InternalBalanceTeam[]): TeamChunk[] {
+function chunkBalanceTeams(teams: InternalBalanceTeam[]): TeamChunk[] {
   const chunks: TeamChunk[] = [];
 
   for (let index = 0; index < teams.length; index += TEAMS_PER_IMAGE) {

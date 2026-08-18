@@ -10,7 +10,7 @@ import {
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { HeroPlaytime } from "@/types/hero.types";
 
-export interface HeroPlaytimeChartProps {
+interface HeroPlaytimeChartProps {
   heroes: HeroPlaytime[];
   /** Height per hero row (px). Default: 40 */
   rowHeight?: number;

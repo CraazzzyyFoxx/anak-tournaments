@@ -3,13 +3,6 @@ import { PLAYER_ROLE_LABEL_KEY } from "@/lib/player-role";
 import { UserRoleType } from "@/types/user.types";
 import { CompareScope } from "@/app/(site)/users/compare/types";
 
-export const parsePositiveInt = (value: string | null, fallback: number): number => {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.floor(parsed);
-};
-
 export const parseOptionalInt = (value: string | null): number | undefined => {
   if (!value) return undefined;
   const parsed = Number(value);

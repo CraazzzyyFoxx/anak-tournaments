@@ -29,6 +29,7 @@ __all__ = (
     "MAX_TEAM_SIZE",
     "MIN_TEAM_SIZE",
     "ROSTER_SLOT_CODES",
+    "RegistrationRoleCode",
     "RosterShape",
     "RosterShapeError",
     "RosterSlotCode",
@@ -43,6 +44,13 @@ ROSTER_SLOT_CODES: Final[tuple[str, ...]] = (*REGISTRATION_ROLE_CODES, FLEX_SLOT
 #: ``Literal`` cannot be derived from a tuple; ``test_roster_shape`` pins the two
 #: against each other so they cannot drift.
 RosterSlotCode = Literal["tank", "dps", "support", "flex"]
+#: ``RosterSlotCode`` minus ``flex`` -- for fields that can never be flex (a
+#: player's fixed registration/draft role; flex is a separate ``is_flex``
+#: boolean there). Also the single Pydantic-facing type for ``HeroClass``'s
+#: :attr:`~shared.core.enums.HeroClass.slot_code`. Pinned against
+#: ``REGISTRATION_ROLE_CODES`` by ``test_roster_shape`` for the same reason.
+RegistrationRoleCode = Literal["tank", "dps", "support"]
+
 DEFAULT_ROSTER_SLOTS: Final[Mapping[str, int]] = MappingProxyType({"tank": 1, "dps": 2, "support": 2})
 # A one-slot roster has nothing to draft and nothing to balance: the captain
 # fills the only slot.

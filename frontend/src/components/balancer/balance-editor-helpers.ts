@@ -15,22 +15,10 @@ import {
   sampleStdDev,
 } from "@/app/balancer/components/balancer-page-helpers";
 
-export const BALANCE_EDITOR_ROLE_CAPACITY: Record<BalancerRosterKey, number> = {
+const BALANCE_EDITOR_ROLE_CAPACITY: Record<BalancerRosterKey, number> = {
   Tank: 1,
   Damage: 2,
   Support: 2,
-};
-
-export const BALANCE_EDITOR_ROLE_LABELS: Record<BalancerRosterKey, string> = {
-  Tank: "Tank",
-  Damage: "Damage",
-  Support: "Support",
-};
-
-export const BALANCE_EDITOR_ROLE_ACCENTS: Record<BalancerRosterKey, { text: string }> = {
-  Tank: { text: "text-sky-300" },
-  Damage: { text: "text-orange-300" },
-  Support: { text: "text-emerald-300" },
 };
 
 export type BalancePlayerLocation = {
@@ -80,7 +68,7 @@ export type BalanceDropTarget =
       playerId: string;
     };
 
-export function cloneBalancePayload(payload: InternalBalancePayload): InternalBalancePayload {
+function cloneBalancePayload(payload: InternalBalancePayload): InternalBalancePayload {
   return JSON.parse(JSON.stringify(payload)) as InternalBalancePayload;
 }
 
@@ -100,7 +88,7 @@ export function findBalancePlayerLocation(
   return null;
 }
 
-export function parseBalanceDropContainerId(
+function parseBalanceDropContainerId(
   containerId: string,
 ): { teamIndex: number; roleKey: BalancerRosterKey } | null {
   const [teamIndexRaw, roleKeyRaw] = containerId.split(":");
@@ -169,21 +157,6 @@ export function resolveBalanceDropTarget(
 export function parseInternalBalancePlayerId(player: InternalBalancePlayer): number | null {
   const parsed = Number(player.uuid);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function getDraggedBalancePlayer(
-  payload: InternalBalancePayload,
-  playerId: string,
-): { player: InternalBalancePlayer; roleKey: BalancerRosterKey } | null {
-  const location = findBalancePlayerLocation(payload, playerId);
-  if (!location) {
-    return null;
-  }
-
-  return {
-    player: payload.teams[location.teamIndex].roster[location.roleKey][location.playerIndex],
-    roleKey: location.roleKey,
-  };
 }
 
 /**

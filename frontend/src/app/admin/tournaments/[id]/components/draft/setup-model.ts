@@ -74,10 +74,10 @@ export const DRAFT_ROUND_RULES = [
   "team_avg_desc"
 ] as const;
 
-export type DraftRoundRule = (typeof DRAFT_ROUND_RULES)[number];
+type DraftRoundRule = (typeof DRAFT_ROUND_RULES)[number];
 
 /** Coerce a stored value (older client, hand-edited settings) to a known rule. */
-export function asRoundRule(value: string | null | undefined): DraftRoundRule {
+function asRoundRule(value: string | null | undefined): DraftRoundRule {
   return DRAFT_ROUND_RULES.includes(value as DraftRoundRule) ? (value as DraftRoundRule) : "linear";
 }
 

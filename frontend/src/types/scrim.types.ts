@@ -7,7 +7,7 @@ import type { PickBanConfigUpsertInput } from "@/types/tournament.types";
  * pinned to the room's own stage with no round, and the server owns both — the
  * stage does not exist yet when this payload is built.
  */
-export type ScrimPoolConfigInput = Omit<PickBanConfigUpsertInput, "stage_id" | "round">;
+type ScrimPoolConfigInput = Omit<PickBanConfigUpsertInput, "stage_id" | "round">;
 
 /**
  * Where a room's pick-ban rules come from, discriminated on `source`.
@@ -37,9 +37,9 @@ export interface ScrimCreateInput {
 }
 
 /** Which side of a room the viewer captains. */
-export type ScrimSide = "home" | "away";
+type ScrimSide = "home" | "away";
 
-export interface ScrimTeam {
+interface ScrimTeam {
   id: number;
   name: string;
   /** False while the side is still open to the link's next taker. */

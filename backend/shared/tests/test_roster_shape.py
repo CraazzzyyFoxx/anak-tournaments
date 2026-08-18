@@ -14,6 +14,7 @@ from shared.domain.roster_shape import (
     MAX_TEAM_SIZE,
     MIN_TEAM_SIZE,
     ROSTER_SLOT_CODES,
+    RegistrationRoleCode,
     RosterShape,
     RosterShapeError,
     RosterSlotCode,
@@ -36,6 +37,12 @@ def test_slot_code_literal_cannot_drift_from_the_tuple() -> None:
     # runtime vocabulary the same thing. The Pydantic export contracts in
     # balancer/parser/tournament-service all type their ``role`` field with it.
     assert typing.get_args(RosterSlotCode) == ROSTER_SLOT_CODES
+
+
+def test_registration_role_literal_cannot_drift_from_the_tuple() -> None:
+    # Same guard as ``RosterSlotCode`` above, for the flex-less variant used by
+    # a player's fixed registration/draft role (``HeroClass.slot_code``).
+    assert typing.get_args(RegistrationRoleCode) == REGISTRATION_ROLE_CODES
 
 
 def test_slot_codes_and_defaults_have_the_expected_membership() -> None:

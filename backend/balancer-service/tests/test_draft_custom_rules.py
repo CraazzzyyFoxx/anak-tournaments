@@ -18,7 +18,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftRole, DraftStatus
+from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus, HeroClass
 from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import parse_roster_slots
 from shared.models.balancer.draft import DraftPick
@@ -108,7 +108,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     def _captains(self) -> list[lifecycle.CaptainSeed]:
-        roles = [DraftRole.TANK, DraftRole.DPS, DraftRole.SUPPORT]
+        roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
         return [
             lifecycle.CaptainSeed(
                 name=f"Cap{i}",
@@ -121,7 +121,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         ]
 
     def _players(self) -> list[lifecycle.PlayerSeed]:
-        roles = [DraftRole.TANK, DraftRole.DPS, DraftRole.SUPPORT]
+        roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
         return [
             lifecycle.PlayerSeed(primary_role=roles[i % 3], rank_value=2800 + i * 10, battle_tag=f"P{i}#1")
             for i in range(15)
@@ -255,9 +255,9 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             ).all()
 
             # Filter available players by role to satisfy draft limits
-            dps_players = [p for p in available if p.primary_role == DraftRole.DPS.value]
-            support_players = [p for p in available if p.primary_role == DraftRole.SUPPORT.value]
-            tank_players = [p for p in available if p.primary_role == DraftRole.TANK.value]
+            dps_players = [p for p in available if p.primary_role == HeroClass.damage.slot_code]
+            support_players = [p for p in available if p.primary_role == HeroClass.support.slot_code]
+            tank_players = [p for p in available if p.primary_role == HeroClass.tank.slot_code]
 
             # Pick 1 (Cap0: TANK) picks a DPS player
             p1 = dps_players[0]

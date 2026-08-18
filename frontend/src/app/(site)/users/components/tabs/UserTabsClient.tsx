@@ -5,7 +5,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import UserProfileTabList, { type TabBadges } from "@/app/(site)/users/components/tabs/UserProfileTabList";
 
-export interface UserTabsClientProps {
+interface UserTabsClientProps {
   activeTab: string;
   children: React.ReactNode;
   badges?: TabBadges;

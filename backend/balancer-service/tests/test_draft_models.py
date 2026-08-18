@@ -24,7 +24,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 from sqlalchemy.orm import configure_mappers  # noqa: E402
 
 import src.models  # noqa: E402,F401  (import registers all models)
-from shared.core.enums import DraftRole  # noqa: E402
+from shared.core.enums import HeroClass  # noqa: E402
 from shared.models.balancer import draft as draft_models  # noqa: E402
 from shared.models.balancer.draft import (  # noqa: E402
     DraftPick,
@@ -155,8 +155,8 @@ def test_role_is_legal_reads_off_role_from_child_rows() -> None:
             DraftPlayerRole(role="support", rank_value=2800, is_secondary=True, priority=1),
         ],
     )
-    assert _role_is_legal(player, DraftRole.SUPPORT) is True  # declared off-role
-    assert _role_is_legal(player, DraftRole.TANK) is False  # not playable
+    assert _role_is_legal(player, HeroClass.support) is True  # declared off-role
+    assert _role_is_legal(player, HeroClass.tank) is False  # not playable
     assert _role_is_legal(player, None) is True  # no requested role
 
 

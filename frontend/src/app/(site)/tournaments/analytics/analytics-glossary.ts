@@ -40,7 +40,7 @@ export type GlossaryTerm =
   | "impact_percentile";
 
 /** Anomaly ``kind`` values that have a glossary entry. */
-export const ANOMALY_GLOSSARY_TERMS: ReadonlySet<GlossaryTerm> = new Set([
+const ANOMALY_GLOSSARY_TERMS: ReadonlySet<GlossaryTerm> = new Set([
   "smurf",
   "throw",
   "troll",

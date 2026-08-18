@@ -37,26 +37,16 @@ type PlayerRoleInfo = {
   sub_role?: string | null;
 };
 
-const SUB_ROLE_LABELS: Record<string, string> = {
-  hitscan: "Hitscan",
-  projectile: "Projectile",
-  main_heal: "Main Heal",
-  light_heal: "Light Heal"
-};
-
 export const formatSubRoleLabel = (subRole: string | null | undefined) => {
   if (!subRole) {
     return null;
   }
 
-  return (
-    SUB_ROLE_LABELS[subRole] ??
-    subRole
-      .split(/[_-]+/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ")
-  );
+  return subRole
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 };
 
 export const getPlayerType = (player: PlayerRoleInfo) => {

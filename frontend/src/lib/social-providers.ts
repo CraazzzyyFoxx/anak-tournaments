@@ -34,7 +34,7 @@ export const SOCIAL_PROVIDER_ORDER: SocialProvider[] = [
   "youtube"
 ];
 
-export const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
+const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
   battlenet: {
     value: "battlenet",
     label: "Battle.net",

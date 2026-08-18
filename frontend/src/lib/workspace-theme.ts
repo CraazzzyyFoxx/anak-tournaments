@@ -146,7 +146,7 @@ function hue2rgb(p: number, q: number, t: number): number {
   return p;
 }
 
-export function hslToRgb({ h, s, l }: Hsl): Rgb {
+function hslToRgb({ h, s, l }: Hsl): Rgb {
   const hn = ((h % 360) + 360) % 360 / 360;
   const sn = clamp(s, 0, 100) / 100;
   const ln = clamp(l, 0, 100) / 100;

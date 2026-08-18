@@ -129,14 +129,14 @@ export const winrateColor = (pct: number | null): string => {
 };
 
 /** Was the profile user on the home side of this encounter? */
-export const isUserHomeInEncounter = (
+const isUserHomeInEncounter = (
   enc: EncounterWithUserStats,
   teamId: number,
   selfUserId: number
 ): boolean => enc.home_team_id === teamId || (enc.home_team?.players ?? []).some((p) => p.user_id === selfUserId);
 
 /** Series (encounter-level) result from the user's perspective. */
-export const encounterResult = (enc: EncounterWithUserStats, userHome: boolean): ScoreKind => {
+const encounterResult = (enc: EncounterWithUserStats, userHome: boolean): ScoreKind => {
   const us = userHome ? enc.score.home : enc.score.away;
   const them = userHome ? enc.score.away : enc.score.home;
   return us > them ? "win" : us < them ? "loss" : "draw";

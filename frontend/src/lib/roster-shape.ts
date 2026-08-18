@@ -9,7 +9,9 @@
  * mirror this feature exists to delete.
  */
 
-export type RosterSlotCode = "tank" | "dps" | "support" | "flex";
+import type { PlayerRoleSlotCode } from "@/lib/player-role";
+
+export type RosterSlotCode = PlayerRoleSlotCode;
 
 /**
  * Canonical order, matching `shared.domain.roster_shape.ROSTER_SLOT_CODES`.

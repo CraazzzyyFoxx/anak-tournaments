@@ -6,8 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import {
   Plus,
-  Pencil,
-  Trash2,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -20,10 +18,17 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { createRowActionsColumn } from "@/components/admin/row-actions-column";
+import {
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam,
+  nextTournamentFilterQuery,
+  TournamentFilterSelect
+} from "@/components/admin/tournament-filter";
 import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { buildEncounterName } from "@/components/admin/encounter-name";
-import { isGroupStageScoreContext } from "@/components/admin/encounter-score";
+import { isGroupStageScoreContext, EncounterScore } from "@/components/admin/encounter-score";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
 import encounterService from "@/services/encounter.service";
@@ -32,7 +37,8 @@ import teamService from "@/services/team.service";
 import adminService from "@/services/admin.service";
 import { Encounter } from "@/types/encounter.types";
 import { EncounterCreateInput, EncounterEditableStatus, EncounterUpdateInput } from "@/types/admin.types";
-import { StageItem } from "@/types/tournament.types";
+import { Stage, StageItem } from "@/types/tournament.types";
+import { Team } from "@/types/team.types";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
@@ -50,7 +56,6 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 // Editable statuses only. COMPLETED is set by the result endpoint, which moves
 // score, status, result_status and the audit row together.
 const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING"] as const;
-const TOURNAMENT_QUERY_PARAM = "tournament";
 
 /** What the table shows — the encounter's real status, COMPLETED included. */
 function displayEncounterStatus(status?: string | null): string {
@@ -139,10 +144,179 @@ function getEncounterStageLabel(encounter: Encounter): string {
   return encounter.stage_item?.name ?? encounter.stage?.name ?? "—";
 }
 
-function parseTournamentQueryParam(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+/** Shared update logic for the create/edit dialogs' stage select — picking a stage
+ * resets the stage item to that stage's first item. */
+function updateEncounterStageSelection(
+  current: EncounterCreateInput | EncounterUpdateInput,
+  stage: Stage | null
+) {
+  return {
+    ...current,
+    stage_id: stage?.id ?? null,
+    stage_item_id: stage?.items[0]?.id ?? null
+  };
+}
+
+/** Shared update logic for the create/edit dialogs' stage item select — keeps stage_id
+ * in sync with whichever stage the picked item actually belongs to. */
+function updateEncounterStageItemSelection(
+  current: EncounterCreateInput | EncounterUpdateInput,
+  stageItemsById: Map<number, StageItem>,
+  value: string
+) {
+  const nextStageItemId = value === "none" ? null : Number(value);
+  const nextStageId =
+    nextStageItemId != null
+      ? (stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null)
+      : (current.stage_id ?? null);
+  return {
+    ...current,
+    stage_id: nextStageId,
+    stage_item_id: nextStageItemId
+  };
+}
+
+/** Shared update logic for the create/edit dialogs' home/away team pickers — keeps the
+ * derived encounter name in sync with whichever side changed. */
+function updateEncounterTeamSelection(
+  current: EncounterCreateInput | EncounterUpdateInput,
+  teams: Team[],
+  side: "home" | "away",
+  teamId: number | null
+) {
+  if (side === "home") {
+    return {
+      ...current,
+      name: buildEncounterName(teams, teamId, current.away_team_id),
+      home_team_id: teamId
+    };
+  }
+  return {
+    ...current,
+    name: buildEncounterName(teams, current.home_team_id, teamId),
+    away_team_id: teamId
+  };
+}
+
+/** The stage + stage item selects, identical between the create and edit dialogs
+ * apart from the id prefix and which half of the form union owns the value. */
+function EncounterStageFields({
+  idPrefix,
+  stagesData,
+  stageId,
+  stageItemId,
+  onStageChange,
+  onStageItemChange
+}: {
+  idPrefix: string;
+  stagesData: Stage[];
+  stageId: number | null | undefined;
+  stageItemId: number | null | undefined;
+  onStageChange: (stage: Stage | null) => void;
+  onStageItemChange: (value: string) => void;
+}) {
+  return (
+    <>
+      <div>
+        <Label htmlFor={`${idPrefix}stage_id`}>Stage *</Label>
+        <Select
+          value={stageId?.toString() ?? ""}
+          onValueChange={(value) => {
+            const stage = stagesData.find((entry) => entry.id === Number(value)) ?? null;
+            onStageChange(stage);
+          }}
+        >
+          <SelectTrigger id={`${idPrefix}stage_id`}>
+            <SelectValue placeholder="Select stage" />
+          </SelectTrigger>
+          <SelectContent>
+            {stagesData.map((stage) => (
+              <SelectItem key={stage.id} value={stage.id.toString()}>
+                {stage.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label htmlFor={`${idPrefix}stage_item_id`}>Stage item</Label>
+        <Select value={stageItemId?.toString() ?? "none"} onValueChange={onStageItemChange}>
+          <SelectTrigger id={`${idPrefix}stage_item_id`}>
+            <SelectValue placeholder="Select stage item" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No stage item</SelectItem>
+            {stagesData
+              .filter((stage) => stage.id === stageId)
+              .flatMap((stage) => stage.items)
+              .map((item) => (
+                <SelectItem key={item.id} value={item.id.toString()}>
+                  {item.name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  );
+}
+
+/** A single home/away team picker, identical between the create and edit dialogs
+ * apart from the id and which side of the matchup it edits. */
+function EncounterTeamField({
+  id,
+  label,
+  teams,
+  value,
+  onSelect
+}: {
+  id: string;
+  label: string;
+  teams: Team[];
+  value: number | null | undefined;
+  onSelect: (teamId: number | null) => void;
+}) {
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <TeamCombobox
+        id={id}
+        teams={teams}
+        value={value}
+        placeholder={`Select ${label.toLowerCase()}`}
+        onSelect={(team) => onSelect(team?.id ?? null)}
+      />
+    </div>
+  );
+}
+
+/** The score controls block, identical between the create and edit dialogs apart
+ * from the id prefix and which half of the form union owns the score. */
+function EncounterScoreFieldsSection({
+  idPrefix,
+  homeScore,
+  awayScore,
+  isGroupStageForm,
+  onChange
+}: {
+  idPrefix: string;
+  homeScore: number;
+  awayScore: number;
+  isGroupStageForm: boolean;
+  onChange: (score: EncounterScore) => void;
+}) {
+  return (
+    <EncounterScoreControls
+      idPrefix={idPrefix}
+      homeScore={homeScore}
+      awayScore={awayScore}
+      presetLabel={isGroupStageForm ? "Group stage presets" : "Result presets"}
+      showGroupStageHint={isGroupStageForm}
+      onScoreChange={onChange}
+      onPresetSelect={onChange}
+    />
+  );
 }
 
 export default function EncountersPage() {
@@ -290,14 +464,7 @@ export default function EncountersPage() {
   };
 
   const handleTournamentFilterChange = (value: string) => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (value === "all") {
-      nextParams.delete(TOURNAMENT_QUERY_PARAM);
-    } else {
-      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
-    }
-
-    const query = nextParams.toString();
+    const query = nextTournamentFilterQuery(searchParams.toString(), TOURNAMENT_QUERY_PARAM, value);
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
@@ -409,35 +576,14 @@ export default function EncountersPage() {
         );
       }
     },
-    {
-      id: "actions",
-      cell: ({ row }) =>
-        canUpdate || canDelete ? (
-          <div className="flex items-center gap-2">
-            {canUpdate ? (
-              <Button
-                aria-label={`Edit ${row.original.name}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => handleEdit(row.original)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            ) : null}
-            {canDelete ? (
-              <Button
-                aria-label={`Delete ${row.original.name}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(row.original)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            ) : null}
-          </div>
-        ) : null
-    }
+    createRowActionsColumn<Encounter>({
+      canUpdate,
+      canDelete,
+      onEdit: handleEdit,
+      onDelete: handleDelete,
+      getEditLabel: (row) => `Edit ${row.name}`,
+      getDeleteLabel: (row) => `Delete ${row.name}`
+    })
   ];
 
   return (
@@ -494,22 +640,11 @@ export default function EncountersPage() {
             : "No encounters yet. Pick a tournament to see its bracket."
         }
         actions={
-          <Select
-            value={selectedTournamentId?.toString() ?? "all"}
+          <TournamentFilterSelect
+            tournaments={tournamentsData?.results ?? []}
+            selectedTournamentId={selectedTournamentId}
             onValueChange={handleTournamentFilterChange}
-          >
-            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
-              <SelectValue placeholder="Filter by tournament" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All tournaments</SelectItem>
-              {tournamentsData?.results.map((tournament) => (
-                <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                  {tournament.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         }
         onRowClick={(row) => router.push(`/encounters/${row.original.id}`)}
       />
@@ -538,115 +673,44 @@ export default function EncountersPage() {
             />
           </div>
 
-          <div>
-            <Label htmlFor="stage_id">Stage *</Label>
-            <Select
-              value={(formData as EncounterCreateInput).stage_id?.toString() ?? ""}
-              onValueChange={(value) => {
-                const stage = stagesData.find((entry) => entry.id === Number(value)) ?? null;
-                setFormData({
-                  ...formData,
-                  stage_id: stage?.id ?? null,
-                  stage_item_id: stage?.items[0]?.id ?? null
-                });
-              }}
-            >
-              <SelectTrigger id="stage_id">
-                <SelectValue placeholder="Select stage" />
-              </SelectTrigger>
-              <SelectContent>
-                {stagesData.map((stage) => (
-                  <SelectItem key={stage.id} value={stage.id.toString()}>
-                    {stage.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <EncounterStageFields
+            idPrefix=""
+            stagesData={stagesData}
+            stageId={(formData as EncounterCreateInput).stage_id}
+            stageItemId={(formData as EncounterCreateInput).stage_item_id}
+            onStageChange={(stage) =>
+              setFormData((current) => updateEncounterStageSelection(current, stage))
+            }
+            onStageItemChange={(value) =>
+              setFormData((current) =>
+                updateEncounterStageItemSelection(current, stageItemsById, value)
+              )
+            }
+          />
 
-          <div>
-            <Label htmlFor="stage_item_id">Stage item</Label>
-            <Select
-              value={(formData as EncounterCreateInput).stage_item_id?.toString() ?? "none"}
-              onValueChange={(value) =>
-                setFormData((current) => {
-                  const nextStageItemId = value === "none" ? null : Number(value);
-                  const nextStageId =
-                    nextStageItemId != null
-                      ? (stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null)
-                      : (current.stage_id ?? null);
-                  return {
-                    ...current,
-                    stage_id: nextStageId,
-                    stage_item_id: nextStageItemId
-                  };
-                })
-              }
-            >
-              <SelectTrigger id="stage_item_id">
-                <SelectValue placeholder="Select stage item" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No stage item</SelectItem>
-                {stagesData
-                  .filter((stage) => stage.id === (formData as EncounterCreateInput).stage_id)
-                  .flatMap((stage) => stage.items)
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id.toString()}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <EncounterTeamField
+            id="home_team_id"
+            label="Home team"
+            teams={teamsData?.results ?? []}
+            value={(formData as EncounterCreateInput).home_team_id}
+            onSelect={(teamId) =>
+              setFormData((current) =>
+                updateEncounterTeamSelection(current, teamsData?.results ?? [], "home", teamId)
+              )
+            }
+          />
 
-          <div>
-            <Label htmlFor="home_team_id">Home team</Label>
-            <TeamCombobox
-              id="home_team_id"
-              teams={teamsData?.results ?? []}
-              value={(formData as EncounterCreateInput).home_team_id}
-              placeholder="Select home team"
-              onSelect={(team) =>
-                setFormData((current) => {
-                  const homeTeamId = team?.id ?? null;
-                  return {
-                    ...current,
-                    name: buildEncounterName(
-                      teamsData?.results ?? [],
-                      homeTeamId,
-                      current.away_team_id
-                    ),
-                    home_team_id: homeTeamId
-                  };
-                })
-              }
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="away_team_id">Away team</Label>
-            <TeamCombobox
-              id="away_team_id"
-              teams={teamsData?.results ?? []}
-              value={(formData as EncounterCreateInput).away_team_id}
-              placeholder="Select away team"
-              onSelect={(team) =>
-                setFormData((current) => {
-                  const awayTeamId = team?.id ?? null;
-                  return {
-                    ...current,
-                    name: buildEncounterName(
-                      teamsData?.results ?? [],
-                      current.home_team_id,
-                      awayTeamId
-                    ),
-                    away_team_id: awayTeamId
-                  };
-                })
-              }
-            />
-          </div>
+          <EncounterTeamField
+            id="away_team_id"
+            label="Away team"
+            teams={teamsData?.results ?? []}
+            value={(formData as EncounterCreateInput).away_team_id}
+            onSelect={(teamId) =>
+              setFormData((current) =>
+                updateEncounterTeamSelection(current, teamsData?.results ?? [], "away", teamId)
+              )
+            }
+          />
 
           <div>
             <Label htmlFor="round">Round *</Label>
@@ -659,25 +723,13 @@ export default function EncountersPage() {
             />
           </div>
 
-          <EncounterScoreControls
+          <EncounterScoreFieldsSection
             idPrefix="encounter-create"
             homeScore={(formData as EncounterCreateInput).home_score ?? 0}
             awayScore={(formData as EncounterCreateInput).away_score ?? 0}
-            presetLabel={isGroupStageForm ? "Group stage presets" : "Result presets"}
-            showGroupStageHint={isGroupStageForm}
-            onScoreChange={(score) =>
-              setFormData({
-                ...formData,
-                home_score: score.homeScore,
-                away_score: score.awayScore
-              })
-            }
-            onPresetSelect={(score) =>
-              setFormData({
-                ...formData,
-                home_score: score.homeScore,
-                away_score: score.awayScore
-              })
+            isGroupStageForm={isGroupStageForm}
+            onChange={(score) =>
+              setFormData({ ...formData, home_score: score.homeScore, away_score: score.awayScore })
             }
           />
 
@@ -721,67 +773,20 @@ export default function EncountersPage() {
             />
           </div>
 
-          <div>
-            <Label htmlFor="edit-stage_id">Stage *</Label>
-            <Select
-              value={(formData as EncounterUpdateInput).stage_id?.toString() ?? ""}
-              onValueChange={(value) => {
-                const stage = stagesData.find((entry) => entry.id === Number(value)) ?? null;
-                setFormData({
-                  ...formData,
-                  stage_id: stage?.id ?? null,
-                  stage_item_id: stage?.items[0]?.id ?? null
-                });
-              }}
-            >
-              <SelectTrigger id="edit-stage_id">
-                <SelectValue placeholder="Select stage" />
-              </SelectTrigger>
-              <SelectContent>
-                {stagesData.map((stage) => (
-                  <SelectItem key={stage.id} value={stage.id.toString()}>
-                    {stage.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="edit-stage_item_id">Stage item</Label>
-            <Select
-              value={(formData as EncounterUpdateInput).stage_item_id?.toString() ?? "none"}
-              onValueChange={(value) =>
-                setFormData((current) => {
-                  const nextStageItemId = value === "none" ? null : Number(value);
-                  const nextStageId =
-                    nextStageItemId != null
-                      ? (stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null)
-                      : (current.stage_id ?? null);
-                  return {
-                    ...current,
-                    stage_id: nextStageId,
-                    stage_item_id: nextStageItemId
-                  };
-                })
-              }
-            >
-              <SelectTrigger id="edit-stage_item_id">
-                <SelectValue placeholder="Select stage item" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No stage item</SelectItem>
-                {stagesData
-                  .filter((stage) => stage.id === (formData as EncounterUpdateInput).stage_id)
-                  .flatMap((stage) => stage.items)
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id.toString()}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <EncounterStageFields
+            idPrefix="edit-"
+            stagesData={stagesData}
+            stageId={(formData as EncounterUpdateInput).stage_id}
+            stageItemId={(formData as EncounterUpdateInput).stage_item_id}
+            onStageChange={(stage) =>
+              setFormData((current) => updateEncounterStageSelection(current, stage))
+            }
+            onStageItemChange={(value) =>
+              setFormData((current) =>
+                updateEncounterStageItemSelection(current, stageItemsById, value)
+              )
+            }
+          />
 
           <div>
             <Label htmlFor="edit-round">Round</Label>
@@ -793,73 +798,37 @@ export default function EncountersPage() {
             />
           </div>
 
-          <div>
-            <Label htmlFor="edit-home_team_id">Home team</Label>
-            <TeamCombobox
-              id="edit-home_team_id"
-              teams={teamsData?.results ?? []}
-              value={(formData as EncounterUpdateInput).home_team_id}
-              placeholder="Select home team"
-              onSelect={(team) =>
-                setFormData((current) => {
-                  const homeTeamId = team?.id ?? null;
-                  return {
-                    ...current,
-                    name: buildEncounterName(
-                      teamsData?.results ?? [],
-                      homeTeamId,
-                      current.away_team_id
-                    ),
-                    home_team_id: homeTeamId
-                  };
-                })
-              }
-            />
-          </div>
+          <EncounterTeamField
+            id="edit-home_team_id"
+            label="Home team"
+            teams={teamsData?.results ?? []}
+            value={(formData as EncounterUpdateInput).home_team_id}
+            onSelect={(teamId) =>
+              setFormData((current) =>
+                updateEncounterTeamSelection(current, teamsData?.results ?? [], "home", teamId)
+              )
+            }
+          />
 
-          <div>
-            <Label htmlFor="edit-away_team_id">Away team</Label>
-            <TeamCombobox
-              id="edit-away_team_id"
-              teams={teamsData?.results ?? []}
-              value={(formData as EncounterUpdateInput).away_team_id}
-              placeholder="Select away team"
-              onSelect={(team) =>
-                setFormData((current) => {
-                  const awayTeamId = team?.id ?? null;
-                  return {
-                    ...current,
-                    name: buildEncounterName(
-                      teamsData?.results ?? [],
-                      current.home_team_id,
-                      awayTeamId
-                    ),
-                    away_team_id: awayTeamId
-                  };
-                })
-              }
-            />
-          </div>
+          <EncounterTeamField
+            id="edit-away_team_id"
+            label="Away team"
+            teams={teamsData?.results ?? []}
+            value={(formData as EncounterUpdateInput).away_team_id}
+            onSelect={(teamId) =>
+              setFormData((current) =>
+                updateEncounterTeamSelection(current, teamsData?.results ?? [], "away", teamId)
+              )
+            }
+          />
 
-          <EncounterScoreControls
+          <EncounterScoreFieldsSection
             idPrefix="encounter-edit"
             homeScore={(formData as EncounterUpdateInput).home_score ?? 0}
             awayScore={(formData as EncounterUpdateInput).away_score ?? 0}
-            presetLabel={isGroupStageForm ? "Group stage presets" : "Result presets"}
-            showGroupStageHint={isGroupStageForm}
-            onScoreChange={(score) =>
-              setFormData({
-                ...formData,
-                home_score: score.homeScore,
-                away_score: score.awayScore
-              })
-            }
-            onPresetSelect={(score) =>
-              setFormData({
-                ...formData,
-                home_score: score.homeScore,
-                away_score: score.awayScore
-              })
+            isGroupStageForm={isGroupStageForm}
+            onChange={(score) =>
+              setFormData({ ...formData, home_score: score.homeScore, away_score: score.awayScore })
             }
           />
 

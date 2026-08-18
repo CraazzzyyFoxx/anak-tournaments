@@ -17,7 +17,7 @@ import type {
 } from "@/types/tournament.types";
 
 export type PickBanSide = "home" | "away";
-export type PickBanStepAction = PickBanAction | "decider";
+type PickBanStepAction = PickBanAction | "decider";
 
 export interface ParsedPickBanStep {
   token: string;
@@ -336,7 +336,7 @@ export interface PickBanAttributeLocks {
   pointless: Set<string>;
 }
 
-export const NO_ATTRIBUTE_LOCKS: PickBanAttributeLocks = {
+const NO_ATTRIBUTE_LOCKS: PickBanAttributeLocks = {
   blocked: new Set(),
   pointless: new Set()
 };

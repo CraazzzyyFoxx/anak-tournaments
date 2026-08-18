@@ -9,9 +9,9 @@ import type { Tournament, TournamentStatus } from "@/types/tournament.types";
  */
 const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;
 
-export type SchedulablePhase = (typeof SCHEDULABLE_PHASES)[number];
+type SchedulablePhase = (typeof SCHEDULABLE_PHASES)[number];
 
-export type PhaseSegmentState = "done" | "current" | "upcoming";
+type PhaseSegmentState = "done" | "current" | "upcoming";
 
 export type PhaseSegment = {
   status: SchedulablePhase;

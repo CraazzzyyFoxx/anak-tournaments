@@ -70,7 +70,7 @@ function playerLabel(player: RegistrationRankAutofillPlayer): string {
   return player.battle_tag ?? player.display_name ?? `#${player.registration_id}`;
 }
 
-export function RankAutofillRolePill({ role }: { role: RegistrationRankAutofillRole }) {
+function RankAutofillRolePill({ role }: { role: RegistrationRankAutofillRole }) {
   const t = useTranslations();
   const grid = useDivisionGrid();
   const roleLabel = ROLE_LABELS[role.role] ?? role.role;

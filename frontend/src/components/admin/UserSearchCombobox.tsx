@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useDebounce } from "use-debounce";
+import { useMemo } from "react";
 
 import userService from "@/services/user.service";
 import { MinimizedUser } from "@/types/user.types";
 import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
+import { useSearchComboboxQuery } from "@/components/admin/useSearchComboboxQuery";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 
 interface UserSearchComboboxProps {
@@ -30,21 +29,25 @@ export function UserSearchCombobox({
   disabled = false,
   allowClear = true,
 }: UserSearchComboboxProps) {
-  const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
-  const [debouncedSearch] = useDebounce(searchValue, 250);
-
-  const normalizedQuery = debouncedSearch.trim();
-  const shouldSearch = normalizedQuery.length >= 2;
-
-  const usersQuery = useQuery({
-    queryKey: ["users-search-minimized", normalizedQuery],
-    enabled: open && shouldSearch,
-    queryFn: ({ signal }) => userService.searchUsers(normalizedQuery, signal),
-    staleTime: 60 * 1000,
+  const {
+    open,
+    setOpen,
+    searchValue,
+    setSearchValue,
+    results,
+    handleSelect,
+    emptyMessage
+  } = useSearchComboboxQuery<MinimizedUser, MinimizedUser>({
+    queryKeyPrefix: ["users-search-minimized"],
+    fetchResults: ({ query, signal }) => userService.searchUsers(query, signal),
+    onSelect,
+    messages: {
+      loading: "Loading users…",
+      error: "Could not load users. Try again.",
+      minChars: "Type at least 2 characters to search.",
+      empty: "No users match that search. Try a shorter name."
+    }
   });
-
-  const results = usersQuery.data ?? [];
 
   const selectedLabel = useMemo(() => {
     const matchedUser = results.find((user) => user.id === value);
@@ -63,23 +66,6 @@ export function UserSearchCombobox({
 
     return placeholder;
   }, [placeholder, results, selectedName, value]);
-
-  const handleSelect = useCallback(
-    (user: MinimizedUser | undefined) => {
-      onSelect(user);
-      setOpen(false);
-      setSearchValue("");
-    },
-    [onSelect]
-  );
-
-  const emptyMessage = usersQuery.isFetching
-    ? "Loading users…"
-    : usersQuery.isError
-      ? "Could not load users. Try again."
-      : !shouldSearch
-        ? "Type at least 2 characters to search."
-        : "No users match that search. Try a shorter name.";
 
   return (
     <AdminCombobox

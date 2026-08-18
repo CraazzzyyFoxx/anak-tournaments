@@ -14,16 +14,16 @@ rank a flex draft shows.
 
 from __future__ import annotations
 
-from shared.core.enums import DraftRole
+from shared.core.enums import HeroClass
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPlayer
 
 
-def role_rank(player: DraftPlayer, role: DraftRole | str | None) -> int | None:
+def role_rank(player: DraftPlayer, role: HeroClass | str | None) -> int | None:
     """Return the player's rank for ``role``, falling back to ``rank_value``."""
     if role is None:
         return player.rank_value
-    key = role.value if isinstance(role, DraftRole) else str(role)
+    key = role.slot_code if isinstance(role, HeroClass) else str(role)
     value = (player.role_ranks or {}).get(key)
     return value if value is not None else player.rank_value
 
@@ -40,7 +40,7 @@ def max_role_rank(player: DraftPlayer) -> int | None:
     return max((value for value in candidates if value is not None), default=None)
 
 
-def slot_rank(player: DraftPlayer, role: DraftRole | str | None, shape: RosterShape) -> int | None:
+def slot_rank(player: DraftPlayer, role: HeroClass | str | None, shape: RosterShape) -> int | None:
     """The rank that represents ``player`` on their roster slot under ``shape``.
 
     Role slots keep rank role-specific; a role-less roster makes it the maximum.

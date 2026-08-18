@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
-import type { AqtRoleKey } from "@/components/hero/heroRole";
+import type { AqtRoleKey } from "@/lib/player-role";
 import HeroImage from "@/components/hero/HeroImage";
 import { formatDelta, formatSeconds } from "@/app/(site)/users/components/heroes/utils";
 
@@ -16,14 +16,14 @@ export const QUICK_CANDIDATES: LogStatsName[] = [
   LogStatsName.Eliminations
 ];
 
-export interface QuickStatData {
+interface QuickStatData {
   name: LogStatsName;
   label: string;
   value: string;
   delta: number | null;
 }
 
-export interface SpotlightHero {
+interface SpotlightHero {
   hero: HeroWithUserStats;
   playtime: number;
   share: number;

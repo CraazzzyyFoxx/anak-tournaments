@@ -163,6 +163,26 @@ function buildAdminMatchesQuery(params: AdminMatchesQuery): string {
   return search.toString();
 }
 
+/**
+ * Serialise the common page/per_page/search/sort/order filter set shared by
+ * the simple admin list endpoints (users, gamemodes, ...).
+ */
+function buildAdminListQuery(params: {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  sort?: string;
+  order?: string;
+}): Record<string, unknown> {
+  return {
+    ...(params.page != null && { page: params.page }),
+    ...(params.per_page != null && { per_page: params.per_page }),
+    ...(params.search && { search: params.search }),
+    ...(params.sort && { sort: params.sort }),
+    ...(params.order && { order: params.order })
+  };
+}
+
 class AdminService {
   private async getTournamentJob(jobId: number): Promise<TournamentComputationJob> {
     const response = await apiFetch(`/api/v1/admin/tournament-jobs/${jobId}`);
@@ -668,13 +688,7 @@ class AdminService {
     } = {}
   ): Promise<PaginatedResponse<User>> {
     const response = await apiFetch("/api/v1/admin/users", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
+      query: buildAdminListQuery(params)
     });
     return response.json();
   }
@@ -886,13 +900,7 @@ class AdminService {
     } = {}
   ): Promise<PaginatedResponse<Gamemode>> {
     const response = await apiFetch("/api/v1/admin/gamemodes", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
+      query: buildAdminListQuery(params)
     });
     return response.json();
   }

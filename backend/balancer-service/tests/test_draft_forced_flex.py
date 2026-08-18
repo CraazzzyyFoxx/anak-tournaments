@@ -48,10 +48,10 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from shared.core.enums import DraftRole  # noqa: E402
+from shared.core.enums import HERO_TYPE_CLASSES, HeroClass  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
 
-ALL_ROLE_VALUES = {role.value for role in DraftRole}
+ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
 
 
 class _Role:
@@ -136,7 +136,7 @@ class TestForcedFlexMapping:
     def test_all_three_roles_are_covered_even_from_one_entry(self) -> None:
         mapped = _mapped([_Role("dps", is_primary=True, rank_value=3000)], all_roles=True)
 
-        assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(DraftRole)
+        assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(HERO_TYPE_CLASSES)
 
     def test_sub_role_comes_from_the_first_role_by_priority(self) -> None:
         mapped = _mapped(
@@ -243,8 +243,8 @@ class TestAllRolesModeKeepsThePriority:
             all_roles=True,
         )
 
-        assert mapped["primary_role"] == DraftRole.TANK
-        assert set(mapped["secondary_roles"]) == {DraftRole.DPS, DraftRole.SUPPORT}
+        assert mapped["primary_role"] == HeroClass.tank
+        assert set(mapped["secondary_roles"]) == {HeroClass.damage, HeroClass.support}
 
     def test_is_flex_stays_false_for_a_priority_registrant(self) -> None:
         """``is_flex`` is the registration's own fact, not the mode's."""
@@ -304,15 +304,15 @@ class TestDiscomfortDivergesFromTheBalancer:
         player = sug.FitPlayer(
             player_id=1,
             rank_value=3300,
-            playable_roles=frozenset(DraftRole),
-            preference_order=(DraftRole.TANK,),
+            playable_roles=frozenset(HERO_TYPE_CLASSES),
+            preference_order=(HeroClass.tank,),
             is_flex=False,
-            rank_by_role=dict.fromkeys(DraftRole, 3300),
+            rank_by_role=dict.fromkeys(HERO_TYPE_CLASSES, 3300),
         )
 
-        assert sug.role_discomfort(player, DraftRole.TANK) == 0
-        assert sug.role_discomfort(player, DraftRole.DPS) == 1000
-        assert sug.role_discomfort(player, DraftRole.SUPPORT) == 1000
+        assert sug.role_discomfort(player, HeroClass.tank) == 0
+        assert sug.role_discomfort(player, HeroClass.damage) == 1000
+        assert sug.role_discomfort(player, HeroClass.support) == 1000
 
     def test_balancer_penalises_them_by_position_instead(self) -> None:
         from src.services.balancer.algorithm.entities import Player

@@ -95,6 +95,25 @@ export function RankSettingsPanel() {
   );
 }
 
+/** Shared save button + success/error status shown by both settings cards below. */
+function SaveButtonStatus({
+  mutation
+}: {
+  mutation: { mutate: () => void; isPending: boolean; isSuccess: boolean; isError: boolean };
+}) {
+  return (
+    <>
+      <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+        {mutation.isPending ? "Saving…" : "Save"}
+      </Button>
+      {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
+      {mutation.isError && (
+        <span className="text-sm text-danger">Save failed — check the values and try again.</span>
+      )}
+    </>
+  );
+}
+
 function RankCollectionSection({
   setting,
   onSaved
@@ -257,13 +276,7 @@ function RankCollectionSection({
         </div>
 
         <div className="flex items-center gap-3">
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
-          {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
-          {mutation.isError && (
-            <span className="text-sm text-danger">Save failed — check the values and try again.</span>
-          )}
+          <SaveButtonStatus mutation={mutation} />
         </div>
       </CardContent>
     </Card>
@@ -400,13 +413,7 @@ function RankMappingSection({
           <Button variant="outline" size="sm" onClick={resetToDefaults}>
             Reset to OW2 defaults
           </Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
-          {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
-          {mutation.isError && (
-            <span className="text-sm text-danger">Save failed — check the values and try again.</span>
-          )}
+          <SaveButtonStatus mutation={mutation} />
         </div>
       </CardContent>
     </Card>

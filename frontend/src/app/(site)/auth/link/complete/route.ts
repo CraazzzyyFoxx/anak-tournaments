@@ -3,17 +3,8 @@ import { cookies } from "next/headers";
 import { revalidateTag } from "next/cache";
 import { authService, OAuthLinkFailedError } from "@/services/auth.service";
 import { getAccessToken } from "@/lib/auth-cookies";
-import { safeRedirectTarget } from "@/lib/oauth-callback";
+import { GUARD_COOKIE, clearGuardCookie, guardTicketErrorRedirect, safeRedirectTarget } from "@/lib/oauth-callback";
 import { publicOrigin } from "@/lib/request-origin";
-
-// Task 10R fix 1: the single-use, HOST-ONLY guard cookie set by
-// oauth-login.ts's custom-domain apex bounce, on THIS exact domain, before
-// the flow ever left for the apex. Its raw value is required alongside the
-// ticket EVEN THOUGH the caller also presents a valid bearer below --
-// without it, a victim's own live session could be lured into completing an
-// attacker's link ticket (reverse CSRF / account takeover via linking, the
-// vulnerability this fix closes). See oauth-login.ts's module docstring.
-const GUARD_COOKIE = "owt_xdomain_guard";
 
 // Far side of the custom-domain account-linking end-ticket (Task 10R). This
 // route runs ON the workspace's custom domain itself -- never the platform
@@ -35,22 +26,9 @@ const GUARD_COOKIE = "owt_xdomain_guard";
 // brand-new session from a ticket that DOES carry session tokens), linking
 // never changes the caller's session here -- it only calls an authenticated
 // RPC with the session that already exists. It DOES clear the single-use
-// GUARD_COOKIE above on every outcome (host-only, no `domain` attribute --
-// must match exactly what oauth-login.ts set, or the delete won't take).
-function clearGuardCookie(response: NextResponse): void {
-  response.cookies.delete({ name: GUARD_COOKIE, path: "/" });
-}
-
-function errorRedirect(origin: string, errorCode: string, provider?: string | null): NextResponse {
-  const errorUrl = new URL("/", origin);
-  errorUrl.searchParams.set("auth_error", errorCode);
-  if (provider) {
-    errorUrl.searchParams.set("auth_error_provider", provider);
-  }
-  const response = NextResponse.redirect(errorUrl);
-  clearGuardCookie(response);
-  return response;
-}
+// GUARD_COOKIE on every outcome (via guardTicketErrorRedirect/
+// clearGuardCookie) -- see lib/oauth-callback.ts for the shared definition
+// and clear helper, which /auth/sso/route.ts also uses.
 
 function loginRedirect(origin: string, next: string): NextResponse {
   const loginUrl = new URL("/", origin);
@@ -72,7 +50,7 @@ export async function GET(request: Request) {
   const next = searchParams.get("next") || "/account";
 
   if (!ticket) {
-    return errorRedirect(currentOrigin, "invalid_state");
+    return guardTicketErrorRedirect(currentOrigin, "invalid_state");
   }
 
   const cookieStore = await cookies();
@@ -93,7 +71,7 @@ export async function GET(request: Request) {
   // RPC round trip (and burn the single-use ticket) on a request that's
   // already missing something required.
   if (!guard) {
-    return errorRedirect(currentOrigin, "invalid_state");
+    return guardTicketErrorRedirect(currentOrigin, "invalid_state");
   }
 
   try {
@@ -119,8 +97,8 @@ export async function GET(request: Request) {
     // the apex callback, this route never sees the signed state — only an
     // opaque ticket — so the toast falls back to a generic provider label.
     if (err instanceof OAuthLinkFailedError) {
-      return errorRedirect(currentOrigin, err.code);
+      return guardTicketErrorRedirect(currentOrigin, err.code);
     }
-    return errorRedirect(currentOrigin, "exchange_failed");
+    return guardTicketErrorRedirect(currentOrigin, "exchange_failed");
   }
 }

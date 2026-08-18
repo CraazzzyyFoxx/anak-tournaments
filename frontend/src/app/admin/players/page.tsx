@@ -7,9 +7,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import {
   ArrowLeftRight,
   Plus,
-  Pencil,
-  Sparkles,
-  Trash2
+  Sparkles
 } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
@@ -17,6 +15,13 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { createRowActionsColumn } from "@/components/admin/row-actions-column";
+import {
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam,
+  nextTournamentFilterQuery,
+  TournamentFilterSelect
+} from "@/components/admin/tournament-filter";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
@@ -38,8 +43,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
-  SelectValue
+  SelectTrigger
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
 import {
@@ -57,8 +61,6 @@ import { MinimizedUser } from "@/types/user.types";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { getPlayerRowDivisionGrid } from "@/app/admin/players/playerRowDivisionGrid";
-
-const TOURNAMENT_QUERY_PARAM = "tournament";
 
 /** Shown on the sub-role field for a role the sub-role catalog has no rows for. */
 const NO_SUB_ROLE_CATALOG_PLACEHOLDER = "No sub-roles for this role";
@@ -253,10 +255,71 @@ function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
   };
 }
 
-function parseTournamentQueryParam(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+/** The role select, identical between the create and edit dialogs apart from the id.
+ * Picking a role clears sub_role, since a sub-role only makes sense for its own role. */
+function PlayerRoleField({
+  id,
+  formData,
+  setFormData
+}: {
+  id: string;
+  formData: PlayerFormData;
+  setFormData: React.Dispatch<React.SetStateAction<PlayerFormData>>;
+}) {
+  return (
+    <div>
+      <Label htmlFor={id}>Role</Label>
+      <Select
+        value={normalizePlayerRole(formData.role)}
+        onValueChange={(value) => setFormData({ ...formData, role: value, sub_role: "" })}
+      >
+        <SelectTrigger id={id}>
+          <RoleOptionContent role={normalizePlayerRole(formData.role)} />
+        </SelectTrigger>
+        <SelectContent>
+          {PLAYER_ROLE_OPTIONS.map((role) => (
+            <SelectItem key={role} value={role}>
+              <RoleOptionContent role={role} />
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/** The sub-role select, identical between the create and edit dialogs apart from the id. */
+function PlayerSubRoleField({
+  id,
+  formData,
+  setFormData,
+  hasSubRoleCatalog,
+  subRoleSelectOptions
+}: {
+  id: string;
+  formData: PlayerFormData;
+  setFormData: React.Dispatch<React.SetStateAction<PlayerFormData>>;
+  hasSubRoleCatalog: boolean;
+  subRoleSelectOptions: PlayerOption[];
+}) {
+  return (
+    <div>
+      <Label htmlFor={id}>Sub-role</Label>
+      <SearchableSelect
+        id={id}
+        value={formData.sub_role || "none"}
+        options={subRoleSelectOptions}
+        disabled={!hasSubRoleCatalog}
+        placeholder={hasSubRoleCatalog ? "Select sub-role" : NO_SUB_ROLE_CATALOG_PLACEHOLDER}
+        searchPlaceholder="Search sub-role…"
+        emptyMessage="No sub-roles match that search."
+        onChange={(value) => {
+          const subRole = value === "none" ? "" : value;
+          setFormData({ ...formData, sub_role: subRole });
+        }}
+      />
+    </div>
+  );
 }
 
 export default function PlayersPage() {
@@ -402,12 +465,7 @@ export default function PlayersPage() {
 
   const handleTournamentFilterChange = (value: string) => {
     const nextTournamentId = value === "all" ? null : Number(value);
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (nextTournamentId == null) {
-      nextParams.delete(TOURNAMENT_QUERY_PARAM);
-    } else {
-      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
-    }
+    const query = nextTournamentFilterQuery(searchParams.toString(), TOURNAMENT_QUERY_PARAM, value);
 
     setFormData((current) => ({
       ...current,
@@ -415,7 +473,6 @@ export default function PlayersPage() {
       team_id: 0
     }));
 
-    const query = nextParams.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
@@ -521,35 +578,14 @@ export default function PlayersPage() {
         </div>
       )
     },
-    {
-      id: "actions",
-      cell: ({ row }) =>
-        canUpdate || canDelete ? (
-          <div className="flex items-center gap-2">
-            {canUpdate ? (
-              <Button
-                aria-label={`Edit ${row.original.name}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => handleEdit(row.original)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            ) : null}
-            {canDelete ? (
-              <Button
-                aria-label={`Delete ${row.original.name}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(row.original)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            ) : null}
-          </div>
-        ) : null
-    }
+    createRowActionsColumn<PlayerRow>({
+      canUpdate,
+      canDelete,
+      onEdit: handleEdit,
+      onDelete: handleDelete,
+      getEditLabel: (row) => `Edit ${row.name}`,
+      getDeleteLabel: (row) => `Delete ${row.name}`
+    })
   ];
 
   return (
@@ -607,22 +643,11 @@ export default function PlayersPage() {
             : "No players yet. Pick a tournament to see or create its players."
         }
         actions={
-          <Select
-            value={selectedTournamentId?.toString() ?? "all"}
+          <TournamentFilterSelect
+            tournaments={tournamentsData?.results ?? []}
+            selectedTournamentId={selectedTournamentId}
             onValueChange={handleTournamentFilterChange}
-          >
-            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
-              <SelectValue placeholder="Filter by tournament" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All tournaments</SelectItem>
-              {tournamentsData?.results.map((tournament) => (
-                <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                  {tournament.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         }
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
@@ -684,46 +709,15 @@ export default function PlayersPage() {
             />
           </div>
 
-          <div>
-            <Label htmlFor="role">Role</Label>
-            <Select
-              value={normalizePlayerRole(formData.role)}
-              onValueChange={(value) => setFormData({ ...formData, role: value, sub_role: "" })}
-            >
-              <SelectTrigger id="role">
-                <RoleOptionContent role={normalizePlayerRole(formData.role)} />
-              </SelectTrigger>
-              <SelectContent>
-                {PLAYER_ROLE_OPTIONS.map((role) => (
-                  <SelectItem key={role} value={role}>
-                    <RoleOptionContent role={role} />
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <PlayerRoleField id="role" formData={formData} setFormData={setFormData} />
 
-          <div>
-            <Label htmlFor="sub_role">Sub-role</Label>
-            <SearchableSelect
-              id="sub_role"
-              value={formData.sub_role || "none"}
-              options={subRoleSelectOptions}
-              disabled={!hasSubRoleCatalog}
-              placeholder={
-                hasSubRoleCatalog ? "Select sub-role" : NO_SUB_ROLE_CATALOG_PLACEHOLDER
-              }
-              searchPlaceholder="Search sub-role…"
-              emptyMessage="No sub-roles match that search."
-              onChange={(value) => {
-                const subRole = value === "none" ? "" : value;
-                setFormData({
-                  ...formData,
-                  sub_role: subRole
-                });
-              }}
-            />
-          </div>
+          <PlayerSubRoleField
+            id="sub_role"
+            formData={formData}
+            setFormData={setFormData}
+            hasSubRoleCatalog={hasSubRoleCatalog}
+            subRoleSelectOptions={subRoleSelectOptions}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -795,46 +789,15 @@ export default function PlayersPage() {
             />
           </div>
 
-          <div>
-            <Label htmlFor="edit-role">Role</Label>
-            <Select
-              value={normalizePlayerRole(formData.role)}
-              onValueChange={(value) => setFormData({ ...formData, role: value, sub_role: "" })}
-            >
-              <SelectTrigger id="edit-role">
-                <RoleOptionContent role={normalizePlayerRole(formData.role)} />
-              </SelectTrigger>
-              <SelectContent>
-                {PLAYER_ROLE_OPTIONS.map((role) => (
-                  <SelectItem key={role} value={role}>
-                    <RoleOptionContent role={role} />
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <PlayerRoleField id="edit-role" formData={formData} setFormData={setFormData} />
 
-          <div>
-            <Label htmlFor="edit-sub_role">Sub-role</Label>
-            <SearchableSelect
-              id="edit-sub_role"
-              value={formData.sub_role || "none"}
-              options={subRoleSelectOptions}
-              disabled={!hasSubRoleCatalog}
-              placeholder={
-                hasSubRoleCatalog ? "Select sub-role" : NO_SUB_ROLE_CATALOG_PLACEHOLDER
-              }
-              searchPlaceholder="Search sub-role…"
-              emptyMessage="No sub-roles match that search."
-              onChange={(value) => {
-                const subRole = value === "none" ? "" : value;
-                setFormData({
-                  ...formData,
-                  sub_role: subRole
-                });
-              }}
-            />
-          </div>
+          <PlayerSubRoleField
+            id="edit-sub_role"
+            formData={formData}
+            setFormData={setFormData}
+            hasSubRoleCatalog={hasSubRoleCatalog}
+            subRoleSelectOptions={subRoleSelectOptions}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <div>

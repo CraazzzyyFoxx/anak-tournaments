@@ -8,17 +8,17 @@ import type { RealtimeEventEnvelope } from "@/types/realtime.types";
 import type { BalancerRosterKey } from "@/types/balancer-admin.types";
 
 /** Mirrors `BALANCER_DRAG` in shared/services/balancer_realtime.py. */
-export const BALANCER_DRAG_EVENT = "balancer.drag";
+const BALANCER_DRAG_EVENT = "balancer.drag";
 
 /** A ghost expires if no frame arrives within this window (covers missed `end` / disconnect). */
 const GHOST_TTL_MS = 2000;
 /** Min interval between outgoing `over` frames while dragging. */
 const OVER_THROTTLE_MS = 40;
 
-export type DragPhase = "start" | "over" | "end";
+type DragPhase = "start" | "over" | "end";
 
 /** Identity of the dragged player + its origin, set on drag start. */
-export type DragStartPayload = {
+type DragStartPayload = {
   playerId: string;
   playerName: string;
   fromTeamIndex: number;
@@ -26,7 +26,7 @@ export type DragStartPayload = {
 };
 
 /** The slot the dragged card currently hovers (semantic, not pixel coords). */
-export type DragOverPayload = {
+type DragOverPayload = {
   overTeamIndex: number | null;
   overRoleKey: BalancerRosterKey | null;
   overInsertIndex: number | null;

@@ -13,7 +13,7 @@ import { TournamentMatchesSkeleton } from "../_components/TournamentSkeletons";
 import { UpdatingBadge } from "../_components/UpdatingBadge";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 
-export interface TournamentEncounterPageProps {
+interface TournamentEncounterPageProps {
   tournamentId: number;
   page: number;
   search: string;

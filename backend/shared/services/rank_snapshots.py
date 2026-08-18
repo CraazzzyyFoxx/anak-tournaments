@@ -23,7 +23,7 @@ async def fetch_latest_ow_ranks_by_account(
 
     Returns ``{user_id: {battle_tag: {registration_role: rank_value}}}`` where ``battle_tag`` is the
     snapshot's denormalized ``Name#1234`` and ``registration_role`` is one of ``tank``/``dps``/
-    ``support`` (the snapshot stores the canonical ``RankRole`` value, e.g. ``damage``, which is
+    ``support`` (the snapshot stores the canonical ``HeroClass`` name, e.g. ``damage``, which is
     translated to ``dps`` here). Only ranked snapshots with a non-null ``rank_value`` are considered,
     and only the newest per **(user, battle_tag, role)** by ``captured_at``.
 

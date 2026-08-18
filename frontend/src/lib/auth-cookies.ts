@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { PLATFORM_ZONE } from "./host";
 
 // Canonical cookie names, written by oauth-callback.ts (login) and
@@ -50,6 +51,21 @@ function deleteOwtCookie(response: NextResponse, name: string): void {
 // sessions survive the aqt->owt rename.
 export function getAccessToken(store: CookieStore): string | undefined {
   return store.get(ACCESS_TOKEN_COOKIE)?.value ?? store.get(LEGACY_ACCESS_TOKEN_COOKIE)?.value;
+}
+
+// Reads the access-token cookie for a route handler and returns either the
+// raw token or a ready-to-return 401 JSON response when there is none.
+// Collapses the "get cookieStore, extract token, bail with Unauthorized"
+// boilerplate duplicated across every `/api/**/route.ts` handler that
+// requires a live session (account/sessions, auth/me, ...). Callers must
+// narrow with `instanceof NextResponse` before using the token.
+export async function requireAccessToken(): Promise<string | NextResponse> {
+  const store = await cookies();
+  const token = getAccessToken(store);
+  if (!token) {
+    return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
+  }
+  return token;
 }
 
 // Reads the refresh-token cookie with the same owt->aqt fallback as

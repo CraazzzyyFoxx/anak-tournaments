@@ -19,10 +19,9 @@ from shared.core.enums import (
     DraftPickStatus,
     DraftPlayerStatus,
     DraftPoolSource,
-    DraftRole,
     DraftStatus,
 )
-from shared.domain.roster_shape import RosterShape
+from shared.domain.roster_shape import RegistrationRoleCode, RosterShape
 from shared.schemas.roster_slots import RosterShapeRead
 from src.schemas.base import BaseRead
 
@@ -93,8 +92,8 @@ class DraftManualCaptainInput(BaseModel):
 class DraftManualPlayerInput(BaseModel):
     user_id: int | None = None
     battle_tag: str | None = None
-    primary_role: DraftRole
-    secondary_roles: list[DraftRole] = Field(default_factory=list)
+    primary_role: RegistrationRoleCode
+    secondary_roles: list[RegistrationRoleCode] = Field(default_factory=list)
     sub_role: str | None = None
     is_flex: bool = False
     division_number: int | None = None
@@ -161,7 +160,7 @@ class DraftOrderRequest(BaseModel):
 class DraftPickSelectRequest(BaseModel):
     player_id: int
     expected_version: int
-    target_role: DraftRole | None = None
+    target_role: RegistrationRoleCode | None = None
 
 
 class DraftPickAutopickRequest(BaseModel):
@@ -173,12 +172,12 @@ class DraftPickOverrideRequest(BaseModel):
     expected_version: int
     player_id: int | None = None
     draft_team_id: int | None = None
-    target_role: DraftRole | None = None
+    target_role: RegistrationRoleCode | None = None
     note: str | None = None
 
 
 class DraftRoleEditRequest(BaseModel):
-    role: DraftRole
+    role: RegistrationRoleCode
     rank_value: int | None = None
     rank_absence_confirmed: bool = False
     reason: str
@@ -329,7 +328,7 @@ class DraftBoardSnapshot(BaseModel):
 
 class DraftSuggestion(BaseModel):
     player_id: int
-    role: DraftRole
+    role: RegistrationRoleCode
     fit_score: float
     breakdown: dict[str, float] = Field(default_factory=dict)
 
@@ -372,7 +371,7 @@ class DraftPickOptionRead(BaseModel):
     model_config = _ReadConfig
 
     player_id: int
-    role: DraftRole
+    role: RegistrationRoleCode
     is_safe: bool
     reason_code: str | None = None
     unmatched_slots: list[DraftSlotRead] = Field(default_factory=list)
@@ -389,7 +388,7 @@ class DraftPickOptionsResponse(BaseModel):
 
 class DraftRoleEditResponse(BaseModel):
     player_id: int
-    role: DraftRole
+    role: RegistrationRoleCode
     player_version: int
     committed: bool
     before: DraftFeasibilityResponse

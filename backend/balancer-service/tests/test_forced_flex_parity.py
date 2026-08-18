@@ -56,11 +56,11 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from shared.core.enums import DraftRole  # noqa: E402
+from shared.core.enums import HERO_TYPE_CLASSES  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
 
 CASES: list[dict[str, Any]] = json.loads(FIXTURES.read_text(encoding="utf-8"))["cases"]
-ALL_ROLE_VALUES = {role.value for role in DraftRole}
+ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
 
 
 class _Role:
@@ -115,4 +115,4 @@ def test_every_role_carries_a_rating_and_stated_ranks_survive(case: dict[str, An
 def test_all_three_roles_are_playable(case: dict[str, Any]) -> None:
     mapped = _map(case)
 
-    assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(DraftRole)
+    assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(HERO_TYPE_CLASSES)

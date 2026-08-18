@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { normalizeRole } from "@/components/hero/heroRole";
+import { normalizeRole } from "@/lib/player-role";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";

@@ -5,6 +5,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { BarChart3, Calendar, Percent, Trophy, Users as UsersIcon } from "lucide-react";
 
 import { PlatformStatsGrid } from "@/components/stats/PlatformStatsGrid";
+import { LiveUpcomingBadge, EventsSkeleton } from "@/components/site/LiveEventsWidgets";
 import TournamentsChart from "@/components/TournamentsChart";
 import TournamentsDivisionChart from "@/components/TournamentsDivisionChart";
 import { LeaderboardCard } from "@/components/stats/LeaderboardCard";
@@ -173,7 +174,6 @@ async function WorkspaceHeader({ workspace }: { workspace: Workspace }) {
 type TournamentWithCount = Tournament & { registrations_count?: number };
 
 async function WorkspaceEventsSection({ workspaceId }: { workspaceId: number }) {
-  const t = await getTranslations();
   let activeTournaments: TournamentWithCount[] = [];
 
   try {
@@ -194,17 +194,12 @@ async function WorkspaceEventsSection({ workspaceId }: { workspaceId: number }) 
 
   return (
     <div>
-      <div className="flex items-center gap-2.5 mb-4">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-        </span>
-        <span className="text-[11px] font-bold tracking-[0.14em] uppercase text-emerald-400">
-          {liveCount > 0 && t("statistics.liveCount", { count: liveCount })}
-          {liveCount > 0 && upcomingCount > 0 && " · "}
-          {upcomingCount > 0 && t("statistics.upcomingCount", { count: upcomingCount })}
-        </span>
-      </div>
+      <LiveUpcomingBadge
+        liveCount={liveCount}
+        upcomingCount={upcomingCount}
+        dotClassName="bg-emerald-400"
+        textClassName="text-emerald-400"
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {activeTournaments.map((tour) => (
@@ -291,16 +286,6 @@ async function EventCard({ tournament }: { tournament: TournamentWithCount }) {
         </div>
       </div>
     </Link>
-  );
-}
-
-function EventsSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-44 rounded-xl border border-border/60 bg-card/30 animate-pulse" />
-      ))}
-    </div>
   );
 }
 

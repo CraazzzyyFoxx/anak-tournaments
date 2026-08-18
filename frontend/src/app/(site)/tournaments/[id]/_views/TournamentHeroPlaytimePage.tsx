@@ -9,6 +9,7 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
 import heroService from "@/services/hero.service";
+import { normalizePlayerRole, playerRoleSlotCode, type PlayerRoleSlotCode } from "@/lib/player-role";
 import type { HeroPlaytime } from "@/types/hero.types";
 
 import styles from "../TournamentDetail.module.css";
@@ -21,7 +22,7 @@ import {
   type PublicPageQueryState
 } from "./publicPageQueryPresentation";
 
-type RoleKey = "tank" | "dps" | "support";
+type RoleKey = Exclude<PlayerRoleSlotCode, "flex">;
 type RoleFilter = "all" | RoleKey;
 
 const ROLE_ORDER: RoleKey[] = ["tank", "dps", "support"];
@@ -36,10 +37,8 @@ export function getHeroPlaytimeMetric(playtime: number) {
 }
 
 function heroRole(playtime: HeroPlaytime): RoleKey {
-  const raw = (playtime.hero.type ?? playtime.hero.role ?? "").toLowerCase();
-  if (raw.startsWith("tank")) return "tank";
-  if (raw.startsWith("sup")) return "support";
-  return "dps";
+  const slotCode = playerRoleSlotCode(normalizePlayerRole(playtime.hero.type ?? playtime.hero.role));
+  return slotCode === "flex" ? "dps" : slotCode;
 }
 
 const TournamentHeroPlaytimePage = ({ tournamentId }: { tournamentId: number }) => {

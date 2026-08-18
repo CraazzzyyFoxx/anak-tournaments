@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -37,15 +38,8 @@ MIN_SYNC_INTERVAL_SECONDS = 30
 DEFAULT_SYNC_INTERVAL_SECONDS = 300
 """Default interval (seconds) between automatic Google Sheet feed syncs."""
 
-VALID_ROLES = {"tank", "dps", "support"}
-LEGACY_ROLE_SUBTYPES: dict[str, set[str]] = {
-    "tank": set(),
-    "dps": {"hitscan", "projectile"},
-    "support": {"main_heal", "light_heal"},
-}
-VALID_ROLE_SUBTYPES = LEGACY_ROLE_SUBTYPES
-
-ROLE_ORDER = ("tank", "dps", "support")
+VALID_ROLES = set(REGISTRATION_ROLE_CODES)
+ROLE_ORDER = REGISTRATION_ROLE_CODES
 
 
 class RoleSubroleEntry(TypedDict):

@@ -3,7 +3,7 @@ import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 export type TournamentSectionId =
   | "bracket" | "stream" | "teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
 
-export type TournamentNavReasonKey =
+type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.competitionNotStarted"
   | "tournamentDetail.nav.reasons.noStages"
   | "tournamentDetail.nav.reasons.noSchedule"
@@ -162,7 +162,7 @@ export type TournamentRailScrollState = {
   canScrollNext: boolean;
 };
 
-export type TournamentRailMeasurementContainer = {
+type TournamentRailMeasurementContainer = {
   readonly clientWidth: number;
 };
 

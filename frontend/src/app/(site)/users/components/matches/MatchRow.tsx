@@ -13,7 +13,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { Hero } from "@/types/hero.types";
 
-export const stageKindFor = (name: string | undefined): "group" | "playoffs" | "finals" | "default" => {
+const stageKindFor = (name: string | undefined): "group" | "playoffs" | "finals" | "default" => {
   if (!name) return "default";
   const lower = name.toLowerCase();
   if (lower.includes("final")) return "finals";
@@ -22,7 +22,7 @@ export const stageKindFor = (name: string | undefined): "group" | "playoffs" | "
   return "default";
 };
 
-export const stageLabel = (name: string | undefined): string => name?.trim() || "—";
+const stageLabel = (name: string | undefined): string => name?.trim() || "—";
 
 interface MatchRowProps {
   enc: EncounterWithUserStats;

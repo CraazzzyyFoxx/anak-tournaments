@@ -21,7 +21,7 @@ from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import DraftAutopickStrategy, DraftRole, DraftStatus
+from shared.core.enums import HERO_TYPE_CLASSES, DraftAutopickStrategy, DraftStatus, HeroClass
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer.draft import DraftAuditEvent, DraftPick, DraftSession, DraftTeam
 from shared.services.roster_shape_access import get_effective_roster_shape
@@ -159,14 +159,14 @@ def _player_updated_payload(
     *,
     session_id: int,
     player_id: int,
-    role: DraftRole,
+    role: HeroClass,
     player_version: int,
     is_feasible: bool,
 ) -> dict:
     return {
         "session_id": session_id,
         "player_id": player_id,
-        "role": role.value,
+        "role": role.slot_code,
         "player_version": player_version,
         "is_feasible": is_feasible,
     }
@@ -436,14 +436,14 @@ def register(broker: Any, logger: Any) -> None:
                     player_id=p.id,
                     rank_value=p.rank_value or 0,
                     playable_roles=(
-                        frozenset(DraftRole)
+                        frozenset(HERO_TYPE_CLASSES)
                         if p.is_flex
-                        else frozenset(DraftRole(r) for r in {p.primary_role, *(p.secondary_roles_json or [])})
+                        else frozenset(HeroClass.from_slot_code(r) for r in {p.primary_role, *(p.secondary_roles_json or [])})
                     ),
-                    preference_order=(DraftRole(p.primary_role),),
+                    preference_order=(HeroClass.from_slot_code(p.primary_role),),
                     is_flex=p.is_flex,
                     user_id=p.user_id,
-                    rank_by_role={DraftRole(k): v for k, v in (p.role_ranks or {}).items()},
+                    rank_by_role={HeroClass.from_slot_code(k): v for k, v in (p.role_ranks or {}).items()},
                 )
                 for p in available
             ]

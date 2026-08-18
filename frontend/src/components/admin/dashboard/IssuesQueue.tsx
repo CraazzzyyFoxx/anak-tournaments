@@ -10,7 +10,7 @@ import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
 import { SurfaceCard, SurfaceCardContent, SurfaceCardHeader } from "./SurfaceCard";
 
-export type AttentionTone = "critical" | "warning" | "info";
+type AttentionTone = "critical" | "warning" | "info";
 
 export type IssueItem = {
   label: string;

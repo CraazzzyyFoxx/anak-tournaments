@@ -107,6 +107,20 @@ function normalizeHexColor(value: string): string {
   return normalized.startsWith("#") ? normalized : `#${normalized}`;
 }
 
+/** Column header shared by the system and custom status tables below. */
+function BalancerStatusTableHead() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Status</TableHead>
+        <TableHead>Slug</TableHead>
+        <TableHead>Description</TableHead>
+        <TableHead className="w-30 text-right">Actions</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
 function StatusColorPicker({
   value,
   onChange
@@ -630,14 +644,7 @@ export default function AdminBalancerPage() {
                     <h3 className={EYEBROW_CLASS}>System</h3>
                     <div className="rounded-md border">
                       <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Slug</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead className="w-30 text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                        <BalancerStatusTableHead />
                         <TableBody>
                           {grouped[scope].system.map((statusRow) => (
                             <TableRow key={`${statusRow.scope}-${statusRow.slug}`}>
@@ -700,14 +707,7 @@ export default function AdminBalancerPage() {
                     <h3 className={EYEBROW_CLASS}>Custom</h3>
                     <div className="rounded-md border">
                       <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Slug</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead className="w-30 text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                        <BalancerStatusTableHead />
                         <TableBody>
                           {grouped[scope].custom.length === 0 ? (
                             <TableRow>

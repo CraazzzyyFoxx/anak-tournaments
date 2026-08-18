@@ -69,13 +69,11 @@ class _OwRankSignals:
     latest_snapshot: models.UserRankSnapshot | Any | None = None
 
 
-# Registration role code -> canonical RankRole value (e.g. dps -> damage). Single source of
+# Registration role code -> canonical HeroClass name (e.g. dps -> damage). Single source of
 # truth is shared.domain.player_sub_roles; aliased here for the autofill snapshot lookups.
 RANK_ROLE_BY_REGISTRATION_ROLE = dict(REGISTRATION_TO_CANONICAL)
 REGISTRATION_ROLE_LABELS = {
-    "tank": "Tank",
-    "dps": "Damage",
-    "support": "Support",
+    role.slot_code: role.value for role in (enums.HeroClass.tank, enums.HeroClass.damage, enums.HeroClass.support)
 }
 # tournament.player.role is a HeroClass (Tank/Damage/Support); bridge it to the registration
 # role codes (tank/dps/support) used to key balancer history and the per-role rank data.

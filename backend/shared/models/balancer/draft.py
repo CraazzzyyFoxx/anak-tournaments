@@ -39,8 +39,8 @@ __all__ = (
 # Enum-like columns are stored as plain String, matching the balancer-schema
 # convention (see BalancerRegistration.status). The values are the StrEnum
 # members in shared.core.enums (DraftStatus / DraftFormat / DraftPoolSource /
-# DraftAutopickStrategy / DraftRole / DraftPlayerStatus / DraftPickStatus);
-# StrEnum equality keeps comparisons type-safe on read.
+# DraftAutopickStrategy / DraftPlayerStatus / DraftPickStatus) or, for role
+# columns, ``HeroClass.slot_code``; StrEnum equality keeps comparisons type-safe.
 
 
 class DraftSession(db.TimeStampIntegerMixin):

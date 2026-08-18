@@ -1,6 +1,6 @@
 export const SUPPORTED_BALANCER_ALGORITHMS = ["moo", "cpsat"] as const;
 
-export type BalancerAlgorithm = (typeof SUPPORTED_BALANCER_ALGORITHMS)[number];
+type BalancerAlgorithm = (typeof SUPPORTED_BALANCER_ALGORITHMS)[number];
 
 export const SUPPORTED_BALANCER_CONFIG_KEYS = [
   "role_mask",
@@ -42,7 +42,7 @@ export const SUPPORTED_BALANCER_CONFIG_KEYS = [
   "rank_comfort_tilt"
 ] as const;
 
-export type BalancerConfigKey = (typeof SUPPORTED_BALANCER_CONFIG_KEYS)[number];
+type BalancerConfigKey = (typeof SUPPORTED_BALANCER_CONFIG_KEYS)[number];
 
 export interface PlayerData {
   uuid: string;
@@ -58,7 +58,7 @@ export interface PlayerData {
   sub_role?: string | null;
 }
 
-export interface TeamData {
+interface TeamData {
   id: number;
   name: string;
   average_mmr: number;
@@ -68,7 +68,7 @@ export interface TeamData {
   roster: Record<string, PlayerData[]>;
 }
 
-export interface RoleFeasibility {
+interface RoleFeasibility {
   role: string;
   supply: number;
   demand: number;
@@ -150,7 +150,7 @@ export interface BalancerConfig {
   rank_comfort_tilt?: number;
 }
 
-export type BalancerConfigFieldType =
+type BalancerConfigFieldType =
   | "boolean"
   | "float"
   | "integer"
@@ -180,9 +180,9 @@ export interface BalancerConfigResponse {
   fields: BalancerConfigField[];
 }
 
-export type BalanceJobStatus = "queued" | "running" | "succeeded" | "failed";
+type BalanceJobStatus = "queued" | "running" | "succeeded" | "failed";
 
-export interface BalanceJobProgress {
+interface BalanceJobProgress {
   current?: number;
   total?: number;
   percent?: number;

@@ -16,6 +16,27 @@ export type PlayerRoleOption = "Tank" | "Damage" | "Support" | "Flex";
 export const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Support", "Flex"];
 
 /**
+ * Case-insensitive alias table shared by every normalizer below, so every
+ * caller resolves a stored role spelling identically instead of keeping its
+ * own copy. Mirrors the backend's `HeroClass.parse` -- the canonical name,
+ * lowercase, and the `dps` wire spelling for Damage. No other synonyms: a
+ * caller needing free-text aliases (e.g. sheet-import value maps) owns that
+ * mapping itself instead of this table silently widening it.
+ */
+const ROLE_ALIASES: Record<string, "tank" | "damage" | "support" | "flex"> = {
+  tank: "tank",
+  damage: "damage",
+  dps: "damage",
+  support: "support",
+  flex: "flex"
+};
+
+function resolveRoleAlias(role: string | null | undefined): "tank" | "damage" | "support" | "flex" | null {
+  if (!role) return null;
+  return ROLE_ALIASES[role.trim().toLowerCase()] ?? null;
+}
+
+/**
  * Coerce any stored/legacy role spelling (`dps`, `damage`, `TANK`, `flex`,
  * `null`) to a canonical option.
  *
@@ -26,7 +47,7 @@ export const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Suppo
  * branch rewrote every flex player to `Damage` on save.
  */
 export function normalizePlayerRole(role: string | null | undefined): PlayerRoleOption {
-  switch (role?.trim().toLowerCase()) {
+  switch (resolveRoleAlias(role)) {
     case "tank":
       return "Tank";
     case "support":
@@ -97,4 +118,46 @@ export function playerRoleTint(role: string | null | undefined): PlayerRoleTint 
  */
 export function roleImageSrc(role: PlayerRoleOption): string {
   return role === "Flex" ? "/roles/Flex.svg" : `/roles/${role}.png`;
+}
+
+/**
+ * Lowercase role key excluding `Flex` — hero-class tinting/selection never
+ * sees a flex hero (no hero has that class), so this is `PlayerRoleTint`
+ * minus its one player-only member.
+ */
+export type AqtRoleKey = SubRoleCatalogRole;
+
+/**
+ * Strict variant of {@link playerRoleTint}: `null` for input that names no
+ * recognized role at all (vs. `playerRoleTint`, which defaults unrecognized
+ * input to Damage). Used where "no role" and "Damage" must stay distinguishable
+ * — e.g. ordering pick/ban rows only when the catalog actually knows a role.
+ */
+export function normalizeRole(role: string | null | undefined): AqtRoleKey | null {
+  const alias = resolveRoleAlias(role);
+  return alias && alias !== "flex" ? alias : null;
+}
+
+/** {@link normalizeRole}, defaulting to Damage instead of `null`. */
+export function heroVariantFromRole(role: string | null | undefined): AqtRoleKey {
+  return normalizeRole(role) ?? "damage";
+}
+
+/**
+ * Draft/balancer/registration wire spelling — mirrors the backend's
+ * `HeroClass.slot_code` (`Damage` -> `dps`; everything else just lowercased).
+ */
+export type PlayerRoleSlotCode = "tank" | "dps" | "support" | "flex";
+
+/** {@link PlayerRoleOption} -> {@link PlayerRoleSlotCode}. */
+export function playerRoleSlotCode(role: PlayerRoleOption): PlayerRoleSlotCode {
+  return role === "Damage" ? "dps" : (role.toLowerCase() as PlayerRoleSlotCode);
+}
+
+/**
+ * Strict variant of {@link playerRoleTint} that also recognizes `Flex` and
+ * returns `null` for input naming no role at all (vs. defaulting to Damage).
+ */
+export function normalizeRoleTint(role: string | null | undefined): PlayerRoleTint | null {
+  return resolveRoleAlias(role);
 }

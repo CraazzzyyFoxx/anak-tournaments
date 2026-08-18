@@ -193,28 +193,6 @@
       "support": "Support",
       "flex": "Flex"
     },
-    "subroles": {
-      "hitscan": "Hitscan",
-      "projectile": "Projectile",
-      "main_heal": "Main Heal",
-      "light_heal": "Light Heal",
-      "main_tank": "Main Tank",
-      "off_tank": "Off Tank",
-      "flanker": "Flanker",
-      "flex_dps": "Flex DPS",
-      "flex_support": "Flex Support"
-    },
-    "subrolesShort": {
-      "hitscan": "HS",
-      "projectile": "PROJ",
-      "main_heal": "MH",
-      "light_heal": "LH",
-      "main_tank": "MT",
-      "off_tank": "OT",
-      "flanker": "FLK",
-      "flex_dps": "FD",
-      "flex_support": "FS"
-    },
     "clearFilters": "Clear filters",
     "now": "Now",
     "unassignedStage": "Unassigned",

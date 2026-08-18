@@ -12,7 +12,7 @@ import tournamentService from "@/services/tournament.service";
 import styles from "./StandingsTable.module.css";
 import TeamName from "@/components/TeamName";
 
-export interface StandingTableProps {
+interface StandingTableProps {
   standings: Standings[];
   is_groups: boolean;
   stages?: Stage[];

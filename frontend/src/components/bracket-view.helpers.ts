@@ -77,7 +77,7 @@ export function computeMatchNumbers(
  * a reset (`placeholder_bracket` omits it) — the highest positive round is the
  * Grand Final.
  */
-export function getFinalRounds(
+function getFinalRounds(
   isDoubleElimination: boolean,
   rounds: number[],
   matchesPerRound?: Map<number, number>

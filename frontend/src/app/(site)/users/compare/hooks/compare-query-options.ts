@@ -14,11 +14,11 @@ interface CompareFilters {
   tournamentId?: number;
 }
 
-export interface OverallCompareRequest extends CompareFilters {
+interface OverallCompareRequest extends CompareFilters {
   signal?: AbortSignal;
 }
 
-export interface HeroCompareRequest extends CompareFilters {
+interface HeroCompareRequest extends CompareFilters {
   leftHeroId?: number;
   rightHeroId?: number;
   mapId?: number;

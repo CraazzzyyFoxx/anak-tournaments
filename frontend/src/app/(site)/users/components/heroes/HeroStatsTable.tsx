@@ -10,7 +10,7 @@ import { SearchField } from "@/components/ui/search-field";
 
 export type StatSortKey = "delta" | "overall" | "avg10" | "name";
 
-export interface AllStatsRow {
+interface AllStatsRow {
   name: LogStatsName;
   label: string;
   overall: number;

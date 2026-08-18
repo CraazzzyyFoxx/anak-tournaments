@@ -27,12 +27,12 @@ export interface BuiltInFieldDef {
   supportsMode?: boolean;
 }
 
-export const DEFAULT_BATTLE_TAG_REGEX = String.raw`([\w0-9]{2,12}#[0-9]{4,})`;
-export const DEFAULT_DISCORD_REGEX = String.raw`^[a-z0-9_.]{2,32}$`;
-export const DEFAULT_TWITCH_REGEX = String.raw`^[a-z0-9_]{4,25}$`;
-export const DEFAULT_BOOSTY_REGEX = String.raw`^[A-Za-z0-9._-]{2,50}$`;
-export const DEFAULT_URL_REGEX = String.raw`^https?://.+$`;
-export const DEFAULT_NUMBER_REGEX = String.raw`^-?\d+(?:[.,]\d+)?$`;
+const DEFAULT_BATTLE_TAG_REGEX = String.raw`([\w0-9]{2,12}#[0-9]{4,})`;
+const DEFAULT_DISCORD_REGEX = String.raw`^[a-z0-9_.]{2,32}$`;
+const DEFAULT_TWITCH_REGEX = String.raw`^[a-z0-9_]{4,25}$`;
+const DEFAULT_BOOSTY_REGEX = String.raw`^[A-Za-z0-9._-]{2,50}$`;
+const DEFAULT_URL_REGEX = String.raw`^https?://.+$`;
+const DEFAULT_NUMBER_REGEX = String.raw`^-?\d+(?:[.,]\d+)?$`;
 
 export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
   {
@@ -158,7 +158,7 @@ export function normalizeValidation(
   };
 }
 
-export function mergeDefaultValidation(
+function mergeDefaultValidation(
   validation?: FieldValidationConfig | null,
   defaultValidation?: FieldValidationConfig | null,
 ): FieldValidationConfig | null {

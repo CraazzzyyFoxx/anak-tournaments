@@ -27,7 +27,7 @@ import { WorkspaceAvatar } from "@/components/WorkspaceSwitcher";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 
-export function getRoleLabel({
+function getRoleLabel({
   isSuperuser,
   isAdmin,
   isOrganizer,
@@ -45,7 +45,7 @@ export function getRoleLabel({
   return "Operator";
 }
 
-export function getInitials(username?: string | null) {
+function getInitials(username?: string | null) {
   if (!username) return "AQ";
   return username.slice(0, 2).toUpperCase();
 }

@@ -45,6 +45,27 @@ const TRIGGER_CLASS =
 const CARD_CLASS =
   "relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4 shadow-inner";
 
+// Shared by the x-axis tick and tooltip label: both need the same
+// granularity-aware date formatting, falling back to the raw value when it
+// isn't a parseable timestamp.
+function formatTimestampTick(value: string | number, granularity: Granularity): string {
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return String(value);
+    if (granularity === "date") {
+      return date.toLocaleDateString();
+    }
+    return date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(value);
+  }
+}
+
 interface LineDef {
   key: string;
   label: string;
@@ -344,23 +365,7 @@ export default function RankHistoryChart({
                 axisLine={false}
                 tickMargin={6}
                 minTickGap={24}
-                tickFormatter={(value) => {
-                  try {
-                    const date = new Date(value);
-                    if (isNaN(date.getTime())) return value;
-                    if (granularity === "date") {
-                      return date.toLocaleDateString();
-                    }
-                    return date.toLocaleString([], {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
-                  } catch {
-                    return value;
-                  }
-                }}
+                tickFormatter={(value) => formatTimestampTick(value, granularity)}
               />
               <YAxis
                 tickLine={false}
@@ -376,23 +381,7 @@ export default function RankHistoryChart({
               <ChartTooltip
                 content={
                   <ChartTooltipContent
-                    labelFormatter={(value) => {
-                      try {
-                        const date = new Date(value);
-                        if (isNaN(date.getTime())) return value;
-                        if (granularity === "date") {
-                          return date.toLocaleDateString();
-                        }
-                        return date.toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
-                      } catch {
-                        return value;
-                      }
-                    }}
+                    labelFormatter={(value) => formatTimestampTick(value, granularity)}
                     formatter={(value, name, item) => {
                       const rank = Number(value);
                       const tier = getTierForRank(OW_REFERENCE_GRID, rank);

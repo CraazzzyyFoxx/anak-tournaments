@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-export type TournamentFormFieldsMode =
+type TournamentFormFieldsMode =
   | "manual-create"
   | "challonge-create"
   | "edit"

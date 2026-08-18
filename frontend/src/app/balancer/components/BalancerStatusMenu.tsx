@@ -29,7 +29,7 @@ export type StatusOptionGroups = {
 /** `ready`/`incomplete` are derived from role ranks -- never a manual pick.
  * Every status *picker* (menu, dropdown, select) must filter them out of the
  * system list; read-only badges elsewhere still render them normally. */
-export function pickableBalancerStatusOptions(options: StatusOptionGroups | undefined): StatusOptionGroups {
+function pickableBalancerStatusOptions(options: StatusOptionGroups | undefined): StatusOptionGroups {
   if (!options) return { system: [], custom: [] };
   return {
     system: options.system.filter((option) => option.value !== "ready" && option.value !== "incomplete"),
@@ -37,11 +37,11 @@ export function pickableBalancerStatusOptions(options: StatusOptionGroups | unde
   };
 }
 
-export function flattenStatusOptions(statusOptions?: StatusOptionGroups): StatusMeta[] {
+function flattenStatusOptions(statusOptions?: StatusOptionGroups): StatusMeta[] {
   return statusOptions ? [...statusOptions.system, ...statusOptions.custom] : [];
 }
 
-export function getStatusName(statusOptions: StatusOptionGroups | undefined, value: string | null | undefined): string {
+function getStatusName(statusOptions: StatusOptionGroups | undefined, value: string | null | undefined): string {
   if (!value) {
     return "No status";
   }

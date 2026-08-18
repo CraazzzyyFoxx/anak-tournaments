@@ -30,7 +30,7 @@ function resolveTier(version: DivisionGridVersion, rank: number): DivisionTier |
 // Error type
 // ---------------------------------------------------------------------------
 
-export class DivisionGridNormalizationError extends Error {
+class DivisionGridNormalizationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DivisionGridNormalizationError";

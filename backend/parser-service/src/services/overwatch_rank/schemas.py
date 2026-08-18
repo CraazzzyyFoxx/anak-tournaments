@@ -13,7 +13,7 @@ class ParsedRank:
     """One competitive rank entry parsed from an OverFast summary."""
 
     platform: str  # enums.RankPlatform
-    role: str  # enums.RankRole
+    role: str  # enums.HeroClass.name (lowercase: tank/damage/support)
     division: str | None
     tier: int | None
     season: int | None

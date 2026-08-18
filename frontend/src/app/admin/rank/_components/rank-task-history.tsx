@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { ClickableLogCell, ClickableLogRow } from "@/components/admin/ClickableLogRow";
+import { LiveIndicator } from "@/components/admin/LiveIndicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -12,7 +14,6 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -53,10 +54,7 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
           <CardTitle asChild>
             <h2>Task history</h2>
           </CardTitle>
-          <span className="flex items-center gap-1 text-xs font-normal text-success">
-            <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
-            live
-          </span>
+          <LiveIndicator />
         </div>
         <div className="flex items-center gap-2">
           <Select value={status} onValueChange={setStatus}>
@@ -112,33 +110,11 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
                   const clickable = userId != null;
                   const open = () => onSelectUser(userId as number, row.battle_tag);
                   return (
-                    <TableRow
-                      key={row.id}
-                      className={cn(clickable && "cursor-pointer hover:bg-muted/50")}
-                      onClick={clickable ? open : undefined}
-                    >
+                    <ClickableLogRow key={row.id} clickable={clickable} onOpen={open}>
                       <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
                         {formatDate(row.created_at)}
                       </TableCell>
-                      <TableCell className="font-medium">
-                        {clickable ? (
-                          // The row is clickable for the mouse; this button is what
-                          // keyboard users reach. `stopPropagation` keeps the row
-                          // handler from firing the same open twice.
-                          <button
-                            type="button"
-                            className="text-primary underline-offset-2 hover:underline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              open();
-                            }}
-                          >
-                            {row.battle_tag}
-                          </button>
-                        ) : (
-                          row.battle_tag
-                        )}
-                      </TableCell>
+                      <ClickableLogCell clickable={clickable} onOpen={open} label={row.battle_tag} />
                       <TableCell>
                         <StatusBadge status={row.status} />
                       </TableCell>
@@ -150,7 +126,7 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
                       >
                         {row.error ?? "—"}
                       </TableCell>
-                    </TableRow>
+                    </ClickableLogRow>
                   );
                 })}
               </TableBody>

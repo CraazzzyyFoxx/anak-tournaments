@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export type StatusTone = "positive" | "warning" | "negative" | "neutral";
 
 /** tone → foreground token (bare icon badges). */
-export const STATUS_TONE_FG: Record<StatusTone, string> = {
+const STATUS_TONE_FG: Record<StatusTone, string> = {
   positive: "text-[color:var(--aqt-emerald)]",
   warning: "text-[color:var(--aqt-amber)]",
   negative: "text-[color:var(--aqt-rose)]",

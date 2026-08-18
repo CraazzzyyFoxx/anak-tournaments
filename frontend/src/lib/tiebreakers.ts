@@ -14,7 +14,7 @@ export type TiebreakerMetricId =
   | "manual_override";
 
 // Default English labels. Used as a fallback when no i18n resolver is supplied.
-export const TIEBREAKER_LABELS: Record<string, string> = {
+const TIEBREAKER_LABELS: Record<string, string> = {
   points: "Points",
   match_wins: "Match Wins",
   head_to_head: "Head-to-Head",

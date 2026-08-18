@@ -391,6 +391,55 @@ function ItemPoolTile({
 }
 
 /**
+ * Popover open state plus group/search filtering, shared by the grid picker
+ * (multi-select) and the single-item combobox below: both filter the same
+ * `ItemOption[]` catalogue by group then by name, and both reset the filter
+ * back to "everything" once the popover closes so reopening starts fresh.
+ */
+function useItemFilterPopover(options: ItemOption[]) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState(ALL_GROUPS);
+
+  const groups = useMemo(() => groupOptionsByGroup(options), [options]);
+  const inGroup = useMemo(
+    () =>
+      groupFilter === ALL_GROUPS
+        ? options
+        : options.filter((option) => (option.group ?? UNGROUPED_GROUP) === groupFilter),
+    [options, groupFilter]
+  );
+  // Filtered here, not left to a component's default scorer: `matchesItemName`
+  // is the same fold the reserve picker and the veto room search use, so a
+  // query like a paper regulation's spelling lands the same map everywhere.
+  const visibleOptions = useMemo(
+    () => inGroup.filter((option) => matchesItemName(option.name, query)),
+    [inGroup, query]
+  );
+
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    // Reopening should start from the full catalogue, not the last search.
+    if (!next) {
+      setQuery("");
+      setGroupFilter(ALL_GROUPS);
+    }
+  };
+
+  return {
+    open,
+    setOpen,
+    onOpenChange,
+    query,
+    setQuery,
+    groupFilter,
+    setGroupFilter,
+    groups,
+    visibleOptions
+  };
+}
+
+/**
  * The catalogue, on demand: filter by group, search by name, art tiles to add
  * or remove, bulk actions scoped to what the filter and search show.
  *
@@ -436,25 +485,9 @@ function ItemGridPicker({
   onClearVisible: (itemIds: number[]) => void;
 }) {
   const searchId = useId();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [groupFilter, setGroupFilter] = useState(ALL_GROUPS);
+  const { open, onOpenChange, query, setQuery, groupFilter, setGroupFilter, groups, visibleOptions } =
+    useItemFilterPopover(options);
   const selectionOrder = new Map(selectedIds.map((id, index) => [id, index]));
-  const groups = useMemo(() => groupOptionsByGroup(options), [options]);
-  const inGroup = useMemo(
-    () =>
-      groupFilter === ALL_GROUPS
-        ? options
-        : options.filter((option) => (option.group ?? UNGROUPED_GROUP) === groupFilter),
-    [options, groupFilter]
-  );
-  // Filtered here, not left to a component's default scorer: `matchesItemName`
-  // is the same fold the reserve picker and the veto room search use, so a
-  // query like a paper regulation's spelling lands the same map everywhere.
-  const visibleOptions = useMemo(
-    () => inGroup.filter((option) => matchesItemName(option.name, query)),
-    [inGroup, query]
-  );
   const visibleIds = useMemo(() => visibleOptions.map((option) => option.id), [visibleOptions]);
   const visibleSelectedCount = visibleIds.reduce(
     (total, id) => (selectionOrder.has(id) ? total + 1 : total),
@@ -462,17 +495,7 @@ function ItemGridPicker({
   );
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        // Reopening should start from the full catalogue, not the last search.
-        if (!next) {
-          setQuery("");
-          setGroupFilter(ALL_GROUPS);
-        }
-      }}
-    >
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -595,22 +618,18 @@ function ItemSingleSelect({
   disabled: boolean;
   onChange: (itemId: number | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [groupFilter, setGroupFilter] = useState(ALL_GROUPS);
+  const {
+    open,
+    setOpen,
+    onOpenChange,
+    query,
+    setQuery,
+    groupFilter,
+    setGroupFilter,
+    groups,
+    visibleOptions
+  } = useItemFilterPopover(options);
   const selected = options.find((option) => option.id === value) ?? null;
-  const groups = useMemo(() => groupOptionsByGroup(options), [options]);
-  const inGroup = useMemo(
-    () =>
-      groupFilter === ALL_GROUPS
-        ? options
-        : options.filter((option) => (option.group ?? UNGROUPED_GROUP) === groupFilter),
-    [options, groupFilter]
-  );
-  const visibleOptions = useMemo(
-    () => inGroup.filter((option) => matchesItemName(option.name, query)),
-    [inGroup, query]
-  );
 
   const choose = (itemId: number | null) => {
     onChange(itemId);
@@ -618,16 +637,7 @@ function ItemSingleSelect({
   };
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setQuery("");
-          setGroupFilter(ALL_GROUPS);
-        }
-      }}
-    >
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
           type="button"

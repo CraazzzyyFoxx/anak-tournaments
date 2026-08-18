@@ -19,7 +19,7 @@ import type { PlayerRoleTint } from "@/lib/player-role";
 /** Role hue for the profile wash — maps to the `--aqt-{role}` role tokens.
  *  This is a PLAYER-role tint (Tank/Damage/Support/Flex), not a hero class; the
  *  name is historical, so it stays an alias over the one tint vocabulary. */
-export type HeroRoleTint = PlayerRoleTint;
+type HeroRoleTint = PlayerRoleTint;
 
 interface HeroFrameProps {
   children: React.ReactNode;

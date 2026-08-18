@@ -2,51 +2,29 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from enum import Enum
 from typing import Any, Protocol
 
-LEGACY_HITSCAN_SUB_ROLE = "hitscan"
-LEGACY_PROJECTILE_SUB_ROLE = "projectile"
-LEGACY_MAIN_HEAL_SUB_ROLE = "main_heal"
-LEGACY_LIGHT_HEAL_SUB_ROLE = "light_heal"
+from shared.core.enums import HeroClass
 
-LEGACY_PRIMARY_SUB_ROLES = frozenset({LEGACY_HITSCAN_SUB_ROLE, LEGACY_MAIN_HEAL_SUB_ROLE})
-LEGACY_SECONDARY_SUB_ROLES = frozenset({LEGACY_PROJECTILE_SUB_ROLE, LEGACY_LIGHT_HEAL_SUB_ROLE})
-
-_DAMAGE_ROLE_ALIASES = frozenset({"damage", "dps"})
-_SUPPORT_ROLE_ALIASES = frozenset({"support", "heal", "healer"})
-
-# Registration uses the short codes tank/dps/support, while the canonical
-# PlayerSubRole catalog (and HeroClass) uses tank/damage/support. These maps
-# bridge the two so the catalog can stay the single source of truth.
-REGISTRATION_ROLE_CODES: tuple[str, ...] = ("tank", "dps", "support")
-REGISTRATION_TO_CANONICAL: dict[str, str] = {
-    "tank": "tank",
-    "dps": "damage",
-    "support": "support",
-}
-_CANONICAL_TO_REGISTRATION: dict[str, str] = {
-    "tank": "tank",
-    "damage": "dps",
-    "support": "support",
-}
+# Registration uses the short codes tank/dps/support (``HeroClass.slot_code``),
+# while the canonical PlayerSubRole catalog uses tank/damage/support
+# (``HeroClass.name``). ``HeroClass`` is the single source of truth for both;
+# these are just its 3 non-flex members projected into each vocabulary.
+_REGISTRATION_ROLES: tuple[HeroClass, ...] = (HeroClass.tank, HeroClass.damage, HeroClass.support)
+REGISTRATION_ROLE_CODES: tuple[str, ...] = tuple(role.slot_code for role in _REGISTRATION_ROLES)
+REGISTRATION_TO_CANONICAL: dict[str, str] = {role.slot_code: role.name for role in _REGISTRATION_ROLES}
+_CANONICAL_TO_REGISTRATION: dict[str, str] = {role.name: role.slot_code for role in _REGISTRATION_ROLES}
 
 
 def normalize_role(role: Any) -> str | None:
     if role is None:
         return None
 
-    if isinstance(role, Enum):
-        role = role.value
+    parsed = HeroClass.parse(role)
+    if parsed is not None:
+        return parsed.name
 
     value = str(role).strip().lower()
-    if value in _DAMAGE_ROLE_ALIASES:
-        return "damage"
-    if value in _SUPPORT_ROLE_ALIASES:
-        return "support"
-    if value == "tank":
-        return "tank"
-
     return value or None
 
 
@@ -56,60 +34,6 @@ def normalize_sub_role(sub_role: str | None) -> str | None:
 
     normalized = re.sub(r"\s+", "_", sub_role.strip().lower())
     return normalized or None
-
-
-def legacy_flags_to_sub_role(
-    role: Any,
-    *,
-    primary: bool | None,
-    secondary: bool | None,
-) -> str | None:
-    role_key = normalize_role(role)
-    is_primary = bool(primary)
-    is_secondary = bool(secondary)
-
-    if is_primary == is_secondary:
-        return None
-
-    if role_key == "damage":
-        return LEGACY_HITSCAN_SUB_ROLE if is_primary else LEGACY_PROJECTILE_SUB_ROLE
-    if role_key == "support":
-        return LEGACY_MAIN_HEAL_SUB_ROLE if is_primary else LEGACY_LIGHT_HEAL_SUB_ROLE
-
-    return None
-
-
-def sub_role_to_legacy_flags(role: Any, sub_role: str | None) -> tuple[bool, bool]:
-    role_key = normalize_role(role)
-    sub_role_key = normalize_sub_role(sub_role)
-
-    if role_key == "damage":
-        if sub_role_key == LEGACY_HITSCAN_SUB_ROLE:
-            return (True, False)
-        if sub_role_key == LEGACY_PROJECTILE_SUB_ROLE:
-            return (False, True)
-
-    if role_key == "support":
-        if sub_role_key == LEGACY_MAIN_HEAL_SUB_ROLE:
-            return (True, False)
-        if sub_role_key == LEGACY_LIGHT_HEAL_SUB_ROLE:
-            return (False, True)
-
-    return (False, False)
-
-
-def resolve_sub_role(
-    role: Any,
-    *,
-    sub_role: str | None,
-    primary: bool | None,
-    secondary: bool | None,
-) -> str | None:
-    return normalize_sub_role(sub_role) or legacy_flags_to_sub_role(
-        role,
-        primary=primary,
-        secondary=secondary,
-    )
 
 
 def registration_to_canonical_role(role: Any) -> str | None:

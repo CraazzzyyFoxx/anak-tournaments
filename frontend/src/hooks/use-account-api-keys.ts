@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AccountApiKey, AccountApiKeyCreateResponse } from "@/types/auth.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 
-export const ACCOUNT_API_KEYS_QUERY_KEY = ["account", "api-keys"] as const;
+const ACCOUNT_API_KEYS_QUERY_KEY = ["account", "api-keys"] as const;
 
 export interface AccountApiKeyStatusCounts {
   total: number;

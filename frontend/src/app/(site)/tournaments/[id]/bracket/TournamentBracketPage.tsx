@@ -36,10 +36,12 @@ import {
   isStageVisibleToViewer
 } from "./bracketData";
 import { buildLiveTeamStreams } from "./bracketLiveStreams";
+// Re-exported purely so TournamentBracketPage.test.ts's dynamic-import probe
+// (`bracketModule.getBracketRefetchInterval?.(status)`) can assert the
+// lifecycle polling policy without reaching into bracketData.ts directly.
+export { getBracketRefetchInterval } from "./bracketData";
 
 const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
-
-export { getBracketRefetchInterval } from "./bracketData";
 
 interface TournamentBracketViewProps {
   tournament: Tournament;

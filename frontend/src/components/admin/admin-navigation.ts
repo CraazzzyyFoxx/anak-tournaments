@@ -278,7 +278,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
   },
 ];
 
-export const adminRoutePermissions: Array<{
+const adminRoutePermissions: Array<{
   prefix: string;
   permissions: AppPermission[];
   superuserOnly?: boolean;

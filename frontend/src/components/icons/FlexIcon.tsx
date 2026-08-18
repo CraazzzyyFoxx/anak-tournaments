@@ -1,6 +1,6 @@
 import React from "react";
 
-export interface FlexIconProps {
+interface FlexIconProps {
   width?: number;
   height?: number;
   color?: string;

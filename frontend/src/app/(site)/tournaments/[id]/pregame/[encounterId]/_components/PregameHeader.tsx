@@ -29,7 +29,7 @@ export interface PregamePhaseStatus {
 }
 
 /** Where one map of the series stands, in the loop's own terms. */
-export type PregameSeriesMapState =
+type PregameSeriesMapState =
   /** Played and reconciled — it has a confirmed score. */
   | "played"
   /** The map the loop is waiting on right now: played or being played, unreported. */

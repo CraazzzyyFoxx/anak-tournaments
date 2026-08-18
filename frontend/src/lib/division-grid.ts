@@ -66,7 +66,7 @@ export function sortTiersDescending(grid: DivisionGridLike): DivisionTier[] {
   return [...grid.tiers].sort((left, right) => right.rank_min - left.rank_min);
 }
 
-export function getTierByDivision(
+function getTierByDivision(
   grid: DivisionGridLike,
   division: number | null | undefined,
 ): DivisionTier | null {

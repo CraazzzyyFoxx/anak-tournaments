@@ -37,13 +37,18 @@ export interface BalancerRegistrationColumnDefinition {
   align?: "left" | "center" | "right";
 }
 
-function formatTimestamp(dateString: string | null | undefined): string | null {
+function parseValidDate(dateString: string | null | undefined): Date | null {
   if (!dateString) {
     return null;
   }
 
   const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) {
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatTimestamp(dateString: string | null | undefined): string | null {
+  const date = parseValidDate(dateString);
+  if (!date) {
     return null;
   }
 
@@ -56,12 +61,8 @@ function formatTimestamp(dateString: string | null | undefined): string | null {
 }
 
 function formatFullTimestamp(dateString: string | null | undefined): string | null {
-  if (!dateString) {
-    return null;
-  }
-
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseValidDate(dateString);
+  if (!date) {
     return null;
   }
 

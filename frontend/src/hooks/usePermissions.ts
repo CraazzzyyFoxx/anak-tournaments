@@ -77,7 +77,7 @@ export type PermissionProfile = {
   }>;
 };
 
-export function isAdminPanelRole(role: string): boolean {
+function isAdminPanelRole(role: string): boolean {
   return role === "admin" || role === "tournament_organizer" || role === "moderator";
 }
 

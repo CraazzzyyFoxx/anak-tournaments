@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 /** Trailing row that resets the selection. Wording differs per domain. */
-export interface AdminComboboxClearAction {
+interface AdminComboboxClearAction {
   /** Row label, e.g. "Clear selection" or "Set as TBD". */
   label: string;
   /** cmdk search value for the row; keep it unique inside the list. */

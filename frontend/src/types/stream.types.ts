@@ -20,13 +20,13 @@ export type StreamPlatform = "twitch" | "youtube" | "other";
  * mark which slots have someone on air, so it must be the tournament team id
  * that `Encounter.home_team_id`/`away_team_id` carry.
  */
-export interface StreamTeam {
+interface StreamTeam {
   id: number;
   name: string;
 }
 
 /** The player behind a participant stream. `null` for an official broadcast. */
-export interface StreamStreamer {
+interface StreamStreamer {
   id: number;
   name: string;
   avatar_url: string | null;

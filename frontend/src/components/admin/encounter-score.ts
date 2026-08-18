@@ -36,12 +36,6 @@ export function clampScoreValue(value: string | number): number {
   return Math.max(0, Math.floor(parsed));
 }
 
-export function getMatchingScorePreset(homeScore: number, awayScore: number) {
-  return GROUP_STAGE_SCORE_PRESETS.find(
-    (preset) => preset.homeScore === homeScore && preset.awayScore === awayScore
-  );
-}
-
 export function isGroupStageScoreContext(stage?: ScoreStageLike, stageItem?: ScoreStageItemLike) {
   return (
     stage?.stage_type === "round_robin" ||

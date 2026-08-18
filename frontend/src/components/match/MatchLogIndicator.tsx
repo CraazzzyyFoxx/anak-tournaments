@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-export interface MatchLogRef {
+interface MatchLogRef {
   matchId: number;
   label?: string;
 }
@@ -22,7 +22,7 @@ interface MatchLogIndicatorProps {
 }
 
 /** Direct, browser-navigable download URL for a match's parsed log. */
-export const matchLogDownloadUrl = (matchId: number) => `/api/v1/matches/${matchId}/log`;
+const matchLogDownloadUrl = (matchId: number) => `/api/v1/matches/${matchId}/log`;
 
 const BASE =
   "inline-flex h-7 w-7 items-center justify-center rounded-[7px] border transition-colors " +

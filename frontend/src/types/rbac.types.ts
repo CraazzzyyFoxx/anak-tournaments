@@ -38,7 +38,7 @@ export interface AuthAdminUser {
   updated_at?: string | null;
 }
 
-export interface AuthAdminLinkedPlayer {
+interface AuthAdminLinkedPlayer {
   player_id: number;
   player_name: string;
   is_primary: boolean;

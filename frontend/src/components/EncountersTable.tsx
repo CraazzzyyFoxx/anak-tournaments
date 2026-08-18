@@ -75,7 +75,7 @@ export type EncounterColumnKey =
   | "when"
   | "logs";
 
-export const DEFAULT_ENCOUNTER_COLUMNS: readonly EncounterColumnKey[] = [
+const DEFAULT_ENCOUNTER_COLUMNS: readonly EncounterColumnKey[] = [
   "matchup",
   "tournament",
   "score",

@@ -2,11 +2,11 @@
 
 import { useId, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import {
   CatalogToolbarActions,
   entityFormError,
@@ -14,24 +14,11 @@ import {
 } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
 
 import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
-import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
 // Key order matters: `hasUnsavedChanges` compares JSON, so the edit form below
@@ -120,60 +107,18 @@ export default function GamemodesAdminPage() {
       accessorKey: "name",
       header: "Name",
     },
-    {
-      id: "aliases",
-      header: "Aliases",
-      size: 96,
-      enableSorting: false,
-      cell: ({ row }) => {
-        const count = row.original.aliases?.length ?? 0;
-        return count > 0 ? (
-          <Badge variant="secondary">{count}</Badge>
-        ) : (
-          <span className="text-sm text-muted-foreground">—</span>
-        );
+    createAliasesColumn<Gamemode>((gamemode) => gamemode.aliases),
+    createEntityActionsColumn<Gamemode>({
+      entityLabel: "gamemode",
+      getName: (gamemode) => gamemode.name,
+      isSuperuser,
+      onEdit: (gamemode) => {
+        updateMutation.reset();
+        setEditingGamemode(gamemode);
+        setFormData(getGamemodeForm(gamemode));
       },
-    },
-    {
-      id: "actions",
-      size: 50,
-      cell: ({ row }) => {
-        const gamemode = row.original;
-        if (!isSuperuser) {
-          return null;
-        }
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label={`Open actions for ${gamemode.name}`} variant="ghost" size="icon">
-                <MoreHorizontal aria-hidden className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel className="truncate">{gamemode.name}</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  updateMutation.reset();
-                  setEditingGamemode(gamemode);
-                  setFormData(getGamemodeForm(gamemode));
-                }}
-              >
-                <Pencil aria-hidden className="mr-2 h-4 w-4" />
-                Edit gamemode
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => setDeletingGamemode(gamemode)}
-                className="text-destructive"
-              >
-                <Trash2 aria-hidden className="mr-2 h-4 w-4" />
-                Delete gamemode
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-           </DropdownMenu>
-         );
-      },
-    },
+      onDelete: (gamemode) => setDeletingGamemode(gamemode),
+    }),
   ];
 
   return (
@@ -238,31 +183,20 @@ export default function GamemodesAdminPage() {
         isDirty={isFormDirty}
       >
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor={nameFieldId}>Name *</Label>
-            <Input
-              id={nameFieldId}
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Gamemode name"
-              required
-            />
-          </div>
+          <CatalogNameField
+            id={nameFieldId}
+            value={formData.name}
+            onChange={(name) => setFormData({ ...formData, name })}
+            placeholder="Gamemode name"
+          />
 
-          <div className="space-y-2">
-            <Label htmlFor={aliasesFieldId}>Aliases</Label>
-            <Textarea
-              id={aliasesFieldId}
-              value={formatAliasesInput(formData.aliases ?? [])}
-              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
-              placeholder={"Контроль\nコントロール"}
-              rows={5}
-              className="font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              One alias per line — names as they appear in match logs.
-            </p>
-          </div>
+          <CatalogAliasesField
+            id={aliasesFieldId}
+            aliases={formData.aliases}
+            onChange={(aliases) => setFormData({ ...formData, aliases })}
+            placeholder={"Контроль\nコントロール"}
+            helperText="One alias per line — names as they appear in match logs."
+          />
         </div>
       </EntityFormDialog>
 

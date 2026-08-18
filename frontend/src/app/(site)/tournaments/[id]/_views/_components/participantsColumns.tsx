@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { normalizePlayerRole, playerRoleSlotCode, type PlayerRoleSlotCode } from "@/lib/player-role";
 import { cn } from "@/lib/utils";
 import type {
   Registration,
@@ -80,7 +81,7 @@ const ROLE_TO_ICON: Record<string, string> = {
   flex: "Flex",
 };
 
-function getRoleLabel(role: string, t: Translator): string {
+export function getRoleLabel(role: string, t: Translator): string {
   switch (role.toLowerCase()) {
     case "tank":
       return t("common.roles.tank");
@@ -92,31 +93,6 @@ function getRoleLabel(role: string, t: Translator): string {
       return t("common.roles.flex");
     default:
       return role.charAt(0).toUpperCase() + role.slice(1);
-  }
-}
-
-function getSubroleShortLabel(subrole: string, t: Translator): string {
-  switch (subrole.toLowerCase()) {
-    case "hitscan":
-      return t("common.subrolesShort.hitscan");
-    case "projectile":
-      return t("common.subrolesShort.projectile");
-    case "main_heal":
-      return t("common.subrolesShort.main_heal");
-    case "light_heal":
-      return t("common.subrolesShort.light_heal");
-    case "main_tank":
-      return t("common.subrolesShort.main_tank");
-    case "off_tank":
-      return t("common.subrolesShort.off_tank");
-    case "flanker":
-      return t("common.subrolesShort.flanker");
-    case "flex_dps":
-      return t("common.subrolesShort.flex_dps");
-    case "flex_support":
-      return t("common.subrolesShort.flex_support");
-    default:
-      return subrole.toUpperCase();
   }
 }
 
@@ -139,7 +115,6 @@ function RolesCell({
       {roles.map((r) => {
         const roleLabel = getRoleLabel(r.role, t);
         const subroleLabel = r.subrole ? formatSubroleSlug(r.subrole) : null;
-        const subroleShortLabel = r.subrole ? getSubroleShortLabel(r.subrole, t) : null;
         const division = r.rank_value != null ? resolveDivisionFromRank(resolvedGrid, r.rank_value) : null;
 
         return (
@@ -168,9 +143,9 @@ function RolesCell({
                 size={22}
               />
             </span>
-            {subroleShortLabel ? (
+            {subroleLabel ? (
               <span className="text-center text-[8px] font-semibold leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)] uppercase">
-                {subroleShortLabel}
+                {subroleLabel}
               </span>
             ) : null}
             {showRanks && division != null ? (
@@ -188,12 +163,9 @@ function RolesCell({
   );
 }
 
-function getCanonicalRole(hero: Hero): "tank" | "dps" | "support" {
-  const r = (hero.type || hero.role || "").toLowerCase();
-  if (r === "tank") return "tank";
-  if (r === "damage" || r === "dps") return "dps";
-  if (r === "support") return "support";
-  return "support"; // fallback
+function getCanonicalRole(hero: Hero): Exclude<PlayerRoleSlotCode, "flex"> {
+  const slotCode = playerRoleSlotCode(normalizePlayerRole(hero.type || hero.role));
+  return slotCode === "flex" ? "dps" : slotCode;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -272,7 +244,7 @@ function TopHeroesCell({
   }, [sortedRoles, heroesMap]);
 
   const heroesByRole = useMemo(() => {
-    const groups: Record<"tank" | "dps" | "support", Hero[]> = {
+    const groups: Record<Exclude<PlayerRoleSlotCode, "flex">, Hero[]> = {
       tank: [],
       dps: [],
       support: [],

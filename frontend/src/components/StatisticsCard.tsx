@@ -4,7 +4,7 @@ import React from "react";
 import type { ReactNode } from "react";
 import { useFormatter } from "next-intl";
 
-export interface StatisticsCardProps {
+interface StatisticsCardProps {
   name: string;
   value: number | string;
   icon?: ReactNode;

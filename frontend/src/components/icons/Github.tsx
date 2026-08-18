@@ -1,6 +1,6 @@
 import React from "react";
 
-export interface GitHubIconProps {
+interface GitHubIconProps {
   width?: number;
   height?: number;
   className?: string;

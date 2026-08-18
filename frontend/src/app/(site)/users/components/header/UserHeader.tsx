@@ -16,7 +16,7 @@ import ProfileToolbar from "@/app/(site)/users/components/header/ProfileToolbar"
 import userService from "@/services/user.service";
 import { HeroFrame } from "@/components/site/PageHero";
 
-export interface UserHeaderProps {
+interface UserHeaderProps {
   profile: UserProfile;
   user: User;
 }

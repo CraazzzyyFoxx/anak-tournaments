@@ -64,7 +64,7 @@ export interface Encounter {
   tournament_group?: TournamentGroup | null;
 }
 
-export interface CaptainMapCode {
+interface CaptainMapCode {
   id: number;
   map_index: number;
   map_id: number | null;
@@ -165,7 +165,7 @@ export interface MatchWithStats extends Match {
   away_team: TeamWithStats;
 }
 
-export type EncounterScope = "all" | "my_team";
+type EncounterScope = "all" | "my_team";
 
 export interface EncounterFilters {
   tournament_id?: number | null;
@@ -188,7 +188,7 @@ export interface EncounterSavedView {
   sort_order: number;
 }
 
-export interface EncounterKpis {
+interface EncounterKpis {
   total_encounters: number;
   recent_count: number;
   with_logs_count: number;
@@ -198,7 +198,7 @@ export interface EncounterKpis {
   upcoming_count: number;
 }
 
-export interface EncounterHistogramBucket {
+interface EncounterHistogramBucket {
   label: string;
   start: number;
   end: number;
@@ -217,12 +217,12 @@ export interface EncounterStageSplit {
   pct: number;
 }
 
-export interface EncounterMapMetric {
+interface EncounterMapMetric {
   name: string;
   count: number;
 }
 
-export interface EncounterPulse {
+interface EncounterPulse {
   avg_series_seconds: number | null;
   completed_series_count: number;
   sweep_rate: number;
@@ -232,14 +232,14 @@ export interface EncounterPulse {
   most_decisive_map: string | null;
 }
 
-export interface EncounterSideBalance {
+interface EncounterSideBalance {
   home_wins: number;
   away_wins: number;
   home_win_pct: number;
   away_win_pct: number;
 }
 
-export interface EncounterFeatured {
+interface EncounterFeatured {
   closest: Encounter[];
   upcoming: Encounter[];
   live: Encounter[];

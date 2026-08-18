@@ -83,6 +83,11 @@ import type {
   AchievementRuleUpdateInput,
   AchievementScope
 } from "@/types/admin.types";
+import {
+  ACHIEVEMENT_IMAGE_ACCEPT,
+  ACHIEVEMENT_IMAGE_PREVIEW_CLASS,
+  MAX_ACHIEVEMENT_IMAGE_BYTES
+} from "@/lib/achievement-image";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const CATEGORIES: AchievementCategory[] = [
@@ -166,6 +171,23 @@ function SortableHead({
       </button>
     </TableHead>
   );
+}
+
+function buildAchievementFormData(rule: AchievementRule): AchievementRuleUpdateInput {
+  return {
+    name: rule.name,
+    description_ru: rule.description_ru,
+    description_en: rule.description_en,
+    image_url: rule.image_url,
+    hero_id: rule.hero_id,
+    category: rule.category,
+    scope: rule.scope,
+    grain: rule.grain,
+    condition_tree: rule.condition_tree,
+    depends_on: rule.depends_on,
+    enabled: rule.enabled,
+    min_tournament_id: rule.min_tournament_id
+  };
 }
 
 export default function AchievementDetailPage() {
@@ -368,39 +390,13 @@ export default function AchievementDetailPage() {
   // --- Helpers ---
   const openEditDialog = () => {
     if (!rule) return;
-    setFormData({
-      name: rule.name,
-      description_ru: rule.description_ru,
-      description_en: rule.description_en,
-      image_url: rule.image_url,
-      hero_id: rule.hero_id,
-      category: rule.category,
-      scope: rule.scope,
-      grain: rule.grain,
-      condition_tree: rule.condition_tree,
-      depends_on: rule.depends_on,
-      enabled: rule.enabled,
-      min_tournament_id: rule.min_tournament_id
-    });
+    setFormData(buildAchievementFormData(rule));
     updateMutation.reset();
     setEditDialogOpen(true);
   };
 
   const formInitial = rule
-    ? {
-        name: rule.name,
-        description_ru: rule.description_ru,
-        description_en: rule.description_en,
-        image_url: rule.image_url,
-        hero_id: rule.hero_id,
-        category: rule.category,
-        scope: rule.scope,
-        grain: rule.grain,
-        condition_tree: rule.condition_tree,
-        depends_on: rule.depends_on,
-        enabled: rule.enabled,
-        min_tournament_id: rule.min_tournament_id
-      }
+    ? buildAchievementFormData(rule)
     : {};
   const isFormDirty = editDialogOpen && hasUnsavedChanges(formData, formInitial);
 
@@ -921,19 +917,19 @@ export default function AchievementDetailPage() {
                   <img
                     src={imagePreview ?? formData.image_url ?? ""}
                     alt="Achievement"
-                    className="h-16 w-16 rounded-lg object-cover border"
+                    className={ACHIEVEMENT_IMAGE_PREVIEW_CLASS}
                   />
                 )}
                 <div className="flex flex-col gap-2">
                   <input
                     ref={imageInputRef}
                     type="file"
-                    accept="image/webp,image/png,image/jpeg,image/gif"
+                    accept={ACHIEVEMENT_IMAGE_ACCEPT}
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 5 * 1024 * 1024) {
+                      if (file.size > MAX_ACHIEVEMENT_IMAGE_BYTES) {
                         alert("File too large (max 5 MB)");
                         return;
                       }

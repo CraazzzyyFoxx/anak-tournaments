@@ -50,25 +50,6 @@ function PrimaryAction({
     );
   }
 
-  if (status === "approved") {
-    const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
-    return (
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-8 px-2.5 text-xs"
-        onClick={() => onToggleBalancer(registration)}
-      >
-        {inBalancer ? (
-          <ShieldX className="mr-1.5 h-3.5 w-3.5" />
-        ) : (
-          <Check className="mr-1.5 h-3.5 w-3.5" />
-        )}
-        {inBalancer ? "Remove" : "Add"}
-      </Button>
-    );
-  }
-
   if (status === "withdrawn") {
     return (
       <Button
@@ -83,7 +64,7 @@ function PrimaryAction({
     );
   }
 
-  if (status_meta.kind === "custom") {
+  if (status === "approved" || status_meta.kind === "custom") {
     const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
     return (
       <Button

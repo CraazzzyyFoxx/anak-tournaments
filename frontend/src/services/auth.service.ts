@@ -2,7 +2,7 @@ import type { AuthUser, LinkedPlayer, OAuthProviderAvailability, OAuthProviderNa
 import { apiFetch } from "@/lib/api-fetch";
 import { parseApiError } from "@/lib/api-error";
 
-export type OAuthCallbackMode = "cookie" | "ticket";
+type OAuthCallbackMode = "cookie" | "ticket";
 
 type OAuthUrlResponse = {
   provider: string;
@@ -27,7 +27,7 @@ type OAuthUrlParams = {
   guardHash?: string;
 };
 
-export type OAuthLinkMode = "linked" | "link_ticket";
+type OAuthLinkMode = "linked" | "link_ticket";
 
 // Named-options object (Task 10R) rather than positional (…, csrf,
 // accessToken?) — a positional signature with two adjacent, easily

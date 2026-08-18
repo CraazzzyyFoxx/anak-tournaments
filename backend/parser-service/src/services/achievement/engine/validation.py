@@ -11,8 +11,6 @@ from .conditions import get_registered_types, validate_stat_name
 # Types accepted inside player sub-condition trees (team_players_match / captain_property).
 SUBCONDITION_ONLY_TYPES = {
     "player_role",
-    "player_flag",
-    "player_sub_role",
     "player_div",
     "is_newcomer",
 }
@@ -173,7 +171,7 @@ def _validate_node(
 
     registered = get_registered_types()
     # Also allow sub-condition types
-    all_valid = registered + ["player_role", "player_flag", "player_sub_role", "player_div"]
+    all_valid = registered + ["player_role", "player_div"]
     if ctype not in all_valid:
         errors.append(f"{path}: unknown condition type '{ctype}'")
         return
@@ -297,10 +295,6 @@ def _validate_leaf_params(
         pass  # scope/op/value optional with defaults
     elif ctype == "player_role":
         _require_keys(params, ["role"], errors, path)
-    elif ctype == "player_flag":
-        _require_keys(params, ["flag"], errors, path)
-    elif ctype == "player_sub_role":
-        _require_keys(params, ["sub_role"], errors, path)
     elif ctype == "player_div":
         _require_keys(params, ["op", "value"], errors, path)
 

@@ -14,7 +14,7 @@ import OverviewTopHeroesTable from "@/app/(site)/users/components/overview/Overv
 import OverviewAchievementsPreview from "@/app/(site)/users/components/overview/OverviewAchievementsPreview";
 import { getPlayerSlug } from "@/utils/player";
 
-export interface OverviewPageProps {
+interface OverviewPageProps {
   profile: UserProfile;
   user: User;
   tournamentId?: number;

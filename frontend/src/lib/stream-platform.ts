@@ -14,7 +14,7 @@ import type { StreamEntry, StreamPlatform } from "@/types/stream.types";
  * Platform of a stream URL, by host. Unparseable or unknown hosts are `"other"`
  * rather than an error — a link the organiser typed is still worth rendering.
  */
-export function detectStreamPlatform(url: string): StreamPlatform {
+function detectStreamPlatform(url: string): StreamPlatform {
   let hostname: string;
   try {
     hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
@@ -39,7 +39,7 @@ export function detectStreamPlatform(url: string): StreamPlatform {
  * `null` for anything that is not a `twitch.tv/<login>` page — including the
  * ones that look like a channel but are not (`/videos/…`, `/directory/…`).
  */
-export function extractTwitchChannel(url: string): string | null {
+function extractTwitchChannel(url: string): string | null {
   if (detectStreamPlatform(url) !== "twitch") {
     return null;
   }

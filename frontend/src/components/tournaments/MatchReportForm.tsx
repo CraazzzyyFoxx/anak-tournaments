@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import captainService, { type CaptainReportSubmitResult } from "@/services/captain.service";
 import mapService from "@/services/map.service";
 import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
+import { refreshEncounterViews } from "@/components/tournaments/refreshEncounterViews";
 import { buildMapCodeSlots } from "@/components/tournaments/matchReportSlots";
 import {
   DEFAULT_MATCH_REPORT_BUILT_INS,
@@ -284,16 +285,6 @@ export function MatchReportForm({
     [slots, homeScore, awayScore]
   );
 
-  const refreshEncounterViews = async () => {
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: ["encounters"] }),
-      qc.invalidateQueries({ queryKey: ["standings", encounter.tournament_id] }),
-      qc.invalidateQueries({ queryKey: ["tournament"] }),
-      qc.invalidateQueries({ queryKey: ["encounter"] }),
-      qc.invalidateQueries({ queryKey: ["bracket"] })
-    ]);
-  };
-
   // One pass yields both the per-field messages (for aria-describedby) and the
   // single reason the submit button is disabled, so the two can never disagree.
   const validation = useMemo(() => {
@@ -381,7 +372,7 @@ export function MatchReportForm({
       } else {
         notify.success(t("matchReport.submittedForConfirmation"));
       }
-      await refreshEncounterViews();
+      await refreshEncounterViews(qc, encounter.tournament_id);
       onSubmitted();
     },
     onError: async (error) => {
@@ -391,7 +382,7 @@ export function MatchReportForm({
         });
         // Data was stale (result got confirmed after this form opened); refresh
         // so the report action disappears, then hand back to the shell.
-        await refreshEncounterViews();
+        await refreshEncounterViews(qc, encounter.tournament_id);
         onSubmitted();
         return;
       }

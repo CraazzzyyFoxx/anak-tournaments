@@ -193,28 +193,6 @@
       "support": "Саппорт",
       "flex": "Флекс"
     },
-    "subroles": {
-      "hitscan": "Хитскан",
-      "projectile": "Проджектайл",
-      "main_heal": "Мейн Хил",
-      "light_heal": "Лайт Хил",
-      "main_tank": "Мейн Танк",
-      "off_tank": "Офф Танк",
-      "flanker": "Фланкер",
-      "flex_dps": "Флекс Дамаг",
-      "flex_support": "Флекс Саппорт"
-    },
-    "subrolesShort": {
-      "hitscan": "ХС",
-      "projectile": "ПРОДЖ",
-      "main_heal": "МХ",
-      "light_heal": "ЛХ",
-      "main_tank": "МТ",
-      "off_tank": "ОТ",
-      "flanker": "ФЛК",
-      "flex_dps": "ФД",
-      "flex_support": "ФС"
-    },
     "clearFilters": "Сбросить фильтры",
     "now": "Сейчас",
     "unassignedStage": "Без этапа",

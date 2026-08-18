@@ -29,4 +29,3 @@ export function useOAuthProviders() {
   });
 }
 
-export { OAUTH_PROVIDERS_QUERY_KEY };

@@ -55,7 +55,7 @@ export type SubroleCatalog = Record<string, SubroleOption[]>;
 export type SubscriptionOutcome = "satisfied" | "refused" | "undetermined";
 
 /** Tri-state verdict for one provider. `unknown` never blocks. */
-export type SubscriptionState = "active" | "inactive" | "unknown";
+type SubscriptionState = "active" | "inactive" | "unknown";
 
 export interface SubscriptionProviderVerdict {
   state: SubscriptionState;
@@ -116,7 +116,7 @@ export interface SubscriptionRoleTier {
 
 /** Redacted view of a stored challenge code: never the code, never its digest —
  *  a digest is still brute-forcible offline. */
-export interface SubscriptionCodeRead {
+interface SubscriptionCodeRead {
   tier_rank: number;
   tier_label?: string;
   expires_at?: string | null;
@@ -200,7 +200,7 @@ export interface RegistrationForm {
 
 export type RegistrationStatus = string;
 
-export type BalancerStatus = string;
+type BalancerStatus = string;
 
 export interface TournamentHistoryEntry {
   tournament_id: number;

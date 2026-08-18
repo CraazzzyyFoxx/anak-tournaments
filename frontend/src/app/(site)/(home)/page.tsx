@@ -6,6 +6,7 @@ import { BarChart3, Calendar, Plus, Trophy, Users } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
+import { LiveUpcomingBadge, EventsSkeleton } from "@/components/site/LiveEventsWidgets";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { PlatformStatsGrid } from "@/components/stats/PlatformStatsGrid";
@@ -25,6 +26,7 @@ import {
 } from "@/lib/tournament-status";
 import type { Tournament } from "@/types/tournament.types";
 import type { Workspace } from "@/types/workspace.types";
+import type { PlayerStatistics } from "@/types/statistics.types";
 
 export const dynamic = "force-dynamic";
 
@@ -187,7 +189,6 @@ async function PageIntroSection({ tenantMode }: { tenantMode: boolean }) {
 type TournamentWithCount = Tournament & { registrations_count?: number };
 
 async function LiveEventsSection() {
-  const t = await getTranslations();
   const tenantMode = await getTenantMode();
   let activeTournaments: TournamentWithCount[] = [];
   let workspaceMap = new Map<number, Workspace>();
@@ -218,17 +219,12 @@ async function LiveEventsSection() {
 
   return (
     <div>
-      <div className="flex items-center gap-2.5 mb-4">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[color:var(--aqt-emerald)] opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-[color:var(--aqt-emerald)]" />
-        </span>
-        <span className="text-[11px] font-bold tracking-[0.14em] uppercase text-[color:var(--aqt-emerald)]">
-          {liveCount > 0 && t("statistics.liveCount", { count: liveCount })}
-          {liveCount > 0 && upcomingCount > 0 && " · "}
-          {upcomingCount > 0 && t("statistics.upcomingCount", { count: upcomingCount })}
-        </span>
-      </div>
+      <LiveUpcomingBadge
+        liveCount={liveCount}
+        upcomingCount={upcomingCount}
+        dotClassName="bg-[color:var(--aqt-emerald)]"
+        textClassName="text-[color:var(--aqt-emerald)]"
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {activeTournaments.map((tour) => (
@@ -371,19 +367,6 @@ async function NoEventsState() {
       <Button variant="outline" size="sm" asChild className="mt-1">
         <Link href="/tournaments">{t("home.browsePastTournaments")}</Link>
       </Button>
-    </div>
-  );
-}
-
-function EventsSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div
-          key={i}
-          className="h-44 rounded-xl border border-border/60 bg-card/30 animate-pulse"
-        />
-      ))}
     </div>
   );
 }
@@ -767,19 +750,22 @@ async function DivisionRingsCard() {
   );
 }
 
-async function ChampionsCard() {
-  const t = await getTranslations();
-  const skipWorkspace = !(await getTenantMode());
-  let top = null;
-  try {
-    const data = await statisticsService.getChampions({ skipWorkspace });
-    top = data.results.slice(0, 5);
-  } catch {
-    // Fail silently
-  }
-
-  const title = t("statistics.mostChampionships");
-
+/**
+ * Body shared by the champions and win-rate dashboard cards — title, error
+ * / empty state, then a ranked `LeaderboardRow` list. The two cards differ
+ * only in metric formatting and accent.
+ */
+function TopListCard({
+  title,
+  top,
+  valueFormatter,
+  accent,
+}: {
+  title: string;
+  top: PlayerStatistics[] | null;
+  valueFormatter: (value: number) => string;
+  accent: string;
+}) {
   if (!top) {
     return <DashCardState title={title} state="error" />;
   }
@@ -796,18 +782,39 @@ async function ChampionsCard() {
           key={player.id}
           rank={i + 1}
           name={player.name}
-          value={`${player.value}×`}
-          accent="var(--aqt-teal)"
+          value={valueFormatter(player.value)}
+          accent={accent}
         />
       ))}
     </>
   );
 }
 
+async function ChampionsCard() {
+  const t = await getTranslations();
+  const skipWorkspace = !(await getTenantMode());
+  let top: PlayerStatistics[] | null = null;
+  try {
+    const data = await statisticsService.getChampions({ skipWorkspace });
+    top = data.results.slice(0, 5);
+  } catch {
+    // Fail silently
+  }
+
+  return (
+    <TopListCard
+      title={t("statistics.mostChampionships")}
+      top={top}
+      valueFormatter={(value) => `${value}×`}
+      accent="var(--aqt-teal)"
+    />
+  );
+}
+
 async function TopWinRateCard() {
   const t = await getTranslations();
   const skipWorkspace = !(await getTenantMode());
-  let top = null;
+  let top: PlayerStatistics[] | null = null;
   try {
     const data = await statisticsService.getTopWinratePlayers({
       skipWorkspace,
@@ -817,28 +824,12 @@ async function TopWinRateCard() {
     // Fail silently
   }
 
-  const title = t("statistics.topWinRate");
-
-  if (!top) {
-    return <DashCardState title={title} state="error" />;
-  }
-
-  if (top.length === 0) {
-    return <DashCardState title={title} state="empty" />;
-  }
-
   return (
-    <>
-      <DashHeader>{title}</DashHeader>
-      {top.map((player, i) => (
-        <LeaderboardRow
-          key={player.id}
-          rank={i + 1}
-          name={player.name}
-          value={`${(player.value * 100).toFixed(1)}%`}
-          accent="var(--aqt-emerald)"
-        />
-      ))}
-    </>
+    <TopListCard
+      title={t("statistics.topWinRate")}
+      top={top}
+      valueFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+      accent="var(--aqt-emerald)"
+    />
   );
 }

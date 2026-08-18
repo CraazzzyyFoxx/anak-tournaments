@@ -12,7 +12,7 @@ import type { PlayerWithStats, TeamWithStats } from "@/types/team.types";
  * chart) from one declarative catalogue so formatting/labels stay consistent.
  */
 
-export type StatFormat = "int" | "float" | "thousands" | "percent" | "duration";
+type StatFormat = "int" | "float" | "thousands" | "percent" | "duration";
 
 export type StatGroup = "combat" | "damage" | "tanking" | "healing" | "utility" | "accuracy";
 

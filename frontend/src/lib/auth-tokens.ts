@@ -38,7 +38,7 @@ export function resetRefreshStateForTests(): void {
 // Runs in BOTH renderers, so both imports must stay dynamic: `next/headers` is
 // server-only (a static import poisons every client bundle that touches this
 // module) and `js-cookie` needs `document`, which does not exist on the server.
-export async function getTokenFromCookies(cookieName: string): Promise<string | undefined> {
+async function getTokenFromCookies(cookieName: string): Promise<string | undefined> {
   if (typeof window === "undefined") {
     try {
       const { cookies } = await import("next/headers");

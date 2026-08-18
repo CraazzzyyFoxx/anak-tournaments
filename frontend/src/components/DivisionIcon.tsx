@@ -7,7 +7,7 @@ import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionIconSrc, getDivisionLabel } from "@/lib/division-grid";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
-export interface DivisionIconProps {
+interface DivisionIconProps {
   division: number;
   tournamentGrid?: DivisionGridVersion | DivisionGrid | null;
   width?: number;

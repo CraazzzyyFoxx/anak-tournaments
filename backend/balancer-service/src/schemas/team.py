@@ -3,7 +3,8 @@ from uuid import uuid4
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field
 
-from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterSlotCode
+from shared.core.enums import HeroClass
+from shared.domain.roster_shape import RosterSlotCode
 
 __all__ = (
     "BalancerTeamMember",
@@ -80,18 +81,11 @@ class InternalBalancerTeam(BaseModel):
 
     @staticmethod
     def _map_role(role_name: str) -> RosterSlotCode | None:
-        normalized = role_name.strip().lower()
-        if normalized in {"damage", "dps"}:
-            return "dps"
-        if normalized == "support":
-            return "support"
-        if normalized == "tank":
-            return "tank"
-        if normalized == FLEX_SLOT_CODE:
-            # A flex slot names no role; say so instead of dropping it to None,
-            # which used to make the exported player look role-less by accident.
-            return "flex"
-        return None
+        # ``moo_core``/dual-write roster keys are the HeroClass display spelling
+        # ("Tank"/"Damage"/"Support"/"Flex") but tolerate any case; parse
+        # leniently and drop to the canonical draft/balancer wire code.
+        parsed = HeroClass.parse(role_name)
+        return parsed.slot_code if parsed else None
 
     def to_balancer_team(self) -> BalancerTeam:
         members: list[BalancerTeamMember] = []

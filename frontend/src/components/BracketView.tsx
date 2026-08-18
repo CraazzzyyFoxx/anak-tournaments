@@ -27,7 +27,8 @@ import {
   computeMatchNumbers as computeBracketMatchNumbers,
   computeSlotHints as computeBracketSlotHints,
   getDoubleEliminationFinalRounds as getBracketFinalRounds,
-  getRoundSectionMatchCapacity
+  getRoundSectionMatchCapacity,
+  type SlotHint
 } from "@/components/bracket-view.helpers";
 import {
   useBracketRoundLabel,
@@ -234,6 +235,37 @@ function addSequentialEdges(
   }
 }
 
+// Shared by the upper, lower, and grand-final columns: each pushes one round
+// header then lays out that round's matches at a fixed `CARD_HEIGHT +
+// MATCH_GAP_Y` pitch from a caller-computed `startY`. Only the header
+// placement/section and the vertical anchor differ between sections.
+function layoutBracketColumn(params: {
+  group: RoundGroup;
+  x: number;
+  headerY: number;
+  headerId: string;
+  headerSection: "upper" | "lower";
+  label: string;
+  startY: number;
+  slotHints: Map<number, SlotHint>;
+  matchNumbers: Map<number, number>;
+  headers: LayoutHeader[];
+  nodes: LayoutNode[];
+}) {
+  const { group, x, headerY, headerId, headerSection, label, startY, slotHints, matchNumbers, headers, nodes } =
+    params;
+
+  headers.push({ id: headerId, x, y: headerY, label, section: headerSection });
+
+  group.matches.forEach((match, matchIndex) => {
+    const hint = slotHints.get(match.id) ?? { home: null, away: null };
+    const n = matchNumbers.get(match.id) ?? 0;
+    nodes.push(
+      createNode(match, x, startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y), n, hint.home, hint.away)
+    );
+  });
+}
+
 function buildLayout(
   encounters: Encounter[],
   type: StageType,
@@ -308,20 +340,18 @@ function buildLayout(
         ? upperBasePitch / 2
         : Math.max(0, (upperSectionHeight - totalHeight) / 2));
 
-    headers.push({
-      id: `upper-header-${group.round}`,
+    layoutBracketColumn({
+      group,
       x,
-      y: upperHeaderY,
+      headerY: upperHeaderY,
+      headerId: `upper-header-${group.round}`,
+      headerSection: "upper",
       label: roundLabel(group.round, finalRoundList),
-      section: "upper"
-    });
-
-    group.matches.forEach((match, matchIndex) => {
-      const hint = slotHints.get(match.id) ?? { home: null, away: null };
-      const n = matchNumbers.get(match.id) ?? 0;
-      nodes.push(
-        createNode(match, x, startY + matchIndex * upperBasePitch, n, hint.home, hint.away)
-      );
+      startY,
+      slotHints,
+      matchNumbers,
+      headers,
+      nodes
     });
   });
 
@@ -343,27 +373,18 @@ function buildLayout(
       group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
     const startY = lowerTop + Math.max(0, (lowerSectionHeight - totalHeight) / 2);
 
-    headers.push({
-      id: `lower-header-${group.round}`,
+    layoutBracketColumn({
+      group,
       x,
-      y: lowerHeaderY,
+      headerY: lowerHeaderY,
+      headerId: `lower-header-${group.round}`,
+      headerSection: "lower",
       label: roundLabel(group.round, finalRoundList),
-      section: "lower"
-    });
-
-    group.matches.forEach((match, matchIndex) => {
-      const hint = slotHints.get(match.id) ?? { home: null, away: null };
-      const n = matchNumbers.get(match.id) ?? 0;
-      nodes.push(
-        createNode(
-          match,
-          x,
-          startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y),
-          n,
-          hint.home,
-          hint.away
-        )
-      );
+      startY,
+      slotHints,
+      matchNumbers,
+      headers,
+      nodes
     });
   });
 
@@ -380,27 +401,18 @@ function buildLayout(
       group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
     const startY = Math.max(0, (fullContentHeight - totalHeight) / 2);
 
-    headers.push({
-      id: `final-header-${group.round}`,
+    layoutBracketColumn({
+      group,
       x,
-      y: PADDING_Y,
+      headerY: PADDING_Y,
+      headerId: `final-header-${group.round}`,
+      headerSection: "upper",
       label: roundLabel(group.round, finalRoundList),
-      section: "upper"
-    });
-
-    group.matches.forEach((match, matchIndex) => {
-      const hint = slotHints.get(match.id) ?? { home: null, away: null };
-      const n = matchNumbers.get(match.id) ?? 0;
-      nodes.push(
-        createNode(
-          match,
-          x,
-          startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y),
-          n,
-          hint.home,
-          hint.away
-        )
-      );
+      startY,
+      slotHints,
+      matchNumbers,
+      headers,
+      nodes
     });
   });
 

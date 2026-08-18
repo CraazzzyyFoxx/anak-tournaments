@@ -13,9 +13,10 @@ import {
 } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { StatTileGridSkeleton } from "@/components/admin/StatTileGridSkeleton";
+import { formatInterval, formatRelative } from "@/components/admin/format-time";
 import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -29,32 +30,6 @@ const STREAM_KEY = "stream.collection";
 // rank/subscription dashboards in kind, not in value: their sweeps are minutes
 // apart, this one is seconds.
 const REFETCH_MS = 30_000;
-
-// ponytail: third copy of these two formatters (see `rank-shared.tsx` and
-// `subscription-shared.tsx`) — the admin's convention is one self-contained
-// `_components` folder per collector. Ceiling: a fourth copy. Upgrade path at
-// that point is one `lib/format-duration.ts` and three import swaps, not a
-// shared "admin utils" grab bag.
-
-/** Compact "5m ago" / "2h ago" style relative time; falls back to "—". */
-function formatRelative(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
-  if (diffSec < 60) return "just now";
-  const mins = Math.round(diffSec / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 48) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
-
-function formatInterval(seconds: number): string {
-  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
-  if (seconds % 60 === 0) return `${seconds / 60}m`;
-  return `${seconds}s`;
-}
 
 /**
  * Wording and tone per recorded tick outcome.
@@ -180,17 +155,7 @@ export function StreamHealthDashboard() {
   });
 
   if (healthQuery.isLoading || !health) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-9 w-full" />
-        <StatTileGrid>
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-        </StatTileGrid>
-      </div>
-    );
+    return <StatTileGridSkeleton />;
   }
 
   const diagnosis = diagnose(health);

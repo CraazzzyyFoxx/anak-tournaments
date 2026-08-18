@@ -1,6 +1,6 @@
 import React from "react";
 
-export interface DamageIconProps {
+interface DamageIconProps {
   width?: number;
   height?: number;
   color?: string;

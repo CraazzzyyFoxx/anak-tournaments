@@ -46,7 +46,7 @@ import type {
 } from "@/types/tournament.types";
 
 /** Candidates a slot needs to ban down to a survivor. Mirrors `pick_ban_session.SLOT_CANDIDATE_FLOOR`. */
-export const SLOT_CANDIDATE_FLOOR = 2;
+const SLOT_CANDIDATE_FLOOR = 2;
 
 /** The only `unique_attribute_per_side_per_round` value the engine implements. */
 const ROLE_ATTRIBUTE = "role";
@@ -80,13 +80,13 @@ export const PICK_BAN_NO_REPEAT_SCOPES: PickBanNoRepeatScope[] = [
 ];
 
 /** One slot as the editor holds it: no `position`, because list order is it. */
-export interface PickBanDraftSlot {
+interface PickBanDraftSlot {
   candidates: number[];
   reserveItemId: number | null;
 }
 
 /** Scope of the config a draft's values were prefilled from. */
-export interface PickBanInheritedScope {
+interface PickBanInheritedScope {
   stageId: number | null;
   round: number | null;
 }
@@ -388,7 +388,7 @@ export function stageRoundOptions(
 }
 
 /** How confident the editor is about the series length it is previewing. */
-export type SeriesLengthSource = "round" | "stage" | "variesByRound" | "variesByMatch";
+type SeriesLengthSource = "round" | "stage" | "variesByRound" | "variesByMatch";
 
 export interface SeriesLength {
   bestOf: number;

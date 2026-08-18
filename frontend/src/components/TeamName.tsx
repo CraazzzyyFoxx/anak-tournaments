@@ -11,7 +11,7 @@ export interface TeamNameInput {
   image_url?: string | null;
 }
 
-export type TeamNameSize = "xs" | "sm" | "md" | "lg" | "xl";
+type TeamNameSize = "xs" | "sm" | "md" | "lg" | "xl";
 
 const LOGO_PX: Record<TeamNameSize, number> = { xs: 16, sm: 20, md: 28, lg: 40, xl: 52 };
 const GAP_CLASS: Record<TeamNameSize, string> = {

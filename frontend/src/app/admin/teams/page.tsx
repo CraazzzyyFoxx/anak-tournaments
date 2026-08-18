@@ -11,14 +11,13 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TeamCreateDialog } from "@/components/admin/teams/TeamCreateDialog";
-import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam,
+  nextTournamentFilterQuery,
+  TournamentFilterSelect
+} from "@/components/admin/tournament-filter";
+import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
@@ -27,14 +26,6 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Team } from "@/types/team.types";
-
-const TOURNAMENT_QUERY_PARAM = "tournament";
-
-function parseTournamentQueryParam(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
 
 export default function TeamsPage() {
   const pathname = usePathname();
@@ -89,14 +80,7 @@ export default function TeamsPage() {
   };
 
   const handleTournamentFilterChange = (value: string) => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (value === "all") {
-      nextParams.delete(TOURNAMENT_QUERY_PARAM);
-    } else {
-      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
-    }
-
-    const query = nextParams.toString();
+    const query = nextTournamentFilterQuery(searchParams.toString(), TOURNAMENT_QUERY_PARAM, value);
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
@@ -220,22 +204,11 @@ export default function TeamsPage() {
             : "No teams yet. Pick a tournament to see or create its rosters."
         }
         actions={
-          <Select
-            value={selectedTournamentId?.toString() ?? "all"}
+          <TournamentFilterSelect
+            tournaments={tournamentsData?.results ?? []}
+            selectedTournamentId={selectedTournamentId}
             onValueChange={handleTournamentFilterChange}
-          >
-            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
-              <SelectValue placeholder="Filter by tournament" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All tournaments</SelectItem>
-              {tournamentsData?.results.map((tournament) => (
-                <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                  {tournament.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         }
         onRowClick={(row) => router.push(`/admin/teams/${row.original.id}`)}
       />

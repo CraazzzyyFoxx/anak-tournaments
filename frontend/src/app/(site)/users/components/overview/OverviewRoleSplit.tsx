@@ -5,13 +5,18 @@ import { UserProfile, UserRole, UserMapRead } from "@/types/user.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
-import { getOverall } from "@/app/(site)/users/components/heroes/utils";
+import { getOverall, statAvg10, toFraction, winrateColor } from "@/app/(site)/users/components/heroes/utils";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import HeroImage from "@/components/hero/HeroImage";
 import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
-import { PLAYER_ROLE_LABEL_KEY, playerRoleTint, type PlayerRoleTint } from "@/lib/player-role";
+import {
+  normalizeRole,
+  PLAYER_ROLE_LABEL_KEY,
+  playerRoleTint,
+  type AqtRoleKey,
+  type PlayerRoleTint
+} from "@/lib/player-role";
 
 // Canonical English role names used ONLY for icon selection in PlayerRoleIcon.
 const ROLE_ICON: Record<PlayerRoleTint, string> = {
@@ -54,24 +59,6 @@ const ROLE_ROW: Record<PlayerRoleTint, { background: string; borderColor: string
 const ROLE_ORDER: PlayerRoleTint[] = ["tank", "damage", "support", "flex"];
 
 const formatPercent = (value: number, digits = 1) => `${(value * 100).toFixed(digits)}%`;
-
-// Winrate can arrive as a 0..1 fraction or an already-scaled percent; normalize.
-const toFraction = (value: number | null | undefined): number | null => {
-  if (value == null || !Number.isFinite(value)) return null;
-  return value <= 1 ? value : value / 100;
-};
-
-// ≥60 good · 50–59 mid · <50 bad (design-book §1 winrate thresholds).
-const winrateColor = (pct: number): string => {
-  if (pct >= 60) return "var(--aqt-emerald)";
-  if (pct >= 50) return "var(--aqt-amber)";
-  return "var(--aqt-rose)";
-};
-
-const statAvg10 = (stats: HeroWithUserStats["stats"], name: LogStatsName): number | null => {
-  const stat = stats.find((s) => s.name === name);
-  return stat && Number.isFinite(stat.avg_10) ? stat.avg_10 : null;
-};
 
 interface Bucket {
   key: PlayerRoleTint;

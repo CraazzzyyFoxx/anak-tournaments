@@ -7,7 +7,7 @@ import { useCallback, useMemo, useReducer } from "react";
  * the same state serves desktop (read the top to decide what the sticky aside
  * shows) and mobile (use the stack as push-nav history with a back button).
  */
-export type SelectionView =
+type SelectionView =
   | { kind: "overview" }
   | { kind: "team"; teamId: number }
   | { kind: "player"; teamId: number; playerId: number };

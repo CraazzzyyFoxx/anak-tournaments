@@ -6,8 +6,8 @@ import { HeroWithUserStats } from "@/types/hero.types";
 import { UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
-import { formatSeconds, formatStatValue, getOverall } from "@/app/(site)/users/components/heroes/utils";
+import { normalizeRole, type AqtRoleKey } from "@/lib/player-role";
+import { formatSeconds, formatStatValue, getOverall, statAvg10, toFraction, winrateColor } from "@/app/(site)/users/components/heroes/utils";
 import HeroImage from "@/components/hero/HeroImage";
 import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -43,25 +43,6 @@ const ROLE_COLOR: Record<AqtRoleKey, string> = {
   tank: "var(--aqt-tank)",
   damage: "var(--aqt-damage)",
   support: "var(--aqt-support)"
-};
-
-const statAvg10 = (stats: HeroWithUserStats["stats"], name: LogStatsName): number | null => {
-  const stat = stats.find((s) => s.name === name);
-  return stat && Number.isFinite(stat.avg_10) ? stat.avg_10 : null;
-};
-
-// Winrate can arrive as a 0..1 fraction or an already-scaled percent; normalize
-// to a fraction the same way the Heroes tab does.
-const toFraction = (value: number | null | undefined): number | null => {
-  if (value == null || !Number.isFinite(value)) return null;
-  return value <= 1 ? value : value / 100;
-};
-
-// ≥60 good · 50–59 mid · <50 bad (design-book §1 winrate thresholds).
-const winrateColor = (pct: number): string => {
-  if (pct >= 60) return "var(--aqt-emerald)";
-  if (pct >= 50) return "var(--aqt-amber)";
-  return "var(--aqt-rose)";
 };
 
 interface Row {

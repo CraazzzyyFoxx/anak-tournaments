@@ -20,6 +20,19 @@ import type {
   DiscordGuildInfo,
   DiscordRolesResponse
 } from "@/types/discord.types";
+
+type DivisionGridTierInput = {
+  id?: number;
+  slug: string;
+  number: number;
+  name: string;
+  sort_order: number;
+  rank_min: number;
+  rank_max: number | null;
+  icon_url: string;
+  ow_rank_min: number | null;
+  ow_rank_max: number | null;
+};
 export default class workspaceService {
   static async getAll(): Promise<Workspace[]> {
     return apiFetch("/api/v1/workspaces").then((r) => r.json());
@@ -245,18 +258,7 @@ export default class workspaceService {
     gridId: number,
     data: {
       label: string;
-      tiers: Array<{
-        id?: number;
-        slug: string;
-        number: number;
-        name: string;
-        sort_order: number;
-        rank_min: number;
-        rank_max: number | null;
-        icon_url: string;
-        ow_rank_min: number | null;
-        ow_rank_max: number | null;
-      }>;
+      tiers: DivisionGridTierInput[];
     }
   ): Promise<DivisionGridVersion> {
     return apiFetch(`/api/v1/division-grids/${gridId}/versions`, {
@@ -306,18 +308,7 @@ export default class workspaceService {
     versionId: number,
     data: {
       label?: string;
-      tiers?: Array<{
-        id?: number;
-        slug: string;
-        number: number;
-        name: string;
-        sort_order: number;
-        rank_min: number;
-        rank_max: number | null;
-        icon_url: string;
-        ow_rank_min: number | null;
-        ow_rank_max: number | null;
-      }>;
+      tiers?: DivisionGridTierInput[];
     }
   ): Promise<DivisionGridVersion> {
     return apiFetch(`/api/v1/division-grids/versions/${versionId}`, {

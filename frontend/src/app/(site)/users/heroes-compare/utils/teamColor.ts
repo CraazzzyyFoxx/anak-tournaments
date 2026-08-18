@@ -20,7 +20,7 @@ const hashString = (value: string): number => {
 };
 
 /** Stable hue (0–359) for a team key (name preferred, id as fallback). */
-export const teamHue = (team: string | null | undefined, teamId?: number | null): number => {
+const teamHue = (team: string | null | undefined, teamId?: number | null): number => {
   const key = team && team.trim() ? team : teamId != null ? `#${teamId}` : "";
   if (!key) return 0;
   return hashString(key) % 360;

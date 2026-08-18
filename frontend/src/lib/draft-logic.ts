@@ -10,7 +10,7 @@ import type {
   DraftRole,
 } from "@/types/draft.types";
 
-export const URGENT_THRESHOLD_MS = 10_000;
+const URGENT_THRESHOLD_MS = 10_000;
 
 /** Remaining clock in ms from an absolute ISO deadline. Clamped at 0. */
 export function remainingMs(clockExpiresAt: string | null, nowMs: number): number {

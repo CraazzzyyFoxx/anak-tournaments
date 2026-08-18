@@ -109,6 +109,61 @@ const CompareFiltersPanel = ({
 
   const isHeroScope = scope === "hero";
 
+  const renderDivisionBoundSelect = (bound: "min" | "max") => {
+    const value = bound === "min" ? divMin : divMax;
+    const fieldKey = bound === "min" ? "div_min" : "div_max";
+    const labelKey = bound === "min" ? "divisionMin" : "divisionMax";
+
+    return (
+      <div className="space-y-1">
+        <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">
+          {t(`users.compare.filters.${labelKey}`)}
+        </div>
+        <Select
+          value={value ? String(value) : "all"}
+          disabled={isTargetBaseline}
+          onValueChange={(v) =>
+            updateParams({ [fieldKey]: v === "all" ? undefined : parseOptionalInt(v) })
+          }
+        >
+          <SelectTrigger className="liquid-glass-panel" aria-label={t(`users.compare.filters.${labelKey}`)}>
+            <div className="flex items-center gap-2">
+              {value ? (
+                <Image
+                  src={`/divisions/${value}.png`}
+                  alt={t("common.divisionWithId", { id: String(value) })}
+                  width={22}
+                  height={22}
+                  className="h-5.5 w-5.5"
+                />
+              ) : null}
+              <span className="truncate">
+                {value ? t("common.divisionWithId", { id: String(value) }) : t("common.any")}
+              </span>
+            </div>
+          </SelectTrigger>
+          <SelectContent className="liquid-glass-panel">
+            <SelectItem value="all">{t("common.any")}</SelectItem>
+            {divisionOptions.map((division) => (
+              <SelectItem key={`${bound}-${division}`} value={String(division)}>
+                <div className="flex items-center gap-2">
+                  <Image
+                    src={`/divisions/${division}.png`}
+                    alt={t("common.divisionWithId", { id: String(division) })}
+                    width={20}
+                    height={20}
+                    className="h-5 w-5"
+                  />
+                  <span>{t("common.divisionWithId", { id: String(division) })}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-0">
       {/* ── Row 1: Players ── */}
@@ -221,91 +276,9 @@ const CompareFiltersPanel = ({
             </Select>
           </div>
 
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.filters.divisionMin")}</div>
-            <Select
-              value={divMin ? String(divMin) : "all"}
-              disabled={isTargetBaseline}
-              onValueChange={(value) =>
-                updateParams({ div_min: value === "all" ? undefined : parseOptionalInt(value) })
-              }
-            >
-              <SelectTrigger className="liquid-glass-panel" aria-label={t("users.compare.filters.divisionMin")}>
-                <div className="flex items-center gap-2">
-                  {divMin ? (
-                    <Image
-                      src={`/divisions/${divMin}.png`}
-                      alt={t("common.divisionWithId", { id: String(divMin) })}
-                      width={22}
-                      height={22}
-                      className="h-5.5 w-5.5"
-                    />
-                  ) : null}
-                  <span className="truncate">{divMin ? t("common.divisionWithId", { id: String(divMin) }) : t("common.any")}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent className="liquid-glass-panel">
-                <SelectItem value="all">{t("common.any")}</SelectItem>
-                {divisionOptions.map((division) => (
-                  <SelectItem key={`min-${division}`} value={String(division)}>
-                    <div className="flex items-center gap-2">
-                      <Image
-                        src={`/divisions/${division}.png`}
-                        alt={t("common.divisionWithId", { id: String(division) })}
-                        width={20}
-                        height={20}
-                        className="h-5 w-5"
-                      />
-                      <span>{t("common.divisionWithId", { id: String(division) })}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderDivisionBoundSelect("min")}
 
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("users.compare.filters.divisionMax")}</div>
-            <Select
-              value={divMax ? String(divMax) : "all"}
-              disabled={isTargetBaseline}
-              onValueChange={(value) =>
-                updateParams({ div_max: value === "all" ? undefined : parseOptionalInt(value) })
-              }
-            >
-              <SelectTrigger className="liquid-glass-panel" aria-label={t("users.compare.filters.divisionMax")}>
-                <div className="flex items-center gap-2">
-                  {divMax ? (
-                    <Image
-                      src={`/divisions/${divMax}.png`}
-                      alt={t("common.divisionWithId", { id: String(divMax) })}
-                      width={22}
-                      height={22}
-                      className="h-5.5 w-5.5"
-                    />
-                  ) : null}
-                  <span className="truncate">{divMax ? t("common.divisionWithId", { id: String(divMax) }) : t("common.any")}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent className="liquid-glass-panel">
-                <SelectItem value="all">{t("common.any")}</SelectItem>
-                {divisionOptions.map((division) => (
-                  <SelectItem key={`max-${division}`} value={String(division)}>
-                    <div className="flex items-center gap-2">
-                      <Image
-                        src={`/divisions/${division}.png`}
-                        alt={t("common.divisionWithId", { id: String(division) })}
-                        width={20}
-                        height={20}
-                        className="h-5 w-5"
-                      />
-                      <span>{t("common.divisionWithId", { id: String(division) })}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderDivisionBoundSelect("max")}
 
           <div className="space-y-1">
             <div className="text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{t("common.tournament")}</div>

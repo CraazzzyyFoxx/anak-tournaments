@@ -1,14 +1,13 @@
 import type {
   AdminRegistration,
-  BalancerRoleCode,
   BalancerPlayerRecord,
   BalancerRosterKey,
   InternalBalancePayload
 } from "@/types/balancer-admin.types";
-import type { BalanceVariant, PlayerValidationIssue } from "./workspace-helpers";
+import type { PlayerValidationIssue } from "./workspace-helpers";
 import { getActiveRoleEntries } from "./workspace-helpers";
 
-export type { BalanceVariant, PlayerValidationIssue };
+export type { PlayerValidationIssue };
 
 export type PlayerValidationState = {
   player: BalancerPlayerRecord;
@@ -44,7 +43,7 @@ const NON_BLOCKING_ISSUE_CODES: ReadonlySet<PlayerValidationIssue["code"]> = new
   "rank_delta_warning"
 ]);
 
-export function isBlockingIssue(issue: PlayerValidationIssue): boolean {
+function isBlockingIssue(issue: PlayerValidationIssue): boolean {
   return !NON_BLOCKING_ISSUE_CODES.has(issue.code);
 }
 
@@ -105,21 +104,6 @@ export const PRESET_LABELS: Record<string, string> = {
   HIGH_QUALITY: "High Quality"
 };
 
-export const ROLE_ACCENTS: Record<BalancerRoleCode, { text: string; card: string }> = {
-  tank: {
-    text: "text-sky-300",
-    card: "border-sky-300/20 bg-sky-500/10 text-sky-200"
-  },
-  dps: {
-    text: "text-orange-300",
-    card: "border-orange-300/20 bg-orange-500/10 text-orange-200"
-  },
-  support: {
-    text: "text-emerald-300",
-    card: "border-emerald-300/20 bg-emerald-500/10 text-emerald-200"
-  }
-};
-
 export const TEAM_BADGE_ACCENTS = [
   "border-blue-400/20 bg-blue-500/10 text-blue-200",
   "border-rose-400/20 bg-rose-500/10 text-rose-200",
@@ -145,26 +129,7 @@ export function createVariantLabel(index: number): string {
   return `Balance ${index}`;
 }
 
-export function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
-  const hashIndex = battleTag.indexOf("#");
-  if (hashIndex < 0) {
-    return { name: battleTag, suffix: null };
-  }
-  return {
-    name: battleTag.slice(0, hashIndex),
-    suffix: battleTag.slice(hashIndex)
-  };
-}
-
-export function formatSubtypeLabel(subtype: string | null | undefined): string | null {
-  if (!subtype) return null;
-  return subtype
-    .split("_")
-    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
-    .join(" ");
-}
-
-export function getPrimaryDivision(player: BalancerPlayerRecord): number {
+function getPrimaryDivision(player: BalancerPlayerRecord): number {
   const activeEntries = getActiveRoleEntries(player.role_entries_json);
   if (activeEntries.length === 0) return Number.POSITIVE_INFINITY;
   return activeEntries[0]?.division_number ?? Number.POSITIVE_INFINITY;
@@ -252,7 +217,7 @@ export function sampleStdDev(values: number[]): number {
 }
 
 /** All per-player assigned ratings of a team, flattened across role buckets. */
-export function collectTeamRatings(team: InternalBalancePayload["teams"][number]): number[] {
+function collectTeamRatings(team: InternalBalancePayload["teams"][number]): number[] {
   return BALANCE_ROSTER_KEYS.flatMap((roleKey) =>
     team.roster[roleKey].map((player) => player.assigned_rating)
   );
