@@ -72,14 +72,6 @@ async def get_by_name_and_league(
     return result.unique().scalars().first()
 
 
-async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Tournament | None:
-    query = (
-        sa.select(models.Tournament)
-        .where(sa.and_(models.Tournament.name == name))
-        .options(*tournament_entities(entities))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
 async def create(
@@ -195,28 +187,3 @@ async def create_groups(
     return groups
 
 
-async def create_group(
-    session: AsyncSession,
-    tournament: models.Tournament,
-    *,
-    name: str,
-    description: str | None = None,
-    is_groups: bool = False,
-    challonge_id: int | None = None,
-    challonge_slug: str | None = None,
-) -> models.TournamentGroup:
-    """Single-group convenience wrapper around ``create_groups``."""
-    groups = await create_groups(
-        session,
-        tournament,
-        [
-            GroupSpec(
-                name=name,
-                is_groups=is_groups,
-                description=description,
-                challonge_id=challonge_id,
-                challonge_slug=challonge_slug,
-            )
-        ],
-    )
-    return groups[0]

@@ -142,6 +142,14 @@ async def _get_redis() -> redis_async.Redis:
     return _redis_client
 
 
+async def close_redis() -> None:
+    global _redis_client
+    if _redis_client is None:
+        return
+    await _redis_client.aclose()
+    _redis_client = None
+
+
 @asynccontextmanager
 async def _sync_job_lock(tournament_id: int, direction: str) -> AsyncIterator[str]:
     redis = await _get_redis()

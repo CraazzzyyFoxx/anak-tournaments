@@ -3,15 +3,10 @@ import typing
 import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.services.stage_refs import (
-    StageRefs,
-    resolve_stage_refs_from_group,
-)
 from src import models
-from src.core import enums, utils
+from src.core import utils
 from src.services.map import service as map_service
 from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
@@ -109,93 +104,16 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
     return entities
 
 
-async def get_encounter(session: AsyncSession, id: int, entities: list[str]) -> models.Encounter | None:
-    query = sa.select(models.Encounter).options(*encounter_entities(entities)).where(sa.and_(models.Encounter.id == id))
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
-def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Select:
-    if "tournament" in in_entities:
-        query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-    if "group" in in_entities:
-        query = query.join(
-            models.TournamentGroup,
-            models.Encounter.tournament_group_id == models.TournamentGroup.id,
-        )
-
-    return query
 
 
-async def get_by_tournament_group_id(
-    session: AsyncSession, tournament_id: int, group_id: int, entities: list[str]
-) -> typing.Sequence[models.Encounter]:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(
-            sa.and_(
-                models.Encounter.tournament_id == tournament_id,
-                models.Encounter.tournament_group_id == group_id,
-            )
-        )
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()
 
 
-async def get_by_stage_id(
-    session: AsyncSession, tournament_id: int, stage_id: int, entities: list[str]
-) -> typing.Sequence[models.Encounter]:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(
-            sa.and_(
-                models.Encounter.tournament_id == tournament_id,
-                models.Encounter.stage_id == stage_id,
-            )
-        )
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()
 
 
-async def get_by_stage_item_id(
-    session: AsyncSession,
-    tournament_id: int,
-    stage_item_id: int,
-    entities: list[str],
-) -> typing.Sequence[models.Encounter]:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(
-            sa.and_(
-                models.Encounter.tournament_id == tournament_id,
-                models.Encounter.stage_item_id == stage_item_id,
-            )
-        )
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()
 
 
-async def get_by_name_group_id(
-    session: AsyncSession, name: str, group_id: int, entities: list[str]
-) -> models.Encounter | None:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(
-            sa.and_(
-                models.Encounter.name == name,
-                models.Encounter.tournament_group_id == group_id,
-            )
-        )
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
 async def get_match_by_encounter_and_map(
@@ -245,173 +163,16 @@ async def get_by_teams(
     return result.unique().scalars().first()
 
 
-def get_by_teams_sync(
-    session: Session, home_team_id: int, away_team_id: int, entities: list[str]
-) -> models.Encounter | None:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(
-            sa.or_(
-                sa.and_(
-                    models.Encounter.home_team_id == home_team_id,
-                    models.Encounter.away_team_id == away_team_id,
-                ),
-                sa.and_(
-                    models.Encounter.home_team_id == away_team_id,
-                    models.Encounter.away_team_id == home_team_id,
-                ),
-            )
-        )
-    )
-    result = session.execute(query)
-    return result.unique().scalars().first()
 
 
-async def get_by_team(session: AsyncSession, team_id: int, entities: list[str]) -> typing.Sequence[models.Encounter]:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(
-            sa.or_(
-                models.Encounter.home_team_id == team_id,
-                models.Encounter.away_team_id == team_id,
-            )
-        )
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()
 
 
-async def get_encounter_by_names(
-    session: AsyncSession,
-    tournament: models.Tournament,
-    home_team: models.Team,
-    away_team: models.Team,
-) -> models.Encounter:
-    query = sa.select(models.Encounter).where(
-        sa.and_(
-            models.Encounter.tournament_id == tournament.id,
-            models.Encounter.home_team_id == home_team.id,
-            models.Encounter.away_team_id == away_team.id,
-        )
-    )
-    result = await session.execute(query)
-    return result.scalars().one()
 
 
-async def get_encounters_by_tournament(
-    session: AsyncSession, tournament_id: int, entities: list[str]
-) -> typing.Sequence[models.Encounter]:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(models.Encounter.tournament_id == tournament_id)
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()
 
 
-async def create(
-    session: AsyncSession,
-    *,
-    name: str,
-    home_team: models.Team | None,
-    away_team: models.Team | None,
-    home_score: int,
-    away_score: int,
-    round: int,
-    tournament: models.Tournament,
-    group_id: int | None,
-    status: enums.EncounterStatus,
-    stage_id: int | None = None,
-    stage_item_id: int | None = None,
-) -> models.Encounter:
-    """Create a new encounter.
-
-    stage_id / stage_item_id are resolved from ``group_id`` via
-    :func:`shared.services.stage_refs.resolve_stage_refs_from_group` when not
-    supplied explicitly, so legacy flows (Challonge sync, parser) no longer
-    produce encounters with NULL stage refs.
-
-    The deprecated ``encounter.challonge_id`` column is no longer written: the
-    encounter↔Challonge match link lives in ``challonge_match_mapping`` (managed
-    by the Challonge sync engine).
-    """
-    refs: StageRefs = await resolve_stage_refs_from_group(
-        session,
-        tournament_id=tournament.id,
-        tournament_group_id=group_id,
-        stage_id=stage_id,
-        stage_item_id=stage_item_id,
-    )
-
-    encounter = models.Encounter(
-        name=name,
-        home_team=home_team,
-        away_team=away_team,
-        home_score=home_score,
-        away_score=away_score,
-        round=round,
-        tournament_id=tournament.id,
-        tournament_group_id=group_id,
-        stage_id=refs.stage_id,
-        stage_item_id=refs.stage_item_id,
-        status=status,
-    )
-    session.add(encounter)
-    await session.commit()
-    return encounter
 
 
-async def update(
-    session: AsyncSession,
-    encounter: models.Encounter,
-    *,
-    name: str | None = None,
-    home_team_id: int | None = None,
-    away_team_id: int | None = None,
-    home_score: int | None = None,
-    away_score: int | None = None,
-    round: int | None = None,
-    tournament_id: int | None = None,
-    group_id: int | None = None,
-    status: enums.EncounterStatus | None = None,
-) -> models.Encounter:
-    encounter.name = name or encounter.name
-    encounter.home_team_id = home_team_id or encounter.home_team_id
-    encounter.away_team_id = away_team_id or encounter.away_team_id
-    encounter.home_score = home_score or encounter.home_score
-    encounter.away_score = away_score or encounter.away_score
-    encounter.round = round or encounter.round
-    encounter.tournament_id = tournament_id or encounter.tournament_id
-    encounter.status = status or encounter.status
-    if group_id is not None and group_id != encounter.tournament_group_id:
-        encounter.tournament_group_id = group_id
-        # При смене группы — пересчитать stage refs, чтобы сетка и админка
-        # не расходились.
-        refs = await resolve_stage_refs_from_group(
-            session,
-            tournament_id=encounter.tournament_id,
-            tournament_group_id=group_id,
-            stage_id=encounter.stage_id,
-            stage_item_id=encounter.stage_item_id,
-        )
-        encounter.stage_id = refs.stage_id
-        encounter.stage_item_id = refs.stage_item_id
-    elif encounter.stage_id is None and encounter.tournament_group_id is not None:
-        # Self-heal для legacy-encounters, где stage_id/stage_item_id NULL:
-        # резолвим при любом update.
-        refs = await resolve_stage_refs_from_group(
-            session,
-            tournament_id=encounter.tournament_id,
-            tournament_group_id=encounter.tournament_group_id,
-        )
-        encounter.stage_id = refs.stage_id
-        encounter.stage_item_id = refs.stage_item_id
-
-    await session.commit()
-    return encounter
 
 
 async def create_match(

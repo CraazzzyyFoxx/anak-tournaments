@@ -195,8 +195,10 @@ async def stop_scheduler() -> None:
     # on re-run, so an interrupted job resumes cleanly on the next tick.
     scheduler.shutdown(wait=False)
     # The realtime publisher's pooled client: unclosed, it leaks a connection per
-    # worker restart (the same leak challonge.sync's own client was fixed for).
+    # worker restart (the same leak challonge.sync's own client was fixed for
+    # — that fix was never applied to challonge.sync itself; it is now).
     await close_realtime_redis()
+    await challonge_sync.close_redis()
 
 
 @broker.subscriber(TOURNAMENT_BRACKET_JOBS_QUEUE, exchange=TOURNAMENT_COMPUTE_EXCHANGE, channel=_JOBS_CHANNEL)
