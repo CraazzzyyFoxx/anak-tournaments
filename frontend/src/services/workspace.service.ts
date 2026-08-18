@@ -63,6 +63,7 @@ export default class workspaceService {
       seo_title?: string | null;
       seo_description?: string | null;
       discord_guild_id?: string | null;
+      newcomer_scope?: "global" | "workspace";
       default_division_grid_version_id?: number | null;
     }
   ): Promise<Workspace> {

@@ -18,6 +18,7 @@ from shared.schemas.events import (
     TournamentChangedEvent,
     TournamentStandingsInvalidatedEvent,
 )
+from shared.services.newcomer_status import load_prior_participation
 from src import models
 from src.core import enums, errors, pagination
 from src.core.config import settings
@@ -1078,6 +1079,7 @@ class MatchLogProcessor:
                 existing_player_profile_for_user, key=lambda p: p.tournament_id or 0, reverse=True
             )[0]
 
+        history = await load_prior_participation(session, tournament=self.tournament, user_ids=[sub_user.id])
         new_player = await team_service.create_player(
             session,
             name=sub_user.name,
@@ -1089,10 +1091,8 @@ class MatchLogProcessor:
             team=team,
             is_substitution=True,
             related_player_id=player_to_be_replaced.id,
-            is_newcomer=player_data_source.is_newcomer
-            if player_data_source
-            else not bool(await team_service.get_player_by_user(session, sub_user.id, [])),
-            is_newcomer_role=player_data_source.is_newcomer_role if player_data_source else True,
+            is_newcomer=history.is_newcomer(sub_user.id),
+            is_newcomer_role=history.is_newcomer_role(sub_user.id, player_to_be_replaced.role),
         )
         # create_player() sets workspace_member_id (a plain FK column) but does not
         # eagerly load the `workspace_member` relationship; readers downstream (this

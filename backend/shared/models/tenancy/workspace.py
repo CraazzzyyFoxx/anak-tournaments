@@ -72,6 +72,14 @@ class Workspace(db.TimeStampIntegerMixin):
     # 5v5 default", NOT "an empty roster" — the resolution chain lives in
     # ``shared.domain.roster_shape.resolve_roster_shape``.
     default_roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
+    # Scope used to decide "has this identity played before" when a new
+    # ``Player`` row is created: ``"global"`` counts any workspace's
+    # tournaments, ``"workspace"`` counts only this workspace's. Plain string,
+    # not a Postgres enum -- same "stay flexible" precedent as
+    # ``Tournament.team_formation``. See ``shared.services.newcomer_status``.
+    # Admin-editable via the same PATCH /workspaces/{id} path as
+    # ``branding_enabled``.
+    newcomer_scope: Mapped[str] = mapped_column(String(16), server_default="global", nullable=False)
     members: Mapped[list["WorkspaceMember"]] = relationship(back_populates="workspace", passive_deletes=True)
     default_division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
         foreign_keys=[default_division_grid_version_id],

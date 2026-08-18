@@ -241,6 +241,10 @@ export interface Workspace {
   discord_guild_id: string | null;
   default_division_grid_version_id: number | null;
   default_division_grid_version: DivisionGridVersion | null;
+  /** How "is this player new" is decided when a roster is created: `"global"`
+   * counts any workspace's tournaments, `"workspace"` counts only this
+   * workspace's. */
+  newcomer_scope: "global" | "workspace";
 }
 
 /**

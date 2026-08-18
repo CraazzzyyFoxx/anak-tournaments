@@ -10,6 +10,7 @@ from shared.division_grid import DEFAULT_GRID
 from shared.domain.player_sub_roles import normalize_sub_role
 from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.newcomer_status import load_prior_participation
 from src import models, schemas
 from src.core import enums, errors, utils
 from src.services.challonge import service as challonge_service
@@ -314,23 +315,10 @@ async def bulk_create_from_balancer(
         .all()
     )
 
-    experienced_user_ids: set[int] = set()
-    experienced_user_roles: set[tuple[int, enums.HeroClass | None]] = set()
     resolved_user_ids = {user.id for user in users_by_tag.values()}
-    if resolved_user_ids:
-        history_rows = await session.execute(
-            sa.select(models.WorkspaceMember.player_id, models.Player.role)
-            .select_from(models.Player)
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-            )
-            .where(models.WorkspaceMember.player_id.in_(resolved_user_ids))
-        )
-        for user_id, existing_role in history_rows.all():
-            experienced_user_ids.add(user_id)
-            experienced_user_roles.add((user_id, existing_role))
-
+    # Chronological, scope-aware (per-workspace ``newcomer_scope`` setting) --
+    # see shared.services.newcomer_status.
+    history = await load_prior_participation(session, tournament=tournament, user_ids=resolved_user_ids)
     pending_players: list[
         tuple[schemas.BalancerTeamMember, models.Team, models.User, enums.HeroClass | None, bool, bool]
     ] = []
@@ -367,9 +355,9 @@ async def bulk_create_from_balancer(
                 )
                 continue
 
-            is_newcomer = user.id not in experienced_user_ids
+            is_newcomer = history.is_newcomer(user.id)
             role = resolve_hero_role_from_balancer(player.role)
-            is_newcomer_role = (user.id, role) not in experienced_user_roles
+            is_newcomer_role = history.is_newcomer_role(user.id, role)
 
             # In-payload dedupe: the old per-item re-SELECT would find the row
             # committed for a duplicate occurrence and skip it.

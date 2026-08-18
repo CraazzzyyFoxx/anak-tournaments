@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.domain.player_sub_roles import normalize_sub_role
 from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.repository import get_or_create_workspace_member
+from shared.services.newcomer_status import load_prior_participation
 from src import models
 from src.core.enums import HeroClass
 from src.schemas.team import BalancerTeam
@@ -92,12 +93,12 @@ async def bulk_create_from_balancer(
             existing_teams.setdefault(team.name.lower(), team)
 
     # 3. One query over the workspace_member→player join (uses
-    #    ix_workspace_member_player_id) replaces the former three per-player
-    #    SELECTs: existing-in-tournament, existing-globally, existing-per-role.
+    #    ix_workspace_member_player_id) finds players already in this
+    #    tournament; ``load_prior_participation`` answers the newcomer
+    #    question separately (chronological, scope-aware).
     players_in_tournament: set[int] = set()
-    players_global: set[int] = set()
-    players_by_role: set[tuple[int, HeroClass | None]] = set()
     members_by_player: dict[int, models.WorkspaceMember] = {}
+    history = await load_prior_participation(session, tournament=tournament, user_ids=resolved_user_ids)
     if resolved_user_ids:
         user_id_list = list(resolved_user_ids)
         player_rows = (
@@ -105,15 +106,12 @@ async def bulk_create_from_balancer(
                 sa.select(
                     models.WorkspaceMember.player_id,
                     models.Player.tournament_id,
-                    models.Player.role,
                 )
                 .join(models.Player, models.Player.workspace_member_id == models.WorkspaceMember.id)
                 .where(models.WorkspaceMember.player_id.in_(user_id_list))
             )
         ).all()
-        for player_id, player_tournament_id, player_role in player_rows:
-            players_global.add(player_id)
-            players_by_role.add((player_id, player_role))
+        for player_id, player_tournament_id in player_rows:
             if player_tournament_id == tournament_id:
                 players_in_tournament.add(player_id)
 
@@ -172,8 +170,8 @@ async def bulk_create_from_balancer(
                 continue
 
             role = _resolve_hero_role(member.role)
-            is_newcomer = user.id not in players_global
-            is_newcomer_role = (user.id, role) not in players_by_role
+            is_newcomer = history.is_newcomer(user.id)
+            is_newcomer_role = history.is_newcomer_role(user.id, role)
 
             workspace_member = members_by_player.get(user.id)
             if workspace_member is None:

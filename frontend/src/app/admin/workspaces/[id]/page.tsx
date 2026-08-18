@@ -41,6 +41,7 @@ interface EditFormData {
   name: string;
   description: string;
   timezone: string;
+  newcomer_scope: "global" | "workspace";
   branding_enabled: boolean;
   brand_primary: string | null;
   brand_secondary: string | null;
@@ -63,6 +64,7 @@ function formFromWorkspace(ws: Workspace): EditFormData {
     name: ws.name,
     description: ws.description ?? "",
     timezone: ws.timezone ?? DEFAULT_WORKSPACE_TIMEZONE,
+    newcomer_scope: ws.newcomer_scope ?? "global",
     branding_enabled: ws.branding_enabled,
     brand_primary: ws.brand_primary,
     brand_secondary: ws.brand_secondary,
@@ -342,6 +344,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
       name: form.name,
       description: form.description,
       timezone: form.timezone,
+      newcomer_scope: form.newcomer_scope,
       branding_enabled: form.branding_enabled,
       brand_primary: hexOrNull(form.brand_primary),
       brand_secondary: hexOrNull(form.brand_secondary),
@@ -406,6 +409,27 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           </Select>
           <p className="mt-1 text-xs text-muted-foreground">
             Tournament schedule times are entered and shown in this zone.
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="edit-newcomer-scope">Newcomer scope</Label>
+          <Select
+            value={form.newcomer_scope}
+            onValueChange={(value) => patch({ newcomer_scope: value as "global" | "workspace" })}
+          >
+            <SelectTrigger id="edit-newcomer-scope" className="mt-1.5 w-full">
+              <SelectValue placeholder="Select scope" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global">Platform-wide</SelectItem>
+              <SelectItem value="workspace">This workspace only</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            Decides who counts as a "newcomer" (rating confidence, achievements) when a roster is
+            created: platform-wide counts a player&apos;s history in any workspace, this-workspace-only
+            ignores it — a veteran of another workspace will show as a newcomer the first time they join
+            this one.
           </p>
         </div>
         <div>
