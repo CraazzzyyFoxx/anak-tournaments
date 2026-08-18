@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.catalog_aliases import normalize_aliases
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dict
 from shared.repository import HeroRepository
 from src import models
 from src.schemas import HeroRead
@@ -31,12 +32,11 @@ async def get_heroes(session: AsyncSession, params: admin_schemas.HeroListParams
 
     heroes, total = await _repo.get_all(session, params, filters=filters)
 
-    return {
-        "results": [HeroRead.model_validate(hero, from_attributes=True) for hero in heroes],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return paginated_dict(
+        [HeroRead.model_validate(hero, from_attributes=True) for hero in heroes],
+        total,
+        params,
+    )
 
 
 async def create_hero(session: AsyncSession, data: admin_schemas.HeroCreate) -> models.Hero:

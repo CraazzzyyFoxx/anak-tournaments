@@ -1,13 +1,13 @@
 """Shared helpers for the balancer-service typed-RPC handlers.
 
-Mirrors the app/tournament/analytics ``src/rpc`` envelope/param helpers: each
-handler decodes the gateway request (``data["id"]`` / ``data["query"][k]=[...]`` /
-``data["payload"]`` / ``data["identity"]``) and emits the ``{ok,data,error}``
-envelope uniformly.
-
-The balancer admin HTTP routes set no ``response_model_exclude_none`` /
-``response_model_by_alias``, so ``dump`` defaults to ``exclude_none=False`` —
-byte-identical to FastAPI's default serialization.
+The gateway envelope/param-decoding plumbing this shares with the other
+typed-RPC services (``q``/``q1``/``payload``/``actor``/``require_active``/
+``require_id``/``dump``/``require_path_int``) now lives in
+``shared.rpc.common``, the single source of truth. Everything below that is
+genuinely balancer-local: API-key-vs-workspace-RBAC admin gating, the
+dict-detail ``_detail_message`` variant the job API needs, and the
+session-less ``call`` envelope (the job API uses the Redis-backed job store +
+broker, not a SQLAlchemy session).
 """
 
 from __future__ import annotations
@@ -20,43 +20,37 @@ from pydantic import ValidationError
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.auth_user import AuthUser
-from shared.rpc.identity import (
-    MissingIdentityError,
-    ensure_workspace_permission,
-    rehydrate_user,
+from shared.rpc.common import (
+    actor,
+    dump,
+    payload,
+    q,
+    q1,
+    require_active,
+    require_id,
 )
+from shared.rpc.common import (
+    require_path_int as path_int,
+)
+from shared.rpc.identity import MissingIdentityError, ensure_workspace_permission
 from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
 
-
-def q(data: dict[str, Any], key: str) -> list[str] | None:
-    vals = (data.get("query") or {}).get(key)
-    if vals is None:
-        return None
-    return vals if isinstance(vals, list) else [vals]
-
-
-def q1(data: dict[str, Any], key: str, cast: Callable[[str], Any] = str, default: Any = None) -> Any:
-    vals = q(data, key)
-    if not vals:
-        return default
-    try:
-        return cast(vals[0])
-    except (TypeError, ValueError):
-        return default
-
-
-def payload(data: dict[str, Any]) -> dict[str, Any]:
-    body = data.get("payload")
-    return body if isinstance(body, dict) else {}
-
-
-def actor(data: dict[str, Any]) -> AuthUser:
-    """Rehydrate the gateway-injected identity into a transient AuthUser.
-
-    Raises ``MissingIdentityError`` (mapped to ``unauthorized``) when the gateway
-    injected no identity payload.
-    """
-    return rehydrate_user(data.get("identity"))
+__all__ = (
+    "q",
+    "q1",
+    "payload",
+    "actor",
+    "is_api_key_identity",
+    "require_workspace_permission",
+    "require_active",
+    "active_actor",
+    "require_admin_panel",
+    "require_id",
+    "path_int",
+    "dump",
+    "envelope",
+    "call",
+)
 
 
 def is_api_key_identity(data: dict[str, Any]) -> bool:
@@ -77,12 +71,6 @@ def require_workspace_permission(
             detail="API keys cannot access balancer admin endpoints",
         )
     ensure_workspace_permission(user, workspace_id, resource, action)
-
-
-def require_active(user: AuthUser) -> None:
-    """Mirror ``get_current_active_user``: reject inactive users with 403."""
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
 
 def active_actor(data: dict[str, Any]) -> AuthUser:
@@ -107,30 +95,6 @@ def require_admin_panel(user: AuthUser) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin panel access requires a non-read permission",
         )
-
-
-def require_id(data: dict[str, Any]) -> int:
-    try:
-        return int(data["id"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail="id is required") from exc
-
-
-def path_int(data: dict[str, Any], key: str) -> int:
-    try:
-        return int(data[key])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"{key} is required") from exc
-
-
-def dump(obj: Any, exclude_none: bool) -> Any:
-    if obj is None:
-        return None
-    if isinstance(obj, list):
-        return [dump(x, exclude_none) for x in obj]
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump(mode="json", exclude_none=exclude_none)
-    return obj
 
 
 def _detail_message(exc: HTTPException) -> str:

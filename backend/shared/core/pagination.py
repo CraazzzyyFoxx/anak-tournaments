@@ -17,6 +17,7 @@ _SAFE_SORT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_.]*$")
 __all__ = (
     "Paginated",
     "PaginationDict",
+    "paginated_dict",
     "PaginationQueryParams",
     "PaginationSortQueryParams",
     "PaginationParams",
@@ -45,6 +46,19 @@ class Paginated(BaseModel, Generic[SchemaType]):
     per_page: int
     total: int
     results: list[SchemaType]
+
+
+def paginated_dict(
+    results: list[ModelType], total: int, params: "PaginationParams"
+) -> PaginationDict[ModelType]:
+    """Build the ``{results, total, page, per_page}`` envelope typed-RPC handlers return.
+
+    Every RPC-facing admin listing (gamemode/hero/map/user in app-service and
+    parser-service, plus identity-service's api-key/permission/role/user/session
+    listings) hand-rolled this exact 4-key dict instead of using the
+    already-defined ``PaginationDict`` shape. Single source of truth for it.
+    """
+    return {"results": results, "total": total, "page": params.page, "per_page": params.per_page}
 
 
 class SortOrder(Enum):

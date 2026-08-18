@@ -500,6 +500,31 @@ class AbilityEvent(StrEnum):
     Crouch = "Crouch"
 
 
+class RouteTag(StrEnum):
+    """Canonical FastAPI route-classification tags.
+
+    app-service, tournament-service, and balancer-service defined this exact
+    14-member enum three times (copy-pasted, byte-identical). Services with a
+    genuinely different tag set (parser-service, analytics-service) keep their
+    own local ``RouteTag`` — only the identical one lives here.
+    """
+
+    ENCOUNTER = "🎮 Encounter"
+    MATCH = "🎮 Match"
+    TEAMS = "🎮 Teams"
+    TOURNAMENT = "🏆 Tournament"
+    STANDINGS = "🏆 Standings"
+    STATISTICS = "📊 Statistics"
+    HERO = "🦸 Hero"
+    USER = "👤 User"
+    LOGS = "📜 Logs"
+    ACHIEVEMENTS = "🏅 Achievements"
+    MAP = "🗺️ Map"
+    GAMEMODE = "🎮 Gamemode"
+    UTILITY = "🔧 Utility"
+    ANALYTICS = "📈 Analytics"
+
+
 # Explicit public surface so ``from shared.core.enums import *`` (used by every
 # service's ``core/enums.py`` and by ``shared/core/__init__.py``) exports only
 # these names and never leaks re-imported stdlib/typing helpers.
@@ -545,4 +570,5 @@ __all__ = [
     "MatchEvent",
     "AbilityEvent",
     "MatchSource",
+    "RouteTag",
 ]

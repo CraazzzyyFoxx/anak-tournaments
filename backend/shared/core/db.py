@@ -3,7 +3,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import BigInteger, ColumnCollection, DateTime, Uuid, event, func
 from sqlalchemy.exc import DBAPIError
@@ -21,6 +21,7 @@ __all__ = [
     "DatabaseEngines",
     "ResilientAsyncSession",
     "create_database",
+    "create_database_from_settings",
 ]
 
 
@@ -248,4 +249,47 @@ def create_database(
     return DatabaseEngines(
         async_engine=async_engine,
         async_session_maker=async_session,
+    )
+
+
+class _HasDbSettings(Protocol):
+    """Structural type for ``BaseServiceSettings``-shaped config objects.
+
+    Every service's ``Settings``/``AppConfig`` extends ``BaseServiceSettings``,
+    which declares exactly these nine fields — matched structurally instead of
+    importing ``shared.core.config`` here, to avoid a config <-> db import cycle.
+    """
+
+    db_url_asyncpg: str
+    db_pool_size: int
+    db_max_overflow: int
+    db_pool_timeout: int
+    db_pool_recycle: int
+    db_pool_pre_ping: bool
+    db_pool_use_lifo: bool
+    db_connect_timeout: float
+    db_statement_timeout: int
+    db_pgbouncer: bool
+
+
+def create_database_from_settings(settings: _HasDbSettings) -> DatabaseEngines:
+    """``create_database`` reading its nine pool knobs off a service's settings.
+
+    Every service's ``src/core/db.py`` called ``create_database(...)`` with the
+    same nine ``config.settings.db_*`` keyword arguments, copy-pasted
+    byte-for-byte across all eight services. This is the single source of
+    truth for that wiring; each service's ``core/db.py`` now just calls this
+    and re-exports the resulting engine/session-maker.
+    """
+    return create_database(
+        async_url=settings.db_url_asyncpg,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout,
+        pool_recycle=settings.db_pool_recycle,
+        pool_pre_ping=settings.db_pool_pre_ping,
+        pool_use_lifo=settings.db_pool_use_lifo,
+        connect_timeout=settings.db_connect_timeout,
+        statement_timeout=settings.db_statement_timeout,
+        pgbouncer=settings.db_pgbouncer,
     )

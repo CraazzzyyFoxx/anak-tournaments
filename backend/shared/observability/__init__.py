@@ -9,7 +9,7 @@ This module provides:
 """
 
 from . import metrics
-from .broker import make_rabbit_broker
+from .broker import make_rabbit_broker, optional_broker, require_broker, set_worker_broker
 from .correlation import (
     CORRELATION_ID_HEADER,
     REQUEST_ID_HEADER,
@@ -34,6 +34,9 @@ from .worker import observe_message_processing, observe_scheduled_job, publish_m
 
 __all__ = [
     "make_rabbit_broker",
+    "set_worker_broker",
+    "require_broker",
+    "optional_broker",
     "setup_logging",
     "get_logger",
     "setup_sentry",

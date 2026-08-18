@@ -3,6 +3,12 @@
 Stateless user resolution still relies on the auth-service token payload, but
 workspace-scoped admin access must be enforced against workspace RBAC from that
 payload instead of legacy global roles only.
+
+``_get_tournament_workspace_id``/``_get_registration_workspace_id`` re-export
+``shared.rbac.workspace_lookup`` (identical bodies to tournament-service's
+non-underscore-named versions there); everything else here — the token-based
+user resolution and the balance/draft-specific lookups plus the API-key-aware
+``_require_workspace_permission`` — is genuinely balancer-local.
 """
 
 from typing import Any
@@ -14,6 +20,12 @@ from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.auth_user import AuthUser
 from shared.models.identity.rbac import Permission, Role
+from shared.rbac.workspace_lookup import (
+    get_registration_workspace_id as _get_registration_workspace_id,
+)
+from shared.rbac.workspace_lookup import (
+    get_tournament_workspace_id as _get_tournament_workspace_id,
+)
 from src import models
 
 
@@ -157,34 +169,6 @@ async def _require_workspace_permission(
         )
 
     return current_user
-
-
-async def _get_tournament_workspace_id(session: AsyncSession, tournament_id: int) -> int:
-    workspace_id = await session.scalar(
-        sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
-    )
-    if workspace_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tournament not found",
-        )
-    return int(workspace_id)
-
-
-async def _get_registration_workspace_id(session: AsyncSession, registration_id: int) -> int:
-    # BalancerRegistration has no denormalized workspace_id column — derive it via
-    # the owning tournament (registrations are always tournament-scoped).
-    workspace_id = await session.scalar(
-        sa.select(models.Tournament.workspace_id)
-        .join(models.BalancerRegistration, models.BalancerRegistration.tournament_id == models.Tournament.id)
-        .where(models.BalancerRegistration.id == registration_id)
-    )
-    if workspace_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Registration not found",
-        )
-    return int(workspace_id)
 
 
 async def _get_balance_workspace_id(session: AsyncSession, balance_id: int) -> int:

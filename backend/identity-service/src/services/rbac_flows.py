@@ -212,12 +212,9 @@ async def list_permissions(
     query = params.apply_pagination_sort(query, Permission)
     permissions = (await session.execute(query)).scalars().all()
     total = (await session.execute(count_query)).scalar_one()
-    return {
-        "results": [schemas.PermissionRead.model_validate(p, from_attributes=True) for p in permissions],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return pagination.paginated_dict(
+        [schemas.PermissionRead.model_validate(p, from_attributes=True) for p in permissions], total, params
+    )
 
 
 async def create_permission(
@@ -346,12 +343,9 @@ async def list_roles(
     query = params.apply_pagination_sort(query, Role)
     roles = (await session.execute(query)).scalars().all()
     total = (await session.execute(count_query)).scalar_one()
-    return {
-        "results": [schemas.RoleRead.model_validate(r, from_attributes=True) for r in roles],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return pagination.paginated_dict(
+        [schemas.RoleRead.model_validate(r, from_attributes=True) for r in roles], total, params
+    )
 
 
 async def get_role(
@@ -619,12 +613,9 @@ async def list_auth_users(
         params,
         include_player_links=True,
     )
-    return {
-        "results": [schemas.AuthUserListRead.model_validate(_auth_user_list_payload(user)) for user in users],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return pagination.paginated_dict(
+        [schemas.AuthUserListRead.model_validate(_auth_user_list_payload(user)) for user in users], total, params
+    )
 
 
 async def get_auth_user(
@@ -1032,12 +1023,9 @@ async def list_auth_sessions(
     summaries = _sort_session_summaries(summaries, params.sort, params.order)
     total = len(summaries)
     page_items = params.paginate_data(summaries)
-    return {
-        "results": [schemas.AdminSessionRead.model_validate(summary) for summary in page_items],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return pagination.paginated_dict(
+        [schemas.AdminSessionRead.model_validate(summary) for summary in page_items], total, params
+    )
 
 
 async def delete_oauth_connection(

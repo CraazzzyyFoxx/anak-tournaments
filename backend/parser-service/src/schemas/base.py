@@ -1,12 +1,3 @@
-from pydantic import BaseModel
+from shared.schemas.base import BaseRead, Score
 
 __all__ = ("BaseRead", "Score")
-
-
-class BaseRead(BaseModel):
-    id: int
-
-
-class Score(BaseModel):
-    home: int
-    away: int

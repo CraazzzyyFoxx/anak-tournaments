@@ -22,13 +22,7 @@ _s3_started = False
 async def get_s3() -> S3Client:
     global _s3_client, _s3_started
     if _s3_client is None:
-        _s3_client = S3Client(
-            access_key=config.settings.s3_access_key,
-            secret_key=config.settings.s3_secret_key,
-            endpoint_url=config.settings.s3_endpoint_url,
-            bucket_name=config.settings.s3_bucket_name,
-            public_url=config.settings.s3_public_url,
-        )
+        _s3_client = S3Client.from_settings(config.settings)
     if not _s3_started:
         await _s3_client.start()
         _s3_started = True

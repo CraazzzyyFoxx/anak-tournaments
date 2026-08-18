@@ -1,7 +1,3 @@
-from pydantic import BaseModel
+from shared.schemas.base import BaseRead, Score
 
-__all__ = ("BaseRead",)
-
-
-class BaseRead(BaseModel):
-    id: int
+__all__ = ("BaseRead", "Score")
