@@ -22,8 +22,6 @@ __all__ = (
     "ChallongeTeamSyncResult",
     "TeamRead",
     "PlayerRead",
-    "DashaTeamMember",
-    "DashaTeam",
 )
 
 
@@ -35,26 +33,6 @@ class BalancerTeamMember(BaseModel):
     # assigns, and the tournament player it creates carries HeroClass.flex.
     role: RosterSlotCode | None
     rank: int
-
-
-class DashaTeamMember(BaseModel):
-    id: int
-    tournament_id: int
-    team_id: int
-    user_id: int
-    name: str
-    role: typing.Literal["tank", "dps", "support"] | None
-    price: int
-    division: int
-
-
-class DashaTeam(BaseModel):
-    id: int
-    tournament_id: int
-    name: str
-    players: list[DashaTeamMember]
-    avg_sr: float
-    total_sr: int
 
 
 class BalancerTeam(BaseModel):

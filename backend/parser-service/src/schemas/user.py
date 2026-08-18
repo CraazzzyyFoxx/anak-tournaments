@@ -7,7 +7,6 @@ __all__ = (
     "UserRead",
     "SocialAccountRead",
     "UserUpdate",
-    "UserDasha",
 )
 
 
@@ -17,17 +16,6 @@ class UserCSV(BaseModel):
     twitch: str | None
     smurfs: list[str]
 
-
-class UserDasha(BaseModel):
-    id: int
-    battle_tag: str
-    nickname: str
-    twitch: str
-    discord: str | None
-
-    twitches: list[str]
-    discords: list[str]
-    battle_tags: list[str]
 
 
 class SocialAccountRead(BaseRead):
