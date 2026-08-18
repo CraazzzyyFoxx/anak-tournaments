@@ -1,10 +1,8 @@
 
-from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.core import errors
-from src.services.challonge import sync as challonge_sync
 
 from . import service
 
@@ -30,16 +28,5 @@ async def get_by_teams_ids(
         )
     return encounter
 
-
-
-
-async def bulk_create_for_tournament_from_challonge(
-    session: AsyncSession,
-    tournament_id: int,
-    skip_finals: bool = False,
-) -> dict:
-    if skip_finals:
-        logger.warning("skip_finals is ignored by unified Challonge import")
-    return await challonge_sync.import_tournament(session, tournament_id)
 
 

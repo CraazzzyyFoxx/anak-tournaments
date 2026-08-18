@@ -4951,10 +4951,6 @@
       },
       "summary": "Upsert tournament Discord channel"
     },
-    "rpc.parser.encounter.create_challonge": {
-      "description": "Bulk-creates a tournament's encounters from its Challonge bracket, optionally skipping finals; requires match.create in the tournament's workspace.",
-      "summary": "Create Challonge encounters"
-    },
     "rpc.parser.logs.history": {
       "description": "Lists match-log processing records filtered by tournament, encounter or workspace, plus optional status and free-text search, with pagination; permission is gated per filter argument.",
       "query_params": [

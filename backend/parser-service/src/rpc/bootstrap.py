@@ -23,7 +23,6 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from src import schemas
 from src.core import auth, db
-from src.services.encounter import flows as encounter_flows
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
 
@@ -123,20 +122,3 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "teams.create_challonge", op, session_factory=_SF)
 
-    @broker.subscriber("rpc.parser.encounter.create_challonge")
-    async def _encounter_challonge(data: dict, msg: RabbitMessage) -> dict:
-        # POST /encounter/challonge — match.create.
-        async def op(session: Any) -> Any:
-            user = c.actor(data)
-            c.require_active(user)
-            tournament_id = c.require_query_int(data, "tournament_id")
-            await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="match", action="create"
-            )
-            return await encounter_flows.bulk_create_for_tournament_from_challonge(
-                session,
-                tournament_id,
-                skip_finals=c.q1(data, "skip_finals", c.qbool, False),
-            )
-
-        return await c.envelope(logger, "encounter.create_challonge", op, session_factory=_SF)

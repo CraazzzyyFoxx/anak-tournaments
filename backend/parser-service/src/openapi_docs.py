@@ -230,8 +230,4 @@ DOCS: dict[str, dict] = {
         "summary": "Import balancer teams",
         "description": "Multipart (base64) import of teams from a balancer export JSON (atravkovs or internal format) for a tournament; requires team.create in the tournament's workspace.",
     },
-    "rpc.parser.encounter.create_challonge": {
-        "summary": "Create Challonge encounters",
-        "description": "Bulk-creates a tournament's encounters from its Challonge bracket, optionally skipping finals; requires match.create in the tournament's workspace.",
-    },
 }
