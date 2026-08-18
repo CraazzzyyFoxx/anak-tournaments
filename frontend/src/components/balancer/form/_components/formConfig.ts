@@ -27,10 +27,10 @@ export interface BuiltInFieldDef {
   supportsMode?: boolean;
 }
 
-const DEFAULT_BATTLE_TAG_REGEX = String.raw`([\w0-9]{2,12}#[0-9]{4,})`;
+const DEFAULT_BATTLE_TAG_REGEX = String.raw`([^#]{2,12}#[0-9]{4,})`;
 const DEFAULT_DISCORD_REGEX = String.raw`^[a-z0-9_.]{2,32}$`;
-const DEFAULT_TWITCH_REGEX = String.raw`^[a-z0-9_]{4,25}$`;
-const DEFAULT_BOOSTY_REGEX = String.raw`^[A-Za-z0-9._-]{2,50}$`;
+const DEFAULT_TWITCH_REGEX = String.raw`^[a-zA-Z0-9_]{4,25}$`;
+const DEFAULT_BOOSTY_REGEX = String.raw`^[^#]{2,50}$`;
 const DEFAULT_URL_REGEX = String.raw`^https?://.+$`;
 const DEFAULT_NUMBER_REGEX = String.raw`^-?\d+(?:[.,]\d+)?$`;
 
@@ -75,7 +75,7 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
     supportsVerified: true,
     defaultValidation: {
       regex: DEFAULT_TWITCH_REGEX,
-      error_message: "Twitch channel name must contain 4-25 lowercase letters, digits, or underscores.",
+      error_message: "Twitch channel name must contain 4-25 letters, digits, or underscores.",
     },
   },
   {
@@ -110,7 +110,7 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
     supportsVerified: false,
     defaultValidation: {
       regex: DEFAULT_BOOSTY_REGEX,
-      error_message: "Boosty nickname must contain 2-50 letters, digits, dots, dashes or underscores.",
+      error_message: "Boosty nickname must be 2-50 characters and cannot contain '#'.",
     },
   },
   {

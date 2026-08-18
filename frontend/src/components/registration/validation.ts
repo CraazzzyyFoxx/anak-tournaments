@@ -36,7 +36,7 @@ const BUILT_IN_LABEL_KEYS: Record<string, string> = {
 };
 
 const TEXT_VALIDATION_FIELD_TYPES = new Set<CustomFieldDefinition["type"]>(["text", "number", "url"]);
-const DEFAULT_BATTLE_TAG_REGEX = String.raw`([\w0-9]{2,12}#[0-9]{4,})`;
+const DEFAULT_BATTLE_TAG_REGEX = String.raw`([^#]{2,12}#[0-9]{4,})`;
 const DEFAULT_BATTLE_TAG_VALIDATION: FieldValidationConfig = {
   regex: DEFAULT_BATTLE_TAG_REGEX,
 };
