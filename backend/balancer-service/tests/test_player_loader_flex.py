@@ -50,7 +50,7 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, FLEX_SLOT_CODE  # noqa: E402
+from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, FLEX_SLOT_CODE, parse_roster_slots  # noqa: E402
 from src.services.balancer.algorithm.entities import Team  # noqa: E402
 from src.services.balancer.algorithm.moo_backend import _serialize_native_request  # noqa: E402
 from src.services.balancer.algorithm.player_loader import (  # noqa: E402
@@ -60,7 +60,7 @@ from src.services.balancer.algorithm.player_loader import (  # noqa: E402
 from src.services.balancer.algorithm.result_serializer import teams_to_json  # noqa: E402
 from src.services.balancer.algorithm.runtime import _prepare_balance_context  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
-from src.services.balancer.config.presets import ConfigBuilder, ConfigPresets  # noqa: E402
+from src.services.balancer.config.presets import ConfigPresets  # noqa: E402
 from src.services.balancer.config.provider import EDITABLE_CONFIG_FIELD_KEYS  # noqa: E402
 from src.services.balancer.config.public_contract import PUBLIC_CONFIG_KEYS  # noqa: E402
 
@@ -303,15 +303,15 @@ def test_legacy_capitalized_mask_still_resolves_player_roles() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 13. ConfigBuilder validates through the canon
+# 13. parse_roster_slots validates and canonicalizes through the roster canon
 # ---------------------------------------------------------------------------
 
 
-def test_config_builder_normalizes_the_mask_through_the_roster_canon() -> None:
-    built = ConfigBuilder().with_role_mask({FLEX_SLOT_CODE: 5, "tank": 1}).build()
+def test_parse_roster_slots_normalizes_the_mask_through_the_roster_canon() -> None:
+    slots = parse_roster_slots({FLEX_SLOT_CODE: 5, "tank": 1}).slots
 
     # Canonical order comes from ROSTER_SLOT_CODES, not from the caller.
-    assert list(built["role_mask"].items()) == [("tank", 1), (FLEX_SLOT_CODE, 5)]
+    assert list(slots.items()) == [("tank", 1), (FLEX_SLOT_CODE, 5)]
 
 
 @pytest.mark.parametrize(
@@ -326,9 +326,9 @@ def test_config_builder_normalizes_the_mask_through_the_roster_canon() -> None:
         [("tank", 1)],
     ],
 )
-def test_config_builder_rejects_a_mask_the_canon_rejects(garbage: Any) -> None:
+def test_parse_roster_slots_rejects_a_mask_the_canon_rejects(garbage: Any) -> None:
     with pytest.raises(ValueError):
-        ConfigBuilder().with_role_mask(garbage)
+        parse_roster_slots(garbage)
 
 
 # ---------------------------------------------------------------------------

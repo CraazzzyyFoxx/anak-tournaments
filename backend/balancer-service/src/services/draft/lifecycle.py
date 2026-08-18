@@ -20,15 +20,16 @@ from sqlalchemy.orm import selectinload
 from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core import draft_state
 from shared.core.enums import (
+    HERO_TYPE_CLASSES,
     DraftCaptainOrder,
     DraftFormat,
     DraftPickStatus,
     DraftPlayerStatus,
-    DraftRole,
     DraftStatus,
+    HeroClass,
     TournamentStatus,
 )
-from shared.core.errors import ApiExc, ApiHTTPException
+from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import (
     DraftPick,
@@ -48,6 +49,7 @@ from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.repository.workspace import get_or_create_workspace_member
 from src.services.draft import feasibility
+from src.services.draft._errors import err as _err
 from src.services.draft.board import REGISTRATION_CUSTOM_FIELDS_KEY
 
 _ACTIVE_STATUSES = (
@@ -66,7 +68,7 @@ class CaptainSeed:
     auth_user_id: int | None = None
     battle_tag: str | None = None
     # Real role/rank when the captain is drawn from the balancer pool.
-    primary_role: DraftRole | None = None
+    primary_role: HeroClass | None = None
     sub_role: str | None = None
     is_flex: bool = False
     division_number: int | None = None
@@ -78,10 +80,10 @@ class CaptainSeed:
 
 @dataclass(frozen=True)
 class PlayerSeed:
-    primary_role: DraftRole
+    primary_role: HeroClass
     user_id: int | None = None
     battle_tag: str | None = None
-    secondary_roles: list[DraftRole] = field(default_factory=list)
+    secondary_roles: list[HeroClass] = field(default_factory=list)
     sub_role: str | None = None
     is_flex: bool = False
     division_number: int | None = None
@@ -89,10 +91,6 @@ class PlayerSeed:
     role_ranks: dict = field(default_factory=dict)
     role_top_heroes: dict = field(default_factory=dict)
     additional_info: dict = field(default_factory=dict)
-
-
-def _err(code: str, msg: str, status_code: int = 409) -> ApiHTTPException:
-    return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
 
 
 def validate_draft_rounds(*, rounds: int, shape: RosterShape) -> None:
@@ -138,8 +136,8 @@ def _build_hero_rows(entries: list[dict] | None) -> list[DraftPlayerRoleHero]:
 
 
 def _build_role_rows(
-    primary_role: DraftRole | str,
-    secondary_roles: list[DraftRole] | None,
+    primary_role: HeroClass | str,
+    secondary_roles: list[HeroClass] | None,
     role_ranks: dict | None,
     role_top_heroes: dict | None,
 ) -> list[DraftPlayerRole]:
@@ -154,8 +152,8 @@ def _build_role_rows(
     """
     role_ranks = role_ranks or {}
     role_top_heroes = role_top_heroes or {}
-    primary_value = primary_role.value if isinstance(primary_role, DraftRole) else str(primary_role)
-    secondary_values = [r.value if isinstance(r, DraftRole) else str(r) for r in (secondary_roles or [])]
+    primary_value = primary_role.slot_code if isinstance(primary_role, HeroClass) else str(primary_role)
+    secondary_values = [r.slot_code if isinstance(r, HeroClass) else str(r) for r in (secondary_roles or [])]
     secondary_set = set(secondary_values)
 
     ordered: list[str] = [primary_value]
@@ -450,13 +448,13 @@ async def seed(
     for cap in ordered_captains:
         team = team_by_position[cap.draft_position]
         # Real role from the pool when available; TANK placeholder otherwise.
-        cap_primary = cap.primary_role or DraftRole.TANK
+        cap_primary = cap.primary_role or HeroClass.tank
         session.add(
             DraftPlayer(
                 session_id=draft_session.id,
                 workspace_member_id=_member_id(cap.user_id),
                 battle_tag=cap.battle_tag,
-                primary_role=cap_primary.value,
+                primary_role=cap_primary.slot_code,
                 sub_role=cap.sub_role,
                 is_flex=cap.is_flex,
                 division_number=cap.division_number,
@@ -475,7 +473,7 @@ async def seed(
                 session_id=draft_session.id,
                 workspace_member_id=_member_id(p.user_id),
                 battle_tag=p.battle_tag,
-                primary_role=p.primary_role.value,
+                primary_role=p.primary_role.slot_code,
                 sub_role=p.sub_role,
                 is_flex=p.is_flex,
                 division_number=p.division_number,
@@ -529,17 +527,10 @@ async def seed(
     return draft_session
 
 
-def _to_draft_role(role: str | None) -> DraftRole | None:
-    if not role:
-        return None
-    normalized = role.strip().lower()
-    if normalized in {"dps", "damage"}:
-        return DraftRole.DPS
-    if normalized == "tank":
-        return DraftRole.TANK
-    if normalized == "support":
-        return DraftRole.SUPPORT
-    return None
+def _to_draft_role(role: str | None) -> HeroClass | None:
+    """Parse a registration role string; ``flex`` is not a playable role here."""
+    parsed = HeroClass.parse(role)
+    return parsed if parsed is not HeroClass.flex else None
 
 
 def _registration_auth_user_id(reg: BalancerRegistration) -> int | None:
@@ -634,7 +625,7 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
     """
     entries = sorted((reg.roles or []), key=lambda r: r.priority)
     active = entries if all_roles else [r for r in entries if r.is_active]
-    roles: list[DraftRole] = []
+    roles: list[HeroClass] = []
     for r in active:
         role = _to_draft_role(r.role)
         if role is not None and role not in roles:
@@ -642,9 +633,9 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
     primary_entry = next((r for r in active if r.is_primary and _to_draft_role(r.role)), None)
     if primary_entry is None and active:
         primary_entry = active[0]
-    primary = (_to_draft_role(primary_entry.role) if primary_entry else None) or (roles[0] if roles else DraftRole.DPS)
+    primary = (_to_draft_role(primary_entry.role) if primary_entry else None) or (roles[0] if roles else HeroClass.damage)
     if all_roles:
-        roles = [primary, *(role for role in DraftRole if role != primary)]
+        roles = [primary, *(role for role in HERO_TYPE_CLASSES if role != primary)]
     secondary = [r for r in roles if r != primary]
     ranks = [r.rank_value for r in active if r.rank_value is not None]
     effective_rank = max(ranks) if ranks else None
@@ -654,7 +645,7 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
         rank_value = (primary_entry.rank_value if primary_entry else None) or effective_rank
     sub_role = primary_entry.subrole if primary_entry else None
 
-    # Per-role rank catalogue and top heroes, keyed by role.value, promoted to
+    # Per-role rank catalogue and top heroes, keyed by role.slot_code, promoted to
     # dedicated typed fields (no more burying them in an "anomaly_flags" bag).
     role_ranks: dict[str, int] = {}
     role_top_heroes: dict[str, list[dict]] = {}
@@ -663,7 +654,7 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
         if role is None:
             continue
         if r.rank_value is not None:
-            role_ranks[role.value] = r.rank_value
+            role_ranks[role.slot_code] = r.rank_value
         hero_entries = getattr(r, "hero_entries", None)
         heroes = (
             [
@@ -678,20 +669,19 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
                 if he and getattr(he, "hero", None) is not None
             ]
             if isinstance(hero_entries, (list, set))
-            or (hero_entries is not None and not hasattr(hero_entries, "_mock_return_value"))
             else []
         )
         if heroes:
-            role_top_heroes[role.value] = heroes
+            role_top_heroes[role.slot_code] = heroes
 
     if all_roles:
-        # Every role rated, none overwritten. Keyed off DraftRole rather than the
-        # rows so a registration written before the mode was switched on (fewer
-        # than three role rows) still comes out fully playable.
+        # Every role rated, none overwritten. Keyed off HERO_TYPE_CLASSES rather
+        # than the rows so a registration written before the mode was switched on
+        # (fewer than three role rows) still comes out fully playable.
         role_ranks = (
             {}
             if effective_rank is None
-            else {role.value: role_ranks.get(role.value, effective_rank) for role in DraftRole}
+            else {role.slot_code: role_ranks.get(role.slot_code, effective_rank) for role in HERO_TYPE_CLASSES}
         )
 
     return {

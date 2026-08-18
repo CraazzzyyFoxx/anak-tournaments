@@ -16,17 +16,13 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftStatus
-from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from src import models
 from src.schemas.team import BalancerTeam, BalancerTeamMember
 from src.services import team as team_flows
 from src.services.draft import feasibility, loaders, ranks
-
-
-def _err(code: str, msg: str, status_code: int = 409) -> ApiHTTPException:
-    return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
+from src.services.draft._errors import err as _err
 
 
 def _draft_to_balancer_payload(
@@ -38,7 +34,7 @@ def _draft_to_balancer_payload(
     """Pure mapping: draft rosters -> balancer export payload.
 
     The team name is the captain's battle_tag/name so the export's
-    ``find_by_battle_tag`` resolves the captain; members carry their
+    ``find_users_by_battle_tags`` resolves the captain; members carry their
     battle_tag, the slot they were *drafted into* (tank/dps/support), and the
     rank ``shape`` gives them on it. Mirrors the balancer's own payload
     (assigned role + assigned rating) so both feed

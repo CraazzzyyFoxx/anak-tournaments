@@ -37,7 +37,3 @@ def assign_captains(players: list[Player], count: int, mask: dict[str, int] | No
 
         player.captain_role = pinned_role
 
-
-class CaptainAssignmentService:
-    def assign(self, players: list[Player], captain_count: int, mask: dict[str, int] | None = None) -> None:
-        assign_captains(players, captain_count, mask)

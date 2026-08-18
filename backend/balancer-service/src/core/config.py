@@ -17,7 +17,11 @@ class Settings(BaseServiceSettings):
     # Infrastructure
     redis_url: str = "redis://redis:6379"
     rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672"
-    balancer_job_ttl_seconds: int = Field(default=86400, ge=60, le=604800)
+    # Floor must stay above jobs.py::_SOLVER_WATCHDOG_SECONDS (660s): the
+    # active-jobs Redis set's TTL is only re-armed on new reservations, so a
+    # value below the true max job duration lets Redis expire the whole set
+    # out from under a still-running job, silently resetting concurrent_jobs.
+    balancer_job_ttl_seconds: int = Field(default=86400, ge=900, le=604800)
 
     # CORS extras
     cors_allow_credentials: bool = True

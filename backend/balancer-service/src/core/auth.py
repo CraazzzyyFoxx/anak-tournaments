@@ -1,14 +1,13 @@
 """Authentication dependencies for balancer-service.
 
-Stateless user resolution still relies on the auth-service token payload, but
-workspace-scoped admin access must be enforced against workspace RBAC from that
-payload instead of legacy global roles only.
+Stateless user resolution still relies on the auth-service token payload;
+workspace-scoped admin access is enforced imperatively at each RPC handler via
+``rpc/_common.py::require_workspace_permission`` after resolving the resource's
+workspace id with one of the ``_get_*_workspace_id`` helpers below.
 
-``_get_tournament_workspace_id``/``_get_registration_workspace_id`` re-export
-``shared.rbac.workspace_lookup`` (identical bodies to tournament-service's
-non-underscore-named versions there); everything else here — the token-based
-user resolution and the balance/draft-specific lookups plus the API-key-aware
-``_require_workspace_permission`` — is genuinely balancer-local.
+``_get_tournament_workspace_id`` re-exports ``shared.rbac.workspace_lookup``
+(identical body to tournament-service's non-underscore-named version there);
+everything else here is genuinely balancer-local.
 """
 
 from typing import Any
@@ -21,10 +20,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.auth_user import AuthUser
 from shared.models.identity.rbac import Permission, Role
 from shared.rbac.workspace_lookup import (
-    get_registration_workspace_id as _get_registration_workspace_id,
-)
-from shared.rbac.workspace_lookup import (
-    get_tournament_workspace_id as _get_tournament_workspace_id,
+    get_tournament_workspace_id as _get_tournament_workspace_id,  # noqa: F401 -- re-exported for rpc/admin.py, rpc/binary.py, rpc/draft.py
 )
 from src import models
 
@@ -149,28 +145,6 @@ async def _resolve_user_from_token(user_id: int, payload: dict[str, Any]) -> Aut
     return user
 
 
-async def _require_workspace_permission(
-    current_user: AuthUser,
-    *,
-    workspace_id: int,
-    resource: str,
-    action: str,
-) -> AuthUser:
-    if getattr(current_user, "_credential_type", "access_token") == "api_key":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API keys cannot access balancer admin endpoints",
-        )
-
-    if not current_user.has_workspace_permission(workspace_id, resource, action):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Permission denied for workspace {workspace_id}: {resource}.{action} required",
-        )
-
-    return current_user
-
-
 async def _get_balance_workspace_id(session: AsyncSession, balance_id: int) -> int:
     workspace_id = await session.scalar(
         sa.select(sa.func.coalesce(models.BalancerBalance.workspace_id, models.Tournament.workspace_id))
@@ -183,72 +157,6 @@ async def _get_balance_workspace_id(session: AsyncSession, balance_id: int) -> i
             detail="Balance not found",
         )
     return int(workspace_id)
-
-
-def require_workspace_permission(resource: str, action: str):
-    async def permission_checker(
-        workspace_id: int,
-        current_user: AuthUser,
-    ) -> AuthUser:
-        return await _require_workspace_permission(
-            current_user,
-            workspace_id=workspace_id,
-            resource=resource,
-            action=action,
-        )
-
-    return permission_checker
-
-
-def require_tournament_permission(resource: str, action: str):
-    async def permission_checker(
-        tournament_id: int,
-        session: AsyncSession,
-        current_user: AuthUser,
-    ) -> AuthUser:
-        workspace_id = await _get_tournament_workspace_id(session, tournament_id)
-        return await _require_workspace_permission(
-            current_user,
-            workspace_id=workspace_id,
-            resource=resource,
-            action=action,
-        )
-
-    return permission_checker
-
-
-def require_registration_permission(resource: str, action: str):
-    async def permission_checker(
-        registration_id: int,
-        session: AsyncSession,
-        current_user: AuthUser,
-    ) -> AuthUser:
-        workspace_id = await _get_registration_workspace_id(session, registration_id)
-        return await _require_workspace_permission(
-            current_user,
-            workspace_id=workspace_id,
-            resource=resource,
-            action=action,
-        )
-
-    return permission_checker
-
-
-def require_balance_permission(resource: str, action: str):
-    async def permission_checker(
-        balance_id: int,
-        session: AsyncSession,
-        current_user: AuthUser,
-    ) -> AuthUser:
-        workspace_id = await _get_balance_workspace_id(session, balance_id)
-        return await _require_workspace_permission(
-            current_user,
-            workspace_id=workspace_id,
-            resource=resource,
-            action=action,
-        )
-
-    return permission_checker
 
 
 async def _get_draft_session_workspace_id(session: AsyncSession, session_id: int) -> int:
@@ -270,30 +178,3 @@ async def _get_pick_workspace_id(session: AsyncSession, pick_id: int) -> int:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft pick not found")
     return int(workspace_id)
 
-
-def require_draft_session_permission(resource: str, action: str):
-    async def permission_checker(
-        session_id: int,
-        session: AsyncSession,
-        current_user: AuthUser,
-    ) -> AuthUser:
-        workspace_id = await _get_draft_session_workspace_id(session, session_id)
-        return await _require_workspace_permission(
-            current_user, workspace_id=workspace_id, resource=resource, action=action
-        )
-
-    return permission_checker
-
-
-def require_pick_permission(resource: str, action: str):
-    async def permission_checker(
-        pick_id: int,
-        session: AsyncSession,
-        current_user: AuthUser,
-    ) -> AuthUser:
-        workspace_id = await _get_pick_workspace_id(session, pick_id)
-        return await _require_workspace_permission(
-            current_user, workspace_id=workspace_id, resource=resource, action=action
-        )
-
-    return permission_checker

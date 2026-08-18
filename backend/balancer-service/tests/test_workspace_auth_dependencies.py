@@ -6,9 +6,6 @@ import os
 import sys
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock
-
-from shared.core.errors import BaseAPIException as HTTPException
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
@@ -32,18 +29,7 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from src import models  # noqa: E402
 from src.core import auth  # noqa: E402
-
-
-def _make_user() -> models.AuthUser:
-    return models.AuthUser(
-        id=1,
-        username="tester",
-        email="tester@example.com",
-        is_active=True,
-        is_superuser=False,
-    )
 
 
 class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
@@ -71,70 +57,3 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
         self.assertTrue(user.has_workspace_permission(7, "team", "create"))
         self.assertFalse(user.has_workspace_permission(8, "team", "create"))
 
-    async def test_tournament_permission_allows_workspace_scoped_access(self) -> None:
-        user = _make_user()
-        user.set_rbac_cache(
-            role_names=[],
-            permissions=[],
-            workspaces=[{"workspace_id": 9}],
-            workspace_rbac={9: {"roles": [], "permissions": [{"resource": "team", "action": "read"}]}},
-        )
-        session = AsyncMock()
-        session.scalar = AsyncMock(return_value=9)
-
-        checker = auth.require_tournament_permission("team", "read")
-        result = await checker(tournament_id=55, session=session, current_user=user)
-
-        self.assertIs(result, user)
-
-    async def test_tournament_permission_rejects_legacy_organizer_without_permission(self) -> None:
-        user = _make_user()
-        user.set_rbac_cache(
-            role_names=["tournament_organizer"],
-            permissions=[],
-            workspaces=[],
-            workspace_rbac={},
-        )
-        session = AsyncMock()
-        session.scalar = AsyncMock(return_value=9)
-
-        checker = auth.require_tournament_permission("team", "read")
-
-        with self.assertRaises(HTTPException) as ctx:
-            await checker(tournament_id=55, session=session, current_user=user)
-
-        self.assertEqual(ctx.exception.status_code, 403)
-
-    async def test_tournament_permission_allows_workspace_wildcard(self) -> None:
-        user = _make_user()
-        user.set_rbac_cache(
-            role_names=[],
-            permissions=[],
-            workspaces=[{"workspace_id": 9}],
-            workspace_rbac={9: {"roles": ["owner"], "permissions": [{"resource": "*", "action": "*"}]}},
-        )
-        session = AsyncMock()
-        session.scalar = AsyncMock(return_value=9)
-
-        checker = auth.require_tournament_permission("team", "create")
-        result = await checker(tournament_id=55, session=session, current_user=user)
-
-        self.assertIs(result, user)
-
-    async def test_tournament_permission_rejects_missing_workspace_access(self) -> None:
-        user = _make_user()
-        user.set_rbac_cache(
-            role_names=[],
-            permissions=[],
-            workspaces=[{"workspace_id": 9}],
-            workspace_rbac={9: {"roles": [], "permissions": []}},
-        )
-        session = AsyncMock()
-        session.scalar = AsyncMock(return_value=9)
-
-        checker = auth.require_tournament_permission("team", "read")
-
-        with self.assertRaises(HTTPException) as ctx:
-            await checker(tournament_id=55, session=session, current_user=user)
-
-        self.assertEqual(ctx.exception.status_code, 403)

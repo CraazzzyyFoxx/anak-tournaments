@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from shared.core import http_status as status
@@ -54,8 +55,14 @@ def validate_api_key_config_policy(user: Any, config_overrides: dict[str, Any] |
                 numeric_value = float(value)
                 numeric_limit = float(max_values[key])
             except (TypeError, ValueError):
-                continue
-            if numeric_value > numeric_limit:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "code": "api_key_config_value_invalid",
+                        "field": key,
+                    },
+                ) from None
+            if math.isnan(numeric_value) or math.isinf(numeric_value) or numeric_value > numeric_limit:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail={

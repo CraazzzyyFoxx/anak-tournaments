@@ -109,32 +109,3 @@ def find_feasible_role_assignment(
 
     return {players[index].uuid: role for index, role in assignment.items()}
 
-
-def diagnose_role_shortage(
-    players: list[Player],
-    num_teams: int,
-    mask: dict[str, int],
-) -> dict[str, int]:
-    """Return per-role shortages for the requested team count."""
-    shortages: dict[str, int] = {}
-    for role, count in mask.items():
-        if count <= 0:
-            continue
-        capable = sum(1 for player in players if player.can_play(role))
-        needed = count * num_teams
-        if capable < needed:
-            shortages[role] = needed - capable
-    return shortages
-
-
-class RoleAssignmentService:
-    def diagnose_shortage(self, players: list[Player], num_teams: int, mask: dict[str, int]) -> dict[str, int]:
-        return diagnose_role_shortage(players, num_teams, mask)
-
-    def find_feasible_assignment(
-        self,
-        players: list[Player],
-        num_teams: int,
-        mask: dict[str, int],
-    ) -> dict[str, str] | None:
-        return find_feasible_role_assignment(players, num_teams, mask)

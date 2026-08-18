@@ -21,6 +21,8 @@ from shared.schemas.events import BalancerJobEvent
 from src.core import db
 from src.core.caching import configure_cache
 from src.core.config import config
+from src.core.job_store import close_job_store
+from src.core.security.api_key_limiter import close_api_key_limiter
 from src.rpc import admin as rpc_admin
 from src.rpc import binary as rpc_binary
 from src.rpc import config as rpc_config
@@ -124,6 +126,12 @@ async def start_draft_clock() -> None:
 async def close_rpc_clients() -> None:
     # Gracefully close the draft realtime Redis client (worker-lifetime singleton).
     await rpc_draft.close()
+
+    # Job-store and API-key-limiter Redis clients are process-global singletons
+    # (see get_job_store/get_api_key_limiter); close them explicitly or every
+    # worker restart leaks a connection.
+    await close_job_store()
+    await close_api_key_limiter()
 
     # Stop the clock BEFORE the engine goes: cancelling it lets its session unwind
     # on a live loop instead of being torn down after the loop is gone.

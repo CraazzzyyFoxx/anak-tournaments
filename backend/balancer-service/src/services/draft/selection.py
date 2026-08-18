@@ -16,19 +16,21 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import (
+    HERO_TYPE_CLASSES,
     DraftAutopickStrategy,
     DraftFormat,
     DraftPickStatus,
     DraftPlayerStatus,
-    DraftRole,
     DraftStatus,
+    HeroClass,
 )
-from shared.core.errors import ApiExc, ApiHTTPException
+from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.workspace import get_or_create_workspace_member
 from src.services.draft import feasibility, lifecycle, loaders, ranks
 from src.services.draft import suggestions as sug
+from src.services.draft._errors import err as _err
 
 
 @dataclass(frozen=True)
@@ -37,10 +39,6 @@ class DraftResult:
     next_pick: DraftPick | None
     completed: bool
     blocked_reason: str | None = None
-
-
-def _err(code: str, msg: str, status_code: int = 409) -> ApiHTTPException:
-    return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
 
 
 async def _actor_member_id(session: AsyncSession, draft_session: DraftSession, actor_user_id: int | None) -> int | None:
@@ -248,7 +246,7 @@ def _team_slot_counts(
     return counts
 
 
-def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftRole, int]:
+def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[HeroClass, int]:
     """How many more slots each role can still take on this team.
 
     A role lands either in its own remaining role slot or in any free flex slot,
@@ -258,7 +256,7 @@ def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftR
     """
     targets = shape.slots
     free_flex = max(0, targets.get(FLEX_SLOT_CODE, 0) - counts.get(FLEX_SLOT_CODE, 0))
-    return {role: max(0, targets.get(role.value, 0) - counts.get(role.value, 0)) + free_flex for role in DraftRole}
+    return {role: max(0, targets.get(role.slot_code, 0) - counts.get(role.slot_code, 0)) + free_flex for role in HERO_TYPE_CLASSES}
 
 
 async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int, shape: RosterShape) -> dict[int, float]:
@@ -325,19 +323,19 @@ def _available_player_from(snapshot: feasibility.DraftSnapshot, player_id: int) 
     return player
 
 
-def _role_is_legal(player: DraftPlayer, target_role: DraftRole | None) -> bool:
+def _role_is_legal(player: DraftPlayer, target_role: HeroClass | None) -> bool:
     if target_role is None:
         return True
     if player.is_flex:
         return True
     playable = {player.primary_role, *(player.secondary_roles_json or [])}
-    return target_role.value in playable
+    return target_role.slot_code in playable
 
 
-def _playable_roles(player: DraftPlayer) -> frozenset[DraftRole]:
+def _playable_roles(player: DraftPlayer) -> frozenset[HeroClass]:
     if player.is_flex:
-        return frozenset(DraftRole)
-    return frozenset(DraftRole(role) for role in {player.primary_role, *(player.secondary_roles_json or [])})
+        return frozenset(HERO_TYPE_CLASSES)
+    return frozenset(HeroClass.from_slot_code(role) for role in {player.primary_role, *(player.secondary_roles_json or [])})
 
 
 @dataclass(frozen=True)
@@ -349,7 +347,7 @@ class SlotDecision:
     where a role would be a value the shape gives no meaning to.
     """
 
-    role: DraftRole
+    role: HeroClass
     recorded_role: str | None
 
 
@@ -357,7 +355,7 @@ def resolve_pick_slot(
     shape: RosterShape,
     counts: Mapping[str, int],
     player: DraftPlayer,
-    target_role: DraftRole | None,
+    target_role: HeroClass | None,
 ) -> SlotDecision:
     """Validate one pick against the shape and this team's already filled slots.
 
@@ -370,14 +368,14 @@ def resolve_pick_slot(
     requested = target_role if shape.has_role_slots else None
     if not _role_is_legal(player, requested):
         raise _err("illegal_role", "Player cannot play the requested role", status_code=422)
-    role = requested or DraftRole(player.primary_role)
+    role = requested or HeroClass.from_slot_code(player.primary_role)
     if _role_openings(shape, counts).get(role, 0) <= 0:
         raise _err(
             "slot_filled",
-            f"No roster slot left for {role.value} on this team",
+            f"No roster slot left for {role.slot_code} on this team",
             status_code=422,
         )
-    return SlotDecision(role=role, recorded_role=role.value if shape.has_role_slots else None)
+    return SlotDecision(role=role, recorded_role=role.slot_code if shape.has_role_slots else None)
 
 
 def _unsafe_pick_error(report: feasibility.DraftFeasibilityReport) -> ApiHTTPException:
@@ -424,7 +422,7 @@ async def select(
     *,
     player_id: int,
     expected_version: int,
-    target_role: DraftRole | None,
+    target_role: HeroClass | None,
     actor_user_id: int | None,
     actor_auth_user_id: int | None = None,
     actor_player_ids: Collection[int] = (),
@@ -456,7 +454,7 @@ async def select(
         hypothetical=feasibility.DraftAssignment(
             player_id=player.id,
             team_id=pick.draft_team_id,
-            slot_code=decision.role.value,
+            slot_code=decision.role.slot_code,
         ),
     )
     if not feasibility_report.is_feasible:
@@ -504,10 +502,10 @@ async def autopick(
             player_id=p.id,
             rank_value=p.rank_value or 0,
             playable_roles=_playable_roles(p),
-            preference_order=(DraftRole(p.primary_role),),
+            preference_order=(HeroClass.from_slot_code(p.primary_role),),
             is_flex=p.is_flex,
             user_id=p.user_id,
-            rank_by_role={DraftRole(k): v for k, v in (p.role_ranks or {}).items()},
+            rank_by_role={HeroClass.from_slot_code(k): v for k, v in (p.role_ranks or {}).items()},
         )
         for p in available
     ]
@@ -548,8 +546,8 @@ async def autopick(
     # ranks.role_rank(player, ...) reads role_ranks -> roles; the chosen row came
     # from the snapshot's eager-loaded players, so no re-fetch is needed.
     player = next(p for p in available if p.id == chosen_id)
-    resolved_role = chosen_role or DraftRole(player.primary_role)
-    pick.target_role = resolved_role.value if shape.has_role_slots else None
+    resolved_role = chosen_role or HeroClass.from_slot_code(player.primary_role)
+    pick.target_role = resolved_role.slot_code if shape.has_role_slots else None
     pick.target_rank_value = ranks.slot_rank(player, resolved_role, shape)
     return await _apply_won(session, draft_session, pick, player)
 
@@ -562,7 +560,7 @@ async def override(
     player_id: int | None,
     expected_version: int,
     actor_user_id: int | None,
-    target_role: DraftRole | None = None,
+    target_role: HeroClass | None = None,
 ) -> DraftResult:
     if not draft_session.allow_admin_override:
         raise _err("override_disabled", "Admin override is disabled for this draft")
@@ -581,7 +579,7 @@ async def override(
         hypothetical=feasibility.DraftAssignment(
             player_id=player.id,
             team_id=pick.draft_team_id,
-            slot_code=decision.role.value,
+            slot_code=decision.role.slot_code,
         ),
     )
     if not feasibility_report.is_feasible:

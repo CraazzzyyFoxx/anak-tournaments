@@ -13,7 +13,6 @@ from .balancer import (
     TeamData,
 )
 from .team import BalancerTeam, InternalBalancerTeam, InternalBalancerTeamsPayload
-from .user import UserCSV
 
 __all__ = [
     "BalanceJobResult",
@@ -31,5 +30,4 @@ __all__ = [
     "TeamData",
     "PlayerData",
     "Statistics",
-    "UserCSV",
 ]

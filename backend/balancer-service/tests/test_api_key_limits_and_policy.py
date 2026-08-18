@@ -32,7 +32,6 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from src.core import auth as auth_dependencies  # noqa: E402
 from src.core.security.api_key_limiter import (  # noqa: E402
     REQUEST_SCRIPT,
     RESERVE_JOB_SCRIPT,
@@ -137,6 +136,24 @@ def test_config_policy_rejects_expensive_caps() -> None:
         "max": 150,
     }
 
+def test_config_policy_rejects_nan_cap_bypass() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        validate_api_key_config_policy(_api_key_user(), {"population_size": float("nan")})
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "api_key_config_value_too_high"
+    assert exc_info.value.detail["field"] == "population_size"
+
+
+def test_config_policy_rejects_non_numeric_cap_value() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        validate_api_key_config_policy(_api_key_user(), {"population_size": {"a": 1}})
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "api_key_config_value_invalid"
+    assert exc_info.value.detail["field"] == "population_size"
+
+
 
 def test_config_policy_rejects_algorithm_override_field() -> None:
     with pytest.raises(HTTPException) as exc_info:
@@ -221,16 +238,3 @@ def test_workspace_policy_limits_api_key_to_own_workspace_and_jobs() -> None:
     assert exc_info.value.detail == "API key is not scoped to this workspace"
 
 
-def test_admin_workspace_dependencies_reject_api_key_principals() -> None:
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            auth_dependencies._require_workspace_permission(
-                _api_key_user(),
-                workspace_id=11,
-                resource="team",
-                action="create",
-            )
-        )
-
-    assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "API keys cannot access balancer admin endpoints"
