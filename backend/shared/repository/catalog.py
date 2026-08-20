@@ -34,6 +34,16 @@ class HeroRepository(BaseRepository[models.Hero]):
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Hero | None:
         return await self.get_by(session, name=name)
 
+    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(id, name)`` name-ordered, for admin/filter pickers.
+
+        A two-column projection rather than `get_all`: the pickers render a
+        label, and hydrating ~40 full hero rows (aliases JSONB included) to read
+        two columns is waste.
+        """
+        result = await session.execute(sa.select(models.Hero.id, models.Hero.name).order_by(models.Hero.name))
+        return result.all()
+
     async def list_by_role(
         self,
         session: AsyncSession,
@@ -146,6 +156,11 @@ class GamemodeRepository(BaseRepository[models.Gamemode]):
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Gamemode | None:
         return await self.get_by(session, name=name)
 
+    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
+        result = await session.execute(sa.select(models.Gamemode.id, models.Gamemode.name).order_by(models.Gamemode.name))
+        return result.all()
+
     async def get_with_maps(self, session: AsyncSession, gamemode_id: int) -> models.Gamemode | None:
         return await self.get(session, gamemode_id, options=[selectinload(models.Gamemode.maps)])
 
@@ -167,6 +182,11 @@ class MapRepository(BaseRepository[models.Map]):
 
     async def get_with_gamemode(self, session: AsyncSession, map_id: int) -> models.Map | None:
         return await self.get(session, map_id, options=[selectinload(models.Map.gamemode)])
+
+    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
+        result = await session.execute(sa.select(models.Map.id, models.Map.name).order_by(models.Map.name))
+        return result.all()
 
     async def get_by_name(
         self,
@@ -228,3 +248,36 @@ class MapRepository(BaseRepository[models.Map]):
         """Paginated maps — optionally eager-loads `Map.gamemode`."""
         options = [selectinload(models.Map.gamemode)] if with_gamemode else None
         return await self.get_all(session, params, options=options)
+
+
+class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
+    """``overwatch.catalog_alias_miss`` — the unresolved-name worklist.
+
+    Rows are never deleted; ``resolved_at`` is stamped on attach/dismiss and
+    cleared again when the same name reappears (see the model docstring).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.CatalogAliasMiss)
+
+    async def resolve_by_raw_name(
+        self,
+        session: AsyncSession,
+        *,
+        entity_type: enums.CatalogEntityType,
+        raw_name: str,
+    ) -> None:
+        """Close the miss for one ``(entity_type, raw_name)`` pair.
+
+        Set-based rather than load-then-mutate: the pair is unique
+        (``uq_catalog_alias_miss_entity_raw``) but may legitimately be absent —
+        an alias can be attached before any log ever missed on it.
+        """
+        await session.execute(
+            sa.update(models.CatalogAliasMiss)
+            .where(
+                models.CatalogAliasMiss.entity_type == entity_type,
+                models.CatalogAliasMiss.raw_name == raw_name,
+            )
+            .values(resolved_at=sa.func.now())
+        )

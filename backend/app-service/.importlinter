@@ -1,13 +1,17 @@
 [importlinter]
-# Configured per the architecture review (P3-C in docs/architecture/layering.md).
-# Goal: enforce acyclic dependencies inside src.services so any single domain
-# can be extracted to its own service later without dragging half the others.
+# Enforces the layering the 2026-08-20 OOP refactor established
+# (docs/plans/2026-08-20-app-service-oop-repositories.md).
 #
-# After P3-A (2026-05-24), tournament-flow HTTP endpoints moved to
-# tournament-service. There is NO public src.services._internal/ anymore —
-# user/ and achievements/ each carry their own private `_repositories.py` +
-# `_mappers.py` that read tournament-flow tables directly via shared ORM and
-# convert to narrow DTOs defined in `src.schemas.user` / `src.schemas.achievement`.
+# Layer shape per domain:
+#   src/rpc/<x>.py            transport: decode, gate, one service call. No SQL.
+#   services/<d>/flows.py     class <D>Service + singleton — orchestration, cache, mapping
+#   services/<d>/service.py   class <D>Queries  + singleton — analytical SQL only
+#   services/<d>/_mappers.py  sync ORM -> DTO functions
+#   shared.repository         CRUD, flush-only
+#
+# NB: this file previously used TOML table syntax (`[[importlinter.contracts]]`)
+# in an INI-parsed file, so `lint-imports` aborted with
+# "section '' already exists" and enforced nothing. Rewritten as INI.
 
 root_packages =
     src
@@ -15,81 +19,74 @@ root_packages =
 # ----------------------------------------------------------------------------
 # Contract 1: layered hierarchy inside src.services.
 #
-# Layers (high → low):
+# Layers (high -> low):
 #   - achievements: aggregates user/encounter/tournament behaviour
 #   - dashboard, user: cross-domain read APIs
-#   - hero, map, gamemode, statistics, workspace:
-#     leaf/core domains, no cross-domain dependencies
+#   - hero, map, gamemode, statistics, workspace: leaf/core domains
 # ----------------------------------------------------------------------------
-[[importlinter.contracts]]
+[importlinter:contract:services-layers]
 name = src.services layered hierarchy
 type = layers
 layers =
-    src.services.achievements
-    src.services.dashboard | src.services.user
-    src.services.hero | src.services.map | src.services.gamemode | src.services.statistics | src.services.workspace
+    achievements
+    dashboard | user
+    hero | map | gamemode | statistics | workspace
 containers =
     src.services
 ignore_imports =
-    # ---- Known debt: map → hero ----
-    src.services.map.flows -> src.services.hero.flows
+    # ---- Known debt: map -> hero ----
     src.services.map.flows -> src.services.hero.service
+    src.services.map.flows -> src.services.hero.flows
 
     # ---- Known debt: lower layers reaching into user ----
     src.services.map.flows -> src.services.user.flows
 
 
 # ----------------------------------------------------------------------------
-# Contract 2: routes don't bypass flows.
+# Contract 2: the transport layer owns no data access.
 #
-# routes/*.py must orchestrate via services/<domain>/flows.py — direct
-# imports of service.py from routes are bypassing the layered orchestration.
+# rpc/*.py decodes parameters, gates permissions and calls one service. It must
+# never reach a query class or a repository directly — that is what put SQL and
+# `session.commit()` into rpc/{users_admin,catalog_aliases,audit,binary}.py in
+# the first place.
 # ----------------------------------------------------------------------------
-[[importlinter.contracts]]
-name = Routes must orchestrate via flows
+[importlinter:contract:rpc-goes-through-services]
+name = RPC transport must orchestrate via services, never query classes
 type = forbidden
+allow_indirect_imports = True
 source_modules =
-    src.routes
+    src.rpc
 forbidden_modules =
-    src.services.user.service
+    src.services.user.queries
     src.services.hero.service
-    src.services.map.service
-    src.services.achievements.service_v2
     src.services.statistics.service
-    src.services.gamemode.service
-    src.services.dashboard.service
-ignore_imports =
-    # ---- Known debt: routes touching service.py directly ----
-    src.routes.workspace -> src.services.workspace.service
-
+    src.services.achievements.service_v2
 
 # ----------------------------------------------------------------------------
-# Contract 3 (P3-A): private mappers / repositories stay private.
+# Contract 3: private mappers / query packages stay inside their domain.
 #
-# Each consumer of tournament-flow data (services/user, services/achievements)
-# owns its own `_mappers.py` + `_repositories.py`. Other consumers MUST NOT
-# import those — if a third consumer needs the same data, it gets its own
-# repository so the consumers can evolve independently.
+# Each consumer of tournament-flow data owns its own queries + mappers. A third
+# consumer gets its own, so the consumers can evolve independently.
 # ----------------------------------------------------------------------------
-[[importlinter.contracts]]
+[importlinter:contract:user-privates]
 name = user/ private modules belong to user/
 type = forbidden
+allow_indirect_imports = True
 source_modules =
-    src.services.achievements
     src.services.dashboard
     src.services.statistics
     src.services.hero
     src.services.map
     src.services.gamemode
     src.services.workspace
-    src.routes
 forbidden_modules =
-    src.services.user._repositories
+    src.services.user.queries
     src.services.user._mappers
 
-[[importlinter.contracts]]
+[importlinter:contract:achievements-privates]
 name = achievements/ private modules belong to achievements/
 type = forbidden
+allow_indirect_imports = True
 source_modules =
     src.services.user
     src.services.dashboard
@@ -98,7 +95,5 @@ source_modules =
     src.services.map
     src.services.gamemode
     src.services.workspace
-    src.routes
 forbidden_modules =
-    src.services.achievements._repositories
     src.services.achievements._mappers

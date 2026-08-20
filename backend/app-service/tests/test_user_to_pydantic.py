@@ -1,11 +1,9 @@
-"""Unit tests for user_flows.to_pydantic (unified social_accounts, no DB)."""
-
-import asyncio
+"""Unit tests for UserService.to_read (unified social_accounts, no DB)."""
 
 from shared.core.social import SocialProvider
 from shared.models.identity.social import SocialAccountVisibility
 from src import models
-from src.services.user import flows
+from src.services.user.flows import UserService
 
 
 def _acc(id_: int, provider: str, username: str, *, is_primary: bool = False, is_verified: bool = False, url=None):
@@ -26,14 +24,14 @@ def _user_with(accounts):
     return user
 
 
-def test_to_pydantic_returns_unified_social_accounts():
+def test_to_user_read_returns_unified_social_accounts():
     accounts = [
         _acc(1, SocialProvider.BATTLENET, "Player#1234", is_primary=True, is_verified=True),
         _acc(2, SocialProvider.DISCORD, "coolguy"),
         _acc(3, SocialProvider.TWITCH, "streamer"),
         _acc(4, SocialProvider.BOOSTY, "patron", url="https://boosty.to/patron"),
     ]
-    res = asyncio.run(flows.to_pydantic(None, _user_with(accounts), ["battle_tag", "discord", "twitch"]))
+    res = UserService.to_read(_user_with(accounts), ["battle_tag", "discord", "twitch"])
 
     assert len(res.social_accounts) == 4
     assert {s.provider for s in res.social_accounts} == {"battlenet", "discord", "twitch", "boosty"}
@@ -45,13 +43,13 @@ def test_to_pydantic_returns_unified_social_accounts():
     assert not hasattr(res, "twitch")
 
 
-def test_to_pydantic_empty_entities_skips_identity_access():
+def test_to_user_read_empty_entities_skips_identity_access():
     # No identity entity requested -> social_accounts not touched (would lazy-load otherwise).
-    res = asyncio.run(flows.to_pydantic(None, models.User(id=7, name="Tester"), []))
+    res = UserService.to_read(models.User(id=7, name="Tester"), [])
     assert res.social_accounts == []
 
 
-def test_to_pydantic_serializes_loaded_visibility_scopes():
+def test_to_user_read_serializes_loaded_visibility_scopes():
     # When ``visibilities`` is eager-loaded, visible_global / visible_workspace_ids
     # reflect the real rows (presence of a global/workspace row = visible). This is
     # what the admin list (get_users) now loads so the profile-dialog switches match
@@ -64,7 +62,7 @@ def test_to_pydantic_serializes_loaded_visibility_scopes():
     hidden = _acc(2, SocialProvider.TWITCH, "hidden", is_verified=True)
     hidden.visibilities = []  # loaded but no rows -> hidden from the public profile
 
-    res = asyncio.run(flows.to_pydantic(None, _user_with([shown, hidden]), ["discord", "twitch"]))
+    res = UserService.to_read(_user_with([shown, hidden]), ["discord", "twitch"])
 
     shown_read = next(s for s in res.social_accounts if s.username == "shown")
     hidden_read = next(s for s in res.social_accounts if s.username == "hidden")
@@ -74,9 +72,9 @@ def test_to_pydantic_serializes_loaded_visibility_scopes():
     assert hidden_read.visible_workspace_ids == []
 
 
-def test_to_pydantic_defaults_visible_when_visibilities_unloaded():
+def test_to_user_read_defaults_visible_when_visibilities_unloaded():
     # No visibilities loaded (transient account) -> fail-open to visible_global=True,
     # never touching the relationship (avoids a lazy load outside the greenlet).
     acc = _acc(1, SocialProvider.DISCORD, "coolguy", is_verified=True)
-    res = asyncio.run(flows.to_pydantic(None, _user_with([acc]), ["discord"]))
+    res = UserService.to_read(_user_with([acc]), ["discord"])
     assert res.social_accounts[0].visible_global is True

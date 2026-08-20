@@ -2,8 +2,11 @@
 parser-service. The public reads already live in app-service (shared CRUD read
 engine); these are the superuser-only admin writes + paginated admin list. Game
 metadata is global game content shared by every workspace, so it is not
-delegated to workspace roles. Service + schema code ported verbatim into
-``src/services/admin`` and ``src/schemas/admin``.
+delegated to workspace roles.
+
+Pure transport: the generic ``_register_entity`` closure factory receives the
+three admin services' bound methods, so a fourth catalog entity costs one call
+and no new handler bodies.
 """
 
 from __future__ import annotations
@@ -18,9 +21,9 @@ from src.schemas import GamemodeRead, HeroRead, MapRead
 from src.schemas.admin import gamemode as gamemode_schemas
 from src.schemas.admin import hero as hero_schemas
 from src.schemas.admin import map as map_schemas
-from src.services.admin import gamemode as gamemode_service
-from src.services.admin import hero as hero_service
-from src.services.admin import map as map_service
+from src.services.admin.gamemode import gamemodes as gamemode_service
+from src.services.admin.hero import heroes as hero_service
+from src.services.admin.map import maps as map_service
 
 from . import _common as c
 

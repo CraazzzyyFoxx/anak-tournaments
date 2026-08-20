@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from src import models
-from src.services.user import service
+from src.services.user.queries import _scope
 
 
 def _compiled(stmt) -> str:
@@ -22,12 +22,12 @@ def _compiled(stmt) -> str:
 
 def test_filter_is_noop_when_workspace_id_is_none():
     base = sa.select(models.User.id)
-    assert _compiled(service._apply_workspace_member_filter(base, None)) == _compiled(base)
+    assert _compiled(_scope._apply_workspace_member_filter(base, None)) == _compiled(base)
 
 
 def test_filter_scopes_to_workspace_member_when_id_present():
     base = sa.select(models.User.id)
-    sql = _compiled(service._apply_workspace_member_filter(base, 7))
+    sql = _compiled(_scope._apply_workspace_member_filter(base, 7))
 
     assert "EXISTS" in sql
     # Correlated on the outer User row via the member's player anchor.
@@ -40,6 +40,6 @@ def test_count_query_can_be_scoped_the_same_way():
     # get_overview_users applies the filter to both the row query and the
     # distinct-count total query; a count select must accept it too.
     total = sa.select(sa.func.count(sa.distinct(models.User.id)))
-    sql = _compiled(service._apply_workspace_member_filter(total, 3))
+    sql = _compiled(_scope._apply_workspace_member_filter(total, 3))
     assert "count(DISTINCT" in sql
     assert "workspace_member.workspace_id = 3" in sql

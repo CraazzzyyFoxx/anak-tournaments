@@ -23,10 +23,10 @@ from shared.rpc.query import build_query_model
 from src import models
 from src.core import db, pagination
 from src.rpc import _common as c
-from src.services.achievements import flows_v2 as achievements_flows
-from src.services.gamemode import flows as gamemode_flows
-from src.services.hero import flows as hero_flows
-from src.services.map import flows as map_flows
+from src.services.achievements.flows_v2 import achievements as achievement_service
+from src.services.gamemode.flows import gamemodes as gamemode_service
+from src.services.hero.flows import heroes as hero_service
+from src.services.map.flows import maps as map_service
 
 # Sort-field whitelists mirror the route declarations exactly. The Literal only
 # constrains the `sort` field; an out-of-set value raises ValidationError, which
@@ -49,46 +49,46 @@ async def _ser(session: AsyncSession, obj: Any) -> Any:
 
 # --- hero --------------------------------------------------------------------
 async def _hero_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await hero_flows.get(session, obj_id)
+    return await hero_service.get(session, obj_id)
 
 
 async def _hero_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortSearchQueryParams[_HERO_SORT], data.get("query"))
     params = pagination.PaginationSortSearchParams.from_query_params(qp)
-    return (await hero_flows.get_all(session, params)).model_dump(mode="json")
+    return (await hero_service.get_all(session, params)).model_dump(mode="json")
 
 
 # --- map ---------------------------------------------------------------------
 async def _map_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await map_flows.get(session, obj_id, _entities(data))
+    return await map_service.get(session, obj_id, _entities(data))
 
 
 async def _map_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortSearchQueryParams[_MAP_SORT], data.get("query"))
     params = pagination.PaginationSortSearchParams.from_query_params(qp)
-    return (await map_flows.get_all(session, params)).model_dump(mode="json")
+    return (await map_service.get_all(session, params)).model_dump(mode="json")
 
 
 # --- gamemode ----------------------------------------------------------------
 async def _gamemode_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await gamemode_flows.get(session, obj_id, _entities(data))
+    return await gamemode_service.get(session, obj_id, _entities(data))
 
 
 async def _gamemode_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortSearchQueryParams[_GAMEMODE_SORT], data.get("query"))
     params = pagination.PaginationSortSearchParams.from_query_params(qp)
-    return (await gamemode_flows.get_all(session, params)).model_dump(mode="json")
+    return (await gamemode_service.get_all(session, params)).model_dump(mode="json")
 
 
 # --- achievement -------------------------------------------------------------
 async def _achievement_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await achievements_flows.get(session, obj_id, _entities(data))
+    return await achievement_service.get(session, obj_id, _entities(data))
 
 
 async def _achievement_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortQueryParams[_ACH_SORT], data.get("query"))
     params = pagination.PaginationSortParams.from_query_params(qp)
-    result = await achievements_flows.get_all(session, params, workspace_id=c.q1(data, "workspace_id", int))
+    result = await achievement_service.get_all(session, params, workspace_id=c.q1(data, "workspace_id", int))
     return result.model_dump(mode="json")
 
 

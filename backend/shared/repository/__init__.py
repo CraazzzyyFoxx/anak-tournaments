@@ -1,5 +1,5 @@
 from .base import BaseRepository
-from .catalog import GamemodeRepository, HeroRepository, MapRepository
+from .catalog import CatalogAliasMissRepository, GamemodeRepository, HeroRepository, MapRepository
 from .identity import (
     ApiKeyRepository,
     AuthUserRepository,
@@ -7,10 +7,12 @@ from .identity import (
     RefreshTokenRepository,
     SocialAccountRepository,
     SocialAccountVisibilityRepository,
+    UserMergeAuditRepository,
     UserPermissionDenyRepository,
     UserRepository,
     UserRoleRepository,
 )
+from .preferences import FavoritePlayerRepository
 from .registration import (
     BalancerRegistrationRepository,
     GoogleSheetFeedRepository,
@@ -53,10 +55,12 @@ __all__ = (
     "AuthUserRepository",
     "BalancerRegistrationRepository",
     "BaseRepository",
+    "CatalogAliasMissRepository",
     "ChallongeMappingRepository",
     "DiscordChannelRepository",
     "DivisionGridRepository",
     "EncounterRepository",
+    "FavoritePlayerRepository",
     "GamemodeRepository",
     "GoogleSheetFeedRepository",
     "HeroRepository",
@@ -78,6 +82,7 @@ __all__ = (
     "StandingRepository",
     "TeamRepository",
     "TournamentRepository",
+    "UserMergeAuditRepository",
     "UserPermissionDenyRepository",
     "UserRepository",
     "UserRoleRepository",

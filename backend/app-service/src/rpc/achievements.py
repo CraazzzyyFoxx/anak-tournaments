@@ -14,7 +14,7 @@ from faststream.rabbit import RabbitMessage
 from shared.rpc.query import build_query_model
 from src.core import db, errors, pagination
 from src.rpc import _common as c
-from src.services.achievements import flows_v2 as achievements_flows
+from src.services.achievements.flows_v2 import achievements as achievement_service
 
 _SF = db.async_session_maker
 
@@ -24,7 +24,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _users(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationQueryParams, data.get("query"))
-            return await achievements_flows.get_achievement_users(
+            return await achievement_service.get_achievement_users(
                 session, c.require_id(data), pagination.PaginationParams.from_query_params(qp)
             )
 
@@ -46,7 +46,7 @@ def register(broker: Any, logger: Any) -> None:
                     ],
                 )
             await c.gate_tournament(session, data, tournament_id)
-            return await achievements_flows.get_user_achievements(
+            return await achievement_service.get_user_achievements(
                 session,
                 c.require_id(data),
                 c.q(data, "entities") or [],

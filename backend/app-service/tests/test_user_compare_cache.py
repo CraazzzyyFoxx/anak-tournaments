@@ -49,10 +49,10 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
         compute = AsyncMock(return_value=response)
         params = schemas.UserCompareParams(baseline="cohort", role=enums.HeroClass.support, div_min=4, div_max=9)
 
-        with patch.object(flows, "get_compare", compute):
-            first = await flows.get_compare_cached(object(), 101, params, grid=_grid(17))
-            second = await flows.get_compare_cached(object(), 101, params, grid=_grid(17))
-            third = await flows.get_compare_cached(object(), 101, params, grid=_grid(18))
+        with patch.object(flows.users, "get_compare", compute):
+            first = await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17))
+            second = await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17))
+            third = await flows.users.get_compare_cached(object(), 101, params, grid=_grid(18))
 
         self.assertEqual(first, response)
         self.assertEqual(second, response)
@@ -67,7 +67,7 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
         delete_match = AsyncMock()
 
         with patch.object(user_merge.cache, "delete_match", delete_match):
-            await user_merge._invalidate_merge_caches(  # noqa: SLF001 - invalidation contract
+            await user_merge.merges._invalidate_merge_caches(  # noqa: SLF001 - invalidation contract
                 source_user_id=7,
                 target_user_id=9,
                 preview=preview,
@@ -137,9 +137,9 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
             ],
         )
 
-        with patch.object(flows, "get_hero_compare", compute):
-            await flows.get_hero_compare_cached(object(), 202, first_params, grid=_grid())
-            await flows.get_hero_compare_cached(object(), 202, second_params, grid=_grid())
+        with patch.object(flows.users, "get_hero_compare", compute):
+            await flows.users.get_hero_compare_cached(object(), 202, first_params, grid=_grid())
+            await flows.users.get_hero_compare_cached(object(), 202, second_params, grid=_grid())
 
         compute.assert_awaited_once()
 
@@ -153,10 +153,10 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
             return {"ok": True}
 
         params = schemas.UserCompareParams(baseline="global")
-        with patch.object(flows, "get_compare", AsyncMock(side_effect=compute)) as mocked:
-            first = asyncio.create_task(flows.get_compare_cached(object(), 303, params, grid=_grid()))
+        with patch.object(flows.users, "get_compare", AsyncMock(side_effect=compute)) as mocked:
+            first = asyncio.create_task(flows.users.get_compare_cached(object(), 303, params, grid=_grid()))
             await entered.wait()
-            second = asyncio.create_task(flows.get_compare_cached(object(), 303, params, grid=_grid()))
+            second = asyncio.create_task(flows.users.get_compare_cached(object(), 303, params, grid=_grid()))
             await asyncio.sleep(0)
             release.set()
             self.assertEqual(await first, {"ok": True})
@@ -168,10 +168,10 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
         params = schemas.UserCompareParams(baseline="global")
         compute = AsyncMock(side_effect=RuntimeError("boom"))
 
-        with patch.object(flows, "get_compare", compute):
+        with patch.object(flows.users, "get_compare", compute):
             with self.assertRaisesRegex(RuntimeError, "boom"):
-                await flows.get_compare_cached(object(), 404, params, grid=_grid())
+                await flows.users.get_compare_cached(object(), 404, params, grid=_grid())
             with self.assertRaisesRegex(RuntimeError, "boom"):
-                await flows.get_compare_cached(object(), 404, params, grid=_grid())
+                await flows.users.get_compare_cached(object(), 404, params, grid=_grid())
 
         self.assertEqual(2, compute.await_count)

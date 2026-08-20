@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from shared.core.errors import BaseAPIException
 from src import schemas
 from src.services.workspace import registry as workspace_registry
-from src.services.workspace import service as workspace_service
+from src.services.workspace.service import workspaces as workspace_service
 
 _STORED = {"tank": 1, "dps": 2, "support": 2}
 

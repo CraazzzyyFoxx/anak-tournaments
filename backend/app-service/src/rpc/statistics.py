@@ -11,9 +11,9 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
 from src.core import db, pagination
 from src.rpc import _common as c
-from src.services.dashboard import flows as dashboard_flows
-from src.services.dashboard import readiness as readiness_service
-from src.services.statistics import flows as statistics_flows
+from src.services.dashboard.flows import dashboard as dashboard_service
+from src.services.dashboard.readiness import readiness as readiness_service
+from src.services.statistics.flows import statistics as statistics_service
 
 _SF = db.async_session_maker
 _STAT_SORT = typing.Literal["id", "name", "value"]
@@ -22,8 +22,11 @@ _STAT_SORT = typing.Literal["id", "name", "value"]
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.statistics.dashboard")
     async def _dashboard(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await dashboard_flows.get_dashboard_stats(session, workspace_id=c.q1(data, "workspace_id", int))
+        # ``get_dashboard_stats`` opens its own three sessions for the parallel
+        # fan-out (AsyncSession is not concurrency-safe), so the envelope's
+        # session is deliberately unused here.
+        async def op(_session: Any) -> Any:
+            return await dashboard_service.get_dashboard_stats(workspace_id=c.q1(data, "workspace_id", int))
 
         return await c.envelope(logger, "statistics.dashboard", op, session_factory=_SF)
 
@@ -60,7 +63,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _champion(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationSortQueryParams[_STAT_SORT], data.get("query"))
-            return await statistics_flows.get_most_champions(
+            return await statistics_service.get_most_champions(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
                 workspace_id=c.q1(data, "workspace_id", int),
@@ -72,7 +75,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _winrate(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationSortQueryParams[_STAT_SORT], data.get("query"))
-            return await statistics_flows.get_to_winrate_players(
+            return await statistics_service.get_to_winrate_players(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
                 workspace_id=c.q1(data, "workspace_id", int),
@@ -84,7 +87,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _won_maps(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationSortQueryParams[_STAT_SORT], data.get("query"))
-            return await statistics_flows.get_to_won_players(
+            return await statistics_service.get_to_won_players(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
                 workspace_id=c.q1(data, "workspace_id", int),

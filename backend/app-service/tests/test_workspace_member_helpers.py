@@ -22,7 +22,7 @@ from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.rbac import user_has_any_workspace_role
 from shared.repository import get_or_create_workspace_member
 from shared.services.division_grid_access import get_default_division_grid_version_id
-from src.services.workspace import service as workspace_service
+from src.services.workspace.service import workspaces as workspace_service
 
 
 @pytest.fixture

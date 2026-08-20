@@ -18,7 +18,7 @@ from shared.rpc.crud import CrudDispatcher, EntityConfig
 from shared.services.roster_shape_access import invalidate_roster_shape_cache
 from src import models, schemas
 from src.core import db
-from src.services.workspace import service as workspace_service
+from src.services.workspace.service import workspaces as workspace_service
 
 
 async def _ser_workspace(session: AsyncSession, obj: Any) -> Any:

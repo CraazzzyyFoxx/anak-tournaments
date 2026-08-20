@@ -7,12 +7,39 @@ only the fields the frontend actually renders on user-scoped pages.
 
 from __future__ import annotations
 
+import sqlalchemy as sa
+
 from shared.core.impact import BADGE_THRESHOLD
 from shared.division_grid import DivisionGrid
 from shared.services.division_grid_resolution import resolve_tournament_division
 from src import models, schemas
 from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead
+
+_IDENTITY_ENTITIES = ("social_accounts", "battle_tag", "discord", "twitch")
+
+
+def _is_globally_visible(account: models.SocialAccount) -> bool:
+    """True when the account is shown on the public profile (has a global,
+    workspace-less visibility row). Fail-open when ``visibilities`` isn't
+    eager-loaded so a read path that forgot to load it never silently hides
+    everything — mirrors the ``visible_global=True`` default in the read model."""
+    if "visibilities" in sa.inspect(account).unloaded:
+        return True
+    return any(v.workspace_id is None for v in account.visibilities)
+
+
+def _social_account_read(account: models.SocialAccount) -> schemas.SocialAccountRead:
+    """Serialize a social account, including display-visibility scopes when the
+    ``visibilities`` relationship is eager-loaded (admin profile dialog). When it
+    isn't loaded we leave the defaults (``visible_global=True``) and never touch
+    the relationship — avoiding a lazy load outside the async greenlet."""
+    read = schemas.SocialAccountRead.model_validate(account, from_attributes=True)
+    if "visibilities" not in sa.inspect(account).unloaded:
+        scopes = list(account.visibilities)
+        read.visible_global = any(v.workspace_id is None for v in scopes)
+        read.visible_workspace_ids = sorted({v.workspace_id for v in scopes if v.workspace_id is not None})
+    return read
 
 
 def resolve_team_placement(team: models.Team) -> int | None:
@@ -59,7 +86,7 @@ def to_user_tournament_player(
     """Player card inside UserTournament.players.
 
     ``avg_mvp`` and ``heroes`` are supplied by the caller from bulk lookups
-    keyed by (tournament_id, user_id) — see ``_repositories`` — so this stays a
+    keyed by (tournament_id, user_id) — see ``queries.encounters`` — so this stays a
     pure ORM→DTO conversion with no per-player queries.
     """
     return schemas.UserTournamentPlayer(

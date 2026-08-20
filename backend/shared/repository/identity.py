@@ -866,6 +866,55 @@ class UserRoleRepository:
             or 0
         )
 
+    async def grant_missing_workspace_member_role(self, session: AsyncSession, workspace_id: int) -> int:
+        """Grant the baseline ``member`` role to every auth-linked member of
+        ``workspace_id`` whose auth user currently holds no role there.
+
+        One set-based statement, and idempotent: the ``NOT EXISTS`` guard only
+        touches role-less members, so re-running grants nothing and never
+        duplicates. Raw SQL because the join walks three schemas
+        (``workspace_member`` -> ``players.user`` -> ``auth.roles``) into an
+        association table with no mapped class; ``workspace_id`` is bound, not
+        interpolated. Returns the number of grants inserted. The caller must
+        have ensured the workspace's system roles exist.
+        """
+        result = await session.execute(
+            sa.text(
+                """
+            INSERT INTO auth.user_roles (user_id, role_id)
+            SELECT DISTINCT pu.auth_user_id, r.id
+            FROM workspace_member wm
+            JOIN players."user" pu ON pu.id = wm.player_id AND pu.auth_user_id IS NOT NULL
+            JOIN auth.roles r ON r.workspace_id = wm.workspace_id AND r.name = 'member'
+            WHERE wm.workspace_id = :workspace_id
+              AND NOT EXISTS (
+                SELECT 1 FROM auth.user_roles ur
+                JOIN auth.roles r2 ON r2.id = ur.role_id
+                WHERE ur.user_id = pu.auth_user_id AND r2.workspace_id = wm.workspace_id
+              )
+            """
+            ),
+            {"workspace_id": workspace_id},
+        )
+        return result.rowcount or 0
+
+    async def revoke_workspace_roles(self, session: AsyncSession, *, user_id: int, workspace_id: int) -> None:
+        """Drop every grant this auth user holds for ``workspace_id``'s roles.
+
+        Set-based: membership removal must not leave orphaned grants behind, and
+        the grant count is unbounded (system roles plus any custom ones), so
+        loading them to delete one by one buys nothing. Global roles are
+        untouched — the subquery is scoped to roles owned by this workspace.
+        """
+        await session.execute(
+            sa.delete(models.user_roles).where(
+                models.user_roles.c.user_id == user_id,
+                models.user_roles.c.role_id.in_(
+                    sa.select(models.Role.id).where(models.Role.workspace_id == workspace_id)
+                ),
+            )
+        )
+
 
 class ApiKeyRepository(BaseRepository[models.ApiKey]):
     def __init__(self) -> None:
@@ -951,3 +1000,10 @@ class ApiKeyRepository(BaseRepository[models.ApiKey]):
             )
         )
         return result.scalar_one_or_none()
+
+
+class UserMergeAuditRepository(BaseRepository[models.UserMergeAudit]):
+    """``players.user_merge_audit`` — the append-only trail of profile merges."""
+
+    def __init__(self) -> None:
+        super().__init__(models.UserMergeAudit)

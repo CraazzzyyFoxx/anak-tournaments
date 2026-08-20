@@ -4,76 +4,72 @@ from shared.repository import GamemodeRepository
 from src import models, schemas
 from src.core import errors, pagination
 
-_gamemode_repo = GamemodeRepository()
+__all__ = ("GamemodeService", "gamemodes")
 
 
-async def to_pydantic(session: AsyncSession, gamemode: models.Gamemode, entities: list[str]) -> schemas.GamemodeRead:
-    """Serialize a Gamemode into ``GamemodeRead``.
+class GamemodeService:
+    def __init__(self, *, repo: GamemodeRepository = GamemodeRepository()) -> None:
+        self.repo = repo
 
-    Spreads ``to_dict()`` rather than enumerating fields, matching the map and
-    hero serializers. The enumerated version silently dropped every column added
-    after it was written: `aliases` fell back to the schema default `[]`, so the
-    admin dialog rendered an empty editor over real data and saving it would have
-    wiped the aliases the log parser resolves names through.
+    @staticmethod
+    def to_read(gamemode: models.Gamemode) -> schemas.GamemodeRead:
+        """Serialize a Gamemode into ``GamemodeRead``.
 
-    ``entities`` is accepted for signature parity with the other catalog
-    serializers; a gamemode has no expandable relation in this payload.
-    """
-    return schemas.GamemodeRead(**gamemode.to_dict())
+        Spreads ``to_dict()`` rather than enumerating fields, matching the map and
+        hero serializers. The enumerated version silently dropped every column added
+        after it was written: `aliases` fell back to the schema default `[]`, so the
+        admin dialog rendered an empty editor over real data and saving it would have
+        wiped the aliases the log parser resolves names through.
+        """
+        return schemas.GamemodeRead(**gamemode.to_dict())
 
+    async def get(self, session: AsyncSession, gamemode_id: int, entities: list[str]) -> schemas.GamemodeRead:
+        """Gamemode by ID; 404 when it does not exist.
 
-async def get(session: AsyncSession, gamemode_id: int, entities: list[str]) -> schemas.GamemodeRead:
-    """
-    Retrieves a gamemode by its ID and converts it to a Pydantic schema.
-
-    Parameters:
-        session (AsyncSession): The SQLAlchemy async session.
-        gamemode_id (int): The ID of the gamemode to retrieve.
-        entities (list[str]): A list of related entities to include (e.g., ["maps"]).
-
-    Returns:
-        schemas.GamemodeRead: The Pydantic schema representing the gamemode.
-
-    Raises:
-        errors.ApiHTTPException: If the gamemode is not found.
-    """
-    gamemode = (
-        await _gamemode_repo.get_with_maps(session, gamemode_id)
-        if "maps" in entities
-        else await _gamemode_repo.get(session, gamemode_id)
-    )
-
-    if not gamemode:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="not_found",
-                    msg=f"Gamemode not found with id={gamemode_id}",
-                )
-            ],
+        ``entities`` accepts ``"maps"``; without that token the maps are not loaded.
+        """
+        gamemode = (
+            await self.repo.get_with_maps(session, gamemode_id)
+            if "maps" in entities
+            else await self.repo.get(session, gamemode_id)
         )
 
-    return await to_pydantic(session, gamemode, entities)
+        if not gamemode:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[
+                    errors.ApiExc(
+                        code="not_found",
+                        msg=f"Gamemode not found with id={gamemode_id}",
+                    )
+                ],
+            )
+
+        return self.to_read(gamemode)
+
+    async def get_all(
+        self, session: AsyncSession, params: pagination.PaginationSortSearchParams
+    ) -> pagination.Paginated[schemas.GamemodeRead]:
+        """Paginated gamemodes, with their maps eager-loaded when ``params.entities``
+        contains ``"maps"``.
+        """
+        gamemodes, total = await self.repo.all(session, params, with_maps="maps" in params.entities)
+        return pagination.Paginated(
+            total=total,
+            per_page=params.per_page,
+            page=params.page,
+            results=[self.to_read(gamemode) for gamemode in gamemodes],
+        )
+
+    async def lookup(self, session: AsyncSession) -> list[schemas.LookupItem]:
+        """``(id, name)`` pairs for the admin/filter pickers, name-ordered.
+
+        Was inlined in `rpc/gamemodes.py`; see `HeroService.lookup` for why it
+        lands on the service. The gamemode domain has no query class at all — its
+        only SQL is this projection, and it now lives on `GamemodeRepository`.
+        """
+        rows = await self.repo.list_lookup(session)
+        return [schemas.LookupItem(id=row.id, name=row.name) for row in rows]
 
 
-async def get_all(
-    session: AsyncSession, params: pagination.PaginationSortSearchParams
-) -> pagination.Paginated[schemas.GamemodeRead]:
-    """
-    Retrieves a paginated list of gamemodes and converts them to Pydantic schemas.
-
-    Parameters:
-        session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationSortSearchParams): Search, pagination, and sorting parameters.
-
-    Returns:
-        pagination.Paginated[schemas.GamemodeRead]: A paginated list of Pydantic schemas representing the gamemodes.
-    """
-    gamemodes, total = await _gamemode_repo.all(session, params, with_maps="maps" in params.entities)
-    return pagination.Paginated(
-        total=total,
-        per_page=params.per_page,
-        page=params.page,
-        results=[await to_pydantic(session, gamemode, params.entities) for gamemode in gamemodes],
-    )
+gamemodes = GamemodeService()

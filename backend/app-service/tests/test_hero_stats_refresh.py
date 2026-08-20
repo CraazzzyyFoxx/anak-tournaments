@@ -22,6 +22,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 hero_stats_refresh = importlib.import_module("src.services.hero_stats_refresh")
+refresher = hero_stats_refresh.hero_stats_refresh_service
 
 
 class _FakeResult:
@@ -76,7 +77,7 @@ class HeroGlobalStatsRefreshTests(IsolatedAsyncioTestCase):
     async def test_work_mem_is_raised_transaction_locally_before_the_refresh(self) -> None:
         session = _FakeSession()
 
-        await hero_stats_refresh.refresh_hero_global_stats(session)
+        await refresher.refresh(session)
 
         work_mem = [s for s in session.statements if "work_mem" in s]
         self.assertEqual(["SET LOCAL work_mem = '768MB'"], work_mem)
@@ -93,9 +94,9 @@ class HeroGlobalStatsRefreshTests(IsolatedAsyncioTestCase):
         refresh = AsyncMock(return_value=True)
         maker = _SessionMaker(_FakeSession())
 
-        with patch.object(hero_stats_refresh, "refresh_hero_global_stats", refresh):
-            await hero_stats_refresh._run_refresh(maker, MagicMock())
-            await hero_stats_refresh._run_refresh(maker, MagicMock())
+        with patch.object(refresher, "refresh", refresh):
+            await refresher._run_refresh(maker, MagicMock())
+            await refresher._run_refresh(maker, MagicMock())
 
         self.assertEqual(1, refresh.await_count)
 
@@ -104,9 +105,9 @@ class HeroGlobalStatsRefreshTests(IsolatedAsyncioTestCase):
         maker = _SessionMaker(_FakeSession())
         logger = MagicMock()
 
-        with patch.object(hero_stats_refresh, "refresh_hero_global_stats", refresh):
-            await hero_stats_refresh._run_refresh(maker, logger)
-            await hero_stats_refresh._run_refresh(maker, logger)
+        with patch.object(refresher, "refresh", refresh):
+            await refresher._run_refresh(maker, logger)
+            await refresher._run_refresh(maker, logger)
 
         self.assertEqual(2, refresh.await_count)
         logger.exception.assert_called_once()

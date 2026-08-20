@@ -25,6 +25,7 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
     "user_profile",
     "user_tournaments",
     "user_tournament_stats",
+    "user_tournament_encounters",
     "user_heroes",
     "user_encounters",
     "user_maps",

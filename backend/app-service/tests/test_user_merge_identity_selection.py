@@ -50,7 +50,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
         selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
-        result = await user_merge.apply_identity_selection(session, source, target, selection)
+        result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 
         session.delete.assert_awaited_once_with(source_account)
         self.assertEqual({"moved": [], "deduped": [1]}, result)
@@ -67,7 +67,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
         selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
-        result = await user_merge.apply_identity_selection(session, source, target, selection)
+        result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 
         self.assertEqual({"moved": [], "deduped": [1]}, result)
         # Target already owned a verified identity for this handle: its own
@@ -83,7 +83,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
         selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
-        result = await user_merge.apply_identity_selection(session, source, target, selection)
+        result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 
         self.assertEqual({"moved": [], "deduped": [1]}, result)
         self.assertFalse(target_account.is_verified)
@@ -99,7 +99,7 @@ class ApplyIdentitySelectionDedupTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock(), execute=AsyncMock(return_value=primary_result))
         selection = merge_schemas.UserMergeIdentitySelection(social_account_ids=[1])
 
-        result = await user_merge.apply_identity_selection(session, source, target, selection)
+        result = await user_merge.merges.apply_identity_selection(session, source, target, selection)
 
         session.delete.assert_not_awaited()
         self.assertEqual({"moved": [1], "deduped": []}, result)
