@@ -128,8 +128,15 @@ const EncounterRow = ({
         {enc.score.home} – {enc.score.away}
       </span>
 
-      {/* Logs */}
-      <div className="hidden justify-end md:flex" onClick={(e) => e.preventDefault()}>
+      {/* Logs — click shield, not a control: the whole row is one link, so a
+          click on the log badge must not navigate. No keyboard twin by design:
+          this only catches clicks on the indicator's non-focusable `<span>`
+          variants; its focusable ones stop propagation themselves. */}
+      <div
+        role="presentation"
+        className="hidden justify-end md:flex"
+        onClick={(e) => e.preventDefault()}
+      >
         <MatchLogIndicator
           hasLogs={enc.has_logs}
           logs={

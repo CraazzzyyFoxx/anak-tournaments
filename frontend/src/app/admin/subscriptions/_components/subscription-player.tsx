@@ -138,22 +138,27 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
               className="max-h-72 divide-y divide-border overflow-y-auto"
             >
               {results.map((user, index) => (
-                <div
+                <button
                   key={user.id}
                   id={`${listId}-${index}`}
+                  type="button"
                   role="option"
                   aria-selected={activeIndex === index}
+                  // Out of the tab order on purpose: DOM focus stays in the input
+                  // and `aria-activedescendant` points here, so the highlight
+                  // below is this option's visible focus. Still a real button, so
+                  // it is a control rather than a div that only answers a mouse.
                   tabIndex={-1}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => pick(user.id, user.name)}
                   className={cn(
-                    "cursor-pointer px-3 py-2 text-sm",
+                    "block w-full cursor-pointer px-3 py-2 text-left text-sm",
                     activeIndex === index ? "bg-muted/60" : "hover:bg-muted/50"
                   )}
                 >
                   {user.name}
-                </div>
+                </button>
               ))}
             </div>
           ) : (

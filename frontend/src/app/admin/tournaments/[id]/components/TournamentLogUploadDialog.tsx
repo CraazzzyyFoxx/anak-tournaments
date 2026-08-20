@@ -47,7 +47,9 @@ function getDuplicateFileNames(files: File[]) {
     seen.add(file.name);
   }
 
-  return Array.from(duplicates).sort();
+  // Collate explicitly: bare `.sort()` orders by UTF-16 code unit, which puts
+  // every uppercase name ahead of every lowercase one in a list a human reads.
+  return Array.from(duplicates).sort((a, b) => a.localeCompare(b));
 }
 
 export function TournamentLogUploadDialog({

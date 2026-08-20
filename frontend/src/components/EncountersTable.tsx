@@ -466,7 +466,14 @@ export function EncountersDataTable({
       case "logs":
         return (
           <td key={column} className="c">
+            {/* Layout box and click shield, not a control: the whole row
+                navigates, so a click landing on the badge must not. There is
+                deliberately no keyboard twin — this only ever catches clicks on
+                the indicator's non-focusable `<span>` variants. Its focusable
+                variants stop propagation themselves, and the row's key handler
+                already ignores events whose target is not the row. */}
             <div
+              role="presentation"
               className="m-media justify-center"
               onClick={(event) => event.stopPropagation()}
             >
