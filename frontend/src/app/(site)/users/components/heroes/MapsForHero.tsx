@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Map as MapIcon } from "lucide-react";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 
-export interface HeroMapRow {
+interface HeroMapRow {
   id: number;
   name: string;
   mode: string;

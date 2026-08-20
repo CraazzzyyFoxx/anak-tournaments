@@ -1,5 +1,6 @@
 import type { EncounterWithUserStats, UserTournament } from "@/types/user.types";
 import type { ScoreKind } from "@/components/match/cells";
+import { playerRoleTint } from "@/lib/player-role";
 
 /** League grouping key: the prefix before " | " in the tournament name. */
 export const leagueKey = (t: UserTournament): string => t.name.split(" | ")[0];
@@ -109,9 +110,9 @@ export const placementMedal = (placement: number | null | undefined): PlacementM
   return "none";
 };
 
-/** Role → the `--aqt-*` colour token used for role icons/accents. */
-export const roleColorVar = (role: string | null): string =>
-  role === "Tank" ? "var(--aqt-tank)" : role === "Support" ? "var(--aqt-support)" : "var(--aqt-damage)";
+/** Role → the `--aqt-*` colour token used for role icons/accents. Flex is a
+ *  real roster role, so it gets its own token rather than the damage default. */
+export const roleColorVar = (role: string | null): string => `var(--aqt-${playerRoleTint(role) ?? "damage"})`;
 
 /** Map winrate as a 0–100 percentage; null when the player played no maps. */
 export const mapsWinratePct = (mapsWon: number, mapsLost: number): number | null => {
@@ -128,14 +129,14 @@ export const winrateColor = (pct: number | null): string => {
 };
 
 /** Was the profile user on the home side of this encounter? */
-export const isUserHomeInEncounter = (
+const isUserHomeInEncounter = (
   enc: EncounterWithUserStats,
   teamId: number,
   selfUserId: number
 ): boolean => enc.home_team_id === teamId || (enc.home_team?.players ?? []).some((p) => p.user_id === selfUserId);
 
 /** Series (encounter-level) result from the user's perspective. */
-export const encounterResult = (enc: EncounterWithUserStats, userHome: boolean): ScoreKind => {
+const encounterResult = (enc: EncounterWithUserStats, userHome: boolean): ScoreKind => {
   const us = userHome ? enc.score.home : enc.score.away;
   const them = userHome ? enc.score.away : enc.score.home;
   return us > them ? "win" : us < them ? "loss" : "draw";

@@ -4,9 +4,13 @@ import React, { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import TeamName from "@/components/TeamName";
 import { useTranslations, useLocale } from "next-intl";
 import { TeamVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
-import { formatPlace } from "@/app/(site)/tournaments/analytics/analytics.helpers";
+import {
+  formatPlace,
+  standingsRank,
+} from "@/app/(site)/tournaments/analytics/analytics.helpers";
 import DeltaPill from "@/app/(site)/tournaments/analytics/components/DeltaPill";
 import styles from "@/app/(site)/tournaments/analytics/components/AnalyticsRedesign.module.css";
 
@@ -24,10 +28,6 @@ interface StandingsListProps {
 
 const MODES: StandingsMode[] = ["standings", "movers", "watch"];
 
-function placementRank(placement: number | null): number {
-  return placement == null ? Number.MAX_SAFE_INTEGER : placement;
-}
-
 function sortTeams(teams: TeamVM[], mode: StandingsMode): TeamVM[] {
   if (mode === "movers") {
     return [...teams].sort(
@@ -37,7 +37,7 @@ function sortTeams(teams: TeamVM[], mode: StandingsMode): TeamVM[] {
   if (mode === "watch") {
     return teams.filter((team) => team.flagCount > 0);
   }
-  return [...teams].sort((a, b) => placementRank(a.placement) - placementRank(b.placement));
+  return [...teams].sort((a, b) => standingsRank(a) - standingsRank(b));
 }
 
 function moveColor(delta: number | null): string {
@@ -45,14 +45,26 @@ function moveColor(delta: number | null): string {
   return delta > 0 ? "var(--c-up)" : "var(--c-down)";
 }
 
-/** The per-row predicted → actual mini-connector — the horizon, inlined. */
+/**
+ * The per-row predicted → actual mini-connector — the horizon, inlined. Before
+ * the bracket is played there is no actual place to connect to, so the row
+ * shows the forecast on its own.
+ */
 function RowHorizon({ team, maxPosition }: { team: TeamVM; maxPosition: number }) {
   const t = useTranslations();
   const locale = useLocale();
   const predicted = team.predicted_place;
   const actual = team.placement;
-  if (predicted == null || actual == null || maxPosition < 2) {
+  if (predicted == null) {
     return <span className={styles.cRowHz} aria-hidden="true" />;
+  }
+  const predictedLabel = (
+    <span className={styles.cRowHzPred}>
+      {t("analytics.community.standings.predShort", { place: formatPlace(predicted, locale) })}
+    </span>
+  );
+  if (actual == null || maxPosition < 2) {
+    return <span className={styles.cRowHz}>{predictedLabel}</span>;
   }
   const pos = (place: number) => ((place - 1) / (maxPosition - 1)) * 100;
   const predictedPct = pos(predicted);
@@ -63,9 +75,7 @@ function RowHorizon({ team, maxPosition }: { team: TeamVM; maxPosition: number }
 
   return (
     <span className={styles.cRowHz}>
-      <span className={styles.cRowHzPred}>
-        {t("analytics.community.standings.predShort", { place: formatPlace(predicted, locale) })}
-      </span>
+      {predictedLabel}
       <span className={styles.cHorizonTrack}>
         <span className={styles.cHorizonLine} />
         {team.placement_delta != null && team.placement_delta !== 0 ? (
@@ -98,9 +108,14 @@ export default function StandingsList({
   headerEnd,
 }: StandingsListProps) {
   const t = useTranslations();
+  const locale = useLocale();
   const rows = useMemo(() => sortTeams(teams, mode), [teams, mode]);
   const maxPosition = useMemo(
-    () => teams.reduce((max, team) => Math.max(max, team.placement ?? 0), 0),
+    () =>
+      teams.reduce(
+        (max, team) => Math.max(max, team.placement ?? 0, team.predicted_place ?? 0),
+        0,
+      ),
     [teams],
   );
 
@@ -147,11 +162,24 @@ export default function StandingsList({
                 data-sel={selectedTeamId === team.id}
                 onClick={() => onSelectTeam(team.id)}
               >
-                <span className={cn(styles.cRank, team.placement === 1 && styles.cRank1)}>
-                  {team.placement ?? "—"}
+                <span
+                  className={cn(
+                    styles.cRank,
+                    team.placement === 1 && styles.cRank1,
+                    team.placement == null && team.predicted_place != null && styles.cRankPred,
+                  )}
+                  title={
+                    team.placement == null && team.predicted_place != null
+                      ? t("analytics.community.standings.predShort", {
+                          place: formatPlace(team.predicted_place, locale),
+                        })
+                      : undefined
+                  }
+                >
+                  {team.placement ?? team.predicted_place ?? "—"}
                 </span>
                 <span className={styles.cTeamId}>
-                  <span className={styles.cTeamName}>{team.name}</span>
+                  <TeamName team={team} size="xs" nameClassName={styles.cTeamName} />
                   <span className={styles.cTeamMeta}>
                     <span>
                       {team.wins}–{team.losses}

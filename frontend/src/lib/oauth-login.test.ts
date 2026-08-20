@@ -25,7 +25,14 @@ type GetOAuthUrlCall = {
 const getOAuthUrlCalls: GetOAuthUrlCall[] = [];
 let getOAuthUrlResult = { provider: "discord", url: "https://discord.example/authorize", state: "signed-state" };
 
+// `bun test` shares one module registry across a run, so whichever mock of this
+// module registers first is what every other file sees. Omitting these two took
+// the three auth-route test files down with a SyntaxError at import time —
+// @/lib/oauth-callback imports them — and their tests silently did not run.
+// scripts/test-runner-split.mjs now fails on an incomplete mock.
 mock.module("@/services/auth.service", () => ({
+  OAuthLinkAuthRequiredError: class extends Error {},
+  OAuthLinkFailedError: class extends Error {},
   authService: {
     getOAuthUrl: async (
       provider: string,

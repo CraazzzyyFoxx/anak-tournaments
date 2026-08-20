@@ -29,6 +29,12 @@ class CustomFieldDefinition(BaseModel):
     placeholder: str | None = None
     options: list[str] | None = None
     validation: FieldValidationConfig | None = None
+    # Whether this answer is surfaced in the live draft's player inspector.
+    # Off by default and per-field on purpose: the draft board is PUBLIC, so
+    # showing an answer there is an explicit organizer decision, not a
+    # consequence of asking the question. Read by balancer-service
+    # (services/draft/board.py) straight off ``custom_fields_json``.
+    show_in_draft: bool = False
 
 
 class BuiltInFieldConfig(BaseModel):

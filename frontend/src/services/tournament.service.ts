@@ -99,6 +99,10 @@ export default class tournamentService {
           "participants_count",
           "registrations_count",
           "teams_count",
+          // Costs one extra query server-side (`flows.py` gates it behind this
+          // opt-in), paid once here so the shell's link row needs no read of its
+          // own — the same payload already feeds the hero and the section nav.
+          "links",
         ],
       },
     }).then((response) => response.json());

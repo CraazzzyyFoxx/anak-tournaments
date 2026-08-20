@@ -19,10 +19,9 @@ from shared.core.enums import (
     DraftPickStatus,
     DraftPlayerStatus,
     DraftPoolSource,
-    DraftRole,
     DraftStatus,
 )
-from shared.domain.roster_shape import RosterShape
+from shared.domain.roster_shape import RegistrationRoleCode, RosterShape
 from shared.schemas.roster_slots import RosterShapeRead
 from src.schemas.base import BaseRead
 
@@ -37,6 +36,7 @@ __all__ = (
     "DraftPickOptionsResponse",
     "DraftPickRead",
     "DraftPickSelectRequest",
+    "DraftPlayerCustomFieldRead",
     "DraftPlayerRead",
     "DraftRoleEditRequest",
     "DraftRoleEditResponse",
@@ -92,8 +92,8 @@ class DraftManualCaptainInput(BaseModel):
 class DraftManualPlayerInput(BaseModel):
     user_id: int | None = None
     battle_tag: str | None = None
-    primary_role: DraftRole
-    secondary_roles: list[DraftRole] = Field(default_factory=list)
+    primary_role: RegistrationRoleCode
+    secondary_roles: list[RegistrationRoleCode] = Field(default_factory=list)
     sub_role: str | None = None
     is_flex: bool = False
     division_number: int | None = None
@@ -160,7 +160,7 @@ class DraftOrderRequest(BaseModel):
 class DraftPickSelectRequest(BaseModel):
     player_id: int
     expected_version: int
-    target_role: DraftRole | None = None
+    target_role: RegistrationRoleCode | None = None
 
 
 class DraftPickAutopickRequest(BaseModel):
@@ -172,12 +172,12 @@ class DraftPickOverrideRequest(BaseModel):
     expected_version: int
     player_id: int | None = None
     draft_team_id: int | None = None
-    target_role: DraftRole | None = None
+    target_role: RegistrationRoleCode | None = None
     note: str | None = None
 
 
 class DraftRoleEditRequest(BaseModel):
-    role: DraftRole
+    role: RegistrationRoleCode
     rank_value: int | None = None
     rank_absence_confirmed: bool = False
     reason: str
@@ -208,6 +208,22 @@ class DraftTeamRead(BaseRead):
     exported_team_id: int | None
 
 
+class DraftPlayerCustomFieldRead(BaseModel):
+    """One organizer-approved registration answer, ready to render.
+
+    Carries the definition's current ``label``/``type`` alongside the value so
+    the draft client renders it without knowing anything about registration
+    forms. Built by ``services.draft.board.player_custom_fields``; only fields
+    flagged ``show_in_draft`` on the registration form ever appear here, because
+    the board snapshot is public.
+    """
+
+    key: str
+    label: str
+    type: str
+    value: Any
+
+
 class DraftPlayerRead(BaseRead):
     model_config = _ReadConfig
 
@@ -226,6 +242,15 @@ class DraftPlayerRead(BaseRead):
     role_ranks: dict[str, int] = Field(default_factory=dict)
     role_top_heroes: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     additional_info: dict[str, Any] = Field(default_factory=dict)
+    # Projected on the read side (not an ORM column) — see board.build_board.
+    # The one rank that represents this player in THIS draft: ``rank_value``
+    # under a shape with role slots, their best role rank under a role-less
+    # (all-flex) one, where nobody is assigned a role. Clients render it instead
+    # of ``rank_value`` wherever they show a player with no role context, so the
+    # flex rule lives once, in ``services.draft.ranks.slot_rank``.
+    effective_rank: int | None = None
+    # Projected on the read side (not an ORM column) — see board.build_board.
+    custom_fields: list[DraftPlayerCustomFieldRead] = Field(default_factory=list)
     version: int
 
 
@@ -303,7 +328,7 @@ class DraftBoardSnapshot(BaseModel):
 
 class DraftSuggestion(BaseModel):
     player_id: int
-    role: DraftRole
+    role: RegistrationRoleCode
     fit_score: float
     breakdown: dict[str, float] = Field(default_factory=dict)
 
@@ -346,7 +371,7 @@ class DraftPickOptionRead(BaseModel):
     model_config = _ReadConfig
 
     player_id: int
-    role: DraftRole
+    role: RegistrationRoleCode
     is_safe: bool
     reason_code: str | None = None
     unmatched_slots: list[DraftSlotRead] = Field(default_factory=list)
@@ -363,7 +388,7 @@ class DraftPickOptionsResponse(BaseModel):
 
 class DraftRoleEditResponse(BaseModel):
     player_id: int
-    role: DraftRole
+    role: RegistrationRoleCode
     player_version: int
     committed: bool
     before: DraftFeasibilityResponse

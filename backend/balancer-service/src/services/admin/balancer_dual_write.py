@@ -11,21 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.schemas.team import InternalBalancerTeamsPayload
+from src.services.balancer.role_naming import role_slot_code
 
 # ---------------------------------------------------------------------------
 # Balance variants + team slots  (replaces roster_json)
 # ---------------------------------------------------------------------------
-
-
-ROLE_NAME_TO_CODE: dict[str, str] = {
-    "Tank": "tank",
-    "tank": "tank",
-    "Damage": "dps",
-    "dps": "dps",
-    "DPS": "dps",
-    "Support": "support",
-    "support": "support",
-}
 
 
 async def sync_balance_variants_and_slots(
@@ -75,7 +65,7 @@ async def sync_balance_variants_and_slots(
 
         sort_order = 0
         for role_name, players in team_data.roster.items():
-            role_code = ROLE_NAME_TO_CODE.get(role_name, role_name.lower())
+            role_code = role_slot_code(role_name)
             for player_data in players:
                 name_normalized = player_data.name.replace(" ", "").strip().lower()
 

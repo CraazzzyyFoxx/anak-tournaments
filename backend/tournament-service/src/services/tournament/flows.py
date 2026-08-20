@@ -18,6 +18,8 @@ from shared.services.roster_shape_access import get_tournament_roster_slots, get
 from shared.services.tournament_visibility import visible_tournaments_predicate
 from src import models, schemas
 from src.core import config, enums, errors, pagination
+from src.schemas.admin import tournament_link as tournament_link_schemas
+from src.services.admin import tournament_link as tournament_link_service
 from src.services.registration import service as registration_service
 from src.services.team import service as team_service
 from src.services.user import flows as user_flows
@@ -132,6 +134,17 @@ async def to_pydantic(
         # reads must not pay for it. The write-path guard uses the same predicate,
         # so the form disables exactly what a save would reject.
         roster_locked_by_draft = await has_unfinished_draft_session(session, tournament.id)
+    links: list[tournament_link_schemas.TournamentLinkRead] = []
+    if _entity_requested(entities, "links"):
+        # Explicit query, not a relationship: `Tournament` deliberately declares no
+        # `links` relationship, so there is nothing here that could lazy-load
+        # outside the greenlet (MissingGreenlet) when a cached/detached
+        # TournamentRead is rebuilt. Same opt-in gate as `roster_shape` — this
+        # costs a query, so the six schemas that nest TournamentRead don't pay it.
+        links = [
+            tournament_link_schemas.TournamentLinkRead.model_validate(row, from_attributes=True)
+            for row in await tournament_link_service.list_links(session, tournament.id, active_only=True)
+        ]
     tournament_challonge_id, tournament_challonge_slug = challonge_ref if challonge_ref is not None else (None, None)
     return schemas.TournamentRead(
         id=tournament.id,
@@ -165,6 +178,7 @@ async def to_pydantic(
         participants_count=participants_count,
         registrations_count=registrations_count,
         teams_count=teams_count,
+        links=links,
     )
 
 
@@ -420,6 +434,12 @@ async def get_avg_divisions_tournaments(
     # Values are (division_number, players_count) pairs: the service layer
     # aggregates players to a per-(tournament, role, rank) histogram, so the
     # average is weighted by the count instead of iterating every player row.
+    #
+    # Keyed by HeroClass, so a ``flex`` roster row lands in a bucket the three
+    # response fields below never read -- flex players are deliberately absent
+    # from the per-role averages, because their single rank stands for no
+    # particular role and averaging it into one would misreport that role's
+    # strength. The reads use ``.get()``, so this stays a silent skip by design.
     raw_rank_cache: dict[int, dict[enums.HeroClass, list[tuple[float, int]]]] = {}
     tournament_names: dict[int, str] = {}
 

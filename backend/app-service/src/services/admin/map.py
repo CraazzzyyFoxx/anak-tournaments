@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from shared.catalog_aliases import normalize_aliases
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dict
 from shared.repository import GamemodeRepository, MapRepository
 from src import models
 from src.schemas import MapRead
@@ -33,12 +34,11 @@ async def get_maps(session: AsyncSession, params: admin_schemas.MapListParams) -
         options=[selectinload(models.Map.gamemode)],
     )
 
-    return {
-        "results": [MapRead.model_validate(map_obj, from_attributes=True) for map_obj in maps],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return paginated_dict(
+        [MapRead.model_validate(map_obj, from_attributes=True) for map_obj in maps],
+        total,
+        params,
+    )
 
 
 async def create_map(session: AsyncSession, data: admin_schemas.MapCreate) -> models.Map:
@@ -59,6 +59,7 @@ async def create_map(session: AsyncSession, data: admin_schemas.MapCreate) -> mo
     map_obj = models.Map(
         name=data.name,
         gamemode_id=data.gamemode_id,
+        image_path=data.image_path or "",
         in_competitive=data.in_competitive,
         aliases=normalize_aliases(data.aliases or [], canonical=data.name),
     )

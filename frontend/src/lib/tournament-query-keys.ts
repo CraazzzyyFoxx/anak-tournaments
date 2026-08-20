@@ -1,6 +1,8 @@
 export const tournamentQueryKeys = {
   detail: (tournamentId: number) => ["tournament", tournamentId] as const,
   stages: (tournamentId: number) => ["tournament", tournamentId, "stages"] as const,
+  streams: (tournamentId: number) => ["tournament", tournamentId, "streams"] as const,
+  links: (tournamentId: number) => ["tournament", tournamentId, "links"] as const,
   teams: (tournamentId: number, workspaceId?: number | null) =>
     workspaceId == null
       ? (["teams", tournamentId] as const)

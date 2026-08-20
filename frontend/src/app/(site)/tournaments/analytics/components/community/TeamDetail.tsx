@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import TeamName from "@/components/TeamName";
 import { useTranslations, useLocale } from "next-intl";
 import { sortTeamPlayers } from "@/utils/player";
 import { StandingsDistribution } from "@/types/analytics.types";
@@ -90,7 +91,7 @@ export default function TeamDetail({
   const tournamentGrid = team.tournament?.division_grid_version;
   const players = useMemo(() => sortTeamPlayers(team.players), [team.players]);
   const groupName = team.group?.name ?? "—";
-  const hasForecast = team.predicted_place != null && team.placement != null;
+  const hasForecast = team.predicted_place != null;
   const color = moveColor(team.placement_delta);
 
   return (
@@ -109,7 +110,7 @@ export default function TeamDetail({
               <span className={cn(styles.cTeamPlace, team.placement === 1 && styles.cTeamPlaceWin)}>
                 {formatPlace(team.placement, locale)}
               </span>
-              <span className={styles.cTeamNameBig}>{team.name}</span>
+              <TeamName team={team} size="sm" nameClassName={styles.cTeamNameBig} />
             </div>
           </div>
           <DeltaPill delta={team.placement_delta} />
@@ -121,11 +122,15 @@ export default function TeamDetail({
             {t("analytics.community.team.predictedShort", {
               place: formatPlace(team.predicted_place, locale),
             })}
-            <ArrowRight size={13} aria-hidden="true" />
-            <span className={styles.cPvaDot} style={{ background: color }} />
-            {t("analytics.community.team.finishedShort", {
-              place: formatPlace(team.placement, locale),
-            })}
+            {team.placement != null ? (
+              <>
+                <ArrowRight size={13} aria-hidden="true" />
+                <span className={styles.cPvaDot} style={{ background: color }} />
+                {t("analytics.community.team.finishedShort", {
+                  place: formatPlace(team.placement, locale),
+                })}
+              </>
+            ) : null}
             <InfoDot term="predicted_move" onExplain={onExplain} />
           </div>
         ) : null}

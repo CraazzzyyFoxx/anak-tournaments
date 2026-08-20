@@ -27,18 +27,9 @@ from shared.schemas.events import BalanceExportedEvent, BalancePlayerSnapshotDat
 from src import models
 from src.schemas.team import InternalBalancerTeamsPayload
 from src.services.balancer.algorithm.role_entries import resolve_division_from_rank
+from src.services.balancer.role_naming import role_slot_code
 
 BALANCE_EXPORTED_ROUTING_KEY = "balancer.balance.exported"
-
-ROLE_NAME_TO_CODE: dict[str, str] = {
-    "Tank": "tank",
-    "tank": "tank",
-    "Damage": "dps",
-    "dps": "dps",
-    "DPS": "dps",
-    "Support": "support",
-    "support": "support",
-}
 
 
 async def enqueue_balance_exported_event(
@@ -113,7 +104,7 @@ async def enqueue_balance_exported_event(
         tournament_team_id = tournament_team.id if tournament_team else None
 
         for role_name, players in team_data.roster.items():
-            role_code = ROLE_NAME_TO_CODE.get(role_name, role_name.lower())
+            role_code = role_slot_code(role_name)
 
             for player in players:
                 discomfort = player.discomfort or 0
@@ -131,7 +122,7 @@ async def enqueue_balance_exported_event(
                 was_off_role = False
                 if player.preferences:
                     pref_display = player.preferences[0]
-                    preferred_role = ROLE_NAME_TO_CODE.get(pref_display, pref_display.lower())
+                    preferred_role = role_slot_code(pref_display)
                     was_off_role = preferred_role != role_code
                 if was_off_role:
                     off_role_count += 1

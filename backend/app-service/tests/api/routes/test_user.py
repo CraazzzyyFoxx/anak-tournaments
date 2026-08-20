@@ -57,6 +57,10 @@ def _pick_unused_role_division_pair(db: Session) -> tuple[enums.HeroClass, int]:
     }
 
     for role in enums.HeroClass:
+        if role is enums.HeroClass.flex:
+            # A flex roster row carries one rank that stands for no particular
+            # role, so it has no per-role division for compare to bucket by.
+            continue
         for division in range(1, 21):
             if (role, division) not in existing_pairs:
                 return role, division

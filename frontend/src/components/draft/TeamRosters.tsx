@@ -15,7 +15,7 @@ import type { DivisionGrid } from "@/types/workspace.types";
 import { teamCrest } from "@/lib/draft-crest";
 import {
   buildRosterByTeam,
-  rosterRankForPlayer,
+  slotRankForPlayer,
   rosterRoleForPlayer
 } from "@/lib/draft-workspace-model";
 import {
@@ -81,7 +81,7 @@ function computeTeamRosterView(
       : { code, target: shape.slots[code] ?? 0 }
   );
   const rankValues = roster
-    .map((player) => player.rank_value)
+    .map((player) => slotRankForPlayer(player, rosterRoleForPlayer(player, picks), shape))
     .filter((value): value is number => value != null);
   const avgRank =
     rankValues.length > 0 ? rankValues.reduce((sum, value) => sum + value, 0) / rankValues.length : null;
@@ -125,6 +125,26 @@ function SlotCounters({ counters, accented }: { counters: SlotCounter[]; accente
       })}
     </>
   );
+}
+
+/**
+ * The glyph on a roster row. A role-less (all-flex) roster assigns nobody a
+ * role, so it gets the flex glyph: a role icon there would state an assignment
+ * the shape never made, which is exactly the mirror this feature removes. The
+ * captain's crown outranks both — it is a position, not a slot.
+ */
+function RosterRowIcon({
+  player,
+  role,
+  hasRoleSlots
+}: {
+  player: DraftPlayer;
+  role: RosterRoleSlotCode;
+  hasRoleSlots: boolean;
+}) {
+  if (player.is_captain) return <Crown className="h-4 w-4 text-[color:var(--aqt-warm)]" />;
+  if (!hasRoleSlots) return <Shuffle className="h-4 w-4 text-[color:var(--aqt-fg-muted)]" aria-hidden />;
+  return <PlayerRoleIcon role={getRoleIconName(role)} size={16} />;
 }
 
 export function TeamRosters({
@@ -226,7 +246,8 @@ export function TeamRosters({
                 <div className="divide-y divide-[color:var(--aqt-border)]">
                   {view.roster.map((player) => {
                     const role = rosterRoleForPlayer(player, picks);
-                    const rank = rosterRankForPlayer(player, role);
+                    const rank = slotRankForPlayer(player, role, shape);
+                    const slotLabel = shape.has_role_slots ? t(`roles.${role}`) : t("roles.flex");
                     const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, rank);
                     const divisionLabel = division == null ? null : getDivisionLabel(divisionGrid, division);
                     return (
@@ -234,12 +255,8 @@ export function TeamRosters({
                         key={player.id}
                         className="grid grid-cols-[24px_1fr_auto] items-center gap-2 px-3 py-2 text-sm"
                       >
-                        <span className="inline-flex h-6 w-6 items-center justify-center" title={t(`roles.${role}`)}>
-                          {player.is_captain ? (
-                            <Crown className="h-4 w-4 text-[color:var(--aqt-warm)]" />
-                          ) : (
-                            <PlayerRoleIcon role={getRoleIconName(role)} size={16} />
-                          )}
+                        <span className="inline-flex h-6 w-6 items-center justify-center" title={slotLabel}>
+                          <RosterRowIcon player={player} role={role} hasRoleSlots={shape.has_role_slots} />
                         </span>
                         <span className="min-w-0 truncate font-medium" title={player.battle_tag ?? undefined}>{player.battle_tag ?? `#${player.id}`}</span>
                         {division != null ? (
@@ -344,10 +361,10 @@ export function TeamRosters({
                   <table className="roster">
                     <thead>
                       <tr>
-                        {/* Without role slots the player's role is registration
-                            metadata, not a slot the roster has to fill. */}
+                        {/* Without role slots nobody holds a role: every row
+                            carries the flex glyph, so the column names it. */}
                         <th className="c" style={{ width: 48 }}>
-                          {shape.has_role_slots ? t("role") : t("primaryRole")}
+                          {shape.has_role_slots ? t("role") : t("roles.flex")}
                         </th>
                         <th>{t("sortName")}</th>
                         <th className="c" style={{ width: 68 }}>
@@ -358,7 +375,8 @@ export function TeamRosters({
                     <tbody>
                       {roster.map((player) => {
                         const role = rosterRoleForPlayer(player, picks);
-                        const rank = rosterRankForPlayer(player, role);
+                        const rank = slotRankForPlayer(player, role, shape);
+                        const slotLabel = shape.has_role_slots ? t(`roles.${role}`) : t("roles.flex");
                         const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, rank);
                         const divisionLabel =
                           division == null ? null : getDivisionLabel(divisionGrid, division);
@@ -367,13 +385,9 @@ export function TeamRosters({
                             <td className="c">
                               <span
                                 className="inline-flex h-8 w-8 items-center justify-center"
-                                title={t(`roles.${role}`)}
+                                title={slotLabel}
                               >
-                                {player.is_captain ? (
-                                  <Crown className="h-4 w-4 text-[color:var(--aqt-warm)]" />
-                                ) : (
-                                  <PlayerRoleIcon role={getRoleIconName(role)} size={16} />
-                                )}
+                                <RosterRowIcon player={player} role={role} hasRoleSlots={shape.has_role_slots} />
                               </span>
                             </td>
                             <td>

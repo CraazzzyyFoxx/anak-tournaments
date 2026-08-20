@@ -18,7 +18,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftRole
+from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass
 from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.services.roster_shape_access import get_effective_roster_shape
@@ -29,7 +29,7 @@ from src.services.role_matching import maximum_bipartite_matching
 @dataclass(frozen=True)
 class EligiblePlayer:
     player_id: int
-    playable_roles: frozenset[DraftRole]
+    playable_roles: frozenset[HeroClass]
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class DraftFeasibilityReport:
 @dataclass(frozen=True)
 class DraftPickOption:
     player_id: int
-    role: DraftRole
+    role: HeroClass
     is_safe: bool
     reason_code: str | None
     unmatched_slots: tuple[DraftSlot, ...] = ()
@@ -84,11 +84,10 @@ class DraftFeasibilityState:
     assignments: tuple[DraftAssignment, ...]
 
 
-def _as_role(value: Any) -> DraftRole | None:
-    try:
-        return DraftRole(str(value))
-    except ValueError:
-        return None
+def _as_role(value: Any) -> HeroClass | None:
+    """Parse a role slot code; ``flex`` is not a playable role (see ``is_flex``)."""
+    role = HeroClass.parse(value)
+    return role if role is not HeroClass.flex else None
 
 
 def build_feasibility_state(
@@ -118,7 +117,7 @@ def build_feasibility_state(
         primary_role = _as_role(player.primary_role)
         if player.status == DraftPlayerStatus.AVAILABLE.value:
             playable_roles = (
-                frozenset(DraftRole)
+                frozenset(HERO_TYPE_CLASSES)
                 if player.is_flex
                 else frozenset(role for entry in player.roles if (role := _as_role(entry.role)) is not None)
             )
@@ -149,7 +148,7 @@ def build_feasibility_state(
                 DraftAssignment(
                     player_id=player.id,
                     team_id=player.drafted_by_team_id,
-                    slot_code=assigned_role.value,
+                    slot_code=assigned_role.slot_code,
                 )
             )
     return DraftFeasibilityState(
@@ -409,14 +408,14 @@ def evaluate_pick_options(
     # feasibility question. Cache one forced-pick matching per role-set/role
     # pair; at the supported scale this reduces hundreds of equivalent graph
     # runs to at most 21 (seven non-empty subsets of three canonical roles).
-    report_cache: dict[tuple[frozenset[DraftRole], DraftRole], tuple[int, DraftFeasibilityReport]] = {}
+    report_cache: dict[tuple[frozenset[HeroClass], HeroClass], tuple[int, DraftFeasibilityReport]] = {}
     for player in players:
-        for role in DraftRole:
+        for role in HERO_TYPE_CLASSES:
             if role not in player.playable_roles:
                 continue
             # A role a team can still take: its own role slot, or any free flex
             # slot. Only when both are gone is the option genuinely unavailable.
-            if remaining.get((team_id, role.value), 0) + remaining.get((team_id, FLEX_SLOT_CODE), 0) <= 0:
+            if remaining.get((team_id, role.slot_code), 0) + remaining.get((team_id, FLEX_SLOT_CODE), 0) <= 0:
                 options.append(
                     DraftPickOption(
                         player_id=player.player_id,
@@ -434,7 +433,7 @@ def evaluate_pick_options(
                     slot_targets=slot_targets,
                     players=players,
                     assignments=assignments,
-                    hypothetical=DraftAssignment(player_id=player.player_id, team_id=team_id, slot_code=role.value),
+                    hypothetical=DraftAssignment(player_id=player.player_id, team_id=team_id, slot_code=role.slot_code),
                 )
                 representative_id = player.player_id
                 report_cache[cache_key] = (representative_id, report)

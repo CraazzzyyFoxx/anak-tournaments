@@ -32,8 +32,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 from shared.core.enums import (  # noqa: E402
     DraftPickStatus,
     DraftPlayerStatus,
-    DraftRole,
     DraftStatus,
+    HeroClass,
     TournamentStatus,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
@@ -96,6 +96,10 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             tourn = Tournament(workspace_id=ws.id, name=f"T {self._suffix}", status=DraftStatus.SETUP.value)
             # Tournament.status is TournamentStatus; reuse "draft" value via enum string.
             tourn.status = "draft"
+            # The draft resolves its shape from the tournament/workspace override,
+            # not from the shape stored on the session, so the override has to
+            # match `_SHAPE` or every start preflight sees the default 5-stack.
+            tourn.roster_slots_json = {"tank": 1, "dps": 2}
             s.add(tourn)
             await s.flush()
             users = []
@@ -152,7 +156,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     def _players(self) -> list[lifecycle.PlayerSeed]:
         # Captains default to TANK in this fixture. A 3-player roster therefore
         # needs two DPS picks per team; keep enough DPS players for start preflight.
-        roles = [DraftRole.DPS] * 6 + [DraftRole.TANK, DraftRole.SUPPORT, DraftRole.SUPPORT]
+        roles = [HeroClass.damage] * 6 + [HeroClass.tank, HeroClass.support, HeroClass.support]
         return [
             lifecycle.PlayerSeed(primary_role=role, rank_value=3000 + i * 50, battle_tag=f"P{i}#1")
             for i, role in enumerate(roles)
@@ -220,6 +224,20 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
 
+    async def test_start_phase_gate_is_bypassed_for_superusers(self) -> None:
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await s.execute(
+                sa.update(Tournament)
+                .values(status=TournamentStatus.REGISTRATION.value)
+                .where(Tournament.id == self.tournament_id)
+            )
+            await s.commit()
+
+            await lifecycle.start(s, draft, force=True)
+            await s.commit()
+            self.assertEqual(draft.status, DraftStatus.LIVE.value)
+
     async def test_select_advances_board(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
@@ -271,9 +289,9 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
             # Primary TANK@3000 who can flex DPS@2500.
             special = lifecycle.PlayerSeed(
-                primary_role=DraftRole.TANK,
+                primary_role=HeroClass.tank,
                 battle_tag="Flex#1",
-                secondary_roles=[DraftRole.DPS],
+                secondary_roles=[HeroClass.damage],
                 rank_value=3000,
                 role_ranks={"tank": 3000, "dps": 2500},
             )
@@ -300,7 +318,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 current,
                 player_id=chosen.id,
                 expected_version=current.version,
-                target_role=DraftRole.DPS,
+                target_role=HeroClass.damage,
                 actor_user_id=team.captain_user_id,
                 actor_auth_user_id=None,
                 actor_player_ids=[team.captain_user_id],
@@ -308,7 +326,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
             await s.commit()
             # The pick records the drafted off-role and its rank (not primary TANK@3000).
-            self.assertEqual(res.pick.target_role, DraftRole.DPS.value)
+            self.assertEqual(res.pick.target_role, HeroClass.damage.slot_code)
             self.assertEqual(res.pick.target_rank_value, 2500)
 
     async def test_select_allows_captain_auth_user_without_team_import(self) -> None:

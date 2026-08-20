@@ -30,7 +30,7 @@ from src.services.analytics.flows import (
 
 from .cache import get_or_build_dataframe, scope_cache_params
 
-__all__ = ("snapshot_pre_encounter_team_mu",)
+__all__ = ("snapshot_pre_encounter_team_mu", "snapshot_pre_tournament_team_mu")
 
 
 async def snapshot_pre_encounter_team_mu(
@@ -94,17 +94,16 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     if df.empty:
         return pd.DataFrame(columns=["encounter_id", "team_id", "avg_mu", "max_mu", "min_mu", "std_mu"])
 
-    start_tid = await v1_service.lookback_start_tournament_id(
+    window_ids = await v1_service.lookback_tournament_ids(
         session,
         tournament_id,
         look_back,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
-    matches = await v1_service.get_matches(
+    matches = await v1_service.get_matches_for_tournaments(
         session,
-        start_tid,
-        tournament_id,
+        window_ids,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
@@ -198,3 +197,90 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     return (
         pd.DataFrame(snapshots).drop_duplicates(subset=["encounter_id", "team_id"], keep="first").reset_index(drop=True)
     )
+
+
+async def snapshot_pre_tournament_team_mu(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    workspace_id: int | None = None,
+    workspace_ids: typing.Sequence[int] | None = None,
+    look_back: int = 10,
+) -> pd.DataFrame:
+    """Return one row per team of ``tournament_id`` with the team-average
+    OpenSkill ``mu`` as it stands *before the tournament starts*.
+
+    Sibling of :func:`snapshot_pre_encounter_team_mu` for the pre-tournament
+    case, where there is no encounter to anchor a snapshot to. The replay covers
+    the ``look_back`` window up to but **excluding** ``tournament_id`` itself, so
+    nothing that happens inside the tournament being forecast leaks into its own
+    strength estimate. Rosters with no rated history still get a rating:
+    :func:`prepare_openskill_data` seeds every team player from their
+    registration rank.
+
+    Output columns: ``team_id``, ``avg_mu``, ``max_mu``, ``min_mu``, ``std_mu``
+    plus per-role means ``tank_mu`` / ``damage_mu`` / ``support_mu`` (NaN when
+    the roster has no rated player on that role) — the roster average hides a
+    weak tank behind strong supports, and role gaps are how a balanced-looking
+    team actually loses.
+
+    Deliberately uncached, unlike its per-encounter sibling: this frame exists
+    for tournaments whose rosters are still being assembled, where a TTL'd
+    snapshot would forecast a field that no longer exists.
+    """
+    columns = ["team_id", "avg_mu", "max_mu", "min_mu", "std_mu", "tank_mu", "damage_mu", "support_mu"]
+    teams = await v1_service.get_teams_with_players(session, tournament_id)
+    if not teams:
+        return pd.DataFrame(columns=columns)
+
+    window_ids = await v1_service.lookback_tournament_ids(
+        session,
+        tournament_id,
+        look_back,
+        workspace_id=workspace_id,
+        workspace_ids=workspace_ids,
+    )
+    history = [
+        encounter
+        for encounter in await v1_service.get_matches_for_tournaments(
+            session,
+            window_ids,
+            workspace_id=workspace_id,
+            workspace_ids=workspace_ids,
+        )
+        if encounter.tournament_id != tournament_id
+    ]
+
+    pl: PlackettLuce = get_plackett_luce()
+    # ``prepare_openskill_data`` ignores its ``df`` argument entirely; it needs
+    # only the replay encounters plus the rosters to seed unrated players.
+    _, players_rating, _ = prepare_openskill_data(pd.DataFrame(), pl, teams, history)
+
+    rows: list[dict[str, typing.Any]] = []
+    for team in teams:
+        mus: list[float] = []
+        role_mus: dict[str, list[float]] = {"tank": [], "damage": [], "support": []}
+        for player in team.players:
+            rating = players_rating.get(get_id_role(player))
+            if rating is None:
+                continue
+            value = float(rating.mu)
+            mus.append(value)
+            if player.role in role_mus:
+                role_mus[player.role].append(value)
+        if not mus:
+            continue
+        rows.append(
+            {
+                "team_id": int(team.id),
+                "avg_mu": float(sum(mus) / len(mus)),
+                "max_mu": float(max(mus)),
+                "min_mu": float(min(mus)),
+                "std_mu": float(pd.Series(mus).std(ddof=0)) if len(mus) > 1 else 0.0,
+                **{
+                    f"{role}_mu": (float(sum(values) / len(values)) if values else float("nan"))
+                    for role, values in role_mus.items()
+                },
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)

@@ -19,7 +19,7 @@ def to_tournament_link(
 def _team_ref(team: models.Team | None) -> schemas.AchievementMatchTeamRef | None:
     if team is None:
         return None
-    return schemas.AchievementMatchTeamRef(id=team.id, name=team.name)
+    return schemas.AchievementMatchTeamRef(id=team.id, name=team.name, image_url=team.image_url)
 
 
 def to_match_link(match: models.Match) -> schemas.AchievementMatchLink:

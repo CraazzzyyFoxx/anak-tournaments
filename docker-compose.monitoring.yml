@@ -138,6 +138,11 @@ services:
     pid: host
     command:
       - "--path.rootfs=/host"
+      # Textfile collector: сюда ops/backup/backup.sh пишет owt_backup.prom
+      # (rustfs своего Prometheus-эндпоинта не имеет, а /rustfs/admin/v3/metrics
+      # отдаёт NDJSON и требует подписи SigV4). Каталог читается через уже
+      # смонтированный ro-rootfs, поэтому путь с префиксом /host.
+      - "--collector.textfile.directory=/host/var/lib/node_exporter/textfile"
     volumes:
       - /:/host:ro,rslave
     networks:

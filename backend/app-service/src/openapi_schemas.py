@@ -33,6 +33,7 @@ from src.schemas.admin.user import (
     SocialAccountCreate,
     SocialAccountUpdate,
     SocialVisibilityUpdate,
+    StreamVisibilityUpdate,
     UserCreate,
     UserUpdate,
 )
@@ -204,6 +205,12 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.social_delete": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_primary": Op(response=schemas.UserRead),
     "rpc.app.users.social_set_visibility": Op(request=SocialVisibilityUpdate, response=schemas.UserRead),
+    # ── users self-service (capability ``account.social``) ──────────────────
+    "rpc.app.users.me_set_stream_visibility": Op(request=StreamVisibilityUpdate, response=schemas.UserRead),
+    # Ad-hoc dict / 204 responses (me_favorite_add returns {"ok": True},
+    # me_favorite_remove returns 204/None) are intentionally omitted -- see the
+    # module docstring's "Endpoints returning ad-hoc dicts / None" convention.
+    "rpc.app.users.me_favorites_list": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.users.avatar_delete": Op(response=schemas.UserRead),
     "rpc.app.users.avatar_upload": Op(response=schemas.UserRead),
 }

@@ -39,6 +39,7 @@ from shared.core.enums import (
     VetoSeedSource,
 )
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.services.bracket.usability import is_encounter_live
 from src import models
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 
@@ -56,6 +57,10 @@ REASON_TEAMS_UNKNOWN = "teams_unknown"
 REASON_NOT_CONFIGURED = "not_configured"
 REASON_SLOT_COUNT_MISMATCH = "slot_count_mismatch"
 REASON_SLOT_UNDERFILLED = "slot_underfilled"
+# The encounter's stage has a generated bracket but has not been activated yet
+# (``shared.services.bracket.usability.is_encounter_live``) -- an organizer
+# preview, not a live match. Scrim encounters (no stage) never hit this.
+REASON_BRACKET_PREVIEW = "bracket_preview"
 
 
 # ── config validation & cascade ─────────────────────────────────────────────
@@ -628,6 +633,8 @@ async def unavailable_reason(session: AsyncSession, encounter: models.Encounter)
     """
     if encounter.home_team_id is None or encounter.away_team_id is None:
         return REASON_TEAMS_UNKNOWN
+    if not await is_encounter_live(session, encounter):
+        return REASON_BRACKET_PREVIEW
     config = await resolve_config(session, encounter)
     if config is None:
         return REASON_NOT_CONFIGURED
@@ -666,6 +673,8 @@ async def ensure_veto_session(
     if existing is not None:
         return existing
     if encounter.home_team_id is None or encounter.away_team_id is None:
+        return None
+    if not await is_encounter_live(session, encounter):
         return None
     config = await resolve_config(session, encounter)
     if config is None:

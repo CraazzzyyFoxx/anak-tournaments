@@ -62,7 +62,7 @@ def _rows_result(rows):
 
 class BulkCreateFromBalancerWorkspaceMemberTests(IsolatedAsyncioTestCase):
     async def test_new_player_gets_workspace_member_id(self) -> None:
-        tournament = SimpleNamespace(id=88, workspace_id=55)
+        tournament = SimpleNamespace(id=88, workspace_id=55, start_date=None)
         member_user = SimpleNamespace(id=42)
         created_team = SimpleNamespace(id=3, name="Roster", tournament_id=88)
         created_member = SimpleNamespace(id=9001)
@@ -70,13 +70,17 @@ class BulkCreateFromBalancerWorkspaceMemberTests(IsolatedAsyncioTestCase):
         # Batched execute() call order inside bulk_create_from_balancer:
         # 1) load tournament (scalar),
         # 2) existing teams by name (scalars.all -> []),
-        # 3) player facts over workspace_member join (rows.all -> [] newcomer),
-        # 4) existing workspace members (scalars.all -> []).
+        # 3) load_prior_participation: workspace.newcomer_scope lookup (scalar),
+        # 4) load_prior_participation: prior-participation rows (rows.all -> [] newcomer),
+        # 5) player facts over workspace_member join (rows.all -> [] not in tournament),
+        # 6) existing workspace members (scalars.all -> []).
         session = SimpleNamespace(
             execute=AsyncMock(
                 side_effect=[
                     _scalar_result(tournament),
                     _scalars_all_result([]),
+                    _scalar_result("global"),
+                    _rows_result([]),
                     _rows_result([]),
                     _scalars_all_result([]),
                 ]

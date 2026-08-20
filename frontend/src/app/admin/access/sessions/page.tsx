@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { detectBrowser, detectPlatform } from "@/lib/user-agent";
 import { rbacService } from "@/services/rbac.service";
 import type { AdminAuthSession, AdminSessionStatus } from "@/types/rbac.types";
 
@@ -33,24 +34,6 @@ function formatTimestamp(value: string | null | undefined): string {
     dateStyle: "medium",
     timeStyle: "short",
   });
-}
-
-function detectBrowser(userAgent: string): string | null {
-  if (/Edg\//i.test(userAgent)) return "Edge";
-  if (/OPR\//i.test(userAgent)) return "Opera";
-  if (/Chrome\//i.test(userAgent)) return "Chrome";
-  if (/Firefox\//i.test(userAgent)) return "Firefox";
-  if (/Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent)) return "Safari";
-  return null;
-}
-
-function detectPlatform(userAgent: string): string | null {
-  if (/iPhone|iPad|iPod/i.test(userAgent)) return "iOS";
-  if (/Android/i.test(userAgent)) return "Android";
-  if (/Windows/i.test(userAgent)) return "Windows";
-  if (/Macintosh|Mac OS X/i.test(userAgent)) return "macOS";
-  if (/Linux/i.test(userAgent)) return "Linux";
-  return null;
 }
 
 function formatDeviceLabel(userAgent: string | null | undefined): string {

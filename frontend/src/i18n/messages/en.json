@@ -22,8 +22,11 @@
     "matches": "Matches",
     "heroes": "Heroes",
     "maps": "Maps",
+    "schedule": "Schedule",
     "standings": "Standings",
     "bracket": "Bracket",
+    "stream": "Streams",
+    "bracketPreview": "Preview",
     "rolesList": "Roles",
     "ranks": "Ranks",
     "bracketInstructions": "Drag to pan the bracket / Press Esc to exit",
@@ -190,28 +193,6 @@
       "support": "Support",
       "flex": "Flex"
     },
-    "subroles": {
-      "hitscan": "Hitscan",
-      "projectile": "Projectile",
-      "main_heal": "Main Heal",
-      "light_heal": "Light Heal",
-      "main_tank": "Main Tank",
-      "off_tank": "Off Tank",
-      "flanker": "Flanker",
-      "flex_dps": "Flex DPS",
-      "flex_support": "Flex Support"
-    },
-    "subrolesShort": {
-      "hitscan": "HS",
-      "projectile": "PROJ",
-      "main_heal": "MH",
-      "light_heal": "LH",
-      "main_tank": "MT",
-      "off_tank": "OT",
-      "flanker": "FLK",
-      "flex_dps": "FD",
-      "flex_support": "FS"
-    },
     "clearFilters": "Clear filters",
     "now": "Now",
     "unassignedStage": "Unassigned",
@@ -281,7 +262,11 @@
       "playtimeOnMap": "Playtime on this map",
       "countedNote": "Games are counted when hero time played is over 60s."
     },
-    "sortDirection": "Sort direction: {current}. Switch to {next}."
+    "sortDirection": "Sort direction: {current}. Switch to {next}.",
+    "favorite": {
+      "add": "Add to favorites",
+      "remove": "Remove from favorites"
+    }
   },
   "registration": {
     "wizard": {
@@ -408,6 +393,7 @@
     "tabs": {
       "profile": "My Account",
       "preferences": "Preferences",
+      "favorites": "Favorites",
       "sessions": "Sessions"
     },
     "profile": {
@@ -418,6 +404,11 @@
       "title": "Preferences",
       "desc": "Customize your tournament experience.",
       "comingSoon": "App preferences coming soon"
+    },
+    "favorites": {
+      "title": "Favorites",
+      "desc": "Players you have starred for quick access.",
+      "empty": "No favorite players yet — star a player from their profile or from search."
     },
     "avatar": {
       "title": "Avatar",
@@ -440,6 +431,12 @@
       "disconnectAria": "Disconnect {name}",
       "disconnectConfirm": "Disconnect your {provider} account? You can reconnect it later via OAuth.",
       "footnote": "Accounts can only be added through OAuth, which also verifies them. Disconnect removes the OAuth link (the account stays, unverified, until you reconnect); hiding removes it from your public profile. Only an administrator can erase a linked account from your profile entirely."
+    },
+    "stream": {
+      "title": "Stream privacy",
+      "toggleLabel": "Show my live stream on tournament pages",
+      "toggleDesc": "While you are live on Twitch, your broadcast is surfaced on the pages of tournaments you take part in. Turn this off to keep it hidden — your Twitch account stays on your public profile, only the live broadcast is withheld.",
+      "footnote": "This switch is global and overrides everything else: while it is off, ticking “Stream POV” in a tournament registration will not put your stream on the site."
     },
     "danger": {
       "title": "Danger zone",
@@ -1256,7 +1253,8 @@
       "role": {
         "tank": "Tank",
         "damage": "Damage",
-        "support": "Support"
+        "support": "Support",
+        "flex": "Flex"
       }
     },
     "howItWorks": {
@@ -1667,7 +1665,9 @@
       "scrollNext": "Scroll tournament sections forward",
       "reasons": {
         "competitionNotStarted": "Available when tournament play begins.",
-        "noStages": "The organizer has not published tournament stages yet."
+        "noStages": "The organizer has not published tournament stages yet.",
+        "noSchedule": "The organizer has not published a phase schedule yet.",
+        "noTeams": "Available once teams are formed."
       }
     },
     "loading": {
@@ -1678,7 +1678,9 @@
         "matches": "Loading tournament matches",
         "heroes": "Loading hero statistics",
         "standings": "Loading tournament standings",
-        "maps": "Loading the tournament map pool"
+        "maps": "Loading the tournament map pool",
+        "schedule": "Loading the tournament schedule",
+        "stream": "Loading tournament streams"
       }
     },
     "participants": {
@@ -1695,6 +1697,21 @@
         "tableLabel": "Tournament matches. Scroll horizontally for all result details.",
         "emptyTitle": "No matches found",
         "emptyDescription": "Matches will appear here after they are scheduled or published."
+      },
+      "schedule": {
+        "title": "Phase schedule",
+        "emptyTitle": "No schedule published",
+        "emptyDescription": "Phase times will appear here once the organizer sets them.",
+        "startsLabel": "Starts",
+        "closesLabel": "Closes",
+        "startsRelative": "Starts {relative}",
+        "closesRelative": "Closes {relative}",
+        "state": {
+          "done": "Done",
+          "current": "Now"
+        },
+        "windowHint": "A closing time ends that phase's own actions — check-in, for example. It does not move the tournament to the next phase.",
+        "manualHint": "Automatic phase transitions are off, so these times are the organizer's plan rather than a promise."
       },
       "heroes": {
         "roleLabel": "Filter heroes by role",
@@ -1729,6 +1746,16 @@
       "filteredEmpty": {
         "title": "No results match these filters",
         "description": "Change or reset the current filters to see more results."
+      }
+    },
+    "links": {
+      "heading": "Tournament links",
+      "kinds": {
+        "discord": "Discord",
+        "vod": "VOD",
+        "bracket": "Bracket",
+        "rules": "Rules",
+        "other": "Link"
       }
     }
   },
@@ -1861,11 +1888,15 @@
   "bracket": {
     "round": "Round {n}",
     "lowerRound": "Lower R{n}",
+    "grandFinal": "Grand Final",
+    "grandFinalReset": "Grand Final Reset",
     "viewMatch": "View match",
-    "viewMapPool": "View map pool",
     "pregameRoom": "Open pre-game room",
-    "mapPool": {
-      "title": "Map Pool",
+    "viewRosters": "Team rosters",
+    "liveTeamStream": "{player} is streaming live",
+    "liveTeamStreamWithViewers": "{player} is streaming live · {count, plural, one {# viewer} other {# viewers}}",
+    "rosters": {
+      "title": "Team Rosters",
       "description": "{home} vs {away}"
     },
     "pending": "Pending",
@@ -2195,6 +2226,8 @@
           "slotUnderfilledHint": "One of this match's slots has fewer than two candidate maps, so there is nothing to ban there. The organizer has to fill it before the veto can open.",
           "notReadyTitle": "Waiting for both captains",
           "notReadyHint": "The veto room opens once both captains confirm they are ready.",
+          "bracketPreviewTitle": "Bracket preview",
+          "bracketPreviewHint": "The organizer generated this bracket ahead of time. It opens once they activate the stage.",
           "waitingMapTitle": "Waiting for this round's map",
           "waitingMapHint": "This phase opens once the map for this round of the series is picked."
         },
@@ -2346,6 +2379,8 @@
       "slotUnderfilledHint": "One of this match's slots has fewer than two candidates, so there is nothing to ban there. The organizer has to fill it before this room can open.",
       "notReadyTitle": "Waiting for both captains",
       "notReadyHint": "This room opens once both captains confirm they are ready.",
+      "bracketPreviewTitle": "Bracket preview",
+      "bracketPreviewHint": "The organizer generated this bracket ahead of time. It opens once they activate the stage.",
       "ready": {
         "button": "I'm ready",
         "sending": "Confirming...",
@@ -2361,6 +2396,7 @@
         "pick": "Pick",
         "protect": "Protect",
         "decider": "Decider",
+        "deciderHint": "If more than one item is still available at this step, one is chosen at random.",
         "done": "done",
         "current": "current step",
         "pending": "pending"
@@ -2422,7 +2458,8 @@
         "chooseAway": "Away opens",
         "confirm": "Confirm",
         "sending": "Sending...",
-        "failed": "Failed to submit the choice"
+        "failed": "Failed to submit the choice",
+        "waiting": "Waiting for {team} to choose who bans first this round."
       },
       "mapReport": {
         "title": "Report this map's result",
@@ -2448,7 +2485,9 @@
         "resetConfirmHint": "The session and pool will be dropped and re-created with seeds re-resolved. All performed actions will be lost.",
         "resetConfirmAction": "Reset",
         "resetSuccess": "Session reset",
-        "resetFailed": "Failed to reset the session"
+        "resetFailed": "Failed to reset the session",
+        "electLabel": "Opens next round",
+        "electFailed": "Failed to elect the round's opener"
       },
       "waitingMapTitle": "Waiting for this round's map",
       "waitingMapHint": "Hero bans open once the map for this round of the series is picked — they are banned for a known map.",
@@ -2474,6 +2513,8 @@
       "heroBans": {
         "eyebrow": "Hero bans for this map",
         "hint": "Disable these heroes in the custom game before you start. Protected heroes stay in — the shield marks them.",
+        "seriesTitle": "Hero bans of this series",
+        "seriesEyebrow": "Bans for the whole series",
         "none": "No bans this map",
         "state": {
           "ban": "Banned:",
@@ -2497,7 +2538,10 @@
       },
       "seriesDone": {
         "title": "Nothing left to decide",
-        "hint": "Every map of this series has been picked, banned and reported. The result is with the organizers now."
+        "hint": "Every map of this series has been picked, banned and reported. The result is with the organizers now.",
+        "hintNoReport": "Every map of this series has been picked, banned and reported. A scrim keeps no result, so there is nothing to file.",
+        "won": "{team} won the series {home}:{away}",
+        "drawn": "The series ended {home}:{away}"
       },
       "finalReport": {
         "title": "Report the match",
@@ -2505,8 +2549,6 @@
       }
     },
     "admin": {
-      "title": "Pre-game Phase",
-      "intro": "A rule set decides what captains ban and pick before a match, and in which order. This is one config system for two catalogs — maps and heroes — each with its own independent rule sets below. Matches use the most specific rule set that covers them: a round's own beats its stage's, and a stage's beats the tournament-wide one.",
       "readOnly": "You do not have permission to change these rule sets.",
       "loadFailed": "Unable to load the rule sets.",
       "retry": "Try again",
@@ -2534,13 +2576,13 @@
       "scopeHint": "Every match of this tournament, unless a narrower rule set covers it.",
       "roundLabel": "Round",
       "roundAll": "All rounds of this stage",
-      "roundNumber": "Round {n}",
-      "roundNumberLower": "Lower bracket round {n}",
       "roundHint": "Narrow these rules to one round of the stage.",
       "roundHintDisabled": "Available once these rules apply to a single stage.",
       "roundHintLoading": "Checking the stage's planned bracket…",
       "roundHintUnknown": "This stage's bracket isn't built yet, and no teams are wired into it either, so its rounds aren't known. Add teams to the stage, or scope these rules to the whole stage for now.",
       "scopeTaken": "A rule set already covers this scope. Saving replaces it.",
+      "inheritedPrefill": "Prefilled from {scope} — the rules this scope plays by today. Change only what has to differ; saving stores these values as this scope's own.",
+      "sameAsScope": "Same as {scope}",
       "poolSection": "2 · What captains choose from",
       "poolSectionHint": "The candidates a match draws on, and how they are grouped.",
       "modeLabel": "Pool shape",
@@ -2576,7 +2618,7 @@
       "orderLabel": "Step order",
       "orderBracket": "From the bracket",
       "orderCustom": "Custom",
-      "orderBracketHint": "Generated for each match from its series length: two opening bans, then alternating picks, then a decider when the length is odd.",
+      "orderBracketHint": "Generated for each match from its series length: two opening bans, then alternating picks, then a decider when the length is odd. If the pool holds more maps than the series needs, the decider is chosen at random among whatever is left instead of blocking the room.",
       "orderCustomHint": "Your exact list of steps, used as written for every match in this scope regardless of its series length.",
       "orderPreview": "Generated order",
       "orderSteps": "Steps",
@@ -2633,8 +2675,8 @@
       "noRepeatScope": "Repeats across rounds",
       "noRepeatScopeHint": {
         "none": "Nothing carries over: the same map or hero can be banned again in a later round.",
-        "encounter": "Once either side bans or protects a candidate, it is out for both sides for the rest of the series.",
-        "encounter_same_side": "Once a side bans or protects a candidate, only that side is blocked from it again; the opponent still can."
+        "encounter": "Only bans carry over: once either side bans a candidate, it is out for both sides for the rest of the series. Protects are round-local and never carry over.",
+        "encounter_same_side": "Only bans carry over: once a side bans a candidate, that side may not ban it again; the opponent still can. Protects are round-local and never carry over."
       },
       "noRepeatScopeValue": {
         "none": "Allowed",
@@ -3481,6 +3523,10 @@
         "title": "Matches",
         "desc": "Every match played on the platform"
       },
+      "scrims": {
+        "title": "Scrims",
+        "desc": "Ad-hoc pre-game rooms for practice matches"
+      },
       "balancer": {
         "title": "Balancer",
         "desc": "Balance teams by player roles and ratings"
@@ -3504,7 +3550,11 @@
       "empty": "No users found.",
       "minChars": "Type at least 2 characters.",
       "clear": "Clear search",
-      "resultsLabel": "User search results"
+      "resultsLabel": "User search results",
+      "mobileTrigger": "Search players",
+      "recent": "Recent",
+      "clearHistory": "Clear history",
+      "removeFromHistory": "Remove from history"
     },
     "mobileMenuTitle": "Site navigation"
   },
@@ -3582,6 +3632,7 @@
     "allowOverrideHint": "Admins can correct a pick when an exceptional situation occurs. Every correction is audited.",
     "roundRules": "Rules by round",
     "roundNumber": "Round {round}",
+    "roundRulesHint": "Each round follows its own rule, in order from round 1 to round {rounds}.",
     "rules": {
       "linear": "Linear (1 → N)",
       "reverse": "Reverse (N → 1)",
@@ -3652,6 +3703,7 @@
     },
     "newRandomSeed": "Generate a new random seed",
     "moveCaptain": "Move captain {name}",
+    "orderResolvedOnTheServer": "the server resolves the order when the round starts",
     "schedulePreview": "Round schedule preview",
     "validatingDraft": "The server is building a dry-run and checking role feasibility…",
     "previewFailed": "Draft validation failed",
@@ -3750,7 +3802,8 @@
       "clock": "Clock",
       "systemPause": "System pause",
       "blockedReason": {
-        "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually."
+        "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually.",
+        "order_recalculated": "This round's pick order was recalculated from the live team averages. Review the new order on the board, then resume — captains cannot pick until you do."
       },
       "resolveRoles": "Resolve role shortage",
       "currentPick": "Current operation",
@@ -3912,6 +3965,7 @@
     "pickWaiting": "Waiting for {team}",
     "pickIdle": "Waiting for the next draft update.",
     "roleShortagePaused": "Draft paused: the remaining role requirements cannot be fulfilled. The organizer must resolve the player roles before play resumes.",
+    "orderRecalculatedPaused": "Draft paused: this round's pick order was just recalculated from the live team averages. Check the new order — the organizer resumes the clock.",
     "organizerPaused": "The organizer paused the draft. Your selection is preserved until current data is available again.",
     "focalPickPrompt": "Select a player below to pick",
     "yourTurnInPicks": "You pick in {n, plural, one {# pick} other {# picks}}",
@@ -3960,6 +4014,8 @@
     "captain": "Captain",
     "secondaryRoles": "Secondary roles",
     "note": "Note",
+    "customFieldYes": "Yes",
+    "customFieldNo": "No",
     "role": "Role",
     "chooseRole": "Choose role",
     "primaryRole": "Primary role",
@@ -4248,6 +4304,8 @@
       "placeholder": "Placeholder",
       "placeholderHint": "Hint text...",
       "required": "Required",
+      "showInDraft": "Show in draft",
+      "showInDraftHint": "Show this answer in the live draft player card. The draft board is public — anyone watching can read it.",
       "fieldFallback": "field",
       "settingsAria": "{field} settings",
       "removeAria": "Remove {field}",
@@ -4690,5 +4748,138 @@
     "overriding": "This tournament pins its own shape instead of following the workspace.",
     "willInherit": "Saving hands this tournament back to the workspace shape.",
     "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
+  },
+  "scrims": {
+    "hero": {
+      "eyebrow": "SCRIMS // PRE-GAME",
+      "title": "Scrim rooms",
+      "lede": "Run a full pre-game — map veto, hero bans, per-map results — without a tournament. Open a room, send the link, play."
+    },
+    "signInTitle": "Sign in to run a scrim",
+    "signInDescription": "A room needs two captains, and a captain needs an account.",
+    "signIn": "Sign in",
+    "noWorkspaceTitle": "No workspace selected",
+    "noWorkspaceDescription": "Scrim rooms belong to a workspace. Pick one to see yours.",
+    "list": {
+      "emptyTitle": "No scrim rooms yet",
+      "emptyDescription": "Create one and share its link with the other captain.",
+      "retry": "Try again",
+      "privacyNote": "Scrims stay between the two teams: they never show up in encounters, statistics or tournament listings.",
+      "closedToast": "Room closed",
+      "closeFailed": "Unable to close the room",
+      "bestOf": "Bo{count}",
+      "closed": "Closed",
+      "awaitingOpponent": "Waiting for the opponent",
+      "sides": "{home} vs {away}",
+      "createdAt": "Created {date}",
+      "youAreHome": "you captain the home side",
+      "youAreAway": "you captain the away side",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "linkCopyFailed": "Unable to copy the link",
+      "close": "Close room",
+      "openRoom": "Open room"
+    },
+    "create": {
+      "open": "New room",
+      "title": "New scrim room",
+      "description": "Two teams, one series, the same pre-game loop an official match runs.",
+      "labelLabel": "Room name",
+      "labelPlaceholder": "Tuesday scrim",
+      "labelHint": "What both captains see at the top of the room.",
+      "homeLabel": "Home team",
+      "homePlaceholder": "Your team",
+      "homeHint": "You captain this side.",
+      "awayLabel": "Away team",
+      "awayPlaceholder": "Their team",
+      "awayHint": "The first person to open the link claims this side.",
+      "bestOfLabel": "Series length",
+      "bestOfValue": "Best of {count}",
+      "bestOfHint": "How many maps the series plays. It sets the veto order too.",
+      "poolSection": "Rules",
+      "poolSectionHint": "Copy a round you already play, or author the pool for this room.",
+      "sourceCopy": "Copy a round",
+      "sourceCustom": "Author it",
+      "tournamentLabel": "Tournament",
+      "tournamentPlaceholder": "Pick a tournament",
+      "stageLabel": "Stage",
+      "stageWhole": "Whole tournament",
+      "roundLabel": "Round",
+      "roundAll": "Whole stage",
+      "poolInvalid": "Fix these before creating the room",
+      "issueMap": "Maps: {issue}",
+      "issueHero": "Heroes: {issue}",
+      "cancel": "Cancel",
+      "submit": "Create room",
+      "created": "Room created",
+      "failed": "Unable to create the room"
+    },
+    "pool": {
+      "mapSection": "Map veto",
+      "mapSectionHint": "The order is generated from the pool and the series length: {steps, plural, =0 {no steps yet} one {# step} other {# steps}}.",
+      "mapsLabel": "Map pool",
+      "mapsHint": "Search to narrow the list, then tap a map to add or remove it.",
+      "searchMaps": "Search maps",
+      "noMatches": "Nothing matches that search.",
+      "loadingCatalogue": "Loading…",
+      "selectedCount": "{count} selected",
+      "turnTimer": "Turn timer, seconds",
+      "turnTimerPlaceholder": "No limit",
+      "turnTimerHint": "Countdown shown to the captain on their turn. Leave it empty and captains take as long as they need.",
+      "heroToggle": "Ban heroes too",
+      "heroToggleHint": "Adds a hero ban phase before each map, on top of the map veto.",
+      "heroesLabel": "Hero pool",
+      "heroesHint": "The heroes that can be banned. Everything outside the pool stays playable.",
+      "searchHeroes": "Search heroes",
+      "heroBans": "Bans per side",
+      "heroBansHint": "Sides alternate, starting with the side that bans first. Bans reset every map.",
+      "uniqueRole": "One hero per role per side each round",
+      "uniqueRoleHint": "Stops a side from banning two heroes of the same role in the same round."
+    },
+    "claim": {
+      "sides": "{home} vs {away}",
+      "prompt": "This room still needs a captain for {team}.",
+      "claim": "Captain {team}",
+      "watch": "Just watch",
+      "hint": "Only the two captains veto. Everyone else can follow along."
+    },
+    "room": {
+      "claimed": "You are the captain of this side",
+      "claimFailed": "Unable to claim the side",
+      "retry": "Try again"
+    }
+  },
+  "stream": {
+    "status": {
+      "live": "Live",
+      "offline": "Offline"
+    },
+    "broadcast": {
+      "heading": "Official broadcast",
+      "participantHeading": "Participant stream",
+      "channelLive": "Channel is live",
+      "channelOffline": "Channel is offline",
+      "playerLabel": "Twitch player · {channel}",
+      "participantPlayerLabel": "Participant stream · {channel}",
+      "participantNotice": "No cast is live right now — this frame is the POV of {player}.",
+      "participantNoticeWithTeam": "No cast is live right now — this frame is the POV of {player} ({team}).",
+      "watchOn": "Watch on {platform}",
+      "moreLinks": "Other broadcast links",
+      "hide": "Hide the broadcast",
+      "show": "Show the broadcast"
+    },
+    "card": {
+      "team": "Team {team}",
+      "watching": "{count, plural, one {# watching} other {# watching}}",
+      "onAir": "On air for {duration}",
+      "select": "Watch {name}"
+    },
+    "page": {
+      "emptyTitle": "Nobody is streaming right now",
+      "emptyDescription": "Participant streams appear here while they are live.",
+      "liveCount": "{count} live",
+      "channels": "Live channels",
+      "play": "Play {name}"
+    }
   }
 }

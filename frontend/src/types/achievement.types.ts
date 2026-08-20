@@ -2,7 +2,7 @@ import { Score } from "./encounter.types";
 import { User } from "@/types/user.types";
 
 export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
-export type AchievementScope = "global" | "tournament" | "match";
+type AchievementScope = "global" | "tournament" | "match";
 
 export type ConditionNode =
   | { AND: ConditionNode[] }
@@ -28,15 +28,17 @@ export interface Achievement {
   rarity: number;
 }
 
-export interface AchievementTournamentLink {
+interface AchievementTournamentLink {
   id: number;
   name: string;
   is_league: boolean;
 }
 
-export interface AchievementMatchTeamRef {
+interface AchievementMatchTeamRef {
   id: number;
   name: string;
+  /** Uploaded team image (S3 URL); `null` when the team has none. */
+  image_url: string | null;
 }
 
 export interface AchievementMatchLink {

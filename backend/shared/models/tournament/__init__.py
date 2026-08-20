@@ -8,8 +8,10 @@ from .encounter_link import *
 from .encounter_map import *
 from .encounter_report import *
 from .encounter_result_audit import *
+from .link import *
 from .pick_ban import *
 from .preview_access import *
+from .scrim import *
 from .stage import *
 from .standings import *
 from .team import *

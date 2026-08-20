@@ -96,6 +96,11 @@ import type {
 } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import {
+  ACHIEVEMENT_IMAGE_ACCEPT,
+  ACHIEVEMENT_IMAGE_PREVIEW_CLASS,
+  MAX_ACHIEVEMENT_IMAGE_BYTES
+} from "@/lib/achievement-image";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const CATEGORIES: AchievementCategory[] = ["overall", "hero", "division", "team", "standing", "match"];
@@ -1337,19 +1342,19 @@ export default function AchievementsPage() {
                     alt={formData.name ? `${formData.name} badge` : "Achievement badge"}
                     width={64}
                     height={64}
-                    className="h-16 w-16 rounded-lg object-cover border"
+                    className={ACHIEVEMENT_IMAGE_PREVIEW_CLASS}
                   />
                 )}
                 <div className="flex flex-col gap-2">
                   <input
                     ref={imageInputRef}
                     type="file"
-                    accept="image/webp,image/png,image/jpeg,image/gif"
+                    accept={ACHIEVEMENT_IMAGE_ACCEPT}
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 5 * 1024 * 1024) {
+                      if (file.size > MAX_ACHIEVEMENT_IMAGE_BYTES) {
                         setImageError(
                           `“${file.name}” is ${(file.size / 1024 / 1024).toFixed(1)} MB. Pick an image under 5 MB.`,
                         );

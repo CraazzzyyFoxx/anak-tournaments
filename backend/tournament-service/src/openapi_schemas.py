@@ -25,6 +25,7 @@ from src.schemas.admin import stage as admin_stage
 from src.schemas.admin import standing as admin_standing
 from src.schemas.admin import team as admin_team
 from src.schemas.admin import tournament as admin_tournament
+from src.schemas.admin import tournament_link as admin_tournament_link
 from src.schemas.admin.computation import TournamentComputationJobRead
 
 # Reusable ad-hoc query params (handlers read these via _q/_q1, no query model).
@@ -89,6 +90,9 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin.create#player_sub_role": Op(
         request=admin_player_sub_role.PlayerSubRoleCreate, response=admin_player_sub_role.PlayerSubRoleRead
     ),
+    "rpc.tournament.admin.create#tournament_link": Op(
+        request=admin_tournament_link.TournamentLinkCreate, response=admin_tournament_link.TournamentLinkRead
+    ),
     "rpc.tournament.admin.update#tournament": Op(
         request=admin_tournament.TournamentUpdate, response=schemas.TournamentRead
     ),
@@ -106,6 +110,9 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin.update#player_sub_role": Op(
         request=admin_player_sub_role.PlayerSubRoleUpdate, response=admin_player_sub_role.PlayerSubRoleRead
     ),
+    "rpc.tournament.admin.update#tournament_link": Op(
+        request=admin_tournament_link.TournamentLinkUpdate, response=admin_tournament_link.TournamentLinkRead
+    ),
     "rpc.tournament.admin.get#tournament": Op(response=schemas.TournamentRead),
     "rpc.tournament.admin.get#team": Op(response=schemas.TeamRead),
     "rpc.tournament.admin.get#stage": Op(response=schemas.StageRead),
@@ -115,6 +122,17 @@ OPERATIONS: dict[str, Op] = {
         response_array=True,
         query_params=(_WS, QueryParam("role"), QueryParam("include_inactive", "boolean")),
     ),
+    "rpc.tournament.admin.list#tournament_link": Op(
+        response=admin_tournament_link.TournamentLinkRead,
+        response_array=True,
+        query_params=(
+            QueryParam("tournament_id", "integer", required=True),
+            QueryParam("active_only", "boolean"),
+        ),
+    ),
+    # ── bespoke: team image (binary upload + delete) ───────────────────────
+    "rpc.tournament.teams.image_upload": Op(response=schemas.TeamRead),
+    "rpc.tournament.teams.image_delete": Op(response=schemas.TeamRead),
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": Op(response=schemas.TournamentRead),
     "rpc.tournament.tournament_status": Op(
@@ -127,6 +145,7 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: stage workflow ────────────────────────────────────────────
     "rpc.tournament.stage_merge": Op(request=admin_stage.MergeGroupStagesRequest, response=schemas.StageRead),
     "rpc.tournament.stage_activate": Op(response=schemas.StageRead),
+    "rpc.tournament.stage_deactivate": Op(response=schemas.StageRead),
     "rpc.tournament.stage_generate": Op(response=TournamentComputationJobRead),
     "rpc.tournament.stage_activate_and_generate": Op(response=TournamentComputationJobRead),
     "rpc.tournament.stage_wire": Op(request=admin_stage.WireFromGroupsRequest, response=schemas.StageRead),
@@ -264,6 +283,15 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
+    # ── scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────────────
+    # Unlike the pre-game pick-ban subjects a room is played through, these five
+    # return whole typed models, so they carry request/response maps rather than
+    # falling back to a generic object.
+    "rpc.tournament.scrim_create": Op(request=schemas.ScrimCreateRequest, response=schemas.ScrimRoomRead),
+    "rpc.tournament.scrim_list_mine": Op(response=schemas.ScrimRoomListRead, query_params=(_WS,)),
+    "rpc.tournament.scrim_get": Op(response=schemas.ScrimRoomRead),
+    "rpc.tournament.scrim_claim": Op(response=schemas.ScrimRoomRead),
+    "rpc.tournament.scrim_close": Op(response=schemas.ScrimRoomRead),
     # ── match report form (per-tournament captain-report config) ───────────
     "rpc.tournament.report_form_get": Op(response=report_form_schemas.MatchReportFormRead),
     "rpc.tournament.report_form_upsert": Op(

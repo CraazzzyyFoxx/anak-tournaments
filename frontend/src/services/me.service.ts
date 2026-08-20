@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
-import type { User } from "@/types/user.types";
+import type { MinimizedUser, User } from "@/types/user.types";
 
 /** Self-service account management for the current user (own player's social
  *  identities + own avatar). Adding social accounts is OAuth-only (start the
@@ -19,6 +19,19 @@ const meService = {
 
   async setSocialVisibility(accountId: number, visible: boolean): Promise<User> {
     const res = await apiFetch(`/api/v1/me/social/${accountId}/visibility`, {
+      method: "POST",
+      body: { visible },
+    });
+    return res.json();
+  },
+
+  /** Global stream-privacy veto for the current user's own player. Separate
+   *  from `setSocialVisibility`: that one hides a social account from the
+   *  public profile, this one keeps the live stream off tournament pages and
+   *  overrides the per-tournament Stream POV opt-in. Returns the refreshed
+   *  `User`, so callers can write it straight back into the cache. */
+  async setStreamVisibility(visible: boolean): Promise<User> {
+    const res = await apiFetch("/api/v1/me/stream-visibility", {
       method: "POST",
       body: { visible },
     });
@@ -60,6 +73,21 @@ const meService = {
   async deleteAvatar(): Promise<unknown> {
     const res = await apiFetch("/api/auth/me/avatar", { method: "DELETE" });
     return res.json();
+  },
+
+  /** The current account's bookmarked players (auth-account scoped, not tied
+   *  to the caller's own linked player). Newest-favorited first. */
+  async getFavoritePlayers(): Promise<MinimizedUser[]> {
+    const res = await apiFetch("/api/v1/me/favorite-players");
+    return res.json();
+  },
+
+  async addFavoritePlayer(playerId: number): Promise<void> {
+    await apiFetch(`/api/v1/me/favorite-players/${playerId}`, { method: "POST" });
+  },
+
+  async removeFavoritePlayer(playerId: number): Promise<void> {
+    await apiFetch(`/api/v1/me/favorite-players/${playerId}`, { method: "DELETE" });
   },
 };
 

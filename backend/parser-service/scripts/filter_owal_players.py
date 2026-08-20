@@ -19,12 +19,7 @@ def update_player_data(player_data: dict, player_formated_data: dict) -> dict:
 
 
 async def filter_owal_players() -> None:
-    s3 = S3Client(
-        access_key=config.settings.s3_access_key,
-        secret_key=config.settings.s3_secret_key,
-        endpoint_url=config.settings.s3_endpoint_url,
-        bucket_name=config.settings.s3_bucket_name,
-    )
+    s3 = S3Client.from_settings(config.settings)
     await s3.start()
     tournaments = await s3_service.get_tournaments_teams(s3)
 

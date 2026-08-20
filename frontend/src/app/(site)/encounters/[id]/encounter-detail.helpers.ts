@@ -67,7 +67,7 @@ export function countMapWins(encounter: Encounter): { home: number; away: number
   return { home, away, drawn };
 }
 
-export type SeriesOutcome = "win" | "draw" | "unplayed";
+type SeriesOutcome = "win" | "draw" | "unplayed";
 
 export interface SeriesVerdict {
   outcome: SeriesOutcome;
@@ -224,7 +224,7 @@ const ACCURACY_STATS: readonly { name: LogStatsName; hit: LogStatsName; fired: L
  * come out of the analytics model, and `scoped_critical_hit_accuracy` needs a
  * scoped-critical-HITS counter the API does not expose.
  */
-export const SERIES_UNAVAILABLE_STATS: readonly LogStatsName[] = [
+const SERIES_UNAVAILABLE_STATS: readonly LogStatsName[] = [
   LogStatsName.ImpactPoints,
   LogStatsName.ImpactRank,
   LogStatsName.OverperformanceScore,
@@ -314,7 +314,7 @@ function deriveStatRow(row: StatRow): void {
   }
 }
 
-export interface SeriesPlayerMeta {
+interface SeriesPlayerMeta {
   /** Maps the player actually fielded a hero on. */
   mapsPlayed: number;
   /** 1-based series MVP placement by summed performance points. */

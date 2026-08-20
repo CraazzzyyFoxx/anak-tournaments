@@ -11,13 +11,15 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
 import DivisionIcon from "@/components/DivisionIcon";
 import { HeroStrip } from "@/components/hero/HeroImage";
+import { TeamLogo } from "@/components/TeamName";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import {
   STAT_META,
   GROUP_COLOR,
   formatStat,
   playerStat,
-  activePlayers
+  activePlayers,
+  resolveMatchMvpPlacement
 } from "@/utils/matchStats";
 
 interface MatchTeamTableProps {
@@ -91,7 +93,10 @@ const MatchTeamTable = ({
             background: `linear-gradient(to right, color-mix(in srgb, ${teamAccent} 26%, var(--aqt-card)), color-mix(in srgb, ${teamAccent} 12%, var(--aqt-card)) 60%)`
           }}
         >
-          {t("matches.teamLabel", { name: team.name })}
+          <span className="inline-flex items-center gap-2">
+            <TeamLogo team={team} size="xs" />
+            {t("matches.teamLabel", { name: team.name })}
+          </span>
         </TableHead>
         <TableHead scope="col" className="text-center">
           {t("matches.col.division")}
@@ -153,7 +158,7 @@ const MatchTeamTable = ({
                 <span className="aqt-tnum text-[15px] font-bold leading-none text-[color:var(--aqt-teal)]">
                   {formatStat(LogStatsName.ImpactPoints, player.stats[matchRound]?.impact_points)}
                 </span>
-                <PerformanceBadge performance={player.stats[matchRound]?.performance} />
+                <PerformanceBadge performance={resolveMatchMvpPlacement(player, matchRound)} />
               </div>
             </TableCell>
             {columns.map((name) => (

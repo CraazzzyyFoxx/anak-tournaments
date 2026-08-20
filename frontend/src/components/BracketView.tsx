@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Pencil, FileEdit, ListChecks, Maximize2, Search } from "lucide-react";
-import Link from "next/link";
+import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { useTranslations } from "next-intl";
@@ -15,18 +15,25 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { STREAM_STATUS_META } from "@/lib/stream-platform";
 import type { Encounter } from "@/types/encounter.types";
+import type { StreamEntry } from "@/types/stream.types";
 import type { StageType } from "@/types/tournament.types";
-import { EncounterMapPoolModal } from "@/components/veto/EncounterMapPoolModal";
+import { EncounterRostersModal } from "@/components/EncounterRostersModal";
+import TeamName from "@/components/TeamName";
 import { withReturnTo } from "@/lib/return-to";
 import {
   buildRoundGroups as buildBracketRoundGroups,
   computeMatchNumbers as computeBracketMatchNumbers,
   computeSlotHints as computeBracketSlotHints,
   getDoubleEliminationFinalRounds as getBracketFinalRounds,
-  getGrandFinalLabel as getBracketGrandFinalLabel,
-  getRoundSectionMatchCapacity
+  getRoundSectionMatchCapacity,
+  type SlotHint
 } from "@/components/bracket-view.helpers";
+import {
+  useBracketRoundLabel,
+  type BracketRoundLabelFormatter
+} from "@/hooks/useBracketRoundLabel";
 
 type Translate = ReturnType<typeof useTranslations<never>>;
 
@@ -37,6 +44,15 @@ interface BracketViewProps {
   onReport?: (encounter: Encounter) => void;
   canEdit?: (encounter: Encounter) => boolean;
   canReport?: (encounter: Encounter) => boolean;
+  /**
+   * Team id → the stream of whoever from that team is on air, keyed by the same
+   * id `Encounter.home_team_id`/`away_team_id` carry.
+   *
+   * Optional on purpose: this component is shared with the admin bracket, which
+   * has no stream query behind it. Making a public-only affordance required
+   * would force that call site to invent an empty map for nothing.
+   */
+  liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
 }
 
 interface MatchNodeData {
@@ -219,11 +235,50 @@ function addSequentialEdges(
   }
 }
 
-function buildLayout(encounters: Encounter[], type: StageType, t: Translate): BracketLayout {
+// Shared by the upper, lower, and grand-final columns: each pushes one round
+// header then lays out that round's matches at a fixed `CARD_HEIGHT +
+// MATCH_GAP_Y` pitch from a caller-computed `startY`. Only the header
+// placement/section and the vertical anchor differ between sections.
+function layoutBracketColumn(params: {
+  group: RoundGroup;
+  x: number;
+  headerY: number;
+  headerId: string;
+  headerSection: "upper" | "lower";
+  label: string;
+  startY: number;
+  slotHints: Map<number, SlotHint>;
+  matchNumbers: Map<number, number>;
+  headers: LayoutHeader[];
+  nodes: LayoutNode[];
+}) {
+  const { group, x, headerY, headerId, headerSection, label, startY, slotHints, matchNumbers, headers, nodes } =
+    params;
+
+  headers.push({ id: headerId, x, y: headerY, label, section: headerSection });
+
+  group.matches.forEach((match, matchIndex) => {
+    const hint = slotHints.get(match.id) ?? { home: null, away: null };
+    const n = matchNumbers.get(match.id) ?? 0;
+    nodes.push(
+      createNode(match, x, startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y), n, hint.home, hint.away)
+    );
+  });
+}
+
+function buildLayout(
+  encounters: Encounter[],
+  type: StageType,
+  t: Translate,
+  roundLabel: BracketRoundLabelFormatter
+): BracketLayout {
   const hasBracketConnections = type === "single_elimination" || type === "double_elimination";
 
   const isDE = type === "double_elimination";
   const finalRoundNumbers = isDE ? getBracketFinalRounds(encounters) : new Set<number>();
+  // Ascending, so `bracketRoundLabel` reads the first entry as the Grand Final
+  // and any later one as its reset.
+  const finalRoundList = [...finalRoundNumbers].sort((left, right) => left - right);
 
   // For DE: split upper encounters into regular UB and Grand Final section.
   const ubEncounters = isDE
@@ -285,20 +340,18 @@ function buildLayout(encounters: Encounter[], type: StageType, t: Translate): Br
         ? upperBasePitch / 2
         : Math.max(0, (upperSectionHeight - totalHeight) / 2));
 
-    headers.push({
-      id: `upper-header-${group.round}`,
+    layoutBracketColumn({
+      group,
       x,
-      y: upperHeaderY,
-      label: t("bracket.round", { n: String(group.round) }),
-      section: "upper"
-    });
-
-    group.matches.forEach((match, matchIndex) => {
-      const hint = slotHints.get(match.id) ?? { home: null, away: null };
-      const n = matchNumbers.get(match.id) ?? 0;
-      nodes.push(
-        createNode(match, x, startY + matchIndex * upperBasePitch, n, hint.home, hint.away)
-      );
+      headerY: upperHeaderY,
+      headerId: `upper-header-${group.round}`,
+      headerSection: "upper",
+      label: roundLabel(group.round, finalRoundList),
+      startY,
+      slotHints,
+      matchNumbers,
+      headers,
+      nodes
     });
   });
 
@@ -320,27 +373,18 @@ function buildLayout(encounters: Encounter[], type: StageType, t: Translate): Br
       group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
     const startY = lowerTop + Math.max(0, (lowerSectionHeight - totalHeight) / 2);
 
-    headers.push({
-      id: `lower-header-${group.round}`,
+    layoutBracketColumn({
+      group,
       x,
-      y: lowerHeaderY,
-      label: t("bracket.lowerRound", { n: String(Math.abs(group.round)) }),
-      section: "lower"
-    });
-
-    group.matches.forEach((match, matchIndex) => {
-      const hint = slotHints.get(match.id) ?? { home: null, away: null };
-      const n = matchNumbers.get(match.id) ?? 0;
-      nodes.push(
-        createNode(
-          match,
-          x,
-          startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y),
-          n,
-          hint.home,
-          hint.away
-        )
-      );
+      headerY: lowerHeaderY,
+      headerId: `lower-header-${group.round}`,
+      headerSection: "lower",
+      label: roundLabel(group.round, finalRoundList),
+      startY,
+      slotHints,
+      matchNumbers,
+      headers,
+      nodes
     });
   });
 
@@ -357,27 +401,18 @@ function buildLayout(encounters: Encounter[], type: StageType, t: Translate): Br
       group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
     const startY = Math.max(0, (fullContentHeight - totalHeight) / 2);
 
-    headers.push({
-      id: `final-header-${group.round}`,
+    layoutBracketColumn({
+      group,
       x,
-      y: PADDING_Y,
-      label: getBracketGrandFinalLabel(group.round, finalRounds),
-      section: "upper"
-    });
-
-    group.matches.forEach((match, matchIndex) => {
-      const hint = slotHints.get(match.id) ?? { home: null, away: null };
-      const n = matchNumbers.get(match.id) ?? 0;
-      nodes.push(
-        createNode(
-          match,
-          x,
-          startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y),
-          n,
-          hint.home,
-          hint.away
-        )
-      );
+      headerY: PADDING_Y,
+      headerId: `final-header-${group.round}`,
+      headerSection: "upper",
+      label: roundLabel(group.round, finalRoundList),
+      startY,
+      slotHints,
+      matchNumbers,
+      headers,
+      nodes
     });
   });
 
@@ -480,7 +515,8 @@ function MatchCard({
   encounter,
   hoveredTeamId,
   onHoveredTeamChange,
-  returnTo
+  returnTo,
+  liveTeamStreams
 }: {
   data: MatchNodeData;
   encounter: Encounter;
@@ -488,6 +524,7 @@ function MatchCard({
   onHoveredTeamChange: (teamId: number | null) => void;
   /** This bracket's own location, so the pre-game room can send viewers back to it. */
   returnTo: string;
+  liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
 }) {
   const t = useTranslations();
   const meta = getMatchMeta(encounter, t);
@@ -529,9 +566,40 @@ function MatchCard({
   const isTbdSlot = (side: "home" | "away") =>
     (side === "home" ? data.homeName : data.awayName) === "TBD";
 
+  // The participant stream on air for this slot's team, if any. A TBD slot has
+  // no team, so it can never carry the indicator.
+  const liveStreamFor = (side: "home" | "away") => {
+    if (liveTeamStreams === undefined || isTbdSlot(side)) return undefined;
+    const teamId = getTeamId(side);
+    return teamId == null ? undefined : liveTeamStreams.get(teamId);
+  };
+
   const renderRow = (side: "home" | "away") => {
     const score = side === "home" ? data.homeScore : data.awayScore;
     const won = data.winner === side;
+    // An unfilled slot shows a hint ("Winner of M3") rather than a team, so it
+    // gets no logo — `data.*Name` is also the source of a name parsed out of the
+    // encounter title when the team relation itself is missing.
+    const isTbd = isTbdSlot(side);
+    const slotTeam = isTbd ? null : (side === "home" ? encounter.home_team : encounter.away_team);
+    const liveStream = liveStreamFor(side);
+    // The map only ever holds participant entries, which always carry a player;
+    // the channel fallback exists because `player` is nullable on the wire (an
+    // official broadcast has none).
+    const streamer =
+      liveStream === undefined ? null : (liveStream.player?.name ?? liveStream.channel);
+    // A bare dot says "something is happening" and nothing else, so the whole
+    // point of the indicator is this string: it names the player and, when the
+    // platform reports one, the audience.
+    const liveLabel =
+      liveStream === undefined || streamer === null
+        ? null
+        : liveStream.viewer_count == null
+          ? t("bracket.liveTeamStream", { player: streamer })
+          : t("bracket.liveTeamStreamWithViewers", {
+              player: streamer,
+              count: liveStream.viewer_count
+            });
     return (
       <div
         className={cn(
@@ -547,13 +615,42 @@ function MatchCard({
         onPointerLeave={() => handlePointerLeave(side)}
         style={{ height: CARD_ROW_HEIGHT }}
       >
-        <span
-          className={cn(
-            "min-w-0 truncate",
-            isTbdSlot(side) ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
-          )}
-        >
-          {getDisplayName(side)}
+        {/* Name and dot share one shrinking group so the score stays pinned to
+            the right edge at exactly the position it had before the indicator
+            existed — the row is a fixed CARD_ROW_HEIGHT with nowhere to spill. */}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <TeamName
+            team={slotTeam}
+            fallback={getDisplayName(side)}
+            size="xs"
+            nameClassName={
+              isTbd ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
+            }
+          />
+          {liveStream !== undefined && liveLabel !== null ? (
+            <span
+              // Indication, NOT navigation. A ~13px target wedged between a
+              // truncated team name and its score is a pointer-target defect on
+              // touch and a pointless extra tab stop on a 32-team tree, and the
+              // Streams tab already lists every channel as a full-sized link. So
+              // this is a labelled image with no href.
+              role="img"
+              aria-label={liveLabel}
+              title={liveLabel}
+              data-live-team-stream={liveStream.channel}
+              // The site's one liveness language: the pulsing rose `.dot` exists
+              // only under `.status-pill.live` in `globals.css`, so the class has
+              // to be here for the descendant selector to match. The inline style
+              // strips the pill's own chrome, which does not belong in a 30px row
+              // — same mechanism `TournamentsTable` uses to shrink this pill for
+              // its dense rows, and the only one that beats an `.aqt-tn`-scoped
+              // selector's specificity.
+              className={cn(STREAM_STATUS_META.live.pillClassName, "shrink-0")}
+              style={{ padding: 0, border: "none", background: "none" }}
+            >
+              <span aria-hidden className="dot" />
+            </span>
+          ) : null}
         </span>
         <span
           className={cn(
@@ -586,7 +683,7 @@ function MatchCard({
         style={{ height: footerHeight }}
       >
         <div className="flex items-center gap-2">
-          <Link
+          <HoverPrefetchLink
             href={`/encounters/${encounter.id}`}
             className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
             aria-label={t("bracket.viewMatch")}
@@ -596,13 +693,18 @@ function MatchCard({
             }}
           >
             <Search className="size-3.5" aria-hidden />
-          </Link>
-          <EncounterMapPoolModal
+          </HoverPrefetchLink>
+          {/* The roster peek stays on the bracket: a scroll position built up
+              over a 32-team tree survives looking at who is playing. The
+              pre-game link leaves, because the room is where a captain acts —
+              a read-only copy of its veto in a dialog was a second door onto
+              one phase and earned neither the icon nor the fetch. */}
+          <EncounterRostersModal
             encounterId={encounter.id}
             homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
             awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
           />
-          <Link
+          <HoverPrefetchLink
             href={withReturnTo(
               `/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`,
               returnTo
@@ -614,7 +716,7 @@ function MatchCard({
             }}
           >
             <ListChecks className="size-3.5" aria-hidden />
-          </Link>
+          </HoverPrefetchLink>
         </div>
         {meta.timeLabel && (
           <span
@@ -670,6 +772,7 @@ export function BracketView({
   onReport,
   canEdit,
   canReport,
+  liveTeamStreams
 }: BracketViewProps) {
   const t = useTranslations();
   // The bracket's own location, stage/view query included: the pre-game room
@@ -690,7 +793,11 @@ export function BracketView({
   const [isGrabbing, setIsGrabbing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const layout = useMemo(() => buildLayout(encounters, type, t), [encounters, type, t]);
+  const roundLabel = useBracketRoundLabel();
+  const layout = useMemo(
+    () => buildLayout(encounters, type, t, roundLabel),
+    [encounters, type, t, roundLabel]
+  );
 
   // Drag-to-pan with the mouse; touch keeps native scrolling. The scroller is
   // the event target, so the same handlers serve the inline and the fullscreen
@@ -817,6 +924,7 @@ export function BracketView({
                 hoveredTeamId={hoveredTeamId}
                 onHoveredTeamChange={setHoveredTeamId}
                 returnTo={returnTo}
+                liveTeamStreams={liveTeamStreams}
               />
               <div
                 className="pointer-events-none absolute top-1/2 -translate-y-1/2"

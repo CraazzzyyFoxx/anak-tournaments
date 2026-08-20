@@ -32,7 +32,11 @@ from shared.services.bracket import (  # noqa: E402
     single_elimination,
     swiss,
 )
-from shared.services.bracket.engine import generate_bracket, predict_rounds  # noqa: E402
+from shared.services.bracket.engine import (  # noqa: E402
+    generate_bracket,
+    placeholder_bracket,
+    placeholder_seeds,
+)
 
 
 def _local_ids(skeleton) -> set[int]:
@@ -422,56 +426,73 @@ class EngineDispatchInvariants(TestCase):
         self.assertEqual(2, len(s.pairings))
 
 
-class PredictRoundsInvariants(TestCase):
-    """`predict_rounds` must never drift from what `generate_bracket` actually
-    produces for the same team count -- it exists so a cascade config can be
-    scoped to a round correctly before a bracket's real team ids are known.
+class PlaceholderBracketInvariants(TestCase):
+    """`placeholder_bracket` must never drift from what `generate_bracket`
+    actually produces for the same seed counts -- it exists so a bracket can be
+    planned (and generated with TBD slots) before its real team ids are known.
     """
 
     def test_matches_generate_bracket_for_single_elimination(self) -> None:
         for team_count in (2, 3, 4, 5, 7, 8, 16):
             actual = generate_bracket(StageType.SINGLE_ELIMINATION, list(range(team_count)))
-            expected = sorted({p.round_number for p in actual.pairings})
-            self.assertEqual(expected, predict_rounds(StageType.SINGLE_ELIMINATION, team_count))
+            predicted = placeholder_bracket(StageType.SINGLE_ELIMINATION, team_count)
+            self.assertEqual(
+                [(p.round_number, p.name, p.local_id) for p in actual.pairings],
+                [(p.round_number, p.name, p.local_id) for p in predicted.pairings],
+            )
+            self.assertEqual(actual.advancement_edges, predicted.advancement_edges)
 
     def test_matches_generate_bracket_for_double_elimination(self) -> None:
         for team_count in (2, 3, 4, 5, 7, 8, 16):
             actual = generate_bracket(StageType.DOUBLE_ELIMINATION, list(range(team_count)))
-            expected = sorted({p.round_number for p in actual.pairings})
-            self.assertEqual(expected, predict_rounds(StageType.DOUBLE_ELIMINATION, team_count))
+            predicted = placeholder_bracket(StageType.DOUBLE_ELIMINATION, team_count)
+            self.assertEqual(
+                [(p.round_number, p.name, p.local_id) for p in actual.pairings],
+                [(p.round_number, p.name, p.local_id) for p in predicted.pairings],
+            )
+            self.assertEqual(actual.advancement_edges, predicted.advancement_edges)
+
+    def test_seeds_are_negative_so_they_cannot_collide_with_team_ids(self) -> None:
+        self.assertEqual([-1, -2, -3], placeholder_seeds(3))
+        self.assertEqual([-4, -5], placeholder_seeds(2, offset=3))
+        seeded = {
+            team_id
+            for p in placeholder_bracket(StageType.DOUBLE_ELIMINATION, 4, lower_count=4).pairings
+            for team_id in (p.home_team_id, p.away_team_id)
+            if team_id is not None
+        }
+        self.assertEqual(set(range(-8, 0)), seeded)
 
     def test_double_elimination_has_both_positive_and_negative_rounds(self) -> None:
-        rounds = predict_rounds(StageType.DOUBLE_ELIMINATION, 8)
+        rounds = {p.round_number for p in placeholder_bracket(StageType.DOUBLE_ELIMINATION, 8).pairings}
         self.assertTrue(any(round_number < 0 for round_number in rounds))
         self.assertTrue(any(round_number > 0 for round_number in rounds))
 
-    def test_fewer_than_two_teams_predicts_nothing(self) -> None:
-        self.assertEqual([], predict_rounds(StageType.SINGLE_ELIMINATION, 1))
-        self.assertEqual([], predict_rounds(StageType.SINGLE_ELIMINATION, 0))
-        self.assertEqual([], predict_rounds(StageType.DOUBLE_ELIMINATION, 1))
+    def test_fewer_than_two_upper_seeds_predicts_nothing(self) -> None:
+        self.assertEqual([], placeholder_bracket(StageType.SINGLE_ELIMINATION, 1).pairings)
+        self.assertEqual([], placeholder_bracket(StageType.SINGLE_ELIMINATION, 0).pairings)
+        self.assertEqual([], placeholder_bracket(StageType.DOUBLE_ELIMINATION, 1).pairings)
 
     def test_rejects_a_stage_type_with_no_bracket_shape(self) -> None:
         with self.assertRaises(ValueError):
-            predict_rounds(StageType.ROUND_ROBIN, 4)
+            placeholder_bracket(StageType.ROUND_ROBIN, 4)
         with self.assertRaises(ValueError):
-            predict_rounds(StageType.SWISS, 4)
+            placeholder_bracket(StageType.SWISS, 4)
 
-    def test_split_lower_bracket_matches_generate_with_the_same_split(self) -> None:
-        # `stage.py` splits an even-sized single bracket item in half when
-        # `split_lower_bracket` is on and there is no separate lower-bracket
-        # item; mirror that split exactly rather than assume it changes
-        # nothing -- an upper bracket seeded from only half the teams is a
-        # different (smaller) bracket than one seeded from all of them.
-        team_count = 8
-        half = team_count // 2
-        all_ids = list(range(team_count))
+    def test_lower_seeds_match_generate_with_the_same_split(self) -> None:
+        # A stage that splits its seeds between the Upper and Lower bracket
+        # builds a different (smaller) upper bracket than one seeding all of
+        # them into it, so the split has to be carried through, not assumed
+        # away.
+        all_ids = list(range(8))
         actual = generate_bracket(
             StageType.DOUBLE_ELIMINATION,
-            all_ids[:half],
-            lower_bracket_team_ids=all_ids[half:],
+            all_ids[:4],
+            lower_bracket_team_ids=all_ids[4:],
         )
-        expected = sorted({p.round_number for p in actual.pairings})
+        predicted = placeholder_bracket(StageType.DOUBLE_ELIMINATION, 4, lower_count=4)
         self.assertEqual(
-            expected,
-            predict_rounds(StageType.DOUBLE_ELIMINATION, team_count, split_lower_bracket=True),
+            [(p.round_number, p.name) for p in actual.pairings],
+            [(p.round_number, p.name) for p in predicted.pairings],
         )
+        self.assertEqual(actual.advancement_edges, predicted.advancement_edges)

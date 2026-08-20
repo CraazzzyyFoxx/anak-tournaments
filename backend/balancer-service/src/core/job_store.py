@@ -49,19 +49,6 @@ class BalancerJobStore:
     def _session_active_jobs_key(user_id: int) -> str:
         return f"balancer:user:{user_id}:active_jobs"
 
-    async def _refresh_ttl(self, job_id: str) -> None:
-        pipe = self._redis.pipeline()
-        for key in (
-            self._meta_key(job_id),
-            self._payload_key(job_id),
-            self._result_key(job_id),
-            self._events_key(job_id),
-            self._event_sequence_key(job_id),
-        ):
-            pipe.expire(key, self._ttl_seconds)
-        await pipe.execute()
-        record_balancer_redis_writes("refresh_ttl", 5)
-
     async def _save_meta(self, job_id: str, meta: dict[str, Any]) -> None:
         await self._redis.set(self._meta_key(job_id), json.dumps(meta), ex=self._ttl_seconds)
         record_balancer_redis_writes("save_meta", 1)
@@ -254,27 +241,6 @@ class BalancerJobStore:
         )
         return meta_snapshot
 
-    async def update_runtime_state(
-        self,
-        job_id: str,
-        *,
-        stage: str,
-        status: JobStatus = "running",
-        progress: dict[str, Any] | None = None,
-        meta: dict[str, Any] | None = None,
-    ) -> None:
-        meta_snapshot = meta
-        if meta_snapshot is None:
-            meta_snapshot = await self.get_job_meta(job_id)
-        if meta_snapshot is None:
-            raise KeyError(job_id)
-
-        meta_snapshot["status"] = status
-        meta_snapshot["stage"] = stage
-        if progress is not None:
-            meta_snapshot["progress"] = progress
-        await self._save_meta(job_id, meta_snapshot)
-
     async def mark_succeeded(
         self,
         job_id: str,
@@ -368,11 +334,6 @@ class BalancerJobStore:
             return
         await self._redis.srem(key_builder(principal_id), job_id)
         record_balancer_redis_writes("release_active_job", 1)
-
-    async def get_events_since(self, job_id: str, after_event_id: int = 0) -> list[dict[str, Any]]:
-        start_index = max(after_event_id, 0)
-        raw_events = await self._redis.lrange(self._events_key(job_id), start_index, -1)
-        return [json.loads(item) for item in raw_events]
 
     async def close(self) -> None:
         await self._redis.aclose()

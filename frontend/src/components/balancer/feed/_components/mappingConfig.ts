@@ -122,7 +122,7 @@ export function roleSubgroupId(targetKey: string): string {
   return "other";
 }
 
-export function roleSubgroupLabel(id: string): string {
+function roleSubgroupLabel(id: string): string {
   return ROLE_SUBGROUP_LABELS[id] ?? "Other";
 }
 
@@ -153,7 +153,7 @@ export function targetsByGroup(catalog: MappingCatalog): Record<MappingTargetGro
 // JSON builders (state -> backend payload). Built only at save/preview time.
 // ---------------------------------------------------------------------------
 
-export type MappingTargetEntry =
+type MappingTargetEntry =
   | { mode: "columns"; columns: string[]; parser?: string; is_list?: boolean }
   | { mode: "constant"; value: string; parser?: string };
 
@@ -206,13 +206,13 @@ export function buildMappingConfigJson(state: Record<string, MappingTargetState>
   return { targets };
 }
 
-export interface RoleSubroleEntry {
+interface RoleSubroleEntry {
   role: string;
   subrole: string | null;
 }
 
 /** A role_subroles value can be a single entry or a list (multi-role mapping). */
-export type RoleSubroleValue = RoleSubroleEntry | RoleSubroleEntry[];
+type RoleSubroleValue = RoleSubroleEntry | RoleSubroleEntry[];
 
 /**
  * `value_mapping_json` shape. Includes an index signature so it remains

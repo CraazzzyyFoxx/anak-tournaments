@@ -43,7 +43,7 @@ jobs:
         working-directory: backend
         run: |
           set -e
-          for svc in shared app-service parser-service balancer-service tournament-service analytics-service identity-service discord-service; do
+          for svc in shared app-service parser-service balancer-service tournament-service analytics-service identity-service discord-service stream-service; do
             if [ "$svc" = "shared" ]; then src="shared"; else src="$svc/src"; fi
             echo "::group::pytest $svc"
             uv run coverage run --parallel-mode --source="$src" -m pytest "$svc/tests"

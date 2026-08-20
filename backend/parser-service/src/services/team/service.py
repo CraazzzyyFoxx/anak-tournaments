@@ -3,7 +3,6 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.domain.player_sub_roles import normalize_sub_role
@@ -125,27 +124,8 @@ def player_entities(entities_in: list[str], child: typing.Any | None = None) -> 
     return entities
 
 
-async def get(session: AsyncSession, team_id: int, entities: list[str]) -> models.Team | None:
-    query = sa.select(models.Team).where(sa.and_(models.Team.id == team_id)).options(*team_entities(entities))
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
-async def get_by_name_and_tournament(
-    session: AsyncSession, tournament_id: int, name: str, entities: list[str]
-) -> models.Team | None:
-    query = (
-        sa.select(models.Team)
-        .where(
-            sa.and_(
-                sa.func.lower(models.Team.name) == name.lower(),
-                models.Team.tournament_id == tournament_id,
-            )
-        )
-        .options(*team_entities(entities))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
 async def get_by_tournament(
@@ -156,51 +136,8 @@ async def get_by_tournament(
     return result.unique().scalars().all()
 
 
-async def get_by_tournament_challonge_id(
-    session: AsyncSession, tournament_id: int, challonge_id: int, entities: list[str]
-) -> models.Team | None:
-    # Resolve the team via the normalized challonge_participant_mapping ->
-    # challonge_source join instead of the deprecated challonge_team table.
-    query = (
-        sa.select(models.Team)
-        .options(*team_entities(entities))
-        .join(
-            models.ChallongeParticipantMapping,
-            models.ChallongeParticipantMapping.team_id == models.Team.id,
-        )
-        .join(
-            models.ChallongeSource,
-            models.ChallongeSource.id == models.ChallongeParticipantMapping.source_id,
-        )
-        .where(
-            sa.and_(
-                models.ChallongeSource.tournament_id == tournament_id,
-                models.ChallongeParticipantMapping.challonge_participant_id == challonge_id,
-            )
-        )
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
-async def get_by_captain_tournament(
-    session: AsyncSession,
-    captain: models.User,
-    tournament: models.Tournament,
-    entities: list[str],
-) -> models.Team | None:
-    query = (
-        sa.select(models.Team)
-        .where(
-            sa.and_(
-                models.Team.captain_id == captain.id,
-                models.Team.tournament_id == tournament.id,
-            )
-        )
-        .options(*team_entities(entities))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
 async def get_by_players_by_ids_tournament(
@@ -231,33 +168,8 @@ async def get_by_players_by_ids_tournament(
     return result.unique().scalars().first()
 
 
-async def get_players_tournament(
-    session: AsyncSession, tournament_id: int, entities: list[str]
-) -> typing.Sequence[models.Player]:
-    query = (
-        sa.select(models.Player)
-        .options(*player_entities(entities))
-        .where(models.Player.tournament_id == tournament_id, models.Player.is_substitution.is_(False))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()
 
 
-async def get_player_by_user_and_tournament(
-    session: AsyncSession, user_id: int, tournament_id: int, entities: list[str]
-) -> models.Player | None:
-    query = (
-        sa.select(models.Player)
-        .options(*player_entities(entities))
-        .where(
-            sa.and_(
-                models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
-                models.Player.tournament_id == tournament_id,
-            )
-        )
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
 
 
 async def get_player_by_team_and_user(
@@ -277,16 +189,6 @@ async def get_player_by_team_and_user(
     return result.unique().scalars().first()
 
 
-async def get_player_by_user(
-    session: AsyncSession, user_id: int, entities: list[str]
-) -> typing.Sequence[models.Player]:
-    query = (
-        sa.select(models.Player)
-        .where(sa.and_(models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id)))
-        .options(*player_entities(entities))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()
 
 
 async def get_player_by_user_and_role(
@@ -345,93 +247,7 @@ async def create_player(
     return player
 
 
-def _resolve_workspace_member_id_sync(
-    session: Session,
-    *,
-    tournament_id: int,
-    player_id: int,
-) -> int:
-    """Sync counterpart of ``_resolve_workspace_member_id`` for callers on a sync ``Session``.
-
-    Mirrors ``get_or_create_workspace_member``'s insert-or-select idempotency
-    (``INSERT ... ON CONFLICT DO NOTHING`` then ``SELECT``) since that helper is
-    async-only.
-    """
-    workspace_id = session.execute(
-        sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
-    ).scalar_one()
-
-    insert_stmt = (
-        pg_insert(models.WorkspaceMember)
-        .values(workspace_id=workspace_id, player_id=player_id)
-        .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
-        .returning(models.WorkspaceMember.id)
-    )
-    member_id = session.execute(insert_stmt).scalar_one_or_none()
-    if member_id is not None:
-        session.flush()
-        return member_id
-
-    existing = session.execute(
-        sa.select(models.WorkspaceMember.id).where(
-            models.WorkspaceMember.workspace_id == workspace_id,
-            models.WorkspaceMember.player_id == player_id,
-        )
-    ).scalar_one_or_none()
-    if existing is None:
-        raise RuntimeError(
-            f"_resolve_workspace_member_id_sync: no row after ON CONFLICT DO NOTHING "
-            f"(workspace_id={workspace_id}, player_id={player_id})"
-        )
-    return existing
 
 
-def create_player_sync(
-    session: Session,
-    *,
-    name: str,
-    sub_role: str | None = None,
-    rank: int,
-    role: enums.HeroClass,
-    user: models.User,
-    tournament: models.Tournament,
-    team: models.Team,
-    is_substitution: bool = False,
-    related_player_id: int | None = None,
-    is_newcomer: bool = False,
-    is_newcomer_role: bool = False,
-) -> models.Player:
-    workspace_member_id = _resolve_workspace_member_id_sync(
-        session,
-        tournament_id=tournament.id,
-        player_id=user.id,
-    )
-    player = models.Player(
-        name=name,
-        sub_role=normalize_sub_role(sub_role),
-        rank=rank,
-        role=role,
-        tournament_id=tournament.id,
-        team_id=team.id,
-        is_substitution=is_substitution,
-        related_player_id=related_player_id,
-        is_newcomer=is_newcomer,
-        is_newcomer_role=is_newcomer_role,
-        workspace_member_id=workspace_member_id,
-    )
-
-    session.add(player)
-    session.commit()
-    return player
 
 
-async def get_teams_by_tournament(
-    session: AsyncSession, tournament_id: int, entities: list[str]
-) -> typing.Sequence[models.Team]:
-    query = (
-        sa.select(models.Team)
-        .options(*team_entities(entities))
-        .where(sa.and_(models.Team.tournament_id == tournament_id))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().all()

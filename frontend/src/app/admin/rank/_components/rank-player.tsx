@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw, Search } from "lucide-react";
+import { useDebounce } from "use-debounce";
 
 import RankHistory from "@/components/RankHistory";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import rankService from "@/services/rank.service";
@@ -29,24 +31,12 @@ interface SelectUser {
  *  input and open the player detail on select. */
 export function RankPlayerSearch({ onSelect }: { onSelect: SelectUser }) {
   const [term, setTerm] = useState("");
-  const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [debouncedTerm] = useDebounce(term, 300);
+  const debounced = debouncedTerm.trim();
 
-  useEffect(() => {
-    const handle = setTimeout(() => setDebounced(term.trim()), 300);
-    return () => clearTimeout(handle);
-  }, [term]);
-
-  useEffect(() => {
-    function onClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
+  useClickOutside(containerRef, () => setOpen(false));
 
   const searchQuery = useQuery({
     queryKey: ["admin", "rank", "user-search", debounced],

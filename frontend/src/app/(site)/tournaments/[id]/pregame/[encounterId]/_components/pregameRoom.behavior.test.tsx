@@ -225,13 +225,13 @@ async function settle(ticks = 3) {
   }
 }
 
-async function render() {
+async function render(props: { seriesReport?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en}>
-          <PregameRoom encounterId={4242} />
+          <PregameRoom encounterId={4242} {...props} />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -400,7 +400,14 @@ describe("phase selection", () => {
         sequence: ["ban_home", "ban_away"],
         viewer_side: "away",
         pool: [
-          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home", action_index: 0 }),
+          entry({
+            id: 3,
+            item_id: 101,
+            round: 1,
+            status: "banned",
+            picked_by: "home",
+            action_index: 0
+          }),
           entry({ id: 4, item_id: 102, round: 1 })
         ],
         undo: { requested_by: null, item_ids: [101], action: "ban", side: "home" }
@@ -449,7 +456,14 @@ describe("phase selection", () => {
         current_round: 1,
         unique_attribute: "role",
         pool: [
-          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "home", action_index: 0 }),
+          entry({
+            id: 3,
+            item_id: 201,
+            round: 1,
+            status: "banned",
+            picked_by: "home",
+            action_index: 0
+          }),
           entry({ id: 4, item_id: 202, round: 1 }),
           entry({ id: 5, item_id: 203, round: 1 })
         ]
@@ -495,7 +509,14 @@ describe("phase selection", () => {
         current_round: 1,
         unique_attribute: "role",
         pool: [
-          entry({ id: 3, item_id: 201, round: 1, status: "banned", picked_by: "away", action_index: 0 }),
+          entry({
+            id: 3,
+            item_id: 201,
+            round: 1,
+            status: "banned",
+            picked_by: "away",
+            action_index: 0
+          }),
           entry({ id: 4, item_id: 202, round: 1 }),
           entry({ id: 5, item_id: 203, round: 1 })
         ]
@@ -552,6 +573,44 @@ describe("phase selection", () => {
     expect(tile("Support A")?.className).not.toContain("grayscale");
   });
 
+  it("still lets this side protect a hero it already banned earlier in the series", async () => {
+    // The ledger is BAN memory: `repeat_banned` bars a second ban by this side,
+    // never a protect. The OPPONENT can still ban the hero, so protecting it is
+    // both legal and the whole point -- the grid used to grey it out on every
+    // step, protect included, leaving the immunity unreachable.
+    getAllHeroes.mockResolvedValue({
+      results: [
+        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
+        { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+      ]
+    });
+    getMyRole.mockResolvedValue({ side: "home" });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [entry({ id: 1, item_id: 22, round: 2, status: "picked", action_index: 5 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        sequence: ["protect_home"],
+        viewer_side: "home",
+        viewer_can_act: true,
+        allowed_actions: ["protect"],
+        expected_action: "protect",
+        turn_side: "home",
+        current_round: 2,
+        repeat_banned: [201],
+        pool: [entry({ id: 3, item_id: 201, round: 2 }), entry({ id: 4, item_id: 203, round: 2 })]
+      })
+    );
+    await render();
+
+    const tank = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank A"]');
+    expect(tank?.disabled).toBe(false);
+    expect(tank?.className).not.toContain("grayscale");
+  });
+
   it("charts the series' play order once, in the header", async () => {
     // The pool card used to repeat the whole play order under the grid — the
     // same maps the header's series filmstrip already charts, twice on one
@@ -579,7 +638,9 @@ describe("phase selection", () => {
 
     expect(document.body.textContent).toContain(ROOM.map.title);
     expect(
-      Array.from(document.body.querySelectorAll("ol")).map((list) => list.getAttribute("aria-label"))
+      Array.from(document.body.querySelectorAll("ol")).map((list) =>
+        list.getAttribute("aria-label")
+      )
     ).toEqual([ROOM.phase.rail, ROOM.series.label]);
   });
 
@@ -609,14 +670,25 @@ describe("phase selection", () => {
             protected_by: "home",
             action_index: 0
           }),
-          entry({ id: 4, item_id: 202, round: 1, status: "banned", picked_by: "away", action_index: 1 })
+          entry({
+            id: 4,
+            item_id: 202,
+            round: 1,
+            status: "banned",
+            picked_by: "away",
+            action_index: 1
+          })
         ]
       })
     );
     await render();
 
-    const protectedTile = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank A"]');
-    const bannedTile = document.body.querySelector<HTMLButtonElement>('button[aria-label^="Tank B"]');
+    const protectedTile = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Tank A"]'
+    );
+    const bannedTile = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Tank B"]'
+    );
     // The banned one is crossed out and drained of colour; the protected one is
     // neither -- it is still in the game, and it wears a shield instead.
     expect(bannedTile?.querySelector(".lucide-ban")).toBeTruthy();
@@ -762,9 +834,7 @@ describe("phase selection", () => {
     );
     await render();
 
-    expect(document.body.textContent).toContain(
-      ROOM.undo.asked.replace("{team}", "Quiet Foxes")
-    );
+    expect(document.body.textContent).toContain(ROOM.undo.asked.replace("{team}", "Quiet Foxes"));
     const agree = Array.from(document.body.querySelectorAll("button")).find((button) =>
       button.textContent?.includes(ROOM.undo.agree)
     );
@@ -800,9 +870,7 @@ describe("phase selection", () => {
     );
     await render();
 
-    expect(document.body.textContent).toContain(
-      ROOM.undo.waiting.replace("{team}", "Quiet Foxes")
-    );
+    expect(document.body.textContent).toContain(ROOM.undo.waiting.replace("{team}", "Quiet Foxes"));
     expect(document.body.textContent).toContain(ROOM.undo.withdraw);
     expect(document.body.textContent).not.toContain(ROOM.undo.agree);
   });
@@ -1065,6 +1133,42 @@ describe("phase selection", () => {
     expect(document.body.textContent).not.toContain(ROOM.mapResult.report);
   });
 
+  it("names who the room is waiting on when a round needs its opener elected", async () => {
+    // `result_loser_choice`: round 2 does not exist until the losing captain
+    // names its opener, so the room shows a finished round 1 with nothing to
+    // click. Only that captain got the modal — everyone else (the winner, a
+    // spectator, the organizer holding the reset button) saw a hung room.
+    getMyRole.mockResolvedValue({ side: null });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: null,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "picked", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({
+          kind: "hero",
+          status: "completed",
+          awaiting_choice: true,
+          pending_loser_side: "away"
+        }),
+        is_complete: true,
+        viewer_side: null,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(
+      ROOM.electOpener.waiting.replace("{team}", "Quiet Foxes")
+    );
+  });
+
   /** A series with every map picked, banned, played and reconciled. */
   function settledSeries(viewerSide: "home" | "away" | null) {
     mockStates(
@@ -1100,7 +1204,8 @@ describe("phase selection", () => {
     expect(document.body.textContent).not.toContain(ROOM.seriesDone.title);
     // Prefilled from the encounter's own series score, not left at 0:0.
     const score = (label: string) =>
-      document.body.querySelector<HTMLInputElement>(`input[aria-label="Score for ${label}"]`)?.value;
+      document.body.querySelector<HTMLInputElement>(`input[aria-label="Score for ${label}"]`)
+        ?.value;
     expect(score("Bright Wolves")).toBe("1");
     expect(score("Quiet Foxes")).toBe("0");
     expect(document.body.textContent).toContain(en.matchReport.submit);
@@ -1114,6 +1219,241 @@ describe("phase selection", () => {
 
     expect(document.body.textContent).toContain(ROOM.seriesDone.title);
     expect(document.body.textContent).not.toContain(ROOM.finalReport.title);
+  });
+
+  it("never asks a scrim captain for a series report", async () => {
+    // A scrim publishes no result, and the report form is built from a
+    // per-tournament config the scrims container does not have — so a captain who
+    // WOULD be asked in a tournament gets the closing notice instead, with its
+    // own line: "the result is with the organizers now" names a role a scrim has
+    // nobody in.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 1,
+      score: { home: 1, away: 0 }
+    } as unknown as Encounter);
+    settledSeries("home");
+    await render({ seriesReport: false });
+
+    expect(document.body.textContent).toContain(ROOM.seriesDone.title);
+    expect(document.body.textContent).toContain(ROOM.seriesDone.hintNoReport);
+    expect(document.body.textContent).not.toContain(ROOM.finalReport.title);
+    expect(document.body.textContent).not.toContain(ROOM.seriesDone.hint);
+    // The form itself is gone, not merely hidden behind a heading.
+    expect(document.body.textContent).not.toContain(en.matchReport.submit);
+    expect(document.body.querySelector('input[aria-label="Score for Bright Wolves"]')).toBeNull();
+  });
+
+  it("names the winner on the closing screen when there is no report to file", async () => {
+    // "Who won and that's it" is the whole point of a scrim's closing screen:
+    // ending a finished series without saying how it ended is what made the room
+    // feel broken once the report was removed. Read off the encounter's own
+    // running score, which the per-map reports advance.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 2, away: 1 }
+    } as unknown as Encounter);
+    settledSeries("home");
+    await render({ seriesReport: false });
+
+    expect(document.body.textContent).toContain("Bright Wolves won the series 2:1");
+  });
+
+  it("replays every map's hero bans on the closing screen", async () => {
+    // The closing screen used to be the one place in the loop that named
+    // nothing about the heroes: `heroActions` keys off the PENDING map, and by
+    // the time the series is done there is none, so the record of what each map
+    // was played under vanished with the last grid that closed.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 2, away: 0 }
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: null,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "played", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: null,
+        sequence: ["ban_home", "ban_away"],
+        pool: [
+          entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by: "home" }),
+          entry({ id: 4, item_id: 102, round: 2, status: "banned", picked_by: "away" })
+        ]
+      })
+    );
+    await render();
+
+    const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
+    const text = record?.textContent ?? "";
+    expect(document.body.textContent).toContain(ROOM.heroBans.seriesTitle);
+    // One block per map, each captioned by its own round and map — not one
+    // caption claiming to describe "this map" on a screen where there is none.
+    expect(text).toContain("Round 1");
+    expect(text).toContain("Round 2");
+    expect(text).toContain("Map 21");
+    expect(text).toContain("Map 22");
+    expect(text).toContain("Hero 101");
+    expect(text).toContain("Hero 102");
+    expect(record?.querySelectorAll("[data-hero-bans]")).toHaveLength(4);
+    // The lobby-setup hint belongs to a map about to be played, never here.
+    expect(text).not.toContain(ROOM.heroBans.hint);
+    expect(text).not.toContain(ROOM.heroBans.seriesEyebrow);
+  });
+
+  it("states a flat hero pool once, not once per map", async () => {
+    // A round-less pool bans for the whole series; repeating it under every map
+    // would invent per-map decisions nobody made.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 2, away: 0 }
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: null,
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "played", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: null,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: null, status: "banned", picked_by: "home" })]
+      })
+    );
+    await render();
+
+    const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
+    expect(record?.textContent).toContain(ROOM.heroBans.seriesEyebrow);
+    // No per-map caption inside the record: the set covered every map, so
+    // naming one of them would be a claim nobody made.
+    expect(record?.textContent).not.toContain("Map 21");
+    expect(record?.textContent).not.toContain("Map 22");
+    // Two sides, one block — not two blocks of two sides.
+    expect(record?.querySelectorAll("[data-hero-bans]")).toHaveLength(2);
+  });
+
+  it("leaves the closing screen without a bans block when nothing was banned", async () => {
+    settledSeries(null);
+    getPickBanState.mockImplementation(async (kind: "map" | "hero") =>
+      kind === "map"
+        ? readyState({
+            session: session({ kind: "map" }),
+            is_complete: true,
+            viewer_side: null,
+            pool: [entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 })]
+          })
+        : readyState({
+            session: session({ kind: "hero" }),
+            is_complete: true,
+            viewer_side: null,
+            sequence: ["ban_home"],
+            pool: [entry({ id: 3, item_id: 101, round: 1, status: "available" })]
+          })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.seriesDone.title);
+    expect(document.body.textContent).not.toContain(ROOM.heroBans.seriesTitle);
+    expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+  });
+
+  it("charts a played map's score from the captains' claims when no Match row exists", async () => {
+    // A scrim writes no `matches.match` rows at all, so the filmstrip's score
+    // has to come from the agreed claims instead — otherwise every map of a
+    // scrim showed as played with nothing on it, which is what made the loop
+    // look stuck even though it was advancing correctly.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      score: { home: 1, away: 0 },
+      matches: []
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [
+          entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 2, item_id: 22, round: 2, status: "picked", action_index: 5 })
+        ],
+        map_reports: [
+          { map_id: 21, map_index: 1, side: "home", home_score: 2, away_score: 1 },
+          { map_id: 21, map_index: 1, side: "away", home_score: 2, away_score: 1 }
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_home"],
+        pool: [
+          entry({ id: 3, item_id: 101, round: 1, status: "banned" }),
+          entry({ id: 4, item_id: 102, round: 2, status: "banned" })
+        ]
+      })
+    );
+    await render({ seriesReport: false });
+
+    const items = Array.from(
+      document.body.querySelectorAll(`ol[aria-label="${ROOM.series.label}"] li`)
+    );
+    expect(items[0].textContent).toContain("2:1");
+    // Map 2 is picked but not played: still no score, and still the one awaited.
+    expect(items[1].textContent).toContain(ROOM.series.awaiting);
+    expect(items[1].textContent).not.toMatch(/\d:\d/);
+  });
+
+  it("shows no score for a map whose captains disagree", async () => {
+    // A dispute is exactly when there is no agreed number, and the server will
+    // not advance the series either — inventing one here would tell the captains
+    // the map was settled.
+    getEncounter.mockResolvedValue({
+      ...encounter(),
+      best_of: 3,
+      matches: []
+    } as unknown as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_side: "home",
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "played", action_index: 2 })],
+        map_reports: [
+          { map_id: 21, map_index: 1, side: "home", home_score: 2, away_score: 1 },
+          { map_id: 21, map_index: 1, side: "away", home_score: 0, away_score: 2 }
+        ]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        viewer_side: "home",
+        sequence: ["ban_home"],
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render({ seriesReport: false });
+
+    const items = Array.from(
+      document.body.querySelectorAll(`ol[aria-label="${ROOM.series.label}"] li`)
+    );
+    expect(items[0].textContent).not.toMatch(/\d:\d/);
   });
 
   it("goes straight to hero when the encounter has no map rule set at all", async () => {
@@ -1335,6 +1675,43 @@ describe("admin controls", () => {
 
     expect(document.body.textContent).toContain(ROOM.admin.title);
     expect(document.body.textContent).toContain(ROOM.action.protect);
+  });
+
+  it("lets an admin elect the round's opener when the losing captain is unreachable", async () => {
+    // The only other control on this screen is a session-wiping reset — which
+    // re-creates round 1 and walks into the same wall one map later.
+    usePermissionsMock.mockReturnValue({
+      isSuperuser: true,
+      isWorkspaceAdmin: () => true,
+      hasWorkspacePermission: () => true
+    });
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        pool: [
+          entry({ id: 10, item_id: 21, round: 1, status: "played", action_index: 2 }),
+          entry({ id: 11, item_id: 22, round: 2, status: "picked", action_index: 5 })
+        ]
+      }),
+      readyState({
+        session: session({
+          kind: "hero",
+          status: "completed",
+          awaiting_choice: true,
+          pending_loser_side: "away"
+        }),
+        is_complete: true,
+        sequence: ["ban_home"],
+        pool: [entry({ id: 1, item_id: 101, round: 1, status: "banned" })]
+      })
+    );
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.admin.electLabel);
+    const panel = document.body.textContent ?? "";
+    expect(panel).toContain(ROOM.side.home);
+    expect(panel).toContain(ROOM.side.away);
   });
 
   it("omits the reset/act panel for a non-admin captain", async () => {

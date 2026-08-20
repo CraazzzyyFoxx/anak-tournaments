@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { notify } from "@/lib/notify";
 import { usePermissions } from "@/hooks/usePermissions";
+import { DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
+import { DIVISION_ICON_BASE } from "@/lib/ow-ladder";
 import { OW2_RANK_OPTIONS } from "@/lib/ow-rank-mapping";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -28,87 +30,32 @@ import type {
   DivisionTier
 } from "@/types/workspace.types";
 
-function buildDefaultTiers(): DivisionTier[] {
-  const divisions = [
-    "champion",
-    "grandmaster",
-    "master",
-    "diamond",
-    "platinum",
-    "gold",
-    "silver",
-    "bronze"
-  ];
-  const bases: Record<string, number> = {
-    bronze: 1000,
-    silver: 1500,
-    gold: 2000,
-    platinum: 2500,
-    diamond: 3000,
-    master: 3500,
-    grandmaster: 4000,
-    champion: 4500
-  };
-
-  const tiers: DivisionTier[] = [];
-  let sort_order = 0;
-  let number = 1;
-
-  for (const div of divisions) {
-    const base = bases[div];
-    for (let tier_num = 1; tier_num <= 5; tier_num++) {
-      const slug = `${div}-${tier_num}`;
-      const name = `${div.charAt(0).toUpperCase() + div.slice(1)} ${tier_num}`;
-      const offset = (5 - tier_num) * 100;
-      const rank_min = base + offset;
-      const rank_max = div === "champion" && tier_num === 1 ? null : rank_min + 99;
-      const icon_url = `https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/${slug}.png`;
-
-      tiers.push({
-        slug,
-        number,
-        name,
-        sort_order,
-        rank_min,
-        rank_max,
-        icon_url
-      });
-      sort_order++;
-      number++;
-    }
-  }
-
-  return tiers.sort((a, b) => a.number - b.number);
-}
-
 function emptyTier(number: number, index: number): DivisionTier {
   return {
     slug: `division-${number}`,
     number,
     name: `Division ${number}`,
     sort_order: index,
-    rank_min: 1000,
-    rank_max: 1099,
-    icon_url: `https://static.nl.craazzzyyfoxx.me/aqt/assets/divisions/bronze-5.png`,
+    rank_min: 500,
+    rank_max: 599,
+    icon_url: `${DIVISION_ICON_BASE}/bronze-5.png`,
     ow_rank_min: null,
     ow_rank_max: null
   };
 }
 
+/**
+ * Editor rows for a version, or for the in-code default ladder when a workspace
+ * has no grid version yet. Both go through the same normalization so a default
+ * draft and a loaded version cannot differ in ordering or `sort_order`.
+ */
 function buildEditorState(selectedVersion: DivisionGridVersion | null): {
   label: string;
   tiers: DivisionTier[];
 } {
-  if (!selectedVersion) {
-    return {
-      label: "Draft",
-      tiers: buildDefaultTiers()
-    };
-  }
-
   return {
-    label: selectedVersion.label,
-    tiers: [...selectedVersion.tiers]
+    label: selectedVersion?.label ?? "Draft",
+    tiers: [...(selectedVersion?.tiers ?? DEFAULT_DIVISION_GRID.tiers)]
       .sort((a, b) => a.number - b.number)
       .map((tier, index) => ({ ...tier, sort_order: tier.sort_order ?? index }))
   };

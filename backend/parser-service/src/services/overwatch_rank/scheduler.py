@@ -13,7 +13,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
 from shared.observability import observe_scheduled_job
@@ -24,6 +23,7 @@ from shared.services.distributed_lock import (
     acquire_distributed_lock,
     release_distributed_lock,
 )
+from shared.services.scheduler import IntervalScheduler
 from src.core import db
 
 from . import service, tasks
@@ -32,7 +32,7 @@ SCHEDULER_TICK_SECONDS = 60
 LEADER_LOCK_KEY = "ow_rank:scheduler:leader"
 LEADER_LOCK_TTL_SECONDS = SCHEDULER_TICK_SECONDS * 2
 
-_scheduler: AsyncIOScheduler | None = None
+_scheduler = IntervalScheduler(job_id="ow_rank_collection", label="OverFast rank")
 
 
 def compute_per_tick(
@@ -166,25 +166,8 @@ async def run_collection_tick(
 
 
 def start_scheduler() -> None:
-    global _scheduler
-    if _scheduler is not None:
-        return
-    _scheduler = AsyncIOScheduler(timezone="UTC")
-    _scheduler.add_job(
-        run_collection_tick,
-        "interval",
-        seconds=SCHEDULER_TICK_SECONDS,
-        id="ow_rank_collection",
-        max_instances=1,
-        coalesce=True,
-    )
-    _scheduler.start()
-    logger.info("OverFast rank scheduler started (tick={}s)", SCHEDULER_TICK_SECONDS)
+    _scheduler.start(run_collection_tick, seconds=SCHEDULER_TICK_SECONDS)
 
 
 def shutdown_scheduler() -> None:
-    global _scheduler
-    if _scheduler is None:
-        return
-    _scheduler.shutdown(wait=False)
-    _scheduler = None
+    _scheduler.shutdown()

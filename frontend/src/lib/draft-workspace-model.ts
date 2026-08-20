@@ -1,3 +1,4 @@
+import type { RosterShape } from "@/lib/roster-shape";
 import type {
   DraftPick,
   DraftPickOption,
@@ -61,7 +62,7 @@ export function filterDraftPlayers(
       if (filters.sort === "name") {
         return (left.battle_tag ?? "").localeCompare(right.battle_tag ?? "");
       }
-      return (right.rank_value ?? -1) - (left.rank_value ?? -1) || left.id - right.id;
+      return (right.effective_rank ?? -1) - (left.effective_rank ?? -1) || left.id - right.id;
     });
 }
 
@@ -144,7 +145,19 @@ export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): Dr
   return (pick?.target_role as DraftRole | undefined) ?? player.primary_role;
 }
 
-export function rosterRankForPlayer(player: DraftPlayer, role: DraftRole): number | null {
+/**
+ * The rank that represents a player on their slot, mirroring the server's
+ * `services.draft.ranks.slot_rank`. Role slots keep it role-specific; a
+ * role-less (all-flex) roster assigns nobody a role, so the server's
+ * shape-aware `effective_rank` — the player's best role rank — stands in. The
+ * flex rule itself is never recomputed here.
+ */
+export function slotRankForPlayer(
+  player: DraftPlayer,
+  role: DraftRole,
+  shape: Pick<RosterShape, "has_role_slots">
+): number | null {
+  if (!shape.has_role_slots) return player.effective_rank;
   return player.role_ranks?.[role] ?? player.rank_value ?? null;
 }
 

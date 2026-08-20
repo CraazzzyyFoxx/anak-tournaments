@@ -1,7 +1,7 @@
-export const LOCALES = ["en", "ru"] as const;
+const LOCALES = ["en", "ru"] as const;
 export type Locale = (typeof LOCALES)[number];
 
-export const DEFAULT_LOCALE: Locale = "ru";
+const DEFAULT_LOCALE: Locale = "ru";
 
 function isLocale(value: string | undefined): value is Locale {
   return value === "en" || value === "ru";

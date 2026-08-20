@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 from typing import Any
 
@@ -20,6 +21,8 @@ from shared.schemas.events import BalancerJobEvent
 from src.core import db
 from src.core.caching import configure_cache
 from src.core.config import config
+from src.core.job_store import close_job_store
+from src.core.security.api_key_limiter import close_api_key_limiter
 from src.rpc import admin as rpc_admin
 from src.rpc import binary as rpc_binary
 from src.rpc import config as rpc_config
@@ -100,12 +103,22 @@ async def setup_worker_observability() -> None:
     logger.info("Balancer worker started")
 
 
+# The clock supervisor outlives every message, so its handle and its Redis client
+# have to be reachable at shutdown. Left unanchored, asyncio's weak task
+# reference let it be reclaimed ("Task was destroyed but it is pending!"), and
+# nothing cancelled it before the loop closed -- so its in-flight asyncpg
+# connection kept resolving/cancelling on a dead loop ("Event loop is closed").
+_draft_clock_task: asyncio.Task[None] | None = None
+_draft_clock_redis: Redis | None = None
+
+
 @app.on_startup
 async def start_draft_clock() -> None:
+    global _draft_clock_task, _draft_clock_redis
     # Single server-authoritative clock owner per LIVE draft (guarded by a Redis
     # lock inside the loop, so multiple worker replicas are safe).
-    redis = Redis.from_url(config.redis_url, decode_responses=True)
-    asyncio.create_task(draft_clock_supervisor(db.async_session_maker, redis))
+    _draft_clock_redis = Redis.from_url(config.redis_url, decode_responses=True)
+    _draft_clock_task = asyncio.create_task(draft_clock_supervisor(db.async_session_maker, _draft_clock_redis))
     logger.info("Draft clock supervisor started")
 
 
@@ -113,6 +126,22 @@ async def start_draft_clock() -> None:
 async def close_rpc_clients() -> None:
     # Gracefully close the draft realtime Redis client (worker-lifetime singleton).
     await rpc_draft.close()
+
+    # Job-store and API-key-limiter Redis clients are process-global singletons
+    # (see get_job_store/get_api_key_limiter); close them explicitly or every
+    # worker restart leaks a connection.
+    await close_job_store()
+    await close_api_key_limiter()
+
+    # Stop the clock BEFORE the engine goes: cancelling it lets its session unwind
+    # on a live loop instead of being torn down after the loop is gone.
+    if _draft_clock_task is not None:
+        _draft_clock_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _draft_clock_task
+    if _draft_clock_redis is not None:
+        await _draft_clock_redis.aclose()
+    await db.async_engine.dispose()
 
 
 @broker.subscriber(BALANCER_JOBS_QUEUE, decoder=_decode_balancer_message, channel=_JOBS_CHANNEL)

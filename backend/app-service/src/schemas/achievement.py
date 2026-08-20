@@ -44,6 +44,7 @@ class AchievementMatchTeamRef(BaseModel):
 
     id: int
     name: str
+    image_url: str | None = None
 
 
 class AchievementMatchLink(BaseModel):

@@ -50,15 +50,6 @@ export interface DivisionGridMappingRule {
   is_primary: boolean;
 }
 
-export interface DivisionGridMapping {
-  id: number;
-  source_version_id: number;
-  target_version_id: number;
-  name: string;
-  is_complete: boolean;
-  rules: DivisionGridMappingRule[];
-}
-
 export interface DivisionGridMarketplaceWorkspace {
   id: number;
   slug: string;
@@ -67,7 +58,7 @@ export interface DivisionGridMarketplaceWorkspace {
   versions_count: number;
 }
 
-export interface DivisionGridMarketplaceVersion {
+interface DivisionGridMarketplaceVersion {
   id: number;
   version: number;
   label: string;
@@ -95,7 +86,7 @@ export interface DivisionGridMarketplaceImportRequest {
   include_ow_rank_mappings: boolean;
 }
 
-export interface DivisionGridMarketplaceImportedGrid {
+interface DivisionGridMarketplaceImportedGrid {
   source_grid_id: number;
   target_grid_id: number;
   slug: string;
@@ -104,12 +95,12 @@ export interface DivisionGridMarketplaceImportedGrid {
   tiers_count: number;
 }
 
-export interface DivisionGridMarketplaceImportWarning {
+interface DivisionGridMarketplaceImportWarning {
   grid_slug?: string | null;
   message: string;
 }
 
-export interface DivisionGridMarketplaceImportResult {
+interface DivisionGridMarketplaceImportResult {
   created_grids: number;
   created_versions: number;
   created_tiers: number;
@@ -147,7 +138,7 @@ export interface DivisionGridImportJob {
   finished_at: string | null;
 }
 
-export interface DivisionGridReadinessConflictTier {
+interface DivisionGridReadinessConflictTier {
   source_tier_id: number;
   slug: string;
   name: string;
@@ -180,14 +171,14 @@ export interface DivisionGridSaveResult {
   readiness: DivisionGridActivationReadiness;
 }
 
-export interface DivisionGridPortableMappingRule {
+interface DivisionGridPortableMappingRule {
   source_tier_slug: string;
   target_tier_slug: string;
   weight: number;
   is_primary: boolean;
 }
 
-export interface DivisionGridPortableMapping {
+interface DivisionGridPortableMapping {
   source_version: number;
   target_version: number;
   name: string;
@@ -241,6 +232,10 @@ export interface Workspace {
   discord_guild_id: string | null;
   default_division_grid_version_id: number | null;
   default_division_grid_version: DivisionGridVersion | null;
+  /** How "is this player new" is decided when a roster is created: `"global"`
+   * counts any workspace's tournaments, `"workspace"` counts only this
+   * workspace's. */
+  newcomer_scope: "global" | "workspace";
 }
 
 /**

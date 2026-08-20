@@ -10,8 +10,9 @@ import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { formatTiebreakOrder, tiebreakerLabel, type TiebreakerMetricId } from "@/lib/tiebreakers";
 import tournamentService from "@/services/tournament.service";
 import styles from "./StandingsTable.module.css";
+import TeamName from "@/components/TeamName";
 
-export interface StandingTableProps {
+interface StandingTableProps {
   standings: Standings[];
   is_groups: boolean;
   stages?: Stage[];
@@ -81,7 +82,7 @@ function TeamCell({ standing, showGroup }: { standing: Standings; showGroup: boo
   return (
     <div className="st-team">
       <div className="stack">
-        <span className="nm">{standing.team?.name ?? "—"}</span>
+        <TeamName team={standing.team} size="xs" nameClassName="nm" />
         {showGroup && groupName && (
           <span className="sub">
             {t("common.group")} {groupName}

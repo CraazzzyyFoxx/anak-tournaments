@@ -8,8 +8,10 @@ DB-resumable: absolute ``clock_expires_at`` while live, frozen
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Final, Protocol, TypeVar
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,15 +20,16 @@ from sqlalchemy.orm import selectinload
 from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core import draft_state
 from shared.core.enums import (
+    HERO_TYPE_CLASSES,
     DraftCaptainOrder,
     DraftFormat,
     DraftPickStatus,
     DraftPlayerStatus,
-    DraftRole,
     DraftStatus,
+    HeroClass,
     TournamentStatus,
 )
-from shared.core.errors import ApiExc, ApiHTTPException
+from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import (
     DraftPick,
@@ -46,6 +49,8 @@ from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.repository.workspace import get_or_create_workspace_member
 from src.services.draft import feasibility
+from src.services.draft._errors import err as _err
+from src.services.draft.board import REGISTRATION_CUSTOM_FIELDS_KEY
 
 _ACTIVE_STATUSES = (
     DraftStatus.SETUP.value,
@@ -63,7 +68,7 @@ class CaptainSeed:
     auth_user_id: int | None = None
     battle_tag: str | None = None
     # Real role/rank when the captain is drawn from the balancer pool.
-    primary_role: DraftRole | None = None
+    primary_role: HeroClass | None = None
     sub_role: str | None = None
     is_flex: bool = False
     division_number: int | None = None
@@ -75,10 +80,10 @@ class CaptainSeed:
 
 @dataclass(frozen=True)
 class PlayerSeed:
-    primary_role: DraftRole
+    primary_role: HeroClass
     user_id: int | None = None
     battle_tag: str | None = None
-    secondary_roles: list[DraftRole] = field(default_factory=list)
+    secondary_roles: list[HeroClass] = field(default_factory=list)
     sub_role: str | None = None
     is_flex: bool = False
     division_number: int | None = None
@@ -86,10 +91,6 @@ class PlayerSeed:
     role_ranks: dict = field(default_factory=dict)
     role_top_heroes: dict = field(default_factory=dict)
     additional_info: dict = field(default_factory=dict)
-
-
-def _err(code: str, msg: str, status_code: int = 409) -> ApiHTTPException:
-    return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
 
 
 def validate_draft_rounds(*, rounds: int, shape: RosterShape) -> None:
@@ -135,8 +136,8 @@ def _build_hero_rows(entries: list[dict] | None) -> list[DraftPlayerRoleHero]:
 
 
 def _build_role_rows(
-    primary_role: DraftRole | str,
-    secondary_roles: list[DraftRole] | None,
+    primary_role: HeroClass | str,
+    secondary_roles: list[HeroClass] | None,
     role_ranks: dict | None,
     role_top_heroes: dict | None,
 ) -> list[DraftPlayerRole]:
@@ -151,8 +152,8 @@ def _build_role_rows(
     """
     role_ranks = role_ranks or {}
     role_top_heroes = role_top_heroes or {}
-    primary_value = primary_role.value if isinstance(primary_role, DraftRole) else str(primary_role)
-    secondary_values = [r.value if isinstance(r, DraftRole) else str(r) for r in (secondary_roles or [])]
+    primary_value = primary_role.slot_code if isinstance(primary_role, HeroClass) else str(primary_role)
+    secondary_values = [r.slot_code if isinstance(r, HeroClass) else str(r) for r in (secondary_roles or [])]
     secondary_set = set(secondary_values)
 
     ordered: list[str] = [primary_value]
@@ -233,6 +234,151 @@ async def _load_full(session: AsyncSession, draft_session_id: int) -> DraftSessi
     return draft
 
 
+# Round rules whose seat order is only known once the round starts: they rank
+# teams by their live average, so seeding and any later resync leave the linear
+# order in place and ``selection._apply_dynamic_round_order`` re-seats the round
+# on its first pick.
+DYNAMIC_ROUND_RULES: Final[tuple[str, ...]] = ("team_avg_asc", "team_avg_desc")
+
+
+class _Seat(Protocol):
+    """What seat ordering reads off a team: its id and its seed position."""
+
+    id: int
+    draft_position: int
+
+
+_SeatT = TypeVar("_SeatT", bound=_Seat)
+
+
+def round_seat_order(
+    seats: Sequence[_SeatT],
+    *,
+    fmt: DraftFormat,
+    round_rules: Sequence[str | None],
+    round_idx: int,
+    captain_ranks: Mapping[int, int],
+) -> list[_SeatT]:
+    """Seat order for one round: who picks first, second, ... in it.
+
+    ``seats`` is the seed order (position 1 first) and ``round_idx`` is 0-based.
+    The single source of truth for what a rule MEANS, shared by seeding and
+    :func:`resync_pick_order` -- the two used to hold separate copies, which is
+    how a rule changed after seeding could mean one thing in the wizard preview
+    and another on the board.
+    """
+    if fmt == DraftFormat.SNAKE:
+        return list(reversed(seats)) if round_idx % 2 == 1 else list(seats)
+    if fmt != DraftFormat.CUSTOM:
+        return list(seats)
+
+    rule = round_rules[round_idx] if round_idx < len(round_rules) else None
+    if rule == "reverse":
+        return list(reversed(seats))
+    if rule == "weakest_first":
+        return sorted(seats, key=lambda t: (captain_ranks.get(t.id, -1), t.draft_position))
+    if rule == "strongest_first":
+        return sorted(seats, key=lambda t: (captain_ranks.get(t.id, -1), -t.draft_position), reverse=True)
+    # "linear", a dynamic rule, an unknown value, or a hole left by an older
+    # client: all keep the seed order here.
+    return list(seats)
+
+
+def average_seat_order(
+    seats: Sequence[_SeatT],
+    *,
+    averages: Mapping[int, float],
+    descending: bool,
+) -> list[_SeatT]:
+    """Seat order for a ``team_avg_*`` round: by live average, ties by seed.
+
+    The direction lives in the key rather than in ``reverse=``, because
+    ``reverse`` flips the WHOLE key: the tie-break would run backwards under
+    ``team_avg_desc`` and forwards under ``team_avg_asc``, so two teams on the
+    same average would swap seats purely from the direction of the rule. Equal
+    averages therefore always fall back to the seed order, matching what
+    ``weakest_first``/``strongest_first`` already do with equal captain ranks.
+
+    A team with no average yet sorts as 0.0. In practice every team has one --
+    captains are seeded as PICKED players on their own roster -- so this only
+    guards a team whose roster was emptied by hand.
+    """
+    return sorted(
+        seats,
+        key=lambda t: (
+            -averages.get(t.id, 0.0) if descending else averages.get(t.id, 0.0),
+            t.draft_position,
+        ),
+    )
+
+
+async def resync_pick_order(session: AsyncSession, draft_session: DraftSession) -> int:
+    """Re-seat every round that has not started yet. Returns how many picks moved.
+
+    ``round_rules`` lives on the session while the pick rows are materialized at
+    seed time, so changing a rule afterwards used to change nothing on the board:
+    the wizard previewed the new order and the draft kept picking in the old one.
+    Callers run this after a settings change so the two cannot disagree.
+
+    A round holding any pick that is no longer UPCOMING is history and is left
+    alone -- reordering a round somebody already picked in would rewrite who
+    picked when. Dynamic ``team_avg_*`` rounds keep the seed order here; they are
+    re-seated when they start.
+    """
+    teams = (
+        await session.scalars(
+            sa.select(DraftTeam)
+            .where(DraftTeam.session_id == draft_session.id)
+            .order_by(DraftTeam.draft_position.asc())
+        )
+    ).all()
+    if not teams:
+        return 0
+    picks = (
+        await session.scalars(
+            sa.select(DraftPick).where(DraftPick.session_id == draft_session.id).order_by(DraftPick.overall_no.asc())
+        )
+    ).all()
+    if not picks:
+        return 0
+
+    captain_ranks = {
+        captain.drafted_by_team_id: (captain.rank_value if captain.rank_value is not None else -1)
+        for captain in await session.scalars(
+            sa.select(DraftPlayer).where(
+                DraftPlayer.session_id == draft_session.id,
+                DraftPlayer.is_captain.is_(True),
+                DraftPlayer.drafted_by_team_id.isnot(None),
+            )
+        )
+    }
+    fmt = DraftFormat(draft_session.format)
+    round_rules = draft_session.settings_json.get("round_rules") or []
+
+    by_round: dict[int, list[DraftPick]] = {}
+    for pick in picks:
+        by_round.setdefault(pick.round_no, []).append(pick)
+
+    moved = 0
+    for round_no, round_picks in by_round.items():
+        if any(pick.status != DraftPickStatus.UPCOMING.value for pick in round_picks):
+            continue
+        round_seats = round_seat_order(
+            list(teams),
+            fmt=fmt,
+            round_rules=round_rules,
+            round_idx=round_no - 1,
+            captain_ranks=captain_ranks,
+        )
+        for pick, team in zip(sorted(round_picks, key=lambda p: p.pick_in_round), round_seats, strict=False):
+            if pick.draft_team_id != team.id:
+                pick.draft_team_id = team.id
+                moved += 1
+    if moved:
+        await session.flush()
+    return moved
+
+
 async def seed(
     session: AsyncSession,
     draft_session: DraftSession,
@@ -302,13 +448,13 @@ async def seed(
     for cap in ordered_captains:
         team = team_by_position[cap.draft_position]
         # Real role from the pool when available; TANK placeholder otherwise.
-        cap_primary = cap.primary_role or DraftRole.TANK
+        cap_primary = cap.primary_role or HeroClass.tank
         session.add(
             DraftPlayer(
                 session_id=draft_session.id,
                 workspace_member_id=_member_id(cap.user_id),
                 battle_tag=cap.battle_tag,
-                primary_role=cap_primary.value,
+                primary_role=cap_primary.slot_code,
                 sub_role=cap.sub_role,
                 is_flex=cap.is_flex,
                 division_number=cap.division_number,
@@ -327,7 +473,7 @@ async def seed(
                 session_id=draft_session.id,
                 workspace_member_id=_member_id(p.user_id),
                 battle_tag=p.battle_tag,
-                primary_role=p.primary_role.value,
+                primary_role=p.primary_role.slot_code,
                 sub_role=p.sub_role,
                 is_flex=p.is_flex,
                 division_number=p.division_number,
@@ -351,36 +497,19 @@ async def seed(
 
     overall_no = 1
     for round_idx in range(draft_session.rounds):
-        round_no = round_idx + 1
-
-        # Determine team ordering for this round
-        if fmt == DraftFormat.SNAKE:
-            reverse = round_idx % 2 == 1
-            round_seats = list(reversed(seats)) if reverse else seats
-        elif fmt == DraftFormat.LINEAR:
-            round_seats = seats
-        elif fmt == DraftFormat.CUSTOM:
-            rule = round_rules[round_idx] if round_idx < len(round_rules) else "linear"
-            if rule == "reverse":
-                round_seats = list(reversed(seats))
-            elif rule == "weakest_first":
-                round_seats = sorted(seats, key=lambda t: (team_captain_ranks.get(t.id, -1), t.draft_position))
-            elif rule == "strongest_first":
-                round_seats = sorted(
-                    seats, key=lambda t: (team_captain_ranks.get(t.id, -1), -t.draft_position), reverse=True
-                )
-            else:
-                # Dynamic rules (team_avg_asc, team_avg_desc) default to linear order at seeding time
-                round_seats = seats
-        else:
-            round_seats = seats
-
+        round_seats = round_seat_order(
+            seats,
+            fmt=fmt,
+            round_rules=round_rules,
+            round_idx=round_idx,
+            captain_ranks=team_captain_ranks,
+        )
         for pick_in_round, team in enumerate(round_seats, start=1):
             session.add(
                 DraftPick(
                     session_id=draft_session.id,
                     overall_no=overall_no,
-                    round_no=round_no,
+                    round_no=round_idx + 1,
                     pick_in_round=pick_in_round,
                     draft_team_id=team.id,
                     status=DraftPickStatus.UPCOMING.value,
@@ -398,17 +527,10 @@ async def seed(
     return draft_session
 
 
-def _to_draft_role(role: str | None) -> DraftRole | None:
-    if not role:
-        return None
-    normalized = role.strip().lower()
-    if normalized in {"dps", "damage"}:
-        return DraftRole.DPS
-    if normalized == "tank":
-        return DraftRole.TANK
-    if normalized == "support":
-        return DraftRole.SUPPORT
-    return None
+def _to_draft_role(role: str | None) -> HeroClass | None:
+    """Parse a registration role string; ``flex`` is not a playable role here."""
+    parsed = HeroClass.parse(role)
+    return parsed if parsed is not HeroClass.flex else None
 
 
 def _registration_auth_user_id(reg: BalancerRegistration) -> int | None:
@@ -462,6 +584,26 @@ def _all_roles_required(form: BalancerRegistrationForm | None) -> bool:
     return config.get("mode") in ("all_roles", "forced")
 
 
+def _registration_additional_info(reg: BalancerRegistration) -> dict:
+    """The per-player catch-all bag seeded from a registration.
+
+    ``notes`` stays public (captains read it while drafting). The registration's
+    custom-field ANSWERS are copied wholesale under a private key: which of them
+    a spectator may see is decided per field by the organizer
+    (``registration_form.custom_fields_json[*].show_in_draft``) and resolved on
+    the read side, so toggling a field takes effect on an already-seeded draft
+    instead of demanding a re-seed. ``board.public_additional_info`` strips the
+    raw bag from the public snapshot.
+    """
+    info: dict = {}
+    if reg.notes:
+        info["notes"] = reg.notes
+    answers = getattr(reg, "custom_fields_json", None) or {}
+    if answers:
+        info[REGISTRATION_CUSTOM_FIELDS_KEY] = dict(answers)
+    return info
+
+
 def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> dict:
     """Derive draft role/rank fields from a tournament registration's roles.
 
@@ -469,15 +611,21 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
     role rows sorted by priority -> primary (preferring is_primary) + secondaries;
     rank/sub-role come from the primary role.
 
-    Under ``all_roles`` role stops being a constraint: every role is playable
-    and the player's strength is the maximum rank across all their roles. The
+    Under ``all_roles`` role stops being a constraint: every role is playable and
+    the player's *strength* -- ``rank_value`` -- is the maximum rank across all
+    their roles. Their per-role catalogue still says what they are actually rated
+    at on each role, because the draft SHOWS it: a captain picking a role reads
+    that number, and stamping the maximum onto all three turned the role chooser
+    into one number printed three times. Roles the registration never ranked take
+    the maximum instead of nothing, so every playable role still carries a rating
+    (the balancer's eligibility for a role is the presence of one). The
     ``is_active`` filter is deliberately bypassed there -- a Google-Sheets row
     whose rank did not parse arrives with ``is_active=False`` and would
     otherwise silently lose a playable role.
     """
     entries = sorted((reg.roles or []), key=lambda r: r.priority)
     active = entries if all_roles else [r for r in entries if r.is_active]
-    roles: list[DraftRole] = []
+    roles: list[HeroClass] = []
     for r in active:
         role = _to_draft_role(r.role)
         if role is not None and role not in roles:
@@ -485,9 +633,9 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
     primary_entry = next((r for r in active if r.is_primary and _to_draft_role(r.role)), None)
     if primary_entry is None and active:
         primary_entry = active[0]
-    primary = (_to_draft_role(primary_entry.role) if primary_entry else None) or (roles[0] if roles else DraftRole.DPS)
+    primary = (_to_draft_role(primary_entry.role) if primary_entry else None) or (roles[0] if roles else HeroClass.damage)
     if all_roles:
-        roles = [primary, *(role for role in DraftRole if role != primary)]
+        roles = [primary, *(role for role in HERO_TYPE_CLASSES if role != primary)]
     secondary = [r for r in roles if r != primary]
     ranks = [r.rank_value for r in active if r.rank_value is not None]
     effective_rank = max(ranks) if ranks else None
@@ -497,7 +645,7 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
         rank_value = (primary_entry.rank_value if primary_entry else None) or effective_rank
     sub_role = primary_entry.subrole if primary_entry else None
 
-    # Per-role rank catalogue and top heroes, keyed by role.value, promoted to
+    # Per-role rank catalogue and top heroes, keyed by role.slot_code, promoted to
     # dedicated typed fields (no more burying them in an "anomaly_flags" bag).
     role_ranks: dict[str, int] = {}
     role_top_heroes: dict[str, list[dict]] = {}
@@ -506,7 +654,7 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
         if role is None:
             continue
         if r.rank_value is not None:
-            role_ranks[role.value] = r.rank_value
+            role_ranks[role.slot_code] = r.rank_value
         hero_entries = getattr(r, "hero_entries", None)
         heroes = (
             [
@@ -521,17 +669,20 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
                 if he and getattr(he, "hero", None) is not None
             ]
             if isinstance(hero_entries, (list, set))
-            or (hero_entries is not None and not hasattr(hero_entries, "_mock_return_value"))
             else []
         )
         if heroes:
-            role_top_heroes[role.value] = heroes
+            role_top_heroes[role.slot_code] = heroes
 
     if all_roles:
-        # Every role playable at the same strength. Keyed off DraftRole rather
-        # than the rows so a registration written before the mode was switched
-        # on (fewer than three role rows) still comes out fully flex.
-        role_ranks = {} if effective_rank is None else {role.value: effective_rank for role in DraftRole}
+        # Every role rated, none overwritten. Keyed off HERO_TYPE_CLASSES rather
+        # than the rows so a registration written before the mode was switched on
+        # (fewer than three role rows) still comes out fully playable.
+        role_ranks = (
+            {}
+            if effective_rank is None
+            else {role.slot_code: role_ranks.get(role.slot_code, effective_rank) for role in HERO_TYPE_CLASSES}
+        )
 
     return {
         "primary_role": primary,
@@ -542,7 +693,7 @@ def _map_registration(reg: BalancerRegistration, *, all_roles: bool = False) -> 
         "is_flex": bool(reg.is_flex_computed),
         "role_ranks": role_ranks,
         "role_top_heroes": role_top_heroes,
-        "additional_info": {"notes": reg.notes} if reg.notes else {},
+        "additional_info": _registration_additional_info(reg),
     }
 
 
@@ -728,16 +879,20 @@ async def _first_upcoming(session: AsyncSession, draft_session_id: int) -> Draft
     )
 
 
-async def start(session: AsyncSession, draft_session: DraftSession) -> DraftSession:
+async def start(session: AsyncSession, draft_session: DraftSession, *, force: bool = False) -> DraftSession:
     draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.LIVE)
-    tournament_status = await session.scalar(
-        sa.select(Tournament.status).where(Tournament.id == draft_session.tournament_id)
-    )
-    if tournament_status != TournamentStatus.DRAFT.value:
-        raise _err(
-            "tournament_not_in_draft_phase",
-            "Draft can only start while the tournament is in the draft phase",
+    # The phase gate keeps organizers from going live before the tournament
+    # reaches its draft phase. A superuser may bypass it (``force``) to run a
+    # draft out of band — a test run, or a rescue after the schedule drifted.
+    if not force:
+        tournament_status = await session.scalar(
+            sa.select(Tournament.status).where(Tournament.id == draft_session.tournament_id)
         )
+        if tournament_status != TournamentStatus.DRAFT.value:
+            raise _err(
+                "tournament_not_in_draft_phase",
+                "Draft can only start while the tournament is in the draft phase",
+            )
     first = await _first_upcoming(session, draft_session.id)
     if first is None:
         raise _err("draft_no_picks", "Draft has no picks to start")

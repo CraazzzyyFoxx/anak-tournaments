@@ -76,13 +76,13 @@ def parse_competitive(competitive: dict[str, Any] | None) -> list[ParsedRank]:
         if not platform_data:
             continue
         season = platform_data.get("season")
-        for role in (enums.RankRole.tank, enums.RankRole.damage, enums.RankRole.support):
-            role_data = platform_data.get(role.value)
+        for role in enums.HERO_TYPE_CLASSES:
+            role_data = platform_data.get(role.name)
             if not role_data:
                 ranks.append(
                     ParsedRank(
                         platform=platform.value,
-                        role=role.value,
+                        role=role.name,
                         division=None,
                         tier=None,
                         season=season,
@@ -96,7 +96,7 @@ def parse_competitive(competitive: dict[str, Any] | None) -> list[ParsedRank]:
             ranks.append(
                 ParsedRank(
                     platform=platform.value,
-                    role=role.value,
+                    role=role.name,
                     division=division,
                     tier=tier,
                     season=season,

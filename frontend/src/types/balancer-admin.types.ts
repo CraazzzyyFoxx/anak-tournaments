@@ -1,31 +1,31 @@
+import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/player-role";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type {
+  BuiltInFieldConfig,
+  CustomFieldDefinition,
+  FieldValidationConfig,
   StatusKind,
   StatusMeta,
   StatusScope,
+  SubroleCatalog,
   SubscriptionOutcome,
   SubscriptionRequirement,
 } from "@/types/registration.types";
 
-export type BalancerRoleCode = "tank" | "dps" | "support";
-export type BalancerRosterKey = "Tank" | "Damage" | "Support";
-export type BalancerRoleSubtype = string;
+// Re-exported for callers that historically imported these registration
+// field-config types from the admin module rather than registration.types
+// directly (e.g. balancer/form/_components/formConfig.ts). The shapes are
+// identical on both sides of the registration/admin boundary -- one
+// registration form definition, read by both the public sign-up flow and
+// this admin editor -- so registration.types.ts is the single source of
+// truth and this file only re-exports.
+export type { BuiltInFieldConfig, FieldValidationConfig };
 
-export interface BalancerTournamentSheet {
-  id: number;
-  tournament_id: number;
-  source_url: string;
-  sheet_id: string;
-  gid: string | null;
-  title: string | null;
-  header_row_json: string[] | null;
-  column_mapping_json: Record<string, unknown> | null;
-  role_mapping_json: Record<string, BalancerRoleCode | null> | null;
-  is_active: boolean;
-  last_synced_at: string | null;
-  last_sync_status: string | null;
-  last_error: string | null;
-}
+/** Registration/draft wire code — the non-flex slice of `PlayerRoleSlotCode`. */
+export type BalancerRoleCode = Exclude<PlayerRoleSlotCode, "flex">;
+/** Capitalized roster key — the non-flex slice of `PlayerRoleOption`. */
+export type BalancerRosterKey = Exclude<PlayerRoleOption, "Flex">;
+export type BalancerRoleSubtype = string;
 
 export interface BalancerPlayerRecord {
   id: number;
@@ -72,14 +72,6 @@ export interface BalancerApplication {
   player: BalancerPlayerRecord | null;
 }
 
-export interface SheetSyncResponse {
-  created: number;
-  updated: number;
-  deactivated: number;
-  total: number;
-  sheet: BalancerTournamentSheet;
-}
-
 export interface InternalBalancePlayer {
   uuid: string;
   name: string;
@@ -110,7 +102,7 @@ export interface InternalBalancePayload {
   benched_players?: InternalBalancePlayer[];
 }
 
-export interface SavedBalancerTeam {
+interface SavedBalancerTeam {
   id: number;
   balance_id: number;
   exported_team_id: number | null;
@@ -164,13 +156,6 @@ export interface BalancerTournamentSummary {
   workspace_id: number;
 }
 
-export interface TournamentSheetUpsertInput {
-  source_url: string;
-  title?: string | null;
-  column_mapping_json?: Record<string, unknown> | null;
-  role_mapping_json?: Record<string, BalancerRoleCode | null> | null;
-}
-
 export interface BalancerPlayerExportResponse {
   format: string;
   players: Record<string, unknown>;
@@ -182,13 +167,13 @@ export interface RegistrationUserExportResponse {
   total: number;
 }
 
-export type RegistrationRankAutofillPlayerStatus =
+type RegistrationRankAutofillPlayerStatus =
   | "will_update"
   | "applied"
   | "skipped"
   | "unchanged";
 
-export type RegistrationRankAutofillRoleAction =
+type RegistrationRankAutofillRoleAction =
   | "set"
   | "overwrite"
   | "keep_existing"
@@ -196,7 +181,7 @@ export type RegistrationRankAutofillRoleAction =
   | "missing_rank"
   | "blocked";
 
-export type RegistrationRankAutofillUsedSource =
+type RegistrationRankAutofillUsedSource =
   | "division_history"
   | "ow"
   | "analytics";
@@ -210,7 +195,7 @@ export type RankAutofillSourceKey = "ow" | "division_history" | "analytics";
  *  - balancer_first: balancer -> analytics -> OW
  * Legacy presets; superseded by an explicit `stages` chain when one is supplied.
  */
-export type RegistrationRankAutofillMode = "ow_first" | "balancer_first";
+type RegistrationRankAutofillMode = "ow_first" | "balancer_first";
 
 /** One source in the autofill priority chain (order = list position). */
 export interface RegistrationRankAutofillStage {
@@ -306,48 +291,10 @@ export interface BalanceSaveInput {
 // Registration (admin)
 // ---------------------------------------------------------------------------
 
-export interface AdminCustomFieldDef {
-  key: string;
-  label: string;
-  type: "text" | "number" | "select" | "checkbox" | "url";
-  required: boolean;
-  placeholder: string | null;
-  options: string[] | null;
-  validation?: FieldValidationConfig | null;
-}
-
-export interface FieldValidationConfig {
-  regex?: string | null;
-  error_message?: string | null;
-}
-
-export interface BuiltInFieldConfig {
-  enabled: boolean;
-  required: boolean;
-  /** Per-role subrole options. Only relevant for primary_role / additional_roles fields. */
-  subroles?: Record<string, string[]>;
-  validation?: FieldValidationConfig | null;
-  /** `top_heroes` field only: max heroes selectable per role (default 5). */
-  max_heroes?: number | null;
-  /**
-   * Identity fields (battle_tag/discord_nick/twitch_nick) only: require the
-   * submitted handle to match one of the registrant's OAuth-verified accounts.
-   */
-  require_verified?: boolean;
-  /**
-   * `flex_role` field only. "forced" makes every registration full flex and
-   * drives the max-rank policy in the balancer pool. Absent/null == "optional".
-   */
-  mode?: "optional" | "all_roles" | "forced" | null;
-}
-
-export interface SubroleOption {
-  slug: string;
-  label: string;
-}
-
-/** Workspace sub-role catalog keyed by registration role code (tank/dps/support). */
-export type SubroleCatalog = Record<string, SubroleOption[]>;
+// Identical shape to CustomFieldDefinition (registration.types.ts) -- one
+// registration form definition, read by both the public sign-up flow and
+// this admin editor.
+export type AdminCustomFieldDef = CustomFieldDefinition;
 
 export interface AdminRegistrationForm {
   id: number;
@@ -549,7 +496,7 @@ export interface AdminGoogleSheetFeedUpsertInput {
   value_mapping_json?: Record<string, unknown> | null;
 }
 
-export interface AdminGoogleSheetSyncError {
+interface AdminGoogleSheetSyncError {
   target: string | null;
   column: string | null;
   message: string;
@@ -619,7 +566,7 @@ export interface MappingTargetDef {
   required: boolean;
 }
 
-export type MappingParserCardinality = "single" | "multi";
+type MappingParserCardinality = "single" | "multi";
 
 export interface MappingParserDef {
   parser: string;

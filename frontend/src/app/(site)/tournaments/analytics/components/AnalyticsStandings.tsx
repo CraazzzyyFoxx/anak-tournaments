@@ -12,12 +12,14 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 import {
   confidenceWord,
   formatAnalyticsNumber,
-  formatConfidencePercent
+  formatConfidencePercent,
+  standingsRank
 } from "@/app/(site)/tournaments/analytics/analytics.helpers";
 import AnomalyTooltip from "@/app/(site)/tournaments/analytics/components/AnomalyTooltip";
 import ExplanationPopover from "@/app/(site)/tournaments/analytics/components/ExplanationPopover";
 import ForecastChip from "@/app/(site)/tournaments/analytics/components/ForecastChip";
 import MetricTooltip from "@/app/(site)/tournaments/analytics/components/MetricTooltip";
+import TeamName from "@/components/TeamName";
 import { useTranslations } from "next-intl";
 import { sortTeamPlayers } from "@/utils/player";
 import { cn } from "@/lib/utils";
@@ -475,8 +477,8 @@ const TeamRow = ({
           </div>
         </div>
         <div className={styles.teamName}>
-          <div className={styles.teamTitle} title={team.name}>
-            {team.name}
+          <div className={styles.teamTitle}>
+            <TeamName team={team} size="xs" />
           </div>
           <div className={styles.teamMeta}>
             <span>{t("common.group")} {groupName}</span>
@@ -566,10 +568,7 @@ const sortedTeams = (teams: TeamAnalytics[], mode: SortMode) => {
   }
 
   return [...teams].sort(
-    (left, right) =>
-      (left.placement ?? Number.MAX_SAFE_INTEGER) -
-        (right.placement ?? Number.MAX_SAFE_INTEGER) ||
-      left.name.localeCompare(right.name)
+    (left, right) => standingsRank(left) - standingsRank(right) || left.name.localeCompare(right.name)
   );
 };
 

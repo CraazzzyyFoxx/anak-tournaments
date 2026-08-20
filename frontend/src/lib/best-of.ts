@@ -22,39 +22,6 @@ export const DEFAULT_BEST_OF = 3;
 /** Series lengths the stage editor offers. Bo4/Bo6 are legal but unused. */
 export const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
 
-/**
- * The `mapVeto.preset.*` message for a series length, or null when it has none.
- *
- * A bare template literal (`` `mapVeto.preset.bo${n}` ``) does not typecheck
- * against next-intl's key union, and a runtime membership check alone does not
- * narrow it. Returning the literal keys makes both the guard and the type one
- * decision, so a Bo4 stage renders `Bo4` instead of emitting a missing key.
- */
-export function bestOfMessageKey(
-  bestOf: number
-):
-  | "mapVeto.preset.bo1"
-  | "mapVeto.preset.bo2"
-  | "mapVeto.preset.bo3"
-  | "mapVeto.preset.bo5"
-  | "mapVeto.preset.bo7"
-  | null {
-  switch (bestOf) {
-    case 1:
-      return "mapVeto.preset.bo1";
-    case 2:
-      return "mapVeto.preset.bo2";
-    case 3:
-      return "mapVeto.preset.bo3";
-    case 5:
-      return "mapVeto.preset.bo5";
-    case 7:
-      return "mapVeto.preset.bo7";
-    default:
-      return null;
-  }
-}
-
 /** Opening bans a generated sequence uses when the pool can spare them. */
 const LEAD_BANS = 2;
 
@@ -124,7 +91,7 @@ export function hasPerRoundBestOf(config: StageBestOfConfig): boolean {
 }
 
 /** A round the best-of editor can target, identified by its `by_round` key. */
-export interface BestOfRoundOption {
+interface BestOfRoundOption {
   /** Signed round number — negative is a lower-bracket round. */
   round: number;
   label: string;
@@ -139,13 +106,15 @@ export interface BestOfRoundSection {
 
 export interface StageBestOfShape {
   stageType: StageType;
-  /** `Stage.max_rounds`. The only round count a stage carries before seeding. */
+  /** `Stage.max_rounds`. A fallback used only when the team count is unknown. */
   maxRounds: number;
   /**
-   * Teams starting in the upper bracket. `0` when nothing is seeded yet, which
-   * falls back to `maxRounds`.
+   * The team count that fixes this bracket's depth: total teams for single
+   * elimination, upper-bracket teams (post-split) for double elimination.
+   * `0` when nothing is seeded and no count can be derived, which falls back
+   * to `maxRounds`.
    */
-  upperTeamCount?: number;
+  bracketTeamCount?: number;
   /** DE "split" seeding: half the teams start in the lower bracket. */
   splitLowerBracket?: boolean;
   /** Round keys already configured, so an override is never hidden. */
@@ -166,22 +135,42 @@ export interface StageBestOfShape {
  * precedence over `by_round`), so giving it a second key would let the two
  * disagree with `final` silently winning.
  *
- * The depth is derived from the bracket's shape, which is exact for the
- * power-of-two sizes the generator builds cleanly and may over-count a lower
- * bracket shortened by first-round byes. Over-counting is the safe direction: a
- * key no encounter carries is inert, while a missing row is a round the
- * organizer cannot configure at all.
+ * The depth is derived from the team count, exact for the power-of-two sizes
+ * the generator builds cleanly and possibly over-counting a lower bracket
+ * shortened by first-round byes. Over-counting is the safe direction: a key no
+ * encounter carries is inert, while a missing row is a round the organizer
+ * cannot configure at all. `maxRounds` is only a last-resort fallback for a
+ * bracket whose team count is still unknown — it is an independent admin
+ * planning field, not the real round count.
  */
 export function stageBestOfRoundSections({
   stageType,
   maxRounds,
-  upperTeamCount = 0,
+  bracketTeamCount = 0,
   splitLowerBracket = false,
   configuredRounds = []
 }: StageBestOfShape): BestOfRoundSection[] {
   const flatRounds = Math.max(1, Math.floor(maxRounds) || 1);
 
+  if (stageType === "single_elimination") {
+    // Round count is `ceil(log2(teams))` (`services/bracket/single_elimination.py`),
+    // NOT `max_rounds` — a 5-team and a 32-team bracket carry different depths a
+    // shared planning default cannot express.
+    const rounds = bracketTeamCount >= 2 ? Math.ceil(Math.log2(bracketTeamCount)) : flatRounds;
+    return withUnlistedRounds(
+      [
+        {
+          key: "rounds",
+          label: null,
+          rounds: countUp(rounds).map((round) => ({ round, label: `Round ${round}` }))
+        }
+      ],
+      configuredRounds
+    );
+  }
+
   if (stageType !== "double_elimination") {
+    // Swiss / round-robin play a flat `1..max_rounds` the caller already knows.
     return withUnlistedRounds(
       [
         {
@@ -196,7 +185,8 @@ export function stageBestOfRoundSections({
 
   // `maxRounds` counts the grand final, the bracket's rounds do not.
   const upperRounds =
-    upperTeamCount >= 2 ? Math.ceil(Math.log2(upperTeamCount)) : Math.max(1, flatRounds - 1);
+    bracketTeamCount >= 2 ? Math.ceil(Math.log2(bracketTeamCount)) : Math.max(1, flatRounds - 1);
+
   // Each upper round after the first drops losers into a lower round and the
   // survivors play a reduction round; lower-bracket seeds add an opening round
   // plus the reduction that merges them with the upper bracket's first losers.
@@ -222,7 +212,10 @@ export function stageBestOfRoundSections({
       }))
     });
   }
-  return withUnlistedRounds(sections, configuredRounds);
+  // The grand final is `upperRounds + 1` (`double_elimination.generate`). It is
+  // never an editable row — `final` owns it — but a stale `by_round` key on it
+  // reads as a bare "Round N", so name it "Grand Final" where it surfaces.
+  return withUnlistedRounds(sections, configuredRounds, upperRounds + 1);
 }
 
 function countUp(count: number): number[] {
@@ -243,25 +236,29 @@ function upperBracketRoundLabel(round: number, upperRounds: number): string {
  * than the derivation assumed (or one configured before this editor grouped its
  * rounds) can carry a `by_round` key with nowhere to render. Such a key still
  * changes matches, so it gets a row rather than becoming an invisible override.
+ * A key on the grand-final round is named "Grand Final" rather than a bare
+ * "Round N", since that number means nothing to an organizer.
  */
 function withUnlistedRounds(
   sections: BestOfRoundSection[],
-  configuredRounds: number[]
+  configuredRounds: number[],
+  grandFinalRound?: number
 ): BestOfRoundSection[] {
   const offered = new Set(sections.flatMap((section) => section.rounds.map((row) => row.round)));
   const unlisted = [...new Set(configuredRounds)]
     .filter((round) => !offered.has(round))
     .sort((left, right) => right - left);
   if (unlisted.length === 0) return sections;
+  const label = (round: number) => {
+    if (round === grandFinalRound) return "Grand Final";
+    return round < 0 ? `LB Round ${-round}` : `Round ${round}`;
+  };
   return [
     ...sections,
     {
       key: "other",
       label: "Other configured rounds",
-      rounds: unlisted.map((round) => ({
-        round,
-        label: round < 0 ? `LB Round ${-round}` : `Round ${round}`
-      }))
+      rounds: unlisted.map((round) => ({ round, label: label(round) }))
     }
   ];
 }

@@ -4,6 +4,7 @@ import sqlalchemy as sa
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.services.bracket.advancement import SlotSource, resolve_slot_sources
 from shared.services.challonge_refs import (
     ChallongeRef,
     resolve_encounter_challonge,
@@ -115,6 +116,7 @@ async def to_pydantic(
     prefetched_stage_refs: typing.Mapping[tuple[int, int], StageRefs] | None = None,
     challonge_match_ids: typing.Mapping[int, int] | None = None,
     tournament_challonge_refs: typing.Mapping[int, ChallongeRef] | None = None,
+    slot_sources: typing.Mapping[int, list[SlotSource]] | None = None,
 ) -> schemas.EncounterRead:
     """
     Converts an Encounter model instance to a Pydantic schema (EncounterRead), including related entities.
@@ -134,6 +136,11 @@ async def to_pydantic(
             the deprecated ``encounter.challonge_id`` column; omitted → ``None``.
         tournament_challonge_refs: Optional prefetched ``tournament_id -> (challonge_id,
             slug)`` map used the same way for the nested ``tournament``.
+
+        slot_sources: Optional prefetched ``target encounter_id -> incoming
+            advancement edges`` map (see ``resolve_slot_sources``). Populates the
+            ``sources`` field a reader labels an unresolved bracket slot from;
+            omitted → empty, which reads as "the bracket's shape is unknown".
 
     Returns:
         schemas.EncounterRead: The Pydantic schema representing the encounter.
@@ -217,6 +224,12 @@ async def to_pydantic(
     # read from the deprecated ``encounter.challonge_id`` column. Always set it so
     # the value survives the column being dropped; ``None`` when not prefetched.
     encounter_dict["challonge_id"] = challonge_match_ids.get(encounter.id) if challonge_match_ids is not None else None
+    # ``has_logs`` is a ``column_property`` (derived EXISTS over ``matches.match``,
+    # see ``shared/models/matches/match.py``), not a real column on
+    # ``__table__`` -- ``to_dict()`` only walks ``__table__.columns`` and
+    # silently drops it. Same footgun ``test_team_read_column_parity.py``
+    # guards for ``Team.avg_sr``/``total_sr``.
+    encounter_dict["has_logs"] = encounter.has_logs
 
     return schemas.EncounterRead(
         **encounter_dict,
@@ -227,6 +240,10 @@ async def to_pydantic(
         home_team=home_team,
         away_team=away_team,
         matches=matches_read,
+        sources=[
+            schemas.EncounterSlotSourceRead(encounter_id=source.encounter_id, role=source.role, slot=source.slot)
+            for source in (slot_sources or {}).get(encounter.id, ())
+        ],
     )
 
 
@@ -314,6 +331,7 @@ async def get_encounter(session: AsyncSession, encounter_id: int, entities: list
         entities,
         challonge_match_ids=challonge_match_ids,
         tournament_challonge_refs=tournament_challonge_refs,
+        slot_sources=await resolve_slot_sources(session, [encounter.id]),
     )
 
 
@@ -350,6 +368,7 @@ async def get_all_encounters(
     tournament_challonge_refs = await resolve_tournament_challonge(
         session, [encounter.tournament_id for encounter in encounters]
     )
+    slot_sources = await resolve_slot_sources(session, [encounter.id for encounter in encounters])
     return pagination.Paginated(
         total=total,
         per_page=params.per_page,
@@ -362,6 +381,7 @@ async def get_all_encounters(
                 prefetched_stage_refs=prefetched_stage_refs,
                 challonge_match_ids=challonge_match_ids,
                 tournament_challonge_refs=tournament_challonge_refs,
+                slot_sources=slot_sources,
             )
             for encounter in encounters
         ],

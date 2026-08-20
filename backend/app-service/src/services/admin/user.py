@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dict
 from src import models
 from src.schemas.admin import user as admin_schemas
 
@@ -59,12 +60,7 @@ async def get_users(session: AsyncSession, params: admin_schemas.UserListParams)
     users = result.scalars().all()
     total = total_result.scalar_one()
 
-    return {
-        "results": list(users),
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return paginated_dict(list(users), total, params)
 
 
 async def create_user(session: AsyncSession, data: admin_schemas.UserCreate) -> models.User:

@@ -21,6 +21,11 @@
  *
  * `first_pick_rule` is omitted entirely: its type has exactly one member, and
  * the server defaults to it, so a control would be a dead choice.
+ *
+ * `inheritedFrom` runs the other way: form-only, never sent. It records which
+ * saved config a new draft's values were prefilled from (`rescopePickBanDraft`),
+ * so the editor can say where they came from instead of presenting a copy of the
+ * tournament's rules as if the organizer had typed it.
  */
 import {
   DEFAULT_BEST_OF,
@@ -41,7 +46,7 @@ import type {
 } from "@/types/tournament.types";
 
 /** Candidates a slot needs to ban down to a survivor. Mirrors `pick_ban_session.SLOT_CANDIDATE_FLOOR`. */
-export const SLOT_CANDIDATE_FLOOR = 2;
+const SLOT_CANDIDATE_FLOOR = 2;
 
 /** The only `unique_attribute_per_side_per_round` value the engine implements. */
 const ROLE_ATTRIBUTE = "role";
@@ -75,9 +80,15 @@ export const PICK_BAN_NO_REPEAT_SCOPES: PickBanNoRepeatScope[] = [
 ];
 
 /** One slot as the editor holds it: no `position`, because list order is it. */
-export interface PickBanDraftSlot {
+interface PickBanDraftSlot {
   candidates: number[];
   reserveItemId: number | null;
+}
+
+/** Scope of the config a draft's values were prefilled from. */
+interface PickBanInheritedScope {
+  stageId: number | null;
+  round: number | null;
 }
 
 /**
@@ -105,6 +116,12 @@ export interface PickBanDraft {
   itemIds: number[];
   /** Slots mode only. */
   slots: PickBanDraftSlot[];
+  /**
+   * Scope of the saved config this draft's rule values were prefilled from, or
+   * null when they are the organizer's own. Editor-only: an upsert stores
+   * concrete values whatever their origin, so it never reaches the server.
+   */
+  inheritedFrom: PickBanInheritedScope | null;
 }
 
 export function emptyPickBanDraft(kind: PickBanKind): PickBanDraft {
@@ -123,6 +140,7 @@ export function emptyPickBanDraft(kind: PickBanKind): PickBanDraft {
     sequence: [],
     itemIds: [],
     slots: [],
+    inheritedFrom: null,
   };
 }
 
@@ -147,6 +165,7 @@ export function pickBanDraftFromConfig(config: PickBanConfig): PickBanDraft {
       candidates: [...slot.candidates],
       reserveItemId: slot.reserve_item_id,
     })),
+    inheritedFrom: null,
   };
 }
 
@@ -247,6 +266,93 @@ export function decodeScope(value: string): number | null {
   return Number.isFinite(id) ? id : null;
 }
 
+// ── inheritance ──────────────────────────────────────────────────────────────
+
+/**
+ * The saved config a scope falls back to today, one level up: a round defers to
+ * its stage's rules, and both defer to the tournament-wide set. Same ranking as
+ * `resolve_config_at_level` server-side, minus the exact-scope match -- that one
+ * is a collision (`findScopeCollision`), not an ancestor.
+ */
+export function findInheritedConfig(
+  kind: PickBanKind,
+  stageId: number | null,
+  round: number | null,
+  configs: PickBanConfig[]
+): PickBanConfig | null {
+  if (stageId == null) return null;
+  const ofKind = configs.filter((config) => config.kind === kind);
+  if (round != null) {
+    const stageWide = ofKind.find((config) => config.stage_id === stageId && config.round == null);
+    if (stageWide != null) return stageWide;
+  }
+  return ofKind.find((config) => config.stage_id == null && config.round == null) ?? null;
+}
+
+/**
+ * Every value the editor authors, minus scope and identity: what "the same
+ * rules" means.
+ *
+ * A bracket-order sequence is deliberately out. It is a placeholder the engine
+ * regenerates per match from the series length (see `effectiveSequence`), so two
+ * scopes that play by identical rules still store different tokens whenever
+ * their brackets disagree on Bo.
+ */
+function ruleValues(draft: PickBanDraft): unknown[] {
+  return [
+    draft.mode,
+    draft.orderMode,
+    draft.firstBanRotation,
+    draft.noRepeatScope,
+    draft.turnTimerSeconds,
+    draft.allowProtect,
+    draft.uniqueRolePerRound,
+    draft.kind === "hero" || draft.orderMode === "custom" ? draft.sequence : [],
+    draft.itemIds,
+    draft.slots.map((slot) => [slot.candidates, slot.reserveItemId]),
+  ];
+}
+
+/** Do two drafts say the same thing about how a match is played? */
+export function sameRuleValues(left: PickBanDraft, right: PickBanDraft): boolean {
+  return JSON.stringify(ruleValues(left)) === JSON.stringify(ruleValues(right));
+}
+
+/**
+ * `draft` moved to another scope, prefilled from whatever that scope inherits.
+ *
+ * Narrowing rules to a round is the common case, and retyping the tournament's
+ * timer, rotation and pool onto every round of a bracket is the work organizers
+ * skipped -- leaving rounds on rules they never meant. A new draft therefore
+ * starts as a copy of the config its scope resolves to today, marked as such
+ * (`inheritedFrom`), so the only edits left are the ones that differ.
+ *
+ * Values are never overwritten once they are someone's work: a saved config
+ * keeps its own on a rescope, and so does a hand-authored new draft.
+ */
+export function rescopePickBanDraft(
+  draft: PickBanDraft,
+  stageId: number | null,
+  round: number | null,
+  configs: PickBanConfig[]
+): PickBanDraft {
+  const authored =
+    draft.inheritedFrom == null && !sameRuleValues(draft, emptyPickBanDraft(draft.kind));
+  if (draft.configId != null || authored) return { ...draft, stageId, round };
+
+  const source = findInheritedConfig(draft.kind, stageId, round, configs);
+  // Nothing to inherit here: values carried over from a scope this one no longer
+  // sits under are nobody's choice, so they go rather than passing for one.
+  if (source == null) return { ...emptyPickBanDraft(draft.kind), stageId, round };
+  return {
+    ...pickBanDraftFromConfig(source),
+    configId: null,
+    stageId,
+    round,
+    inheritedFrom: { stageId: source.stage_id, round: source.round },
+  };
+}
+
 /** The encounter fields the round list and the series length read. */
 export interface PickBanScopeEncounter {
   stage_id: number | null;
@@ -282,7 +388,7 @@ export function stageRoundOptions(
 }
 
 /** How confident the editor is about the series length it is previewing. */
-export type SeriesLengthSource = "round" | "stage" | "variesByRound" | "variesByMatch";
+type SeriesLengthSource = "round" | "stage" | "variesByRound" | "variesByMatch";
 
 export interface SeriesLength {
   bestOf: number;

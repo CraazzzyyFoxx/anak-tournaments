@@ -30,12 +30,15 @@ class MappingTests(IsolatedAsyncioTestCase):
     def test_default_lookup_is_sr_aligned(self) -> None:
         lookup = mapping.build_default_lookup()
         # Tier 5 = bottom of division, tier 1 = top (+400).
-        self.assertEqual(lookup[("bronze", 5)], 1000)
-        self.assertEqual(lookup[("bronze", 1)], 1400)
+        self.assertEqual(lookup[("bronze", 5)], 500)
+        self.assertEqual(lookup[("bronze", 1)], 900)
+        self.assertEqual(lookup[("emerald", 5)], 2500)
+        # Diamond and above keep their v1 anchors: emerald took the band that
+        # platinum vacated, so only bronze..platinum moved down by 500.
         self.assertEqual(lookup[("diamond", 3)], 3200)
         self.assertEqual(lookup[("ultimate", 1)], 4900)
-        # 8 divisions x 5 tiers.
-        self.assertEqual(len(lookup), 40)
+        # 9 divisions x 5 tiers.
+        self.assertEqual(len(lookup), 45)
 
     def test_map_is_case_insensitive_and_null_safe(self) -> None:
         lookup = mapping.build_default_lookup()
@@ -58,7 +61,7 @@ class MappingTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(version, "custom-v2")
         self.assertEqual(lookup[("bronze", 5)], 777)  # overridden
-        self.assertEqual(lookup[("bronze", 1)], 1400)  # default kept
+        self.assertEqual(lookup[("bronze", 1)], 900)  # default kept
 
     async def test_get_rank_mapping_defaults_when_empty(self) -> None:
         with patch.object(
@@ -67,5 +70,5 @@ class MappingTests(IsolatedAsyncioTestCase):
             AsyncMock(return_value=RankMappingConfig()),
         ):
             lookup, version = await mapping.get_rank_mapping(session=object())
-        self.assertEqual(version, "ow2-default-v1")
-        self.assertEqual(lookup[("gold", 5)], 2000)
+        self.assertEqual(version, "ow2-default-v2")
+        self.assertEqual(lookup[("gold", 5)], 1500)

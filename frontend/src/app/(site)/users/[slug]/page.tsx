@@ -263,7 +263,9 @@ const ProfileBody = async ({
 }) => {
   const { user, profile } = await userAndProfile;
 
-  if ((profile.tournaments_count ?? 0) === 0) {
+  // Any tournament at all — including a league or one still in progress, whose
+  // final placement (and therefore `tournaments_count`) does not exist yet.
+  if (profile.tournaments.length === 0) {
     return <UserProfileEmpty name={user.name} />;
   }
 

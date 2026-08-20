@@ -3,6 +3,7 @@ import { Team } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
 import { DivisionGridVersion } from "@/types/workspace.types";
 import type { RosterShape, RosterSlotMap } from "@/lib/roster-shape";
+import type { TournamentLink } from "@/types/stream.types";
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
@@ -17,9 +18,9 @@ export type StageItemInputType = "final" | "tentative" | "empty";
 
 export type EncounterResultStatus = "none" | "pending_confirmation" | "confirmed" | "disputed";
 
-export type MapPoolEntryStatus = "available" | "picked" | "banned" | "played";
-export type MapPickSide = "home" | "away" | "decider" | "admin";
-export type MapVetoAction = "pick" | "ban";
+type MapPoolEntryStatus = "available" | "picked" | "banned" | "played";
+type MapPickSide = "home" | "away" | "decider" | "admin";
+type MapVetoAction = "pick" | "ban";
 
 // ─── Legacy (kept for backward compat) ──────────────────────────────────────
 
@@ -67,6 +68,7 @@ export interface StageSummary {
   split_lower_bracket: boolean;
   order: number;
   is_active: boolean;
+  is_published: boolean;
   is_completed: boolean;
   settings_json: Record<string, unknown> | null;
   challonge_id: number | null;
@@ -79,7 +81,7 @@ export interface Stage extends StageSummary {
 
 // ─── Tournament ─────────────────────────────────────────────────────────────
 
-export interface TournamentPhaseSchedule {
+interface TournamentPhaseSchedule {
   status: TournamentStatus;
   starts_at: string;
   ends_at: string | null;
@@ -124,6 +126,13 @@ export interface Tournament {
    * would reject a roster-shape change. `null` on reads that did not opt in.
    */
   roster_locked_by_draft: boolean | null;
+  /**
+   * Active external links (Discord, VODs, bracket, rules), already ordered by
+   * the backend. Optional rather than `| null`: the `links` entity is opt-in, so
+   * the key is ABSENT on every read that did not ask for it — including
+   * responses still sitting in a client cache from before this field existed.
+   */
+  links?: TournamentLink[];
 }
 
 // ─── Map Pool ───────────────────────────────────────────────────────────────
@@ -151,10 +160,10 @@ export interface EncounterMapPoolEntry {
   status: MapPoolEntryStatus;
 }
 
-export type MapVetoSessionStatus = "active" | "completed" | "cancelled";
-export type VetoSeedSource = "bracket_slot" | "standings" | "fallback_home" | "admin";
+type MapVetoSessionStatus = "active" | "completed" | "cancelled";
+type VetoSeedSource = "bracket_slot" | "standings" | "fallback_home" | "admin";
 
-export interface EncounterVetoSession {
+interface EncounterVetoSession {
   id: number;
   status: MapVetoSessionStatus;
   first_side: "home" | "away";
@@ -196,7 +205,11 @@ export type VetoUnavailableReason =
   | "not_ready"
   /** Hero bans only: this round's map has not been picked yet, and heroes are
    * banned for a known map. Resolves on its own as the map phase progresses. */
-  | "waiting_map";
+  | "waiting_map"
+  /** The bracket exists but its stage has not been activated yet — an
+   * organizer preview, not a live match. Resolves once the organizer
+   * activates the stage (`Stage.is_published`). */
+  | "bracket_preview";
 
 export interface EncounterMapPoolState {
   session: EncounterVetoSession | null;
@@ -243,7 +256,7 @@ export type VetoSequenceToken =
  *   series length. Behaviourally identical to `"bracket"`: the server treats
  *   everything except `"custom"` as bracket-driven.
  */
-export type VetoPreset = "bracket" | "custom" | "bo1" | "bo2" | "bo3" | "bo5" | "bo7";
+type VetoPreset = "bracket" | "custom" | "bo1" | "bo2" | "bo3" | "bo5" | "bo7";
 
 /** Which pool shape a veto config uses. Mirrors the backend `MapVetoMode`. */
 export type MapVetoMode = "pool" | "slots";
@@ -252,10 +265,10 @@ export type MapVetoMode = "pool" | "slots";
  * Which side opens each slot's bans, in `"slots"` mode only. Mirrors the
  * backend `FirstBanRotation`.
  */
-export type FirstBanRotation = "fixed" | "alternate";
+type FirstBanRotation = "fixed" | "alternate";
 
 /** One slot as the config serializer returns it. */
-export interface MapVetoConfigSlot {
+interface MapVetoConfigSlot {
   /**
    * 1-based play order. Carried even though the upsert derives it: the editor
    * sorts the stored slots by this rather than trusting the array's order, and
@@ -288,7 +301,7 @@ export interface MapVetoConfig {
   slots: MapVetoConfigSlot[];
 }
 
-export interface OwalStandingDay {
+interface OwalStandingDay {
   tournament: Tournament;
   team: string;
   role: string;
@@ -496,7 +509,7 @@ export type PickBanSequenceToken =
 
 /** Only `"higher_seed"` exists today; kept as a union (not a literal) since
  * the backend models it as an extensible enum. */
-export type PickBanFirstPickRule = "higher_seed";
+type PickBanFirstPickRule = "higher_seed";
 /** Cross-round BAN memory only — a protect is round-local and never recorded,
  * so it neither excludes nor is excluded. `encounter_same_side` excludes an
  * item only for the side that banned it — the opponent may still target it.
@@ -513,7 +526,7 @@ export type PickBanFirstBanRotation =
   "fixed" | "alternate" | "result_winner_first" | "result_loser_first" | "result_loser_choice";
 
 /** One slot of a slot-mode `PickBanConfig`, as the admin CRUD serializer returns it. */
-export interface PickBanConfigSlot {
+interface PickBanConfigSlot {
   position: number;
   reserve_item_id: number | null;
   candidates: number[];

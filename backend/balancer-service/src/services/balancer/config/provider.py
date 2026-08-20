@@ -416,7 +416,3 @@ def get_balancer_config_payload() -> dict[str, typing.Any]:
         "fields": build_config_fields(defaults),
     }
 
-
-class BalancerConfigService:
-    def get_payload(self) -> dict:
-        return get_balancer_config_payload()

@@ -1,4 +1,3 @@
-import asyncio
 import typing
 from datetime import date
 
@@ -89,28 +88,6 @@ async def to_pydantic(
     )
 
 
-async def to_pydantic_group(
-    session: AsyncSession,
-    group: models.TournamentGroup,
-    entities: list[str],
-) -> schemas.TournamentGroupRead:
-    """Serialize a tournament group.
-
-    ``group.challonge_id``/``challonge_slug`` is a KEPT column (dbarch04b does NOT
-    drop it — it holds Challonge's per-group match-routing id, which has no
-    ``challonge_source`` equivalent). Read it directly; do NOT derive it from
-    ``challonge_source`` (the shared bracket is a stage/tournament-scoped source, so
-    a group-scoped lookup would wrongly return NULL for historical tournaments).
-    """
-    return schemas.TournamentGroupRead(
-        id=group.id,
-        name=group.name,
-        is_groups=group.is_groups,
-        challonge_id=group.challonge_id,
-        challonge_slug=group.challonge_slug,
-        description=group.description,
-    )
-
 
 async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tournament:
     tournament = await service.get(session, id, entities)
@@ -143,20 +120,6 @@ async def get_read(session: AsyncSession, id: int, entities: list[str]) -> schem
         stage_challonge_refs=stage_challonge_refs,
     )
 
-
-async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Tournament:
-    tournament = await service.get_by_name(session, name, entities)
-    if tournament is None:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="tournament_not_found",
-                    msg="Tournament with this name not found",
-                )
-            ],
-        )
-    return tournament
 
 
 def get_groups_from_matches(
@@ -287,67 +250,3 @@ async def create_with_groups(
     return await create_groups(session, tournament, challonge_tournament)
 
 
-async def create(
-    session: AsyncSession,
-    name: str,
-    is_league: bool,
-    start_date: date,
-    end_date: date,
-    groups_challonge_slugs: list[str],
-    playoffs_challonge_slug: str,
-) -> models.Tournament:
-    if await service.get_by_name_and_league(session, 1, name, is_league, []) is not None:
-        raise errors.ApiHTTPException(
-            status_code=400,
-            detail=[
-                errors.ApiExc(
-                    code="tournament_exists",
-                    msg="Tournament with this name already exists",
-                )
-            ],
-        )
-
-    # Commit before the Challonge round-trips (the existence check above opened
-    # a transaction), then fetch every group/playoff bracket concurrently
-    # instead of one serial HTTP call per slug under an open session.
-    await session.commit()
-
-    semaphore = asyncio.Semaphore(4)
-
-    async def _fetch_tournament(slug: str) -> schemas.ChallongeTournament:
-        async with semaphore:
-            return await challonge_service.fetch_tournament(slug)
-
-    fetched = await asyncio.gather(
-        *(_fetch_tournament(slug) for slug in [*groups_challonge_slugs, playoffs_challonge_slug])
-    )
-    group_tournaments, playoffs_tournament = fetched[:-1], fetched[-1]
-
-    tournament = await service.create(
-        session,
-        workspace_id=1,
-        name=name,
-        is_league=is_league,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
-    specs = [
-        service.GroupSpec(
-            name=chr(sym_index),
-            is_groups=True,
-            challonge_slug=challonge_tournament.url,
-            challonge_id=challonge_tournament.id,
-        )
-        for sym_index, challonge_tournament in enumerate(group_tournaments, start=65)
-    ]
-    specs.append(
-        service.GroupSpec(
-            name="Playoffs",
-            is_groups=False,
-            challonge_slug=playoffs_tournament.url,
-            challonge_id=playoffs_tournament.id,
-        )
-    )
-    await service.create_groups(session, tournament, specs)
-    return tournament

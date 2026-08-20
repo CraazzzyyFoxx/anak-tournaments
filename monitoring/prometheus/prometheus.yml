@@ -17,6 +17,9 @@ rule_files:
   - /etc/prometheus/rules/redis.yml
   - /etc/prometheus/rules/infrastructure.yml
   - /etc/prometheus/rules/nginx.yml
+  # Бэкапы: метрики приходят из textfile collector node-exporter'а, куда их
+  # пишет ops/backup/backup.sh (см. docs/backup-rustfs.md).
+  - /etc/prometheus/rules/backup.yml
 
 scrape_configs:
   # --------------------------------------------------------------------------
@@ -109,6 +112,14 @@ scrape_configs:
       - source_labels: [__address__]
         target_label: instance
         replacement: analytics-worker
+
+  - job_name: stream-svc
+    static_configs:
+      - targets: ["stream-svc:9111"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: stream-svc
 
   # --------------------------------------------------------------------------
   # Gateway (Go edge) — usage metrics on a dedicated internal port

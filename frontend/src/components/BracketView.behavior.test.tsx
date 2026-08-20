@@ -1,0 +1,216 @@
+// @vitest-environment happy-dom
+//
+// Covers only what the live-stream indicator adds to the bracket slot row: that
+// the admin call site (no `liveTeamStreams` at all) still renders exactly what it
+// did, that a team with someone on air gets a NAMED indicator rather than a bare
+// dot, and that the indicator is not a navigation target. The layout maths itself
+// is covered by `bracket-view.helpers.test.ts`.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import en from "@/i18n/messages/en.json";
+import type { Encounter } from "@/types/encounter.types";
+import type { StreamEntry } from "@/types/stream.types";
+
+import { BracketView } from "./BracketView";
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/tournaments/1/bracket",
+  useSearchParams: () => new URLSearchParams("stage=3")
+}));
+
+// The bracket card links out to the encounter and the pre-game room. Plain
+// anchors here: `next/link` needs an App Router context this test has no reason
+// to stand up, and the assertions are about the indicator, not routing.
+vi.mock("next/link", () => ({
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  )
+}));
+
+// `EncounterRostersModal` fetches only once opened, but importing the real
+// service drags in the axios client for nothing.
+vi.mock("@/services/encounter.service", () => ({
+  default: { getEncounter: vi.fn() }
+}));
+
+function encounter(overrides: Partial<Encounter> = {}): Encounter {
+  return {
+    id: 1,
+    created_at: new Date(0),
+    updated_at: null,
+    name: "Nova vs Void",
+    home_team_id: 7,
+    away_team_id: 8,
+    score: { home: 2, away: 1 },
+    round: 1,
+    best_of: 3,
+    tournament_id: 1,
+    tournament_group_id: null,
+    stage_id: 3,
+    stage_item_id: 4,
+    challonge_id: null,
+    challonge_slug: null,
+    status: "completed",
+    closeness: null,
+    has_logs: false,
+    result_status: "confirmed",
+    scheduled_at: null,
+    started_at: null,
+    ended_at: null,
+    current_map_index: null,
+    confirmed_at: null,
+    matches: [],
+    home_team: null as never,
+    away_team: null as never,
+    tournament: null as never,
+    stage: null,
+    stage_item: null,
+    tournament_group: null,
+    ...overrides
+  };
+}
+
+function stream(overrides: Partial<StreamEntry> & { channel: string }): StreamEntry {
+  return {
+    platform: "twitch",
+    url: `https://twitch.tv/${overrides.channel}`,
+    live: true,
+    title: null,
+    game_name: null,
+    viewer_count: null,
+    thumbnail_url: null,
+    started_at: null,
+    player: { id: 1, name: "Aria", avatar_url: null, team: { id: 7, name: "Nova" } },
+    ...overrides
+  };
+}
+
+let container: HTMLDivElement;
+let root: Root | null = null;
+
+function render(ui: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  root = createRoot(container);
+  act(() =>
+    root!.render(
+      <QueryClientProvider client={client}>
+        <NextIntlClientProvider locale="en" messages={en}>
+          {ui}
+        </NextIntlClientProvider>
+      </QueryClientProvider>
+    )
+  );
+}
+
+beforeEach(() => {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+});
+
+afterEach(() => {
+  if (root) act(() => root!.unmount());
+  root = null;
+  container.remove();
+});
+
+describe("BracketView live-stream indicator", () => {
+  // The admin bracket passes no stream map. A required prop would have broken it,
+  // so this is the regression guard for that call site.
+  it("renders the slot rows unchanged when no stream map is given", () => {
+    render(<BracketView encounters={[encounter()]} type="single_elimination" />);
+
+    expect(container.textContent).toContain("Nova");
+    expect(container.textContent).toContain("Void");
+    expect(container.querySelectorAll("[data-team-id]")).toHaveLength(2);
+    expect(container.querySelector("[data-live-team-stream]")).toBeNull();
+  });
+
+  it("marks only the side whose team is on air", () => {
+    render(
+      <BracketView
+        encounters={[encounter()]}
+        type="single_elimination"
+        liveTeamStreams={new Map([[7, stream({ channel: "aria", viewer_count: 412 })]])}
+      />
+    );
+
+    const indicators = container.querySelectorAll("[data-live-team-stream]");
+    expect(indicators).toHaveLength(1);
+    expect(indicators[0].closest("[data-team-id]")?.getAttribute("data-team-id")).toBe("7");
+  });
+
+  it("names the streamer and the audience for assistive tech and for the mouse", () => {
+    render(
+      <BracketView
+        encounters={[encounter()]}
+        type="single_elimination"
+        liveTeamStreams={new Map([[7, stream({ channel: "aria", viewer_count: 412 })]])}
+      />
+    );
+
+    const indicator = container.querySelector("[data-live-team-stream]");
+    expect(indicator?.getAttribute("role")).toBe("img");
+    expect(indicator?.getAttribute("aria-label")).toBe("Aria is streaming live · 412 viewers");
+    expect(indicator?.getAttribute("title")).toBe("Aria is streaming live · 412 viewers");
+  });
+
+  // YouTube and other hosts are never polled for a viewer count, so the label has
+  // to stand on the player's name alone rather than claim "0 viewers".
+  it("drops the audience from the label when the platform reports no count", () => {
+    render(
+      <BracketView
+        encounters={[encounter()]}
+        type="single_elimination"
+        liveTeamStreams={new Map([[7, stream({ channel: "aria", viewer_count: null })]])}
+      />
+    );
+
+    expect(container.querySelector("[data-live-team-stream]")?.getAttribute("aria-label")).toBe(
+      "Aria is streaming live"
+    );
+  });
+
+  // Indication, not navigation: the Streams tab owns the links.
+  it("carries the animated dot without becoming a link or a tab stop", () => {
+    render(
+      <BracketView
+        encounters={[encounter()]}
+        type="single_elimination"
+        liveTeamStreams={new Map([[7, stream({ channel: "aria", viewer_count: 412 })]])}
+      />
+    );
+
+    const indicator = container.querySelector("[data-live-team-stream]") as HTMLElement;
+    expect(indicator.tagName).toBe("SPAN");
+    expect(indicator.hasAttribute("href")).toBe(false);
+    expect(indicator.hasAttribute("tabindex")).toBe(false);
+    expect(indicator.querySelector("a")).toBeNull();
+    // The site's single liveness language, reused rather than re-styled.
+    expect(indicator.className).toContain("status-pill");
+    expect(indicator.className).toContain("live");
+    expect(indicator.querySelector(".dot")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  // An unfilled slot has no team, so there is nothing for a stream to belong to
+  // even if a stale team id survived on the encounter.
+  it("leaves an unseeded slot unmarked", () => {
+    render(
+      <BracketView
+        encounters={[encounter({ name: "TBD vs Void", status: "open", score: { home: 0, away: 0 } })]}
+        type="single_elimination"
+        liveTeamStreams={new Map([[7, stream({ channel: "aria", viewer_count: 412 })]])}
+      />
+    );
+
+    expect(container.querySelector("[data-live-team-stream]")).toBeNull();
+  });
+});

@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   LogHistoryResponse,
@@ -73,11 +73,20 @@ const FIRST_PAGE: LogHistoryResponse = {
   total: 128
 };
 
+// Roots are tracked so afterEach can tear them down. Without it React 19 leaves a
+// scheduler callback queued past the end of the file, and when vitest disposes the
+// happy-dom environment that callback dereferences `window` — an unhandled
+// `ReferenceError: window is not defined` that fails the whole run while every
+// test still reports green. It only shows up under CI timing, which is why it
+// surfaced the first time this suite ran there.
+const mounted: { root: ReturnType<typeof createRoot>; container: HTMLElement }[] = [];
+
 async function mount() {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const root = createRoot(container);
+  mounted.push({ root, container });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -103,6 +112,15 @@ async function mount() {
 beforeEach(() => {
   getLogStats.mockReset().mockResolvedValue(STATS);
   getLogHistory.mockReset().mockResolvedValue(FIRST_PAGE);
+});
+
+afterEach(async () => {
+  await act(async () => {
+    for (const { root, container } of mounted.splice(0)) {
+      root.unmount();
+      container.remove();
+    }
+  });
 });
 
 describe("TournamentLogsTab", () => {

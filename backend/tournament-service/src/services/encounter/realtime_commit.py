@@ -43,6 +43,18 @@ _EVENT_TYPE_BY_KIND = {"map": "map_veto.updated", "hero": "pick_ban.updated"}
 _SESSION_KEY = "encounter_map_veto_realtime_updates"
 _SESSION_EVENTS_KEY = "encounter_map_veto_realtime_event_objects"
 
+# asyncio holds only a WEAK reference to a running task, so a fire-and-forget
+# `create_task` whose result nobody keeps can be collected mid-flight and take
+# the Redis publish with it -- surfacing as "Task was destroyed but it is
+# pending!". Anchored until done, same as the tournament module's `_spawn`.
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _spawn(loop: asyncio.AbstractEventLoop, coro: Any) -> None:
+    task = loop.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 
 def register_map_veto_realtime_update(session: Any, encounter_id: int, *, kind: str = "map") -> None:
     """Stage a pick-ban realtime signal for the given encounter+kind on this
@@ -122,7 +134,7 @@ def _publish_registered_map_veto_updates_after_commit(session: Session) -> None:
         envelopes.append((event_obj.topic, event_to_envelope(event_obj)))
 
     for topic, envelope in envelopes:
-        loop.create_task(_publish_persisted_event(topic, envelope))
+        _spawn(loop, _publish_persisted_event(topic, envelope))
 
 
 @event.listens_for(Session, "after_rollback")

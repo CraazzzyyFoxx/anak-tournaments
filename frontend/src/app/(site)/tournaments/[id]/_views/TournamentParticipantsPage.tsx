@@ -51,6 +51,7 @@ import type { Registration, RegistrationStatus } from "@/types/registration.type
 import ColumnPicker from "./_components/ColumnPicker";
 import {
   buildParticipantColumns,
+  getRoleLabel,
   useHeroesMap
 } from "./_components/participantsColumns";
 import {
@@ -150,21 +151,6 @@ const ROLE_TO_ICON: Record<string, string> = {
   support: "Support",
   flex: "Flex"
 };
-
-function getRoleLabel(role: string, t: ReturnType<typeof useTranslations<never>>): string {
-  switch (role.toLowerCase()) {
-    case "tank":
-      return t("common.roles.tank");
-    case "dps":
-      return t("common.roles.dps");
-    case "support":
-      return t("common.roles.support");
-    case "flex":
-      return t("common.roles.flex");
-    default:
-      return role.charAt(0).toUpperCase() + role.slice(1);
-  }
-}
 
 const DiscordIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 127.14 96.36" fill="currentColor" {...props}>

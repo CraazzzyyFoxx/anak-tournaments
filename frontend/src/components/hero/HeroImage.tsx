@@ -5,7 +5,8 @@ import { Hero } from "@/types/hero.types";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarImage, AvatarFallback, AvatarStack } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { heroVariantFromRole, heroInitials } from "@/components/hero/heroRole";
+import { heroInitials } from "@/components/hero/heroRole";
+import { heroVariantFromRole } from "@/lib/player-role";
 import { useHoverIntent } from "@/hooks/useHoverIntent";
 
 export type HeroImageSize = "sm" | "md" | "lg";
@@ -16,7 +17,7 @@ const SIZE_PX: Record<HeroImageSize, number> = {
   lg: 40
 };
 
-export const resolveHeroPx = (size: HeroImageSize | number): number =>
+const resolveHeroPx = (size: HeroImageSize | number): number =>
   typeof size === "number" ? size : SIZE_PX[size];
 
 type HeroLike = Pick<Hero, "name" | "image_path" | "role"> & { type?: string; color?: string };

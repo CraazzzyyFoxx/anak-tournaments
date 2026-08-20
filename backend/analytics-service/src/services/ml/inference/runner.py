@@ -22,7 +22,7 @@ from src.services.analytics.canonical_division import canonical_division_number
 from ..features.aggregations import build_match_features_with_strength
 from ..features.local_performance import attach_local_performance
 from ..features.shift_features import build_shift_feature_frame
-from ..features.standings_features import build_standings_training_frame
+from ..features.standings_features import build_standings_forecast_frame
 from ..models.base import load_artifact
 from ..models.performance_v2 import (
     PerformanceModelV2,
@@ -316,13 +316,11 @@ async def run_shift_for_tournament(
 def _build_matchups(feature_frame: pd.DataFrame, p_home) -> pd.DataFrame:
     """Pair ``(home_team_id, away_team_id, p_home_wins)`` for the simulation.
 
-    Bracket placeholder encounters (TBD semis/finals, byes) exist as
-    ``Encounter`` rows with NULL team ids before their feeding matches finish.
-    pandas reads those NULLs as NaN, turning the id column into ``float64``;
-    casting it with ``.astype(int)`` then raises ``IntCastingNaNError``. Such
-    rows can't form a real matchup anyway, so they are dropped here — *after*
-    aligning ``p_home`` positionally so the surviving probabilities stay tied
-    to their rows.
+    Rows without both team ids are dropped — *after* aligning ``p_home``
+    positionally so the surviving probabilities stay tied to their rows. pandas
+    reads a NULL id as NaN, which turns the id column into ``float64`` and makes
+    ``.astype(int)`` raise ``IntCastingNaNError``; such a row describes no
+    matchup anyway.
     """
     paired = feature_frame.assign(p_home_wins=p_home).dropna(subset=["home_team_id", "away_team_id"])
     return pd.DataFrame(
@@ -347,6 +345,12 @@ async def run_standings_for_tournament(
     Writes only ``analytics.standings_distribution``; the read API derives the
     scalar ``predicted_place`` from ``round(mean_position)`` on demand.
     Returns the number of team rows persisted.
+
+    The simulated schedule is a **virtual double round robin** over the
+    registered teams, never the tournament's own encounters — see
+    :func:`build_standings_forecast_frame` for why feeding the realised bracket
+    back in makes ``predicted_place`` a restatement of the result rather than a
+    forecast of it.
 
     ``prob_sharpening`` controls how decisively calibrated win-probabilities are
     pushed away from 0.5 before the simulation (see :func:`simulate_standings`);
@@ -373,17 +377,12 @@ async def run_standings_for_tournament(
         logger.warning("Missing standings v2 artifact at %s", artifact.storage_uri)
         return 0
 
-    feature_frame = await build_standings_training_frame(session, [tournament_id], workspace_id=workspace_id)
-    if feature_frame.empty:
+    forecast_frame = await build_standings_forecast_frame(session, tournament_id, workspace_id=workspace_id)
+    if forecast_frame.empty:
+        logger.info("Fewer than two rateable rosters for tournament_id=%d; nothing to simulate", tournament_id)
         return 0
-
-    p_home = model.predict_proba(feature_frame)
-    matchups = _build_matchups(feature_frame, p_home)
+    matchups = _build_matchups(forecast_frame, model.predict_proba(forecast_frame))
     if matchups.empty:
-        logger.info(
-            "No fully-assigned matchups for tournament_id=%d; nothing to simulate",
-            tournament_id,
-        )
         return 0
     teams = sorted({int(t) for t in matchups["home_team_id"].tolist() + matchups["away_team_id"].tolist()})
     distribution = simulate_standings(matchups, teams, n_iter=n_iter, prob_sharpening=prob_sharpening)

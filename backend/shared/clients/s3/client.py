@@ -72,6 +72,24 @@ class S3Client:
         self._public_url = public_url.rstrip("/") if public_url else None
         self._session: AioSession | None = None
 
+    @classmethod
+    def from_settings(cls, settings: Any) -> "S3Client":
+        """Build an ``S3Client`` from any settings object exposing the five
+        ``s3_*`` fields ``BaseServiceSettings`` declares.
+
+        This 5-kwarg construction was copy-pasted at every S3-using call site
+        (app-service, identity-service, parser-service, tournament-service, plus
+        two of ``backend/scripts/``'s standalone migration scripts) — one line
+        replaces it everywhere.
+        """
+        return cls(
+            access_key=settings.s3_access_key,
+            secret_key=settings.s3_secret_key,
+            endpoint_url=settings.s3_endpoint_url,
+            bucket_name=settings.s3_bucket_name,
+            public_url=settings.s3_public_url,
+        )
+
     async def start(self) -> None:
         self._session = get_session()
 

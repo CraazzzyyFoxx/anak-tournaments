@@ -3,8 +3,8 @@
 import { Check, Hourglass, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import TeamName, { type TeamNameInput } from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
-import { teamCrest } from "@/lib/draft-crest";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 
@@ -87,21 +87,19 @@ export function PregameReadiness({
   );
 }
 
-/** One side's readiness: crest, name, and a check or an hourglass. */
+/** One side's readiness: logo, name, and a check or an hourglass. */
 function ReadyRow({
   team,
   fallbackName,
   ready,
   accentVar
 }: {
-  team: { id: number; name: string } | null;
+  team: TeamNameInput | null;
   fallbackName: string;
   ready: boolean;
   accentVar: "--aqt-teal" | "--aqt-rose";
 }) {
   const t = useTranslations("pickBan.room");
-  const name = team?.name ?? fallbackName;
-  const hue = team != null ? teamCrest(team).hue : null;
   const StateIcon = ready ? Check : Hourglass;
   const stateLabel = ready ? t("ready.stateReady") : t("ready.statePending");
 
@@ -114,24 +112,18 @@ function ReadyRow({
           : "border-dashed border-[color:var(--aqt-border-2)]"
       )}
     >
-      <span
-        aria-hidden
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg font-onest text-xs font-bold"
-        style={
-          hue != null
-            ? { background: `hsl(${hue} 55% 22%)`, color: `hsl(${hue} 70% 72%)` }
-            : { background: "var(--aqt-card-2)", color: "var(--aqt-fg-faint)" }
-        }
-      >
-        {(name.match(/[\p{L}\p{N}]/u)?.[0] ?? "#").toUpperCase()}
-      </span>
-      <span
-        title={name}
-        className="min-w-0 flex-1 truncate text-sm font-semibold"
-        style={{ color: `var(${accentVar})` }}
-      >
-        {name}
-      </span>
+      <TeamName
+        team={team}
+        fallback={fallbackName}
+        size="md"
+        className="flex-1 gap-2.5"
+        nameClassName={cn(
+          "text-sm font-semibold",
+          accentVar === "--aqt-teal"
+            ? "text-[color:var(--aqt-teal)]"
+            : "text-[color:var(--aqt-rose)]"
+        )}
+      />
       <span
         className={cn(
           "inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em]",

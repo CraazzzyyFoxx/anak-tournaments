@@ -9,7 +9,7 @@ import type { PlayerStatistics } from "@/types/statistics.types";
  * Accent is a token name rather than a colour string so a caller cannot
  * reintroduce a hardcoded value — the whole point of this consolidation.
  */
-export type LeaderboardAccent = "teal" | "emerald" | "amber" | "blue" | "violet" | "rose";
+type LeaderboardAccent = "teal" | "emerald" | "amber" | "blue" | "violet" | "rose";
 
 const ACCENT: Record<LeaderboardAccent, string> = {
   teal: "var(--aqt-teal)",

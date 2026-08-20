@@ -34,7 +34,7 @@ export function strongerTournamentReason(
   return TOURNAMENT_REASON_RANK[current] >= TOURNAMENT_REASON_RANK[next] ? current : next;
 }
 
-export type TournamentRealtimeUpdatePlan = {
+type TournamentRealtimeUpdatePlan = {
   workspaceScope: "bracket" | "results" | "full" | "registration";
   queryKeys: readonly (readonly unknown[])[];
   shouldRefreshRoute: boolean;

@@ -120,7 +120,7 @@ async def _run_undo(
     per kind (a map undo also asks for the hero session)."""
     session = _FakeSession(pool, hero_committed=hero_committed)
 
-    async def get_pick_ban_session(_session, _encounter_id, wanted_kind):
+    async def get_pick_ban_session(_session, _encounter_id, wanted_kind, *, for_update: bool = False):
         if wanted_kind == kind:
             return pick_ban
         return hero_session
@@ -365,3 +365,26 @@ class ConsentLifetimeTests(TestCase):
 
         self.assertIsNone(pick_ban.undo_requested_by)
         self.assertIsNone(pick_ban.undo_target_index)
+
+
+class UndoLocksTheSessionTests(IsolatedAsyncioTestCase):
+    """An undo REMOVES a committed entry, which moves the step cursor exactly
+    as taking one does -- so it belongs behind the same lock, and the consent
+    it compares (``undo_target_index`` against the pool's trailing action) is
+    read under it."""
+
+    async def test_perform_undo_asks_for_the_row_locked(self) -> None:
+        seen: list[bool] = []
+
+        class _Stop(Exception):
+            pass
+
+        async def spy(_session, _encounter_id, _kind, *, for_update: bool = False):
+            seen.append(for_update)
+            raise _Stop
+
+        with patch.object(pick_ban_undo.pick_ban_session_service, "get_pick_ban_session", spy):
+            with self.assertRaises(_Stop):
+                await pick_ban_undo.perform_undo(_FakeSession([]), 500, PickBanKind.HERO, "home")
+
+        self.assertEqual([True], seen)

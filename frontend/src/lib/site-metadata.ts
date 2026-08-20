@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { headers } from "next/headers";
 import workspaceService from "@/services/workspace.service";
 import { SITE_NAME, SITE_URL, SITE_URL_OBJ, SITE_FAVICON } from "@/config/site";
@@ -64,4 +66,27 @@ export async function resolveSiteMetadata(): Promise<SiteMetadata> {
   } catch {
     return platformDefaults(SITE_URL_OBJ.origin);
   }
+}
+
+/**
+ * Builds the standard section-page `generateMetadata()` result (OG tags,
+ * canonical `metadataBase`) from a resolved title/description. Every
+ * `(site)/*\/layout.tsx` section page shares this exact shape — only the
+ * title/description text differs — so they call this instead of repeating it.
+ */
+export async function buildSectionMetadata(title: string, description: string): Promise<Metadata> {
+  const { name, origin } = await resolveSiteMetadata();
+  return {
+    title,
+    description,
+    metadataBase: new URL(origin),
+    openGraph: {
+      title,
+      description,
+      url: origin,
+      type: "website",
+      siteName: name,
+      locale: "en_US"
+    }
+  };
 }

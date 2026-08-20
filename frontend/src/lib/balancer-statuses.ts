@@ -168,10 +168,6 @@ const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
   ],
 };
 
-export function getBuiltinStatusMeta(scope: StatusScope): StatusMeta[] {
-  return BUILTIN_STATUS_META[scope];
-}
-
 export function mergeStatusOptions(
   scope: StatusScope,
   customStatuses: BalancerCustomStatus[] | undefined,

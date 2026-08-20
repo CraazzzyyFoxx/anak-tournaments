@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useDebounce } from "use-debounce";
-
 import { rbacService } from "@/services/rbac.service";
+import type { AuthAdminUser } from "@/types/rbac.types";
 import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
+import { useSearchComboboxQuery } from "@/components/admin/useSearchComboboxQuery";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 
 export interface AuthUserOption {
@@ -35,40 +33,29 @@ export function AuthUserSearchCombobox({
   searchPlaceholder = "Search by email or username…",
   disabled = false
 }: AuthUserSearchComboboxProps) {
-  const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
-  const [debouncedSearch] = useDebounce(searchValue, 250);
-
-  const normalizedQuery = debouncedSearch.trim();
-  const shouldSearch = normalizedQuery.length >= 2;
-
-  const usersQuery = useQuery({
-    queryKey: ["auth-users-search", normalizedQuery],
-    enabled: open && shouldSearch,
-    queryFn: () => rbacService.listUsers({ search: normalizedQuery, per_page: 20 }),
-    staleTime: 60 * 1000
+  const {
+    open,
+    setOpen,
+    searchValue,
+    setSearchValue,
+    results,
+    handleSelect,
+    emptyMessage
+  } = useSearchComboboxQuery<AuthAdminUser, AuthUserOption>({
+    queryKeyPrefix: ["auth-users-search"],
+    fetchResults: ({ query }) =>
+      rbacService.listUsers({ search: query, per_page: 20 }).then((page) => page.results),
+    onSelect,
+    messages: {
+      loading: "Loading accounts…",
+      error: "Could not load accounts. Try again.",
+      minChars: "Type at least 2 characters to search.",
+      empty: "No accounts match that email or username."
+    }
   });
-  const results = usersQuery.data?.results ?? [];
 
   const label =
     selectedLabel ?? (typeof value === "number" && value > 0 ? `User #${value}` : placeholder);
-
-  const handleSelect = useCallback(
-    (user: AuthUserOption | undefined) => {
-      onSelect(user);
-      setOpen(false);
-      setSearchValue("");
-    },
-    [onSelect]
-  );
-
-  const emptyMessage = usersQuery.isFetching
-    ? "Loading accounts…"
-    : usersQuery.isError
-      ? "Could not load accounts. Try again."
-      : !shouldSearch
-        ? "Type at least 2 characters to search."
-        : "No accounts match that email or username.";
 
   return (
     <AdminCombobox

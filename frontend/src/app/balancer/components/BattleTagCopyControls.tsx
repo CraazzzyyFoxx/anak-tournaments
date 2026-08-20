@@ -127,41 +127,6 @@ export function SmurfTagStrip({ smurfTags, className, compact = false }: SmurfTa
   );
 }
 
-export function BattleTagMenuItems({ battleTags }: BattleTagMenuItemsProps) {
-  const copyBattleTag = useBattleTagClipboard();
-  const [primaryBattleTag, ...smurfTags] = battleTags;
-
-  if (!primaryBattleTag) {
-    return null;
-  }
-
-  return (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel>BattleTags</DropdownMenuLabel>
-      <DropdownMenuItem onClick={() => copyBattleTag(primaryBattleTag, "BattleTag")}>
-        <Copy className="h-4 w-4" />
-        Copy main BattleTag
-      </DropdownMenuItem>
-      {battleTags.length > 1 ? (
-        <DropdownMenuItem
-          onClick={() => copyBattleTag(formatBattleTagsForClipboard(battleTags), "All BattleTags")}
-        >
-          <Files className="h-4 w-4" />
-          Copy all BattleTags
-        </DropdownMenuItem>
-      ) : null}
-      {smurfTags.length > 0 ? <DropdownMenuSeparator /> : null}
-      {smurfTags.map((smurfTag) => (
-        <DropdownMenuItem key={smurfTag} onClick={() => copyBattleTag(smurfTag, "Smurf BattleTag")}>
-          <Copy className="h-4 w-4" />
-          {smurfTag}
-        </DropdownMenuItem>
-      ))}
-    </>
-  );
-}
-
 export function BattleTagContextMenuItems({ battleTags }: BattleTagMenuItemsProps) {
   const copyBattleTag = useBattleTagClipboard();
   const [primaryBattleTag, ...smurfTags] = battleTags;

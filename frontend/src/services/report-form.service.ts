@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type { MatchReportForm } from "@/types/encounter.types";
 
-export type MatchReportFormUpsert = Omit<MatchReportForm, "tournament_id">;
+type MatchReportFormUpsert = Omit<MatchReportForm, "tournament_id">;
 
 class ReportFormService {
   async getReportForm(tournamentId: number): Promise<MatchReportForm> {

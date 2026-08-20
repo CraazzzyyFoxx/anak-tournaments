@@ -117,7 +117,7 @@ export function sanitizeBalancerConfig(config: BalancerConfig | null | undefined
   return Object.fromEntries(entries) as BalancerConfig;
 }
 
-export function serializeBalancerConfig(config: BalancerConfig | null | undefined): string {
+function serializeBalancerConfig(config: BalancerConfig | null | undefined): string {
   return JSON.stringify(sortJsonValue(sanitizeBalancerConfig(config)));
 }
 

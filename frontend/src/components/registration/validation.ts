@@ -21,7 +21,7 @@ const BUILT_IN_LABELS: Record<string, string> = {
  * account, mapped to the canonical provider their handle must match. Mirrors
  * the backend `VERIFIED_FIELD_PROVIDERS` (tournament-service validation.py).
  */
-export const VERIFIED_FIELD_PROVIDERS: Record<string, SocialProvider> = {
+const VERIFIED_FIELD_PROVIDERS: Record<string, SocialProvider> = {
   battle_tag: "battlenet",
   discord_nick: "discord",
   twitch_nick: "twitch",
@@ -36,7 +36,7 @@ const BUILT_IN_LABEL_KEYS: Record<string, string> = {
 };
 
 const TEXT_VALIDATION_FIELD_TYPES = new Set<CustomFieldDefinition["type"]>(["text", "number", "url"]);
-const DEFAULT_BATTLE_TAG_REGEX = String.raw`([\w0-9]{2,12}#[0-9]{4,})`;
+const DEFAULT_BATTLE_TAG_REGEX = String.raw`([^#]{2,12}#[0-9]{4,})`;
 const DEFAULT_BATTLE_TAG_VALIDATION: FieldValidationConfig = {
   regex: DEFAULT_BATTLE_TAG_REGEX,
 };
@@ -199,7 +199,7 @@ export function getVerifiedFieldError(
   return null;
 }
 
-export function supportsCustomFieldValidation(
+function supportsCustomFieldValidation(
   field: Pick<CustomFieldDefinition, "type">,
 ): boolean {
   return TEXT_VALIDATION_FIELD_TYPES.has(field.type);

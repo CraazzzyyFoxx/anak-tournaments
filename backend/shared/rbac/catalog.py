@@ -63,10 +63,13 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     *_crud("discord_channel"),
     *_crud("challonge"),
     *_crud("asset"),
+    *_crud("tournament_link"),
     _permission("rank", "read", "Read rank-collection health and fetch history"),
     _permission("rank", "update", "Trigger a rank re-fetch"),
     _permission("subscription", "read", "Read subscription-collection health and check history"),
     _permission("subscription", "update", "Trigger a subscription re-check"),
+    _permission("stream", "read", "Read stream live-status and polling health"),
+    _permission("stream", "update", "Trigger a stream live-status re-poll"),
     _permission("audit", "read", "Read the platform audit log"),
     # Self-service capabilities: allowed by default for every authenticated user;
     # exist only so an admin can DENY them per user (negative RBAC).
@@ -100,6 +103,7 @@ _MEMBER_READ_RESOURCES = frozenset(
         "discord_channel",
         "challonge",
         "asset",
+        "tournament_link",
     )
 )
 

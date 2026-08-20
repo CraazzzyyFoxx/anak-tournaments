@@ -9,6 +9,7 @@ __all__ = (
     "map_veto",
     "pick_ban_hero",
     "realtime_channel",
+    "streams",
     "subscriptions",
     "workspace_notifications",
 )
@@ -82,6 +83,24 @@ def subscriptions(workspace_id: int) -> str:
     not spectator data.
     """
     return f"workspace:{int(workspace_id)}:subscriptions"
+
+
+def streams(tournament_id: int) -> str:
+    """Public-subscribable spectator topic: which channels are live for a tournament.
+
+    Not workspace-gated, like the bracket/draft topics and unlike
+    :func:`subscriptions` — the main consumer is an anonymous viewer deciding
+    where to watch, and a membership check would exclude exactly that person.
+    Hidden tournaments are still protected: the gateway ACL resolves this pattern
+    with ``allowSpectateTournament`` ("public unless hidden"), and the poller does
+    not publish for a hidden tournament at all.
+
+    Non-durable — the poller publishes a thin ``stream.updated`` signal carrying
+    only a tournament id and a live count, with no ``realtime.workspace_event``
+    row, for the same reason as ``logs.updated``: a reconnecting client refetches
+    anyway.
+    """
+    return f"tournament:{int(tournament_id)}:streams"
 
 
 def analytics_jobs(workspace_id: int) -> str:

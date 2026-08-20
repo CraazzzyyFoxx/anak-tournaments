@@ -1,3 +1,4 @@
+import type { PlayerRoleOption } from "@/lib/player-role";
 import { Hero, HeroPlaytime } from "@/types/hero.types";
 import { Score } from "@/types/encounter.types";
 import { MapRead } from "@/types/map.types";
@@ -27,6 +28,12 @@ export interface User {
   name: string;
   avatar_url: string | null;
   social_accounts: SocialAccount[];
+  /** Stream-privacy veto for this player, and a veto is all it is: `false`
+   *  keeps the live stream off every tournament page, overriding both the
+   *  per-tournament Stream POV opt-in and any visible Twitch account. Optional
+   *  because responses cached before the field existed simply omit it —
+   *  `undefined` means the backend default, which is "allowed". */
+  stream_visible?: boolean;
 }
 
 export interface UserRole {
@@ -72,7 +79,7 @@ export interface UserTournamentSummary {
   division_grid_version: DivisionGridVersion | null;
 }
 
-export interface UserTournamentPlayer {
+interface UserTournamentPlayer {
   id: number;
   name: string;
   role: string | null;
@@ -91,7 +98,7 @@ export interface UserTournamentPlayer {
   heroes?: Hero[];
 }
 
-export interface UserEncounterTournament {
+interface UserEncounterTournament {
   id: number;
   name: string;
   is_league: boolean;
@@ -99,24 +106,24 @@ export interface UserEncounterTournament {
   status?: string | null;
 }
 
-export interface UserEncounterStageSummary {
+interface UserEncounterStageSummary {
   id: number;
   name: string;
 }
 
-export interface UserEncounterStageItemSummary {
+interface UserEncounterStageItemSummary {
   id: number;
   name: string;
 }
 
-export interface UserEncounterTeamPlayerRef {
+interface UserEncounterTeamPlayerRef {
   id: number;
   user_id: number;
   role: string | null;
   name: string;
 }
 
-export interface UserEncounterTeamSummary {
+interface UserEncounterTeamSummary {
   id: number;
   name: string;
   players: UserEncounterTeamPlayerRef[];
@@ -228,7 +235,7 @@ export interface UserMapHeroStats {
   playtime_share_on_map: number;
 }
 
-export interface UserMapHighlight {
+interface UserMapHighlight {
   map: MapRead;
   count: number;
   win: number;
@@ -237,7 +244,7 @@ export interface UserMapHighlight {
   win_rate: number;
 }
 
-export interface UserMapsOverall {
+interface UserMapsOverall {
   total_maps: number;
   total_games: number;
   win: number;
@@ -261,14 +268,14 @@ export interface UserBestTeammate {
   stats: Record<LogStatsName, number>;
 }
 
-export interface UserOpponentStat {
+interface UserOpponentStat {
   name: string;
   wins: number;
   losses: number;
   draws: number;
 }
 
-export interface UserStageRecord {
+interface UserStageRecord {
   w: number;
   l: number;
 }
@@ -279,7 +286,7 @@ export interface UserMatchesSummary {
 }
 
 /** One player's standing in a tournament lobby for a single stat. */
-export interface LobbyLeaderboardEntry {
+interface LobbyLeaderboardEntry {
   rank: number;
   /** The player's user id (matches the profile route id). */
   player_id: number;
@@ -299,14 +306,15 @@ export interface MinimizedUser {
   name: string;
 }
 
-export type UserRoleType = "Tank" | "Damage" | "Support";
+/** The canonical player role — re-exported from `@/lib/player-role` (single source of truth). */
+export type UserRoleType = PlayerRoleOption;
 
 export interface UserOverviewRoleDivision {
   role: UserRoleType;
   division: number;
 }
 
-export interface UserOverviewHeroMetric {
+interface UserOverviewHeroMetric {
   name: LogStatsName;
   avg_10: number;
 }
@@ -317,7 +325,7 @@ export interface UserOverviewHero {
   metrics: UserOverviewHeroMetric[];
 }
 
-export interface UserOverviewAverages {
+interface UserOverviewAverages {
   avg_closeness: number | null;
   avg_placement: number | null;
   avg_playoff_placement: number | null;
@@ -358,7 +366,7 @@ export interface UserCatalogEntry {
   avg_placement: number | null;
 }
 
-export interface UserCatalogLetter {
+interface UserCatalogLetter {
   letter: string;
   count: number;
   users: UserCatalogEntry[];
@@ -372,12 +380,12 @@ export interface UserCatalogResponse {
 
 export type UserCompareBaselineMode = "target_user" | "global" | "cohort";
 
-export interface UserCompareUser {
+interface UserCompareUser {
   id: number;
   name: string;
 }
 
-export interface UserCompareBaselineInfo {
+interface UserCompareBaselineInfo {
   mode: UserCompareBaselineMode;
   sample_size: number;
   target_user: UserCompareUser | null;
@@ -386,9 +394,9 @@ export interface UserCompareBaselineInfo {
   div_max: number | null;
 }
 
-export type UserCompareBetterWorse = "better" | "worse" | "equal";
+type UserCompareBetterWorse = "better" | "worse" | "equal";
 
-export interface UserCompareMetric {
+interface UserCompareMetric {
   key: string;
   label: string;
   subject_value: number | null;
@@ -407,7 +415,7 @@ export interface UserCompareResponse {
   metrics: UserCompareMetric[];
 }
 
-export interface UserHeroCompareMetric {
+interface UserHeroCompareMetric {
   stat: LogStatsName;
   left_value: number;
   right_value: number;

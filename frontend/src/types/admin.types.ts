@@ -15,7 +15,7 @@ export interface SettingUpsertInput {
   description?: string | null;
 }
 
-export type RankCollectionScope = "registrations_only" | "all";
+type RankCollectionScope = "registrations_only" | "all";
 
 export interface RankCollectionConfig {
   enabled: boolean;
@@ -90,7 +90,7 @@ export interface RankFetchLogQuery {
 
 // ─── Rank collection health stats (parser admin) ───────────────────────────────
 
-export interface RankStatusCounts {
+interface RankStatusCounts {
   ok: number;
   pending: number;
   not_found: number;
@@ -121,7 +121,7 @@ export interface RankCollectionStats {
 
 // ─── Subscription collection (parser admin) ────────────────────────────────────
 
-export interface SubscriptionStateCounts {
+interface SubscriptionStateCounts {
   active: number;
   inactive: number;
   unknown: number;
@@ -206,6 +206,58 @@ export interface SubscriptionCollectionConfig {
   batch_size: number;
 }
 
+// ─── Twitch stream poller ────────────────────────────────────────────────────
+
+/** Value of the `stream.collection` setting. Backend bounds: interval 30..3600s,
+ *  batch 1..100 (Helix `GET /streams` caps at 100 ids per call). */
+export interface StreamCollectionConfig {
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+}
+
+/** Outcome of the last poll tick. Mirrors the backend `StreamPollStatus` literal
+ *  (and the `status` label on `stream_poll_ticks_total`) so the panel, the API and
+ *  Grafana never disagree. */
+export type StreamPollStatus =
+  | "ok"
+  | "empty"
+  | "truncated"
+  | "not_configured"
+  | "rate_limited"
+  | "unauthorized"
+  | "unavailable"
+  | "error";
+
+/**
+ * Poller health. Platform-wide, not per-workspace: there is one poller and one
+ * Redis key, so the read wants the GLOBAL `stream.read` and carries no
+ * `workspace_id`.
+ */
+export interface StreamPollHealth {
+  /** The live config, echoed so the panel shows interval/batch next to the
+   *  outcome they produced instead of reading the settings table separately. */
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+  /** `null` = no tick has been recorded yet — the scheduler has not reached a due
+   *  tick. That is NOT a recorded failure, and the panel must not render it as
+   *  one: a failure names what went wrong, never-ran names nothing. */
+  status: StreamPollStatus | null;
+  /** `null` for the same reason as `status`: no tick has been recorded yet. */
+  last_run_at: string | null;
+  tournaments_active: number | null;
+  tournaments_updated: number | null;
+  channels_polled: number | null;
+  live_channels: number | null;
+  /** Twitch's `Ratelimit-Remaining` at the last call, out of an 800/min bucket
+   *  shared with identity-service's OAuth logins. */
+  ratelimit_remaining: number | null;
+  /** Twitch app credentials present in the worker's environment. Separates
+   *  "operator never set them" from "Twitch refused them" (`unauthorized`). */
+  credentials_configured: boolean;
+}
+
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
 import type { RosterSlotMap } from "@/lib/roster-shape";
@@ -260,7 +312,7 @@ export interface TournamentPhaseScheduleEntryInput {
   ends_at?: string | null;
 }
 
-export interface TournamentPreviewAccessUser {
+interface TournamentPreviewAccessUser {
   id: number;
   name: string;
   avatar_url?: string | null;
@@ -372,15 +424,6 @@ export interface StageMergeGroupStagesInput {
 
 // ─── Captain Submission ─────────────────────────────────────────────────────
 
-export interface ResultSubmissionInput {
-  home_score: number;
-  away_score: number;
-}
-
-export interface DisputeInput {
-  reason?: string | null;
-}
-
 export interface VetoActionInput {
   map_id: number;
   action: "ban" | "pick";
@@ -409,7 +452,7 @@ export interface ChallongeTeamSyncRequest {
   mappings: ChallongeTeamMapping[];
 }
 
-export interface ChallongeTeamPreviewTeam {
+interface ChallongeTeamPreviewTeam {
   id: number;
   name: string;
   balancer_name: string;
@@ -451,7 +494,6 @@ export interface PlayerCreateInput {
   tournament_id: number;
   role: string;
   rank?: number;
-  div?: number;
   sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
@@ -463,7 +505,6 @@ export interface PlayerUpdateInput {
   name?: string;
   role?: string;
   rank?: number;
-  div?: number;
   sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
@@ -528,7 +569,7 @@ export interface EncounterResultRead {
   confirmed_at: string | null;
 }
 
-export type EncounterResultAuditAction =
+type EncounterResultAuditAction =
   | "confirm"
   | "reopen"
   | "auto_confirm"
@@ -794,7 +835,7 @@ export interface UserMergeIdentityOption {
   duplicate_on_target: boolean;
 }
 
-export interface UserMergeUserSummary {
+interface UserMergeUserSummary {
   id: number;
   name: string;
   avatar_url: string | null;
@@ -802,12 +843,12 @@ export interface UserMergeUserSummary {
   auth_links: number;
 }
 
-export interface UserMergeConflictSummary {
+interface UserMergeConflictSummary {
   has_auth_conflict: boolean;
   summary: string | null;
 }
 
-export interface UserMergeFieldOptions {
+interface UserMergeFieldOptions {
   name: Record<UserMergeFieldChoice, string | null>;
   avatar_url: Record<UserMergeFieldChoice, string | null>;
 }
@@ -821,7 +862,7 @@ export interface UserMergePreviewResponse {
   preview_fingerprint: string;
 }
 
-export interface UserMergeIdentityResult {
+interface UserMergeIdentityResult {
   moved: number[];
   deduped: number[];
 }
@@ -966,17 +1007,6 @@ export interface AchievementRegistryEntry {
   tournament_required: boolean;
 }
 
-export interface CalculationLogEntry {
-  type: "start" | "progress" | "info" | "complete" | "error";
-  slug?: string;
-  index?: number;
-  total?: number;
-  status?: "running" | "done" | "error";
-  message?: string;
-  slugs?: string[];
-  executed?: string[];
-}
-
 // ─── Achievement Rule Engine ──────────────────────────────────────────────────
 
 export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
@@ -1037,24 +1067,12 @@ export interface AchievementRuleUpdateInput {
   min_tournament_id?: number | null;
 }
 
-export interface AchievementRulePortable {
-  slug: string;
-  name: string;
-  description_ru: string;
-  description_en: string;
-  image_url: string | null;
-  hero_id: number | null;
-  category: AchievementCategory;
-  scope: AchievementScope;
-  grain: AchievementGrain;
-  condition_tree: Record<string, unknown>;
-  depends_on: string[];
-  enabled: boolean;
-  rule_version: number;
-  min_tournament_id: number | null;
-}
+// Every AchievementRule field except the ones tied to this specific
+// installation (id, workspace_id, created_at, updated_at), which a portable
+// import/export snapshot must not carry.
+type AchievementRulePortable = Omit<AchievementRule, "id" | "workspace_id" | "created_at" | "updated_at">;
 
-export interface AchievementRuleExportWorkspace {
+interface AchievementRuleExportWorkspace {
   id: number;
   slug: string;
   name: string;
@@ -1067,7 +1085,7 @@ export interface AchievementRuleExportEnvelope {
   rules: AchievementRulePortable[];
 }
 
-export interface AchievementImportWarning {
+interface AchievementImportWarning {
   slug: string;
   message: string;
 }
@@ -1191,7 +1209,7 @@ export interface DiscordChannelInput {
 // ─── Log Processing ───────────────────────────────────────────────────────────
 
 export type LogProcessingStatus = "pending" | "processing" | "done" | "failed";
-export type LogProcessingSource = "upload" | "discord" | "manual";
+type LogProcessingSource = "upload" | "discord" | "manual";
 
 export interface LogProcessingRecord {
   id: number;
@@ -1227,13 +1245,13 @@ export interface LogProcessingStats {
   last_created_at: string | null;
 }
 
-export interface LogUploadItem {
+interface LogUploadItem {
   record_id: number;
   filename: string;
   attached_encounter_id: number | null;
 }
 
-export interface LogUploadError {
+interface LogUploadError {
   filename: string | null;
   error: string;
 }
@@ -1245,18 +1263,13 @@ export interface LogUploadResponse {
 
 // ─── Bulk Operations ─────────────────────────────────────────────────────────
 
-export interface CsvConfig {
-  delimiter?: string;
-  encoding?: string;
-}
-
 export interface BulkOperationResult {
   success: boolean;
   count: number;
   errors?: string[];
 }
 
-export type TournamentComputationJobStatus =
+type TournamentComputationJobStatus =
   | "pending"
   | "running"
   | "succeeded"

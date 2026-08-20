@@ -115,6 +115,25 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
+    # ── deactivate (revert an accidental activation back to Draft) ────────
+
+    @broker.subscriber("rpc.tournament.stage_deactivate")
+    async def _stage_deactivate(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            stage_id = _path_int(data, "stage_id")
+            # Route: require_stage_permission("stage", "update").
+            ws_id = await auth.get_stage_workspace_id(session, stage_id)
+            ensure_workspace_permission(user, ws_id, "stage", "update")
+            # deactivate_stage commits internally (commit=True default); 409s
+            # if any of the stage's encounters left OPEN.
+            stage = await stage_service.deactivate_stage(session, stage_id)
+            from src import schemas  # noqa: PLC0415
+
+            return _dump(schemas.StageRead.model_validate(stage, from_attributes=True))
+
+        return await _run(logger, op)
+
     # ── generate (202; enqueues bracket job) ──────────────────────────────
 
     @broker.subscriber("rpc.tournament.stage_generate")

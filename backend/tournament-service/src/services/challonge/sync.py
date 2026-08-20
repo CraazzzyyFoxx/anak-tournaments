@@ -142,6 +142,14 @@ async def _get_redis() -> redis_async.Redis:
     return _redis_client
 
 
+async def close_redis() -> None:
+    global _redis_client
+    if _redis_client is None:
+        return
+    await _redis_client.aclose()
+    _redis_client = None
+
+
 @asynccontextmanager
 async def _sync_job_lock(tournament_id: int, direction: str) -> AsyncIterator[str]:
     redis = await _get_redis()
@@ -429,6 +437,11 @@ async def _create_stage_with_item(
         stage_type=stage_type,
         order=_next_stage_order(tournament),
     )
+    # Seeded while the stage is still transient, like ``item.inputs`` below: the
+    # flush turns it persistent, and from then on the first touch of a collection
+    # nothing ever loaded emits a lazy SELECT -- MissingGreenlet under async
+    # SQLAlchemy.
+    stage.items = []
     session.add(stage)
     await session.flush()
     _append_once(tournament.stages, stage)
@@ -441,10 +454,7 @@ async def _create_stage_with_item(
     item.inputs = []
     session.add(item)
     await session.flush()
-    try:
-        _append_once(stage.items, item)
-    except Exception:
-        pass
+    _append_once(stage.items, item)
     return stage
 
 

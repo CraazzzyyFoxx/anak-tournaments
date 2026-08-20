@@ -4,11 +4,19 @@ import { useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2, RefreshCw, Trophy } from "lucide-react";
+import { RefreshCw, Trophy } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { createRowActionsColumn } from "@/components/admin/row-actions-column";
+import {
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam,
+  nextTournamentFilterQuery,
+  TournamentFilterSelect
+} from "@/components/admin/tournament-filter";
+import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { notify } from "@/lib/notify";
@@ -19,13 +27,6 @@ import { Standings } from "@/types/tournament.types";
 import { StandingUpdateInput } from "@/types/admin.types";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,8 +43,6 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { formatTiebreakOrder } from "@/lib/tiebreakers";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-
-const TOURNAMENT_QUERY_PARAM = "tournament";
 
 const emptyStandingForm: StandingUpdateInput = {
   position: 0,
@@ -79,12 +78,6 @@ function getStandingScopeKey(standing: Standings): string {
 
 function getStandingScopeLabel(standing: Standings): string {
   return standing.stage_item?.name ?? standing.stage?.name ?? "Unassigned";
-}
-
-function parseTournamentQueryParam(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 export default function StandingsPage() {
@@ -236,15 +229,8 @@ export default function StandingsPage() {
   };
 
   const handleTournamentFilterChange = (value: string) => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (value === "all") {
-      nextParams.delete(TOURNAMENT_QUERY_PARAM);
-    } else {
-      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
-    }
-
+    const query = nextTournamentFilterQuery(searchParams.toString(), TOURNAMENT_QUERY_PARAM, value);
     setSelectedScopeFilter("all");
-    const query = nextParams.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
@@ -269,8 +255,8 @@ export default function StandingsPage() {
       header: "Team",
       enableSorting: false,
       cell: ({ row }) => {
-        const team = row.getValue<any>("team");
-        return team ? <div className="font-medium">{team.name}</div> : "—";
+        const team = row.getValue<Standings["team"]>("team");
+        return team ? <TeamName team={team} size="xs" nameClassName="font-medium" /> : "—";
       }
     },
     {
@@ -338,35 +324,14 @@ export default function StandingsPage() {
         );
       }
     },
-    {
-      id: "actions",
-      cell: ({ row }) =>
-        canUpdate || canDelete ? (
-          <div className="flex items-center gap-2">
-            {canUpdate ? (
-              <Button
-                aria-label={`Edit standing for ${row.original.team?.name ?? "team"}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => handleEdit(row.original)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            ) : null}
-            {canDelete ? (
-              <Button
-                aria-label={`Delete standing for ${row.original.team?.name ?? "team"}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(row.original)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            ) : null}
-          </div>
-        ) : null
-    }
+    createRowActionsColumn<Standings>({
+      canUpdate,
+      canDelete,
+      onEdit: handleEdit,
+      onDelete: handleDelete,
+      getEditLabel: (row) => `Edit standing for ${row.team?.name ?? "team"}`,
+      getDeleteLabel: (row) => `Delete standing for ${row.team?.name ?? "team"}`
+    })
   ];
 
   return (
@@ -458,22 +423,11 @@ export default function StandingsPage() {
             : "No standings yet. Pick a tournament to see its table."
         }
         actions={
-          <Select
-            value={selectedTournamentId?.toString() ?? "all"}
+          <TournamentFilterSelect
+            tournaments={tournamentsData?.results ?? []}
+            selectedTournamentId={selectedTournamentId}
             onValueChange={handleTournamentFilterChange}
-          >
-            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
-              <SelectValue placeholder="Filter by tournament" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All tournaments</SelectItem>
-              {tournamentsData?.results.map((tournament) => (
-                <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                  {tournament.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         }
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />

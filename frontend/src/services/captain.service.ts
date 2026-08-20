@@ -6,12 +6,12 @@ import type {
 import type { CaptainReport, CaptainReportsResponse } from "@/types/encounter.types";
 import type { VetoActionInput } from "@/types/admin.types";
 
-export interface CaptainMapCodeInput {
+interface CaptainMapCodeInput {
   map_index: number;
   code: string;
 }
 
-export interface CaptainReportInput {
+interface CaptainReportInput {
   home_score: number;
   away_score: number;
   /** 1..10, or null when the tournament disables/does not require match quality. */

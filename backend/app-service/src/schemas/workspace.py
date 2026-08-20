@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
@@ -70,6 +71,8 @@ class WorkspaceRead(BaseRead):
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
     default_roster_slots_json: dict[str, int] | None = None
+    # See ``shared.models.tenancy.workspace.Workspace.newcomer_scope``.
+    newcomer_scope: Literal["global", "workspace"] = "global"
 
 
 class WorkspaceCreate(BaseModel):
@@ -106,6 +109,7 @@ class WorkspaceUpdate(BaseModel):
     # Edited in place, unlike `default_division_grid_version_id` above: a roster
     # shape has no activation semantics, so it needs no dedicated endpoint.
     default_roster_slots_json: RosterSlotsField = None
+    newcomer_scope: Literal["global", "workspace"] | None = None
 
     @field_validator(
         "brand_primary",

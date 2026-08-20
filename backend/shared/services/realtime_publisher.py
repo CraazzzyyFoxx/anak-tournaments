@@ -57,10 +57,21 @@ async def publish_event_to_redis_url(
     envelope: WorkspaceEventEnvelope,
 ) -> None:
     redis = Redis.from_url(redis_url, decode_responses=True)
+    closing = False
     try:
         await publish_envelope_to_redis(redis, topic=topic, envelope=envelope)
+    except GeneratorExit:
+        # The coroutine is being *closed*, not cancelled -- what happens when the
+        # event loop tears down (or a task is reclaimed) with a publish still in
+        # flight. A closing coroutine may not suspend again, so awaiting the
+        # client's teardown here raises ``RuntimeError: coroutine ignored
+        # GeneratorExit`` and buries the shutdown that actually caused it. The
+        # socket dies with the loop anyway.
+        closing = True
+        raise
     finally:
-        await redis.aclose()
+        if not closing:
+            await redis.aclose()
 
 
 async def publish_event(

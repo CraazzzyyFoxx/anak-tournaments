@@ -6,7 +6,8 @@ import { ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { OW2_DIVISIONS_DESC, defaultRankForCell } from "@/lib/ow-rank-mapping";
+import { OW_DIVISIONS_DESC, TIER_NUMBERS } from "@/lib/ow-ladder";
+import { defaultRankForCell } from "@/lib/ow-rank-mapping";
 
 type OwRankRangePickerProps = {
   min: number | null;
@@ -21,8 +22,8 @@ function divisionLabel(division: string): string {
 
 function rankLabel(value: number | null): string | null {
   if (value == null) return null;
-  for (const division of OW2_DIVISIONS_DESC) {
-    for (let tier = 1; tier <= 5; tier++) {
+  for (const division of OW_DIVISIONS_DESC) {
+    for (const tier of TIER_NUMBERS) {
       if (defaultRankForCell(division, tier) === value) {
         return `${divisionLabel(division)} ${tier}`;
       }
@@ -119,13 +120,15 @@ export function OwRankRangePicker({ min, max, disabled, onChange }: OwRankRangeP
       </PopoverTrigger>
       <PopoverContent className="w-auto p-2" align="start" aria-label="OW rank range">
         <div className="space-y-1" onMouseLeave={() => setHovered(null)}>
-          {OW2_DIVISIONS_DESC.map((division) => (
+          {OW_DIVISIONS_DESC.map((division) => (
             <div
               key={division}
+              // Literal 5: Tailwind's scanner cannot see an interpolated class,
+              // so this column count stays static even though TIER_NUMBERS drives the cells.
               className="grid grid-cols-[92px_repeat(5,minmax(0,1fr))] items-center gap-1"
             >
               <span className="pr-2 text-xs text-muted-foreground">{divisionLabel(division)}</span>
-              {[1, 2, 3, 4, 5].map((tier) => {
+              {TIER_NUMBERS.map((tier) => {
                 const value = defaultRankForCell(division, tier);
                 const inRange =
                   previewLow != null &&

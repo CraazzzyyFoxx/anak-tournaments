@@ -1,6 +1,6 @@
-from sqlalchemy import BigInteger, Boolean, Enum, Float, ForeignKey, Index, Integer, column, table, text
+from sqlalchemy import BigInteger, Boolean, Enum, Float, ForeignKey, Index, Integer, column, exists, table, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from shared.core import db, enums
 from shared.models.catalog.hero import Hero
@@ -77,6 +77,24 @@ class Match(db.TimeStampIntegerMixin):
     # lazy="raise": only the admin surfaces need it, and an implicit load here
     # would fire inside async paths that cannot do IO on attribute access.
     log_record: Mapped["LogProcessingRecord | None"] = relationship(lazy="raise")
+
+
+# Derived from ``Match`` existence rather than stored: a persisted boolean
+# here would need a writer to keep it in sync with this table (the old
+# design had exactly one, set-only-once, never reset back to False on log
+# removal). Filtered on ``source == log_parser`` — a ``captain_report`` row
+# (``map_report.submit_map_report`` upserts one before any log arrives, with
+# no log behind it) must NOT count, or the public "logs available" badge
+# would light up on encounters nobody ever uploaded a log for. The EXISTS
+# subquery is index-backed via ``encounter_id`` above, computed by Postgres
+# in the same SELECT as the rest of the row (no lazy load, so no
+# async/greenlet hazard — see ``Team.avg_sr`` for the same pattern), and can
+# never drift from the actual match rows.
+Encounter.has_logs = column_property(
+    exists()
+    .where(Match.encounter_id == Encounter.id, Match.source == enums.MatchSource.LOG_PARSER)
+    .correlate_except(Match)
+)
 
 
 class MatchStatistics(db.TimeStampIntegerMixin):

@@ -1,9 +1,11 @@
 // Rank history (OverFast) — mirrors parser-service src/schemas/rank_history.py
 
-export type RankPlatform = "pc" | "console";
-export type RankRoleKey = "tank" | "damage" | "support";
+import type { AqtRoleKey } from "@/lib/player-role";
 
-export interface RankHistoryPoint {
+type RankPlatform = "pc" | "console";
+type RankRoleKey = AqtRoleKey;
+
+interface RankHistoryPoint {
   captured_at: string;
   rank_value: number | null;
   division: string | null;

@@ -1,4 +1,4 @@
-import { UserCompareBaselineMode } from "@/types/user.types";
+import { UserCompareBaselineMode, UserRoleType } from "@/types/user.types";
 
 export type CompareScope = "overall" | "hero";
 
@@ -17,7 +17,7 @@ export interface CompareRow {
 export interface ParsedCompareParams {
   subjectUserId?: number;
   targetUserId?: number;
-  role?: "Tank" | "Damage" | "Support";
+  role?: UserRoleType;
   divMin?: number;
   divMax?: number;
   tournamentId?: number;

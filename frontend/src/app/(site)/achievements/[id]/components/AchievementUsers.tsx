@@ -9,6 +9,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Achievement } from "@/types/achievement.types";
 import achievementsService from "@/services/achievements.service";
 import PlayerName from "@/components/PlayerName";
+import TeamName from "@/components/TeamName";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -87,9 +88,10 @@ const AchievementUsers = ({ achievement }: { achievement: Achievement }) => {
                         className="inline-flex items-center gap-1.5"
                       >
                         <Swords size={12} aria-hidden />
-                        <span className="truncate">
-                          {earned.last_match.home_team?.name ?? "?"} {t("common.vs")}{" "}
-                          {earned.last_match.away_team?.name ?? "?"}
+                        <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                          <TeamName team={earned.last_match.home_team} size="xs" fallback="?" />
+                          {t("common.vs")}
+                          <TeamName team={earned.last_match.away_team} size="xs" fallback="?" />
                         </span>
                       </Link>
                     ) : null}

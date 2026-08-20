@@ -21,7 +21,7 @@ from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import DraftAutopickStrategy, DraftRole, DraftStatus
+from shared.core.enums import HERO_TYPE_CLASSES, DraftAutopickStrategy, DraftStatus, HeroClass
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer.draft import DraftAuditEvent, DraftPick, DraftSession, DraftTeam
 from shared.services.roster_shape_access import get_effective_roster_shape
@@ -159,14 +159,14 @@ def _player_updated_payload(
     *,
     session_id: int,
     player_id: int,
-    role: DraftRole,
+    role: HeroClass,
     player_version: int,
     is_feasible: bool,
 ) -> dict:
     return {
         "session_id": session_id,
         "player_id": player_id,
-        "role": role.value,
+        "role": role.slot_code,
         "player_version": player_version,
         "is_feasible": is_feasible,
     }
@@ -200,7 +200,8 @@ async def _publish_result(
     made_event: str,
     actor_user_id: int | None,
 ) -> None:
-    if result.blocked_reason:
+    if result.blocked_reason and result.next_pick is None:
+        # Nothing was picked (role shortage) — the block is the whole story.
         await draft_rt.publish_draft_event(
             session,
             redis,
@@ -231,6 +232,22 @@ async def _publish_result(
             event_type="draft.completed",
             payload={"session_id": draft.id, "status": draft.status},
         )
+    elif result.blocked_reason and result.next_pick is not None:
+        # The pick landed, but the next round re-seated the teams and the draft
+        # is paused: no pick_started, it would flip clients back to live.
+        await draft_rt.publish_draft_event(
+            session,
+            redis,
+            draft_session=draft,
+            event_type="draft.blocked",
+            payload={
+                "session_id": draft.id,
+                "pick_id": result.next_pick.id,
+                "draft_team_id": result.next_pick.draft_team_id,
+                "reason": result.blocked_reason,
+            },
+            actor_user_id=actor_user_id,
+        )
     elif result.next_pick is not None:
         await draft_rt.publish_draft_event(
             session,
@@ -249,9 +266,9 @@ async def _publish_result(
         )
 
 
-async def _lifecycle_action(session, redis, session_id, action, event_type, user) -> DraftSessionRead:
+async def _lifecycle_action(session, redis, session_id, action, event_type, user, **action_kwargs) -> DraftSessionRead:
     draft = await _load_session(session, session_id)
-    await action(session, draft)
+    await action(session, draft, **action_kwargs)
     extra: dict = {"session_id": draft.id, "status": draft.status}
     if event_type == "draft.pick_started" and draft.current_pick_id:
         current = await session.get(DraftPick, draft.current_pick_id)
@@ -419,14 +436,14 @@ def register(broker: Any, logger: Any) -> None:
                     player_id=p.id,
                     rank_value=p.rank_value or 0,
                     playable_roles=(
-                        frozenset(DraftRole)
+                        frozenset(HERO_TYPE_CLASSES)
                         if p.is_flex
-                        else frozenset(DraftRole(r) for r in {p.primary_role, *(p.secondary_roles_json or [])})
+                        else frozenset(HeroClass.from_slot_code(r) for r in {p.primary_role, *(p.secondary_roles_json or [])})
                     ),
-                    preference_order=(DraftRole(p.primary_role),),
+                    preference_order=(HeroClass.from_slot_code(p.primary_role),),
                     is_flex=p.is_flex,
                     user_id=p.user_id,
-                    rank_by_role={DraftRole(k): v for k, v in (p.role_ranks or {}).items()},
+                    rank_by_role={HeroClass.from_slot_code(k): v for k, v in (p.role_ranks or {}).items()},
                 )
                 for p in available
             ]
@@ -610,13 +627,28 @@ def register(broker: Any, logger: Any) -> None:
                 draft.rounds = payload.rounds
             if payload.settings is not None:
                 draft.settings_json = payload.settings
+            # The pick rows carry the seat order, and `round_rules` decides it, so
+            # a rules change that stopped at `settings_json` left the board picking
+            # in the order it was seeded with while the wizard previewed the new
+            # one. Rounds already in progress keep their order (see
+            # lifecycle.resync_pick_order).
+            moved = await lifecycle.resync_pick_order(session, draft)
+            if moved:
+                await draft_rt.publish_draft_event(
+                    session,
+                    _redis(logger),
+                    draft_session=draft,
+                    event_type="draft.session_updated",
+                    payload={"session_id": draft.id, "status": draft.status, "picks_reordered": moved},
+                    actor_user_id=user.id,
+                )
             await session.commit()
             await session.refresh(draft)
             return await board_svc.session_read(session, draft)
 
         return await c.envelope(logger, "draft.session_patch", op, session_factory=_SF)
 
-    def _make_lifecycle(subject: str, action, event_type: str) -> None:
+    def _make_lifecycle(subject: str, action, event_type: str, *, superuser_forces: bool = False) -> None:
         @broker.subscriber(subject)
         async def _handler(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
@@ -625,11 +657,13 @@ def register(broker: Any, logger: Any) -> None:
                 tournament_id = c.path_int(data, "tournament_id")
                 ws_id = await _get_tournament_workspace_id(session, tournament_id)
                 c.require_workspace_permission(data, user, ws_id, "team", "create")
-                return await _lifecycle_action(session, _redis(logger), session_id, action, event_type, user)
+                # Only ``start`` has a phase gate, and only a superuser may skip it.
+                extra = {"force": bool(user.is_superuser)} if superuser_forces else {}
+                return await _lifecycle_action(session, _redis(logger), session_id, action, event_type, user, **extra)
 
             return await c.envelope(logger, subject, op, session_factory=_SF)
 
-    _make_lifecycle("rpc.balancer.draft.start", lifecycle.start, "draft.pick_started")
+    _make_lifecycle("rpc.balancer.draft.start", lifecycle.start, "draft.pick_started", superuser_forces=True)
     _make_lifecycle("rpc.balancer.draft.pause", lifecycle.pause, "draft.paused")
     _make_lifecycle("rpc.balancer.draft.resume", lifecycle.resume, "draft.resumed")
     _make_lifecycle("rpc.balancer.draft.cancel", lifecycle.cancel, "draft.cancelled")

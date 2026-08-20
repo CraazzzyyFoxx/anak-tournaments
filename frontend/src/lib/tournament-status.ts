@@ -17,7 +17,7 @@ type TournamentStatusMeta = {
   isEnded: boolean;
 };
 
-export const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
+const TOURNAMENT_STATUS_META: Record<TournamentStatus, TournamentStatusMeta> = {
   draft: {
     label: "Draft",
     badgeLabel: "Draft",

@@ -3,17 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Clock, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { normalizeRole } from "@/components/hero/heroRole";
+import { normalizeRole } from "@/lib/player-role";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { usePermissions } from "@/hooks/usePermissions";
-import { teamCrest } from "@/lib/draft-crest";
 import { notify } from "@/lib/notify";
 import { RETURN_TO_PARAM, safeReturnPath } from "@/lib/return-to";
 import captainService from "@/services/captain.service";
@@ -26,6 +25,7 @@ import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournamen
 
 import {
   PICK_BAN_UNAVAILABLE_COPY,
+  agreedMapScore,
   attributeLocks,
   highestPoolRound,
   isSessionActive,
@@ -41,7 +41,7 @@ import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
 import { PregameAdminControls } from "./PregameAdminControls";
-import type { PregameHeroAction } from "./PregameHeroBans";
+import type { PregameHeroAction, PregameHeroRound } from "./PregameHeroBans";
 import {
   PregameHeader,
   type PregamePhase,
@@ -54,13 +54,23 @@ import { PregameReadiness } from "./PregameReadiness";
 
 interface PregameRoomProps {
   encounterId: number;
+  /**
+   * Whether the loop ends in the SERIES report (match codes, closeness, the
+   * organizer's custom fields). False for a scrim room: it has no result to
+   * publish and no organizer to read one, and the report form is built from a
+   * per-tournament config a scrim container does not have. The per-map score is
+   * unaffected — that one drives the progression, not the bookkeeping
+   * (docs/plans/2026-08-12-scrim-rooms.md).
+   */
+  seriesReport?: boolean;
 }
 
 /** One icon per cause, keyed by what `PICK_BAN_UNAVAILABLE_COPY` names. */
 const UNAVAILABLE_ICON: Record<PickBanUnavailableIcon, React.ReactNode> = {
   teams: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-teal)]" aria-hidden />,
   unconfigured: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
-  misconfigured: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />
+  misconfigured: <ShieldAlert className="h-6 w-6 text-[color:var(--aqt-amber)]" aria-hidden />,
+  preview: <Clock className="h-6 w-6 text-[color:var(--aqt-fg-muted)]" aria-hidden />
 };
 
 /**
@@ -81,7 +91,7 @@ const UNAVAILABLE_ICON: Record<PickBanUnavailableIcon, React.ReactNode> = {
  * `pick_ban_session.ensure_pick_ban_session`) until both captains confirm
  * readiness, shown here as a waiting screen with an "I'm ready" button.
  */
-export function PregameRoom({ encounterId }: PregameRoomProps) {
+export function PregameRoom({ encounterId, seriesReport = true }: PregameRoomProps) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
   const { isSuperuser, isWorkspaceAdmin, hasWorkspacePermission } = usePermissions();
@@ -90,10 +100,7 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   // as well as from the encounter page, and hardcoding the encounter page threw
   // an organizer working through a round back to a single match every time.
   const searchParams = useSearchParams();
-  const returnTo = safeReturnPath(
-    searchParams?.get(RETURN_TO_PARAM),
-    `/encounters/${encounterId}`
-  );
+  const returnTo = safeReturnPath(searchParams?.get(RETURN_TO_PARAM), `/encounters/${encounterId}`);
 
   const mapKey = ["pregame-state", encounterId, "map"];
   const heroKey = ["pregame-state", encounterId, "hero"];
@@ -325,41 +332,67 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   const series: PregameSeriesMap[] = seriesMaps.map((entry, index) => {
     const played = entry.status === "played";
     const match = played ? seriesMatches[index] : null;
+    // A `Match` row is authoritative where one exists — a parsed log corrects a
+    // captain claim. Where none does, the captains' own agreed claims are the
+    // score: a scrim writes no match rows at all, and without this fallback its
+    // played maps showed as played with nothing on them.
+    const score =
+      match != null
+        ? { home: match.score.home, away: match.score.away }
+        : played
+          ? agreedMapScore(mapState.map_reports ?? [], index + 1)
+          : null;
     return {
       round: index + 1,
       name: mapsById[entry.item_id]?.name ?? t("map.itemNumber", { id: entry.item_id }),
       item: mapsById[entry.item_id],
-      score: match != null ? { home: match.score.home, away: match.score.away } : null,
+      score,
       state: played ? "played" : index === pendingIndex ? "awaiting" : "upcoming"
     };
   });
-  // This map's hero bans, for the result screen. The room shows one phase at a
-  // time, so once the hero grid closes nothing on screen names what was banned
-  // -- which is precisely when the captains have to enter it into the game
-  // lobby. A flat (round-less) hero pool has one set of bans for the whole
-  // series, so it applies to every map.
+  // The hero bans that apply to one map of the series, resolved against the
+  // catalog. The room shows one phase at a time, so once the hero grid closes
+  // nothing on screen names what was banned -- which is precisely when the
+  // captains have to enter it into the game lobby. A flat (round-less) hero
+  // pool has one set of bans for the whole series, so it applies to every map.
+  const heroActionsFor = (round: number | null): PregameHeroAction[] =>
+    heroState.pool
+      .filter(
+        (entry) =>
+          (round == null ? entry.round == null : entry.round == null || entry.round === round) &&
+          (entry.status === "banned" || entry.status === "protected")
+      )
+      .map((entry) => {
+        const item = heroesById[entry.item_id];
+        const side = entry.status === "banned" ? entry.picked_by : entry.protected_by;
+        return {
+          itemId: entry.item_id,
+          name: item?.name ?? t("hero.itemNumber", { id: entry.item_id }),
+          item,
+          role: normalizeRole(item?.type ?? item?.role),
+          action: entry.status === "banned" ? ("ban" as const) : ("protect" as const),
+          // `picked_by` also carries `"decider"`, which no ban can be.
+          side: side === "away" ? ("away" as const) : ("home" as const)
+        };
+      });
+  /** This map's bans, for the result screen. */
   const heroActions: PregameHeroAction[] =
-    pendingRound == null
-      ? []
-      : heroState.pool
-          .filter(
-            (entry) =>
-              (entry.round == null || entry.round === pendingRound) &&
-              (entry.status === "banned" || entry.status === "protected")
-          )
-          .map((entry) => {
-            const item = heroesById[entry.item_id];
-            const side = entry.status === "banned" ? entry.picked_by : entry.protected_by;
-            return {
-              itemId: entry.item_id,
-              name: item?.name ?? t("hero.itemNumber", { id: entry.item_id }),
-              item,
-              role: normalizeRole(item?.type ?? item?.role),
-              action: entry.status === "banned" ? ("ban" as const) : ("protect" as const),
-              // `picked_by` also carries `"decider"`, which no ban can be.
-              side: side === "away" ? ("away" as const) : ("home" as const)
-            };
-          });
+    pendingRound == null ? [] : heroActionsFor(pendingRound);
+  // The whole series' bans, for the closing screen: by then no map is pending,
+  // so `heroActions` is empty and the record of what each map was played under
+  // would leave the room with the last grid that closed. Round-scoped pools get
+  // one block per map; a flat pool has a single set that covered every map, so
+  // repeating it per map would invent per-map decisions nobody made.
+  const heroRounds: PregameHeroRound[] = (
+    heroState.pool.some((entry) => entry.round != null)
+      ? series.map((map) => ({
+          round: map.round,
+          mapName: map.name,
+          mapItem: map.item,
+          actions: heroActionsFor(map.round)
+        }))
+      : [{ round: null, mapName: null, mapItem: undefined, actions: heroActionsFor(null) }]
+  ).filter((block) => block.actions.length > 0);
   const sideNameOf = (side: PickBanSide) =>
     side === "home"
       ? (encounter.home_team?.name ?? t("side.home"))
@@ -411,15 +444,14 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
           viewerSide={mapState.viewer_side}
           homeName={sideNameOf("home")}
           awayName={sideNameOf("away")}
-          homeHue={encounter.home_team != null ? teamCrest(encounter.home_team).hue : null}
-          awayHue={encounter.away_team != null ? teamCrest(encounter.away_team).hue : null}
+          homeTeam={encounter.home_team ?? null}
+          awayTeam={encounter.away_team ?? null}
           // By POSITION in the series, not by map: a series may play the same
           // map twice, and filtering on `map_id` alone carried the earlier
           // play's claims onto the later one — which read as "both captains
           // already agreed" on a map nobody had reported yet.
           reports={(mapState.map_reports ?? []).filter(
-            (report) =>
-              report.map_id === pendingMap.item_id && report.map_index === pendingRound
+            (report) => report.map_id === pendingMap.item_id && report.map_index === pendingRound
           )}
           heroActions={heroActions}
           heroUndo={
@@ -441,11 +473,30 @@ export function PregameRoom({ encounterId }: PregameRoomProps) {
   }
 
   if (phase === "done") {
+    // Without a report to file, the closing screen still owes the captains the
+    // one thing they came for: who won. Read off the encounter's own series
+    // score, which `submit_map_report` advances map by map — no extra request,
+    // and it is the same number the header's filmstrip adds up.
+    const home = encounter.score?.home ?? 0;
+    const away = encounter.score?.away ?? 0;
+    const outcome =
+      home === away
+        ? t("seriesDone.drawn", { home, away })
+        : t("seriesDone.won", {
+            team: sideNameOf(home > away ? "home" : "away"),
+            home,
+            away
+          });
     return (
       <div className="flex flex-col gap-4">
         <PregameFinalReport
           encounter={encounter}
           viewerSide={mapState.viewer_side ?? viewerSide}
+          reportable={seriesReport}
+          outcome={outcome}
+          heroRounds={heroRounds}
+          homeName={sideNameOf("home")}
+          awayName={sideNameOf("away")}
           header={header}
           returnTo={returnTo}
         />
@@ -555,16 +606,34 @@ function PickBanPanel({
   // Same reading, from the ledger instead of the round: what the side on the
   // clock already banned earlier in this SERIES and may not ban again
   // (`no_repeat_scope=encounter_same_side`). Those items stay in the pool, so
-  // without this the only feedback was the 400 after the click.
-  const repeatBanned = new Set(state.repeat_banned ?? []);
+  // without this the only feedback was the 400 after the click. Gated on a BAN
+  // step because the ledger is ban memory only: a `protect` on an item this
+  // side already banned is legal and meaningful — the OPPONENT is not barred
+  // from banning it — so it must stay clickable.
+  const repeatBanned = new Set(
+    state.expected_action === "ban" ? (state.repeat_banned ?? []) : []
+  );
 
   // The backend enforces who may elect (pending_loser_side); this only gates
   // whether the losing captain's own client shows the modal at all.
   const showElectOpener =
     session.awaiting_choice && state.viewer_side === session.pending_loser_side;
+  // ...and everyone ELSE has to be told why the room stopped. The round the
+  // choice is holding does not exist yet, so a spectator, the winning captain
+  // and an organizer all saw a finished round with nothing to click and no
+  // reason given — the exact shape of a hung room.
+  const pendingOpenerSide = session.awaiting_choice ? session.pending_loser_side : null;
 
   return (
     <>
+      {pendingOpenerSide != null ? (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-3 text-sm">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--aqt-amber)]" aria-hidden />
+          <p className="text-[color:var(--aqt-fg-muted)]">
+            {t("electOpener.waiting", { team: sideName(pendingOpenerSide) })}
+          </p>
+        </div>
+      ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(260px,1fr)_2fr]">
         <PickBanStepTimeline
           kind={kind}

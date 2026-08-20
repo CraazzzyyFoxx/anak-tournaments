@@ -107,7 +107,7 @@ async def _player_rank_history(
 
     # Workspace grid size (division count) per row — shift v2 scales the
     # top-of-ladder output clamp by it so the same cap means the same real rank
-    # distance regardless of granularity. Missing grid → canonical 40-tier.
+    # distance regardless of granularity. Missing grid → the canonical grid's size.
     def _grid_div_count(version_id: object) -> int:
         if pd.isna(version_id):
             return DEFAULT_GRID.max_division

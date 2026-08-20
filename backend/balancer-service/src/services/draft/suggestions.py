@@ -12,13 +12,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from shared.core.enums import DraftAutopickStrategy, DraftRole
+from shared.core.enums import DraftAutopickStrategy, HeroClass
 
 # Role-impact weights — mirror moo_core/src/lib.rs (tank 1.4 / dps 1.0 / support 1.1).
-DEFAULT_ROLE_IMPACT: dict[DraftRole, float] = {
-    DraftRole.TANK: 1.4,
-    DraftRole.DPS: 1.0,
-    DraftRole.SUPPORT: 1.1,
+DEFAULT_ROLE_IMPACT: dict[HeroClass, float] = {
+    HeroClass.tank: 1.4,
+    HeroClass.damage: 1.0,
+    HeroClass.support: 1.1,
 }
 
 
@@ -26,22 +26,22 @@ DEFAULT_ROLE_IMPACT: dict[DraftRole, float] = {
 class FitPlayer:
     player_id: int
     rank_value: int
-    playable_roles: frozenset[DraftRole]
-    preference_order: tuple[DraftRole, ...] = ()
+    playable_roles: frozenset[HeroClass]
+    preference_order: tuple[HeroClass, ...] = ()
     is_flex: bool = False
     user_id: int | None = None
     # Per-role ranks (role -> SR). ``rank_value`` is the fallback when a role
     # has no specific entry, so candidates are scored at the rank of the role
     # they'd actually fill — not their primary-role rank.
-    rank_by_role: Mapping[DraftRole, int] = field(default_factory=dict)
+    rank_by_role: Mapping[HeroClass, int] = field(default_factory=dict)
 
-    def rank_for(self, role: DraftRole) -> int:
+    def rank_for(self, role: HeroClass) -> int:
         return self.rank_by_role.get(role, self.rank_value)
 
 
 @dataclass(frozen=True)
 class FitConfig:
-    role_impact: Mapping[DraftRole, float] = field(default_factory=lambda: dict(DEFAULT_ROLE_IMPACT))
+    role_impact: Mapping[HeroClass, float] = field(default_factory=lambda: dict(DEFAULT_ROLE_IMPACT))
     discomfort_weight: float = 1.0
     # Large enough that role-need dominates raw fit when filling scarce roles.
     role_need_bonus: float = 1_000_000.0
@@ -50,12 +50,12 @@ class FitConfig:
 @dataclass(frozen=True)
 class FitResult:
     player_id: int
-    role: DraftRole
+    role: HeroClass
     fit_score: float
     breakdown: dict[str, float]
 
 
-def role_discomfort(player: FitPlayer, role: DraftRole) -> int:
+def role_discomfort(player: FitPlayer, role: HeroClass) -> int:
     """How much a role hurts this player, for autopick ranking.
 
     NOT in step with the balancer, despite encoding the same idea. ``preference_order``
@@ -73,7 +73,7 @@ def role_discomfort(player: FitPlayer, role: DraftRole) -> int:
 
 def player_fit(
     player: FitPlayer,
-    role: DraftRole,
+    role: HeroClass,
     cfg: FitConfig,
     *,
     strategy: DraftAutopickStrategy = DraftAutopickStrategy.BEST_FIT,
@@ -110,10 +110,10 @@ def player_fit(
 
 def _candidates(
     available: Sequence[FitPlayer],
-    role_capacity: Mapping[DraftRole, int],
+    role_capacity: Mapping[HeroClass, int],
     cfg: FitConfig,
     strategy: DraftAutopickStrategy,
-    allowed_options: set[tuple[int, DraftRole]] | None = None,
+    allowed_options: set[tuple[int, HeroClass]] | None = None,
 ) -> list[FitResult]:
     open_roles = [role for role, cap in role_capacity.items() if cap > 0]
     results: list[FitResult] = []
@@ -139,16 +139,16 @@ def _sort_key(result: FitResult, available_by_id: Mapping[int, FitPlayer]) -> tu
     # Higher fit, then higher rank (for the result's role), then lower player_id,
     # then role value asc — fully deterministic so autopick is reproducible.
     rank = available_by_id[result.player_id].rank_for(result.role)
-    return (-result.fit_score, -rank, result.player_id, result.role.value)
+    return (-result.fit_score, -rank, result.player_id, result.role.slot_code)
 
 
 def best_fit(
     available: Sequence[FitPlayer],
-    role_capacity: Mapping[DraftRole, int],
+    role_capacity: Mapping[HeroClass, int],
     strategy: DraftAutopickStrategy,
     cfg: FitConfig,
     *,
-    allowed_options: set[tuple[int, DraftRole]] | None = None,
+    allowed_options: set[tuple[int, HeroClass]] | None = None,
 ) -> FitResult | None:
     results = _candidates(available, role_capacity, cfg, strategy, allowed_options)
     if not results:
@@ -159,12 +159,12 @@ def best_fit(
 
 def rank_suggestions(
     available: Sequence[FitPlayer],
-    role_capacity: Mapping[DraftRole, int],
+    role_capacity: Mapping[HeroClass, int],
     cfg: FitConfig,
     *,
     strategy: DraftAutopickStrategy = DraftAutopickStrategy.BEST_FIT,
     limit: int = 5,
-    allowed_options: set[tuple[int, DraftRole]] | None = None,
+    allowed_options: set[tuple[int, HeroClass]] | None = None,
 ) -> list[FitResult]:
     results = _candidates(available, role_capacity, cfg, strategy, allowed_options)
     by_id = {p.player_id: p for p in available}

@@ -818,9 +818,20 @@ def calculate_overall_positions(
     stages: list[models.Stage],
 ) -> list[models.Standing]:
     stage_order = {stage.id: stage.order for stage in stages}
+
+    # A standing with zero completed matches carries no real signal — ranking
+    # it would fabricate a "1st place" out of pure seed/tiebreak order before
+    # a single game has been played. Leave it at the placeholder 0 that the
+    # stage builders already assign it, and only rank standings backed by at
+    # least one played match. This is deliberately per-team/per-stage, not
+    # gated on reaching a playoff stage: league (round-robin-only) tournaments
+    # never have a playoff stage and still need real, incrementally-updated
+    # overall standings as soon as their teams start playing.
+    rankable = [standing for standing in standings if standing.matches > 0]
+
     playoff_standings = [
         standing
-        for standing in standings
+        for standing in rankable
         if standing.stage is not None and standing.stage.stage_type in ELIMINATION_STAGE_TYPES
     ]
     progressed_team_ids = {standing.team_id for standing in playoff_standings}
@@ -833,7 +844,7 @@ def calculate_overall_positions(
         playoff_team_count = len(progressed_team_ids)
 
         remaining = _sort_for_overall(
-            [standing for standing in standings if standing.team_id not in progressed_team_ids],
+            [standing for standing in rankable if standing.team_id not in progressed_team_ids],
             stage_order,
         )
         # Best group-only team gets position playoff_team_count + 1
@@ -843,11 +854,13 @@ def calculate_overall_positions(
             next_position += 1
         return standings
 
-    remaining = _sort_for_overall(standings, stage_order)
+    remaining = _sort_for_overall(rankable, stage_order)
     # Best team (first after sort) gets position 1
     for position, standing in enumerate(remaining, start=1):
         standing.overall_position = position
-    return remaining
+    # Return every standing, not just the ranked subset: unrankable (0-match)
+    # rows still need to reach `session.add_all` in the caller.
+    return standings
 
 
 def sort_matches(

@@ -18,6 +18,10 @@ class MapCreate(BaseModel):
 
     name: str
     gamemode_id: int
+    # NOT NULL on ``overwatch.map`` with no server default. Optional here (the
+    # admin form uploads the art separately) but it must reach the model, or the
+    # insert violates the constraint -- same shape as ``HeroCreate.image_path``.
+    image_path: str | None = None
     in_competitive: bool = True
     aliases: list[str] | None = None
 
@@ -28,6 +32,7 @@ class MapUpdate(BaseModel):
     name: str | None = None
     gamemode_id: int | None = None
     in_competitive: bool | None = None
+    image_path: str | None = None
     aliases: list[str] | None = None
 
 

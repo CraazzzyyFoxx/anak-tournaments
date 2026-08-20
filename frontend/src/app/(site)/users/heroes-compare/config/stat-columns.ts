@@ -2,7 +2,7 @@ import { HeroLeaderboardEntry } from "@/types/hero.types";
 
 export type StatKey = string;
 
-export type StatLabelKey =
+type StatLabelKey =
   | "users.heroesCompare.stat.elims"
   | "users.heroesCompare.stat.healing"
   | "users.heroesCompare.stat.damage"
@@ -71,23 +71,23 @@ export const COL: Record<string, StatColumnDef> = {
   avg_crit_accuracy:       { key: "avg_crit_accuracy",       labelKey: "users.heroesCompare.stat.critAcc",    ascending: false, formatValue: _fmt.pct,   barColor: "bg-rose-400/65",    accentColor: "bg-rose-400",    getValue: _k("avg_crit_accuracy") },
 };
 
-export const FIXED_COLUMNS_BY_ROLE: Record<string, StatKey[]> = {
+const FIXED_COLUMNS_BY_ROLE: Record<string, StatKey[]> = {
   Damage:  ["per10_eliminations", "per10_damage", "per10_deaths", "kd"],
   Tank:    ["per10_eliminations", "per10_damage_blocked", "per10_damage", "per10_deaths"],
   Support: ["per10_eliminations", "per10_healing", "per10_damage", "per10_deaths"],
 };
 
-export const FIXED_COLUMNS_DEFAULT: StatKey[] = [
+const FIXED_COLUMNS_DEFAULT: StatKey[] = [
   "per10_eliminations", "per10_healing", "per10_damage", "per10_deaths",
 ];
 
-export const DEFAULT_CUSTOM_BY_ROLE: Record<string, StatKey> = {
+const DEFAULT_CUSTOM_BY_ROLE: Record<string, StatKey> = {
   Damage:  "per10_final_blows",
   Tank:    "per10_solo_kills",
   Support: "per10_final_blows",
 };
 
-export const DEFAULT_CUSTOM_KEY: StatKey = "per10_final_blows";
+const DEFAULT_CUSTOM_KEY: StatKey = "per10_final_blows";
 
 export const ALL_STAT_OPTIONS: StatColumnDef[] = Object.values(COL);
 

@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Map,
   type LucideIcon,
+  Radio,
   Settings2,
   Shapes,
   Shield,
@@ -244,6 +245,20 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         aliases: ["subscriptions", "boosty", "entitlements"],
       },
       {
+        title: "Stream collection",
+        href: "/admin/streams",
+        icon: Radio,
+        description: "Twitch live-status poller health and its runtime configuration.",
+        permissions: ["stream.read"],
+        // One poller, one Redis key: `GET /api/streams/health` authorizes against
+        // a GLOBAL `stream.read`. Without `globalOnly` a workspace-scoped holder
+        // would see the link and 403 on the only request behind it.
+        globalOnly: true,
+        // `twitch` deliberately omitted: /admin/users already claims it, and the
+        // palette requires every alias to resolve to exactly one entry.
+        aliases: ["streams", "poller", "live"],
+      },
+      {
         title: "Workspaces",
         href: "/admin/workspaces",
         icon: Building2,
@@ -263,7 +278,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
   },
 ];
 
-export const adminRoutePermissions: Array<{
+const adminRoutePermissions: Array<{
   prefix: string;
   permissions: AppPermission[];
   superuserOnly?: boolean;
@@ -291,6 +306,8 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/users", permissions: ["user.read"], globalOnly: true },
   { prefix: "/admin/rank", permissions: ["rank.read"] },
   { prefix: "/admin/subscriptions", permissions: ["subscription.read"] },
+  // Global, not workspace-scoped: there is one poller behind this page.
+  { prefix: "/admin/streams", permissions: ["stream.read"], globalOnly: true },
   { prefix: "/admin/heroes", permissions: [], superuserOnly: true },
   { prefix: "/admin/gamemodes", permissions: [], superuserOnly: true },
   { prefix: "/admin/maps", permissions: [], superuserOnly: true },

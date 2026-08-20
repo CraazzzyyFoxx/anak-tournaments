@@ -15,12 +15,7 @@ export enum SortDirection {
   desc = "desc"
 }
 
-export const sortDirectionAntd = {
-  ascend: SortDirection.asc,
-  descend: SortDirection.desc
-};
-
-export interface PaginationParams {
+interface PaginationParams {
   page: number | undefined;
   per_page: number | undefined;
   sort: string;

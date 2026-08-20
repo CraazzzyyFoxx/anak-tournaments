@@ -18,7 +18,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from shared.core.enums import DraftFormat, DraftPlayerStatus, DraftRole
+from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus, HeroClass
+from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import parse_roster_slots
 from shared.models.balancer.draft import DraftPick
 from shared.models.identity.user import User
@@ -107,7 +108,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     def _captains(self) -> list[lifecycle.CaptainSeed]:
-        roles = [DraftRole.TANK, DraftRole.DPS, DraftRole.SUPPORT]
+        roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
         return [
             lifecycle.CaptainSeed(
                 name=f"Cap{i}",
@@ -120,7 +121,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         ]
 
     def _players(self) -> list[lifecycle.PlayerSeed]:
-        roles = [DraftRole.TANK, DraftRole.DPS, DraftRole.SUPPORT]
+        roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
         return [
             lifecycle.PlayerSeed(primary_role=roles[i % 3], rank_value=2800 + i * 10, battle_tag=f"P{i}#1")
             for i in range(15)
@@ -176,6 +177,59 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             self.assertEqual(picks[10].draft_team_id, team_by_pos[3])
             self.assertEqual(picks[11].draft_team_id, team_by_pos[1])
 
+    async def test_changing_a_rule_after_seeding_reorders_the_untouched_rounds(self) -> None:
+        """The bug: round_rules lived on the session, the seat order on the picks.
+
+        Changing a rule wrote settings_json and nothing else, so the wizard
+        previewed the new order while the board kept drafting the seeded one.
+        """
+        async with self.Session() as s:
+            draft = await lifecycle.create_session(
+                s,
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                shape=_SHAPE,
+                fmt=DraftFormat.CUSTOM,
+                settings={"round_rules": ["linear", "linear", "linear", "linear"]},
+            )
+            await lifecycle.seed(s, draft, captains=self._captains(), players=self._players())
+            await lifecycle.start(s, draft)
+            await s.commit()
+
+            teams = (
+                await s.scalars(sa.select(lifecycle.DraftTeam).where(lifecycle.DraftTeam.session_id == draft.id))
+            ).all()
+            team_by_pos = {t.draft_position: t.id for t in teams}
+
+            # Round 1 is on the clock, so it is history and must not move.
+            draft.settings_json = {"round_rules": ["reverse", "reverse", "linear", "linear"]}
+            moved = await lifecycle.resync_pick_order(s, draft)
+            await s.commit()
+
+            picks = (
+                await s.scalars(
+                    sa.select(DraftPick).where(DraftPick.session_id == draft.id).order_by(DraftPick.overall_no.asc())
+                )
+            ).all()
+
+            self.assertEqual(moved, 2)  # only round 2's outer seats swap
+            # Round 1 untouched: it already started under the old rule.
+            self.assertEqual(
+                [p.draft_team_id for p in picks[:3]],
+                [team_by_pos[1], team_by_pos[2], team_by_pos[3]],
+            )
+            # Round 2 now reads N -> 1, the rule the admin just chose.
+            self.assertEqual(
+                [p.draft_team_id for p in picks[3:6]],
+                [team_by_pos[3], team_by_pos[2], team_by_pos[1]],
+            )
+            # Rounds 3-4 stayed linear, and a second resync is a no-op.
+            self.assertEqual(
+                [p.draft_team_id for p in picks[6:9]],
+                [team_by_pos[1], team_by_pos[2], team_by_pos[3]],
+            )
+            self.assertEqual(await lifecycle.resync_pick_order(s, draft), 0)
+
     async def test_custom_format_dynamic_rules(self) -> None:
         async with self.Session() as s:
             rules = ["linear", "team_avg_asc", "linear", "linear"]
@@ -201,9 +255,9 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             ).all()
 
             # Filter available players by role to satisfy draft limits
-            dps_players = [p for p in available if p.primary_role == DraftRole.DPS.value]
-            support_players = [p for p in available if p.primary_role == DraftRole.SUPPORT.value]
-            tank_players = [p for p in available if p.primary_role == DraftRole.TANK.value]
+            dps_players = [p for p in available if p.primary_role == HeroClass.damage.slot_code]
+            support_players = [p for p in available if p.primary_role == HeroClass.support.slot_code]
+            tank_players = [p for p in available if p.primary_role == HeroClass.tank.slot_code]
 
             # Pick 1 (Cap0: TANK) picks a DPS player
             p1 = dps_players[0]
@@ -278,3 +332,48 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             self.assertEqual(picks[3].draft_team_id, team_by_pos[2])
             self.assertEqual(picks[4].draft_team_id, team_by_pos[3])
             self.assertEqual(picks[5].draft_team_id, team_by_pos[1])
+
+            # The seats moved under the captains, so the draft locks instead of
+            # dropping the new leader onto a running clock.
+            self.assertEqual(draft.status, DraftStatus.PAUSED.value)
+            self.assertEqual(draft.blocked_reason, "order_recalculated")
+            self.assertEqual(draft.current_pick_id, picks[3].id)
+            self.assertEqual(picks[3].status, DraftPickStatus.ON_CLOCK.value)
+            self.assertIsNone(picks[3].clock_expires_at)
+
+            # Nobody — captain or admin — can pick through the lock.
+            with self.assertRaises(ApiHTTPException):
+                await selection.select(
+                    s,
+                    draft,
+                    picks[3],
+                    player_id=dps_players[1].id,
+                    expected_version=picks[3].version,
+                    target_role=None,
+                    actor_user_id=None,
+                    is_admin=True,
+                )
+
+            # Resuming arms a full timer for whoever the new order put on clock.
+            await lifecycle.resume(s, draft)
+            self.assertEqual(draft.status, DraftStatus.LIVE.value)
+            self.assertIsNone(draft.blocked_reason)
+            self.assertIsNotNone(picks[3].clock_expires_at)
+
+            # A settings save must not undo the average-driven seating. The round
+            # is on the clock, so `resync_pick_order` treats it as history; only
+            # rounds that have not started are re-seated from the rules.
+            draft.settings_json = {"round_rules": ["linear", "team_avg_asc", "reverse", "linear"]}
+            moved = await lifecycle.resync_pick_order(s, draft)
+            await s.commit()
+
+            picks = (
+                await s.scalars(
+                    sa.select(DraftPick).where(DraftPick.session_id == draft.id).order_by(DraftPick.overall_no.asc())
+                )
+            ).all()
+
+            self.assertEqual([p.draft_team_id for p in picks[3:6]], [team_by_pos[2], team_by_pos[3], team_by_pos[1]])
+            # Round 3 became `reverse`, so its two outer seats swapped.
+            self.assertEqual(moved, 2)
+            self.assertEqual([p.draft_team_id for p in picks[6:9]], [team_by_pos[3], team_by_pos[2], team_by_pos[1]])

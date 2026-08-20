@@ -467,12 +467,81 @@ services:
       start_period: 40s
     restart: always
 
-  frontend:
-    image: registry.craazzzyyfoxx.me/frontend:latest
+  # Tournament stream live-status: hosts rpc.stream.* for the gateway and runs
+  # the Twitch poll tick. Owns no Postgres schema — live state is Redis-only,
+  # and polling stays off until the `stream.collection` admin setting enables it.
+  # Do NOT scale past one replica for polling's sake: the tick is Redis
+  # leader-locked, so extras only add RPC consumer capacity.
+  stream-svc:
+    image: registry.craazzzyyfoxx.me/aqt-stream:latest
     deploy:
       resources:
         limits:
-          cpus: '3.00'
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    build:
+      context: ./backend
+      args:
+        APP_PATH: stream
+    command: faststream run serve:app
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/stream.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      # Validate tokens via the gateway -> identity-svc (overrides common.env).
+      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
+      - WORKER_METRICS_PORT=9111
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./logs/stream-svc:/logs
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: always
+
+  # Next standalone runs `node server.js`: ONE process, so one JS thread no
+  # matter how high the CPU ceiling goes. Every SSR render on the site queues
+  # behind that single event loop — which is why on 2026-08-15 a burst pushed
+  # /privacy, a page with no data at all, from 100ms to a 2.6s average and the
+  # site's p90 to 7.2s. Throughput here comes from REPLICAS, not from cpus.
+  #
+  # Declared with deploy.replicas rather than the Makefile's PROD_SCALE because
+  # the production deploy path is a GitHub release running plain
+  # `docker compose up -d` (.github/workflows/deploy-production.yml) — a --scale
+  # flag never reaches it. Verified: compose v5.3.1 honours deploy.replicas
+  # outside swarm. Compose DNS round-robins the `frontend` name across the
+  # replica IPs, and the gateway's ReverseProxy re-dials per connection
+  # (default transport keeps only 2 idle conns per host), so traffic spreads
+  # with no extra config.
+  #
+  # 1.50 per replica rather than the old 3.00: a single event loop cannot spend
+  # three cores, and three replicas at the old ceiling would have oversubscribed
+  # this 8-core box badly enough to starve nginx and the gateway under load.
+  frontend:
+    image: registry.craazzzyyfoxx.me/frontend:latest
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1.50'
           memory: 2GB
         reservations:
           cpus: '0.25'

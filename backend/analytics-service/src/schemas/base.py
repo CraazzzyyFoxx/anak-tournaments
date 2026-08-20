@@ -74,6 +74,7 @@ class PlayerRead(BaseRead):
 
 class TeamRead(BaseRead):
     name: str
+    image_url: str | None = None
     avg_sr: float
     total_sr: float
     captain_id: int | None = None

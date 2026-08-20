@@ -48,7 +48,6 @@ export default function Loading() {
       <div className={styles.card}>
         <div className={styles.board}>
           <div className={styles.boardSide}>
-            <Block className="h-[52px] w-[52px] rounded-[12px]" />
             <div className="flex min-w-0 flex-1 flex-col gap-2">
               <Block className="h-5 w-40" />
               <Block className="h-5 w-28 rounded-full" />
@@ -60,7 +59,6 @@ export default function Loading() {
             <Block className="h-[18px] w-24" />
           </div>
           <div className={cn(styles.boardSide, styles.boardSideAway)}>
-            <Block className="h-[52px] w-[52px] rounded-[12px]" />
             <div className="flex min-w-0 flex-1 flex-col items-end gap-2">
               <Block className="h-5 w-40" />
               <Block className="h-5 w-28 rounded-full" />

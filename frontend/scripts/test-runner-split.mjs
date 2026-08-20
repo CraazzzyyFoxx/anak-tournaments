@@ -30,11 +30,21 @@ import { dirname, resolve } from "node:path";
 const VITEST_IMPORT = /from\s+["']vitest["']/;
 const BUN_IMPORT = /from\s+["']bun:test["']/;
 
+// Exports a `mock.module` factory MUST reproduce, keyed by module path. Only
+// names that something outside the mocking file imports belong here: those are
+// the ones whose absence breaks a file other than the one making the mistake.
+const MOCK_REQUIRED_EXPORTS = {
+  "@/services/auth.service": ["OAuthLinkAuthRequiredError", "OAuthLinkFailedError"],
+};
+
 const normalize = (p) => p.replaceAll("\\", "/");
 
 const all = [];
 for await (const entry of glob("src/**/*.test.{ts,tsx}")) all.push(normalize(entry));
-all.sort();
+// Explicit comparator: byte order, not locale, so the bun file list this feeds is
+// identical on every machine and CI runner. (A bare `.sort()` is also what
+// sonarjs S2871 flags, since it cannot prove the elements are strings.)
+all.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
 // One collected path per line. Anything vitest refuses to collect is absent,
 // which is precisely the signal this script is built on. The bin is resolved off
@@ -83,6 +93,27 @@ for (const file of all) {
   // A file importing NEITHER is fine: under `bun test` describe/it/expect are
   // globals, and several helper suites rely on that. It lands in the bun set by
   // complement, and bun fails loudly if it is not really a test.
+
+  // `bun test` shares ONE module registry across every file in a run, so the
+  // first `mock.module` for a path is what all the others see. A mock that omits
+  // an export its real module has takes down every file whose import graph needs
+  // that name — with a SyntaxError at import time, so those tests do not run and
+  // do not report. This cost two CI cycles before it was pinned here.
+  // Checked against the code with whole-line comments stripped: prose ABOVE a
+  // mock naturally names the very exports it is explaining, and a whole-file
+  // substring search happily accepts that instead of the factory.
+  const code = source.replace(/^\s*\/\/.*$/gm, "");
+  for (const [path, required] of Object.entries(MOCK_REQUIRED_EXPORTS)) {
+    if (!code.includes(`mock.module("${path}"`)) continue;
+    const missing = required.filter((name) => !code.includes(name));
+    if (missing.length > 0) {
+      problems.push(
+        `${file}\n    mocks "${path}" without re-exporting ${missing.join(", ")}.` +
+          `\n    bun's registry is shared, so this mock silently breaks every other file` +
+          `\n    that needs those names. Add them to the mock factory.`,
+      );
+    }
+  }
 }
 
 if (problems.length > 0) {

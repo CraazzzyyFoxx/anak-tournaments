@@ -1,17 +1,3 @@
-from pydantic import BaseModel
+from shared.schemas.base import BaseRead, LookupItem, Score
 
 __all__ = ("BaseRead", "LookupItem", "Score")
-
-
-class BaseRead(BaseModel):
-    id: int
-
-
-class LookupItem(BaseModel):
-    id: int
-    name: str
-
-
-class Score(BaseModel):
-    home: int
-    away: int

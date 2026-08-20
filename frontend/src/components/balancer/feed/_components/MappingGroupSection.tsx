@@ -17,7 +17,7 @@ import {
   roleSubgroupId,
 } from "./mappingConfig";
 
-export interface MappingRowHandlers {
+interface MappingRowHandlers {
   onModeChange: (key: string, mode: MappingTargetMode) => void;
   onColumnsChange: (key: string, columns: string[]) => void;
   onValueChange: (key: string, value: string) => void;

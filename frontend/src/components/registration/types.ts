@@ -26,7 +26,7 @@ export interface RoleSelection {
  */
 export type RoleSelections = Record<RoleCode, RoleSelection>;
 
-export const EMPTY_ROLE_SELECTION: RoleSelection = {
+const EMPTY_ROLE_SELECTION: RoleSelection = {
   priority: "off",
   subrole: "",
   topHeroes: [],

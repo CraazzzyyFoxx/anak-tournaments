@@ -1,13 +1,84 @@
 from collections.abc import Mapping
-from enum import StrEnum
+from enum import Enum, StrEnum
 from types import MappingProxyType
 from typing import Final, Literal
 
 
 class HeroClass(StrEnum):
+    """A roster role OR a hero's class -- two concepts on one Postgres type.
+
+    ``tank``/``damage``/``support`` mean both things at once, which is why the
+    same ``heroclass`` type backs ``overwatch.hero.type``,
+    ``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``
+    only ever means the third: a player who holds no fixed role, which is what
+    a role-less (all-``flex``) roster shape drafts and balances for. No hero has
+    a class of "flex", so the two hero-side columns are narrowed back to
+    :data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by
+    CHECK constraints in the database (migration ``heroflex0001``).
+
+    Member NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),
+    so the DB sees ``flex`` while the Python value is ``"Flex"``.
+
+    THE single role enum for the whole backend (frontend mirror:
+    ``PlayerRoleOption`` in ``lib/player-role.ts``). Draft/balancer/registration
+    code historically spelled ``damage`` as ``dps`` -- that spelling is a wire
+    format, not a second role vocabulary, and lives on as :attr:`slot_code`.
+    """
+
     tank = "Tank"
     damage = "Damage"
     support = "Support"
+    flex = "Flex"
+
+    @property
+    def slot_code(self) -> str:
+        """Draft/balancer/registration wire spelling: ``tank``/``dps``/``support``/``flex``.
+
+        Diverges from the canonical value only for ``damage`` -> ``dps``. This is
+        what ``DraftPlayerRole.role``, ``BalancerRegistrationRole.role``,
+        ``Tournament.roster_slots_json`` keys and the Rust ``moo_core`` payload
+        already persist/expect -- unchanged by this being one enum instead of three.
+        """
+        return "dps" if self is HeroClass.damage else self.name
+
+    @classmethod
+    def from_slot_code(cls, code: str) -> "HeroClass":
+        """Inverse of :attr:`slot_code`. Raises ``ValueError`` for an unknown code."""
+        if code == "dps":
+            return cls.damage
+        return cls(code.capitalize())
+
+    @classmethod
+    def parse(cls, value: object) -> "HeroClass | None":
+        """Lenient parse: case-insensitive, accepts ``Enum`` members, the canonical
+        name/value, and the :attr:`slot_code` spelling. No other aliases --
+        this is the strict boundary for the single role vocabulary; a caller
+        needing free-text synonyms (e.g. sheet-import value maps) owns that
+        mapping itself instead of this parser silently widening it.
+        ``None`` for missing/unrecognised input -- never raises.
+        """
+        if value is None:
+            return None
+        if isinstance(value, Enum):
+            value = value.value
+        key = str(value).strip().lower()
+        if key in ("damage", "dps"):
+            return cls.damage
+        if key == "support":
+            return cls.support
+        if key == "tank":
+            return cls.tank
+        if key == "flex":
+            return cls.flex
+        return None
+
+
+#: The classes a *hero* can have -- ``HeroClass`` minus ``flex``. Use these
+#: wherever the subject is ``overwatch.hero.type`` or a baseline keyed off it,
+#: so an admin cannot type a hero as "flex" through an existing endpoint and
+#: silently poison ``dominant_roles``, the stat baselines and impact scoring.
+HERO_TYPE_CLASSES: Final[tuple[HeroClass, ...]] = (HeroClass.tank, HeroClass.damage, HeroClass.support)
+HeroTypeClass = Literal[HeroClass.tank, HeroClass.damage, HeroClass.support]
 
 
 class CatalogEntityType(StrEnum):
@@ -29,14 +100,6 @@ class RankPlatform(StrEnum):
     console = "console"
 
 
-class RankRole(StrEnum):
-    """Competitive role keys as returned by OverFast (lowercase)."""
-
-    tank = "tank"
-    damage = "damage"
-    support = "support"
-
-
 class RankDivision(StrEnum):
     """Native Overwatch 2 competitive divisions (OverFast values).
 
@@ -49,6 +112,7 @@ class RankDivision(StrEnum):
     silver = "silver"
     gold = "gold"
     platinum = "platinum"
+    emerald = "emerald"
     diamond = "diamond"
     master = "master"
     grandmaster = "grandmaster"
@@ -287,12 +351,6 @@ class DraftAutopickStrategy(StrEnum):
     ROLE_NEED = "role_need"
 
 
-class DraftRole(StrEnum):
-    TANK = "tank"
-    DPS = "dps"
-    SUPPORT = "support"
-
-
 class DraftPlayerStatus(StrEnum):
     AVAILABLE = "available"
     PICKED = "picked"
@@ -475,14 +533,40 @@ class AbilityEvent(StrEnum):
     Crouch = "Crouch"
 
 
+class RouteTag(StrEnum):
+    """Canonical FastAPI route-classification tags.
+
+    app-service, tournament-service, and balancer-service defined this exact
+    14-member enum three times (copy-pasted, byte-identical). Services with a
+    genuinely different tag set (parser-service, analytics-service) keep their
+    own local ``RouteTag`` — only the identical one lives here.
+    """
+
+    ENCOUNTER = "🎮 Encounter"
+    MATCH = "🎮 Match"
+    TEAMS = "🎮 Teams"
+    TOURNAMENT = "🏆 Tournament"
+    STANDINGS = "🏆 Standings"
+    STATISTICS = "📊 Statistics"
+    HERO = "🦸 Hero"
+    USER = "👤 User"
+    LOGS = "📜 Logs"
+    ACHIEVEMENTS = "🏅 Achievements"
+    MAP = "🗺️ Map"
+    GAMEMODE = "🎮 Gamemode"
+    UTILITY = "🔧 Utility"
+    ANALYTICS = "📈 Analytics"
+
+
 # Explicit public surface so ``from shared.core.enums import *`` (used by every
 # service's ``core/enums.py`` and by ``shared/core/__init__.py``) exports only
 # these names and never leaks re-imported stdlib/typing helpers.
 __all__ = [
     "HeroClass",
+    "HERO_TYPE_CLASSES",
+    "HeroTypeClass",
     "CatalogEntityType",
     "RankPlatform",
-    "RankRole",
     "RankDivision",
     "RankCollectionStatus",
     "RankCollectionSource",
@@ -500,7 +584,6 @@ __all__ = [
     "DraftCaptainOrder",
     "DraftPoolSource",
     "DraftAutopickStrategy",
-    "DraftRole",
     "DraftPlayerStatus",
     "DraftPickStatus",
     "StageType",
@@ -517,4 +600,6 @@ __all__ = [
     "EncounterLinkSlot",
     "MatchEvent",
     "AbilityEvent",
+    "MatchSource",
+    "RouteTag",
 ]

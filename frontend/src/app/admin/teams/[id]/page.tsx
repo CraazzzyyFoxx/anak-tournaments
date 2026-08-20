@@ -13,6 +13,7 @@ import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { TeamRosterEditor } from "@/components/admin/teams/TeamRosterEditor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -23,6 +24,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { MAX_AVATAR_BYTES } from "@/lib/avatar";
+import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { Player, Team } from "@/types/team.types";
 import type { Tournament } from "@/types/tournament.types";
@@ -84,14 +87,34 @@ export default function AdminTeamWorkspacePage() {
 
   const captainOptions = useMemo(() => (team ? buildCaptainOptions(team) : []), [team]);
 
+  const invalidateTeam = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin", "team", teamId] }),
+      queryClient.invalidateQueries({ queryKey: ["teams"] })
+    ]);
+
   const updateTeam = useMutation({
     mutationFn: (payload: { name?: string; captain_id?: number }) =>
       adminService.updateTeam(teamId, payload),
-    onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["admin", "team", teamId] }),
-        queryClient.invalidateQueries({ queryKey: ["teams"] })
-      ])
+    onSuccess: invalidateTeam
+  });
+
+  const uploadImage = useMutation({
+    mutationFn: (file: File) => adminService.uploadTeamImage(teamId, file),
+    onSuccess: async () => {
+      await invalidateTeam();
+      notify.success("Team image updated");
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
+  const deleteImage = useMutation({
+    mutationFn: () => adminService.deleteTeamImage(teamId),
+    onSuccess: async () => {
+      await invalidateTeam();
+      notify.success("Team image removed");
+    },
+    onError: (error) => notify.apiError(error)
   });
 
   const deleteTeam = useMutation({
@@ -147,13 +170,27 @@ export default function AdminTeamWorkspacePage() {
         title={team.name}
         titleHidden
         meta={
-          <InlineEditText
-            value={team.name}
-            label="team name"
-            canEdit={canUpdateTeam}
-            onSave={(name) => updateTeam.mutateAsync({ name })}
-            textClassName="text-lg font-semibold tracking-tight text-foreground"
-          />
+          <>
+            <EditableAvatar
+              src={team.image_url}
+              name={team.name}
+              size={40}
+              shape="rounded"
+              editable={canUpdateTeam}
+              busy={uploadImage.isPending || deleteImage.isPending}
+              onSelectFile={(file) => uploadImage.mutate(file)}
+              onDelete={team.image_url ? () => deleteImage.mutate() : undefined}
+              maxSizeBytes={MAX_AVATAR_BYTES}
+              onError={(message) => notify.error(message)}
+            />
+            <InlineEditText
+              value={team.name}
+              label="team name"
+              canEdit={canUpdateTeam}
+              onSave={(name) => updateTeam.mutateAsync({ name })}
+              textClassName="text-lg font-semibold tracking-tight text-foreground"
+            />
+          </>
         }
         footer={
           <p className="text-sm text-muted-foreground">

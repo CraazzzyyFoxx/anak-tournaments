@@ -731,50 +731,6 @@ def _overview_maps_lost_expr(
     )
 
 
-def _overview_match_stat_avg(
-    user_id_column: sa.ColumnElement[typing.Any],
-    stat: enums.LogStatsName,
-    hero_id_is_not_none: bool = True,
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    where_conditions: list[typing.Any] = [
-        models.MatchStatistics.user_id == user_id_column,
-        models.MatchStatistics.round == 0,
-        models.MatchStatistics.hero_id.isnot(None) if hero_id_is_not_none else sa.literal(True),
-        models.MatchStatistics.name == stat,
-    ]
-
-    if role is not None or div_min is not None or div_max is not None:
-        where_conditions.append(
-            _compare_team_scope_exists(
-                user_id_column,
-                models.MatchStatistics.team_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
-        )
-
-    query = (
-        sa.select(sa.func.avg(models.MatchStatistics.value))
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-    )
-
-    if tournament_id is not None:
-        query = query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        where_conditions.append(models.Encounter.tournament_id == tournament_id)
-
-    return query.where(*where_conditions).scalar_subquery()
-
-
 def _overview_match_stat_avg_10_expr(
     user_id_column: sa.ColumnElement[typing.Any],
     stat: enums.LogStatsName,
@@ -1460,14 +1416,21 @@ def _compare_metrics_query_v2(
     )
     has_scope_filter = role is not None or div_min is not None or div_max is not None or tournament_id is not None
 
+    # The cohort, expressed once as something pushable into a subquery. Everything
+    # downstream that would otherwise scan a whole table and only meet the cohort at
+    # the final join takes this instead.
+    cohort_scope: typing.Any | None = None
+    if user_ids is not None:
+        cohort_scope = user_ids
+    elif has_scope_filter:
+        cohort_scope = sa.select(scoped_players.c.user_id).distinct()
+
     candidates_query = sa.select(
         models.User.id.label("id"),
         models.User.name.label("name"),
     )
-    if user_ids is not None:
-        candidates_query = candidates_query.where(models.User.id.in_(user_ids))
-    elif has_scope_filter:
-        candidates_query = candidates_query.where(models.User.id.in_(sa.select(scoped_players.c.user_id).distinct()))
+    if cohort_scope is not None:
+        candidates_query = candidates_query.where(models.User.id.in_(cohort_scope))
     candidates = candidates_query.cte("compare_candidates")
 
     tournament_counts = (
@@ -1573,8 +1536,14 @@ def _compare_metrics_query_v2(
         .cte("compare_average_closeness")
     )
 
+    # Unrestricted, this scans every evaluation result and grant in the database and
+    # runs the correlated revoke NOT EXISTS over all of them before grouping -- and
+    # the cohort was only met at the ``candidates`` join below, which cannot be
+    # pushed through the subquery's GROUP BY. Same rows, whole-table cost, and it is
+    # what timed the compare page out. ``candidates.id`` is a primary key, so
+    # joining it and filtering by membership in it are the same thing.
     effective_achievements = build_effective_achievement_rows_subquery(
-        user_ids=None,
+        user_ids=cohort_scope,
         name="compare_effective_achievement_rows_v2",
     )
     achievement_match = aliased(models.Match)
@@ -1674,21 +1643,38 @@ def _compare_metrics_query_v2(
         ).where(models.Encounter.tournament_id == tournament_id)
     per_10_stats = per_10_stats.group_by(models.MatchStatistics.user_id).cte("compare_match_stats")
 
-    mvp_stats = (
+    # MVP placement spans two LogStatsName columns: ImpactRank when the
+    # impact-scoring pipeline computed it for a match, legacy Performance
+    # otherwise — same COALESCE(ImpactRank, Performance) per-match average as
+    # services.user._repositories.get_roster_avg_mvp_bulk. First collapse each
+    # match's two candidate rows into one (impact_rank, performance) pair, THEN
+    # average the coalesced placement per user.
+    mvp_per_match = (
         sa.select(
-            models.MatchStatistics.user_id,
-            sa.func.avg(models.MatchStatistics.value).label("mvp_score_avg"),
+            models.MatchStatistics.user_id.label("user_id"),
+            models.MatchStatistics.match_id.label("match_id"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
+                )
+            ).label("impact_rank"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
+                )
+            ).label("performance"),
         )
         .select_from(models.MatchStatistics)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(candidates, candidates.c.id == models.MatchStatistics.user_id)
         .where(
             models.MatchStatistics.round == 0,
-            models.MatchStatistics.name == enums.LogStatsName.Performance,
+            models.MatchStatistics.hero_id.is_(None),
+            models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
         )
     )
     if role is not None or div_min is not None or div_max is not None:
-        mvp_stats = mvp_stats.join(
+        mvp_per_match = mvp_per_match.join(
             stat_scoped_players,
             sa.and_(
                 stat_scoped_players.c.user_id == models.MatchStatistics.user_id,
@@ -1696,11 +1682,23 @@ def _compare_metrics_query_v2(
             ),
         )
     if tournament_id is not None:
-        mvp_stats = mvp_stats.join(
+        mvp_per_match = mvp_per_match.join(
             models.Encounter,
             models.Encounter.id == models.Match.encounter_id,
         ).where(models.Encounter.tournament_id == tournament_id)
-    mvp_stats = mvp_stats.group_by(models.MatchStatistics.user_id).cte("compare_mvp_stats")
+    mvp_per_match = mvp_per_match.group_by(
+        models.MatchStatistics.user_id, models.MatchStatistics.match_id
+    ).cte("compare_mvp_per_match")
+
+    mvp_placement = sa.func.coalesce(mvp_per_match.c.impact_rank, mvp_per_match.c.performance)
+    mvp_stats = (
+        sa.select(
+            mvp_per_match.c.user_id,
+            sa.func.avg(mvp_placement).label("mvp_score_avg"),
+        )
+        .where(mvp_placement.isnot(None))
+        .group_by(mvp_per_match.c.user_id)
+    ).cte("compare_mvp_stats")
 
     maps_won = sa.func.coalesce(map_totals.c.maps_won, 0)
     maps_total = maps_won + sa.func.coalesce(map_totals.c.maps_lost, 0)
@@ -1732,43 +1730,6 @@ def _compare_metrics_query_v2(
         .outerjoin(average_closeness, average_closeness.c.user_id == candidates.c.id)
         .outerjoin(mvp_stats, mvp_stats.c.user_id == candidates.c.id)
         .outerjoin(per_10_stats, per_10_stats.c.user_id == candidates.c.id)
-    )
-
-
-def _compare_metrics_query(
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.Select:
-    gk = {"role": role, "div_min": div_min, "div_max": div_max, "tournament_id": tournament_id, "grid": grid}
-    maps_won_expr = _overview_maps_won_expr(models.User.id, **gk)
-    maps_lost_expr = _overview_maps_lost_expr(models.User.id, **gk)
-    maps_total_expr = sa.func.coalesce(maps_won_expr, 0) + sa.func.coalesce(maps_lost_expr, 0)
-    maps_winrate_expr = sa.func.coalesce(maps_won_expr / sa.func.nullif(maps_total_expr, 0), 0)
-
-    uid = models.User.id
-    return sa.select(
-        uid.label("id"),
-        models.User.name.label("name"),
-        _overview_tournaments_count_expr(uid, **gk).label("tournaments_count"),
-        _overview_achievements_count_expr(uid, **gk).label("achievements_count"),
-        maps_won_expr.label("maps_won"),
-        maps_total_expr.label("maps_total"),
-        maps_winrate_expr.label("maps_winrate"),
-        _overview_avg_placement_expr(uid, **gk).label("avg_placement"),
-        _overview_avg_playoff_placement_expr(uid, **gk).label("avg_playoff_placement"),
-        _overview_avg_group_placement_expr(uid, **gk).label("avg_group_placement"),
-        _overview_avg_closeness_expr(uid, **gk).label("avg_closeness"),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.Eliminations, **gk).label("eliminations_avg_10"),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.FinalBlows, **gk).label("final_blows_avg_10"),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.HeroDamageDealt, **gk).label(
-            "hero_damage_dealt_avg_10"
-        ),
-        _overview_match_stat_avg_10_expr(uid, enums.LogStatsName.HealingDealt, **gk).label("healing_dealt_avg_10"),
-        _overview_match_stat_avg(uid, enums.LogStatsName.Performance, False, **gk).label("mvp_score_avg"),
     )
 
 
@@ -1923,7 +1884,12 @@ async def get_overview_stats(
 
     tank_count = damage_count = support_count = flex_count = 0
     for roles_set in user_roles.values():
-        if len(roles_set) > 1:
+        # "Flex" here means "plays anything", which a player reaches two ways:
+        # by having been rostered on more than one role, or by carrying the
+        # explicit HeroClass.flex a role-less roster assigns. Before flex
+        # existed only the first was possible; an explicitly flex player has a
+        # one-element role set and would otherwise land in no bucket at all.
+        if len(roles_set) > 1 or enums.HeroClass.flex in roles_set:
             flex_count += 1
         if enums.HeroClass.tank in roles_set:
             tank_count += 1
@@ -2053,7 +2019,7 @@ async def get_compare_population(
     return payload
 
 
-async def get_compare_population_users(
+async def compare_population_exists(
     session: AsyncSession,
     *,
     role: enums.HeroClass | None = None,
@@ -2061,9 +2027,15 @@ async def get_compare_population_users(
     div_max: int | None = None,
     tournament_id: int | None = None,
     grid: DivisionGrid,
-) -> list[tuple[int, str]]:
-    query = sa.select(models.User.id, models.User.name)
+) -> bool:
+    """Does the baseline cohort contain anybody?
 
+    ``_compare_user_scope_exists`` without materializing the cohort. Its caller
+    only needs this to tell "empty cohort" from "empty result" apart — the two are
+    different 404s — and used to pull the whole population (~560 ``(id, name)``
+    rows) to evaluate ``if not population_users``.
+    """
+    query = sa.select(sa.literal(1)).select_from(models.User)
     if role is not None or div_min is not None or div_max is not None or tournament_id is not None:
         query = query.where(
             _compare_user_scope_exists(
@@ -2075,14 +2047,48 @@ async def get_compare_population_users(
                 grid=grid,
             )
         )
+    return await session.scalar(query.limit(1)) is not None
 
-    result = await session.execute(query)
-    return [(int(user_id), str(name)) for user_id, name in result.all()]
+
+def compare_hero_candidates_select(
+    *,
+    user_ids: list[int] | None,
+    role: enums.HeroClass | None,
+    div_min: int | None,
+    div_max: int | None,
+    tournament_id: int | None,
+    grid: DivisionGrid,
+) -> sa.Select:
+    """The users a hero-compare baseline covers, as a selectable.
+
+    Public (not ``_``-prefixed) so a test can execute the real thing instead of a
+    re-implementation of the predicate: the whole point of the change is that this
+    set must stay identical while it stops travelling through Python.
+
+    ``user_ids=None`` = the whole cohort, filtered exactly the way
+    ``compare_population_exists`` tests it. An explicit list is passed through
+    unchanged for callers that really do hold a few ids.
+    """
+    query = sa.select(models.User.id.label("user_id"))
+    if user_ids is not None:
+        return query.where(models.User.id.in_(user_ids))
+    if role is None and div_min is None and div_max is None and tournament_id is None:
+        return query
+    return query.where(
+        _compare_user_scope_exists(
+            models.User.id,
+            role=role,
+            div_min=div_min,
+            div_max=div_max,
+            tournament_id=tournament_id,
+            grid=grid,
+        )
+    )
 
 
 def _users_hero_compare_query_v2(
     *,
-    user_ids: list[int],
+    user_ids: list[int] | None,
     hero_id: int | None,
     map_id: int | None,
     stats: list[enums.LogStatsName],
@@ -2092,12 +2098,35 @@ def _users_hero_compare_query_v2(
     tournament_id: int | None,
     grid: DivisionGrid,
 ) -> sa.Select:
-    """Return playtime and per-stat rows for all candidates in one statement."""
+    """Return playtime and per-stat rows for all candidates in one statement.
+
+    ``user_ids=None`` means "the whole baseline population", resolved HERE as a
+    subquery rather than handed in as a list. The list form is still supported for
+    callers that genuinely hold a few ids, but the population must not travel
+    through Python: the caller used to resolve the cohort and hand ~560 ids straight
+    back as an ``IN`` list, so this statement arrived with 584 bind
+    parameters. That is slow twice over -- the planner cannot estimate selectivity
+    through a list that long, and under pgBouncer (``prepared_statement_cache_size
+    = 0``) the plan is rebuilt on every call, on a statement whose text changes
+    whenever the population size does, so nothing is ever reused. It timed out.
+
+    The predicate is ``_compare_user_scope_exists``, the same one the caller applied when it
+    resolved the cohort itself, so the
+    candidate set is unchanged. It is NOT the same as ``scoped_players`` below,
+    which deliberately drops the finished/non-league restriction
+    (``require_finished_nonleague=False``) -- reusing that CTE here would silently
+    widen the baseline.
+    """
 
     requested_stats = stats or list(DEFAULT_HERO_COMPARE_STATS)
-    candidates = (
-        sa.select(models.User.id.label("user_id")).where(models.User.id.in_(user_ids)).cte("compare_hero_candidates")
-    )
+    candidates = compare_hero_candidates_select(
+        user_ids=user_ids,
+        role=role,
+        div_min=div_min,
+        div_max=div_max,
+        tournament_id=tournament_id,
+        grid=grid,
+    ).cte("compare_hero_candidates")
     scoped_players = _compare_scoped_players_cte(
         role=role,
         div_min=div_min,
@@ -2454,7 +2483,7 @@ async def _get_users_hero_compare_stats_legacy(
 async def get_users_hero_compare_stats(
     session: AsyncSession,
     *,
-    user_ids: list[int],
+    user_ids: list[int] | None,
     hero_id: int | None,
     map_id: int | None,
     stats: list[enums.LogStatsName],
@@ -2464,7 +2493,9 @@ async def get_users_hero_compare_stats(
     tournament_id: int | None = None,
     grid: DivisionGrid,
 ) -> tuple[dict[int, float], dict[tuple[int, enums.LogStatsName], float]]:
-    if not user_ids:
+    """``user_ids=None`` resolves the baseline population in SQL — see
+    ``_users_hero_compare_query_v2``. An empty LIST still means "nobody"."""
+    if user_ids is not None and not user_ids:
         return {}, {}
 
     result = await session.execute(
@@ -2710,6 +2741,13 @@ async def get_teams(
     """
     Retrieves a paginated list of teams associated with a user, optionally including related entities.
 
+    Scoped exactly like ``get_tournaments_with_stats`` (which powers the
+    Tournaments tab): a tournament belongs to a user's history as soon as the
+    user has played an encounter in it, not once ``is_finished`` flips. Gating on
+    ``is_finished`` left the profile of a player whose only event is the live one
+    completely empty even though every other read (maps, heroes, roles,
+    encounters) already counted it. Hidden tournaments (issue #115) never appear.
+
     Args:
         session: An SQLAlchemy `AsyncSession` for database interaction.
         user_id: The ID of the user to retrieve teams for.
@@ -2720,18 +2758,30 @@ async def get_teams(
         1. A sequence of `Team` model instances.
         2. The total count of teams associated with the user.
     """
+    played_encounter = (
+        sa.select(1)
+        .select_from(models.Encounter)
+        .where(
+            sa.or_(
+                models.Encounter.home_team_id == models.Team.id,
+                models.Encounter.away_team_id == models.Team.id,
+            )
+        )
+        .exists()
+    )
+    scope = (
+        models.WorkspaceMember.player_id == user_id,
+        models.Player.is_substitution.is_(False),
+        models.Tournament.is_hidden.is_(False),
+        played_encounter,
+    )
+
     total_query = (
         sa.select(sa.func.count(sa.distinct(models.Team.id)))
         .join(models.Player, models.Player.team_id == models.Team.id)
         .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.WorkspaceMember.player_id == user_id,
-                models.Player.is_substitution.is_(False),
-                models.Tournament.is_finished.is_(True),
-            )
-        )
+        .where(sa.and_(*scope))
     )
 
     query = (
@@ -2740,13 +2790,7 @@ async def get_teams(
         .join(models.Player, models.Player.team_id == models.Team.id)
         .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.WorkspaceMember.player_id == user_id,
-                models.Player.is_substitution.is_(False),
-                models.Tournament.is_finished.is_(True),
-            )
-        )
+        .where(sa.and_(*scope))
     )
     if workspace_id is not None:
         total_query = total_query.where(models.Tournament.workspace_id == workspace_id)
@@ -3275,15 +3319,30 @@ async def get_best_teammates(
         .having(sa.func.count(sa.distinct(teammate_encounters.c.tournament_id)) > 1)
     ).cte("teammates_query")
 
-    stats_query = (
+    # Teammate "MVP" column spans two LogStatsName columns: ImpactRank when the
+    # impact-scoring pipeline computed it for a match, legacy Performance
+    # otherwise — same COALESCE(ImpactRank, Performance) per-match average as
+    # services.user._repositories.get_roster_avg_mvp_bulk. First collapse each
+    # match's rows into one (impact_rank, performance, kda) tuple via an
+    # outer join (keeps a teammate with zero stat rows in the result with
+    # NULLs, matching the prior behaviour), THEN average per teammate.
+    stats_per_match = (
         sa.select(
             shared_teams.c.teammate_id.label("user_id"),
-            sa.func.avg(models.MatchStatistics.value)
-            .filter(models.MatchStatistics.name == enums.LogStatsName.Performance)
-            .label("performance"),
-            sa.func.avg(models.MatchStatistics.value)
-            .filter(models.MatchStatistics.name == enums.LogStatsName.KDA)
-            .label("kda"),
+            models.MatchStatistics.match_id.label("match_id"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
+                )
+            ).label("impact_rank"),
+            sa.func.max(
+                sa.case(
+                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
+                )
+            ).label("performance"),
+            sa.func.max(
+                sa.case((models.MatchStatistics.name == enums.LogStatsName.KDA, models.MatchStatistics.value))
+            ).label("kda"),
         )
         .select_from(shared_teams)
         .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id)
@@ -3296,13 +3355,24 @@ async def get_best_teammates(
                 models.MatchStatistics.hero_id.is_(None),
                 models.MatchStatistics.name.in_(
                     [
+                        enums.LogStatsName.ImpactRank,
                         enums.LogStatsName.Performance,
                         enums.LogStatsName.KDA,
                     ]
                 ),
             ),
         )
-        .group_by(shared_teams.c.teammate_id)
+        .group_by(shared_teams.c.teammate_id, models.MatchStatistics.match_id)
+    ).cte("teammate_stats_per_match")
+
+    mvp_placement = sa.func.coalesce(stats_per_match.c.impact_rank, stats_per_match.c.performance)
+    stats_query = (
+        sa.select(
+            stats_per_match.c.user_id,
+            sa.func.avg(mvp_placement).label("performance"),
+            sa.func.avg(stats_per_match.c.kda).label("kda"),
+        )
+        .group_by(stats_per_match.c.user_id)
     ).cte("stats_query")
 
     # Distinct maps played together (separate CTE so the encounter→match fan-out

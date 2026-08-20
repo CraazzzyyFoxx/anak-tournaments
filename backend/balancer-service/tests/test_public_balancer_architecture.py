@@ -31,11 +31,11 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from src.core.job_store import BalancerJobStore  # noqa: E402
-from src.services.balancer.algorithm.captain_assignment_service import CaptainAssignmentService  # noqa: E402
+from src.services.balancer.algorithm.captain_assignment_service import assign_captains  # noqa: E402
 from src.services.balancer.algorithm.entities import Player  # noqa: E402
 from src.services.balancer.algorithm.moo_backend import _serialize_native_request, run_moo_optimizer  # noqa: E402
 from src.services.balancer.algorithm.player_loader import load_players_from_dict  # noqa: E402
-from src.services.balancer.algorithm.role_assignment_service import RoleAssignmentService  # noqa: E402
+from src.services.balancer.algorithm.role_assignment_service import find_feasible_role_assignment  # noqa: E402
 from src.services.balancer.algorithm.runtime import balance_teams_moo  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
 from src.services.balancer.request_parser import BalancerRequestParser  # noqa: E402
@@ -487,17 +487,13 @@ class SolverDomainServiceTests(TestCase):
             ),
         ]
 
-    def test_captain_assignment_service_marks_requested_count(self) -> None:
-        service = CaptainAssignmentService()
-
-        service.assign(self.players, captain_count=1, mask=self.mask)
+    def test_assign_captains_marks_requested_count(self) -> None:
+        assign_captains(self.players, count=1, mask=self.mask)
 
         self.assertEqual(sum(1 for player in self.players if player.is_captain), 1)
 
-    def test_role_assignment_service_matches_existing_feasibility_rules(self) -> None:
-        service = RoleAssignmentService()
-
-        role_assignment = service.find_feasible_assignment(self.players, num_teams=1, mask=self.mask)
+    def test_find_feasible_role_assignment_matches_existing_feasibility_rules(self) -> None:
+        role_assignment = find_feasible_role_assignment(self.players, num_teams=1, mask=self.mask)
 
         self.assertEqual(role_assignment, {"tank-main": "tank", "flex-carry": "dps"})
 

@@ -1,10 +1,13 @@
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
-  | "bracket" | "teams" | "participants" | "matches" | "maps" | "heroes" | "standings" | "draft";
+  | "bracket" | "stream" | "teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
 
-export type TournamentNavReasonKey =
-  "tournamentDetail.nav.reasons.competitionNotStarted" | "tournamentDetail.nav.reasons.noStages";
+type TournamentNavReasonKey =
+  | "tournamentDetail.nav.reasons.competitionNotStarted"
+  | "tournamentDetail.nav.reasons.noStages"
+  | "tournamentDetail.nav.reasons.noSchedule"
+  | "tournamentDetail.nav.reasons.noTeams";
 
 export type TournamentSectionNavItem = {
   id: TournamentSectionId;
@@ -20,6 +23,26 @@ type BuildTournamentSectionNavInput = {
   status: TournamentStatus;
   stages: StageSummary[];
   teamFormation?: string;
+  /**
+   * Whether the organizer published any `tournament_phase_schedule` row. The
+   * Schedule section has nothing to show without one, so it locks rather than
+   * leading to an empty page.
+   */
+  hasSchedule?: boolean;
+  /**
+   * Whether any team exists yet. Teams are formed before play starts (balancer
+   * run or draft), so the section opens as soon as there is a roster to show
+   * rather than waiting for the competition phase.
+   */
+  hasTeams?: boolean;
+  /**
+   * Whether the tournament has any stream at all — an official broadcast link
+   * or a participant currently live. Unlike Schedule and Teams, the Stream
+   * section does not lock when it is empty: it disappears. A lock advertises
+   * content the organizer has not published YET, and every tournament would
+   * carry that promise forever, because most of them never have a stream.
+   */
+  hasStreams?: boolean;
   pathname: string;
 };
 
@@ -32,7 +55,6 @@ const competitionStatuses = new Set<TournamentStatus>([
 
 const competitionOnlySections = new Set<TournamentSectionId>([
   "bracket",
-  "teams",
   "matches",
   "heroes",
   "standings"
@@ -40,8 +62,10 @@ const competitionOnlySections = new Set<TournamentSectionId>([
 
 const tournamentSections: Exclude<TournamentSectionId, "draft">[] = [
   "bracket",
+  "stream",
   "teams",
   "participants",
+  "schedule",
   "matches",
   "maps",
   "heroes",
@@ -74,12 +98,22 @@ export function buildTournamentSectionNav({
   status,
   stages,
   teamFormation,
+  hasSchedule = false,
+  hasTeams = false,
+  hasStreams = false,
   pathname
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
   const competitionStarted = competitionStatuses.has(status);
   const currentPath = normalizePathname(pathname);
-  const sections: TournamentSectionId[] =
-    teamFormation === "draft" ? [...tournamentSections, "draft"] : tournamentSections;
+  // Two sections are present-or-absent rather than open-or-locked, because a
+  // locked tab claims the content exists somewhere: `draft`, which only a draft
+  // tournament has at all, and `stream`, which needs a broadcast link or a live
+  // participant. `stream` is filtered from its display position instead of
+  // appended like `draft`, so the rail keeps one order in both cases.
+  const sections: TournamentSectionId[] = [
+    ...tournamentSections.filter((id) => id !== "stream" || hasStreams),
+    ...(teamFormation === "draft" ? (["draft"] as const) : [])
+  ];
 
   return sections.map((id) => {
     const href =
@@ -91,18 +125,24 @@ export function buildTournamentSectionNav({
     const canonicalPath = href.split("?", 1)[0];
     const phaseLocked = competitionOnlySections.has(id) && !competitionStarted;
     const stageLocked = id === "bracket" && competitionStarted && stages.length === 0;
+    const scheduleLocked = id === "schedule" && !hasSchedule;
+    const teamsLocked = id === "teams" && !hasTeams && !competitionStarted;
 
     return {
       id,
       labelKey: `common.${id}`,
       href,
       active: currentPath === canonicalPath,
-      available: !phaseLocked && !stageLocked,
+      available: !phaseLocked && !stageLocked && !scheduleLocked && !teamsLocked,
       reasonKey: phaseLocked
         ? "tournamentDetail.nav.reasons.competitionNotStarted"
         : stageLocked
           ? "tournamentDetail.nav.reasons.noStages"
-          : null
+          : scheduleLocked
+            ? "tournamentDetail.nav.reasons.noSchedule"
+            : teamsLocked
+              ? "tournamentDetail.nav.reasons.noTeams"
+              : null
     };
   });
 }
@@ -122,7 +162,7 @@ export type TournamentRailScrollState = {
   canScrollNext: boolean;
 };
 
-export type TournamentRailMeasurementContainer = {
+type TournamentRailMeasurementContainer = {
   readonly clientWidth: number;
 };
 

@@ -12,6 +12,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 )
 
@@ -52,12 +53,14 @@ func Groups() (public, admin []openapi.Group) {
 	auditRoutes, metadataRoutes := splitQueue(app.MetadataAdminRoutes, "rpc.app.audit_list")
 
 	public = []openapi.Group{
-		{Tag: "Tournaments", Description: "Public tournament, encounter, match & team reads + captain/registration actions.",
-			Routes: concat(tournament.PublicReadRoutes, tournament.PublicWriteRoutes)},
+		{Tag: "Tournaments", Description: "Public tournament, encounter, match & team reads + captain/registration actions + scrim rooms.",
+			Routes: concat(tournament.PublicReadRoutes, tournament.PublicWriteRoutes, tournament.ScrimRoutes)},
 		{Tag: "Game Data", Description: "Heroes, maps, gamemodes, achievements & statistics (public reads).",
 			Routes: concat(app.ReadRoutes, app.AchievementsSubtreeRoutes)},
 		{Tag: "Analytics", Description: "Analytics reads (v1 public; v2 require analytics.read).",
 			Routes: analytics.ReadRoutes},
+		{Tag: "Streams", Description: "Live stream channels for a tournament (public read).",
+			Routes: stream.PublicRoutes},
 		{Tag: "Balancer & Draft", Description: "Balancer config, draft spectating reads, balance jobs.",
 			Routes: concat(balancer.PublicRoutes, balancer.DraftReadRoutes, balancer.JobRoutes, balancer.DraftRoutes, balancer.BinaryPublicDocRoutes)},
 		{Tag: "Ranks", Description: "OverFast rank history (public reads).",
@@ -67,7 +70,7 @@ func Groups() (public, admin []openapi.Group) {
 	}
 	admin = []openapi.Group{
 		{Tag: "Admin: Tournaments", Description: "Tournament/team/player/encounter/standing CRUD, stages & bespoke admin actions.",
-			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, app.TournamentAdminRoutes)},
+			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, tournament.BinaryDocRoutes, app.TournamentAdminRoutes)},
 		{Tag: "Admin: Registration", Description: "Registration management & balancer statuses.",
 			Routes: tournament.RegistrationAdminRoutes},
 		{Tag: "Admin: Integrations", Description: "Challonge sync, Google Sheets, division grids.",
@@ -84,6 +87,8 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: concat(balancer.AdminRoutes, balancer.BinaryAdminDocRoutes)},
 		{Tag: "Admin: Analytics", Description: "Analytics mutations & compute job control.",
 			Routes: analytics.WriteRoutes},
+		{Tag: "Admin: Streams", Description: "Force an immediate live-status re-poll.",
+			Routes: stream.AdminRoutes},
 		{Tag: "Admin: RBAC", Description: "Permissions, roles, user-role/player assignment, sessions & service tokens.",
 			Routes: identity.AdminDocRoutes},
 		{Tag: "Admin: Audit", Description: "Platform audit log: who changed what, when, workspace-scoped.",

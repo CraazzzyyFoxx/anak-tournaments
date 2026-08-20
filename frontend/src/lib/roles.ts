@@ -1,4 +1,4 @@
-import type { DraftRole } from "@/types/draft.types";
+import type { RosterRoleSlotCode } from "@/lib/roster-shape";
 import type {
   RegistrationForm,
   SubroleCatalog,
@@ -13,7 +13,7 @@ import type {
  * selects which catalog slugs are offered.
  */
 
-export type RoleCode = "tank" | "dps" | "support";
+export type RoleCode = RosterRoleSlotCode;
 
 export interface RoleDef {
   code: RoleCode;
@@ -53,9 +53,6 @@ const CANONICAL_TO_REGISTRATION: Record<string, RoleCode> = {
 export function canonicalToRegistrationRole(role: string): RoleCode | null {
   return CANONICAL_TO_REGISTRATION[role.trim().toLowerCase()] ?? null;
 }
-
-/** Layout order for the registration role picker (Flex first). */
-export const MAIN_ROLE_LAYOUT_ORDER = ["flex", "tank", "dps", "support"] as const;
 
 export interface RoleAccent {
   tile: string;
@@ -102,7 +99,7 @@ export function getRoleIconName(roleCode: string): "Tank" | "Damage" | "Support"
 }
 
 /** Draft role accent colors (CSS custom properties) shared across the draft-room UI. */
-export const ROLE_ACCENT: Record<DraftRole, string> = {
+export const ROLE_ACCENT: Record<RoleCode, string> = {
   tank: "var(--aqt-tank)",
   dps: "var(--aqt-damage)",
   support: "var(--aqt-support)"
@@ -126,7 +123,7 @@ export function formatSubroleSlug(slug: string): string {
  * - selection `[]` (explicit opt-out) → offer none.
  * - selection non-empty → offer the catalog options whose slug was selected.
  */
-export function resolveSubroleOptions(
+function resolveSubroleOptions(
   catalog: SubroleCatalog | undefined,
   selection: string[] | undefined,
   role: string,

@@ -37,26 +37,16 @@ type PlayerRoleInfo = {
   sub_role?: string | null;
 };
 
-const SUB_ROLE_LABELS: Record<string, string> = {
-  hitscan: "Hitscan",
-  projectile: "Projectile",
-  main_heal: "Main Heal",
-  light_heal: "Light Heal"
-};
-
 export const formatSubRoleLabel = (subRole: string | null | undefined) => {
   if (!subRole) {
     return null;
   }
 
-  return (
-    SUB_ROLE_LABELS[subRole] ??
-    subRole
-      .split(/[_-]+/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ")
-  );
+  return subRole
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 };
 
 export const getPlayerType = (player: PlayerRoleInfo) => {
@@ -72,7 +62,10 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P
     if (role === "Tank") return 1;
     if (role === "Damage") return 2;
     if (role === "Support") return 3;
-    return 4;
+    // Flex is a real role and ranks right after Support; unknown/null is corrupt
+    // or missing data and sorts last, so the two are no longer interchangeable.
+    if (role === "Flex") return 4;
+    return 5;
   };
 
   const playerById = new Map(players.map((p) => [p.id, p]));

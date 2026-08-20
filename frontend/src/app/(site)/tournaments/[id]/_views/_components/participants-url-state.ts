@@ -1,9 +1,9 @@
-export const PARTICIPANT_SEARCH_PARAM = "participantSearch";
-export const PARTICIPANT_STATUS_PARAM = "participantStatus";
-export const PARTICIPANT_COLUMNS_PARAM = "participantColumns";
+const PARTICIPANT_SEARCH_PARAM = "participantSearch";
+const PARTICIPANT_STATUS_PARAM = "participantStatus";
+const PARTICIPANT_COLUMNS_PARAM = "participantColumns";
 
 export const PARTICIPANT_SEARCH_MAX_LENGTH = 120;
-export const PARTICIPANT_MANDATORY_COLUMN_IDS = ["battle_tag", "_status"] as const;
+const PARTICIPANT_MANDATORY_COLUMN_IDS = ["battle_tag", "_status"] as const;
 
 const PARTICIPANT_MANDATORY_COLUMN_ID_SET = new Set<string>(
   PARTICIPANT_MANDATORY_COLUMN_IDS,
@@ -153,7 +153,7 @@ export function writeStoredParticipantColumnIds(
 // to dismiss it.
 // ---------------------------------------------------------------------------
 
-export function checkInPromptStorageKey(tournamentId: number): string {
+function checkInPromptStorageKey(tournamentId: number): string {
   return `aqt:participants:checkin-prompted:v1:${tournamentId}`;
 }
 
@@ -180,7 +180,7 @@ export function claimCheckInPrompt(
   }
 }
 
-export interface ParticipantUrlState {
+interface ParticipantUrlState {
   search: string;
   status: string;
   visibleColumnIds: string[];

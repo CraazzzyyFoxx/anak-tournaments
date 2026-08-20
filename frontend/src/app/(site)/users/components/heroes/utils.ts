@@ -67,3 +67,22 @@ export const formatDelta = (delta: number) => {
 export const getOverall = (hero: HeroWithUserStats, name: LogStatsName) => {
   return hero.stats.find((s) => s.name === name)?.overall ?? 0;
 };
+
+// Winrate can arrive as a 0..1 fraction or an already-scaled percent; normalize
+// to a fraction the same way the Heroes tab does.
+export const toFraction = (value: number | null | undefined): number | null => {
+  if (value == null || !Number.isFinite(value)) return null;
+  return value <= 1 ? value : value / 100;
+};
+
+// ≥60 good · 50–59 mid · <50 bad (design-book §1 winrate thresholds).
+export const winrateColor = (pct: number): string => {
+  if (pct >= 60) return "var(--aqt-emerald)";
+  if (pct >= 50) return "var(--aqt-amber)";
+  return "var(--aqt-rose)";
+};
+
+export const statAvg10 = (stats: HeroWithUserStats["stats"], name: LogStatsName): number | null => {
+  const stat = stats.find((s) => s.name === name);
+  return stat && Number.isFinite(stat.avg_10) ? stat.avg_10 : null;
+};

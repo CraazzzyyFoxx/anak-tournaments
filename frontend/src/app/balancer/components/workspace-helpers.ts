@@ -14,6 +14,7 @@ import {
   SavedBalance
 } from "@/types/balancer-admin.types";
 import { BalanceResponse, BalancerConfig, PlayerData } from "@/types/balancer.types";
+import { playerRoleSlotCode } from "@/lib/player-role";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 import { DEFAULT_DIVISION_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/division-grid";
@@ -98,7 +99,7 @@ export const ROLE_LABELS: Record<BalancerRoleCode, string> = {
   support: "Support"
 };
 
-export function sortRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
+function sortRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
   return [...entries].sort((a, b) => a.priority - b.priority);
 }
 
@@ -112,7 +113,7 @@ export function getActiveRoleEntries(
   return sortRoleEntries(entries).filter((entry) => isRoleEntryActive(entry));
 }
 
-export function playerHasRankedRole(player: BalancerPlayerRecord): boolean {
+function playerHasRankedRole(player: BalancerPlayerRecord): boolean {
   return player.role_entries_json.some(
     (entry) => isRoleEntryActive(entry) && entry.rank_value !== null
   );
@@ -265,7 +266,7 @@ function roleSequencesMatch(
   return left.every((roleCode) => right.includes(roleCode));
 }
 
-export interface RoleRankDelta {
+interface RoleRankDelta {
   role: BalancerRoleCode;
   delta: number;
   /** Balancer rank for the role (workspace-grid points). */
@@ -279,7 +280,7 @@ export interface RoleRankDelta {
  * every active ranked role that has both values. `ow_rank_value` is normalised to the workspace
  * grid server-side, so it shares the same scale as `rank_value` and subtraction is valid.
  */
-export function computeRankDeltasByRole(player: BalancerPlayerRecord): RoleRankDelta[] {
+function computeRankDeltasByRole(player: BalancerPlayerRecord): RoleRankDelta[] {
   return getActiveRoleEntries(player.role_entries_json)
     .filter((entry) => entry.rank_value !== null && entry.ow_rank_value !== null)
     .map((entry) => ({
@@ -351,7 +352,7 @@ export function getPlayerValidationIssues(
   return issues;
 }
 
-export function normalizeInternalPayload(payload: InternalBalancePayload): InternalBalancePayload {
+function normalizeInternalPayload(payload: InternalBalancePayload): InternalBalancePayload {
   return {
     ...payload,
     teams: payload.teams.map((team, index) => ({
@@ -502,7 +503,7 @@ export function isRegistrationIncludedInBalancer(registration: AdminRegistration
 }
 
 /** Whether the registration's current custom status blocks it from counting as "ready", independent of pool inclusion. */
-export function isRegistrationReadyBlocked(registration: AdminRegistration): boolean {
+function isRegistrationReadyBlocked(registration: AdminRegistration): boolean {
   return registration.balancer_status_meta.excludes_from_ready;
 }
 
@@ -697,7 +698,7 @@ export function downloadPlayersExport(
  * Resolve division number from a rank value using the workspace division grid.
  * Falls back to DEFAULT_DIVISION_GRID when no grid is provided.
  */
-export function resolveDivisionFromRankHelper(
+function resolveDivisionFromRankHelper(
   rankValue: number | null,
   grid: DivisionGrid = DEFAULT_DIVISION_GRID
 ): number | null {
@@ -705,36 +706,17 @@ export function resolveDivisionFromRankHelper(
 }
 
 /**
- * Converts a map of { role -> SR rank } to a sorted BalancerPlayerRoleEntry[].
- * Priority is assigned in ROLE_ORDER order: tank=1, dps=2, support=3.
+ * A past tournament role -> the balancer registration role it seeds, or
+ * `null` for `Flex`: a flex roster row carries ONE rank that stands for no
+ * particular role (the player's maximum), so attributing it to tank, dps or
+ * support would invent per-role history the tournament never recorded — the
+ * same call the backend makes in
+ * `registration/rank_sources.py::HERO_CLASS_TO_REGISTRATION_ROLE`.
  */
-export function buildRoleEntriesFromRankHistory(
-  history: Partial<Record<BalancerRoleCode, number>>,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
-): BalancerPlayerRoleEntry[] {
-  const entries: BalancerPlayerRoleEntry[] = [];
-  let priority = 1;
-  for (const role of ROLE_ORDER) {
-    const rankValue = history[role] ?? null;
-    if (rankValue === null) continue;
-    entries.push({
-      role,
-      subtype: null,
-      priority: priority++,
-      rank_value: rankValue,
-      division_number: resolveDivisionFromRankHelper(rankValue, grid),
-      is_active: true,
-      ow_rank_value: null
-    });
-  }
-  return entries;
+function toBalancerRoleCode(role: UserRoleType): BalancerRoleCode | null {
+  const code = playerRoleSlotCode(role);
+  return code === "flex" ? null : code;
 }
-
-const USER_ROLE_TO_BALANCER: Record<UserRoleType, BalancerRoleCode> = {
-  Tank: "tank",
-  Damage: "dps",
-  Support: "support"
-};
 
 /**
  * Looks up a player's rank history using a two-step search:
@@ -812,7 +794,7 @@ export async function fetchPlayerRankHistoryPreview(
 
         for (const tournament of sorted) {
           const roleName = tournament.role as UserRoleType;
-          const roleCode = USER_ROLE_TO_BALANCER[roleName];
+          const roleCode = toBalancerRoleCode(roleName);
           if (!roleCode) continue;
           if (latestPerRole.has(roleCode)) continue;
           const playerRecord = tournament.players.find((p) => p.user_id === user.id);

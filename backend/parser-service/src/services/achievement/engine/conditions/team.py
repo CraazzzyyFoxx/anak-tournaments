@@ -11,31 +11,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import HeroClass
-from shared.domain.player_sub_roles import normalize_sub_role
 from src import models
 
 from ..context import EvalContext
 from . import ResultSet, register
-
-PRIMARY_SUB_ROLE_ALIASES = {"hitscan", "main_heal"}
-SECONDARY_SUB_ROLE_ALIASES = {"projectile", "light_heal"}
-
-
-def _player_flag_filter(flag: str):
-    if flag == "primary":
-        return models.Player.sub_role.in_(PRIMARY_SUB_ROLE_ALIASES)
-    if flag == "secondary":
-        return models.Player.sub_role.in_(SECONDARY_SUB_ROLE_ALIASES)
-    return None
-
-
-def _player_matches_flag(player: Any, flag: str) -> bool:
-    sub_role = normalize_sub_role(getattr(player, "sub_role", None))
-    if flag == "primary":
-        return sub_role in PRIMARY_SUB_ROLE_ALIASES
-    if flag == "secondary":
-        return sub_role in SECONDARY_SUB_ROLE_ALIASES
-    return False
 
 
 def _build_player_filter(
@@ -60,12 +39,6 @@ def _build_player_filter(
 
     if ctype == "player_role":
         return [models.Player.role == HeroClass(params["role"])]
-    if ctype == "player_flag":
-        flag_filter = _player_flag_filter(params["flag"])
-        return [flag_filter] if flag_filter is not None else []
-    if ctype == "player_sub_role":
-        sub_role = normalize_sub_role(params.get("sub_role"))
-        return [models.Player.sub_role == sub_role] if sub_role is not None else []
     if ctype == "player_div":
         # Division filter handled post-query since it needs grid
         return []
@@ -125,10 +98,6 @@ def _player_matches_condition(
 
     if ctype == "player_role":
         return player.role == HeroClass(params["role"])
-    if ctype == "player_flag":
-        return _player_matches_flag(player, params["flag"])
-    if ctype == "player_sub_role":
-        return normalize_sub_role(getattr(player, "sub_role", None)) == normalize_sub_role(params.get("sub_role"))
     if ctype == "player_div":
         return _player_matches_div_condition(
             context,

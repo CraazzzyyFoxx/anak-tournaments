@@ -16,17 +16,23 @@ from pydantic import BaseModel, Field, model_validator
 __all__ = (
     "SETTINGS_KEY_RANK_COLLECTION",
     "SETTINGS_KEY_RANK_MAPPING",
+    "SETTINGS_KEY_SCRIM",
+    "SETTINGS_KEY_STREAM_COLLECTION",
     "SETTINGS_KEY_SUBSCRIPTION_COLLECTION",
     "SETTINGS_SCHEMAS",
     "RankCollectionConfig",
     "RankCollectionScope",
     "RankMappingConfig",
     "RankMappingEntry",
+    "ScrimConfig",
+    "StreamCollectionConfig",
     "SubscriptionCollectionConfig",
 )
 
 SETTINGS_KEY_RANK_COLLECTION = "parser.rank_collection"
 SETTINGS_KEY_RANK_MAPPING = "parser.rank_mapping"
+SETTINGS_KEY_SCRIM = "tournament.scrim"
+SETTINGS_KEY_STREAM_COLLECTION = "stream.collection"
 SETTINGS_KEY_SUBSCRIPTION_COLLECTION = "parser.subscription_collection"
 
 
@@ -76,6 +82,28 @@ class SubscriptionCollectionConfig(BaseModel):
     batch_size: int = Field(default=50, ge=1, le=500)
 
 
+class StreamCollectionConfig(BaseModel):
+    """Operational config for the periodic Twitch live-status poller.
+
+    ``enabled=False`` by default so a missing/empty key can never start hitting
+    Twitch Helix on the shared app-token bucket (800 points/min, shared with
+    identity-service). ``batch_size`` is capped at 100 -- the hard limit of
+    ``user_login``/``user_id`` values Helix ``GET /streams`` accepts per request.
+    """
+
+    enabled: bool = False
+    interval_seconds: int = Field(default=60, ge=30, le=3600)
+    batch_size: int = Field(default=100, ge=1, le=100)
+
+
+#: Identity of the built-in OverFast division+tier -> rank_value table (see
+#: ``parser-service``'s ``overwatch_rank.mapping``). Bumped whenever that table
+#: is rebased: a bare ``rank_value`` is ambiguous across versions (2500 was
+#: Platinum 5 under v1, Emerald 5 under v2), so the version stamped on each
+#: snapshot is what makes a backfill possible.
+DEFAULT_RANK_MAPPING_VERSION = "ow2-default-v2"
+
+
 class RankMappingEntry(BaseModel):
     """One native division+tier → integer rank_value mapping row."""
 
@@ -92,7 +120,7 @@ class RankMappingConfig(BaseModel):
     single division+tier here only overrides that one cell.
     """
 
-    version: str = Field(default="ow2-default-v1", min_length=1, max_length=64)
+    version: str = Field(default=DEFAULT_RANK_MAPPING_VERSION, min_length=1, max_length=64)
     entries: list[RankMappingEntry] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -106,9 +134,27 @@ class RankMappingConfig(BaseModel):
         return self
 
 
+class ScrimConfig(BaseModel):
+    """Operational limits for ad-hoc scrim rooms.
+
+    Lives here rather than as a constant so the cap can be raised for a busy
+    community without a deploy — which is the whole reason it starts at 1: one
+    open room per creator is the conservative launch position, not a rule.
+
+    "Open" means ``ScrimRoom.closed_at IS NULL``; closed rooms are kept forever
+    and never count. ``max_best_of`` bounds the series a room may provision,
+    since ``best_of`` drives how many pick-ban rounds the engine will generate.
+    """
+
+    max_open_rooms_per_user: int = Field(default=1, ge=1, le=50)
+    max_best_of: int = Field(default=7, ge=1, le=9)
+
+
 #: Registry consumed by the admin layer to validate writes per key.
 SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_RANK_COLLECTION: RankCollectionConfig,
     SETTINGS_KEY_RANK_MAPPING: RankMappingConfig,
+    SETTINGS_KEY_SCRIM: ScrimConfig,
+    SETTINGS_KEY_STREAM_COLLECTION: StreamCollectionConfig,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION: SubscriptionCollectionConfig,
 }

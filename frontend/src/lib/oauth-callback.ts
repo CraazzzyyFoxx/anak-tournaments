@@ -26,6 +26,39 @@ const COOKIE_DOMAIN = `.${PLATFORM_ZONE}`;
 // use: read once here, forwarded raw to the backend, then always cleared.
 const CSRF_COOKIE = "owt_oauth_csrf";
 
+// Task 10R fix 1: the single-use, HOST-ONLY guard cookie set by
+// oauth-login.ts's custom-domain apex bounce, on THIS exact domain, before
+// the flow ever left for the apex. Read once by whichever custom-domain
+// route redeems a guard-bound ticket (/auth/sso/route.ts,
+// /auth/link/complete/route.ts), forwarded raw to identity-svc alongside
+// the ticket, then always cleared (single use, same as CSRF_COOKIE above).
+// See oauth-login.ts's module docstring for the full browser-binding
+// rationale. Exported so both routes share one definition instead of
+// duplicating the literal.
+export const GUARD_COOKIE = "owt_xdomain_guard";
+
+// Clears the single-use guard cookie. Host-only (no `domain` attribute) --
+// must match exactly what oauth-login.ts set, or the delete won't take.
+export function clearGuardCookie(response: NextResponse): void {
+  response.cookies.delete({ name: GUARD_COOKIE, path: "/" });
+}
+
+// Shared error-redirect for the two custom-domain guard-ticket routes
+// (/auth/sso, /auth/link/complete). Same `auth_error`(+`auth_error_provider`)
+// query shape as `errorRedirect` below, but scoped to the CALLER's own
+// origin (each of those routes runs on a foreign custom domain, not the
+// fixed platform SITE_URL) and clearing GUARD_COOKIE instead of CSRF_COOKIE.
+export function guardTicketErrorRedirect(origin: string, errorCode: string, provider?: string | null): NextResponse {
+  const errorUrl = new URL("/", origin);
+  errorUrl.searchParams.set("auth_error", errorCode);
+  if (provider) {
+    errorUrl.searchParams.set("auth_error_provider", provider);
+  }
+  const response = NextResponse.redirect(errorUrl);
+  clearGuardCookie(response);
+  return response;
+}
+
 const KNOWN_PROVIDERS: ReadonlySet<OAuthProviderName> = new Set<OAuthProviderName>([
   "discord",
   "twitch",

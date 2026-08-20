@@ -16,19 +16,21 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import (
+    HERO_TYPE_CLASSES,
     DraftAutopickStrategy,
     DraftFormat,
     DraftPickStatus,
     DraftPlayerStatus,
-    DraftRole,
     DraftStatus,
+    HeroClass,
 )
-from shared.core.errors import ApiExc, ApiHTTPException
+from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.workspace import get_or_create_workspace_member
-from src.services.draft import feasibility, loaders, ranks
+from src.services.draft import feasibility, lifecycle, loaders, ranks
 from src.services.draft import suggestions as sug
+from src.services.draft._errors import err as _err
 
 
 @dataclass(frozen=True)
@@ -37,10 +39,6 @@ class DraftResult:
     next_pick: DraftPick | None
     completed: bool
     blocked_reason: str | None = None
-
-
-def _err(code: str, msg: str, status_code: int = 409) -> ApiHTTPException:
-    return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
 
 
 async def _actor_member_id(session: AsyncSession, draft_session: DraftSession, actor_user_id: int | None) -> int | None:
@@ -92,8 +90,64 @@ async def _finalize(
     return result.rowcount == 1
 
 
+async def _apply_dynamic_round_order(session: AsyncSession, draft_session: DraftSession, next_pick: DraftPick) -> bool:
+    """Re-seat a CUSTOM round whose rule ranks teams by their live average.
+
+    Runs on the first pick of a round only. Returns True when the seating
+    actually moved — the caller locks the draft on that, so nobody picks
+    against the order they were reading a second ago.
+    """
+    if next_pick.pick_in_round != 1 or draft_session.format != DraftFormat.CUSTOM.value:
+        return False
+    round_rules = draft_session.settings_json.get("round_rules") or []
+    round_idx = next_pick.round_no - 1
+    rule = round_rules[round_idx] if round_idx < len(round_rules) else None
+    # The seat-order vocabulary lives once, in lifecycle: seeding, the settings
+    # resync and this live re-seat have to agree on which rules are dynamic.
+    if rule not in lifecycle.DYNAMIC_ROUND_RULES:
+        return False
+
+    # Average the drafted-role rank (off-role aware), not the primary-role
+    # rank_value.
+    avg_by_team = await _team_avg_drafted_rank(
+        session, draft_session.id, await feasibility.resolve_shape(session, draft_session)
+    )
+    teams = (await session.scalars(sa.select(DraftTeam).where(DraftTeam.session_id == draft_session.id))).all()
+    sorted_team_ids = [
+        team.id
+        for team in lifecycle.average_seat_order(
+            list(teams),
+            averages=avg_by_team,
+            descending=rule == "team_avg_desc",
+        )
+    ]
+    round_picks = (
+        await session.scalars(
+            sa.select(DraftPick)
+            .where(DraftPick.session_id == draft_session.id, DraftPick.round_no == next_pick.round_no)
+            .order_by(DraftPick.overall_no.asc())
+        )
+    ).all()
+
+    changed = False
+    for pick_to_update, team_id in zip(round_picks, sorted_team_ids, strict=False):
+        if pick_to_update.draft_team_id != team_id:
+            pick_to_update.draft_team_id = team_id
+            changed = True
+    await session.flush()
+    # round_picks returned the identity-mapped objects, so next_pick's
+    # draft_team_id reassignment above is already visible in memory.
+    return changed
+
+
 async def _advance(session: AsyncSession, draft_session: DraftSession) -> DraftPick | None:
-    """Move the next UPCOMING pick to ON_CLOCK, or complete the draft."""
+    """Move the next UPCOMING pick to ON_CLOCK, or complete the draft.
+
+    When the starting round re-seated the teams under the captains (a dynamic
+    ``team_avg_*`` rule), the pick goes on the clock unarmed and the session
+    pauses instead of running: the board changed order, so everyone has to
+    re-read it before anyone may act. An admin resume arms a full pick timer.
+    """
     next_pick = await session.scalar(
         sa.select(DraftPick)
         .where(
@@ -110,52 +164,22 @@ async def _advance(session: AsyncSession, draft_session: DraftSession) -> DraftP
         await session.flush()
         return None
 
-    # Handle custom round dynamic ordering when a new round starts (first pick of the round)
-    if next_pick.pick_in_round == 1 and draft_session.format == DraftFormat.CUSTOM.value:
-        round_rules = draft_session.settings_json.get("round_rules") or []
-        round_idx = next_pick.round_no - 1
-        if round_idx < len(round_rules):
-            rule = round_rules[round_idx]
-            if rule in ("team_avg_asc", "team_avg_desc"):
-                # Average the drafted-role rank (off-role aware), not the
-                # primary-role rank_value.
-                avg_by_team = await _team_avg_drafted_rank(session, draft_session.id)
+    reordered = await _apply_dynamic_round_order(session, draft_session, next_pick)
 
-                # Load all teams in this draft session
-                teams = (
-                    await session.scalars(sa.select(DraftTeam).where(DraftTeam.session_id == draft_session.id))
-                ).all()
-
-                reverse_sort = rule == "team_avg_desc"
-                sorted_teams = sorted(
-                    teams, key=lambda t: (avg_by_team.get(t.id, 0.0), t.draft_position), reverse=reverse_sort
-                )
-                sorted_team_ids = [t.id for t in sorted_teams]
-
-                # Get all picks in this round
-                round_picks = (
-                    await session.scalars(
-                        sa.select(DraftPick)
-                        .where(DraftPick.session_id == draft_session.id, DraftPick.round_no == next_pick.round_no)
-                        .order_by(DraftPick.overall_no.asc())
-                    )
-                ).all()
-
-                # Re-assign teams to the picks of this round
-                for index, pick_to_update in enumerate(round_picks):
-                    if index < len(sorted_team_ids):
-                        pick_to_update.draft_team_id = sorted_team_ids[index]
-
-                await session.flush()
-                # round_picks returned the identity-mapped objects, so next_pick's
-                # draft_team_id reassignment above is already visible in memory.
-
-    now = datetime.now(UTC)
     next_pick.status = DraftPickStatus.ON_CLOCK.value
-    next_pick.clock_started_at = now
-    next_pick.clock_expires_at = now + timedelta(seconds=draft_session.pick_time_seconds)
     next_pick.clock_remaining_ms = None
     draft_session.current_pick_id = next_pick.id
+    if reordered:
+        draft_session.status = DraftStatus.PAUSED.value
+        draft_session.blocked_reason = "order_recalculated"
+        # No deadline and no recorded remainder: lifecycle.resume() arms a full
+        # pick timer for whoever the new order put on the clock.
+        next_pick.clock_started_at = None
+        next_pick.clock_expires_at = None
+    else:
+        now = datetime.now(UTC)
+        next_pick.clock_started_at = now
+        next_pick.clock_expires_at = now + timedelta(seconds=draft_session.pick_time_seconds)
     await session.flush()
     return next_pick
 
@@ -172,7 +196,13 @@ async def _apply_won(
     next_pick = await _advance(session, draft_session)
     # No refresh needed: _finalize syncs the pick via synchronize_session and
     # draft_session was only mutated in Python (expire_on_commit=False).
-    return DraftResult(pick=pick, next_pick=next_pick, completed=next_pick is None)
+    return DraftResult(
+        pick=pick,
+        next_pick=next_pick,
+        completed=next_pick is None,
+        # Set by _advance when the next round re-seated the teams.
+        blocked_reason=draft_session.blocked_reason,
+    )
 
 
 def _team_slot_counts(
@@ -216,7 +246,7 @@ def _team_slot_counts(
     return counts
 
 
-def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftRole, int]:
+def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[HeroClass, int]:
     """How many more slots each role can still take on this team.
 
     A role lands either in its own remaining role slot or in any free flex slot,
@@ -226,14 +256,17 @@ def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftR
     """
     targets = shape.slots
     free_flex = max(0, targets.get(FLEX_SLOT_CODE, 0) - counts.get(FLEX_SLOT_CODE, 0))
-    return {role: max(0, targets.get(role.value, 0) - counts.get(role.value, 0)) + free_flex for role in DraftRole}
+    return {role: max(0, targets.get(role.slot_code, 0) - counts.get(role.slot_code, 0)) + free_flex for role in HERO_TYPE_CLASSES}
 
 
-async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int) -> dict[int, float]:
+async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int, shape: RosterShape) -> dict[int, float]:
     """Average drafted-role rank per team (picked players + captains).
 
-    Uses each pick's frozen ``target_rank_value``; falls back to the
-    role-specific rank for the drafted/primary role (captains have no pick).
+    Uses each pick's frozen ``target_rank_value``; falls back to the rank the
+    shape gives the drafted/primary role (captains have no pick). A role-less
+    shape ignores the frozen value: it was frozen against a role the shape gives
+    no meaning to, so ``slot_rank`` re-derives the same maximum every other
+    reader of a flex draft shows.
     """
     players = (
         await session.scalars(
@@ -260,11 +293,11 @@ async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int) -
     counts: dict[int, int] = {}
     for p in players:
         pk = pick_by_player_id.get(p.id)
-        if pk is not None and pk.target_rank_value is not None:
+        if shape.has_role_slots and pk is not None and pk.target_rank_value is not None:
             rank = pk.target_rank_value
         else:
             role = (pk.target_role if pk else None) or p.primary_role
-            rank = ranks.role_rank(p, role) or 0
+            rank = ranks.slot_rank(p, role, shape) or 0
         tid = p.drafted_by_team_id
         sums[tid] = sums.get(tid, 0.0) + rank
         counts[tid] = counts.get(tid, 0) + 1
@@ -290,19 +323,19 @@ def _available_player_from(snapshot: feasibility.DraftSnapshot, player_id: int) 
     return player
 
 
-def _role_is_legal(player: DraftPlayer, target_role: DraftRole | None) -> bool:
+def _role_is_legal(player: DraftPlayer, target_role: HeroClass | None) -> bool:
     if target_role is None:
         return True
     if player.is_flex:
         return True
     playable = {player.primary_role, *(player.secondary_roles_json or [])}
-    return target_role.value in playable
+    return target_role.slot_code in playable
 
 
-def _playable_roles(player: DraftPlayer) -> frozenset[DraftRole]:
+def _playable_roles(player: DraftPlayer) -> frozenset[HeroClass]:
     if player.is_flex:
-        return frozenset(DraftRole)
-    return frozenset(DraftRole(role) for role in {player.primary_role, *(player.secondary_roles_json or [])})
+        return frozenset(HERO_TYPE_CLASSES)
+    return frozenset(HeroClass.from_slot_code(role) for role in {player.primary_role, *(player.secondary_roles_json or [])})
 
 
 @dataclass(frozen=True)
@@ -314,7 +347,7 @@ class SlotDecision:
     where a role would be a value the shape gives no meaning to.
     """
 
-    role: DraftRole
+    role: HeroClass
     recorded_role: str | None
 
 
@@ -322,7 +355,7 @@ def resolve_pick_slot(
     shape: RosterShape,
     counts: Mapping[str, int],
     player: DraftPlayer,
-    target_role: DraftRole | None,
+    target_role: HeroClass | None,
 ) -> SlotDecision:
     """Validate one pick against the shape and this team's already filled slots.
 
@@ -335,14 +368,14 @@ def resolve_pick_slot(
     requested = target_role if shape.has_role_slots else None
     if not _role_is_legal(player, requested):
         raise _err("illegal_role", "Player cannot play the requested role", status_code=422)
-    role = requested or DraftRole(player.primary_role)
+    role = requested or HeroClass.from_slot_code(player.primary_role)
     if _role_openings(shape, counts).get(role, 0) <= 0:
         raise _err(
             "slot_filled",
-            f"No roster slot left for {role.value} on this team",
+            f"No roster slot left for {role.slot_code} on this team",
             status_code=422,
         )
-    return SlotDecision(role=role, recorded_role=role.value if shape.has_role_slots else None)
+    return SlotDecision(role=role, recorded_role=role.slot_code if shape.has_role_slots else None)
 
 
 def _unsafe_pick_error(report: feasibility.DraftFeasibilityReport) -> ApiHTTPException:
@@ -389,7 +422,7 @@ async def select(
     *,
     player_id: int,
     expected_version: int,
-    target_role: DraftRole | None,
+    target_role: HeroClass | None,
     actor_user_id: int | None,
     actor_auth_user_id: int | None = None,
     actor_player_ids: Collection[int] = (),
@@ -421,7 +454,7 @@ async def select(
         hypothetical=feasibility.DraftAssignment(
             player_id=player.id,
             team_id=pick.draft_team_id,
-            slot_code=decision.role.value,
+            slot_code=decision.role.slot_code,
         ),
     )
     if not feasibility_report.is_feasible:
@@ -443,7 +476,7 @@ async def select(
     # pick is a complete (player, role, rank) record regardless of off-role. A
     # role-less roster records no role: recorded_role is None there.
     pick.target_role = decision.recorded_role
-    pick.target_rank_value = ranks.role_rank(player, decision.role)
+    pick.target_rank_value = ranks.slot_rank(player, decision.role, shape)
     return await _apply_won(session, draft_session, pick, player)
 
 
@@ -469,10 +502,10 @@ async def autopick(
             player_id=p.id,
             rank_value=p.rank_value or 0,
             playable_roles=_playable_roles(p),
-            preference_order=(DraftRole(p.primary_role),),
+            preference_order=(HeroClass.from_slot_code(p.primary_role),),
             is_flex=p.is_flex,
             user_id=p.user_id,
-            rank_by_role={DraftRole(k): v for k, v in (p.role_ranks or {}).items()},
+            rank_by_role={HeroClass.from_slot_code(k): v for k, v in (p.role_ranks or {}).items()},
         )
         for p in available
     ]
@@ -513,9 +546,9 @@ async def autopick(
     # ranks.role_rank(player, ...) reads role_ranks -> roles; the chosen row came
     # from the snapshot's eager-loaded players, so no re-fetch is needed.
     player = next(p for p in available if p.id == chosen_id)
-    resolved_role = chosen_role or DraftRole(player.primary_role)
-    pick.target_role = resolved_role.value if shape.has_role_slots else None
-    pick.target_rank_value = ranks.role_rank(player, resolved_role)
+    resolved_role = chosen_role or HeroClass.from_slot_code(player.primary_role)
+    pick.target_role = resolved_role.slot_code if shape.has_role_slots else None
+    pick.target_rank_value = ranks.slot_rank(player, resolved_role, shape)
     return await _apply_won(session, draft_session, pick, player)
 
 
@@ -527,7 +560,7 @@ async def override(
     player_id: int | None,
     expected_version: int,
     actor_user_id: int | None,
-    target_role: DraftRole | None = None,
+    target_role: HeroClass | None = None,
 ) -> DraftResult:
     if not draft_session.allow_admin_override:
         raise _err("override_disabled", "Admin override is disabled for this draft")
@@ -546,7 +579,7 @@ async def override(
         hypothetical=feasibility.DraftAssignment(
             player_id=player.id,
             team_id=pick.draft_team_id,
-            slot_code=decision.role.value,
+            slot_code=decision.role.slot_code,
         ),
     )
     if not feasibility_report.is_feasible:
@@ -565,5 +598,5 @@ async def override(
     if not won:
         raise _err("pick_already_resolved", "Pick was already resolved")
     pick.target_role = decision.recorded_role
-    pick.target_rank_value = ranks.role_rank(player, decision.role)
+    pick.target_rank_value = ranks.slot_rank(player, decision.role, shape)
     return await _apply_won(session, draft_session, pick, player)

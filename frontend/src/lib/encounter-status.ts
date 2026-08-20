@@ -51,16 +51,3 @@ export function getEncounterWinner(encounter: Encounter): "home" | "away" | null
   if (encounter.score.home === encounter.score.away) return null;
   return encounter.score.home > encounter.score.away ? "home" : "away";
 }
-
-/** Timestamp to show in a "when did this happen" column. */
-export function getEncounterPlayedAt(encounter: Encounter): string | Date | null {
-  return (
-    encounter.confirmed_at ??
-    encounter.ended_at ??
-    encounter.started_at ??
-    encounter.scheduled_at ??
-    encounter.updated_at ??
-    encounter.created_at ??
-    null
-  );
-}

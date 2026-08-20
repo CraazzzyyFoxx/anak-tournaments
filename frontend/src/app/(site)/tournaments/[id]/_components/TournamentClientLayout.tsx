@@ -4,6 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import TournamentBroadcastDock from "./TournamentBroadcastDock";
+import TournamentLinkChips from "./TournamentLinkChips";
 import TournamentRegisterButton from "./TournamentRegisterButton";
 import { getTournamentStatusMeta, isTournamentStatusEnded } from "@/lib/tournament-status";
 import { cn, formatDateRange } from "@/lib/utils";
@@ -11,6 +13,8 @@ import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import { createTrailingCoalescer } from "@/hooks/tournamentRealtime.helpers";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
+import { useTournamentStreamRealtime } from "@/hooks/useTournamentStreamRealtime";
+import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
 import type { StageSummary } from "@/types/tournament.types";
 
 import { useTranslations, useLocale } from "next-intl";
@@ -63,6 +67,14 @@ export default function TournamentClientLayout({
   // Follow the tournament the viewer opened: switch the active workspace to its
   // owner (apex-only; a manual switch on the page is not fought).
   useSyncActiveWorkspace(tournament?.workspace_id);
+
+  // The shell owns the tournament's streams, for two consumers that outlive any
+  // one section: the persistent broadcast block below the hero, and the Stream
+  // tab's present-or-absent gate in the nav. It is also the single owner of the
+  // `tournament:{id}:streams` subscription — the sections read the same query
+  // key, so one jittered refetch here keeps all of them fresh.
+  const streams = useTournamentStreamsQuery(tournamentId).data;
+  useTournamentStreamRealtime({ tournamentId });
 
   if (tournamentQuery.isPending) {
     return <TournamentShellSkeleton />;
@@ -165,14 +177,31 @@ export default function TournamentClientLayout({
         }
       />
 
+      {/* Between the hero and the nav, because Discord, the rules doc, an
+          external bracket and the VODs are wanted from every section — and
+          `tournament` is the payload this component already holds, so the row
+          costs no read of its own. It fits here only because the broadcast moved
+          to the fixed dock below: a chip row is one line tall and does not push
+          the nav off a phone screen the way a second card would. */}
+      <TournamentLinkChips links={tournament.links} />
+
       <TournamentSectionNav
         tournamentId={String(tournamentId)}
         status={tournament.status}
         stages={stages}
         teamFormation={tournament.team_formation}
+        hasSchedule={(tournament.phase_schedule?.length ?? 0) > 0}
+        hasTeams={teamsCount > 0}
+        hasStreams={(streams?.official.length ?? 0) > 0 || (streams?.participants.length ?? 0) > 0}
       />
 
       <section className="min-w-0">{children}</section>
+
+      {/* Fixed to the bottom-trailing corner, so it takes no room in this
+          stack. Rendered LAST on purpose: a complementary panel that a
+          keyboard user reaches after the section content, rather than two tab
+          stops standing in front of every page. */}
+      <TournamentBroadcastDock streams={streams} />
     </div>
   );
 }

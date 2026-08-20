@@ -8,17 +8,6 @@ import type { TournamentStatus } from "@/types/tournament.types";
 // callers can hand their `t` straight through (strictFunctionTypes-safe).
 type Translate = ReturnType<typeof useTranslations<never>>;
 
-// Derive 1-2 letter initials from a team name for avatar glyphs.
-export function teamInitials(name?: string | null): string {
-  const cleaned = (name ?? "").trim();
-  if (!cleaned) return "??";
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
-  }
-  return cleaned.slice(0, 2).toUpperCase();
-}
-
 // Compact relative time ("2m ago", "in 19d", "Mar 01") for the Updated column
 // and live-card timestamps. `now` is injectable for deterministic tests.
 //
@@ -125,20 +114,6 @@ export function stageProgress(
   const active = stages.find((stage) => stage.is_active);
   const pct = total > 0 ? Math.min(95, Math.max(10, Math.round((completed / total) * 100))) : 50;
   return { label: active?.name ?? t("common.live"), pct, fill: "teal" };
-}
-
-const AVATAR_GRADIENTS = [
-  "linear-gradient(135deg,hsl(174 72% 55%),hsl(174 60% 30%))",
-  "linear-gradient(135deg,hsl(340 75% 65%),hsl(340 60% 38%))",
-  "linear-gradient(135deg,hsl(270 70% 68%),hsl(270 55% 42%))",
-  "linear-gradient(135deg,hsl(38 95% 62%),hsl(38 80% 42%))",
-  "linear-gradient(135deg,hsl(210 78% 65%),hsl(210 60% 38%))",
-  "linear-gradient(135deg,hsl(142 65% 55%),hsl(142 50% 32%))"
-];
-
-export function avatarGradient(seed: number): string {
-  const index = Math.abs(Math.trunc(seed)) % AVATAR_GRADIENTS.length;
-  return AVATAR_GRADIENTS[index];
 }
 
 // Current-map name from the live encounter, if a map is in progress.

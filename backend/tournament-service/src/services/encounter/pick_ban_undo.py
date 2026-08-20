@@ -127,13 +127,17 @@ async def perform_undo(
     Returns the resulting undo block, so the caller renders the outcome without
     a second read.
     """
-    pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
+    # Same lock every committing path takes: an undo REMOVES a committed entry,
+    # which moves the step cursor exactly as taking one does, and the consent
+    # it reads (`undo_target_index`) is compared against the pool it loads
+    # below (see `pick_ban_session.get_pick_ban_session`).
+    pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind, for_update=True)
     if pick_ban is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban session is not initialized")
     if pick_ban.status == MapVetoSessionStatus.CANCELLED.value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban session is cancelled")
 
-    pool = await _load_pool(session, pick_ban.id)
+    pool = await _load_pool(session, pick_ban.id, refresh=True)
     entries = engine.undoable_entries(pool)
     if not entries:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There is no action left to undo")
@@ -160,10 +164,13 @@ async def perform_undo(
     return undo_state(pick_ban, pool)
 
 
-async def _load_pool(session: AsyncSession, pick_ban_id: int) -> list[PickBanEntry]:
-    result = await session.execute(
-        select(PickBanEntry).where(PickBanEntry.session_id == pick_ban_id).order_by(PickBanEntry.order)
-    )
+async def _load_pool(session: AsyncSession, pick_ban_id: int, *, refresh: bool = False) -> list[PickBanEntry]:
+    """The session's entries; ``refresh`` discards a pre-lock snapshot already
+    sitting in the identity map."""
+    query = select(PickBanEntry).where(PickBanEntry.session_id == pick_ban_id).order_by(PickBanEntry.order)
+    if refresh:
+        query = query.execution_options(populate_existing=True)
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 

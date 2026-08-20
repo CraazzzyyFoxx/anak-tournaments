@@ -107,6 +107,30 @@ describe("draft config step", () => {
     expect(html).toContain("roles.flex");
     expect(html).not.toContain("5 roles.flex");
   });
+
+  test("labels every custom round rule with its round, outside the advanced disclosure", () => {
+    const custom = renderToStaticMarkup(
+      <DraftConfigStep
+        value={{ ...CONFIG, format: "custom" }}
+        onChange={() => {}}
+        rosterShape={SHAPE}
+        tournamentId={5}
+      />
+    );
+    // Every rule select is bound to a visible "Round N" label, so which round a
+    // rule applies to never depends on inferring the grid flow.
+    for (const round of [1, 2, 3, 4]) {
+      expect(custom).toContain(`for="draft-round-rule-${round}"`);
+      expect(custom).toContain(`id="draft-round-rule-${round}"`);
+      expect(custom).toContain(`roundNumber:{&quot;round&quot;:${round}}`);
+    }
+    expect(custom).toContain("roundRulesHint");
+    // The rules configure the chosen format, so they precede (and stay out of)
+    // the collapsed advanced panel.
+    expect(custom.indexOf("roundRules")).toBeLessThan(custom.indexOf("<details"));
+    // Snake never shows them at all.
+    expect(html).not.toContain("roundRules");
+  });
 });
 
 describe("draft captains step", () => {

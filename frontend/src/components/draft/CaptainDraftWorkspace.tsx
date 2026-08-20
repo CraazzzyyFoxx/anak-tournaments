@@ -156,6 +156,29 @@ export function CaptainDraftWorkspace({
       headingId={poolHeadingId}
     />
   );
+  const renderInspectorAndShortlist = (variant: "mobile" | "desktop") => (
+    <>
+      <PlayerInspector
+        player={selectedPlayer}
+        role={selectedRole}
+        options={options}
+        safetyRequired={safetyRequired}
+        headingId={`player-inspector-${variant}-heading`}
+        onRoleChange={setSelectedRole}
+        onClose={() => {
+          setSelectedPlayerId(null);
+          setSelectedRole(null);
+        }}
+        divisionGrid={divisionGrid}
+      />
+      <CaptainShortlist
+        players={shortlistPlayers}
+        onSelect={(player) => selectPlayer(player)}
+        onRemove={toggleShortlist}
+        divisionGrid={divisionGrid}
+      />
+    </>
+  );
   const team = (
     <TeamRosters
       teams={board.teams}
@@ -199,25 +222,7 @@ export function CaptainDraftWorkspace({
           ))}
         </TabsList>
         <TabsContent value="pool" className="mt-5 space-y-6">
-          <PlayerInspector
-            player={selectedPlayer}
-            role={selectedRole}
-            options={options}
-            safetyRequired={safetyRequired}
-            headingId="player-inspector-mobile-heading"
-            onRoleChange={setSelectedRole}
-            onClose={() => {
-              setSelectedPlayerId(null);
-              setSelectedRole(null);
-            }}
-            divisionGrid={divisionGrid}
-          />
-          <CaptainShortlist
-            players={shortlistPlayers}
-            onSelect={(player) => selectPlayer(player)}
-            onRemove={toggleShortlist}
-            divisionGrid={divisionGrid}
-          />
+          {renderInspectorAndShortlist("mobile")}
           {renderPool("player-pool-mobile-heading")}
         </TabsContent>
         <TabsContent value="team" className="mt-5">
@@ -241,25 +246,7 @@ export function CaptainDraftWorkspace({
         </aside>
         {/* Not <main>: the route already exposes the page-level main landmark. */}
         <div className="flex min-w-0 flex-col gap-4">
-          <PlayerInspector
-            player={selectedPlayer}
-            role={selectedRole}
-            options={options}
-            safetyRequired={safetyRequired}
-            headingId="player-inspector-desktop-heading"
-            onRoleChange={setSelectedRole}
-            onClose={() => {
-              setSelectedPlayerId(null);
-              setSelectedRole(null);
-            }}
-            divisionGrid={divisionGrid}
-          />
-          <CaptainShortlist
-            players={shortlistPlayers}
-            onSelect={(player) => selectPlayer(player)}
-            onRemove={toggleShortlist}
-            divisionGrid={divisionGrid}
-          />
+          {renderInspectorAndShortlist("desktop")}
           {renderPool("player-pool-desktop-heading")}
         </div>
         <aside className="sticky top-4 max-h-[calc(100svh-2rem)] self-start overflow-y-auto">

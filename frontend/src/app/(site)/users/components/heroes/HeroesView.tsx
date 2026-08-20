@@ -8,7 +8,7 @@ import type { UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
 import { getHumanizedStats } from "@/utils/stats";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { heroVariantFromRole, type AqtRoleKey } from "@/components/hero/heroRole";
+import { heroVariantFromRole, type AqtRoleKey } from "@/lib/player-role";
 import {
   computeDelta,
   formatDelta,

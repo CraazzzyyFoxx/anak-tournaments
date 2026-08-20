@@ -133,7 +133,17 @@ async def to_pydantic(
         if visible_only:
             accounts = [account for account in accounts if _is_globally_visible(account)]
         social_accounts = [_social_account_read(account) for account in accounts]
-    return schemas.UserRead(id=user.id, name=user.name, avatar_url=user.avatar_url, social_accounts=social_accounts)
+    return schemas.UserRead(
+        id=user.id,
+        name=user.name,
+        avatar_url=user.avatar_url,
+        # ``is not False`` rather than a truthiness check: the column default lands
+        # at INSERT, so a transient (unflushed) ``User`` reads None here, and
+        # reporting that as "hidden" would show the owner a switch that lies about
+        # their own state. Same fail-open direction as ``_is_globally_visible``.
+        stream_visible=user.stream_visible is not False,
+        social_accounts=social_accounts,
+    )
 
 
 def _is_globally_visible(account: models.SocialAccount) -> bool:
@@ -778,24 +788,27 @@ async def get_hero_compare(
         baseline_target = target
         sample_size = 1
     else:
-        population_users = await service.get_compare_population_users(
+        # Only "is the cohort empty?" is needed here, to tell the two 404s apart.
+        # This used to materialize the whole population -- ~560 (id, name) rows --
+        # and hand the ids straight back as an ``IN`` list, so the statistics query
+        # arrived with 584 bind parameters and timed out. The population is now
+        # resolved inside that query; the names were never read.
+        if not await service.compare_population_exists(
             session,
             role=compare_role,
             div_min=compare_div_min,
             div_max=compare_div_max,
             tournament_id=params.tournament_id,
             grid=grid,
-        )
-        if not population_users:
+        ):
             raise errors.ApiHTTPException(
                 status_code=404,
                 detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
             )
 
-        population_user_ids = [user_id for user_id, _ in population_users]
         baseline_playtime_by_user, baseline_stats_by_user = await service.get_users_hero_compare_stats(
             session,
-            user_ids=population_user_ids,
+            user_ids=None,
             hero_id=params.right_hero_id,
             map_id=params.map_id,
             stats=requested_stats,
@@ -1127,11 +1140,16 @@ async def get_profile(
         if team.tournament.is_league:
             continue
 
+        # Participation, not scoring: a live tournament has no final placement
+        # yet, but the player is already in it — counting only scored events
+        # reported 0 tournaments and collapsed the whole profile into the
+        # empty-career panel.
+        tournaments_count += 1
+
         placement = _mappers.resolve_team_placement(team)
         if placement is None:
             continue
         placements.append(placement)
-        tournaments_count += 1
         if placement == 1:
             tournaments_won += 1
         for standing in team.standings:
@@ -1400,7 +1418,7 @@ async def get_tournament_with_stats(
         session,
         team.tournament,
         user.id,
-        tournament_stats,
+        [name for name in tournament_stats if name != enums.LogStatsName.Performance],
     ):
         if not values:
             continue
@@ -1409,6 +1427,15 @@ async def get_tournament_with_stats(
         rank = rank_asc if enums.is_ascending_stat(stat) else rank_desc
 
         stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
+
+    # MVP placement spans two LogStatsName columns (COALESCE(ImpactRank, Performance) —
+    # see get_tournament_mvp_stat_for_user), so it can't ride the generic single-name
+    # loop above. Slots into the same "performance" key the frontend already reads.
+    mvp_row = await statistics_service.get_tournament_mvp_stat_for_user(session, team.tournament, user.id)
+    if mvp_row:
+        stats[enums.LogStatsName.Performance] = schemas.UserTournamentStat(
+            value=mvp_row.value, rank=mvp_row.rank, total=mvp_row.total
+        )
 
     for placement in team.standings:
         if placement.buchholz is None:
@@ -1444,11 +1471,14 @@ async def get_tournament_leaderboard(
 
     Exposes the full ranked population that backs a single user's
     ``UserTournamentWithStats.stats[stat].{rank,total}`` on the tournament-stats
-    page. It reuses the exact ranking scheme
-    (``statistics_service.get_tournament_stat_leaderboard``, a generalization of
-    ``get_tournament_avg_match_stat_for_user_bulk``) — same AVG + dense_rank
-    window and same inverse-stat direction handling — so an entry's rank/value
-    here matches that user's row.
+    page. For every stat except ``Performance`` it reuses the exact ranking
+    scheme (``statistics_service.get_tournament_stat_leaderboard``, a
+    generalization of ``get_tournament_avg_match_stat_for_user_bulk``) — same
+    AVG + dense_rank window and same inverse-stat direction handling — so an
+    entry's rank/value here matches that user's row. ``Performance`` is the MVP
+    placement stat and spans two ``LogStatsName`` columns (see
+    ``get_tournament_mvp_stat_leaderboard`` / ``get_tournament_mvp_stat_for_user``),
+    so it routes to its own query instead.
 
     ``stat`` must be one of the tournament-stats feature's ranked stats
     (``tournament_stats``); any other stat raises 400.
@@ -1464,7 +1494,10 @@ async def get_tournament_leaderboard(
             ],
         )
 
-    rows = await statistics_service.get_tournament_stat_leaderboard(session, tournament_id, stat)
+    if stat == enums.LogStatsName.Performance:
+        rows = await statistics_service.get_tournament_mvp_stat_leaderboard(session, tournament_id)
+    else:
+        rows = await statistics_service.get_tournament_stat_leaderboard(session, tournament_id, stat)
     entries = [
         schemas.LobbyLeaderboardEntry(rank=row.rank, player_id=row.user_id, name=row.name, value=row.value)
         for row in rows

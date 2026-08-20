@@ -1422,6 +1422,11 @@
 .cRank1 {
   color: var(--c-up);
 }
+/* Rank slot holding a forecast, not a result (bracket not played yet). */
+.cRankPred {
+  color: var(--c-faint);
+  font-weight: 600;
+}
 .cTeamId {
   flex: 1;
   min-width: 0;

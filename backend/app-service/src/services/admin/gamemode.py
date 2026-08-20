@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.catalog_aliases import normalize_aliases
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dict
 from shared.repository import GamemodeRepository
 from src import models
 from src.schemas import GamemodeRead
@@ -22,12 +23,11 @@ async def get_gamemodes(session: AsyncSession, params: admin_schemas.GamemodeLis
 
     gamemodes, total = await _repo.get_all(session, params, filters=filters)
 
-    return {
-        "results": [GamemodeRead.model_validate(gm, from_attributes=True) for gm in gamemodes],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-    }
+    return paginated_dict(
+        [GamemodeRead.model_validate(gm, from_attributes=True) for gm in gamemodes],
+        total,
+        params,
+    )
 
 
 async def create_gamemode(session: AsyncSession, data: admin_schemas.GamemodeCreate) -> models.Gamemode:

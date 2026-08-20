@@ -1,6 +1,6 @@
 import React from "react";
 
-export interface TankIconProps {
+interface TankIconProps {
   width?: number;
   height?: number;
   color?: string;

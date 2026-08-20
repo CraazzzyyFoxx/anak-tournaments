@@ -36,10 +36,14 @@ from src.services.encounter import pick_ban_undo
 from src.services.encounter.realtime_commit import register_map_veto_realtime_update
 
 
-async def _load_pool(session: AsyncSession, pick_ban_id: int) -> list[PickBanEntry]:
-    result = await session.execute(
-        select(PickBanEntry).where(PickBanEntry.session_id == pick_ban_id).order_by(PickBanEntry.order)
-    )
+async def _load_pool(session: AsyncSession, pick_ban_id: int, *, refresh: bool = False) -> list[PickBanEntry]:
+    """The session's entries. ``refresh`` re-reads rows already in the identity
+    map, which every load taken AFTER locking the session must do -- the
+    pre-lock snapshot is what the lock exists to discard."""
+    query = select(PickBanEntry).where(PickBanEntry.session_id == pick_ban_id).order_by(PickBanEntry.order)
+    if refresh:
+        query = query.execution_options(populate_existing=True)
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 
@@ -51,20 +55,36 @@ async def get_pick_ban_pool(
     self-heals a stalled turn the same way ``perform_pick_ban_action`` does
     after an action. Timeout resolution runs first: the random pick it
     applies can itself leave a decider current, which the following call
-    then resolves in the same read."""
+    then resolves in the same read.
+
+    Both resolvers decide under their own lock against their own freshly read
+    pool, so anything they commit makes the snapshot below stale -- hence the
+    re-read. The extra query is paid only on the read that actually healed
+    something, never on the polls that find nothing to do."""
     pool = await _load_pool(session, pick_ban.id)
-    await auto_resolve_timeout(session, encounter_id, kind, pick_ban=pick_ban, pool=pool)
-    await auto_complete_decider(session, encounter_id, kind, pick_ban=pick_ban, pool=pool)
+    if await auto_resolve_timeout(session, encounter_id, kind, pick_ban=pick_ban) is not None:
+        pool = await _load_pool(session, pick_ban.id, refresh=True)
+    if await auto_complete_decider(session, encounter_id, kind, pick_ban=pick_ban, pool=pool) is not None:
+        pool = await _load_pool(session, pick_ban.id, refresh=True)
     return pool
 
 
 def auto_complete_decider_entry(sequence: list[str], pool: list[PickBanEntry]) -> PickBanEntry | None:
     """Generalizes ``map_veto.auto_complete_decider_entry``: ``slot``/
     ``current_slot`` -> ``round``/``current_round``, ``map_id`` -> ``item_id``.
-    Returns ``None`` when there is no pending decider step to resolve; raises
-    if a decider step is current but the round does not hold exactly one
-    available candidate (a config/data invariant violation, not a normal
-    state)."""
+    Returns ``None`` when there is no pending decider step to resolve.
+
+    A well-formed bracket-driven config (``build_sequence_for_best_of``) bans
+    and picks the round's pool down to exactly one survivor before the
+    decider step, so the common case is a single candidate. But nothing
+    enforces that pool size against ``best_of`` at config-upsert time, so a
+    pool oversized for its series length (e.g. the full map catalog on a Bo5)
+    reaches this step with several survivors still standing. Rather than 400
+    the room dead for every future read — the config's mistake, not the
+    captains' — resolve it the same way ``auto_resolve_timeout`` already
+    resolves an abandoned captain step: pick uniformly at random among the
+    survivors. Only an EMPTY round (a genuine config/data invariant
+    violation — nothing at all left to award) still raises."""
     step = engine.get_current_step(sequence, pool)
     if step is None:
         return None
@@ -79,13 +99,13 @@ def auto_complete_decider_entry(sequence: list[str], pool: list[PickBanEntry]) -
         for entry in pool
         if entry.status == MapPoolEntryStatus.AVAILABLE.value and engine.in_current_round(entry, active_round)
     ]
-    if len(available) != 1:
+    if not available:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Decider step requires exactly one available item",
+            detail="Decider step has no available item",
         )
 
-    entry = available[0]
+    entry = random.choice(available)
     entry.action_index = sum(1 for pool_entry in pool if pool_entry.status != MapPoolEntryStatus.AVAILABLE.value)
     entry.status = MapPoolEntryStatus.PICKED.value
     entry.picked_by = MapPickSide.DECIDER.value
@@ -105,7 +125,14 @@ async def auto_complete_decider(
     pool: list[PickBanEntry] | None = None,
 ) -> PickBanEntry | None:
     """Resolve a pending decider step from the session snapshot, if any.
-    Generalizes ``map_veto.auto_complete_decider``."""
+    Generalizes ``map_veto.auto_complete_decider``.
+
+    Double-checked: the snapshot the caller already holds decides whether there
+    is anything here at all (the overwhelmingly common answer on a poll is no),
+    and only then is the session locked and re-read. Awarding the survivor is a
+    committed step like any other, so two concurrent readers resolving it would
+    consume the step twice -- see `get_pick_ban_session`.
+    """
     if pick_ban is None:
         pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
     if pick_ban is None or pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
@@ -113,7 +140,18 @@ async def auto_complete_decider(
 
     if pool is None:
         pool = await _load_pool(session, pick_ban.id)
+    hint = engine.get_current_step(pick_ban.resolved_sequence_json, pool)
+    if hint is None or hint[1] != "decider":
+        return None
 
+    pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind, for_update=True)
+    if pick_ban is None or pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
+        return None
+    pool = await _load_pool(session, pick_ban.id, refresh=True)
+
+    # Re-decided against the locked state: another reader may have awarded this
+    # very step while this one waited on the lock, and then there is no decider
+    # step current any more.
     entry = auto_complete_decider_entry(pick_ban.resolved_sequence_json, pool)
     if entry is None:
         return None
@@ -128,13 +166,23 @@ async def auto_complete_decider(
     return entry
 
 
+def _turn_is_abandoned(pick_ban: PickBanSession | None) -> bool:
+    """Whether the step in play has outlived its turn timer. A session with no
+    timer configured, or a step whose clock has not started, never has."""
+    if pick_ban is None or pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
+        return False
+    if pick_ban.turn_timer_seconds is None or pick_ban.current_step_started_at is None:
+        return False
+    deadline = pick_ban.current_step_started_at + timedelta(seconds=pick_ban.turn_timer_seconds)
+    return datetime.now(UTC) >= deadline
+
+
 async def auto_resolve_timeout(
     session: AsyncSession,
     encounter_id: int,
     kind: PickBanKind,
     *,
     pick_ban: PickBanSession | None = None,
-    pool: list[PickBanEntry] | None = None,
 ) -> PickBanEntry | None:
     """Auto-resolve a captain step (ban/pick/protect) whose turn timer has
     elapsed, standing in for a captain who never acted: picks uniformly at
@@ -149,21 +197,28 @@ async def auto_resolve_timeout(
     (``current_step_started_at=None``) never times out. A ``decider`` step
     has no captain and is out of scope here; it already auto-resolves via
     ``auto_complete_decider``, called right after this in
-    ``get_pick_ban_pool``/``perform_pick_ban_action``."""
+    ``get_pick_ban_pool``/``perform_pick_ban_action``.
+
+    Double-checked, and this is the path that most needs it: every open client
+    polls the room every few seconds and all of them refetch at once on a
+    realtime event, so ONE expired turn used to be resolved by every reader
+    that arrived before the first committed -- each auto-action landing on the
+    same side, each eating the next step. The unlocked check below is the cheap
+    "is this turn even abandoned"; the decision itself is made under the lock,
+    where a bumped ``current_step_started_at`` says another reader got here
+    first."""
     if pick_ban is None:
         pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
-    if pick_ban is None or pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
+    if not _turn_is_abandoned(pick_ban):
         return None
-    if pick_ban.turn_timer_seconds is None or pick_ban.current_step_started_at is None:
+
+    pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind, for_update=True)
+    if not _turn_is_abandoned(pick_ban):
         return None
+    assert pick_ban is not None  # narrowed by `_turn_is_abandoned`
 
     now = datetime.now(UTC)
-    deadline = pick_ban.current_step_started_at + timedelta(seconds=pick_ban.turn_timer_seconds)
-    if now < deadline:
-        return None
-
-    if pool is None:
-        pool = await _load_pool(session, pick_ban.id)
+    pool = await _load_pool(session, pick_ban.id, refresh=True)
 
     step = engine.get_current_step(pick_ban.resolved_sequence_json, pool)
     if step is None:
@@ -597,13 +652,18 @@ async def perform_pick_ban_action(
     item_id: int,
     action: str,
 ) -> PickBanEntry:
-    pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
+    # The lock comes FIRST, before anything this decision reads: the step is
+    # resolved from the pool and written back as a committed entry, so two
+    # overlapping requests must not both get to resolve it (see
+    # `get_pick_ban_session`). Nothing is in the identity map yet, so the reads
+    # below are already the post-lock truth.
+    pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind, for_update=True)
     if pick_ban is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban session is not initialized")
     if pick_ban.status != MapVetoSessionStatus.ACTIVE.value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Pick-ban session is {pick_ban.status}")
 
-    pool = await _load_pool(session, pick_ban.id)
+    pool = await _load_pool(session, pick_ban.id, refresh=True)
     config = await session.get(PickBanConfig, pick_ban.config_id) if pick_ban.config_id else None
     attribute_lookup = (
         await _attribute_lookup(session, kind, [e.item_id for e in pool])

@@ -57,9 +57,7 @@ const CONDITION_TYPES = [
   { value: "team_players_match", label: "Team players match" },
   { value: "captain_property", label: "Captain property" },
   { value: "player_role", label: "Player role" },
-  { value: "player_sub_role", label: "Player sub-role" },
   { value: "player_div", label: "Player division" },
-  { value: "player_flag", label: "Player flag (legacy)" },
   { value: "encounter_score", label: "Encounter score" },
   { value: "encounter_revenge", label: "Encounter revenge" },
   { value: "bracket_path", label: "Bracket path" },
@@ -451,14 +449,40 @@ function formatParamsSummary(type: string, params: Record<string, unknown>): str
   }
   if (params.field && type === "distinct_count") parts.push(`${params.field} ${params.op} ${params.value}`);
   if (type === "player_role") parts.push(`role: ${params.role ?? ""}`);
-  if (type === "player_sub_role") parts.push(`sub-role: ${params.sub_role ?? ""}`);
-  if (type === "player_flag") parts.push(`flag: ${params.flag ?? ""}`);
   if (type === "player_div") parts.push(`div ${params.op ?? "=="} ${params.value ?? ""}`);
   if (params.fields && type === "stable_streak") {
     const fields = params.fields as string[];
     parts.push(`[${fields.join(", ")}] streak >= ${params.min_streak ?? 2}`);
   }
   return parts.join(", ");
+}
+
+/** Stat select + operator/value row shared by `stat_threshold`/`global_stat_sum`
+ * and `hero_stat` (which prefixes it with its own hero-slug input). */
+function StatOpValueFields({
+  params,
+  setParam,
+  controlName
+}: {
+  params: Record<string, unknown>;
+  setParam: (key: string, value: unknown) => void;
+  controlName: (field: string) => string;
+}) {
+  return (
+    <>
+      <Select value={(params.stat as string) ?? ""} onValueChange={(v) => setParam("stat", v)}>
+        <SelectTrigger className="h-7 text-xs" aria-label={controlName("Stat")}><SelectValue placeholder="Stat…" /></SelectTrigger>
+        <SelectContent>{STATS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+      </Select>
+      <div className="flex gap-1">
+        <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
+          <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
+          <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+        </Select>
+        <NumberInput className="h-7 text-xs" aria-label={controlName("Threshold value")} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
+      </div>
+    </>
+  );
 }
 
 function LeafNode({ data, id }: NodeProps) {
@@ -548,19 +572,7 @@ function LeafNode({ data, id }: NodeProps) {
       {/* Inline param editors */}
       <div className="space-y-1.5 text-xs">
         {(d.conditionType === "stat_threshold" || d.conditionType === "global_stat_sum") && (
-          <>
-            <Select value={(params.stat as string) ?? ""} onValueChange={(v) => setParam("stat", v)}>
-              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Stat")}><SelectValue placeholder="Stat…" /></SelectTrigger>
-              <SelectContent>{STATS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-            </Select>
-            <div className="flex gap-1">
-              <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
-                <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-              </Select>
-              <NumberInput className="h-7 text-xs" aria-label={controlName("Threshold value")} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
-            </div>
-          </>
+          <StatOpValueFields params={params} setParam={setParam} controlName={controlName} />
         )}
         {d.conditionType === "match_criteria" && (
           <>
@@ -587,24 +599,6 @@ function LeafNode({ data, id }: NodeProps) {
               <SelectItem value="Tank">Tank</SelectItem>
               <SelectItem value="Damage">Damage</SelectItem>
               <SelectItem value="Support">Support</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        {d.conditionType === "player_sub_role" && (
-          <Input
-            className="h-7 text-xs"
-            aria-label={controlName("Sub-role")}
-            value={(params.sub_role as string) ?? ""}
-            placeholder="e.g. hitscan"
-            onChange={(e) => setParam("sub_role", e.target.value)}
-          />
-        )}
-        {d.conditionType === "player_flag" && (
-          <Select value={(params.flag as string) ?? "primary"} onValueChange={(v) => setParam("flag", v)}>
-            <SelectTrigger className="h-7 text-xs" aria-label={controlName("Flag")}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="primary">Primary</SelectItem>
-              <SelectItem value="secondary">Secondary</SelectItem>
             </SelectContent>
           </Select>
         )}
@@ -667,17 +661,7 @@ function LeafNode({ data, id }: NodeProps) {
         {d.conditionType === "hero_stat" && (
           <>
             <Input className="h-7 text-xs" aria-label={controlName("Hero slug")} placeholder="Hero slug (e.g. dva)" value={(params.hero_slug as string) ?? ""} onChange={(e) => setParam("hero_slug", e.target.value)} />
-            <Select value={(params.stat as string) ?? ""} onValueChange={(v) => setParam("stat", v)}>
-              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Stat")}><SelectValue placeholder="Stat…" /></SelectTrigger>
-              <SelectContent>{STATS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-            </Select>
-            <div className="flex gap-1">
-              <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
-                <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-              </Select>
-              <NumberInput className="h-7 text-xs" aria-label={controlName("Threshold value")} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
-            </div>
+            <StatOpValueFields params={params} setParam={setParam} controlName={controlName} />
           </>
         )}
         {/* ── hero_kd_best ── */}

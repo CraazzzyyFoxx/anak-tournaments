@@ -72,9 +72,8 @@ export default defineConfig({
       // entry is file-level rather than a directory glob.
       "src/app/(site)/tournaments/[id]/_views/TournamentMapsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_views/TournamentParticipantsPage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[id]/_views/TournamentSchedulePage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
-      "src/components/veto/**/*.test.ts",
-      "src/components/veto/**/*.test.tsx",
       "src/components/pick-ban/**/*.test.ts",
       "src/components/pick-ban/**/*.test.tsx",
       // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
@@ -94,6 +93,10 @@ export default defineConfig({
       "src/components/ui/toggle-group.test.tsx",
       "src/components/ui/resizable.test.tsx",
       "src/components/status/**/*.test.tsx",
+      // `src/components/stream` is vitest-only, so a directory glob is safe here
+      // and covers the next test added without another edit to this allow-list.
+      "src/components/stream/**/*.test.ts",
+      "src/components/stream/**/*.test.tsx",
       // File-level, not a directory glob: this folder holds BOTH runners'
       // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
       // so a directory glob here drags it into vitest and it fails on the import.
@@ -117,10 +120,28 @@ export default defineConfig({
       "src/lib/draft-logic.test.ts",
       "src/lib/draft-visual.test.ts",
       "src/lib/draft-workspace-model.test.ts",
+      "src/lib/stream-platform.test.ts",
       "src/components/Header.mobile-layout.test.ts",
       "src/components/WorkspaceBootstrap.helpers.test.ts",
+      // File-level: `src/components` holds both runners' tests, so a directory
+      // glob here would drag the `bun:test` files into vitest.
+      "src/components/TeamName.behavior.test.tsx",
+      "src/components/HoverPrefetchLink.behavior.test.tsx",
+      "src/components/EncounterRostersModal.behavior.test.tsx",
+      "src/components/BracketView.behavior.test.tsx",
+      "src/components/FavoriteStarButton.behavior.test.tsx",
+      "src/components/UserSearch.behavior.test.tsx",
+      // Same file-level rule: `account-settings` is under `src/components`, and
+      // these are its only vitest files so far.
+      "src/components/account-settings/MyAccountSection.behavior.test.tsx",
+      "src/components/account-settings/FavoritesSection.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_components/tournament-section-nav.test.ts",
-      "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx"
+      "src/app/(site)/tournaments/[id]/_components/tournament-shared-ui.test.tsx",
+      "src/app/(site)/tournaments/[id]/_components/TournamentBroadcastDock.behavior.test.tsx",
+      "src/app/(site)/tournaments/[id]/_components/TournamentLinkChips.behavior.test.tsx",
+      // Same file-level rule as `src/components`: the bracket folder also holds a
+      // `bun:test` file (`TournamentBracketPage.test.ts`).
+      "src/app/(site)/tournaments/[id]/bracket/bracketLiveStreams.test.ts"
     ]
   }
 });

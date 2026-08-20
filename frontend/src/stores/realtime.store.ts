@@ -4,7 +4,7 @@ import type { RealtimeConnectionState } from "@/types/realtime.types";
 
 /** A rejected subscription (e.g. `forbidden`), surfaced so the UI can react
  * instead of silently hanging. Cleared once the topic subscribes successfully. */
-export type TopicSubscriptionError = { code: string; message: string };
+type TopicSubscriptionError = { code: string; message: string };
 
 type RealtimeStore = {
   connectionState: RealtimeConnectionState;

@@ -46,6 +46,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/respcache"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/safego"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tracing"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/workspace"
@@ -279,9 +280,15 @@ func run() error {
 	// participants list rides here too — the heaviest anonymous read of a
 	// registration-phase tournament, with no backend cache at all.
 	respcache.RegisterCached(mux, tournamentEdge, tournament.PublicWriteRoutes, tournament.PublicWriteCacheableReads, respCache)
+	// Scrim rooms (docs/plans/2026-08-12-scrim-rooms.md): per-viewer reads
+	// (viewer_side / can_claim depend on the identity), so never cached.
+	tournamentEdge.Register(mux, tournament.ScrimRoutes)
 	// division-grids + admin/stages: ambiguous patterns under ServeMux -> subtree matcher.
 	mux.Handle("/api/v1/division-grids/", tournamentEdge.Subtree(tournament.DivisionGridRoutes))
 	mux.Handle("/api/v1/admin/stages/", tournamentEdge.Subtree(tournament.StageSubtreeRoutes))
+	// Team logo upload: multipart -> base64 RPC body; the JSON dispatcher can't do it.
+	tournamentBinary := tournament.NewBinary(rpcClient, resolver.Resolve, logger)
+	mux.HandleFunc("POST /api/v1/admin/teams/{team_id}/image", tournamentBinary.TeamImageUpload)
 	// analytics-service: typed RPC reads + job-control (the rest of /api/analytics
 	// still proxies). Specific patterns win over the proxy.
 	analyticsEdge := edge.New(rpcClient, logger, resolver.Resolve)
@@ -342,6 +349,13 @@ func run() error {
 	balancerBinary := balancer.NewBinary(rpcClient, resolver.Resolve, logger)
 	mux.HandleFunc("POST /api/balancer/tournaments/{tournament_id}/teams/import", balancerBinary.TeamsImport)
 	mux.HandleFunc("POST /api/balancer/jobs", balancerBinary.JobCreate)
+	// stream-service: the tournament live-stream surface. The spectator read is
+	// public and rides the anonymous response cache (TTL-only — see
+	// stream.PublicCacheableReads); the repoll trigger is an operator action
+	// behind stream.update.
+	streamEdge := edge.New(rpcClient, logger, resolver.Resolve)
+	respcache.RegisterCached(mux, streamEdge, stream.PublicRoutes, stream.PublicCacheableReads, respCache)
+	streamEdge.Register(mux, stream.AdminRoutes)
 	// Guard the /api/v1 namespace: anything not matched by a typed route above
 	// must NOT fall through to the "/" frontend catch-all. The frontend rewrites
 	// /api/v1/* back to the gateway (next.config.mjs), so proxying an unmatched
@@ -368,6 +382,15 @@ func run() error {
 	// proxied. Guard unmatched /api/balancer/* with 404 (same gateway<->frontend
 	// loop hazard as /api/v1, since next.config rewrites /api/balancer -> gateway).
 	mux.HandleFunc("/api/balancer/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"detail":"Not Found"}`))
+	})
+	// /api/streams is fully served by the typed stream routes above (RPC into
+	// stream-svc); there is no HTTP stream-service to proxy to. Guard unmatched
+	// /api/streams/* with 404 (same gateway<->frontend loop hazard as /api/v1,
+	// since next.config rewrites /api/streams -> gateway).
+	mux.HandleFunc("/api/streams/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"detail":"Not Found"}`))

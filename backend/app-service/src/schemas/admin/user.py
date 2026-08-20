@@ -11,6 +11,7 @@ __all__ = (
     "SocialAccountCreate",
     "SocialAccountUpdate",
     "SocialVisibilityUpdate",
+    "StreamVisibilityUpdate",
     "UserListQueryParams",
     "UserListParams",
 )
@@ -66,3 +67,13 @@ class SocialVisibilityUpdate(BaseModel):
 
     workspace_id: int | None = None
     visible: bool = True
+
+
+class StreamVisibilityUpdate(BaseModel):
+    """Self-service veto on surfacing the owner's live stream on tournament pages.
+
+    Separate from ``SocialVisibilityUpdate``: that one governs whether a handle is
+    shown on the public profile at all, this one only whether the live broadcast is
+    surfaced. Collapsing them is the bug this endpoint exists to fix."""
+
+    visible: bool

@@ -52,7 +52,9 @@ async def create(
     slug: str,
     name: str,
     image_path: str,
-    type: enums.HeroClass,
+    # Never ``HeroClass.flex`` -- flex is a roster role, not a hero class. See
+    # schemas/admin/hero.py::HeroRole and migration ``heroflex0001``.
+    type: enums.HeroTypeClass,
 ) -> models.Hero:
     hero = models.Hero(
         slug=slug,

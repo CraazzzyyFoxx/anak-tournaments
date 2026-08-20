@@ -10,6 +10,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Skeleton } from "@/components/ui/skeleton";
 import DivisionIcon from "@/components/DivisionIcon";
 import { HeroStrip } from "@/components/hero/HeroImage";
+import TeamName from "@/components/TeamName";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
@@ -232,7 +233,7 @@ export const TournamentTeamCard = ({ team }: { team: Team }) => {
   return (
     <TournamentTeamCardFrame
       id={team.id.toString()}
-      name={team.name}
+      name={<TeamName team={team} size="md" />}
       leadingTag={
         team.group?.name ? (
           <span className={cn("group-chip", groupChipClass(team.group.name))}>

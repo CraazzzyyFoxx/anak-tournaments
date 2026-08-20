@@ -19,10 +19,10 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-from shared.core.enums import DraftAutopickStrategy, DraftRole  # noqa: E402
+from shared.core.enums import DraftAutopickStrategy, HeroClass  # noqa: E402
 from src.services.draft import suggestions as sug  # noqa: E402
 
-T, D, SUP = DraftRole.TANK, DraftRole.DPS, DraftRole.SUPPORT
+T, D, SUP = HeroClass.tank, HeroClass.damage, HeroClass.support
 
 
 def fp(pid, rank, playable, prefs=(), is_flex=False, rank_by_role=None):

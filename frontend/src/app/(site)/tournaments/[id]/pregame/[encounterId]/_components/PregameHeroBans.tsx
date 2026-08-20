@@ -1,9 +1,11 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Ban, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import type { AqtRoleKey } from "@/components/hero/heroRole";
+import TeamName, { type TeamNameInput } from "@/components/TeamName";
+import type { AqtRoleKey } from "@/lib/player-role";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import { cn } from "@/lib/utils";
@@ -22,12 +24,24 @@ export interface PregameHeroAction {
   side: "home" | "away";
 }
 
+/** One map's worth of hero actions, for replaying a finished series. */
+export interface PregameHeroRound {
+  /** Null for a flat (round-less) pool: one set of bans covered every map. */
+  round: number | null;
+  /** Null alongside a null round — there is no single map to name. */
+  mapName: string | null;
+  /** The map's catalog entry, for its still. Undefined until the catalog loads. */
+  mapItem: PickBanItemLike | undefined;
+  actions: PregameHeroAction[];
+}
+
 /** Tank-damage-support, the order the game's own hero list uses. */
 const ROLE_RANK: Record<AqtRoleKey, number> = { tank: 0, damage: 1, support: 2 };
 
+/** The side's accent, as a class because it colours the team name itself. */
 const SIDE_ACCENT = {
-  home: "--aqt-teal",
-  away: "--aqt-rose"
+  home: "text-[color:var(--aqt-teal)]",
+  away: "text-[color:var(--aqt-rose)]"
 } as const;
 
 /**
@@ -49,45 +63,68 @@ export function PregameHeroBans({
   actions,
   homeName,
   awayName,
-  homeHue,
-  awayHue
+  homeTeam,
+  awayTeam,
+  eyebrow,
+  hint
 }: {
   actions: PregameHeroAction[];
   homeName: string;
   awayName: string;
-  /** Crest hue per side, from `teamCrest` — null when the team is unknown. */
-  homeHue: number | null;
-  awayHue: number | null;
+  /** The side's team, for its logo — undefined when the encounter has none. */
+  homeTeam: TeamNameInput | null | undefined;
+  awayTeam: TeamNameInput | null | undefined;
+  /**
+   * Replaces the default "bans for this map" caption. Pass `null` to drop it:
+   * the closing screen captions each row itself, with the map's own still, so
+   * a caption here would name the map twice.
+   */
+  eyebrow?: ReactNode | null;
+  /** Pass `null` to drop the lobby-setup hint: it only applies before a map is played. */
+  hint?: string | null;
 }) {
   const t = useTranslations("pickBan.room");
+  const note = hint === undefined ? t("heroBans.hint") : hint;
+  const caption =
+    eyebrow === undefined ? (
+      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
+        {t("heroBans.eyebrow")}
+      </span>
+    ) : (
+      eyebrow
+    );
 
   if (actions.length === 0) {
     return null;
   }
 
+  // Width is the caller's call: the result screen aligns this with its claim
+  // row, the closing screen gives each map a row of its own. Owning a `max-w`
+  // here centred the block under a left-aligned heading and left a third of
+  // the card empty.
   return (
-    <section className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-      <div className="flex flex-col gap-0.5">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
-          {t("heroBans.eyebrow")}
-        </span>
-        <p className="text-xs leading-relaxed text-[color:var(--aqt-fg-muted)]">
-          {t("heroBans.hint")}
-        </p>
-      </div>
+    <section className="flex w-full flex-col gap-2">
+      {caption != null || note != null ? (
+        <div className="flex flex-col gap-0.5">
+          {caption}
+          {note ? (
+            <p className="text-xs leading-relaxed text-[color:var(--aqt-fg-muted)]">{note}</p>
+          ) : null}
+        </div>
+      ) : null}
       {/* Stacked below `sm` for the same reason the claim row is: two columns of
           hero names on a phone truncate to initials. */}
-      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 sm:gap-4">
+      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 sm:gap-3">
         <SideBans
           side="home"
           name={homeName}
-          hue={homeHue}
+          team={homeTeam}
           actions={actions.filter((action) => action.side === "home")}
         />
         <SideBans
           side="away"
           name={awayName}
-          hue={awayHue}
+          team={awayTeam}
           actions={actions.filter((action) => action.side === "away")}
         />
       </div>
@@ -103,17 +140,16 @@ export function PregameHeroBans({
 function SideBans({
   side,
   name,
-  hue,
+  team,
   actions
 }: {
   side: "home" | "away";
   name: string;
-  hue: number | null;
+  team: TeamNameInput | null | undefined;
   actions: PregameHeroAction[];
 }) {
   const t = useTranslations("pickBan.room");
-  const accent = `var(${SIDE_ACCENT[side]})`;
-  const crestInitial = (name.match(/[\p{L}\p{N}]/u)?.[0] ?? "#").toUpperCase();
+  const accent = SIDE_ACCENT[side];
   const ordered = [...actions].sort(
     (left, right) =>
       (left.action === "ban" ? 0 : 1) - (right.action === "ban" ? 0 : 1) ||
@@ -126,26 +162,13 @@ function SideBans({
       data-hero-bans={side}
       className="flex flex-col gap-1.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/40 p-2.5"
     >
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span
-          aria-hidden
-          className="grid h-5 w-5 shrink-0 place-items-center rounded font-onest text-[10px] font-bold"
-          style={
-            hue != null
-              ? { background: `hsl(${hue} 55% 22%)`, color: `hsl(${hue} 70% 72%)` }
-              : { background: "var(--aqt-card-2)", color: "var(--aqt-fg-faint)" }
-          }
-        >
-          {crestInitial}
-        </span>
-        <span
-          title={name}
-          className="min-w-0 truncate text-xs font-semibold"
-          style={{ color: accent }}
-        >
-          {name}
-        </span>
-      </span>
+      <TeamName
+        team={team}
+        fallback={name}
+        size="sm"
+        className="gap-1.5"
+        nameClassName={cn("text-xs font-semibold", accent)}
+      />
 
       {ordered.length === 0 ? (
         <span className="px-0.5 py-1 text-xs text-[color:var(--aqt-fg-faint)]">

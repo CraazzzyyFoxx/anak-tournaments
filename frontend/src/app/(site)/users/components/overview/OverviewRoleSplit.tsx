@@ -5,57 +5,63 @@ import { UserProfile, UserRole, UserMapRead } from "@/types/user.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
-import { getOverall } from "@/app/(site)/users/components/heroes/utils";
+import { getOverall, statAvg10, toFraction, winrateColor } from "@/app/(site)/users/components/heroes/utils";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import HeroImage from "@/components/hero/HeroImage";
 import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
+import {
+  normalizeRole,
+  PLAYER_ROLE_LABEL_KEY,
+  playerRoleTint,
+  type AqtRoleKey,
+  type PlayerRoleTint
+} from "@/lib/player-role";
 
 // Canonical English role names used ONLY for icon selection in PlayerRoleIcon.
-const ROLE_ICON: Record<AqtRoleKey, string> = {
+const ROLE_ICON: Record<PlayerRoleTint, string> = {
   tank: "Tank",
   damage: "Damage",
-  support: "Support"
+  support: "Support",
+  flex: "Flex"
 };
 
-// Reuse the shared role labels (common.roles); damage maps to the dps entry.
-const ROLE_LABEL_KEY: Record<AqtRoleKey, string> = {
-  tank: "common.roles.tank",
-  damage: "common.roles.dps",
-  support: "common.roles.support"
-};
+// A tint-keyed view of the one shared role-label map (common.roles); no message
+// key is restated here — `@/lib/player-role` owns them.
+const ROLE_LABEL_KEY = {
+  tank: PLAYER_ROLE_LABEL_KEY.Tank,
+  damage: PLAYER_ROLE_LABEL_KEY.Damage,
+  support: PLAYER_ROLE_LABEL_KEY.Support,
+  flex: PLAYER_ROLE_LABEL_KEY.Flex
+} satisfies Record<PlayerRoleTint, string>;
 
-const ROLE_COLOR: Record<AqtRoleKey, string> = {
+const ROLE_COLOR: Record<PlayerRoleTint, string> = {
   tank: "var(--aqt-tank)",
   damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)"
+  support: "var(--aqt-support)",
+  flex: "var(--aqt-flex)"
 };
 
-const ROLE_ORDER: AqtRoleKey[] = ["tank", "damage", "support"];
+// Row wash + edge per role. The three original hues stay verbatim; flex reads
+// its hue from the token so it tracks `--aqt-flex`.
+const ROLE_ROW: Record<PlayerRoleTint, { background: string; borderColor: string }> = {
+  tank: { background: "hsl(210 78% 60% / 0.06)", borderColor: "hsl(210 78% 60% / 0.2)" },
+  damage: { background: "hsl(340 78% 60% / 0.06)", borderColor: "hsl(340 78% 60% / 0.25)" },
+  support: { background: "hsl(142 60% 52% / 0.05)", borderColor: "hsl(142 60% 52% / 0.2)" },
+  flex: {
+    background: "color-mix(in srgb, var(--aqt-flex) 6%, transparent)",
+    borderColor: "color-mix(in srgb, var(--aqt-flex) 20%, transparent)"
+  }
+};
+
+// Flex is a real roster role, so it gets its own bucket — without one its maps
+// vanish from the split while shares stay divided by `profile.maps_total`.
+const ROLE_ORDER: PlayerRoleTint[] = ["tank", "damage", "support", "flex"];
 
 const formatPercent = (value: number, digits = 1) => `${(value * 100).toFixed(digits)}%`;
 
-// Winrate can arrive as a 0..1 fraction or an already-scaled percent; normalize.
-const toFraction = (value: number | null | undefined): number | null => {
-  if (value == null || !Number.isFinite(value)) return null;
-  return value <= 1 ? value : value / 100;
-};
-
-// ≥60 good · 50–59 mid · <50 bad (design-book §1 winrate thresholds).
-const winrateColor = (pct: number): string => {
-  if (pct >= 60) return "var(--aqt-emerald)";
-  if (pct >= 50) return "var(--aqt-amber)";
-  return "var(--aqt-rose)";
-};
-
-const statAvg10 = (stats: HeroWithUserStats["stats"], name: LogStatsName): number | null => {
-  const stat = stats.find((s) => s.name === name);
-  return stat && Number.isFinite(stat.avg_10) ? stat.avg_10 : null;
-};
-
 interface Bucket {
-  key: AqtRoleKey;
+  key: PlayerRoleTint;
   role: UserRole;
   maps: number;
   won: number;
@@ -88,10 +94,10 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
   const t = await getTranslations();
   const totalMaps = profile.maps_total;
   const buckets = ROLE_ORDER.map<Bucket | null>((roleKey) => {
-    const role = profile.roles.find((r) => normalizeRole(r.role) === roleKey);
+    const role = profile.roles.find((r) => playerRoleTint(r.role) === roleKey);
     if (!role) return null;
     return {
-      key: roleKey as AqtRoleKey,
+      key: roleKey,
       role,
       maps: role.maps,
       won: role.maps_won,
@@ -117,6 +123,9 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
   const signatures: Signature[] = [];
   for (const key of ROLE_ORDER) {
     if (!buckets.some((b) => b.key === key)) continue;
+    // Signatures come from a hero's CLASS, which is never "flex" — filtering by
+    // it would silently list the player's damage heroes under the flex bucket.
+    if (key === "flex") continue;
     const roleHeroes = heroes.filter((h) => normalizeRole(h.hero.type ?? h.hero.role) === key);
     if (roleHeroes.length === 0) continue;
     const top = roleHeroes.reduce((best, h) =>
@@ -174,20 +183,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
             <div
               key={b.key}
               className="grid grid-cols-[44px_1fr_auto] items-center gap-3 rounded-[10px] border px-3 py-2.5"
-              style={{
-                background:
-                  b.key === "tank"
-                    ? "hsl(210 78% 60% / 0.06)"
-                    : b.key === "damage"
-                      ? "hsl(340 78% 60% / 0.06)"
-                      : "hsl(142 60% 52% / 0.05)",
-                borderColor:
-                  b.key === "tank"
-                    ? "hsl(210 78% 60% / 0.2)"
-                    : b.key === "damage"
-                      ? "hsl(340 78% 60% / 0.25)"
-                      : "hsl(142 60% 52% / 0.2)"
-              }}
+              style={ROLE_ROW[b.key]}
             >
               <DivisionIcon
                 division={b.role.division}

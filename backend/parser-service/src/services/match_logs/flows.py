@@ -18,6 +18,7 @@ from shared.schemas.events import (
     TournamentChangedEvent,
     TournamentStandingsInvalidatedEvent,
 )
+from shared.services.newcomer_status import load_prior_participation
 from src import models
 from src.core import enums, errors, pagination
 from src.core.config import settings
@@ -316,7 +317,7 @@ class MatchLogProcessor:
                         f"found by battle name {player} in team {team_name}"
                     )
                 else:
-                    logger.error(f"User not found by battle name {player} in team {team_name}")
+                    logger.warning(f"User not found by battle name {player} in team {team_name}")
         return teams
 
     async def find_team_by_players(
@@ -404,7 +405,7 @@ class MatchLogProcessor:
                     f"found for battle name '{battle_name_log}' in team '{team.name}'"
                 )
             else:
-                logger.error(f"Player object not found for battle name '{battle_name_log}' in team '{team.name}'")
+                logger.warning(f"Player object not found for battle name '{battle_name_log}' in team '{team.name}'")
         return players_out
 
     async def process_kills(
@@ -557,7 +558,7 @@ class MatchLogProcessor:
                     match_event_obj = self._format_match_event_generic(match, players_map, row_series, match_event_enum)
                     all_match_event_objects.append(match_event_obj)
                 except ValueError as e:
-                    logger.error(f"Skipping event creation due to error: {e}")
+                    logger.warning(f"Skipping event creation due to error: {e}")
                     continue
 
         return all_match_event_objects
@@ -996,12 +997,6 @@ class MatchLogProcessor:
                 log_record_id=self.log_record_id,
                 commit=False,
             )
-            encounter = await encounter_service.update_encounter_logs(
-                session,
-                encounter.id,
-                has_logs=True,
-                commit=False,
-            )
             logger.info(
                 f"Match created [id={match_model.id}] in match log {self.filename} in tournament {self.tournament.name}"
             )
@@ -1013,6 +1008,14 @@ class MatchLogProcessor:
             match_model.home_team_id = home_team_db.id
             match_model.away_team_id = away_team_db.id
             match_model.log_name = self.filename
+            # A genuine log just superseded this row (most often a
+            # pre-existing ``source=captain_report`` row upserted by
+            # ``map_report.submit_map_report`` before the log arrived) — stamp
+            # it ``log_parser`` so both the row's own provenance and the
+            # derived ``Encounter.has_logs`` (filtered on this column, see
+            # ``shared/models/matches/match.py``) reflect that a real log now
+            # backs it.
+            match_model.source = enums.MatchSource.LOG_PARSER
             if self.log_record_id is not None:
                 match_model.log_record_id = self.log_record_id
             session.add(match_model)
@@ -1076,6 +1079,7 @@ class MatchLogProcessor:
                 existing_player_profile_for_user, key=lambda p: p.tournament_id or 0, reverse=True
             )[0]
 
+        history = await load_prior_participation(session, tournament=self.tournament, user_ids=[sub_user.id])
         new_player = await team_service.create_player(
             session,
             name=sub_user.name,
@@ -1087,10 +1091,8 @@ class MatchLogProcessor:
             team=team,
             is_substitution=True,
             related_player_id=player_to_be_replaced.id,
-            is_newcomer=player_data_source.is_newcomer
-            if player_data_source
-            else not bool(await team_service.get_player_by_user(session, sub_user.id, [])),
-            is_newcomer_role=player_data_source.is_newcomer_role if player_data_source else True,
+            is_newcomer=history.is_newcomer(sub_user.id),
+            is_newcomer_role=history.is_newcomer_role(sub_user.id, player_to_be_replaced.role),
         )
         # create_player() sets workspace_member_id (a plain FK column) but does not
         # eagerly load the `workspace_member` relationship; readers downstream (this

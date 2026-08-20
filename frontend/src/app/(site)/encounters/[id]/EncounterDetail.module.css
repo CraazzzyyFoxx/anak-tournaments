@@ -214,27 +214,11 @@
   min-width: 0;
 }
 
-/* The away side mirrors so both crests sit beside the score, not beside the
+/* The away side mirrors so both team logos sit beside the score, not beside the
    page edges — the matchup reads inward toward the result. */
 .boardSideAway {
   flex-direction: row-reverse;
   text-align: right;
-}
-
-.boardCrest {
-  width: 52px;
-  height: 52px;
-  flex-shrink: 0;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-family: var(--ed-display);
-  font-weight: 700;
-  font-size: 18px;
-  letter-spacing: 0.02em;
-  color: var(--ed-side);
-  border: 1px solid color-mix(in srgb, var(--ed-side) 32%, transparent);
-  background: color-mix(in srgb, var(--ed-side) 12%, transparent);
 }
 
 .boardIdentity {

@@ -13,23 +13,23 @@ export type RealtimeEventEnvelope<TData = Record<string, unknown>> = {
   data: TData;
 };
 
-export type SubscribeOp = {
+type SubscribeOp = {
   op: "subscribe";
   topic: string;
   after_event_id?: number;
 };
 
-export type UnsubscribeOp = {
+type UnsubscribeOp = {
   op: "unsubscribe";
   topic: string;
 };
 
-export type PingOp = {
+type PingOp = {
   op: "ping";
 };
 
 /** Client-originated ephemeral broadcast to a subscribed topic (e.g. live drag). */
-export type PublishOp = {
+type PublishOp = {
   op: "publish";
   topic: string;
   event_type: string;
@@ -38,13 +38,13 @@ export type PublishOp = {
 
 export type ClientRealtimeFrame = SubscribeOp | UnsubscribeOp | PingOp | PublishOp;
 
-export type SubscribedFrame = {
+type SubscribedFrame = {
   op: "subscribed";
   topic: string;
   cursor: number;
 };
 
-export type ErrorFrame = {
+type ErrorFrame = {
   op: "error";
   topic?: string | null;
   code: string;
@@ -57,7 +57,7 @@ export type EventFrame<TData = Record<string, unknown>> = {
   event: RealtimeEventEnvelope<TData>;
 };
 
-export type PongFrame = {
+type PongFrame = {
   op: "pong";
 };
 

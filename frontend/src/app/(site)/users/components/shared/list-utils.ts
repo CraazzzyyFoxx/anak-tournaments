@@ -1,7 +1,6 @@
 import type { useTranslations } from "next-intl";
 
 import { LogStatsName } from "@/types/stats.types";
-import { UserRoleType } from "@/types/user.types";
 
 /**
  * The one named translator contract for this tree. Consumers import `Translate`
@@ -14,15 +13,12 @@ import { UserRoleType } from "@/types/user.types";
  */
 export type Translate = ReturnType<typeof useTranslations<never>>;
 
-// Maps a role type to its shared `common.roles.*` message key (dps = "Damage").
-export const ROLE_LABEL_KEY: Record<
-  UserRoleType,
-  "common.roles.tank" | "common.roles.dps" | "common.roles.support"
-> = {
-  Tank: "common.roles.tank",
-  Damage: "common.roles.dps",
-  Support: "common.roles.support"
-};
+/**
+ * Maps a role type to its shared `common.roles.*` message key (dps = "Damage").
+ * Re-exported under this tree's historical name so there is exactly one role
+ * label map in the codebase — the canonical one in `@/lib/player-role`.
+ */
+export { PLAYER_ROLE_LABEL_KEY as ROLE_LABEL_KEY } from "@/lib/player-role";
 
 export type HeroMetricLabelKey =
   | "users.list.heroMetrics.elims"

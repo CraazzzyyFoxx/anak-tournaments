@@ -24,7 +24,12 @@ DEFAULT_MAX_TOP_HEROES = 5
 class HeroCatalogEntry:
     id: int
     slug: str
-    hero_class: enums.HeroClass
+    #: A hero's class, so never ``HeroClass.flex``: flex is a roster role a
+    #: player holds. Registration's top-hero validation compares this against
+    #: the role the applicant declared, and a flex-typed hero would pass for a
+    #: role it has nothing to do with. Enforced by the CHECK on
+    #: ``overwatch.hero.type`` (migration ``heroflex0001``).
+    hero_class: enums.HeroTypeClass
 
 
 HeroCatalog = dict[str, HeroCatalogEntry]

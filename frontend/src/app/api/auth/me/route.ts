@@ -1,7 +1,6 @@
 import { authServiceBase } from "@/lib/api-routes";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getAccessToken } from "@/lib/auth-cookies";
+import { requireAccessToken } from "@/lib/auth-cookies";
 
 export type MeResponse = {
   id: number | null;
@@ -27,11 +26,9 @@ export type MeResponse = {
 const AUTH_SERVICE_URL = authServiceBase();
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const accessToken = getAccessToken(cookieStore);
-
-  if (!accessToken) {
-    return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
+  const accessToken = await requireAccessToken();
+  if (accessToken instanceof NextResponse) {
+    return accessToken;
   }
 
   try {

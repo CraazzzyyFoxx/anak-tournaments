@@ -205,6 +205,13 @@ def register(broker: Any, logger: Any) -> None:
             await workspace_service.add_member(session, workspace.id, user.id)
             await assign_workspace_system_role(session, user_id=user.id, workspace_id=workspace.id, role_name="owner")
             await session.commit()
+            # The workspace was built in Python and only flushed, so its
+            # ``default_division_grid_version`` was never loaded -- ``selectin`` is
+            # a query-time strategy and does not run for an instance that never
+            # went through a SELECT. Reading it below would then lazy-load from
+            # sync Pydantic code (MissingGreenlet) whenever the create body named
+            # a version. Awaited here, it is ordinary IO.
+            await session.refresh(workspace, ["default_division_grid_version"])
             await _invalidate_auth_rbac_cache(int(user.id), logger)
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 

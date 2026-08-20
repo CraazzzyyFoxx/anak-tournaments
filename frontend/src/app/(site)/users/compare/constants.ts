@@ -6,7 +6,8 @@ export type RoleFilterLabelKey =
   | "users.compare.allRoles"
   | "common.roles.tank"
   | "common.roles.dps"
-  | "common.roles.support";
+  | "common.roles.support"
+  | "common.roles.flex";
 
 export const ROLE_FILTER_OPTIONS: Array<{
   value: "all" | UserRoleType;
@@ -15,7 +16,8 @@ export const ROLE_FILTER_OPTIONS: Array<{
   { value: "all", labelKey: "users.compare.allRoles" },
   { value: "Tank", labelKey: "common.roles.tank" },
   { value: "Damage", labelKey: "common.roles.dps" },
-  { value: "Support", labelKey: "common.roles.support" }
+  { value: "Support", labelKey: "common.roles.support" },
+  { value: "Flex", labelKey: "common.roles.flex" }
 ];
 
 export const HERO_COMPARE_STATS: LogStatsName[] = Object.values(LogStatsName).filter(

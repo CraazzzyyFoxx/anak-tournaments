@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DEFAULT_GRID
 from shared.domain.player_sub_roles import normalize_sub_role
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.newcomer_status import load_prior_participation
 from src import models, schemas
 from src.core import enums, errors, utils
 from src.services.challonge import service as challonge_service
@@ -30,15 +32,24 @@ def resolve_team_placement(team: models.Team) -> int | None:
 
 
 def resolve_hero_role_from_balancer(role: str) -> enums.HeroClass | None:
+    """Roster slot code -> the role stored on ``tournament.player``.
+
+    ``flex`` is a real slot, not a bad input: a role-less roster assigns no game
+    role and ``HeroClass.flex`` is how that survives the import. Anything else
+    unrecognized still fails loudly rather than silently becoming ``None``.
+    """
     if role is None:
         return None
 
-    if role.lower() == "tank":
+    normalized = role.lower()
+    if normalized == "tank":
         return enums.HeroClass.tank
-    if role.lower() == "dps":
+    if normalized == "dps":
         return enums.HeroClass.damage
-    if role.lower() == "support":
+    if normalized == "support":
         return enums.HeroClass.support
+    if normalized == FLEX_SLOT_CODE:
+        return enums.HeroClass.flex
     raise errors.ApiHTTPException(
         status_code=400,
         detail=[errors.ApiExc(code="invalid_hero_role", msg=f"{role} is not a valid hero role.")],
@@ -68,6 +79,7 @@ async def to_pydantic(
     return schemas.TeamRead(
         id=team.id,
         name=team.name,
+        image_url=team.image_url,
         avg_sr=team.avg_sr,
         total_sr=team.total_sr,
         tournament_id=team.tournament_id,
@@ -123,125 +135,6 @@ async def to_pydantic_player(
     )
 
 
-async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Team:
-    team = await service.get(session, id, entities)
-    if not team:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[errors.ApiExc(code="not_found", msg="Team with id {id} not found.")],
-        )
-    return team
-
-
-async def get_by_name_and_tournament(
-    session: AsyncSession, tournament_id: int, name: str, entities: list[str]
-) -> models.Team:
-    team = await service.get_by_name_and_tournament(session, tournament_id, name, entities)
-    if not team:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="not_found",
-                    msg=f"Team with name {name} in tournament {tournament_id} not found.",
-                )
-            ],
-        )
-    return team
-
-
-async def get_by_tournament_challonge_id(
-    session: AsyncSession, tournament_id: int, challonge_id: int, entities: list[str]
-) -> models.Team:
-    team = await service.get_by_tournament_challonge_id(session, tournament_id, challonge_id, entities)
-    if not team:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="not_found",
-                    msg=f"Team with challonge_id {challonge_id} in tournament {tournament_id} not found.",
-                )
-            ],
-        )
-    return team
-
-
-async def get_player_by_user_and_tournament(
-    session: AsyncSession, user_id: int, tournament_id: int, entities: list[str]
-) -> models.Player:
-    player = await service.get_player_by_user_and_tournament(session, user_id, tournament_id, entities)
-    if not player:
-        raise errors.ApiHTTPException(
-            status_code=400,
-            detail=[
-                errors.ApiExc(
-                    code="not_found",
-                    msg=f"Player with user [id={user_id}] not found in tournament [id={tournament_id}].",
-                )
-            ],
-        )
-
-    return player
-
-
-async def get_player_by_team_and_user(
-    session: AsyncSession, team_id: int, user_id: int, entities: list[str]
-) -> models.Player:
-    player = await service.get_player_by_team_and_user(session, team_id, user_id, entities)
-    if not player:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="not_found",
-                    msg=f"Player with user [id={user_id}] not found in team [id={team_id}].",
-                )
-            ],
-        )
-
-    return player
-
-
-async def create_player(
-    session: AsyncSession,
-    *,
-    name: str,
-    sub_role: str | None = None,
-    rank: int,
-    role: enums.HeroClass,
-    user: models.User,
-    tournament: models.Tournament,
-    team: models.Team,
-    is_substitution: bool = False,
-    related_player_id: int | None = None,
-    is_newcomer: bool = False,
-    is_newcomer_role: bool = False,
-):
-    if await service.get_player_by_team_and_user(session, team.id, user.id, []):
-        raise errors.ApiHTTPException(
-            status_code=400,
-            detail=[
-                errors.ApiExc(
-                    code="player_already_exists",
-                    msg=f"Player [id={user.id} name={user.name}] already exists in this tournament [name={tournament.name}].",
-                )
-            ],
-        )
-    return await service.create_player(
-        session,
-        name=name,
-        sub_role=sub_role,
-        rank=rank,
-        role=role,
-        user=user,
-        tournament=tournament,
-        team=team,
-        is_substitution=is_substitution,
-        related_player_id=related_player_id,
-        is_newcomer=is_newcomer,
-        is_newcomer_role=is_newcomer_role,
-    )
 
 
 async def _bulk_resolve_users_by_battle_tags(session: AsyncSession, battle_tags: list[str]) -> dict[str, models.User]:
@@ -303,23 +196,10 @@ async def bulk_create_from_balancer(
         .all()
     )
 
-    experienced_user_ids: set[int] = set()
-    experienced_user_roles: set[tuple[int, enums.HeroClass | None]] = set()
     resolved_user_ids = {user.id for user in users_by_tag.values()}
-    if resolved_user_ids:
-        history_rows = await session.execute(
-            sa.select(models.WorkspaceMember.player_id, models.Player.role)
-            .select_from(models.Player)
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-            )
-            .where(models.WorkspaceMember.player_id.in_(resolved_user_ids))
-        )
-        for user_id, existing_role in history_rows.all():
-            experienced_user_ids.add(user_id)
-            experienced_user_roles.add((user_id, existing_role))
-
+    # Chronological, scope-aware (per-workspace ``newcomer_scope`` setting) --
+    # see shared.services.newcomer_status.
+    history = await load_prior_participation(session, tournament=tournament, user_ids=resolved_user_ids)
     pending_players: list[
         tuple[schemas.BalancerTeamMember, models.Team, models.User, enums.HeroClass | None, bool, bool]
     ] = []
@@ -356,9 +236,9 @@ async def bulk_create_from_balancer(
                 )
                 continue
 
-            is_newcomer = user.id not in experienced_user_ids
+            is_newcomer = history.is_newcomer(user.id)
             role = resolve_hero_role_from_balancer(player.role)
-            is_newcomer_role = (user.id, role) not in experienced_user_roles
+            is_newcomer_role = history.is_newcomer_role(user.id, role)
 
             # In-payload dedupe: the old per-item re-SELECT would find the row
             # committed for a duplicate occurrence and skip it.

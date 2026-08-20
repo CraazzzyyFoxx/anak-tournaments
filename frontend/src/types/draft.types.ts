@@ -1,14 +1,15 @@
 // Live Draft types — mirror the balancer-service DTOs (src/schemas/draft.py).
 
-import type { RosterShape, RosterSlotCode } from "@/lib/roster-shape";
+import type { RosterRoleSlotCode, RosterShape, RosterSlotCode } from "@/lib/roster-shape";
+import type { CustomFieldDefinition } from "@/types/registration.types";
 
 export type DraftStatus = "setup" | "ready" | "live" | "paused" | "completed" | "cancelled";
 
 export type DraftFormat = "snake" | "linear" | "custom";
-export type DraftPoolSource = "balancer_balance" | "manual";
+type DraftPoolSource = "balancer_balance" | "manual";
 export type DraftAutopickStrategy = "best_fit" | "best_available" | "role_need";
-export type DraftRole = "tank" | "dps" | "support";
-export type DraftPlayerStatus = "available" | "picked" | "removed";
+export type DraftRole = RosterRoleSlotCode;
+type DraftPlayerStatus = "available" | "picked" | "removed";
 export type DraftPickStatus = "upcoming" | "on_clock" | "completed" | "skipped" | "autopicked";
 
 export interface DraftSession {
@@ -46,6 +47,17 @@ export interface DraftTeam {
   exported_team_id: number | null;
 }
 
+/** One organizer-approved registration answer, ready to render in the inspector.
+ *  Only definitions flagged `show_in_draft` on the registration form reach the
+ *  public board, and the server sends the definition's CURRENT label/type with
+ *  each value so the draft client needs no form config of its own. */
+interface DraftPlayerCustomField {
+  key: string;
+  label: string;
+  type: CustomFieldDefinition["type"];
+  value: unknown;
+}
+
 export interface DraftPlayer {
   id: number;
   session_id: number;
@@ -56,6 +68,14 @@ export interface DraftPlayer {
   is_flex: boolean;
   division_number: number | null;
   rank_value: number | null;
+  /**
+   * Server-resolved: the ONE rank that represents this player in THIS draft.
+   * `rank_value` under a shape with role slots, their best role rank under a
+   * role-less (all-flex) one, where nobody is assigned a role. Render this,
+   * not `rank_value`, wherever a player is shown without a role — the flex
+   * rule lives once, in `services.draft.ranks.slot_rank`.
+   */
+  effective_rank: number | null;
   status: DraftPlayerStatus;
   is_captain: boolean;
   drafted_by_team_id: number | null;
@@ -63,6 +83,7 @@ export interface DraftPlayer {
   role_ranks: Record<string, number>;
   role_top_heroes: Record<string, Array<string | { slug: string; image_path: string | null }>>;
   additional_info: Record<string, unknown>;
+  custom_fields: DraftPlayerCustomField[];
   version: number;
 }
 
@@ -95,7 +116,7 @@ export interface DraftBoard {
   last_event_id: number | null;
 }
 
-export interface DraftSuggestion {
+interface DraftSuggestion {
   player_id: number;
   role: DraftRole;
   fit_score: number;
@@ -112,13 +133,13 @@ export interface DraftSuggestionsResponse {
 // `shared.domain.roster_shape` rejects anything outside `ROSTER_SLOT_CODES`. The
 // narrower type is what lets these codes index role-keyed lookups and message
 // keys without a cast.
-export interface DraftSlot {
+interface DraftSlot {
   team_id: number;
   slot_code: RosterSlotCode;
   ordinal: number;
 }
 
-export interface DraftSlotDeficit {
+interface DraftSlotDeficit {
   slot_code: RosterSlotCode;
   unmatched_slots: number;
   eligible_players: number;
@@ -156,21 +177,6 @@ export interface DraftPresenceState {
   anonymous_viewer_count: number;
 }
 
-// Realtime event payloads (topic tournament:{id}:draft).
-export type DraftEventType =
-  | "draft.session_updated"
-  | "draft.pick_started"
-  | "draft.pick_made"
-  | "draft.autopicked"
-  | "draft.paused"
-  | "draft.resumed"
-  | "draft.completed"
-  | "draft.cancelled"
-  | "draft.presence"
-  | "draft.player_updated"
-  | "draft.blocked"
-  | "draft.rollback";
-
 export interface DraftEventData {
   session_id: number;
   status?: DraftStatus;
@@ -205,14 +211,14 @@ export interface DraftSessionCreateRequest {
   settings?: Record<string, unknown>;
 }
 
-export interface DraftSeedCaptainInput {
+interface DraftSeedCaptainInput {
   user_id?: number | null;
   battle_tag?: string | null;
   name: string;
   draft_position: number;
 }
 
-export interface DraftSeedPlayerInput {
+interface DraftSeedPlayerInput {
   user_id?: number | null;
   battle_tag?: string | null;
   primary_role: DraftRole;
@@ -223,7 +229,7 @@ export interface DraftSeedPlayerInput {
   rank_value?: number | null;
 }
 
-export interface DraftPoolCaptainInput {
+interface DraftPoolCaptainInput {
   registration_id: number;
   name?: string | null;
 }
@@ -244,7 +250,7 @@ export interface DraftSeedRequest {
   expected_version?: number | null;
 }
 
-export interface DraftSeedDiff {
+interface DraftSeedDiff {
   teams_before: number;
   teams_after: number;
   players_before: number;

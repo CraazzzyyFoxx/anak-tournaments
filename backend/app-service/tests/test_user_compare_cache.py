@@ -86,6 +86,37 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
             msg="cashews lock=True needs a routable lock: backend",
         )
 
+    def test_cache_configuration_registers_the_lock_ping_namespace(self) -> None:
+        """``Backend.lock()`` pings with ``b"LOCK"`` and cashews routes that
+        message as a key, so the probe needs its own routable backend."""
+        with patch.object(caching.cache, "setup") as setup:
+            caching.configure_cache()
+
+        prefixes = {call.kwargs.get("prefix") for call in setup.call_args_list}
+        self.assertIn("LOCK", prefixes, msg="cashews lock() health-probes ping(b'LOCK')")
+
+    async def test_a_lock_held_by_another_replica_still_serves_the_read(self) -> None:
+        """The production failure, end to end.
+
+        ``@cache(lock=True)`` only probes the connection when ``set_lock`` loses
+        the race, and cashews' in-process ``thunder_protection`` collapses
+        same-key concurrency — so contention only ever happens ACROSS replicas,
+        against the shared Redis. Simulated here by planting the herd-lock key
+        before the call. Registering ``lock:`` alone left the probe unroutable and
+        turned every contended read into ``NotConfiguredError`` (1146 events).
+        """
+        for prefix in caching.CACHE_PING_PREFIXES:
+            cache.setup("mem://", prefix=prefix)
+
+        @cache(ttl="60s", key="contended:{n}", prefix="backend:", lock=True)
+        async def cached(n: int) -> int:
+            return n * 2
+
+        # Short expiry so the stampede wait ends instead of hanging the test.
+        await cache.set_lock("lock:contended:7", "other-replica", expire=0.3)
+
+        self.assertEqual(14, await asyncio.wait_for(cached(7), timeout=5))
+
     async def test_hero_cache_normalizes_stat_order_and_deduplicates(self) -> None:
         response = object()
         compute = AsyncMock(return_value=response)

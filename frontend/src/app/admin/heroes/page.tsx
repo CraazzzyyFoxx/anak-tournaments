@@ -2,22 +2,20 @@
 
 import { useId, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AssetPreview } from "@/components/admin/AssetPreview";
+import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import {
   CatalogToolbarActions,
   entityFormError,
   onEntityDialogClose
 } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { createAliasesColumn, createEntityActionsColumn } from "@/components/admin/catalog-table-columns";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,21 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import adminService from "@/services/admin.service";
 import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
-import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
@@ -206,58 +195,18 @@ export default function HeroesAdminPage() {
         );
       },
     },
-    {
-      id: "aliases",
-      header: "Aliases",
-      size: 96,
-      enableSorting: false,
-      cell: ({ row }) => {
-        const count = row.original.aliases?.length ?? 0;
-        return count > 0 ? (
-          <Badge variant="secondary">{count}</Badge>
-        ) : (
-          <span className="text-sm text-muted-foreground">—</span>
-        );
+    createAliasesColumn<Hero>((hero) => hero.aliases),
+    createEntityActionsColumn<Hero>({
+      entityLabel: "hero",
+      getName: (hero) => hero.name,
+      isSuperuser,
+      onEdit: (hero) => {
+        updateMutation.reset();
+        setEditingHero(hero);
+        setFormData(getHeroForm(hero));
       },
-    },
-    {
-      id: "actions",
-      size: 50,
-      cell: ({ row }) => {
-        const hero = row.original;
-        if (!isSuperuser) {
-          return null;
-        }
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label={`Open actions for ${hero.name}`} variant="ghost" size="icon">
-                <MoreHorizontal aria-hidden className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel className="truncate">{hero.name}</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  updateMutation.reset();
-                  setEditingHero(hero);
-                  setFormData(getHeroForm(hero));
-                }}
-              >
-                <Pencil aria-hidden className="mr-2 h-4 w-4" />
-                Edit hero
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setDeletingHero(hero)} className="text-destructive">
-                <Trash2 aria-hidden className="mr-2 h-4 w-4" />
-                Delete hero
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-           </DropdownMenu>
-         );
-      },
-    },
+      onDelete: (hero) => setDeletingHero(hero),
+    }),
   ];
 
   return (
@@ -320,16 +269,12 @@ export default function HeroesAdminPage() {
         isDirty={isFormDirty}
       >
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor={nameFieldId}>Name *</Label>
-            <Input
-              id={nameFieldId}
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Hero name"
-              required
-            />
-          </div>
+          <CatalogNameField
+            id={nameFieldId}
+            value={formData.name}
+            onChange={(name) => setFormData({ ...formData, name })}
+            placeholder="Hero name"
+          />
 
           <div className="space-y-2">
             <Label htmlFor={imageFieldId}>Hero icon URL</Label>
@@ -402,21 +347,18 @@ export default function HeroesAdminPage() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor={aliasesFieldId}>Aliases</Label>
-            <Textarea
-              id={aliasesFieldId}
-              value={formatAliasesInput(formData.aliases ?? [])}
-              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
-              placeholder={"Ана\nアナ"}
-              rows={5}
-              className="font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              One alias per line — names as they appear in match logs. The hero sync fills these
-              from every Blizzard locale; manual entries survive it.
-            </p>
-          </div>
+          <CatalogAliasesField
+            id={aliasesFieldId}
+            aliases={formData.aliases}
+            onChange={(aliases) => setFormData({ ...formData, aliases })}
+            placeholder={"Ана\nアナ"}
+            helperText={
+              <>
+                One alias per line — names as they appear in match logs. The hero sync fills
+                these from every Blizzard locale; manual entries survive it.
+              </>
+            }
+          />
         </div>
       </EntityFormDialog>
 

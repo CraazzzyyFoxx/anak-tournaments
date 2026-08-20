@@ -5,16 +5,18 @@ import { useEffect } from "react";
 import { type SettingsTab, useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User as UserIcon, MonitorCog, Shield } from "lucide-react";
+import { User as UserIcon, MonitorCog, Shield, Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import AccountSessionsSection from "./account-settings/AccountSessionsSection";
 import MyAccountSection from "./account-settings/MyAccountSection";
+import FavoritesSection from "./account-settings/FavoritesSection";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const TAB_CONFIG: { id: SettingsTab; icon: ReactNode }[] = [
   { id: "profile", icon: <UserIcon className="w-4 h-4" aria-hidden /> },
   { id: "preferences", icon: <MonitorCog className="w-4 h-4" aria-hidden /> },
+  { id: "favorites", icon: <Star className="w-4 h-4" aria-hidden /> },
   { id: "sessions", icon: <Shield className="w-4 h-4" aria-hidden /> },
 ];
 
@@ -118,6 +120,14 @@ const AccountSettingsModal = () => {
                     <MonitorCog className="mb-4 h-12 w-12 opacity-50" aria-hidden />
                     <p>{t("preferences.comingSoon")}</p>
                   </div>
+                </TabsContent>
+
+                <TabsContent value="favorites" className={PANEL_CLASS}>
+                  <div>
+                    <h3 className={HEADING_CLASS}>{t("favorites.title")}</h3>
+                    <p className={SUBHEADING_CLASS}>{t("favorites.desc")}</p>
+                  </div>
+                  <FavoritesSection />
                 </TabsContent>
 
                 <TabsContent value="sessions" className={PANEL_CLASS}>

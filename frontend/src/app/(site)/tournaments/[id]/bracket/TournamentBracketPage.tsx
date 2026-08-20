@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BracketView } from "@/components/BracketView";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { notify } from "@/lib/notify";
@@ -15,6 +16,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
 import type { Encounter } from "@/types/encounter.types";
+import type { StreamEntry } from "@/types/stream.types";
 import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
 
 import Link from "next/link";
@@ -24,13 +26,22 @@ import { TournamentPageState } from "../_components/TournamentPageState";
 import { TournamentBracketSkeleton } from "../_components/TournamentSkeletons";
 import { UpdatingBadge } from "../_components/UpdatingBadge";
 import { useTournamentQuery } from "../_hooks/useTournamentClientData";
+import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
 import styles from "../TournamentDetail.module.css";
 import { isTournamentStatusEnded } from "@/lib/tournament-status";
-import { createBracketQueryPlan, deriveBracketLoadState } from "./bracketData";
+import {
+  createBracketQueryPlan,
+  deriveBracketLoadState,
+  isStageReportable,
+  isStageVisibleToViewer
+} from "./bracketData";
+import { buildLiveTeamStreams } from "./bracketLiveStreams";
+// Re-exported purely so TournamentBracketPage.test.ts's dynamic-import probe
+// (`bracketModule.getBracketRefetchInterval?.(status)`) can assert the
+// lifecycle polling policy without reaching into bracketData.ts directly.
+export { getBracketRefetchInterval } from "./bracketData";
 
 const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
-
-export { getBracketRefetchInterval } from "./bracketData";
 
 interface TournamentBracketViewProps {
   tournament: Tournament;
@@ -46,7 +57,8 @@ function GroupStagePanel({
   onReport,
   canEdit,
   canReport,
-  bracketTabs
+  bracketTabs,
+  liveTeamStreams
 }: {
   stage: Stage;
   stageItem?: StageItem;
@@ -63,9 +75,11 @@ function GroupStagePanel({
     label: string;
     isActive: boolean;
   }>;
+  liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
 }) {
   const t = useTranslations();
   const hasStandings = standings.length > 0;
+  const isPreview = !stage.is_published && !stage.is_completed;
   const title = stageItem?.name ?? stage.name;
   const subtitle = stageItem
     ? `${stage.name} - ${stage.stage_type.replace(/_/g, " ")}`
@@ -96,6 +110,7 @@ function GroupStagePanel({
                   / {stageItem.name}
                 </span>
               )}
+              {isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
             </div>
             <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               {subtitle}
@@ -103,7 +118,14 @@ function GroupStagePanel({
           </div>
         ) : (
           <div className="min-w-0">
-            <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">{title}</h3>
+            <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
+              {title}
+              {isPreview && (
+                <Badge variant="outline" className="ml-2 align-middle">
+                  {t("common.bracketPreview")}
+                </Badge>
+              )}
+            </h3>
             <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               {subtitle}
             </p>
@@ -150,6 +172,7 @@ function GroupStagePanel({
             onReport={onReport}
             canEdit={canEdit}
             canReport={canReport}
+            liveTeamStreams={liveTeamStreams}
           />
         </div>
       </TabsContent>
@@ -186,7 +209,24 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
   );
   const encountersQuery = useQuery(queryPlan.encounters);
   const standingsQuery = useQuery(queryPlan.standings);
-  const stages = stagesQuery.data ?? [];
+  // A stage the organizer generated ahead of time (`is_published=false`) is a
+  // preview: hidden from spectators entirely, visible to admins with a badge
+  // and no report action (the backend rejects captain reports/veto for it
+  // regardless — see `shared.services.bracket.usability.is_encounter_live`).
+  const stages = (stagesQuery.data ?? []).filter((stage) => isStageVisibleToViewer(stage, isAdmin));
+  const stageById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
+
+  // Read-only consumer of the stream cache the tournament shell already owns:
+  // `TournamentClientLayout` is subscribed to `tournament:{id}:streams` and
+  // invalidates `tournamentQueryKeys.streams(id)` on every event. A second
+  // subscription here, or a second `useQuery` declaring the same key with its own
+  // options, would be a rival updater of one cache entry — so this reuses the
+  // shared hook and lets the layout stay the only writer.
+  const streamsQuery = useTournamentStreamsQuery(tournament.id);
+  const liveTeamStreams = useMemo(
+    () => buildLiveTeamStreams(streamsQuery.data),
+    [streamsQuery.data]
+  );
 
   const captainPlayerIds = useMemo(
     () => new Set((authUser?.linkedPlayers ?? []).map((p) => p.playerId)),
@@ -202,7 +242,10 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
   };
   const canEdit = isAdmin ? () => true : undefined;
   const canReport = isAuthenticated
-    ? (enc: Encounter) => enc.result_status !== "confirmed" && isEncounterCaptain(enc)
+    ? (enc: Encounter) =>
+        enc.result_status !== "confirmed" &&
+        isEncounterCaptain(enc) &&
+        isStageReportable(enc.stage_id == null ? undefined : stageById.get(enc.stage_id))
     : undefined;
   const handleEdit = isAdmin ? (enc: Encounter) => setEditEncounter(enc) : undefined;
   const handleReport = isAuthenticated
@@ -434,6 +477,7 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
                   canEdit={canEdit}
                   canReport={canReport}
                   bracketTabs={index === 0 ? bracketTabs : undefined}
+                  liveTeamStreams={liveTeamStreams}
                 />
               ))
             : activeStages.map((stage) => {
@@ -482,6 +526,11 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
                         <div className="min-w-0">
                           <h3 className="truncate text-lg font-semibold text-[color:var(--aqt-fg)]">
                             {stage.name}
+                            {!stage.is_published && !stage.is_completed && (
+                              <Badge variant="outline" className="ml-2 align-middle">
+                                {t("common.bracketPreview")}
+                              </Badge>
+                            )}
                           </h3>
                           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
                             {stage.stage_type.replace(/_/g, " ")}
@@ -539,6 +588,7 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
                             onReport={handleReport}
                             canEdit={canEdit}
                             canReport={canReport}
+                            liveTeamStreams={liveTeamStreams}
                           />
                         </div>
                       )}

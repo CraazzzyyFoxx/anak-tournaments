@@ -10,7 +10,7 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import { roleKey } from "@/app/(site)/tournaments/analytics/analytics.helpers";
+import { normalizeRoleTint } from "@/lib/player-role";
 import { PlayerVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
 import { GlossaryTerm, isAnomalyGlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
 import InfoDot from "@/app/(site)/tournaments/analytics/components/InfoDot";
@@ -55,7 +55,7 @@ export default function PlayerDetail({
       ? t("analytics.community.player.drop")
       : t("analytics.community.player.hold");
 
-  const rk = roleKey(player.role);
+  const rk = normalizeRoleTint(player.role);
   const roleLabel = rk ? t(`analytics.community.role.${rk}`) : player.role;
   const roleLower = roleLabel.toLowerCase();
   const confPct = Math.round(player.confidence * 100);

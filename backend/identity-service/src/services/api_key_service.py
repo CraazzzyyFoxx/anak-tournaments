@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dict
 from shared.repository import ApiKeyRepository, WorkspaceMemberRepository, WorkspaceRepository
 from shared.services.audit import record_audit
 from src import models, schemas
@@ -241,13 +242,7 @@ async def list_api_keys(
     rows = (await session.execute(query)).scalars().all()
     total = (await session.execute(count_query)).scalar_one()
     counts = await _api_key_status_counts(session, auth_user_id=user.id, workspace_id=params.workspace_id)
-    return {
-        "results": [_serialize_api_key(row) for row in rows],
-        "total": total,
-        "page": params.page,
-        "per_page": params.per_page,
-        "counts": counts,
-    }
+    return {**paginated_dict([_serialize_api_key(row) for row in rows], total, params), "counts": counts}
 
 
 async def create_api_key(

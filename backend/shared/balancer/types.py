@@ -17,19 +17,6 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-class BalancerRole(StrEnum):
-    TANK = "tank"
-    DPS = "dps"
-    SUPPORT = "support"
-
-
-class RoleSubtype(StrEnum):
-    HITSCAN = "hitscan"
-    PROJECTILE = "projectile"
-    MAIN_HEAL = "main_heal"
-    LIGHT_HEAL = "light_heal"
-
-
 class PlayerFlag(StrEnum):
     SHOTCALLER = "shotcaller"
     NEWBIE = "newbie"

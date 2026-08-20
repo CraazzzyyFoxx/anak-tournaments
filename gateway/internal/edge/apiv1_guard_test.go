@@ -13,6 +13,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 )
 
@@ -48,6 +49,7 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, tournament.RegistrationAdminRoutes)
 	d.Register(mux, tournament.IntegrationsRoutes)
 	d.Register(mux, tournament.PublicWriteRoutes)
+	d.Register(mux, tournament.ScrimRoutes)
 	mux.Handle("/api/v1/division-grids/", d.Subtree(tournament.DivisionGridRoutes))
 	mux.Handle("/api/v1/admin/stages/", d.Subtree(tournament.StageSubtreeRoutes))
 	// app-service typed routes (reads + workspace/metadata/users admin) + the
@@ -160,6 +162,76 @@ func TestApiV1Guard_MatchSurfaceRoutesAreRegistered(t *testing.T) {
 			defer resp.Body.Close()
 			if route := resp.Header.Get("X-Route"); route == "guard" {
 				t.Fatalf("GET %s hit the /api/v1/ guard — the route is not registered", path)
+			}
+		})
+	}
+}
+
+// Scrim rooms ride their own table (tournament.ScrimRoutes,
+// docs/plans/2026-08-12-scrim-rooms.md), so a missing main.go registration
+// would leave every path answered by the /api/v1/ guard with no compile error.
+// The bare collection and the {token} routes must also not shadow each other:
+// the share token is an opaque string, so /api/v1/scrims must keep matching the
+// collection rather than being read as a token.
+func TestApiV1Guard_ScrimRoutesAreRegistered(t *testing.T) {
+	mux := buildGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/scrims"},
+		{http.MethodGet, "/api/v1/scrims?workspace_id=1"},
+		{http.MethodGet, "/api/v1/scrims/aBc123"},
+		{http.MethodPost, "/api/v1/scrims/aBc123/claim"},
+		{http.MethodPost, "/api/v1/scrims/aBc123/close"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, srv.URL+tc.path, http.NoBody)
+			if err != nil {
+				t.Fatalf("build %s %s: %v", tc.method, tc.path, err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
+			}
+			defer resp.Body.Close()
+			if route := resp.Header.Get("X-Route"); route == "guard" {
+				t.Fatalf("%s %s hit the /api/v1/ guard — the route is not registered", tc.method, tc.path)
+			}
+		})
+	}
+}
+
+// The self-service /api/v1/me/* surface rides app.UsersAdminRoutes. Two things
+// can break it silently: a missing registration (the /api/v1/ guard answers 404
+// with no compile error), and a new leaf being read as a {account_id} of the
+// social routes. /me/stream-visibility is a sibling leaf of /me/social/..., so
+// this pins that it keeps its own pattern instead of being swallowed.
+func TestApiV1Guard_MeRoutesAreRegistered(t *testing.T) {
+	mux := buildGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/me/social"},
+		{http.MethodPost, "/api/v1/me/social/5/primary"},
+		{http.MethodPost, "/api/v1/me/social/5/visibility"},
+		{http.MethodPost, "/api/v1/me/stream-visibility"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, srv.URL+tc.path, http.NoBody)
+			if err != nil {
+				t.Fatalf("build %s %s: %v", tc.method, tc.path, err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
+			}
+			defer resp.Body.Close()
+			switch route := resp.Header.Get("X-Route"); route {
+			case "frontend", "guard":
+				t.Fatalf("%s %s: routed to %q, want the typed dispatcher — the route is not registered",
+					tc.method, tc.path, route)
 			}
 		})
 	}
@@ -464,6 +536,99 @@ func TestApiAuth_TypedRoutesHitHandler(t *testing.T) {
 			case "frontend", "guard":
 				t.Fatalf("%s %s: routed to %q, want the typed identity handler (not proxied)",
 					c.method, c.path, resp.Header.Get("X-Route"))
+			}
+		})
+	}
+}
+
+// buildStreamsGuardedMux mirrors gateway/cmd/gateway/main.go's /api/streams
+// wiring. Building it must NOT panic (a ServeMux pattern conflict would crash
+// the gateway at startup): the repoll route nests under the read route's
+// {tournament_id}, so the two must coexist. There is no HTTP stream-service —
+// every /api/streams/* path is a typed RPC route here, and unmatched paths must
+// hit the /api/streams/ guard (404), never the "/" frontend catch-all (which
+// rewrites /api/streams/* back to the gateway -> infinite proxy loop).
+func buildStreamsGuardedMux(t *testing.T) *http.ServeMux {
+	t.Helper()
+	d := edge.New(errCaller{}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	mux := http.NewServeMux()
+	d.Register(mux, stream.PublicRoutes)
+	d.Register(mux, stream.AdminRoutes)
+	mux.HandleFunc("/api/streams/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Route", "guard")
+		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.Handle("/", marker("frontend"))
+	return mux
+}
+
+func TestApiStreamsGuard_NoConflictAndNoLoop(t *testing.T) {
+	mux := buildStreamsGuardedMux(t) // panics here on any ServeMux pattern conflict
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cases := []struct {
+		name      string
+		method    string
+		path      string
+		wantRoute string // "" => expect the /api/streams/ guard 404
+	}{
+		{"unmatched streams path", "GET", "/api/streams/does-not-exist", ""},
+		{"unmatched tournament leaf", "GET", "/api/streams/tournament/7/nope", ""},
+		{"read is GET-only", "DELETE", "/api/streams/tournament/7", ""},
+		{"non-api path hits frontend", "GET", "/users/someone", "frontend"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req, _ := http.NewRequest(c.method, srv.URL+c.path, nil)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", c.method, c.path, err)
+			}
+			defer resp.Body.Close()
+			route := resp.Header.Get("X-Route")
+			if c.wantRoute == "" {
+				if resp.StatusCode != http.StatusNotFound || route != "guard" {
+					t.Fatalf("%s %s: got route=%q status=%d, want the /api/streams/ guard (404). "+
+						"Falling through to the frontend would re-create the proxy loop.",
+						c.method, c.path, route, resp.StatusCode)
+				}
+				return
+			}
+			if route != c.wantRoute {
+				t.Fatalf("%s %s: routed to %q, want %q", c.method, c.path, route, c.wantRoute)
+			}
+		})
+	}
+}
+
+// The streams surface rides its own tables (stream.PublicRoutes /
+// stream.AdminRoutes), so a missing main.go registration would leave every path
+// answered by the /api/streams/ guard with 404 — the feature dead on arrival
+// with no compile error to warn anyone. This pins that both made it onto the mux.
+func TestApiStreamsGuard_RoutesAreRegistered(t *testing.T) {
+	mux := buildStreamsGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/streams/tournament/7"},
+		{http.MethodPost, "/api/streams/tournament/7/repoll?workspace_id=1"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, srv.URL+tc.path, http.NoBody)
+			if err != nil {
+				t.Fatalf("build %s %s: %v", tc.method, tc.path, err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.method, tc.path, err)
+			}
+			defer resp.Body.Close()
+			switch route := resp.Header.Get("X-Route"); route {
+			case "frontend", "guard":
+				t.Fatalf("%s %s: routed to %q, want the typed dispatcher — the route is not registered",
+					tc.method, tc.path, route)
 			}
 		})
 	}

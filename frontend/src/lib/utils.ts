@@ -39,12 +39,6 @@ export function formatDateRange(
   return `${formatter.format(start)} – ${formatter.format(end)}`;
 }
 
-export function getStatusColor(isFinished: boolean) {
-  return isFinished
-    ? "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
-    : "bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100";
-}
-
 export function hexToRgba(hex: string, alpha: number): string | null {
   const normalized = hex.trim().replace(/^#/, "");
   if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {

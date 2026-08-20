@@ -1,19 +1,9 @@
 from __future__ import annotations
 
-import sqlalchemy as sa
-from sqlalchemy.orm.attributes import NO_VALUE
-
 from src import models
 from src.schemas.admin import balancer as admin_schemas
 from src.services.balancer.config.provider import serialize_saved_config_payload
 from src.services.balancer.config.public_contract import normalize_balance_response_payload
-
-
-def loaded_relationship_or_none(instance: object, attribute: str):
-    loaded_value = sa.inspect(instance).attrs[attribute].loaded_value
-    if loaded_value is NO_VALUE:
-        return None
-    return loaded_value
 
 
 def serialize_balance(

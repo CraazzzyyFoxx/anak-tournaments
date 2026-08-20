@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import type { ValueMapRow } from "@/types/balancer-admin.types";
 
-export type ValueEditorKind = "boolean" | "role" | "text" | "number" | "role_subrole";
+type ValueEditorKind = "boolean" | "role" | "text" | "number" | "role_subrole";
 
 interface ValueMapEditorProps {
   title: string;
@@ -46,17 +46,6 @@ const ROLE_SUBROLE_ROLE_OPTIONS = [
   { value: "dps", label: "DPS" },
   { value: "support", label: "Support" },
 ] as const;
-
-const ROLE_SUBROLE_SUBROLE_OPTIONS: Record<string, { value: string; label: string }[]> = {
-  dps: [
-    { value: "hitscan", label: "Hitscan" },
-    { value: "projectile", label: "Projectile" },
-  ],
-  support: [
-    { value: "main_heal", label: "Main heal" },
-    { value: "light_heal", label: "Light heal" },
-  ],
-};
 
 type RoleSubroleItem = { role: string; subrole: string | null };
 
@@ -104,7 +93,8 @@ function RoleSubroleSubForm({
       items.map((item, i) => {
         if (i !== index) return item;
         if (field === "role") {
-          return { role: val ?? "", subrole: ROLE_SUBROLE_SUBROLE_OPTIONS[val ?? ""] ? item.subrole : null };
+          const nextRole = val ?? "";
+          return { role: nextRole, subrole: nextRole === "" || nextRole === "flex" ? null : item.subrole };
         }
         return { ...item, subrole: val };
       }),
@@ -121,7 +111,7 @@ function RoleSubroleSubForm({
   return (
     <div className="space-y-1.5">
       {items.map((item, index) => {
-        const subroleOptions = ROLE_SUBROLE_SUBROLE_OPTIONS[item.role] ?? [];
+        const subroleDisabled = item.role === "" || item.role === "flex";
         return (
           <div key={index} className="flex items-center gap-1.5">
             <Select value={item.role || undefined} onValueChange={(v) => updateItem(index, "role", v)}>
@@ -136,22 +126,13 @@ function RoleSubroleSubForm({
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={item.subrole ?? undefined}
-              onValueChange={(v) => updateItem(index, "subrole", v)}
-              disabled={subroleOptions.length === 0}
-            >
-              <SelectTrigger className="h-8 flex-1">
-                <SelectValue placeholder={subroleOptions.length === 0 ? "—" : "Sub-role"} />
-              </SelectTrigger>
-              <SelectContent>
-                {subroleOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Input
+              className="h-8 flex-1"
+              value={item.subrole ?? ""}
+              onChange={(e) => updateItem(index, "subrole", e.target.value || null)}
+              disabled={subroleDisabled}
+              placeholder={subroleDisabled ? "—" : "Sub-role slug"}
+            />
             <Button
               variant="ghost"
               size="icon"

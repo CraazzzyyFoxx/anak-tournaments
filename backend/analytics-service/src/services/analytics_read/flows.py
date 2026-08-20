@@ -93,6 +93,7 @@ def _team_to_pydantic(team: models.Team, *, include_tournament: bool = True) -> 
         created_at=team.created_at,
         updated_at=team.updated_at,
         name=team.name,
+        image_url=team.image_url,
         avg_sr=team.avg_sr,
         total_sr=team.total_sr,
         captain_id=team.captain_id,

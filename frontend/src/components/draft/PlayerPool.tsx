@@ -233,10 +233,13 @@ export function PlayerPool({
             const blocked = safetyRequired && safeOption == null;
             const bookmarked = shortlist.has(player.id);
             const isSelected = selectedPlayerId === player.id;
-            const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.rank_value);
+            // effective_rank, not rank_value: under a role-less roster the
+            // server resolves the player's best role rank, which is the rank the
+            // pick will freeze and the roster will show.
+            const division = player.division_number ?? resolveDivisionFromRank(divisionGrid, player.effective_rank);
             const divisionTitle = [
               getDivisionLabel(divisionGrid, division),
-              player.rank_value ? `${player.rank_value} SR` : null
+              player.effective_rank ? `${player.effective_rank} SR` : null
             ].filter(Boolean).join(" · ");
             const heroes = roleTopHeroes(player, player.primary_role);
             const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;

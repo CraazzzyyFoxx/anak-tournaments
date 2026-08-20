@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { ArrowRight, Users } from "lucide-react";
 
+import TeamName from "@/components/TeamName";
 import {
   type LiveTournamentGroup,
   currentMapName,
   relativeTime,
-  teamInitials,
 } from "./tournaments-helpers";
 
 const FeaturedTournamentCard = ({
@@ -101,8 +101,12 @@ const FeaturedTournamentCard = ({
         </div>
         <div className="vs">
           <div className="team">
-            <span aria-hidden className="av t1">{teamInitials(current.home_team?.name)}</span>
-            <span className="nm">{current.home_team?.name ?? t("common.tbd")}</span>
+            <TeamName
+              team={current.home_team}
+              fallback={t("common.tbd")}
+              size="sm"
+              nameClassName="nm"
+            />
           </div>
           <span className="score">
             <span className="em">{current.score?.home ?? 0}</span>
@@ -110,8 +114,13 @@ const FeaturedTournamentCard = ({
             {current.score?.away ?? 0}
           </span>
           <div className="team right">
-            <span aria-hidden className="av t2">{teamInitials(current.away_team?.name)}</span>
-            <span className="nm">{current.away_team?.name ?? t("common.tbd")}</span>
+            <TeamName
+              team={current.away_team}
+              fallback={t("common.tbd")}
+              size="sm"
+              nameClassName="nm"
+              reverse
+            />
           </div>
         </div>
         {mapName && <span className="map-pill">{mapName}</span>}

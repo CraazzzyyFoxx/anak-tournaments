@@ -2620,6 +2620,34 @@
       },
       "summary": "User matches summary"
     },
+    "rpc.app.users.me_favorite_add": {
+      "description": "Bookmarks a player for the caller's own account. Idempotent (favoriting an already-favorited player is a no-op), 404s if the player id does not exist.",
+      "summary": "Favorite a player"
+    },
+    "rpc.app.users.me_favorite_remove": {
+      "description": "Removes a player from the caller's own favorites, returns 204. Idempotent (unfavoriting a player that isn't favorited is a no-op, not an error).",
+      "summary": "Unfavorite a player"
+    },
+    "rpc.app.users.me_favorites_list": {
+      "description": "Returns the caller's own favorited players (id + name), newest favorite first. Scoped to the caller's auth account, not a linked player, so it works even without one.",
+      "response": {
+        "array": true,
+        "ref": "app.LookupItem"
+      },
+      "summary": "List my favorite players"
+    },
+    "rpc.app.users.me_set_stream_visibility": {
+      "description": "Sets whether the caller's own live stream may be surfaced on tournament pages and returns their updated player. A false value is a veto: it outranks the per-tournament stream-POV opt-in and the Twitch account's public visibility, and takes effect immediately rather than at the next poll tick. Independent of social-account visibility, so the handle stays on the public profile. Requires a linked player (404 otherwise) and the account.social capability.",
+      "request": {
+        "array": false,
+        "ref": "app.StreamVisibilityUpdate"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.UserRead"
+      },
+      "summary": "Set my stream visibility"
+    },
     "rpc.app.users.merge_execute": {
       "description": "Merges one player profile into another, stamping the operator's auth-user id (superuser only).",
       "request": {
@@ -3603,7 +3631,7 @@
       "summary": "Patch draft session"
     },
     "rpc.balancer.draft.start": {
-      "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline.",
+      "description": "Starts the draft and opens the first pick (requires team-create), publishing a pick-started realtime event with the clock deadline. The tournament must be in its draft phase unless the caller is a superuser.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -4923,10 +4951,6 @@
       },
       "summary": "Upsert tournament Discord channel"
     },
-    "rpc.parser.encounter.create_challonge": {
-      "description": "Bulk-creates a tournament's encounters from its Challonge bracket, optionally skipping finals; requires match.create in the tournament's workspace.",
-      "summary": "Create Challonge encounters"
-    },
     "rpc.parser.logs.history": {
       "description": "Lists match-log processing records filtered by tournament, encounter or workspace, plus optional status and free-text search, with pagination; permission is gated per filter argument.",
       "query_params": [
@@ -5359,6 +5383,40 @@
       },
       "summary": "Create tournament with groups"
     },
+    "rpc.stream.health": {
+      "description": "Outcome of the last Twitch live-status poll tick next to the config that produced it: status, when it ran, how many tournaments and channels it covered, how many channels were live, and Twitch's remaining rate-limit budget. Exists because the tick swallows every Helix failure by design so an outage cannot kill the scheduler \u2014 without this a poller rejected by Twitch is indistinguishable from a working one. A null status means no tick has been recorded yet, which is not the same as a recorded failure. Requires a global stream-read permission: there is one poller for the whole platform, so the numbers carry no workspace dimension and a workspace-scoped grant is not enough.",
+      "response": {
+        "array": false,
+        "ref": "stream.StreamPollHealthRead"
+      },
+      "summary": "Stream poller health"
+    },
+    "rpc.stream.repoll": {
+      "description": "Clears the live-status poll cursor so the next scheduler heartbeat polls immediately (202 Accepted \u2014 no poll runs inline). Requires stream-update permission on the workspace that owns the tournament, and is recorded in the audit log.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": true,
+          "schema": {
+            "description": "Workspace the stream.update permission is checked against; must own the tournament.",
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "stream.StreamRepollRead"
+      },
+      "summary": "Re-poll tournament streams"
+    },
+    "rpc.stream.tournament_streams": {
+      "description": "Returns the tournament's stream block: official broadcast links from its typed links (included whether or not they are on air) and the participant channels that are live right now. Public; a hidden tournament answers 404 for an ineligible viewer. Twitch channels report live true/false; YouTube and other hosts report live null, meaning there is no live detection for them rather than offline. A participant entry carries the player behind the channel together with the team they play for in this tournament; that team is null until rosters are drafted, and the player itself is null on an official broadcast, which belongs to the organizer rather than to any participant.",
+      "response": {
+        "array": false,
+        "ref": "stream.TournamentStreamsRead"
+      },
+      "summary": "Get tournament streams"
+    },
     "rpc.tournament.admin.create#encounter": {
       "description": "Creates an encounter; requires match-create permission on the workspace resolved from the body's tournament_id.",
       "request": {
@@ -5455,6 +5513,18 @@
       },
       "summary": "Create tournament"
     },
+    "rpc.tournament.admin.create#tournament_link": {
+      "description": "Attaches one typed external link (Discord, stream, VOD, bracket, rules, other) to a tournament; requires tournament_link-create permission on the workspace derived from the body's tournament_id. Rejects a duplicate kind+url pair with 409.",
+      "request": {
+        "array": false,
+        "ref": "tournament.TournamentLinkCreate"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentLinkRead"
+      },
+      "summary": "Create tournament link"
+    },
     "rpc.tournament.admin.delete#encounter": {
       "description": "Deletes an encounter by id (204 no body); requires match-delete permission on its workspace.",
       "summary": "Delete encounter"
@@ -5482,6 +5552,10 @@
     "rpc.tournament.admin.delete#tournament": {
       "description": "Deletes a tournament by id (204 no body); requires tournament-delete permission on its workspace.",
       "summary": "Delete tournament"
+    },
+    "rpc.tournament.admin.delete#tournament_link": {
+      "description": "Deactivates a tournament link by id (204 no body, soft delete via is_active); requires tournament_link-delete permission on its tournament's workspace.",
+      "summary": "Delete tournament link"
     },
     "rpc.tournament.admin.get#stage": {
       "description": "Returns one stage by id; requires stage-read permission on its workspace.",
@@ -5545,6 +5619,30 @@
         "ref": "tournament.StageRead"
       },
       "summary": "List stages (admin)"
+    },
+    "rpc.tournament.admin.list#tournament_link": {
+      "description": "Lists a tournament's links ordered by sort_order then id, optionally only the active ones; requires tournament_link-read permission on the tournament's workspace.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "active_only",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "tournament.TournamentLinkRead"
+      },
+      "summary": "List tournament links"
     },
     "rpc.tournament.admin.update#encounter": {
       "description": "Updates an encounter by id; requires match-update permission on its workspace.",
@@ -5653,6 +5751,18 @@
         "ref": "tournament.TournamentRead"
       },
       "summary": "Update tournament"
+    },
+    "rpc.tournament.admin.update#tournament_link": {
+      "description": "Updates a tournament link by id; requires tournament_link-update permission on its tournament's workspace. Rejects a duplicate kind+url pair with 409.",
+      "request": {
+        "array": false,
+        "ref": "tournament.TournamentLinkUpdate"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.TournamentLinkRead"
+      },
+      "summary": "Update tournament link"
     },
     "rpc.tournament.admin_encounter_reports_list": {
       "description": "Every encounter in the workspace with the pair of captain reports filed against it. The row is the encounter, not the report, because a dispute spans two reports and the action that settles it is per-encounter. `scores_match` is null until both sides have reported \u2014 that is a different state from disagreeing. `series_score_valid` is advisory: reports predate per-round best-of, so a mismatch is information, not an error. Filter with `tournament_id`, `stage_id`, `result_status`, `mismatch_only`, `reported_count` and a free-text `query` over team and encounter names. Requires `match.read` on the workspace named by `workspace_id`.",
@@ -6148,6 +6258,10 @@
     "rpc.tournament.admin_pick_ban_config_upsert": {
       "description": "Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the step sequence and item pool; requires match-update permission on its workspace.",
       "summary": "Upsert pick-ban config"
+    },
+    "rpc.tournament.admin_pick_ban_elect_opener": {
+      "description": "Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state and requires match-update permission on its workspace.",
+      "summary": "Elect a round's opener for a side"
     },
     "rpc.tournament.admin_pick_ban_session_reset": {
       "description": "Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
@@ -7850,6 +7964,59 @@
       },
       "summary": "List saved encounter views"
     },
+    "rpc.tournament.scrim_claim": {
+      "description": "Claims the scrim room's free captain side for the calling user and grants them preview access to the hidden scrims container, so the pre-game room resolves their side from then on; idempotent and first-writer-wins, 409 once both sides are taken; requires membership of the room's workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Claim a scrim side"
+    },
+    "rpc.tournament.scrim_close": {
+      "description": "Closes a scrim room so it stops counting against its creator's active-room cap, leaving the encounter and its pick-ban history readable by the participants forever; requires membership of the room's workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Close scrim room"
+    },
+    "rpc.tournament.scrim_create": {
+      "description": "Creates an ad-hoc pre-game room outside any tournament: the workspace's hidden scrims container (lazily), an isolating stage, that stage's map and optional hero pick-ban configs either copied from an existing tournament round or authored ad hoc, both teams and the encounter; returns the room with its share token. Requires membership of the workspace, and 409s when the caller's active-room cap is reached.",
+      "request": {
+        "array": false,
+        "ref": "tournament.ScrimCreateRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Create scrim room"
+    },
+    "rpc.tournament.scrim_get": {
+      "description": "Returns one scrim room by share token, annotating the requesting viewer's captain side and whether they may still claim the free one; visible only to a participant, a workspace insider or a preview-allowlisted user, everyone else gets 404.",
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomRead"
+      },
+      "summary": "Get scrim room"
+    },
+    "rpc.tournament.scrim_list_mine": {
+      "description": "Returns the calling user's scrim rooms in a workspace, open and closed alike (scrim history is kept forever); requires authentication.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.ScrimRoomListRead"
+      },
+      "summary": "List my scrim rooms"
+    },
     "rpc.tournament.sheet_get": {
       "description": "Returns a tournament's registration Google Sheets feed config, or null if none; requires team-read permission on the tournament.",
       "response": {
@@ -7937,6 +8104,14 @@
     "rpc.tournament.stage_apply_best_of": {
       "description": "Rewrites best_of on the stage's existing encounters from its settings_json best-of config (in place, preserving scores); requires stage-update permission on its workspace.",
       "summary": "Apply best-of to existing matches"
+    },
+    "rpc.tournament.stage_deactivate": {
+      "description": "Reverts an accidentally-activated stage back to Draft/preview; refuses (409) once any of its matches has been reported or started; requires stage-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.StageRead"
+      },
+      "summary": "Deactivate stage"
     },
     "rpc.tournament.stage_generate": {
       "description": "Enqueues a bracket-generation job (202 Accepted) for the stage; requires stage-update permission on its workspace.",
@@ -8108,6 +8283,22 @@
         "ref": "tournament.WorkspaceSubscriptionRequirementRead"
       },
       "summary": "Set workspace subscription requirement"
+    },
+    "rpc.tournament.teams.image_delete": {
+      "description": "Removes a team's image from S3 and clears its URL; requires team-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.TeamRead"
+      },
+      "summary": "Delete team image"
+    },
+    "rpc.tournament.teams.image_upload": {
+      "description": "Uploads a team's image to S3 and stores its URL; requires team-update permission on its workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.TeamRead"
+      },
+      "summary": "Upload team image"
     },
     "rpc.tournament.tournament_finish": {
       "description": "Toggles a tournament's legacy finished flag and returns it with stages; superuser-only.",
@@ -9611,6 +9802,18 @@
           "title": "Id",
           "type": "integer"
         },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
+        },
         "losses": {
           "title": "Losses",
           "type": "integer"
@@ -10148,6 +10351,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
         },
         "name": {
           "title": "Name",
@@ -11325,10 +11540,12 @@
       "type": "object"
     },
     "app.HeroClass": {
+      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.",
       "enum": [
         "Tank",
         "Damage",
-        "Support"
+        "Support",
+        "Flex"
       ],
       "title": "HeroClass",
       "type": "string"
@@ -11380,7 +11597,13 @@
           "type": "string"
         },
         "role": {
-          "$ref": "#/components/schemas/app.HeroClass"
+          "enum": [
+            "Tank",
+            "Damage",
+            "Support"
+          ],
+          "title": "Role",
+          "type": "string"
         }
       },
       "required": [
@@ -11891,13 +12114,19 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "enum": [
+                "Tank",
+                "Damage",
+                "Support"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "title": "Role"
         }
       },
       "title": "HeroUpdate",
@@ -12072,6 +12301,18 @@
           "title": "Gamemode Id",
           "type": "integer"
         },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Path"
+        },
         "in_competitive": {
           "default": true,
           "title": "In Competitive",
@@ -12170,6 +12411,18 @@
           ],
           "default": null,
           "title": "Gamemode Id"
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Path"
         },
         "in_competitive": {
           "anyOf": [
@@ -13393,6 +13646,20 @@
       ],
       "title": "SortOrder",
       "type": "string"
+    },
+    "app.StreamVisibilityUpdate": {
+      "description": "Self-service veto on surfacing the owner's live stream on tournament pages.\n\nSeparate from ``SocialVisibilityUpdate``: that one governs whether a handle is\nshown on the public profile at all, this one only whether the live broadcast is\nsurfaced. Collapsing them is the bug this endpoint exists to fix.",
+      "properties": {
+        "visible": {
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "visible"
+      ],
+      "title": "StreamVisibilityUpdate",
+      "type": "object"
     },
     "app.TournamentStatus": {
       "enum": [
@@ -15758,6 +16025,11 @@
           },
           "title": "Social Accounts",
           "type": "array"
+        },
+        "stream_visible": {
+          "default": true,
+          "title": "Stream Visible",
+          "type": "boolean"
         }
       },
       "required": [
@@ -18166,6 +18438,34 @@
       "title": "DraftPickStatus",
       "type": "string"
     },
+    "balancer.DraftPlayerCustomFieldRead": {
+      "description": "One organizer-approved registration answer, ready to render.\n\nCarries the definition's current ``label``/``type`` alongside the value so\nthe draft client renders it without knowing anything about registration\nforms. Built by ``services.draft.board.player_custom_fields``; only fields\nflagged ``show_in_draft`` on the registration form ever appear here, because\nthe board snapshot is public.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "type",
+        "value"
+      ],
+      "title": "DraftPlayerCustomFieldRead",
+      "type": "object"
+    },
     "balancer.DraftPlayerRead": {
       "properties": {
         "additional_info": {
@@ -18183,6 +18483,13 @@
             }
           ],
           "title": "Battle Tag"
+        },
+        "custom_fields": {
+          "items": {
+            "$ref": "#/components/schemas/balancer.DraftPlayerCustomFieldRead"
+          },
+          "title": "Custom Fields",
+          "type": "array"
         },
         "division_number": {
           "anyOf": [
@@ -18205,6 +18512,18 @@
             }
           ],
           "title": "Drafted By Team Id"
+        },
+        "effective_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective Rank"
         },
         "id": {
           "title": "Id",
@@ -24916,6 +25235,11 @@
           "title": "Is Completed",
           "type": "boolean"
         },
+        "is_published": {
+          "default": false,
+          "title": "Is Published",
+          "type": "boolean"
+        },
         "items": {
           "default": [],
           "items": {
@@ -25619,6 +25943,343 @@
       ],
       "title": "TournamentStatus",
       "type": "string"
+    },
+    "stream.StreamEntryRead": {
+      "description": "One channel in the tournament's stream block.",
+      "properties": {
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "game_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Game Name"
+        },
+        "live": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Live"
+        },
+        "platform": {
+          "enum": [
+            "twitch",
+            "youtube",
+            "other"
+          ],
+          "title": "Platform",
+          "type": "string"
+        },
+        "player": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/stream.StreamPlayerRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "thumbnail_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thumbnail Url"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "viewer_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Viewer Count"
+        }
+      },
+      "required": [
+        "platform",
+        "channel",
+        "url",
+        "live"
+      ],
+      "title": "StreamEntryRead",
+      "type": "object"
+    },
+    "stream.StreamPlayerRead": {
+      "description": "The player behind a participant stream. Absent for an official broadcast.",
+      "properties": {
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/stream.StreamTeamRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "StreamPlayerRead",
+      "type": "object"
+    },
+    "stream.StreamPollHealthRead": {
+      "description": "Poller health for the admin panel.\n\nExists because the tick swallows its own failures by design \u2014 a Twitch outage\nmust not kill the scheduler \u2014 so \"polling works\" and \"Twitch rejected the\ncredentials\" both look like a page with no live badges. Without this read the\nonly way to tell them apart is `docker compose logs`.\n\nPlatform-wide, not per-workspace: there is one poller and one Redis key, so\nthe numbers carry no workspace dimension and the read requires a GLOBAL\n``stream.read`` rather than a workspace-scoped grant.",
+      "properties": {
+        "batch_size": {
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "channels_polled": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channels Polled"
+        },
+        "credentials_configured": {
+          "default": false,
+          "title": "Credentials Configured",
+          "type": "boolean"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "interval_seconds": {
+          "title": "Interval Seconds",
+          "type": "integer"
+        },
+        "last_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Run At"
+        },
+        "live_channels": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Live Channels"
+        },
+        "ratelimit_remaining": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratelimit Remaining"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ok",
+                "empty",
+                "truncated",
+                "not_configured",
+                "rate_limited",
+                "unauthorized",
+                "unavailable",
+                "error"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "tournaments_active": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournaments Active"
+        },
+        "tournaments_updated": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournaments Updated"
+        }
+      },
+      "required": [
+        "enabled",
+        "interval_seconds",
+        "batch_size"
+      ],
+      "title": "StreamPollHealthRead",
+      "type": "object"
+    },
+    "stream.StreamRepollRead": {
+      "description": "202 body for ``rpc.stream.repoll``.\n\nDeliberately just the id: the handler does not run a poll tick, it clears the\npoll cursor so the next scheduler heartbeat is due immediately. \"Accepted, not\ndone\" is what the 202 already says, so a constant ``queued: true`` field would\nadd a word and no information.",
+      "properties": {
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tournament_id"
+      ],
+      "title": "StreamRepollRead",
+      "type": "object"
+    },
+    "stream.StreamTeamRead": {
+      "description": "The team a streaming participant plays for in THIS tournament.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "StreamTeamRead",
+      "type": "object"
+    },
+    "stream.TournamentStreamsRead": {
+      "description": "The whole stream block for one tournament.",
+      "properties": {
+        "official": {
+          "items": {
+            "$ref": "#/components/schemas/stream.StreamEntryRead"
+          },
+          "title": "Official",
+          "type": "array"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/components/schemas/stream.StreamEntryRead"
+          },
+          "title": "Participants",
+          "type": "array"
+        }
+      },
+      "required": [
+        "official",
+        "participants"
+      ],
+      "title": "TournamentStreamsRead",
+      "type": "object"
     },
     "tournament.AdminMatchDetail": {
       "description": "A single match with the per-match aggregates the list omits.\n\nNFR 3: ``matches.statistics`` / ``kill_feed`` / ``assists`` are the hot,\nhigh-volume tables. Counting them per row would put three aggregate scans\nbehind every page of the list, so they live here \u2014 one row at a time.",
@@ -28950,6 +29611,11 @@
           "title": "Required",
           "type": "boolean"
         },
+        "show_in_draft": {
+          "default": false,
+          "title": "Show In Draft",
+          "type": "boolean"
+        },
         "type": {
           "default": "text",
           "enum": [
@@ -31140,6 +31806,14 @@
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
         },
+        "sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterSlotSourceRead"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
         "stage": {
           "anyOf": [
             {
@@ -32053,6 +32727,30 @@
       "title": "EncounterSideBalanceRead",
       "type": "object"
     },
+    "tournament.EncounterSlotSourceRead": {
+      "description": "Where an unresolved slot's team comes from: the ``role`` of\n``encounter_id`` fills ``slot`` of this encounter.\n\nThe bracket's real advancement edges (``EncounterLink``). A reader labels an\nempty slot from them (\"L M3\") instead of inferring the bracket's shape from\nround numbers, which cannot tell a lower bracket seeded from the group stage\napart from one fed by the upper bracket's first losers.",
+      "properties": {
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encounter_id",
+        "role",
+        "slot"
+      ],
+      "title": "EncounterSlotSourceRead",
+      "type": "object"
+    },
     "tournament.EncounterStageSplitRead": {
       "properties": {
         "count": {
@@ -32435,6 +33133,24 @@
       "title": "FieldValidationConfig",
       "type": "object"
     },
+    "tournament.FirstBanRotation": {
+      "enum": [
+        "fixed",
+        "alternate",
+        "result_winner_first",
+        "result_loser_first",
+        "result_loser_choice"
+      ],
+      "title": "FirstBanRotation",
+      "type": "string"
+    },
+    "tournament.FirstPickRule": {
+      "enum": [
+        "higher_seed"
+      ],
+      "title": "FirstPickRule",
+      "type": "string"
+    },
     "tournament.GamemodeRead": {
       "properties": {
         "description": {
@@ -32476,10 +33192,12 @@
       "type": "object"
     },
     "tournament.HeroClass": {
+      "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.",
       "enum": [
         "Tank",
         "Damage",
-        "Support"
+        "Support",
+        "Flex"
       ],
       "title": "HeroClass",
       "type": "string"
@@ -32834,6 +33552,14 @@
       ],
       "title": "MapRead",
       "type": "object"
+    },
+    "tournament.MapVetoMode": {
+      "enum": [
+        "pool",
+        "slots"
+      ],
+      "title": "MapVetoMode",
+      "type": "string"
     },
     "tournament.MappingParserRead": {
       "properties": {
@@ -33844,14 +34570,28 @@
       "title": "Paginated[TournamentRead]",
       "type": "object"
     },
+    "tournament.PickBanKind": {
+      "description": "Which catalog a :class:`PickBanConfig`/session pool draws from.",
+      "enum": [
+        "map",
+        "hero"
+      ],
+      "title": "PickBanKind",
+      "type": "string"
+    },
+    "tournament.PickBanNoRepeatScope": {
+      "description": "Cross-round BAN memory rule for :class:`EncounterPickBanLedger`\nexclusion. Protects are never recorded there, so they neither exclude nor\nare excluded by anything under any scope.\n\n``NONE``: no cross-round memory (today's flat/slot veto behavior).\n``ENCOUNTER``: an item banned by EITHER side, anywhere earlier in this\nencounter's series, is excluded from every later round's pool.\n``ENCOUNTER_SAME_SIDE``: excluded only for the side that banned it; the\nopponent may still target it.",
+      "enum": [
+        "none",
+        "encounter",
+        "encounter_same_side"
+      ],
+      "title": "PickBanNoRepeatScope",
+      "type": "string"
+    },
     "tournament.PlayerCreate": {
       "description": "Schema for creating a player",
       "properties": {
-        "div": {
-          "default": 0,
-          "title": "Div",
-          "type": "integer"
-        },
         "is_newcomer": {
           "default": false,
           "title": "Is Newcomer",
@@ -34254,18 +34994,6 @@
     "tournament.PlayerUpdate": {
       "description": "Schema for updating a player",
       "properties": {
-        "div": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div"
-        },
         "is_newcomer": {
           "anyOf": [
             {
@@ -35423,6 +36151,390 @@
       "title": "Score",
       "type": "object"
     },
+    "tournament.ScrimCreateRequest": {
+      "properties": {
+        "away_team_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Away Team Name",
+          "type": "string"
+        },
+        "best_of": {
+          "minimum": 1,
+          "title": "Best Of",
+          "type": "integer"
+        },
+        "home_team_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Home Team Name",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "pool": {
+          "discriminator": {
+            "mapping": {
+              "copy": "#/components/schemas/tournament.ScrimPoolCopy",
+              "custom": "#/components/schemas/tournament.ScrimPoolCustom"
+            },
+            "propertyName": "source"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/tournament.ScrimPoolCopy"
+            },
+            {
+              "$ref": "#/components/schemas/tournament.ScrimPoolCustom"
+            }
+          ],
+          "title": "Pool"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "label",
+        "best_of",
+        "home_team_name",
+        "away_team_name",
+        "pool"
+      ],
+      "title": "ScrimCreateRequest",
+      "type": "object"
+    },
+    "tournament.ScrimPoolConfigInput": {
+      "properties": {
+        "allow_protect": {
+          "default": false,
+          "title": "Allow Protect",
+          "type": "boolean"
+        },
+        "first_ban_rotation": {
+          "$ref": "#/components/schemas/tournament.FirstBanRotation",
+          "default": "fixed"
+        },
+        "first_pick_rule": {
+          "$ref": "#/components/schemas/tournament.FirstPickRule",
+          "default": "higher_seed"
+        },
+        "item_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Item Ids",
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/components/schemas/tournament.PickBanKind"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/tournament.MapVetoMode",
+          "default": "pool"
+        },
+        "no_repeat_scope": {
+          "$ref": "#/components/schemas/tournament.PickBanNoRepeatScope",
+          "default": "none"
+        },
+        "preset": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset"
+        },
+        "sequence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sequence",
+          "type": "array"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ScrimPoolSlotInput"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "turn_timer_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Timer Seconds"
+        },
+        "unique_attribute_per_side_per_round": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unique Attribute Per Side Per Round"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ScrimPoolConfigInput",
+      "type": "object"
+    },
+    "tournament.ScrimPoolCopy": {
+      "description": "\"We play this round's maps\" \u2014 clone whatever the cascade resolves there.\n\n``stage_id``/``round`` may be null to copy a tournament-wide or stage-wide\nconfig; resolution uses the engine's own ranking\n(``pick_ban_session.resolve_config_at_level``), so what a room copies is\nexactly what an encounter at that coordinate would have played.",
+      "properties": {
+        "round": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Round"
+        },
+        "source": {
+          "const": "copy",
+          "title": "Source",
+          "type": "string"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Id"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source",
+        "tournament_id"
+      ],
+      "title": "ScrimPoolCopy",
+      "type": "object"
+    },
+    "tournament.ScrimPoolCustom": {
+      "description": "A pool authored for this room only. At most one entry per ``kind``.",
+      "properties": {
+        "configs": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ScrimPoolConfigInput"
+          },
+          "minItems": 1,
+          "title": "Configs",
+          "type": "array"
+        },
+        "source": {
+          "const": "custom",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "configs"
+      ],
+      "title": "ScrimPoolCustom",
+      "type": "object"
+    },
+    "tournament.ScrimPoolSlotInput": {
+      "description": "One slot of a slot-mode pool. List order IS play order \u2014 same contract as\n``PickBanConfigSlotUpsert``.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "reserve_item_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reserve Item Id"
+        }
+      },
+      "required": [
+        "candidates"
+      ],
+      "title": "ScrimPoolSlotInput",
+      "type": "object"
+    },
+    "tournament.ScrimRoomListRead": {
+      "properties": {
+        "rooms": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ScrimRoomRead"
+          },
+          "title": "Rooms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rooms"
+      ],
+      "title": "ScrimRoomListRead",
+      "type": "object"
+    },
+    "tournament.ScrimRoomRead": {
+      "properties": {
+        "away_team": {
+          "$ref": "#/components/schemas/tournament.ScrimTeamRead"
+        },
+        "best_of": {
+          "title": "Best Of",
+          "type": "integer"
+        },
+        "can_claim": {
+          "title": "Can Claim",
+          "type": "boolean"
+        },
+        "closed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Closed At"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "home_team": {
+          "$ref": "#/components/schemas/tournament.ScrimTeamRead"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "stage_id": {
+          "title": "Stage Id",
+          "type": "integer"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "viewer_side": {
+          "anyOf": [
+            {
+              "enum": [
+                "home",
+                "away"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Viewer Side"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "token",
+        "label",
+        "workspace_id",
+        "tournament_id",
+        "stage_id",
+        "encounter_id",
+        "best_of",
+        "home_team",
+        "away_team",
+        "viewer_side",
+        "can_claim",
+        "created_at",
+        "closed_at"
+      ],
+      "title": "ScrimRoomRead",
+      "type": "object"
+    },
+    "tournament.ScrimTeamRead": {
+      "properties": {
+        "captain_claimed": {
+          "title": "Captain Claimed",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "captain_claimed"
+      ],
+      "title": "ScrimTeamRead",
+      "type": "object"
+    },
     "tournament.SeedTeamsRequest": {
       "description": "Distribute teams into a stage's stage_items (groups) automatically.\n\n``mode`` selects the distribution strategy:\n- ``snake_sr`` (default) \u2014 sort by Team.avg_sr desc, snake-distribute\n  across groups so each group ends up roughly equally strong.\n- ``by_total_sr`` \u2014 same but sorts by Team.total_sr (raw sum).\n- ``random`` \u2014 deterministic shuffle based on team.id (reproducible).",
       "properties": {
@@ -36014,6 +37126,11 @@
           "title": "Is Completed",
           "type": "boolean"
         },
+        "is_published": {
+          "default": false,
+          "title": "Is Published",
+          "type": "boolean"
+        },
         "items": {
           "default": [],
           "items": {
@@ -36133,6 +37250,11 @@
         },
         "is_completed": {
           "title": "Is Completed",
+          "type": "boolean"
+        },
+        "is_published": {
+          "default": false,
+          "title": "Is Published",
           "type": "boolean"
         },
         "max_rounds": {
@@ -37238,6 +38360,18 @@
           "title": "Id",
           "type": "integer"
         },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -37378,6 +38512,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
         },
         "name": {
           "title": "Name",
@@ -37775,6 +38921,167 @@
       "title": "TournamentGroupRead",
       "type": "object"
     },
+    "tournament.TournamentLinkCreate": {
+      "properties": {
+        "is_active": {
+          "default": true,
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "sort_order": {
+          "default": 0,
+          "title": "Sort Order",
+          "type": "integer"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tournament_id",
+        "kind",
+        "url"
+      ],
+      "title": "TournamentLinkCreate",
+      "type": "object"
+    },
+    "tournament.TournamentLinkRead": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "sort_order": {
+          "title": "Sort Order",
+          "type": "integer"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tournament_id",
+        "kind",
+        "label",
+        "url",
+        "sort_order",
+        "is_active"
+      ],
+      "title": "TournamentLinkRead",
+      "type": "object"
+    },
+    "tournament.TournamentLinkUpdate": {
+      "properties": {
+        "is_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Active"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "sort_order": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sort Order"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "title": "TournamentLinkUpdate",
+      "type": "object"
+    },
     "tournament.TournamentPaginationSortSearchQueryParams": {
       "properties": {
         "entities": {
@@ -37983,6 +39290,14 @@
         "is_league": {
           "title": "Is League",
           "type": "boolean"
+        },
+        "links": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.TournamentLinkRead"
+          },
+          "title": "Links",
+          "type": "array"
         },
         "loss_points": {
           "default": 0.0,

@@ -27,12 +27,14 @@ from src.schemas.admin import stage as stage_schemas
 from src.schemas.admin import standing as standing_schemas
 from src.schemas.admin import team as team_schemas
 from src.schemas.admin import tournament as tournament_schemas
+from src.schemas.admin import tournament_link as tlink_schemas
 from src.services.admin import encounter as enc_service
 from src.services.admin import player_sub_role as psr_service
 from src.services.admin import stage as stage_service
 from src.services.admin import standing as standing_service
 from src.services.admin import team as team_service
 from src.services.admin import tournament as tournament_service
+from src.services.admin import tournament_link as tlink_service
 from src.services.encounter import flows as encounter_flows
 from src.services.standings import flows as standings_flows
 from src.services.team import flows as team_flows
@@ -77,6 +79,16 @@ async def _ws_via_team_body(session: AsyncSession, data: dict[str, Any]) -> int:
 
 async def _ws_via_tournament_path(session: AsyncSession, data: dict[str, Any]) -> int:
     return await auth.get_tournament_workspace_id(session, _int_or_400(data.get("tournament_id"), "tournament_id"))
+
+
+async def _ws_via_tournament_query(session: AsyncSession, data: dict[str, Any]) -> int:
+    # Same reason as _ws_via_team_body: the entity is tournament-scoped and has no
+    # workspace_id of its own, so the permission workspace comes from the parent
+    # tournament being listed — never from an independent client-supplied
+    # workspace_id query param.
+    return await auth.get_tournament_workspace_id(
+        session, _int_or_400(_query(data).get("tournament_id"), "tournament_id")
+    )
 
 
 async def _ws_via_stage_path(session: AsyncSession, data: dict[str, Any]) -> int:
@@ -144,6 +156,10 @@ async def _ser_player_sub_role(session: AsyncSession, m: Any) -> Any:
     return _dump(psr_schemas.PlayerSubRoleRead.model_validate(m, from_attributes=True))
 
 
+async def _ser_tournament_link(session: AsyncSession, m: Any) -> Any:
+    return _dump(tlink_schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
+
+
 # --- list functions ---
 
 
@@ -165,6 +181,16 @@ async def _list_player_sub_roles(session: AsyncSession, data: dict[str, Any]) ->
         session, workspace_id=workspace_id, role=role, include_inactive=include_inactive
     )
     return [_dump(psr_schemas.PlayerSubRoleRead.model_validate(r, from_attributes=True)) for r in rows]
+
+
+async def _list_tournament_links(session: AsyncSession, data: dict[str, Any]) -> Any:
+    q = _query(data)
+    tournament_id = _int_or_400(q.get("tournament_id"), "tournament_id")
+    act_raw = q.get("active_only")
+    act = act_raw[0] if isinstance(act_raw, list) else act_raw
+    active_only = str(act).lower() in ("1", "true", "yes", "on") if act is not None else False
+    rows = await tlink_service.list_links(session, tournament_id, active_only=active_only)
+    return [_dump(tlink_schemas.TournamentLinkRead.model_validate(r, from_attributes=True)) for r in rows]
 
 
 # --- registry ---
@@ -311,6 +337,23 @@ REGISTRY: dict[str, EntityConfig] = {
         service_delete=lambda s, i, d: psr_service.deactivate_sub_role(s, i),
         list_fn=_list_player_sub_roles,
         not_found_detail="Player sub-role not found",
+        actions=frozenset({"create", "update", "delete", "list"}),
+    ),
+    "tournament_link": EntityConfig(
+        entity="tournament_link",
+        model=None,
+        permission_resource="tournament_link",
+        serializer=_ser_tournament_link,
+        create_schema=tlink_schemas.TournamentLinkCreate,
+        update_schema=tlink_schemas.TournamentLinkUpdate,
+        resolve_ws_from_id=auth.get_tournament_link_workspace_id,
+        resolve_ws_for_create=_ws_via_tournament_body,
+        resolve_ws_for_list=_ws_via_tournament_query,
+        service_create=lambda s, p, d: tlink_service.create_link(s, p),
+        service_update=lambda s, i, p, d: tlink_service.update_link(s, i, p),
+        service_delete=lambda s, i, d: tlink_service.deactivate_link(s, i),
+        list_fn=_list_tournament_links,
+        not_found_detail="Tournament link not found",
         actions=frozenset({"create", "update", "delete", "list"}),
     ),
 }

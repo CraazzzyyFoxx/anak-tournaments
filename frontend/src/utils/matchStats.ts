@@ -12,7 +12,7 @@ import type { PlayerWithStats, TeamWithStats } from "@/types/team.types";
  * chart) from one declarative catalogue so formatting/labels stay consistent.
  */
 
-export type StatFormat = "int" | "float" | "thousands" | "percent" | "duration";
+type StatFormat = "int" | "float" | "thousands" | "percent" | "duration";
 
 export type StatGroup = "combat" | "damage" | "tanking" | "healing" | "utility" | "accuracy";
 
@@ -271,6 +271,19 @@ export const LEADER_STATS: LogStatsName[] = [
 export function playerStat(player: PlayerWithStats, round: number, name: LogStatsName): number {
   const value = player.stats?.[round]?.[name];
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/** Official per-map MVP placement: impact rank when the impact-scoring pipeline
+ * computed it for this map, legacy performance rank otherwise. Mirrors
+ * `resolveMvpPlacement` in `components/match/cells.tsx` (used by the Users →
+ * Matches tab for the same two `LogStatsName` columns) so a player's MVP badge
+ * agrees everywhere it appears. */
+export function resolveMatchMvpPlacement(player: PlayerWithStats, round: number): number | null {
+  const row = player.stats?.[round];
+  const impactRank = row?.[LogStatsName.ImpactRank];
+  if (typeof impactRank === "number" && Number.isFinite(impactRank)) return impactRank;
+  const performance = row?.[LogStatsName.Performance];
+  return typeof performance === "number" && Number.isFinite(performance) ? performance : null;
 }
 
 /** Players who actually fielded a hero in the given round (played the round). */

@@ -17,6 +17,7 @@ import {
   Shield,
   Shuffle,
   Trash2,
+  Undo2,
   Wand2,
   Zap
 } from "lucide-react";
@@ -141,16 +142,20 @@ function getStageAssignedTeams(stage: Stage) {
 }
 
 /**
- * Teams that start in the UPPER bracket, mirroring `generate_encounters`
- * (services/admin/stage.py): split seeding sends the lower half of the seeds to
- * the lower bracket, either from a dedicated Lower bracket item or — with a
- * single bracket item — from the second half of its seed order.
+ * The team count that fixes a bracket's depth, mirroring `generate_encounters`
+ * (services/admin/stage.py): total teams for single elimination or a non-split
+ * double elimination; the upper-bracket half for a split double elimination
+ * (a dedicated Lower bracket item, or the first half of a single bracket item's
+ * seeds).
  *
- * Falls back to the item's empty slots before seeding, so the best-of editor
- * offers the bracket the organizer is building rather than nothing.
+ * Seeded inputs — then empty slots — are ground truth when present. Before
+ * either exists (the common case: a playoff wired only after its groups finish)
+ * the count is projected from the preceding group stage's `advance_count ×
+ * groups`, so the best-of editor offers the bracket that WILL be generated
+ * rather than a `max_rounds` guess that has no relation to the team count.
  */
-function getStageUpperTeamCount(stage: Stage, splitLowerBracket: boolean) {
-  const countTeams = (items: StageItem[]) => {
+function getStageBracketTeamCount(stage: Stage, splitLowerBracket: boolean, stages: Stage[]) {
+  const countInputs = (items: StageItem[]) => {
     const assigned = items.reduce(
       (acc, item) => acc + item.inputs.filter((input) => input.team_id != null).length,
       0
@@ -158,14 +163,61 @@ function getStageUpperTeamCount(stage: Stage, splitLowerBracket: boolean) {
     return assigned > 0 ? assigned : items.reduce((acc, item) => acc + item.inputs.length, 0);
   };
 
-  if (stage.stage_type !== "double_elimination" || !splitLowerBracket) {
-    return countTeams(stage.items);
+  const isSplitDe = stage.stage_type === "double_elimination" && splitLowerBracket;
+  const hasLowerItem = stage.items.some((item) => item.type === "bracket_lower");
+
+  if (!isSplitDe) {
+    const own = countInputs(stage.items);
+    if (own > 0) return own;
+  } else if (hasLowerItem) {
+    const own = countInputs(stage.items.filter((item) => item.type !== "bracket_lower"));
+    if (own > 0) return own;
+  } else {
+    const own = countInputs(stage.items);
+    if (own > 0) return Math.floor(own / 2);
   }
-  const lowerItems = stage.items.filter((item) => item.type === "bracket_lower");
-  if (lowerItems.length > 0) {
-    return countTeams(stage.items.filter((item) => item.type !== "bracket_lower"));
+
+  // Nothing wired yet: project from the group stage that will seed this one.
+  return projectedBracketSeedCounts(stage, splitLowerBracket, stages).upper;
+}
+
+/**
+ * The upper/lower seed counts the preceding group stage feeds into `stage`,
+ * mirroring `_preceding_group_stage` + `_projected_bracket_seed_counts`: the
+ * nearest earlier Swiss/round-robin stage seeds `advance_count` teams from EACH
+ * of its groups, and a split double elimination splits EACH group's share (the
+ * odd team out goes up) rather than halving the total — which for an odd
+ * `advance_count` is a differently shaped bracket.
+ */
+function projectedBracketSeedCounts(
+  stage: Stage,
+  splitLowerBracket: boolean,
+  stages: Stage[]
+): { upper: number; lower: number } {
+  const source = stages
+    .filter(
+      (candidate) =>
+        candidate.order < stage.order &&
+        (candidate.stage_type === "swiss" || candidate.stage_type === "round_robin")
+    )
+    .sort((left, right) => right.order - left.order)[0];
+  if (!source || !source.advance_count || source.advance_count <= 0) return { upper: 0, lower: 0 };
+
+  const groups = source.items.length || 1;
+  const advance = source.advance_count;
+  const isSplitDe = stage.stage_type === "double_elimination" && splitLowerBracket;
+
+  if (isSplitDe && stage.items.some((item) => item.type === "bracket_lower")) {
+    const lowerPerGroup = Math.floor(advance / 2);
+    return { upper: groups * (advance - lowerPerGroup), lower: groups * lowerPerGroup };
   }
-  return Math.floor(countTeams(stage.items) / 2);
+
+  const total = groups * advance;
+  if (isSplitDe) {
+    // One bracket item holds both halves; the seed list is split down the middle.
+    return { upper: Math.floor(total / 2), lower: total - Math.floor(total / 2) };
+  }
+  return { upper: total, lower: 0 };
 }
 
 function getDefaultStageItemType(stageType: StageType): StageItemType {
@@ -221,15 +273,19 @@ function getProgressPercent(completed: number, total: number) {
   return Math.round((completed / total) * 100);
 }
 
-function getStageStatus(stage: Stage) {
+function getStageStatus(stage: Stage, hasEncounters: boolean) {
   if (stage.is_completed) return "Completed";
   if (stage.is_active) return "Active";
+  // Bracket generated ahead of activation: visible to organizers, not yet
+  // usable by captains (`shared.services.bracket.usability.is_encounter_live`).
+  if (!stage.is_published && hasEncounters) return "Preview";
   return "Draft";
 }
 
-function getStageStatusClass(stage: Stage) {
+function getStageStatusClass(stage: Stage, hasEncounters: boolean) {
   if (stage.is_completed) return TONE_CLASS.success;
   if (stage.is_active) return TONE_CLASS.accent;
+  if (!stage.is_published && hasEncounters) return TONE_CLASS.info;
   return TONE_CLASS.neutral;
 }
 
@@ -284,6 +340,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [seedStageConfirm, setSeedStageConfirm] = useState<Stage | null>(null);
   const [mergeStageConfirm, setMergeStageConfirm] = useState<Stage | null>(null);
   const [forceActivateStage, setForceActivateStage] = useState<Stage | null>(null);
+  const [deactivateStageConfirm, setDeactivateStageConfirm] = useState<Stage | null>(null);
+  const [regenerateStageConfirm, setRegenerateStageConfirm] = useState<Stage | null>(null);
   const [newStageName, setNewStageName] = useState("");
   const [newStageType, setNewStageType] = useState<StageType>("round_robin");
   const [newStageMaxRounds, setNewStageMaxRounds] = useState("5");
@@ -477,11 +535,25 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }
   });
 
+  const deactivateMutation = useMutation({
+    mutationFn: (stageId: number) => adminService.deactivateStage(stageId),
+    onSuccess: () => {
+      setDeactivateStageConfirm(null);
+      invalidateStageData();
+      notify.success("Stage reverted to draft");
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not revert this stage to draft" })
+  });
+
   const generateMutation = useMutation({
     mutationFn: (stageId: number) => adminService.generateBracket(stageId),
     onSuccess: () => {
+      setRegenerateStageConfirm(null);
       invalidateStageData();
-    }
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not generate the bracket" })
   });
 
   const applyBestOfMutation = useMutation({
@@ -750,7 +822,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const bestOfRoundSections = stageBestOfRoundSections({
     stageType: selectedStageTypeDraft,
     maxRounds: maxRoundsDraftValue,
-    upperTeamCount: selectedStage ? getStageUpperTeamCount(selectedStage, selectedStageSplitLbDraft) : 0,
+    bracketTeamCount: selectedStage
+      ? getStageBracketTeamCount(selectedStage, selectedStageSplitLbDraft, stages)
+      : 0,
     splitLowerBracket: selectedStageSplitLbDraft,
     configuredRounds: Object.keys(selectedBestOfDraft.by_round ?? {}).map(Number)
   });
@@ -840,6 +914,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                 <div className="flex flex-col gap-2 p-2">
                   {orderedStages.map((stage, index) => {
                     const progress = progressByStageId.get(stage.id);
+                    const hasEncounters = (progress?.total ?? 0) > 0;
                     const stageSlots = getStageTeamSlots(stage);
                     const assignedTeams = getStageAssignedTeams(stage);
                     const progressPercent = progress
@@ -880,9 +955,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               </button>
                               <Badge
                                 variant="outline"
-                                className={cn("shrink-0", getStageStatusClass(stage))}
+                                className={cn("shrink-0", getStageStatusClass(stage, hasEncounters))}
                               >
-                                {getStageStatus(stage)}
+                                {getStageStatus(stage, hasEncounters)}
                               </Badge>
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -1012,11 +1087,40 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                         </Button>
                       ) : null}
 
+                      {(selectedStage.is_active || selectedStage.is_published) &&
+                      !selectedStage.is_completed ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={deactivateMutation.isPending}
+                          onClick={() => setDeactivateStageConfirm(selectedStage)}
+                          title="Reverts this stage to Draft/preview — only possible while every one of its matches is still unplayed"
+                        >
+                          {deactivateMutation.isPending &&
+                          deactivateMutation.variables === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Undo2 className="size-4" aria-hidden />
+                          )}
+                          {deactivateMutation.isPending &&
+                          deactivateMutation.variables === selectedStage.id
+                            ? "Reverting…"
+                            : "Revert to draft"}
+                        </Button>
+                      ) : null}
+
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={generateMutation.isPending}
-                        onClick={() => generateMutation.mutate(selectedStage.id)}
+                        onClick={() => {
+                          if ((selectedStageProgress?.total ?? 0) > 0) {
+                            setRegenerateStageConfirm(selectedStage);
+                          } else {
+                            generateMutation.mutate(selectedStage.id);
+                          }
+                        }}
+                        title="Generates the bracket as a preview without activating the stage — captains cannot report or veto until it is activated. With no teams seeded yet, a playoff is built from the group stage's advancing count and filled in once the groups finish."
                       >
                         {generateMutation.isPending &&
                         generateMutation.variables === selectedStage.id ? (
@@ -2163,6 +2267,50 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         confirmingLabel="Activating…"
         confirmVariant="default"
         isDeleting={activateAndGenerateMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(deactivateStageConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setDeactivateStageConfirm(null);
+        }}
+        onConfirm={() => {
+          if (deactivateStageConfirm) {
+            deactivateMutation.mutate(deactivateStageConfirm.id);
+          }
+        }}
+        title="Revert stage to draft"
+        description={
+          deactivateStageConfirm
+            ? `Revert "${deactivateStageConfirm.name}" back to Draft/preview. This only succeeds while every one of its matches is still unplayed — any reported or in-progress match blocks it.`
+            : undefined
+        }
+        confirmLabel="Revert to draft"
+        confirmingLabel="Reverting…"
+        confirmVariant="default"
+        isDeleting={deactivateMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(regenerateStageConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setRegenerateStageConfirm(null);
+        }}
+        onConfirm={() => {
+          if (regenerateStageConfirm) {
+            generateMutation.mutate(regenerateStageConfirm.id);
+          }
+        }}
+        title="Generate bracket again"
+        description={
+          regenerateStageConfirm
+            ? `"${regenerateStageConfirm.name}" already has generated matches. Existing matches are left untouched: for a grouped stage, only groups with no matches yet get a new bracket; for a bracket that is still all TBD, the seeded teams are written into it; otherwise this is blocked until you delete its existing matches.`
+            : undefined
+        }
+        confirmLabel="Generate"
+        confirmingLabel="Generating…"
+        confirmVariant="default"
+        isDeleting={generateMutation.isPending}
       />
     </>
   );

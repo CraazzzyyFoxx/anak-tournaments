@@ -20,13 +20,14 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
-  getDefaultDivisionGrid,
+  OW_REFERENCE_GRID,
   getTierForRank,
   resolveDivisionFromRank,
   resolveExactRankFromDivision,
   sortTiersDescending
 } from "@/lib/division-grid";
 import {
+  DEFAULT_RANK_MAPPING_VERSION,
   buildMappingCells,
   defaultRankForCell
 } from "@/lib/ow-rank-mapping";
@@ -90,6 +91,25 @@ export function RankSettingsPanel() {
         setting={settingsQuery.data?.find((s) => s.key === RANK_MAPPING_KEY)}
         onSaved={invalidate}
       />
+    </>
+  );
+}
+
+/** Shared save button + success/error status shown by both settings cards below. */
+function SaveButtonStatus({
+  mutation
+}: {
+  mutation: { mutate: () => void; isPending: boolean; isSuccess: boolean; isError: boolean };
+}) {
+  return (
+    <>
+      <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+        {mutation.isPending ? "Saving…" : "Save"}
+      </Button>
+      {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
+      {mutation.isError && (
+        <span className="text-sm text-danger">Save failed — check the values and try again.</span>
+      )}
     </>
   );
 }
@@ -256,13 +276,7 @@ function RankCollectionSection({
         </div>
 
         <div className="flex items-center gap-3">
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
-          {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
-          {mutation.isError && (
-            <span className="text-sm text-danger">Save failed — check the values and try again.</span>
-          )}
+          <SaveButtonStatus mutation={mutation} />
         </div>
       </CardContent>
     </Card>
@@ -276,12 +290,16 @@ function RankMappingSection({
   setting: SettingRead | undefined;
   onSaved: () => void;
 }) {
-  const grid = getDefaultDivisionGrid();
+  // The OW ladder, NOT the current workspace's grid: `parser.rank_mapping` is a
+  // global setting, and the backend re-resolves each stored rank_value through a
+  // tournament's own grid at autofill time (rank_sources._map_ow_rank_value), so
+  // the value written here has to stay on the OW/SR scale.
+  const grid = OW_REFERENCE_GRID;
   const internalTiers = useMemo(() => sortTiersDescending(grid), [grid]);
 
   const initial = useMemo<RankMappingConfig>(() => {
     const value = (setting?.value as Partial<RankMappingConfig>) ?? {};
-    return { version: value.version ?? "ow2-default-v1", entries: value.entries ?? [] };
+    return { version: value.version ?? DEFAULT_RANK_MAPPING_VERSION, entries: value.entries ?? [] };
   }, [setting]);
   const [cells, setCells] = useState<RankMappingEntry[]>(() => buildMappingCells(initial.entries));
   const [prevInitial, setPrevInitial] = useState<RankMappingConfig>(initial);
@@ -322,15 +340,16 @@ function RankMappingSection({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Map each competitive rank to an internal division from the workspace grid. The
-          division&apos;s lower bound is stored as the rank value.
+          Map each competitive rank to a rank value on the Overwatch ladder. The
+          division&apos;s lower bound is stored; each workspace resolves it against
+          its own grid.
         </p>
 
         <div className="overflow-hidden rounded-md border">
           <div className="grid grid-cols-[minmax(140px,1fr)_24px_minmax(0,1.4fr)] gap-3 border-b bg-muted/40 px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             <span>OverFast rank</span>
             <span />
-            <span>Internal division</span>
+            <span>Ladder division</span>
           </div>
           {cells.map((cell, index) => {
             const tier = getTierForRank(grid, cell.rank_value);
@@ -357,7 +376,7 @@ function RankMappingSection({
                 >
                   <SelectTrigger
                     className="h-9 w-full max-w-xs"
-                    aria-label={`Internal division for ${cell.division} tier ${cell.tier}`}
+                    aria-label={`Ladder division for ${cell.division} tier ${cell.tier}`}
                   >
                     <SelectValue>
                       {tier ? (
@@ -394,13 +413,7 @@ function RankMappingSection({
           <Button variant="outline" size="sm" onClick={resetToDefaults}>
             Reset to OW2 defaults
           </Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
-          {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
-          {mutation.isError && (
-            <span className="text-sm text-danger">Save failed — check the values and try again.</span>
-          )}
+          <SaveButtonStatus mutation={mutation} />
         </div>
       </CardContent>
     </Card>

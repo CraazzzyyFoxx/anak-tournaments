@@ -1,7 +1,7 @@
 """Tests for canonical OW division normalization (cross-workspace single scale).
 
 See src/services/analytics/canonical_division.py: every analytics division is
-mapped to the in-code standard grid (DEFAULT_GRID, 40-tier OW). Per source tier:
+mapped to the in-code standard grid (DEFAULT_GRID, 45-tier OW). Per source tier:
 OW-rank binding when present, else proportional rescale of the division number.
 """
 
@@ -78,14 +78,14 @@ class CanonicalDivisionNumberTests(TestCase):
 
     def test_proportional_endpoints_span_full_canonical_range(self) -> None:
         grid = _grid20()
-        # Top division (1) -> canonical top (1); bottom (20) -> canonical bottom (40).
+        # Top division (1) -> canonical top (1); bottom (20) -> canonical bottom (45).
         self.assertEqual(DEFAULT_GRID.min_division, canonical.canonical_division_number(grid, 2000))
         self.assertEqual(DEFAULT_GRID.max_division, canonical.canonical_division_number(grid, 150))
 
     def test_proportional_midpoint(self) -> None:
         grid = _grid20()
-        # division number 10 of 20 -> round(1 + 9/19 * 39) = 19
-        self.assertEqual(19, canonical.canonical_division_number(grid, 1150))
+        # division number 10 of 20 -> round(1 + 9/19 * 44) = 22
+        self.assertEqual(22, canonical.canonical_division_number(grid, 1150))
 
     def test_default_grid_is_identity(self) -> None:
         # A rank already on the OW SR scale resolves to its own OW division.

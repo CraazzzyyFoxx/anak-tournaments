@@ -5,10 +5,10 @@ Two stages:
 **Stage A — Win-probability classifier.**
 
 Trained on every historical encounter ``(home_team, away_team, won)`` with
-features that capture pre-match team strength: avg/std rank gap, OpenSkill mu
-gap, head-to-head winrate, days-since-last-meeting. Champion is XGBoost +
-isotonic calibration; a Logistic Regression baseline is fitted alongside for
-sanity.
+features that capture pre-tournament team strength: avg/std rank gap plus the
+OpenSkill mu snapshot (avg / max / std per side and their gaps). Champion is
+XGBoost + isotonic calibration; a Logistic Regression baseline is fitted
+alongside for sanity.
 
 **Stage B — Monte Carlo simulator.**
 
@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -58,8 +59,26 @@ logger = logging.getLogger(__name__)
 # from the model inputs: those are derived from Performance v2 of the SAME
 # tournament being predicted (post-hoc residual from MatchStatistics) and
 # therefore leak the very outcome we're trying to forecast. All remaining
-# features are strictly pre-encounter (player ranks at registration time +
-# OpenSkill mu snapshotted before each encounter).
+# features are strictly pre-tournament (player ranks at registration time +
+# OpenSkill mu snapshotted before the tournament).
+#
+# ``h2h_winrate`` / ``days_since_last_meet`` were removed: team ids are minted
+# per tournament, so head-to-head history only ever existed for same-tournament
+# rematches — information the pre-tournament forecast can never have. Training
+# on it while inference pinned it to a constant was pure train/serve skew.
+#
+# The mu spread features (max/std) carry what the roster average hides: a
+# star-carried roster and a flat one with the same ``avg_mu`` do not win the
+# same matches.
+#
+# The frames ALSO emit role mu gaps (``role_mu_gap_{tank,damage,support}``) and
+# roster synergy (``{home,away}_synergy_{pairs,winrate}``, ``synergy_winrate_gap``)
+# — deliberately NOT modelled yet. The 2026-08 walk-forward ablation over the
+# last 6 tournaments (chronological cuts, standings Spearman vs realised
+# places) measured: base13 0.310, +synergy 0.263, +role gaps 0.065, all 0.170 —
+# on ~4k encounters both additions are noise the booster overfits. They stay in
+# the frames so the ablation can be re-run as data grows; extend this tuple only
+# with a walk-forward win in hand.
 STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "home_avg_rank",
     "away_avg_rank",
@@ -69,9 +88,35 @@ STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "home_avg_mu",
     "away_avg_mu",
     "mu_gap",
-    "h2h_winrate",
-    "days_since_last_meet",
+    "home_max_mu",
+    "away_max_mu",
+    "max_mu_gap",
+    "home_std_mu",
+    "away_std_mu",
 )
+
+
+def _calibration_folds(n_rows: int) -> int:
+    """CV folds for isotonic calibration, sized by the labelled row count.
+
+    Isotonic regression needs a few hundred out-of-fold rows per calibrator to
+    be stable; below ~500 rows two folds is all the data supports. (The previous
+    ``len(set(y))`` expression counted the number of DISTINCT LABELS — always 2
+    for a binary target — silently pinning calibration to 2 folds forever.)
+    """
+    return int(min(5, max(2, n_rows // 250)))
+
+
+def _feature_matrix(df: pd.DataFrame, feature_order: typing.Sequence[str]) -> pd.DataFrame:
+    """Align + coerce to float, PRESERVING NaN.
+
+    XGBoost handles missing values natively (learned default split direction).
+    Filling with 0.0 was actively harmful: a roster with no rated history got
+    ``mu = 0`` on a scale centred at ~25 — an absurd outlier the trees had to
+    spend splits quarantining.
+    """
+    X = align_features(df, feature_order)
+    return X.apply(pd.to_numeric, errors="coerce").astype(float)
 
 
 @dataclass
@@ -85,10 +130,8 @@ class WinProbabilityModel(MLModel):
     def predict_proba(self, df: pd.DataFrame) -> np.ndarray:
         if df.empty:
             return np.zeros(0, dtype=float)
-        X = align_features(df, self.feature_order).fillna(0.0)
-        # XGBoost refuses ``object`` dtype columns; ensure everything is float.
-        X = X.apply(pd.to_numeric, errors="coerce").fillna(0.0).astype(float)
-        return self.booster.predict_proba(X)[:, 1]
+        # NaN is a first-class value for XGBoost — see ``_feature_matrix``.
+        return self.booster.predict_proba(_feature_matrix(df, self.feature_order))[:, 1]
 
     def predict(self, df: pd.DataFrame) -> pd.Series:
         return pd.Series(self.predict_proba(df), index=df.index, name="p_home_wins")
@@ -120,30 +163,35 @@ def _train_standings_v2_with_device(
     if labelled.empty:
         raise ValueError("no labelled encounters for standings v2")
 
-    X = align_features(labelled, STANDINGS_FEATURE_ORDER).fillna(0.0)
-    # Coerce any ``object``-dtype columns (e.g. ``Decimal`` from PG ``AVG``)
-    # to float — XGBoost otherwise raises ``ValueError: DataFrame.dtypes
-    # for data must be int, float, bool or category``.
-    X = X.apply(pd.to_numeric, errors="coerce").fillna(0.0).astype(float)
+    X = _feature_matrix(labelled, STANDINGS_FEATURE_ORDER)
     y = labelled["home_won"].astype(int).to_numpy()
 
+    # Hyperparameters picked by walk-forward Spearman of the SIMULATED STANDINGS
+    # against realised places over the last 6 prod tournaments (2026-08 A/B):
+    # depth-5/400/mcw-1 averaged 0.251 vs 0.015 for a heavily regularised
+    # depth-3/mcw-10 fit — in this low-signal, balancer-equalized domain the
+    # per-encounter logloss barely moves between variants, but the deeper trees
+    # separate team strength far better. Calibration flatness is isotonic's
+    # job (5-fold on ~4k rows), not the booster's.
     base_xgb = xgb.XGBClassifier(
         objective="binary:logistic",
         eval_metric="logloss",
         max_depth=5,
         n_estimators=400,
         learning_rate=0.05,
+        min_child_weight=1,
         subsample=0.8,
         colsample_bytree=0.8,
         verbosity=0,
         **xgboost_params(device),
     )
-    # Limit CV folds to avoid failing on small validation sets.
-    cv = min(5, max(2, len(set(y))))
+    cv = _calibration_folds(len(y))
     calibrated = CalibratedClassifierCV(estimator=base_xgb, method="isotonic", cv=cv)
     calibrated.fit(X, y)
 
+    # The linear baseline cannot digest NaN — impute for it only.
     baseline = make_pipeline(
+        SimpleImputer(strategy="median"),
         StandardScaler(),
         LogisticRegression(max_iter=1000, C=1.0),
     )
@@ -163,8 +211,7 @@ def _train_standings_v2_with_device(
         v = val_df.dropna(subset=["home_won"])
         v = v[v["home_won"].isin([0.0, 1.0])]
         if not v.empty:
-            X_val = align_features(v, STANDINGS_FEATURE_ORDER).fillna(0.0)
-            X_val = X_val.apply(pd.to_numeric, errors="coerce").fillna(0.0).astype(float)
+            X_val = _feature_matrix(v, STANDINGS_FEATURE_ORDER)
             y_val = v["home_won"].astype(int).to_numpy()
             p_val = calibrated.predict_proba(X_val)[:, 1]
             metrics["logloss_val"] = -float(

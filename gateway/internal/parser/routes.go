@@ -71,7 +71,6 @@ var Routes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/tournament/create/with_groups", Queue: "rpc.parser.tournament.create_with_groups", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/teams/challonge/preview", Queue: "rpc.parser.teams.challonge_preview", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/teams/create/challonge", Queue: "rpc.parser.teams.create_challonge", AllQuery: true, Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/encounter/challonge", Queue: "rpc.parser.encounter.create_challonge", AllQuery: true, Auth: edge.AuthRequired},
 }
 
 // AchievementAdminRoutes are the workspace-scoped achievement rule/library/override

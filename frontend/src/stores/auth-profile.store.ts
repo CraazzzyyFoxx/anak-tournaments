@@ -1,14 +1,14 @@
 import { create } from "zustand";
 import { getAccessTokenCookie, refreshAccessToken } from "@/lib/auth-tokens";
 
-export type WorkspaceRbac = {
+type WorkspaceRbac = {
   workspace_id: number;
   slug: string;
   roles: string[];
   permissions: string[];
 };
 
-export type AuthLinkedPlayer = {
+type AuthLinkedPlayer = {
   playerId: number;
   playerName: string;
   isPrimary: boolean;
@@ -29,7 +29,7 @@ export type AuthProfile = {
   primaryLinkedPlayer?: AuthLinkedPlayer;
 };
 
-export type AuthProfileStatus = "idle" | "loading" | "authenticated" | "anonymous" | "error";
+type AuthProfileStatus = "idle" | "loading" | "authenticated" | "anonymous" | "error";
 
 type AuthProfileState = {
   status: AuthProfileStatus;

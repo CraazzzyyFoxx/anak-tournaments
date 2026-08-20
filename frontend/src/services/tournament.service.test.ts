@@ -50,6 +50,11 @@ describe("tournamentService.getPublicOverview", () => {
     calls.length = 0;
   });
 
+  // The list is pinned deliberately: every entity costs the read another query
+  // server-side (`flows.py` gates each one), so growing it must be a decision
+  // somebody made on purpose rather than a line that drifted in. `links` earns
+  // its place by replacing a SECOND round trip — the shell renders the link row
+  // from this same payload instead of fetching it separately.
   it("loads the fixed public overview without ambient workspace scoping", async () => {
     await tournamentService.getPublicOverview(72);
 
@@ -64,6 +69,7 @@ describe("tournamentService.getPublicOverview", () => {
               "participants_count",
               "registrations_count",
               "teams_count",
+              "links",
             ],
           },
         },

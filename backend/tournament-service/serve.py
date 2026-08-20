@@ -28,7 +28,16 @@ from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
 from src.core.redis import close_realtime_redis
-from src.rpc import admin_misc, integrations, pick_ban_admin, public_rpc, registration_admin, stage_admin
+from src.rpc import (
+    admin_misc,
+    integrations,
+    pick_ban_admin,
+    public_rpc,
+    registration_admin,
+    scrim,
+    stage_admin,
+    team_binary,
+)
 from src.rpc import reads as rpc_reads
 from src.services.admin import registry as admin_registry
 from src.services.challonge import sync as challonge_sync
@@ -78,6 +87,11 @@ integrations.register(broker, logger)
 stage_admin.register(broker, logger)
 pick_ban_admin.register(broker, logger)
 public_rpc.register(broker, logger)
+# Team logo upload/delete (binary body, base64 on the wire).
+team_binary.register(broker, logger)
+# Ad-hoc scrim rooms (docs/plans/2026-08-12-scrim-rooms.md). Provisioning only —
+# a room is then played through the pre-game subjects registered just above.
+scrim.register(broker, logger)
 # Recalculation-event consumers (tournament.changed / standings.invalidated).
 # Previously mounted by the deleted HTTP main.py; the worker now hosts them so
 # cache invalidation + standings recalculation run on those domain events.
@@ -181,8 +195,10 @@ async def stop_scheduler() -> None:
     # on re-run, so an interrupted job resumes cleanly on the next tick.
     scheduler.shutdown(wait=False)
     # The realtime publisher's pooled client: unclosed, it leaks a connection per
-    # worker restart (the same leak challonge.sync's own client was fixed for).
+    # worker restart (the same leak challonge.sync's own client was fixed for
+    # — that fix was never applied to challonge.sync itself; it is now).
     await close_realtime_redis()
+    await challonge_sync.close_redis()
 
 
 @broker.subscriber(TOURNAMENT_BRACKET_JOBS_QUEUE, exchange=TOURNAMENT_COMPUTE_EXCHANGE, channel=_JOBS_CHANNEL)

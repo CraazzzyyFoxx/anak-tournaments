@@ -43,21 +43,29 @@ export function DraftSetupPreview({
             <span className="w-16 shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
               {t("roundNumber", { round: entry.round })}
             </span>
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-              {entry.teamIds.map((id, index) => {
-                const registration = pool.find((candidate) => candidate.id === id);
-                return (
-                  <span key={id} className="flex shrink-0 items-center gap-1">
-                    <span className="max-w-32 truncate rounded-lg bg-background px-2.5 py-1 text-xs shadow-sm">
-                      {registration ? registrationLabel(registration) : `#${id}`}
+            {entry.resolved ? (
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                {entry.teamIds.map((id, index) => {
+                  const registration = pool.find((candidate) => candidate.id === id);
+                  return (
+                    <span key={id} className="flex shrink-0 items-center gap-1">
+                      <span className="max-w-32 truncate rounded-lg bg-background px-2.5 py-1 text-xs shadow-sm">
+                        {registration ? registrationLabel(registration) : `#${id}`}
+                      </span>
+                      {index < entry.teamIds.length - 1 && (
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden />
+                      )}
                     </span>
-                    {index < entry.teamIds.length - 1 && (
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden />
-                    )}
-                  </span>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Showing the seed order here would promise an order the draft will
+                 not follow: this rule is resolved server-side. Name it instead. */
+              <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                {t(`rules.${entry.rule}`)} · {t("orderResolvedOnTheServer")}
+              </p>
+            )}
           </div>
         ))}
       </div>

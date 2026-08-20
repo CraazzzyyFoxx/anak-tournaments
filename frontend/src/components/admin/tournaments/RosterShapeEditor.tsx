@@ -14,11 +14,15 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import FlexIcon from "@/components/icons/FlexIcon";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
+import { ROLE_ACCENT, getRoleIconName } from "@/lib/roles";
 import {
   ROSTER_SLOT_CODES,
   orderSlotCodes,
+  isRoleSlotCode,
   slotsTotal,
   type RosterShape,
   type RosterSlotCode,
@@ -41,7 +45,8 @@ import {
 /**
  * Role hues, straight off the design-book role tokens (`--aqt-tank`,
  * `--aqt-damage`, `--aqt-support`) that every other role surface uses. Colour is
- * never the only cue: each chip and each stepper still carries its role name.
+ * never the only cue: every chip and every stepper still names its slot kind, as
+ * `sr-only` text plus a hover title.
  */
 const SLOT_CHIP: Record<RosterSlotCode, string> = {
   tank: "border-[color:var(--aqt-tank)]/35 bg-[color:var(--aqt-tank)]/12 text-[color:var(--aqt-tank)]",
@@ -51,12 +56,25 @@ const SLOT_CHIP: Record<RosterSlotCode, string> = {
   flex: "border-border/60 bg-muted/25 text-muted-foreground"
 };
 
-const SLOT_DOT: Record<RosterSlotCode, string> = {
-  tank: "bg-[color:var(--aqt-tank)]",
-  dps: "bg-[color:var(--aqt-damage)]",
-  support: "bg-[color:var(--aqt-support)]",
-  flex: "bg-muted-foreground"
-};
+/**
+ * A slot kind's glyph: the same marks the draft room, the rosters and the
+ * registration form already use, so one slot kind reads identically everywhere.
+ * Always decorative -- every call site pairs it with the slot name.
+ */
+function SlotIcon({ code, size = 18 }: { code: RosterSlotCode; size?: number }) {
+  if (isRoleSlotCode(code)) {
+    return (
+      <PlayerRoleIcon
+        role={getRoleIconName(code)}
+        size={size}
+        color={ROLE_ACCENT[code]}
+        decorative
+      />
+    );
+  }
+  // Inherits the surrounding text colour; `flex` has no hue of its own.
+  return <FlexIcon width={size} height={size} />;
+}
 
 interface RosterShapeEditorProps {
   /** Stored tournament override, straight off `Tournament.roster_slots_json`. */
@@ -158,24 +176,24 @@ export function RosterShapeEditor({
         <CardDescription className="text-xs">{t("description")}</CardDescription>
       </CardHeader>
 
-      {/* Two panes: what you set on the left, what it produces on the right.
-          Before this they were seven full-width paragraphs of identical 12px
-          text, so the one number that matters -- team size -- read as a
-          footnote under the controls. */}
-      <CardContent className="grid items-start gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-8">
-        <div className="space-y-4">
-          {locked && (
-            <p
-              className={cn(
-                "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
-                TONE_CLASS.warning
-              )}
-            >
-              <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              {t("locked")}
-            </p>
-          )}
+      {/* Controls first, outcome underneath at full width. Side by side, the
+          outcome -- one wrapped strip of slot chips -- got a 1fr column it left
+          half empty, while the four steppers were crammed into 78px cells in a
+          20rem one. */}
+      <CardContent className="space-y-5">
+        {locked && (
+          <p
+            className={cn(
+              "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+              TONE_CLASS.warning
+            )}
+          >
+            <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            {t("locked")}
+          </p>
+        )}
 
+        <div className="grid items-start gap-x-6 gap-y-5 sm:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
           <div>
             <Label htmlFor="settings-roster-shape-mode" className="text-xs">
               {t("mode")}
@@ -204,75 +222,83 @@ export function RosterShapeEditor({
           {!isInherit && (
             <div>
               <span className={EYEBROW_CLASS}>{t("slots")}</span>
-              {/* Counters, not text fields: 0-12 in a 4rem box beside its role
-                  colour, instead of four full-width inputs holding one digit. */}
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {ROSTER_SLOT_CODES.map((code) => (
-                  <div
-                    key={code}
-                    className="rounded-lg border border-border/50 bg-muted/20 p-2 text-center"
-                  >
-                    <Label
-                      htmlFor={`settings-roster-slot-${code}`}
-                      className="flex items-center justify-center gap-1.5 text-xs"
+              {/* Counters labelled by the slot glyph rather than the word: the
+                  dot-plus-name pair spent most of each cell restating what the
+                  colour already said, and the glyph is what the draft room and
+                  the roster views show. Cells size to content and wrap, so the
+                  row no longer has to fit a fixed four-up grid. */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {ROSTER_SLOT_CODES.map((code) => {
+                  const label = t(`slotCodes.${code}`);
+                  return (
+                    <div
+                      key={code}
+                      className="flex items-center gap-2 rounded-xl border border-border/50 bg-muted/20 p-1.5"
                     >
-                      <span
-                        aria-hidden
-                        className={cn("size-1.5 shrink-0 rounded-full", SLOT_DOT[code])}
+                      <Label
+                        htmlFor={`settings-roster-slot-${code}`}
+                        title={label}
+                        className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
+                      >
+                        <SlotIcon code={code} />
+                        <span className="sr-only">{label}</span>
+                      </Label>
+                      <NumberInput
+                        id={`settings-roster-slot-${code}`}
+                        integer
+                        min={0}
+                        max={MAX_SLOT_COUNT}
+                        disabled={readOnly}
+                        aria-invalid={error !== null}
+                        aria-describedby={error ? errorId : undefined}
+                        value={selection.slots[code] ?? 0}
+                        onValueChange={(next) => apply(setSlotCount(selection, code, next ?? 0))}
+                        className="h-8 w-14 bg-background/50 px-2 text-center tabular-nums"
                       />
-                      {t(`slotCodes.${code}`)}
-                    </Label>
-                    <NumberInput
-                      id={`settings-roster-slot-${code}`}
-                      integer
-                      min={0}
-                      max={MAX_SLOT_COUNT}
-                      disabled={readOnly}
-                      aria-invalid={error !== null}
-                      aria-describedby={error ? errorId : undefined}
-                      value={selection.slots[code] ?? 0}
-                      onValueChange={(next) => apply(setSlotCount(selection, code, next ?? 0))}
-                      className="mt-1.5 h-8 bg-background/50 text-center tabular-nums"
-                    />
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
-
-          {error && (
-            <p
-              id={errorId}
-              className={cn("rounded-lg border px-3 py-2 text-xs", TONE_CLASS.danger)}
-              role="alert"
-            >
-              {t(`errors.${error}`)}
-            </p>
-          )}
         </div>
 
-        {/* The answer to "what did I just configure" without starting a draft:
-            the slot list a captain will be handed, as one wrapped strip rather
-            than a column that grew a row per slot. */}
-        <div className="rounded-lg border border-border/50 bg-muted/20 p-3 lg:max-w-3xl">
-          <span className={EYEBROW_CLASS}>{t("preview")}</span>
-          <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
-            {t("total", { total: shownTotal, rounds: shownRounds })}
+        {error && (
+          <p
+            id={errorId}
+            className={cn("rounded-lg border px-3 py-2 text-xs", TONE_CLASS.danger)}
+            role="alert"
+          >
+            {t(`errors.${error}`)}
           </p>
+        )}
+
+        {/* The answer to "what did I just configure" without starting a draft:
+            the slot list a captain will be handed, as one strip that now has the
+            whole card to wrap across. */}
+        <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className={EYEBROW_CLASS}>{t("preview")}</span>
+            <p className="text-sm font-semibold tabular-nums text-foreground">
+              {t("total", { total: shownTotal, rounds: shownRounds })}
+            </p>
+          </div>
           {previewSlots.length === 0 ? (
             <p className="mt-2 text-xs text-muted-foreground">{t("previewEmpty")}</p>
           ) : (
-            <ol className="mt-2.5 flex flex-wrap gap-1.5">
+            <ol className="mt-3 flex flex-wrap gap-1.5">
               {previewSlots.map((code, index) => (
                 <li
                   key={`${code}-${index}`}
+                  title={t(`slotCodes.${code}`)}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
                     SLOT_CHIP[code]
                   )}
                 >
                   <span className="tabular-nums opacity-60">{index + 1}</span>
-                  <span className="font-medium">{t(`slotCodes.${code}`)}</span>
+                  <SlotIcon code={code} size={14} />
+                  <span className="sr-only">{t(`slotCodes.${code}`)}</span>
                 </li>
               ))}
             </ol>

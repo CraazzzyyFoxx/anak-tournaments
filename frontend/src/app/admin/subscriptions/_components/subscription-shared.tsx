@@ -1,8 +1,10 @@
-import { Badge } from "@/components/ui/badge";
+import { TintedBadge } from "@/components/admin/TintedBadge";
 import { TONE_CLASS } from "@/components/admin/tone";
 
+export { formatDate, formatRelative, formatInterval } from "@/components/admin/format-time";
+
 /** Tinted badge classes (border + tint + text) per check state. */
-export const STATE_STYLES: Record<string, string> = {
+const STATE_STYLES: Record<string, string> = {
   active: TONE_CLASS.success,
   inactive: TONE_CLASS.warning,
   unknown: TONE_CLASS.info,
@@ -78,36 +80,8 @@ export const REASON_LABELS: Record<string, string> = {
   not_resolved: "provider gave no answer"
 };
 
-export function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
-}
-
-/** Compact "5m ago" / "2h ago" style relative time; falls back to "—". */
-export function formatRelative(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
-  if (diffSec < 60) return "just now";
-  const mins = Math.round(diffSec / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 48) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
-
-export function formatInterval(seconds: number): string {
-  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
-  if (seconds % 60 === 0) return `${seconds / 60}m`;
-  return `${seconds}s`;
-}
-
 export function StateBadge({ state }: { state: string | null }) {
   return (
-    <Badge variant="outline" className={STATE_STYLES[state ?? ""] ?? TONE_CLASS.neutral}>
-      {state ? (STATE_LABELS[state] ?? state) : "Never checked"}
-    </Badge>
+    <TintedBadge value={state} styles={STATE_STYLES} labels={STATE_LABELS} fallback="Never checked" />
   );
 }

@@ -1,6 +1,6 @@
 import type { Encounter } from "@/types/encounter.types";
 
-export function getDoubleEliminationRoundOrder(roundNum: number): number {
+function getDoubleEliminationRoundOrder(roundNum: number): number {
   if (roundNum === 1) return 1.0;
   if (roundNum === -1) return 2.0;
   if (roundNum > 1) return 3.0 * roundNum - 3.0;

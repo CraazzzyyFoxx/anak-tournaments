@@ -17,7 +17,10 @@ import type { CustomFieldDefinition } from "@/types/registration.types";
  * to a plain `(key: string) => string` here.
  */
 export function renderCustomFieldValue(
-  field: CustomFieldDefinition,
+  // Only the type is read, so the narrower shape lets a caller that holds just a
+  // `{type, value}` pair (the live draft board) render without fabricating a
+  // whole definition.
+  field: Pick<CustomFieldDefinition, "type">,
   value: unknown,
   booleanLabels: { yes: string; no: string } = { yes: "Yes", no: "No" },
 ): ReactNode {

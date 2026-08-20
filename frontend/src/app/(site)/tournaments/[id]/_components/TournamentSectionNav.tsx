@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
@@ -9,12 +9,14 @@ import {
   ArrowRight,
   BarChart3,
   Calendar,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   LayoutGrid,
   ListOrdered,
   Map,
+  Radio,
   Trophy,
   Users
 } from "lucide-react";
@@ -33,8 +35,10 @@ import {
 
 const icons: Record<TournamentSectionId, React.ComponentType<{ className?: string }>> = {
   bracket: LayoutGrid,
+  stream: Radio,
   teams: Users,
   participants: ClipboardList,
+  schedule: CalendarClock,
   matches: Calendar,
   maps: Map,
   heroes: Trophy,
@@ -57,6 +61,9 @@ type TournamentSectionNavProps = {
   status: TournamentStatus;
   stages?: StageSummary[];
   teamFormation?: string;
+  hasSchedule?: boolean;
+  hasTeams?: boolean;
+  hasStreams?: boolean;
   // Retained for call-site compatibility; both variants render the same adaptive rail.
   variant?: "desktop" | "mobile";
   className?: string;
@@ -67,6 +74,9 @@ export default function TournamentSectionNav({
   status,
   stages = [],
   teamFormation,
+  hasSchedule,
+  hasTeams,
+  hasStreams,
   className
 }: TournamentSectionNavProps) {
   const t = useTranslations();
@@ -83,9 +93,12 @@ export default function TournamentSectionNav({
         status,
         stages,
         teamFormation,
+        hasSchedule,
+        hasTeams,
+        hasStreams,
         pathname
       }),
-    [pathname, stages, status, teamFormation, tournamentId]
+    [hasSchedule, hasTeams, hasStreams, pathname, stages, status, teamFormation, tournamentId]
   );
   const setActiveRef = (node: HTMLElement | null) => {
     activeRef.current = node;
@@ -191,7 +204,7 @@ export default function TournamentSectionNav({
                 }
 
                 return (
-                  <Link
+                  <HoverPrefetchLink
                     key={item.id}
                     ref={item.active ? setActiveRef : undefined}
                     href={item.href}
@@ -199,7 +212,7 @@ export default function TournamentSectionNav({
                     aria-current={item.active ? "page" : undefined}
                   >
                     {content}
-                  </Link>
+                  </HoverPrefetchLink>
                 );
               })}
             </div>

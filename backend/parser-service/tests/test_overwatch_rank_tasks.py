@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
@@ -55,6 +56,16 @@ class FakeRedis:
 
     async def expire(self, key, ttl):
         return True
+
+
+class _FrozenClock:
+    """Pins ``_reserve_slot``'s minute bucket so the window cannot roll mid-test."""
+
+    fixed = datetime(2026, 1, 1, 12, 30, 15, tzinfo=UTC)
+
+    @classmethod
+    def now(cls, tz=None):  # noqa: ARG003 - mirrors datetime.now's signature
+        return cls.fixed
 
 
 def _session_factory(session):
@@ -122,6 +133,53 @@ class ProcessFetchTests(IsolatedAsyncioTestCase):
             )
         rec.assert_not_awaited()
         client.fetch_summary.assert_not_awaited()
+
+    async def test_over_the_per_minute_ceiling_defers_instead_of_fetching(self) -> None:
+        """The per-minute ceiling must actually stop the fetch.
+
+        It previously only slept for a fraction of a second and then issued the
+        request anyway, so the ceiling bounded nothing — and on the priority
+        queue (registration approvals, which bypass the scheduler's per-tick
+        pacing) it is the only rate control there is.
+        """
+        redis = FakeRedis()
+        client = SimpleNamespace(
+            fetch_summary=AsyncMock(return_value=RankFetchResult(status=enums.RankCollectionStatus.ok))
+        )
+        with (
+            patch.object(
+                tasks.settings_provider,
+                "get_rank_collection_config",
+                AsyncMock(return_value=RankCollectionConfig(rate_limit_per_minute=1)),
+            ),
+            patch.object(tasks.mapping, "get_rank_mapping", AsyncMock(return_value=({}, "v1"))),
+            patch.object(tasks.service, "record_result", AsyncMock(return_value=1)),
+            patch.object(tasks.service, "log_fetch", AsyncMock()),
+            patch.object(tasks.service, "defer_tag", AsyncMock()) as defer,
+            patch.object(tasks, "datetime", _FrozenClock),
+        ):
+            for social_account_id in (11, 12):
+                await tasks.process_fetch_rank(
+                    {
+                        "event_type": "fetch_rank",
+                        "social_account_id": social_account_id,
+                        "battle_tag": f"N#{social_account_id}",
+                    },
+                    redis=redis,
+                    client=client,
+                    session_factory=_session_factory(SimpleNamespace(commit=AsyncMock())),
+                )
+
+        # First request consumes the window's single slot; the second is deferred
+        # past the window instead of reaching OverFast.
+        self.assertEqual(client.fetch_summary.await_count, 1)
+        defer.assert_awaited_once()
+        self.assertEqual(defer.await_args.kwargs["social_account_id"], 12)
+        # Frozen at 12:30:15 → the window resets in 45s.
+        self.assertEqual(defer.await_args.kwargs["delay_seconds"], 45)
+        # The deferred tag's dedup keys are released so the scheduler can re-enqueue it.
+        self.assertNotIn(tasks._inflight_key(12), redis.store)
+        self.assertNotIn(tasks._pending_key(12), redis.store)
 
     async def test_rate_limited_sets_cooldown_and_records_failure(self) -> None:
         redis = FakeRedis()

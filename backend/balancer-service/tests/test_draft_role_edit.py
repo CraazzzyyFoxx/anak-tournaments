@@ -22,7 +22,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-from shared.core.enums import DraftRole, DraftStatus  # noqa: E402
+from shared.core.enums import DraftStatus, HeroClass  # noqa: E402
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftPlayerRole, DraftSession  # noqa: E402
 from src.services.draft import feasibility  # noqa: E402
 
@@ -48,10 +48,10 @@ def _player() -> DraftPlayer:
     return DraftPlayer(
         id=20,
         session_id=1,
-        primary_role=DraftRole.DPS.value,
+        primary_role=HeroClass.damage.slot_code,
         status="available",
         version=4,
-        roles=[DraftPlayerRole(role=DraftRole.DPS.value, priority=0)],
+        roles=[DraftPlayerRole(role=HeroClass.damage.slot_code, priority=0)],
     )
 
 
@@ -63,7 +63,7 @@ def test_role_edit_requires_setup_ready_or_paused(status: DraftStatus) -> None:
         role_edit.validate_role_edit_request(
             _draft(status),
             _player(),
-            role=DraftRole.SUPPORT,
+            role=HeroClass.support,
             rank_value=2500,
             rank_absence_confirmed=False,
             reason="Player confirmed secondary role",
@@ -80,7 +80,7 @@ def test_role_edit_rejects_duplicate_role() -> None:
         role_edit.validate_role_edit_request(
             _draft(),
             _player(),
-            role=DraftRole.DPS,
+            role=HeroClass.damage,
             rank_value=3000,
             rank_absence_confirmed=False,
             reason="Duplicate",
@@ -98,7 +98,7 @@ def test_role_edit_requires_reason_rank_confirmation_and_current_version() -> No
         role_edit.validate_role_edit_request(
             _draft(),
             player,
-            role=DraftRole.SUPPORT,
+            role=HeroClass.support,
             rank_value=2500,
             rank_absence_confirmed=False,
             reason="   ",
@@ -110,7 +110,7 @@ def test_role_edit_requires_reason_rank_confirmation_and_current_version() -> No
         role_edit.validate_role_edit_request(
             _draft(),
             player,
-            role=DraftRole.SUPPORT,
+            role=HeroClass.support,
             rank_value=None,
             rank_absence_confirmed=False,
             reason="Confirmed by player",
@@ -122,7 +122,7 @@ def test_role_edit_requires_reason_rank_confirmation_and_current_version() -> No
         role_edit.validate_role_edit_request(
             _draft(),
             player,
-            role=DraftRole.SUPPORT,
+            role=HeroClass.support,
             rank_value=2500,
             rank_absence_confirmed=False,
             reason="Confirmed by player",
@@ -137,10 +137,10 @@ def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state
         team_ids=(10, 20),
         slot_targets={"tank": 1, "dps": 1, "support": 1},
         players=(
-            feasibility.EligiblePlayer(1, frozenset({DraftRole.SUPPORT})),
-            feasibility.EligiblePlayer(2, frozenset({DraftRole.DPS})),
-            feasibility.EligiblePlayer(3, frozenset({DraftRole.DPS})),
-            feasibility.EligiblePlayer(4, frozenset({DraftRole.DPS})),
+            feasibility.EligiblePlayer(1, frozenset({HeroClass.support})),
+            feasibility.EligiblePlayer(2, frozenset({HeroClass.damage})),
+            feasibility.EligiblePlayer(3, frozenset({HeroClass.damage})),
+            feasibility.EligiblePlayer(4, frozenset({HeroClass.damage})),
         ),
         assignments=(
             feasibility.DraftAssignment(101, 10, "tank"),
@@ -148,11 +148,11 @@ def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state
         ),
     )
 
-    preview = role_edit.preview_role_addition(state, player_id=2, role=DraftRole.SUPPORT)
+    preview = role_edit.preview_role_addition(state, player_id=2, role=HeroClass.support)
 
     assert preview.before.is_feasible is False
     assert preview.after.is_feasible is True
-    assert state.players[1].playable_roles == frozenset({DraftRole.DPS})
+    assert state.players[1].playable_roles == frozenset({HeroClass.damage})
 
 
 class _FakeSession:
@@ -169,17 +169,17 @@ def test_apply_role_edit_updates_snapshot_version_and_private_audit() -> None:
     state = feasibility.DraftFeasibilityState(
         team_ids=(10,),
         slot_targets={"tank": 1, "dps": 1, "support": 1},
-        players=(feasibility.EligiblePlayer(20, frozenset({DraftRole.DPS})),),
+        players=(feasibility.EligiblePlayer(20, frozenset({HeroClass.damage})),),
         assignments=(),
     )
-    preview = role_edit.preview_role_addition(state, player_id=20, role=DraftRole.SUPPORT)
+    preview = role_edit.preview_role_addition(state, player_id=20, role=HeroClass.support)
     session = _FakeSession()
 
     audit = role_edit.apply_role_edit(
         session,
         _draft(),
         player,
-        role=DraftRole.SUPPORT,
+        role=HeroClass.support,
         rank_value=2750,
         reason="  Confirmed secondary role  ",
         actor_auth_user_id=99,
@@ -187,7 +187,7 @@ def test_apply_role_edit_updates_snapshot_version_and_private_audit() -> None:
     )
 
     assert player.version == 5
-    added_role = next(role for role in player.roles if role.role == DraftRole.SUPPORT.value)
+    added_role = next(role for role in player.roles if role.role == HeroClass.support.slot_code)
     assert added_role.rank_value == 2750
     assert added_role.is_secondary is True
     assert audit in session.added

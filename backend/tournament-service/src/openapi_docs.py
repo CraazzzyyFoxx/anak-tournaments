@@ -129,6 +129,15 @@ DOCS: dict[str, dict] = {
         "summary": "Delete team",
         "description": "Deletes a team by id (204 no body); requires team-delete permission on its workspace.",
     },
+    # ── bespoke: team image (binary upload + delete) ───────────────────────
+    "rpc.tournament.teams.image_upload": {
+        "summary": "Upload team image",
+        "description": "Uploads a team's image to S3 and stores its URL; requires team-update permission on its workspace.",
+    },
+    "rpc.tournament.teams.image_delete": {
+        "summary": "Delete team image",
+        "description": "Removes a team's image from S3 and clears its URL; requires team-update permission on its workspace.",
+    },
     # ── generic CRUD engine: player ────────────────────────────────────────
     "rpc.tournament.admin.create#player": {
         "summary": "Create player",
@@ -308,6 +317,23 @@ DOCS: dict[str, dict] = {
         "summary": "List player sub-roles",
         "description": "Lists a workspace's player sub-roles, optionally filtered by role and including inactive ones; requires player-read permission on the workspace.",
     },
+    # ── generic CRUD engine: tournament_link ───────────────────────────────
+    "rpc.tournament.admin.create#tournament_link": {
+        "summary": "Create tournament link",
+        "description": "Attaches one typed external link (Discord, stream, VOD, bracket, rules, other) to a tournament; requires tournament_link-create permission on the workspace derived from the body's tournament_id. Rejects a duplicate kind+url pair with 409.",
+    },
+    "rpc.tournament.admin.update#tournament_link": {
+        "summary": "Update tournament link",
+        "description": "Updates a tournament link by id; requires tournament_link-update permission on its tournament's workspace. Rejects a duplicate kind+url pair with 409.",
+    },
+    "rpc.tournament.admin.delete#tournament_link": {
+        "summary": "Delete tournament link",
+        "description": "Deactivates a tournament link by id (204 no body, soft delete via is_active); requires tournament_link-delete permission on its tournament's workspace.",
+    },
+    "rpc.tournament.admin.list#tournament_link": {
+        "summary": "List tournament links",
+        "description": "Lists a tournament's links ordered by sort_order then id, optionally only the active ones; requires tournament_link-read permission on the tournament's workspace.",
+    },
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": {
         "summary": "Toggle tournament finished",
@@ -334,6 +360,10 @@ DOCS: dict[str, dict] = {
         "summary": "Act for a side",
         "description": "Performs a ban, pick, or protect on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
     },
+    "rpc.tournament.admin_pick_ban_elect_opener": {
+        "summary": "Elect a round's opener for a side",
+        "description": "Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state and requires match-update permission on its workspace.",
+    },
     # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
     "rpc.tournament.admin_pick_ban_config_list": {
         "summary": "List pick-ban configs",
@@ -346,6 +376,27 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.admin_pick_ban_config_delete": {
         "summary": "Delete pick-ban config",
         "description": "Deletes a pick-ban config by id (running sessions keep their snapshot); requires match-update permission on its workspace.",
+    },
+    # ── bespoke: scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────
+    "rpc.tournament.scrim_create": {
+        "summary": "Create scrim room",
+        "description": "Creates an ad-hoc pre-game room outside any tournament: the workspace's hidden scrims container (lazily), an isolating stage, that stage's map and optional hero pick-ban configs either copied from an existing tournament round or authored ad hoc, both teams and the encounter; returns the room with its share token. Requires membership of the workspace, and 409s when the caller's active-room cap is reached.",
+    },
+    "rpc.tournament.scrim_list_mine": {
+        "summary": "List my scrim rooms",
+        "description": "Returns the calling user's scrim rooms in a workspace, open and closed alike (scrim history is kept forever); requires authentication.",
+    },
+    "rpc.tournament.scrim_get": {
+        "summary": "Get scrim room",
+        "description": "Returns one scrim room by share token, annotating the requesting viewer's captain side and whether they may still claim the free one; visible only to a participant, a workspace insider or a preview-allowlisted user, everyone else gets 404.",
+    },
+    "rpc.tournament.scrim_claim": {
+        "summary": "Claim a scrim side",
+        "description": "Claims the scrim room's free captain side for the calling user and grants them preview access to the hidden scrims container, so the pre-game room resolves their side from then on; idempotent and first-writer-wins, 409 once both sides are taken; requires membership of the room's workspace.",
+    },
+    "rpc.tournament.scrim_close": {
+        "summary": "Close scrim room",
+        "description": "Closes a scrim room so it stops counting against its creator's active-room cap, leaving the encounter and its pick-ban history readable by the participants forever; requires membership of the room's workspace.",
     },
     # ── bespoke: stage workflow ────────────────────────────────────────────
     "rpc.tournament.stage_progress": {
@@ -363,6 +414,10 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.stage_activate": {
         "summary": "Activate stage",
         "description": "Activates a stage; requires stage-update permission on its workspace.",
+    },
+    "rpc.tournament.stage_deactivate": {
+        "summary": "Deactivate stage",
+        "description": "Reverts an accidentally-activated stage back to Draft/preview; refuses (409) once any of its matches has been reported or started; requires stage-update permission on its workspace.",
     },
     "rpc.tournament.stage_generate": {
         "summary": "Generate stage bracket",

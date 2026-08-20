@@ -10,10 +10,4 @@ from __future__ import annotations
 from shared.clients import S3Client
 from src.core.config import settings
 
-s3_client = S3Client(
-    access_key=settings.s3_access_key,
-    secret_key=settings.s3_secret_key,
-    endpoint_url=settings.s3_endpoint_url,
-    bucket_name=settings.s3_bucket_name,
-    public_url=settings.s3_public_url,
-)
+s3_client = S3Client.from_settings(settings)

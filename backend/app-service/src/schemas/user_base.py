@@ -36,6 +36,10 @@ class SocialAccountRead(BaseRead):
 class UserRead(BaseRead):
     name: str
     avatar_url: str | None = None
+    # Owner's veto on having their live stream surfaced on tournament pages.
+    # Defaults to True for the same reason the column does: nothing that fails to
+    # populate it may read as "this player asked to be hidden".
+    stream_visible: bool = True
     social_accounts: list[SocialAccountRead] = []
 
 

@@ -52,7 +52,7 @@ export function DraftOrder({
                 const team = teamById.get(pick.draft_team_id);
                 const player = pick.picked_player_id == null ? null : playerById.get(pick.picked_player_id);
                 const done = pick.status === "completed" || pick.status === "autopicked";
-                const division = player ? resolveDivisionFromRank(divisionGrid, player.rank_value) : null;
+                const division = player ? resolveDivisionFromRank(divisionGrid, player.effective_rank) : null;
                 return (
                   <li
                     key={pick.id}

@@ -60,10 +60,40 @@ export interface DraftPoolReadiness {
   blockers: string[];
 }
 
+/**
+ * The round-rule vocabulary, in the order the config step offers it. Mirrors the
+ * server's `services.draft.lifecycle.round_seat_order`, which decides what each
+ * one MEANS — this list only names them, so the two cannot drift on spelling.
+ */
+export const DRAFT_ROUND_RULES = [
+  "linear",
+  "reverse",
+  "weakest_first",
+  "strongest_first",
+  "team_avg_asc",
+  "team_avg_desc"
+] as const;
+
+type DraftRoundRule = (typeof DRAFT_ROUND_RULES)[number];
+
+/** Coerce a stored value (older client, hand-edited settings) to a known rule. */
+function asRoundRule(value: string | null | undefined): DraftRoundRule {
+  return DRAFT_ROUND_RULES.includes(value as DraftRoundRule) ? (value as DraftRoundRule) : "linear";
+}
+
 export interface DraftScheduleRound {
   round: number;
   teamIds: number[];
-  rule: string;
+  rule: DraftRoundRule;
+  /**
+   * False when the order shown is NOT the one that will be drafted: the server
+   * resolves it from captain ranks (`weakest_first`/`strongest_first`) or from
+   * live team averages (`team_avg_*`). Callers must not present `teamIds` as the
+   * schedule then — promising an order the draft will not follow is the bug this
+   * flag exists to prevent. The rule itself is never re-derived here; see
+   * `services.draft.lifecycle.round_seat_order`.
+   */
+  resolved: boolean;
 }
 
 export interface DraftSetupValidationState {
@@ -197,13 +227,16 @@ export function buildDraftSchedule(
 ): DraftScheduleRound[] {
   return Array.from({ length: rounds }, (_, index) => {
     const round = index + 1;
-    const customRule = roundRules[index] ?? "linear";
+    const customRule = asRoundRule(roundRules[index]);
     const reverse =
       format === "snake" ? index % 2 === 1 : format === "custom" && customRule === "reverse";
+    const rule: DraftRoundRule =
+      format === "snake" ? (reverse ? "reverse" : "linear") : format === "custom" ? customRule : "linear";
     return {
       round,
       teamIds: reverse ? [...teamIds].reverse() : [...teamIds],
-      rule: format === "snake" ? (reverse ? "reverse" : "linear") : format === "custom" ? customRule : "linear"
+      rule,
+      resolved: rule === "linear" || rule === "reverse"
     };
   });
 }

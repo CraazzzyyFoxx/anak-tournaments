@@ -13,22 +13,22 @@ export interface PickBanActionInput {
   action: "ban" | "pick" | "protect";
 }
 
-export interface ElectOpenerInput {
+interface ElectOpenerInput {
   first_side: "home" | "away";
 }
 
-export interface MapReportInput {
+interface MapReportInput {
   home_score: number;
   away_score: number;
 }
 
-export interface MapReportResult {
+interface MapReportResult {
   disputed: boolean;
   resolved: boolean;
   match_id: number | null;
 }
 
-export interface ReadinessMap {
+interface ReadinessMap {
   home: boolean;
   away: boolean;
 }

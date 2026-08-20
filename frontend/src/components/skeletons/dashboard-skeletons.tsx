@@ -25,7 +25,7 @@ export const PageHeaderSkeleton = () => {
   );
 };
 
-export const StatCardSkeleton = () => {
+const StatCardSkeleton = () => {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-5 py-4">
       <div className="flex items-center justify-between">

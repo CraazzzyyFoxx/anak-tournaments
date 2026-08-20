@@ -102,6 +102,30 @@ describe("stageBestOfRoundSections", () => {
   });
 
   /**
+   * Single elimination's depth is `ceil(log2(teams))`, pinned against
+   * `single_elimination.generate` — the editor must not read `max_rounds` (an
+   * independent planning default) as the round count.
+   */
+  it("derives single elimination rounds from the team count, not max_rounds", () => {
+    // 8 teams -> ceil(log2(8)) = 3 rounds, regardless of an unrelated
+    // max_rounds planning default.
+    const sections = stageBestOfRoundSections({
+      stageType: "single_elimination",
+      maxRounds: 5,
+      bracketTeamCount: 8
+    });
+    expect(roundsOf(sections, "rounds")).toEqual([1, 2, 3]);
+  });
+
+  it("falls back to max_rounds for a single elimination with no team count", () => {
+    const sections = stageBestOfRoundSections({
+      stageType: "single_elimination",
+      maxRounds: 4
+    });
+    expect(roundsOf(sections, "rounds")).toEqual([1, 2, 3, 4]);
+  });
+
+  /**
    * The rounds an 8-team double elimination actually generates are
    * `[1, 2, 3]` upper, `[-1, -2, -3, -4]` lower and `4` for the Grand Final —
    * pinned against `double_elimination.generate` so a lower-bracket round can
@@ -112,7 +136,7 @@ describe("stageBestOfRoundSections", () => {
     const sections = stageBestOfRoundSections({
       stageType: "double_elimination",
       maxRounds: 5,
-      upperTeamCount: 8
+      bracketTeamCount: 8
     });
     expect(roundsOf(sections, "upper")).toEqual([1, 2, 3]);
     expect(roundsOf(sections, "lower")).toEqual([-1, -2, -3, -4]);
@@ -123,7 +147,7 @@ describe("stageBestOfRoundSections", () => {
     const sections = stageBestOfRoundSections({
       stageType: "double_elimination",
       maxRounds: 5,
-      upperTeamCount: 8
+      bracketTeamCount: 8
     });
     expect(sections.find((section) => section.key === "upper")?.rounds).toEqual([
       { round: 1, label: "UB Round 1" },
@@ -144,7 +168,7 @@ describe("stageBestOfRoundSections", () => {
         stageBestOfRoundSections({
           stageType: "double_elimination",
           maxRounds: 4,
-          upperTeamCount: 4,
+          bracketTeamCount: 4,
           splitLowerBracket: true
         }),
         "lower"
@@ -155,7 +179,7 @@ describe("stageBestOfRoundSections", () => {
         stageBestOfRoundSections({
           stageType: "double_elimination",
           maxRounds: 4,
-          upperTeamCount: 4
+          bracketTeamCount: 4
         }),
         "lower"
       )
@@ -167,7 +191,7 @@ describe("stageBestOfRoundSections", () => {
     const sections = stageBestOfRoundSections({
       stageType: "double_elimination",
       maxRounds: 2,
-      upperTeamCount: 2
+      bracketTeamCount: 2
     });
     expect(roundsOf(sections, "upper")).toEqual([1]);
     expect(roundsOf(sections, "lower")).toBeUndefined();
@@ -186,7 +210,7 @@ describe("stageBestOfRoundSections", () => {
     const sections = stageBestOfRoundSections({
       stageType: "double_elimination",
       maxRounds: 5,
-      upperTeamCount: 8,
+      bracketTeamCount: 8,
       configuredRounds: [2, -9, 12]
     });
     // 2 is already offered; the other two would otherwise change matches with
@@ -199,10 +223,27 @@ describe("stageBestOfRoundSections", () => {
       stageBestOfRoundSections({
         stageType: "double_elimination",
         maxRounds: 5,
-        upperTeamCount: 8,
+        bracketTeamCount: 8,
         configuredRounds: [1, -4]
       }).map((section) => section.key)
     ).toEqual(["upper", "lower"]);
+  });
+
+  it("names a stale grand-final override 'Grand Final', not a bare round", () => {
+    // 4 upper teams -> upper rounds 1..2, grand final = round 3. A leftover
+    // `by_round` on the grand final (owned by `final`) and a dead round 4 land
+    // in the extras; the grand final reads by name so an admin can recognize it.
+    const sections = stageBestOfRoundSections({
+      stageType: "double_elimination",
+      maxRounds: 5,
+      bracketTeamCount: 4,
+      splitLowerBracket: true,
+      configuredRounds: [3, 4]
+    });
+    expect(sections.find((section) => section.key === "other")?.rounds).toEqual([
+      { round: 4, label: "Round 4" },
+      { round: 3, label: "Grand Final" }
+    ]);
   });
 });
 

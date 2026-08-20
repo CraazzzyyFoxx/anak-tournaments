@@ -1,4 +1,4 @@
-import React from "react";
+import React, { type ComponentProps } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
@@ -20,6 +20,22 @@ const COLUMN_HEADING_CLASS =
 const FOOTER_META_CLASS =
   "transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
+/**
+ * The footer renders on every page, so its links sit in the viewport of every
+ * page — and Next prefetches links on viewport entry by default. Under
+ * `force-dynamic` that means a full server render of the privacy policy, the
+ * terms and the whole section column for every visitor who scrolls, none of
+ * which anyone asked for. Production on 2026-08-15 rendered /privacy 463 times
+ * in 23 minutes, 12-19 per visitor, and that traffic helped saturate the edge.
+ *
+ * Not the hover-armed HoverPrefetchLink used in the nav: these are destinations
+ * a reader reaches maybe once, so paying a normal request on the rare click is
+ * the right trade. Every route here has a loading boundary.
+ */
+function FooterLink(props: ComponentProps<typeof Link>) {
+  return <Link prefetch={false} {...props} />;
+}
+
 export function Footer() {
   const t = useTranslations();
   const year = new Date().getFullYear();
@@ -33,7 +49,7 @@ export function Footer() {
           content above it. */}
       <div className="grid grid-cols-1 gap-x-12 gap-y-10 sm:grid-cols-[1.4fr_1fr_1fr]">
         <div className="max-w-sm">
-          <Link
+          <FooterLink
             href="/"
             className="inline-flex items-center gap-2 rounded-lg outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
@@ -41,7 +57,7 @@ export function Footer() {
             <span className="font-display text-lg uppercase tracking-wide text-foreground">
               {SITE_NAME}
             </span>
-          </Link>
+          </FooterLink>
           <p className="mt-4 text-sm text-[color:var(--aqt-fg-muted)]">
             {t("common.footer.disclaimer", { siteName: SITE_NAME })}
           </p>
@@ -50,21 +66,21 @@ export function Footer() {
         <div>
           <p className={COLUMN_HEADING_CLASS}>{t("common.footer.sectionsHeading")}</p>
           <div className="flex flex-col gap-2.5">
-            <Link href="/tournaments" className={FOOTER_LINK_CLASS}>
+            <FooterLink href="/tournaments" className={FOOTER_LINK_CLASS}>
               {t("nav.items.tournaments.title")}
-            </Link>
-            <Link href="/teams" className={FOOTER_LINK_CLASS}>
+            </FooterLink>
+            <FooterLink href="/teams" className={FOOTER_LINK_CLASS}>
               {t("nav.items.teams.title")}
-            </Link>
-            <Link href="/users" className={FOOTER_LINK_CLASS}>
+            </FooterLink>
+            <FooterLink href="/users" className={FOOTER_LINK_CLASS}>
               {t("nav.items.users.title")}
-            </Link>
-            <Link href="/matches" className={FOOTER_LINK_CLASS}>
+            </FooterLink>
+            <FooterLink href="/matches" className={FOOTER_LINK_CLASS}>
               {t("nav.items.matches.title")}
-            </Link>
-            <Link href="/achievements" className={FOOTER_LINK_CLASS}>
+            </FooterLink>
+            <FooterLink href="/achievements" className={FOOTER_LINK_CLASS}>
               {t("nav.items.achievements.title")}
-            </Link>
+            </FooterLink>
           </div>
         </div>
 
@@ -74,19 +90,19 @@ export function Footer() {
             {/* Same host, any tenant: the gateway registers /api/docs
                 unconditionally regardless of which workspace domain served
                 the request, so a relative link needs no per-host origin. */}
-            <Link href="/api/docs" className={FOOTER_LINK_CLASS}>
+            <FooterLink href="/api/docs" className={FOOTER_LINK_CLASS}>
               {t("common.footer.apiDocs")}
-            </Link>
-            <Link href="/get-workspace" className={FOOTER_LINK_CLASS}>
+            </FooterLink>
+            <FooterLink href="/get-workspace" className={FOOTER_LINK_CLASS}>
               {t("common.footer.getWorkspace")}
-            </Link>
-            <Link
+            </FooterLink>
+            <FooterLink
               href="https://github.com/CraazzzyyFoxx/anak-tournaments"
               className={`${FOOTER_LINK_CLASS} inline-flex items-center gap-1.5`}
             >
               <Github width={14} height={14} />
               {t("common.sourceOnGithub")}
-            </Link>
+            </FooterLink>
           </div>
         </div>
       </div>
@@ -94,12 +110,12 @@ export function Footer() {
       <div className="mt-8 flex flex-col gap-3 text-xs text-[color:var(--aqt-fg-faint)] sm:flex-row sm:items-center sm:justify-between">
         <span>{t("common.footer.copyright", { year, siteName: SITE_NAME })}</span>
         <div className="flex flex-wrap items-center gap-4">
-          <Link href="/terms" className={FOOTER_META_CLASS}>
+          <FooterLink href="/terms" className={FOOTER_META_CLASS}>
             {t("legal.terms.title")}
-          </Link>
-          <Link href="/privacy" className={FOOTER_META_CLASS}>
+          </FooterLink>
+          <FooterLink href="/privacy" className={FOOTER_META_CLASS}>
             {t("legal.privacy.title")}
-          </Link>
+          </FooterLink>
           <CookieSettingsButton className={FOOTER_META_CLASS} />
         </div>
       </div>

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { cn } from "@/lib/utils";
 import HeroImage from "@/components/hero/HeroImage";
-import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
+import { normalizeRole, type AqtRoleKey, type PlayerRoleSlotCode } from "@/lib/player-role";
 import type { PickBanEntry, PickBanEntryStatus, PickBanKind } from "@/types/tournament.types";
 
 import {
@@ -52,7 +52,9 @@ interface PickBanGridProps {
    * Items the side on the clock may no longer BAN, because it already banned
    * them earlier in this series (`PickBanState.repeat_banned`). Empty under
    * every no-repeat scope but `encounter_same_side` — the only one that leaves
-   * them in the pool for the other side to still take.
+   * them in the pool for the other side to still take — and empty on any step
+   * that is not a `ban`: the ledger is ban memory, so protecting an item this
+   * side already banned is legal (see `PregameRoom`).
    */
   repeatBanned: Set<number>;
   /**
@@ -78,7 +80,7 @@ const STATUS_BADGE_VARIANT: Record<
 
 /** Hero Pool role filter: display order and the `common.roles.*` label suffix per role. */
 const ROLE_ORDER: AqtRoleKey[] = ["tank", "damage", "support"];
-const ROLE_LABEL_SUFFIX: Record<AqtRoleKey, "tank" | "dps" | "support"> = {
+const ROLE_LABEL_SUFFIX: Record<AqtRoleKey, Exclude<PlayerRoleSlotCode, "flex">> = {
   tank: "tank",
   damage: "dps",
   support: "support"

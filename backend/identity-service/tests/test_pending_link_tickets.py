@@ -42,31 +42,11 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from _fakes import DownRedisClient as _DownRedisClient  # noqa: E402
+from _fakes import FakeRedisClient as _FakeRedisClient  # noqa: E402
+
 from src.schemas.oauth import OAuthUserInfo  # noqa: E402
 from src.services import pending_link_tickets  # noqa: E402
-
-
-class _FakeRedisClient:
-    """Dict-backed double: real ``set``/``getdel`` semantics, no TTL enforcement."""
-
-    def __init__(self) -> None:
-        self._store: dict[str, str] = {}
-
-    async def set(self, key: str, value: str, ex: int | None = None) -> None:
-        self._store[key] = value
-
-    async def getdel(self, key: str) -> str | None:
-        return self._store.pop(key, None)
-
-
-class _DownRedisClient:
-    """Simulates an unreachable Redis for every op this module uses."""
-
-    async def set(self, key: str, value: str, ex: int | None = None) -> None:
-        raise RedisConnectionError("redis unavailable")
-
-    async def getdel(self, key: str) -> str | None:
-        raise RedisConnectionError("redis unavailable")
 
 
 def _oauth_info(**overrides: object) -> OAuthUserInfo:

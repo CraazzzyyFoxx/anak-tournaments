@@ -89,7 +89,7 @@ export function buildBalancerPageCollections(
   };
 }
 
-export function buildPlayerValidationStates(
+function buildPlayerValidationStates(
   players: BalancerPlayerRecord[],
   applicationsById: Map<number, BalancerApplication>,
 ): PlayerValidationState[] {
@@ -112,7 +112,7 @@ export function getDefaultCollapsedTeamIds(variant: BalanceVariant | null): numb
   return teamIds.filter((teamId) => !expandedByDefault.has(teamId));
 }
 
-export function getVariantPlayerCount(
+function getVariantPlayerCount(
   payload: InternalBalancePayload | null | undefined,
 ): number {
   if (!payload) {
@@ -120,18 +120,6 @@ export function getVariantPlayerCount(
   }
 
   return payload.teams.reduce((sum, team) => sum + countTeamPlayers(team), 0);
-}
-
-export function getActiveVariantSummary(activeVariant: BalanceVariant | null): {
-  hasActiveVariant: boolean;
-  activeVariantTeamCount: number;
-  activeVariantPlayerCount: number;
-} {
-  return {
-    hasActiveVariant: activeVariant !== null,
-    activeVariantTeamCount: activeVariant?.payload.teams.length ?? 0,
-    activeVariantPlayerCount: getVariantPlayerCount(activeVariant?.payload),
-  };
 }
 
 export function getCanRunBalance(options: {

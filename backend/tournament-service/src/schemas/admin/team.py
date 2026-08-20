@@ -34,7 +34,6 @@ class PlayerCreate(BaseModel):
     tournament_id: int
     role: str | None = None
     rank: int = 0
-    div: int = 0
     sub_role: str | None = None
     is_newcomer: bool = False
     is_newcomer_role: bool = False
@@ -48,7 +47,6 @@ class PlayerUpdate(BaseModel):
     name: str | None = None
     role: str | None = None
     rank: int | None = None
-    div: int | None = None
     sub_role: str | None = None
     is_newcomer: bool | None = None
     is_newcomer_role: bool | None = None

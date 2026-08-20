@@ -27,7 +27,7 @@ player_sub_roles = importlib.import_module("shared.domain.player_sub_roles")
 
 
 def test_snapshot_role_translates_damage_to_dps() -> None:
-    # The snapshot uses the canonical RankRole ("damage"); the registration uses "dps".
+    # The snapshot uses the canonical HeroClass name ("damage"); the registration uses "dps".
     # Translation now lives in shared and is used by shared.services.rank_snapshots.
     assert player_sub_roles.canonical_to_registration_role("damage") == "dps"
     assert player_sub_roles.canonical_to_registration_role("tank") == "tank"

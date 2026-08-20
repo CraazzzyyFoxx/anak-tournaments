@@ -38,8 +38,10 @@ from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
 from shared.schemas.events import EncounterCompletedEvent
 from shared.services.bracket import advancement
+from shared.services.bracket.usability import is_encounter_live
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.encounter.result_audit import record_result_transition
+from shared.services.scrim_scope import is_scrim_container
 from src import models
 from src.schemas.admin.encounter_reports import CaptainReportRead, EncounterMapCodeRead
 from src.services.challonge import sync as challonge_sync
@@ -63,6 +65,17 @@ async def _enqueue_encounter_completed(
     session: AsyncSession,
     encounter: models.Encounter,
 ) -> None:
+    # This event has exactly one consumer: parser-service republishes it as an
+    # AchievementEvaluateEvent (serve.py:368-398). For a scrim that evaluation is
+    # verifiably empty — every achievement condition reaches its users through an
+    # inner join on Player or through MatchStatistics, and a scrim room has
+    # neither (docs/plans/2026-08-12-scrim-rooms.md §4.1, §5). It is not free
+    # though: it costs an outbox row, a queue round trip, an EvaluationRun audit
+    # row and one full query per encounter-dependent rule, per scrim result. Not
+    # publishing beats publishing and discarding.
+    if await is_scrim_container(session, encounter.tournament_id):
+        return
+
     winner_team_id: int | None = None
     if encounter.home_score > encounter.away_score:
         winner_team_id = encounter.home_team_id
@@ -480,6 +493,12 @@ async def submit_captain_report(
 
     encounter = await _load_encounter_with_reports(session, encounter_id)
 
+    if not await is_encounter_live(session, encounter):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Stage bracket is a preview and is not active yet; wait for the organizer to activate it",
+        )
+
     if encounter.result_status == EncounterResultStatus.CONFIRMED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -506,6 +525,15 @@ async def submit_captain_report(
     report = next((r for r in encounter.captain_reports if r.team_id == team_id), None)
     if report is None:
         report = models.EncounterCaptainReport(encounter_id=encounter.id, team_id=team_id)
+        # An empty collection assigned BEFORE the flush below, so the append that
+        # follows it never reads the table. Once the row is persistent a
+        # ``map_codes`` touch that was never loaded emits a lazy SELECT --
+        # ``lazy="selectin"`` is a QUERY-time strategy and falls back to a plain
+        # lazy load for a single instance -- and that implicit IO from sync
+        # attribute access is ``MissingGreenlet`` under async SQLAlchemy. Only
+        # the first report of a team hit this: the branch below re-uses a report
+        # whose codes ``_load_encounter_with_reports`` already eager-loaded.
+        report.map_codes = []
         session.add(report)
         encounter.captain_reports.append(report)
     else:

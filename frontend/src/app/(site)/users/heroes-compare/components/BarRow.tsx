@@ -69,15 +69,15 @@ const BarRow = ({ entry, rank, cells, isHighlighted, onHoverUser }: BarRowProps)
       return (
         <td key={`${def.key}-${i}`} className={CELL}>
           <div className="flex items-center gap-[9px]">
+            <span className="w-[52px] shrink-0 text-right font-[family-name:var(--aqt-mono)] text-[12.5px] font-semibold tabular-nums text-[color:var(--aqt-fg)]/90">
+              {def.formatValue(value)}
+            </span>
             <div className="relative h-5 min-w-0 flex-1 overflow-hidden rounded-[4px] bg-[hsl(0_0%_100%/0.03)] ring-1 ring-inset ring-[color:var(--aqt-border-2)]">
               <div
                 className={`absolute inset-y-0 left-0 rounded-[4px] transition-[width] duration-500 ${def.barColor}`}
                 style={{ width: `${barPct}%`, minWidth: "3px" }}
               />
             </div>
-            <span className="w-[52px] shrink-0 text-right font-[family-name:var(--aqt-mono)] text-[12.5px] font-semibold tabular-nums text-[color:var(--aqt-fg)]/90">
-              {def.formatValue(value)}
-            </span>
           </div>
         </td>
       );

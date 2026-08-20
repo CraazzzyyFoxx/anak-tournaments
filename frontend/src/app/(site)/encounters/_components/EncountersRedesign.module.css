@@ -583,53 +583,9 @@
 .teamChip {
   display: flex;
   align-items: center;
-  gap: 7px;
   font-weight: 600;
   color: var(--enc-fg);
   font-size: 13px;
-}
-
-.tg {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 800;
-  font-family: var(--enc-display);
-}
-
-.tgTeal {
-  background: color-mix(in srgb, var(--enc-teal) 18%, transparent);
-  color: var(--enc-teal);
-  border: 1px solid color-mix(in srgb, var(--enc-teal) 30%, transparent);
-}
-
-.tgAmber {
-  background: color-mix(in srgb, var(--enc-amber) 16%, transparent);
-  color: var(--enc-amber);
-  border: 1px solid color-mix(in srgb, var(--enc-amber) 30%, transparent);
-}
-
-.tgRose {
-  background: color-mix(in srgb, var(--enc-rose) 18%, transparent);
-  color: var(--enc-rose);
-  border: 1px solid color-mix(in srgb, var(--enc-rose) 30%, transparent);
-}
-
-.tgViolet {
-  background: color-mix(in srgb, var(--enc-violet) 18%, transparent);
-  color: var(--enc-violet);
-  border: 1px solid color-mix(in srgb, var(--enc-violet) 30%, transparent);
-}
-
-.tgBlue {
-  background: color-mix(in srgb, var(--enc-blue) 16%, transparent);
-  color: var(--enc-blue);
-  border: 1px solid color-mix(in srgb, var(--enc-blue) 30%, transparent);
 }
 
 .vs {

@@ -26,11 +26,9 @@ Commit semantics:
     in the SAME place. The read functions do not commit.
 
 S3 (division grid marketplace import): the route uses ``request.app.state.s3``;
-over RPC there is no request.app, so this module owns a module-level ``S3Client``
-constructed from ``src.core.config.settings`` (the same shared S3 settings on
-``BaseServiceSettings``) and started lazily on first use. ``S3Client.start()`` is
-a no-IO call (it only allocates an aiobotocore session), so lazy start is safe
-and serve.py needs no extra startup hook.
+over RPC there is no request.app, so the client comes from ``src.rpc._s3.get_s3``
+— one lazily-started, process-wide ``S3Client`` shared with the other S3-using
+subscriber modules.
 """
 
 from __future__ import annotations
@@ -39,13 +37,13 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
-from shared.clients.s3 import S3Client
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
 from src import models, schemas
-from src.core import auth, config
+from src.core import auth
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
+from src.rpc._s3 import get_s3
 from src.schemas.admin import balancer as admin_schemas
 from src.services.challonge import service as challonge_service
 from src.services.challonge import sync as challonge_sync
@@ -57,37 +55,6 @@ from src.services.registration import admin as registration_service
 from src.services.registration.serializers import serialize_feed
 
 _workspace_repo = WorkspaceRepository()
-
-
-# --- helpers -----------------------------------------------------------------
-
-
-# --- module-level S3 client (lazy start) -------------------------------------
-
-_s3_client: S3Client | None = None
-_s3_started = False
-
-
-async def _get_s3() -> S3Client:
-    """Equivalent of the route's ``Depends(get_s3)`` (``request.app.state.s3``).
-
-    Constructed once from the shared S3 settings and started lazily. ``start()``
-    only allocates an aiobotocore session (no network I/O), so this is safe to
-    call on the first marketplace-import request without a serve.py startup hook.
-    """
-    global _s3_client, _s3_started
-    if _s3_client is None:
-        _s3_client = S3Client(
-            access_key=config.settings.s3_access_key,
-            secret_key=config.settings.s3_secret_key,
-            endpoint_url=config.settings.s3_endpoint_url,
-            bucket_name=config.settings.s3_bucket_name,
-            public_url=config.settings.s3_public_url,
-        )
-    if not _s3_started:
-        await _s3_client.start()
-        _s3_started = True
-    return _s3_client
 
 
 # --- division-grid route-local helpers (replicate division_grid.py verbatim) -
@@ -548,7 +515,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_workspace_id=source_workspace.id,
                 source_grid_ids=[body.source_grid_id],
             )
-            s3 = await _get_s3()
+            s3 = await get_s3()
             return _dump(
                 await division_grid_marketplace.preflight_division_grid_import(
                     session,
@@ -582,7 +549,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_workspace_id=source_workspace.id,
                 source_grid_ids=[body.source_grid_id],
             )
-            s3 = await _get_s3()
+            s3 = await get_s3()
             preflight = await division_grid_marketplace.preflight_division_grid_import(
                 session,
                 public_url=getattr(s3, "_public_url", None),

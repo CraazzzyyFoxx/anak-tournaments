@@ -35,6 +35,8 @@ appears, use exactly this translation for consistency across the app.
 | Head-to-Head | Личные встречи | |
 | Balancer | Балансировщик | |
 | Registration | Регистрация | |
+| Phase | Фаза | фаза жизненного цикла турнира: регистрация, чек-ин, драфт, лайв |
+| Schedule | Расписание | «Расписание фаз» — публичная страница со временем фаз |
 | Smurf | Смурф | |
 | BattleTag | BattleTag | не переводим |
 | Playtime | Тайм на героях | «% playtime» → «% тайма» |

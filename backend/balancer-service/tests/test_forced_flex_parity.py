@@ -9,6 +9,12 @@ server, with no shared module between them. That duplication is the accepted
 cost of the current architecture, so it is pinned rather than trusted: both
 sides read the same fixtures and must agree.
 
+They agree on the effective rank itself and on every role carrying a rating.
+They deliberately diverge on the per-role catalogue: the balancer flattens it to
+the maximum, the draft keeps a rank the registrant stated for a role, because
+the draft SHOWS the per-role number to the captain choosing a role. Both halves
+of that are asserted below, so the divergence stays deliberate.
+
 ``eff_ow_rank`` has no counterpart here; the draft carries no OW rank. Only the
 TS side asserts it.
 
@@ -50,11 +56,11 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from shared.core.enums import DraftRole  # noqa: E402
+from shared.core.enums import HERO_TYPE_CLASSES  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
 
 CASES: list[dict[str, Any]] = json.loads(FIXTURES.read_text(encoding="utf-8"))["cases"]
-ALL_ROLE_VALUES = {role.value for role in DraftRole}
+ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
 
 
 class _Role:
@@ -90,9 +96,17 @@ def test_rank_value_matches_the_shared_expectation(case: dict[str, Any]) -> None
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
-def test_every_role_carries_the_effective_rank(case: dict[str, Any]) -> None:
+def test_every_role_carries_a_rating_and_stated_ranks_survive(case: dict[str, Any]) -> None:
+    """Where the draft deliberately diverges from the balancer pool.
+
+    Both sides agree on ``eff_rank`` (asserted above) and on every role carrying
+    a rating -- that is what makes a role playable. Only the balancer FLATTENS
+    the per-role catalogue to it; the draft keeps the rank the registrant stated
+    for a role, because it shows that number to the captain choosing the role.
+    """
     expected_rank = case["expected"]["eff_rank"]
-    expected = {} if expected_rank is None else dict.fromkeys(ALL_ROLE_VALUES, expected_rank)
+    stated = {spec["role"]: spec["rank_value"] for spec in case["roles"] if spec["rank_value"] is not None}
+    expected = {} if expected_rank is None else {role: stated.get(role, expected_rank) for role in ALL_ROLE_VALUES}
 
     assert _map(case)["role_ranks"] == expected
 
@@ -101,4 +115,4 @@ def test_every_role_carries_the_effective_rank(case: dict[str, Any]) -> None:
 def test_all_three_roles_are_playable(case: dict[str, Any]) -> None:
     mapped = _map(case)
 
-    assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(DraftRole)
+    assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(HERO_TYPE_CLASSES)

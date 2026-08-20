@@ -19,7 +19,6 @@ async def _enqueue_team_changed(session: AsyncSession, tournament_id: int) -> No
 
 def _prepare_player_create_data(data: admin_schemas.PlayerCreate) -> dict:
     player_data = data.model_dump()
-    player_data.pop("div", None)
     player_data["sub_role"] = normalize_sub_role(player_data.get("sub_role"))
     if not player_data.get("is_substitution"):
         player_data["related_player_id"] = None
@@ -31,7 +30,6 @@ def _prepare_player_update_data(
     data: admin_schemas.PlayerUpdate,
 ) -> dict:
     update_data = data.model_dump(exclude_unset=True)
-    update_data.pop("div", None)
     if "sub_role" in update_data:
         update_data["sub_role"] = normalize_sub_role(update_data["sub_role"])
     if update_data.get("is_substitution") is False:
@@ -238,6 +236,26 @@ async def update_team(session: AsyncSession, team_id: int, data: admin_schemas.T
     update_data = _prepare_team_update_data(team, data)
     for field, value in update_data.items():
         setattr(team, field, value)
+
+    await _enqueue_team_changed(session, team.tournament_id)
+    await session.commit()
+    return await get_team(session, team.id)
+
+
+async def set_team_image(session: AsyncSession, team_id: int, image_url: str | None) -> models.Team:
+    """Set (or clear, with ``None``) a team's logo URL.
+
+    Deliberately separate from ``update_team``: the image is only ever written by
+    the dedicated upload/delete RPC subjects after S3 succeeded, never through the
+    generic PATCH body (``TeamUpdate`` has no ``image_url`` field).
+    """
+    result = await session.execute(select(models.Team).where(models.Team.id == team_id))
+    team = result.scalar_one_or_none()
+
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+
+    team.image_url = image_url
 
     await _enqueue_team_changed(session, team.tournament_id)
     await session.commit()

@@ -62,7 +62,7 @@ def label(registration: models.BalancerRegistration) -> str | None:
 
 
 def _role_key(value: Any) -> str:
-    """``BalancerRole`` on the request side, a plain string on the model side."""
+    """``RegistrationRoleCode`` (a plain string) on the request side, same on the model side."""
     return str(getattr(value, "value", value))
 
 

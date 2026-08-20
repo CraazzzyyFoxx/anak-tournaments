@@ -7,7 +7,7 @@ import { ParsedCompareParams, CompareBaselineState } from "@/app/(site)/users/co
 import { UserCompareBaselineMode } from "@/types/user.types";
 import { parseOptionalInt, parseRole, parseScope } from "@/app/(site)/users/compare/utils";
 
-export type CompareParamUpdates = Record<string, string | number | undefined>;
+type CompareParamUpdates = Record<string, string | number | undefined>;
 
 export interface UseUserCompareSearchParamsResult extends ParsedCompareParams, CompareBaselineState {
   updateParams: (updates: CompareParamUpdates) => void;

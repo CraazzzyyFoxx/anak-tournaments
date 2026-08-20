@@ -8,8 +8,7 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import DraftPlayerStatus, DraftRole, DraftStatus
-from shared.core.errors import ApiExc, ApiHTTPException
+from shared.core.enums import DraftPlayerStatus, DraftStatus, HeroClass
 from shared.models.balancer.draft import (
     DraftAuditEvent,
     DraftPlayer,
@@ -17,6 +16,7 @@ from shared.models.balancer.draft import (
     DraftSession,
 )
 from src.services.draft import feasibility, loaders
+from src.services.draft._errors import err as _err
 
 _EDITABLE_STATUSES = {
     DraftStatus.SETUP.value,
@@ -34,21 +34,17 @@ class RoleEditPreview:
 @dataclass(frozen=True)
 class RoleEditResult:
     player_id: int
-    role: DraftRole
+    role: HeroClass
     player_version: int
     committed: bool
     preview: RoleEditPreview
-
-
-def _err(code: str, msg: str, *, status_code: int = 422) -> ApiHTTPException:
-    return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
 
 
 def validate_role_edit_request(
     draft_session: DraftSession,
     player: DraftPlayer,
     *,
-    role: DraftRole,
+    role: HeroClass,
     rank_value: int | None,
     rank_absence_confirmed: bool,
     reason: str,
@@ -64,8 +60,8 @@ def validate_role_edit_request(
         raise _err("player_not_available", "Only a remaining available player can receive an emergency role")
     if player.version != expected_version:
         raise _err("draft_player_stale", "Player snapshot changed; reload the role-edit preview", status_code=409)
-    if any(entry.role == role.value for entry in player.roles):
-        raise _err("role_already_exists", f"Player already has the {role.value} role", status_code=409)
+    if any(entry.role == role.slot_code for entry in player.roles):
+        raise _err("role_already_exists", f"Player already has the {role.slot_code} role", status_code=409)
     normalized_reason = reason.strip()
     if not normalized_reason:
         raise _err("role_edit_reason_required", "A private audit reason is required")
@@ -81,7 +77,7 @@ def preview_role_addition(
     state: feasibility.DraftFeasibilityState,
     *,
     player_id: int,
-    role: DraftRole,
+    role: HeroClass,
 ) -> RoleEditPreview:
     before = feasibility.analyze_draft_feasibility(
         team_ids=state.team_ids,
@@ -152,7 +148,7 @@ def apply_role_edit(
     draft_session: DraftSession,
     player: DraftPlayer,
     *,
-    role: DraftRole,
+    role: HeroClass,
     rank_value: int | None,
     reason: str,
     actor_auth_user_id: int,
@@ -165,9 +161,9 @@ def apply_role_edit(
     next_priority = max((entry.priority for entry in player.roles), default=-1) + 1
     player.roles.append(
         DraftPlayerRole(
-            role=role.value,
+            role=role.slot_code,
             rank_value=rank_value,
-            is_secondary=role.value != player.primary_role,
+            is_secondary=role.slot_code != player.primary_role,
             priority=next_priority,
         )
     )
@@ -199,7 +195,7 @@ async def edit_player_role(
     draft_session: DraftSession,
     *,
     player_id: int,
-    role: DraftRole,
+    role: HeroClass,
     rank_value: int | None,
     rank_absence_confirmed: bool,
     reason: str,

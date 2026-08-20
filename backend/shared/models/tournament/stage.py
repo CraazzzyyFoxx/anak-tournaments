@@ -61,6 +61,14 @@ class Stage(db.TimeStampIntegerMixin):
     split_lower_bracket: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
     order: Mapped[int] = mapped_column(Integer(), default=0)
     is_active: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
+    # Sticky, unlike ``is_active``: set True the first time the stage is
+    # activated and never cleared again, even after a later stage's
+    # activation flips ``is_active`` back to False. ``admin/stage.py::
+    # generate_encounters`` can populate a stage's encounters while it is
+    # still Draft (a preview of the bracket shape before the stage goes
+    # live) -- captains cannot report or veto against those encounters
+    # until this flips True (``shared.services.bracket.usability``).
+    is_published: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
     is_completed: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
     settings_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 

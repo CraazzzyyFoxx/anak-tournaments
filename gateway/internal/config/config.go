@@ -61,8 +61,8 @@ type Config struct {
 	WSMaxAnonConnsPerIP int
 	WSMaxTopicsAnon     int
 	WSMaxTopicsAuth     int
-	AuthRateLimit      int
-	AuthRateWindow     time.Duration
+	AuthRateLimit       int
+	AuthRateWindow      time.Duration
 	// WSCustomDomainRateLimit/Window bound how often ws.Handler's dynamic
 	// custom-domain Origin lookup (see acceptOptionsFor) may run per client
 	// IP. /ws carries neither auth nor the outer nginx-level limiter that

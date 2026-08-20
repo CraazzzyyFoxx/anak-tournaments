@@ -6,7 +6,6 @@ gains ``mode``/``first_ban_rotation`` bound by enum *value*, plus the CHECK that
 forbids a hand-authored ``custom`` order in slot mode; and the flat-mode pool
 table is left alone (design Decision 2).
 
-Migration: ``backend/migrations/versions/vetoslot01_add_slot_pools.py``
 Design: ``docs/plans/2026-08-05-map-veto-slot-pools.md`` §4.1
 """
 

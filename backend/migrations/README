@@ -1,1 +1,37 @@
 Generic single-database configuration.
+
+Baseline: `initial_v6`. Everything the v5 chain (155 revisions, `a7634c02717d` ..
+`scrim0002`) built is one revision generated from the models, plus the objects no
+model describes (schemas, extensions, invariant CHECKs, coalesced/partial and
+expression indexes, `matches.mv_hero_global_stats`). The chain was squashed
+because it no longer ran from zero: `m3h5i7j1k2l3` created
+`balancer.registration_form` already carrying `built_in_fields_json`, so its own
+child `n4i6j8k2l3m4` died on `ADD COLUMN`.
+
+Fresh database: `alembic upgrade head`.
+
+Database that already ran the v5 chain (production, `anak_dev`): stamp, never
+upgrade — the tables are already there.
+
+    alembic stamp initial_v6
+
+On `dd-new` that runs through a one-off container, because the service images do
+not ship alembic (`POSTGRES_HOST=db_postgres` bypasses pgbouncer, whose
+transaction pooling breaks DDL):
+
+    docker run --rm --name owt-mig --network postgres_pg_network \
+      --env-file /root/overwatch-tournaments/backend/env/common.env \
+      -e POSTGRES_HOST=db_postgres -e POSTGRES_PORT=5432 \
+      -v /root/overwatch-tournaments/backend/alembic.ini:/app/alembic.ini:ro \
+      -v /root/overwatch-tournaments/backend/migrations:/app/migrations:ro \
+      -w /app registry.craazzzyyfoxx.me/aqt-tournament:latest \
+      /app/.venv/bin/alembic stamp initial_v6
+
+The baseline reproduces production, verified by comparing catalog snapshots of a
+scratch database against `anak_v5`. What it does NOT reproduce is drift that
+predates it and still needs its own revision on top: production columns typed
+`integer` where the models say `BigInteger`, the extra
+`tournament.firstbanrotation` / `tournament.mappoolentrystatus` enum values that
+exist only in the models, and a handful of server defaults on either side.
+`tournament.team.image_url` is the one that already has such a revision
+(`teamimg0001`), which is why the baseline leaves it out of `tournament.team`.

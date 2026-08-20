@@ -1,15 +1,20 @@
 .PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
 	prod-build prod-up prod-down prod-logs prod-scale migrate test clean \
 	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
-	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs \
+	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs stream-logs \
 	app-restart identity-restart parser-restart frontend-restart \
 	monitoring-up monitoring-down monitoring-logs monitoring-ps \
+	backup-up backup-down backup-logs backup-setup backup-run backup-ls \
 	app-rebuild identity-rebuild parser-rebuild frontend-rebuild \
 	loadtest loadtest-ui
 
 COMPOSE = docker compose
 PROD_COMPOSE = docker compose -f docker-compose.production.yml
 MONITORING_COMPOSE = docker compose -f docker-compose.monitoring.yml
+# Контур бэкапов: свой проект (owt-backup) и свой env-файл, чтобы жизненный цикл
+# не зависел от прода. См. docs/backup-rustfs.md.
+BACKUP_ENV = ops/backup/backup.env
+BACKUP_COMPOSE = docker compose -f docker-compose.backup.yml --env-file $(BACKUP_ENV)
 
 # Workers safe to replicate: RabbitMQ competing-consumers spread RPC calls + jobs
 # across replicas automatically, cache lives in shared Redis, DB access goes via
@@ -22,8 +27,13 @@ MONITORING_COMPOSE = docker compose -f docker-compose.monitoring.yml
 # `prod-up` applies this scale-out itself on every start (auth/identity +
 # tournament run replicated from boot, no separate `prod-scale` call needed).
 # Override on the CLI, e.g.
-#   make prod-up PROD_SCALE='app-svc=3 balancer-svc=2'
-PROD_SCALE ?= app-svc=2 identity-svc=2 tournament-svc=2
+#   make prod-up PROD_SCALE='app-svc=2 balancer-svc=2'
+# frontend is deliberately NOT here: it is replicated declaratively via
+# `deploy.replicas` in docker-compose.production.yml, because the production
+# deploy path is a GitHub release running plain `docker compose up -d` with no
+# --scale flag. A count that only exists in this variable would silently not
+# apply there.
+PROD_SCALE ?= app-svc=2 identity-svc=2 tournament-svc=4
 
 help:
 	@echo "Available commands:"
@@ -46,6 +56,12 @@ help:
 	@echo "  make monitoring-down- Stop monitoring stack"
 	@echo "  make monitoring-logs- Follow monitoring logs"
 	@echo "  make monitoring-ps  - Show monitoring services"
+	@echo "  make backup-up      - Start backup rustfs (source, dd-new)"
+	@echo "  make backup-setup   - (Re)configure buckets + replication to home"
+	@echo "  make backup-run     - Run a backup now (dump -> rustfs -> replica check)"
+	@echo "  make backup-ls      - List what is stored in the replica (home)"
+	@echo "  make backup-down    - Stop backup rustfs"
+	@echo "  make backup-logs    - Follow backup rustfs logs"
 	@echo ""
 	@echo "  make migrate        - Run backend migrations"
 	@echo "  make test           - Run backend tests"
@@ -156,6 +172,9 @@ discord-logs:
 balancer-logs:
 	$(COMPOSE) logs -f balancer-svc
 
+stream-logs:
+	$(COMPOSE) logs -f stream-svc
+
 app-restart:
 	$(COMPOSE) restart app-svc
 
@@ -199,3 +218,30 @@ monitoring-logs:
 
 monitoring-ps:
 	$(MONITORING_COMPOSE) ps
+
+# ==============================================================================
+# Контур резервных копий (отдельный проект owt-backup, хост dd-new).
+# Полная процедура установки и восстановления — docs/backup-rustfs.md.
+# ==============================================================================
+backup-up:
+	$(BACKUP_COMPOSE) up -d --wait
+
+backup-down:
+	$(BACKUP_COMPOSE) down
+
+backup-logs:
+	$(BACKUP_COMPOSE) logs -f
+
+# Идемпотентно: бакеты, версионирование, ILM, ключ реплики, правило репликации
+# и проверка round-trip.
+backup-setup:
+	ops/backup/setup.sh $(BACKUP_ENV)
+
+# Прогон вне расписания (то же, что делает таймер systemd).
+backup-run:
+	ops/backup/backup.sh $(BACKUP_ENV)
+
+# Что реально лежит на home. Единственный ответ на вопрос «есть ли бэкап».
+# Через bash -c: рецепты make исполняет /bin/sh, а lib.sh — bash-скрипт.
+backup-ls:
+	@bash -c 'source ops/backup/lib.sh; load_env $(BACKUP_ENV); mc ls --recursive "replica/$$BACKUP_BUCKET/"'

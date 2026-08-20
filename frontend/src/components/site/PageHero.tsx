@@ -1,6 +1,7 @@
 import React from "react";
 
 import { cn } from "@/lib/utils";
+import type { PlayerRoleTint } from "@/lib/player-role";
 
 /**
  * Editorial-Tactical page hero (design-book / OWT artifact).
@@ -15,8 +16,10 @@ import { cn } from "@/lib/utils";
  * components alike. Colours come from the global `--aqt-*` tokens.
  */
 
-/** Role hue for the profile wash — maps to the `--aqt-{role}` role tokens. */
-export type HeroRoleTint = "tank" | "damage" | "support";
+/** Role hue for the profile wash — maps to the `--aqt-{role}` role tokens.
+ *  This is a PLAYER-role tint (Tank/Damage/Support/Flex), not a hero class; the
+ *  name is historical, so it stays an alias over the one tint vocabulary. */
+type HeroRoleTint = PlayerRoleTint;
 
 interface HeroFrameProps {
   children: React.ReactNode;

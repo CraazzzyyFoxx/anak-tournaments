@@ -12,6 +12,7 @@ import {
   getPreferredAnalyticsAlgorithmId,
   ordinal,
   resolveImpact,
+  standingsRank,
 } from "@/app/(site)/tournaments/analytics/analytics.helpers";
 
 describe("formatAnalyticsNumber", () => {
@@ -75,6 +76,14 @@ describe("analytics helpers", () => {
   it("shows the admin toolbar only for users with analytics.update access", () => {
     expect(canShowAnalyticsAdminToolbar(true)).toBe(true);
     expect(canShowAnalyticsAdminToolbar(false)).toBe(false);
+  });
+
+  it("ranks by forecast until the bracket has an actual place", () => {
+    expect(standingsRank({ placement: 4, predicted_place: 9 })).toBe(4);
+    expect(standingsRank({ placement: null, predicted_place: 9 })).toBe(9);
+    expect(standingsRank({ placement: null, predicted_place: null })).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
   });
 
   it("prefers Linear as the default analytics algorithm without tournament data", () => {

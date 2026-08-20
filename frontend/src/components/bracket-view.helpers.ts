@@ -1,4 +1,5 @@
 import type { Encounter } from "@/types/encounter.types";
+import type { StageType } from "@/types/tournament.types";
 
 export interface RoundGroup {
   round: number;
@@ -65,40 +66,153 @@ export function computeMatchNumbers(
   return numbers;
 }
 
-export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<number> {
-  const positiveRoundGroups = buildRoundGroups(encounters.filter((match) => match.round > 0));
+/**
+ * The signed rounds a bracket's Grand Final (and its reset) occupy — empty for
+ * anything that has none.
+ *
+ * ``matchesPerRound`` tells the Grand Final apart from its reset the way the
+ * bracket itself does: both are trailing single-match rounds, so the last
+ * `trailing - 1` of them are finals and the one before is the upper-bracket
+ * final. Without it — a bracket predicted before it exists, which never carries
+ * a reset (`placeholder_bracket` omits it) — the highest positive round is the
+ * Grand Final.
+ */
+function getFinalRounds(
+  isDoubleElimination: boolean,
+  rounds: number[],
+  matchesPerRound?: Map<number, number>
+): number[] {
+  if (!isDoubleElimination) return [];
 
-  if (positiveRoundGroups.length === 0) {
-    return new Set();
-  }
+  const positive = rounds.filter((round) => round > 0).sort((left, right) => left - right);
+  if (positive.length === 0) return [];
+  if (!matchesPerRound) return positive.slice(-1);
 
   let trailingSingleMatchRounds = 0;
-  for (let index = positiveRoundGroups.length - 1; index >= 0; index -= 1) {
-    if (positiveRoundGroups[index].matches.length !== 1) {
-      break;
-    }
+  for (let index = positive.length - 1; index >= 0; index -= 1) {
+    if ((matchesPerRound.get(positive[index]) ?? 0) !== 1) break;
     trailingSingleMatchRounds += 1;
   }
 
-  const finalRoundCount = Math.max(1, trailingSingleMatchRounds - 1);
-  return new Set(positiveRoundGroups.slice(-finalRoundCount).map((group) => group.round));
+  return positive.slice(-Math.max(1, trailingSingleMatchRounds - 1));
 }
 
-export function getGrandFinalLabel(round: number, groups: RoundGroup[]): string {
-  const index = groups.findIndex((group) => group.round === round);
-
-  if (index < 0) {
-    return `Round ${round}`;
+export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<number> {
+  const matchesPerRound = new Map<number, number>();
+  for (const match of encounters) {
+    matchesPerRound.set(match.round, (matchesPerRound.get(match.round) ?? 0) + 1);
   }
-
-  if (groups.length === 1) {
-    return "Grand Final";
-  }
-
-  return index === 0 ? "Grand Final" : "Grand Final Reset";
+  return new Set(getFinalRounds(true, [...matchesPerRound.keys()], matchesPerRound));
 }
 
+/** The encounter fields `stageFinalRounds` reads. */
+export interface StageScopedRound {
+  stage_id: number | null;
+  round: number;
+}
+
+/**
+ * `getFinalRounds` for a screen that offers a stage's rounds as a list — the
+ * pick-ban scope picker, the scrim pool copier — rather than laying the bracket
+ * out. Counts the matches per round from the stage's encounters when they
+ * exist; before that the round list alone decides, which is exact because a
+ * predicted bracket never carries a Grand Final Reset.
+ */
+export function stageFinalRounds(
+  stageId: number | null,
+  stageType: StageType | undefined,
+  rounds: number[],
+  encounters: StageScopedRound[] | undefined
+): number[] {
+  if (stageType !== "double_elimination") return [];
+
+  const matchesPerRound = new Map<number, number>();
+  for (const encounter of encounters ?? []) {
+    if (encounter.stage_id !== stageId) continue;
+    matchesPerRound.set(encounter.round, (matchesPerRound.get(encounter.round) ?? 0) + 1);
+  }
+  return getFinalRounds(true, rounds, matchesPerRound.size > 0 ? matchesPerRound : undefined);
+}
+
+/** A round's name, as a `bracket.*` message key plus the depth it interpolates. */
+export interface BracketRoundLabel {
+  key: "round" | "lowerRound" | "grandFinal" | "grandFinalReset";
+  /** Depth for the keys that interpolate `{n}`; absent for the finals. */
+  n?: number;
+}
+
+/**
+ * What the bracket calls this round. The one place that decides a round's name,
+ * so every screen that offers one — the bracket itself, the pick-ban scope
+ * picker — shows the organizer the same name for it. Render it with
+ * `useBracketRoundLabel`.
+ *
+ * ``finalRounds`` comes from `getFinalRounds`; its first entry is the Grand
+ * Final and anything after it a reset.
+ */
+export function bracketRoundLabel(round: number, finalRounds: number[]): BracketRoundLabel {
+  if (round < 0) return { key: "lowerRound", n: -round };
+
+  const finalIndex = finalRounds.indexOf(round);
+  if (finalIndex < 0) return { key: "round", n: round };
+  return { key: finalIndex === 0 ? "grandFinal" : "grandFinalReset" };
+}
+
+/**
+ * Where each unresolved slot's team will come from, as "W M3" / "L M7".
+ *
+ * Reads the bracket's own advancement edges (`Encounter.sources`) when it has
+ * them, so the hints are the real topology rather than a shape inferred from
+ * round numbers -- an inference that cannot tell a lower bracket seeded straight
+ * from the group stage (round 1 holds seeds, so those slots really are TBD) from
+ * a standard one (round 1 holds the upper bracket's first losers), and got the
+ * former wrong. `inferBracketSlotHints` remains for a bracket generated before
+ * the edges were recorded.
+ */
 export function computeSlotHints(
+  upperRounds: RoundGroup[],
+  lowerRounds: RoundGroup[],
+  finalRounds: RoundGroup[],
+  matchNumbers: Map<number, number>,
+  isDE: boolean,
+  hasBracketConnections: boolean
+): Map<number, SlotHint> {
+  const groups = [...upperRounds, ...lowerRounds, ...finalRounds];
+  const recorded = groups.some((group) => group.matches.some((match) => (match.sources?.length ?? 0) > 0));
+  if (recorded) {
+    const hints = new Map<number, SlotHint>();
+    for (const group of groups) {
+      for (const match of group.matches) {
+        for (const source of match.sources ?? []) {
+          const matchNumber = matchNumbers.get(source.encounter_id);
+          if (matchNumber == null) continue;
+          const existing = hints.get(match.id) ?? { home: null, away: null };
+          hints.set(match.id, {
+            ...existing,
+            [source.slot]: `${source.role === "winner" ? "W" : "L"} M${matchNumber}`
+          });
+        }
+      }
+    }
+    return hints;
+  }
+
+  return inferBracketSlotHints(
+    upperRounds,
+    lowerRounds,
+    finalRounds,
+    matchNumbers,
+    isDE,
+    hasBracketConnections
+  );
+}
+
+/**
+ * The pre-`sources` fallback: guesses each slot's origin from the standard
+ * double-elimination shape. Only correct for a bracket that has that shape, so
+ * it is reached only when no encounter carries a recorded edge.
+ */
+function inferBracketSlotHints(
   upperRounds: RoundGroup[],
   lowerRounds: RoundGroup[],
   finalRounds: RoundGroup[],

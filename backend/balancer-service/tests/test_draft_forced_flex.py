@@ -1,11 +1,16 @@
 """Draft seeding in a forced-flex tournament.
 
 ``flex_role.mode == "forced"`` means role does not matter, so a player's
-strength is the MAXIMUM rank across all their roles, applied to all three. That
-is what makes the mode work at all: in the balancer, eligibility for a role is
-the presence of a rating for it (``Player.can_play`` is ``role in ratings``, and
-Rust mirrors it in ``context.rs``), not the ``is_flex`` flag -- so without
-flattening, a player ranked only on DPS could never be placed as tank.
+strength -- ``rank_value`` -- is the MAXIMUM rank across all their roles. Every
+role also has to CARRY a rating: in the balancer, eligibility for a role is the
+presence of one (``Player.can_play`` is ``role in ratings``, and Rust mirrors it
+in ``context.rs``), not the ``is_flex`` flag -- so a player ranked only on DPS
+could never be placed as tank without it. Roles the registration never ranked
+therefore take the maximum.
+
+What the maximum must NOT do is overwrite a rank the registrant actually stated.
+The draft shows the per-role number to the captain choosing a role, and
+flattening all three turned that display into one value printed three times.
 
 The draft's own ``rank_value`` selection is also corrected here: it used to
 prefer the primary role's rank even when another role was higher.
@@ -43,10 +48,10 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from shared.core.enums import DraftRole  # noqa: E402
+from shared.core.enums import HERO_TYPE_CLASSES, HeroClass  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
 
-ALL_ROLE_VALUES = {role.value for role in DraftRole}
+ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
 
 
 class _Role:
@@ -83,7 +88,8 @@ def _mapped(roles: list[_Role], **kwargs: Any) -> dict:
 
 
 class TestForcedFlexMapping:
-    def test_max_rank_is_applied_to_all_three_roles(self) -> None:
+    def test_a_ranked_role_keeps_its_own_rank(self) -> None:
+        """The draft shows this number per role, so it may not be overwritten."""
         mapped = _mapped(
             [
                 _Role("dps", priority=0, is_primary=True, rank_value=3900),
@@ -92,7 +98,9 @@ class TestForcedFlexMapping:
             all_roles=True,
         )
 
-        assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3900)
+        # Tank was never ranked, so it takes the maximum: eligibility is the
+        # presence of a rating, and that is the only value available for it.
+        assert mapped["role_ranks"] == {"dps": 3900, "support": 2400, "tank": 3900}
 
     def test_rank_value_is_the_max_not_the_primary_role_rank(self) -> None:
         """The bug this closes: the primary's rank won even when lower."""
@@ -128,7 +136,7 @@ class TestForcedFlexMapping:
     def test_all_three_roles_are_covered_even_from_one_entry(self) -> None:
         mapped = _mapped([_Role("dps", is_primary=True, rank_value=3000)], all_roles=True)
 
-        assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(DraftRole)
+        assert {mapped["primary_role"], *mapped["secondary_roles"]} == set(HERO_TYPE_CLASSES)
 
     def test_sub_role_comes_from_the_first_role_by_priority(self) -> None:
         mapped = _mapped(
@@ -214,8 +222,8 @@ class TestForcedFlexEnabledMirror:
 class TestAllRolesModeKeepsThePriority:
     """``all_roles`` differs from ``forced`` in exactly one respect.
 
-    Both make every role playable at the maximum rank, because balancer
-    eligibility demands a rating per role. Only ``forced`` also forces every role
+    Both make every role playable and carrying a rating, because balancer
+    eligibility demands one per role. Only ``forced`` also forces every role
     primary. Under ``all_roles`` the registrant's single priority role survives,
     which is what keeps a real balance-versus-comfort trade-off alive: a forced
     tournament has zero discomfort everywhere and the solver's second objective
@@ -235,8 +243,8 @@ class TestAllRolesModeKeepsThePriority:
             all_roles=True,
         )
 
-        assert mapped["primary_role"] == DraftRole.TANK
-        assert set(mapped["secondary_roles"]) == {DraftRole.DPS, DraftRole.SUPPORT}
+        assert mapped["primary_role"] == HeroClass.tank
+        assert set(mapped["secondary_roles"]) == {HeroClass.damage, HeroClass.support}
 
     def test_is_flex_stays_false_for_a_priority_registrant(self) -> None:
         """``is_flex`` is the registration's own fact, not the mode's."""
@@ -247,7 +255,7 @@ class TestAllRolesModeKeepsThePriority:
 
         assert mapped["is_flex"] is False
 
-    def test_max_rank_still_covers_every_role(self) -> None:
+    def test_every_role_is_rated_without_losing_the_stated_ranks(self) -> None:
         mapped = lifecycle._map_registration(
             _Registration(
                 [
@@ -259,7 +267,9 @@ class TestAllRolesModeKeepsThePriority:
             all_roles=True,
         )
 
-        assert mapped["role_ranks"] == dict.fromkeys(ALL_ROLE_VALUES, 3900)
+        # Support is unrated and takes the maximum; tank keeps the 2800 the
+        # registrant stated, which is what the draft shows on the tank row.
+        assert mapped["role_ranks"] == {"tank": 2800, "dps": 3900, "support": 3900}
         assert mapped["rank_value"] == 3900
 
 
@@ -294,15 +304,15 @@ class TestDiscomfortDivergesFromTheBalancer:
         player = sug.FitPlayer(
             player_id=1,
             rank_value=3300,
-            playable_roles=frozenset(DraftRole),
-            preference_order=(DraftRole.TANK,),
+            playable_roles=frozenset(HERO_TYPE_CLASSES),
+            preference_order=(HeroClass.tank,),
             is_flex=False,
-            rank_by_role=dict.fromkeys(DraftRole, 3300),
+            rank_by_role=dict.fromkeys(HERO_TYPE_CLASSES, 3300),
         )
 
-        assert sug.role_discomfort(player, DraftRole.TANK) == 0
-        assert sug.role_discomfort(player, DraftRole.DPS) == 1000
-        assert sug.role_discomfort(player, DraftRole.SUPPORT) == 1000
+        assert sug.role_discomfort(player, HeroClass.tank) == 0
+        assert sug.role_discomfort(player, HeroClass.damage) == 1000
+        assert sug.role_discomfort(player, HeroClass.support) == 1000
 
     def test_balancer_penalises_them_by_position_instead(self) -> None:
         from src.services.balancer.algorithm.entities import Player

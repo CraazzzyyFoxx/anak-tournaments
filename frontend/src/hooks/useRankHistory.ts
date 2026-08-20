@@ -47,21 +47,3 @@ export function useUserRankHistory(userId: number, params: RankHistoryQuery = {}
     enabled: Number.isFinite(userId)
   });
 }
-
-export function useBattleTagRankHistory(battleTagId: number, params: RankHistoryQuery = {}) {
-  return useQuery({
-    queryKey: ["rank-history", "battle-tag", battleTagId, params],
-    queryFn: () => rankService.getBattleTagRankHistory(battleTagId, params),
-    staleTime: STALE_TIME,
-    enabled: Number.isFinite(battleTagId)
-  });
-}
-
-export function useUserCurrentRanks(userId: number, platform?: "pc" | "console") {
-  return useQuery({
-    queryKey: ["rank-history", "current", userId, platform],
-    queryFn: () => rankService.getUserCurrentRanks(userId, platform),
-    staleTime: STALE_TIME,
-    enabled: Number.isFinite(userId)
-  });
-}

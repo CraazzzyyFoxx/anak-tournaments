@@ -1,0 +1,77 @@
+name: owt-backup
+
+# ==============================================================================
+# Контур резервных копий, РЕПЛИКА (домашний сервер).
+#
+# rustfs здесь — цель bucket replication с dd-new. Caddy рядом только для того,
+# чтобы у публичного эндпоинта был валидный TLS: rustfs умеет TLS сам
+# (RUSTFS_TLS_PATH), но тогда сертификаты пришлось бы выпускать и продлевать
+# отдельным клиентом. Caddy делает ACME сам, конфиг — четыре строки.
+#
+#   cd ops/backup
+#   docker compose -f compose.home.yml --env-file backup.env up -d
+#
+# Требования снаружи: A-запись $HOME_S3_DOMAIN на домашний IP, проброс 80 и 443.
+# 80 нужен только ACME (HTTP-01) и редиректу.
+#
+# Файрвол: разрешать 443 стоит ТОЛЬКО с IP dd-new (плюс свой домашний адрес для
+# восстановления) — реплика не публичный сервис:
+#   ufw allow from <dd-new-ip> to any port 443 proto tcp
+# 80 придётся держать открытым для ACME до первого выпуска сертификата.
+# ==============================================================================
+
+services:
+  rustfs:
+    image: ${RUSTFS_IMAGE:?set RUSTFS_IMAGE in backup.env}
+    restart: unless-stopped
+    # Наружу не публикуем ни один порт: снаружи ходят только через caddy.
+    # Консоль выключена (образ поднимает её с CORS `*`); для разбора — поднять
+    # RUSTFS_CONSOLE_ENABLE=true и пробросить 9001 через ssh.
+    expose:
+      - "9000"
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_ACCESS_KEY: ${HOME_RUSTFS_ROOT_USER:?}
+      RUSTFS_SECRET_KEY: ${HOME_RUSTFS_ROOT_PASSWORD:?}
+      # См. комментарий в docker-compose.backup.yml: без второй переменной новый
+      # бакет создастся в relaxed-режиме и не будет fsync'ать метаданные.
+      RUSTFS_DURABILITY_MODE: strict
+      RUSTFS_NEW_BUCKET_DURABILITY_MODE: strict
+    volumes:
+      # Владелец каталогов на хосте — 10001:10001 (см. docs/backup-rustfs.md).
+      - ${HOME_RUSTFS_DATA_DIR:?}:/data
+      - ${HOME_RUSTFS_LOG_DIR:?}:/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - backup
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      HOME_S3_DOMAIN: ${HOME_S3_DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Тома caddy держат аккаунт ACME и выпущенные сертификаты. Потеря = новый
+      # выпуск (и риск упереться в rate limit Let's Encrypt), поэтому не tmpfs.
+      - ${HOME_CADDY_DATA_DIR:?}/data:/data
+      - ${HOME_CADDY_DATA_DIR:?}/config:/config
+    depends_on:
+      - rustfs
+    networks:
+      - backup
+
+networks:
+  backup:
+    driver: bridge

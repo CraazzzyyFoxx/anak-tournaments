@@ -16,7 +16,7 @@ const RECOMMENDED_ALGORITHM_ORDER = [
 // The ML shift algorithm is preferred as the default *when it has data* for the
 // tournament — it consumes Performance v2 and is the richest signal. Until a v2
 // inference run populates it, the display/fallback order above still applies.
-export const PREFERRED_ML_ALGORITHM_NAME = "OpenSkill + ML";
+const PREFERRED_ML_ALGORITHM_NAME = "OpenSkill + ML";
 
 const algorithmPriority = new Map<string, number>(
   RECOMMENDED_ALGORITHM_ORDER.map((name, index) => [name, index]),
@@ -72,7 +72,7 @@ export function getAnalyticsRefreshKeys(
   return keys;
 }
 
-export function clampConfidence(confidence: number): number {
+function clampConfidence(confidence: number): number {
   return Math.max(0, Math.min(1, confidence));
 }
 
@@ -80,7 +80,6 @@ export type ConfidenceTone = "high" | "medium" | "low";
 
 /**
  * Plain-language confidence so the read view never shows a bare 0–1 number.
- * Thresholds match {@link getConfidenceBadgeClass}.
  */
 export function confidenceWord(confidence: number): { label: string; tone: ConfidenceTone } {
   const clamped = clampConfidence(confidence);
@@ -157,20 +156,6 @@ export function formatConfidencePercent(confidence: number): string {
   return `${Math.round(clampConfidence(confidence) * 100)}%`;
 }
 
-export function getConfidenceBadgeClass(confidence: number): string {
-  const clamped = clampConfidence(confidence);
-
-  if (clamped >= 0.75) {
-    return "border-[color:color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_12%,transparent)] text-[color:var(--aqt-emerald)]";
-  }
-
-  if (clamped >= 0.45) {
-    return "border-[color:color-mix(in_srgb,var(--aqt-amber)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_12%,transparent)] text-[color:var(--aqt-amber)]";
-  }
-
-  return "border-border/60 bg-muted/55 text-muted-foreground";
-}
-
 export function formatAnalyticsNumber(
   value: number | null | undefined,
   fractionDigits = 2,
@@ -189,27 +174,6 @@ export function formatAnalyticsNumber(
   }
 
   return rounded;
-}
-
-type ConfidenceBreakdownSource = Pick<
-  PlayerAnalytics,
-  | "confidence"
-  | "effective_evidence"
-  | "sample_tournaments"
-  | "sample_matches"
-  | "log_coverage"
->;
-
-export function getConfidenceBreakdownLines(
-  player: ConfidenceBreakdownSource,
-): string[] {
-  return [
-    `Confidence: ${formatConfidencePercent(player.confidence)}`,
-    `Evidence: ${formatAnalyticsNumber(player.effective_evidence)}`,
-    `Tournaments: ${player.sample_tournaments}`,
-    `Matches: ${player.sample_matches}`,
-    `Log coverage: ${formatConfidencePercent(player.log_coverage)}`,
-  ];
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -278,28 +242,19 @@ export function formatPlace(n: number | null | undefined, locale: "en" | "ru"): 
   return locale === "en" ? ordinal(n) : String(n);
 }
 
-export type CommunityRoleKey = "tank" | "damage" | "support";
-
 /**
- * Normalise a raw player role ("Tank" / "Damage" / "dps" / "Support") to the
- * community role key used for the localized role label. Returns null for
- * unknown roles so callers can fall back to the raw string.
+ * Sort key for the standings order: the actual place once the bracket has been
+ * played, the forecast while it has not, unrated teams last. Without the
+ * fallback an unplayed tournament has no places at all and the standings
+ * collapse to alphabetical order instead of showing the predicted finish.
  */
-export function roleKey(role: string | null | undefined): CommunityRoleKey | null {
-  switch ((role ?? "").toLowerCase()) {
-    case "tank":
-      return "tank";
-    case "damage":
-    case "dps":
-      return "damage";
-    case "support":
-      return "support";
-    default:
-      return null;
-  }
+export function standingsRank(
+  team: Pick<TeamAnalytics, "placement" | "predicted_place">,
+): number {
+  return team.placement ?? team.predicted_place ?? Number.MAX_SAFE_INTEGER;
 }
 
-export interface VerdictTeam {
+interface VerdictTeam {
   id: number;
   name: string;
   /** Actual finishing place (standings). */

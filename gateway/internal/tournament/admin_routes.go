@@ -18,6 +18,10 @@ var AdminCrudRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/admin/teams/{team_id}", Queue: "rpc.tournament.admin.get", Entity: "team", Action: "get", IDParam: "team_id", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/teams/{team_id}", Queue: "rpc.tournament.admin.update", Entity: "team", Action: "update", IDParam: "team_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/teams/{team_id}", Queue: "rpc.tournament.admin.delete", Entity: "team", Action: "delete", IDParam: "team_id", Auth: edge.AuthRequired, Success: 204},
+	// Team logo: the delete is a typed method (no Entity/Action — not the generic
+	// CRUD engine); the paired upload is multipart, served by the binary handler
+	// (binary.go + BinaryDocRoutes).
+	{Method: "DELETE", Pattern: "/api/v1/admin/teams/{team_id}/image", Queue: "rpc.tournament.teams.image_delete", IDParam: "team_id", Auth: edge.AuthRequired},
 	// player
 	{Method: "POST", Pattern: "/api/v1/admin/players", Queue: "rpc.tournament.admin.create", Entity: "player", Action: "create", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/admin/players/{player_id}", Queue: "rpc.tournament.admin.update", Entity: "player", Action: "update", IDParam: "player_id", Body: true, Auth: edge.AuthRequired},
@@ -37,4 +41,9 @@ var AdminCrudRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/player-sub-roles", Queue: "rpc.tournament.admin.create", Entity: "player_sub_role", Action: "create", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/admin/player-sub-roles/{sub_role_id}", Queue: "rpc.tournament.admin.update", Entity: "player_sub_role", Action: "update", IDParam: "sub_role_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/player-sub-roles/{sub_role_id}", Queue: "rpc.tournament.admin.delete", Entity: "player_sub_role", Action: "delete", IDParam: "sub_role_id", Auth: edge.AuthRequired, Success: 204},
+	// tournament_link
+	{Method: "GET", Pattern: "/api/v1/admin/tournament-links", Queue: "rpc.tournament.admin.list", Entity: "tournament_link", Action: "list", Query: []string{"tournament_id", "active_only"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/tournament-links", Queue: "rpc.tournament.admin.create", Entity: "tournament_link", Action: "create", Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "PATCH", Pattern: "/api/v1/admin/tournament-links/{link_id}", Queue: "rpc.tournament.admin.update", Entity: "tournament_link", Action: "update", IDParam: "link_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/v1/admin/tournament-links/{link_id}", Queue: "rpc.tournament.admin.delete", Entity: "tournament_link", Action: "delete", IDParam: "link_id", Auth: edge.AuthRequired, Success: 204},
 }

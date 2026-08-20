@@ -2,21 +2,9 @@ import type { Encounter, EncounterFilters } from "@/types/encounter.types";
 
 export const ENCOUNTERS_PAGE_SIZE = 15;
 
-export type EncounterSortKey = "date" | "closeness" | "upcoming";
+type EncounterSortKey = "date" | "closeness" | "upcoming";
 
 export type TeamColor = "teal" | "amber" | "rose" | "violet" | "blue";
-
-const TEAM_COLOR_PALETTE: TeamColor[] = ["teal", "amber", "rose", "violet", "blue"];
-
-export function getTeamColor(name: string | null | undefined): TeamColor {
-  if (!name) return "teal";
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
-  const index = Math.abs(hash) % TEAM_COLOR_PALETTE.length;
-  return TEAM_COLOR_PALETTE[index];
-}
 
 export type EncounterFilterState = Required<
   Pick<EncounterFilters, "scope">
@@ -51,7 +39,7 @@ export type BuiltInViewId = "all" | "my_team" | "finals" | "close_bo5" | "upsets
 
 // Translation keys for the built-in view tabs. Kept as a literal union so the
 // strictly-typed `t()` in the client accepts `t(view.labelKey)` directly.
-export type BuiltInViewLabelKey =
+type BuiltInViewLabelKey =
   | "encounters.view.all"
   | "encounters.view.myTeam"
   | "encounters.view.finals"
@@ -75,13 +63,13 @@ export const BUILT_IN_VIEWS: readonly BuiltInViewMeta[] = [
   { id: "with_logs", labelKey: "encounters.view.withLogs", swatch: "blue" },
 ] as const;
 
-export function parseNumberParam(value: string | undefined): number | null {
+function parseNumberParam(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function parseBooleanParam(value: string | undefined): boolean | null {
+function parseBooleanParam(value: string | undefined): boolean | null {
   if (value === "true") return true;
   if (value === "false") return false;
   return null;
@@ -172,11 +160,4 @@ export function formatPercent(value: number | null | undefined, fallback = "-"):
 
 export function getSeriesDuration(encounter: Encounter): number {
   return encounter.matches?.reduce((sum, match) => sum + (match.time || 0), 0) ?? 0;
-}
-
-export function getTeamInitials(name: string | null | undefined): string {
-  if (!name) return "--";
-  const words = name.trim().split(/\s+/);
-  const value = words.length > 1 ? `${words[0][0]}${words[1][0]}` : name.slice(0, 2);
-  return value.toUpperCase();
 }

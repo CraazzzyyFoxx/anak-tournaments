@@ -35,6 +35,7 @@ import {
   PLAYER_ROLE_OPTIONS,
   filterSubRoleOptions,
   normalizePlayerRole,
+  subRoleCatalogRole,
   type PlayerRoleOption
 } from "@/lib/player-role";
 import { cn } from "@/lib/utils";
@@ -352,6 +353,10 @@ export function TeamRosterEditor({
   const patch = (player: Player, payload: PlayerUpdateInput) =>
     patchPlayer.mutate({ id: player.id, payload });
 
+  /**
+   * Flex has no rows in the `player_sub_role` catalog, so a Flex row offers
+   * nothing and its sub-role select renders inert rather than empty.
+   */
   const subRoleOptionsFor = (role: string | null | undefined) =>
     filterSubRoleOptions(playerSubRoles, role).map((subRole) => ({
       slug: subRole.slug,
@@ -439,6 +444,7 @@ export function TeamRosterEditor({
         <SubRoleSelect
           value={draft.subRole}
           options={subRoleOptionsFor(draft.role)}
+          disabled={subRoleCatalogRole(draft.role) == null}
           label="Sub-role of the new player"
           onChange={(subRole) =>
             setDraft((current) => (current ? { ...current, subRole } : current))
@@ -579,7 +585,7 @@ export function TeamRosterEditor({
                       value={player.sub_role ?? ""}
                       options={subRoleOptionsFor(player.role)}
                       label={`Sub-role of ${player.name}`}
-                      disabled={!canUpdatePlayer}
+                      disabled={!canUpdatePlayer || subRoleCatalogRole(player.role) == null}
                       onChange={(subRole) => patch(player, { sub_role: subRole || null })}
                     />
                   </TableCell>

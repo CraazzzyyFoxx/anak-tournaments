@@ -25,6 +25,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.auth_user import AuthUser
 from shared.models.tournament.preview_access import TournamentPreviewAccess
 from shared.models.tournament.tournament import Tournament
+from shared.services.scrim_scope import is_scrim_container
 
 __all__ = (
     "load_preview_user_ids",
@@ -61,12 +62,35 @@ async def assert_tournament_viewable(session: AsyncSession, user: AuthUser | Non
     Raises ``HTTPException(404)`` when the viewer may not see it — including when
     it does not exist — so a hidden tournament and a missing one are
     indistinguishable to outsiders.
+
+    One hidden tournament is READ by a wider audience than it is LISTED to: a
+    workspace's scrim container (``docs/plans/2026-08-12-scrim-rooms.md``). A
+    scrim room is shared by link between two captains and watched by their
+    teammates, none of whom are workspace admins, and the allowlist cannot solve
+    it: a room's opponent must be able to READ the room before claiming a side,
+    and it is the claim that would have added them. So for a scrim container,
+    membership of the owning workspace is enough.
+
+    This is deliberately narrower than "any hidden tournament". A hidden PREVIEW
+    tournament is an unpublished real one, and leaking it to every member is
+    exactly what preview mode exists to prevent — that keeps the admin/allowlist
+    rule. It also brings this gate in line with the realtime one, which already
+    treats workspace membership as the insider signal for spectating a hidden
+    tournament (``gateway/internal/acl/acl.go:allowSpectate``).
+
+    The token is an address, not a security boundary: any member of the workspace
+    can reach a scrim room, and ``visible_tournaments_predicate`` still keeps the
+    container out of every listing.
     """
     tournament = await session.scalar(sa.select(Tournament).where(Tournament.id == tournament_id))
     if tournament is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
     if not tournament.is_hidden:
         return tournament
+
+    if user is not None and await is_scrim_container(session, tournament_id):
+        if user.is_superuser or tournament.workspace_id in user.get_workspace_ids():
+            return tournament
 
     preview_user_ids: set[int] = set()
     # Only the allowlist lookup is conditional; admins/superusers short-circuit

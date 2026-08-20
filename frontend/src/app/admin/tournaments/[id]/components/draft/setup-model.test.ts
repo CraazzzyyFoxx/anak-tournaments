@@ -99,10 +99,32 @@ describe("draft setup model", () => {
 
   it("previews snake order for every round", () => {
     expect(buildDraftSchedule([10, 20, 30], 3, "snake", [])).toEqual([
-      { round: 1, teamIds: [10, 20, 30], rule: "linear" },
-      { round: 2, teamIds: [30, 20, 10], rule: "reverse" },
-      { round: 3, teamIds: [10, 20, 30], rule: "linear" }
+      { round: 1, teamIds: [10, 20, 30], rule: "linear", resolved: true },
+      { round: 2, teamIds: [30, 20, 10], rule: "reverse", resolved: true },
+      { round: 3, teamIds: [10, 20, 30], rule: "linear", resolved: true }
     ]);
+  });
+
+  it("marks a custom round unresolved when only the server knows its order", () => {
+    // reverse is N->1 and the client can show it; the rank- and average-driven
+    // rules are resolved server-side, so their teamIds must not be presented as
+    // the schedule — that promise is what made the board look like it invented
+    // its own order.
+    const schedule = buildDraftSchedule([10, 20, 30], 4, "custom", [
+      "reverse",
+      "strongest_first",
+      "weakest_first",
+      "team_avg_asc"
+    ]);
+
+    expect(schedule.map((round) => round.rule)).toEqual([
+      "reverse",
+      "strongest_first",
+      "weakest_first",
+      "team_avg_asc"
+    ]);
+    expect(schedule.map((round) => round.resolved)).toEqual([true, false, false, false]);
+    expect(schedule[0].teamIds).toEqual([30, 20, 10]);
   });
 
   it("blocks advancing until each step has its required data", () => {

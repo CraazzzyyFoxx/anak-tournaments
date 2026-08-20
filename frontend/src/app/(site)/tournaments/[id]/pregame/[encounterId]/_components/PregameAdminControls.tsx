@@ -87,8 +87,20 @@ export function PregameAdminControls({
     onError: (error) => notify.apiError(error, { title: t("admin.actFailed") })
   });
 
+  const electMutation = useMutation({
+    mutationFn: (first_side: PickBanSide) =>
+      adminService.adminPickBanElectOpener(encounterId, { kind, first_side }),
+    onSuccess: onMutated,
+    onError: (error) => notify.apiError(error, { title: t("admin.electFailed") })
+  });
+
+  // `result_loser_choice` is the one rotation whose next round cannot open
+  // without a human naming its opener. When the losing captain is unreachable
+  // the room has nothing to click, so the organizer names it for them.
+  const awaitingChoice = state.session?.awaiting_choice === true;
+
   const canAct = state.session?.status === "active" && !state.is_complete && selectedItemId != null;
-  const pending = resetMutation.isPending || actMutation.isPending;
+  const pending = resetMutation.isPending || actMutation.isPending || electMutation.isPending;
 
   const actionOptions: { value: PickBanAction; label: string }[] = [
     { value: "ban", label: t("action.ban") },
@@ -141,6 +153,31 @@ export function PregameAdminControls({
               </span>
             ) : null}
           </>
+        ) : null}
+
+        {awaitingChoice ? (
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+              {t("admin.electLabel")}
+            </span>
+            <div className="flex gap-1">
+              {(["home", "away"] as const).map((value) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => electMutation.mutate(value)}
+                >
+                  {electMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  ) : null}
+                  {t(value === "home" ? "side.home" : "side.away")}
+                </Button>
+              ))}
+            </div>
+          </div>
         ) : null}
 
         <AlertDialog>

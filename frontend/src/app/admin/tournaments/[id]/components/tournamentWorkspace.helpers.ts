@@ -1,11 +1,11 @@
-import { Layers3, Trophy, type LucideIcon } from "lucide-react";
 import type { Encounter } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
 import type { Stage, Standings, Tournament } from "@/types/tournament.types";
-import type { TournamentPhaseScheduleEntryInput } from "@/types/admin.types";
+import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/timezone";
 import type { RosterSlotMap } from "@/lib/roster-shape";
 import { normalizeSlots } from "@/components/admin/tournaments/roster-shape-editor.model";
+import { normalizeChallongeSlug } from "@/lib/challonge";
 
 export const SCHEDULABLE_PHASES = ["registration", "check_in", "draft", "live"] as const;
 
@@ -81,14 +81,6 @@ export type EncounterGroupOption = {
   itemOrder: number;
 };
 
-export type TournamentWorkspacePhase = {
-  label: string;
-  icon: LucideIcon;
-  done: boolean;
-  description: string;
-  metrics: Array<{ label: string; value: string }>;
-};
-
 export const TOURNAMENT_DETAIL_PREVIEW_LIMIT = 8;
 
 export function formatDate(value?: Date | string | null) {
@@ -96,17 +88,12 @@ export function formatDate(value?: Date | string | null) {
   return new Date(value).toLocaleDateString();
 }
 
-export function toDateInput(value?: Date | string | null) {
+function toDateInput(value?: Date | string | null) {
   if (!value) return "";
   return new Date(value).toISOString().split("T")[0] ?? "";
 }
 
-export function toDateTimeInput(value?: Date | string | null) {
-  if (!value) return "";
-  return new Date(value).toISOString().slice(0, 16);
-}
-
-export function getPhaseScheduleForm(
+function getPhaseScheduleForm(
   tournament: Tournament,
   timezone: string
 ): PhaseScheduleFormState {
@@ -161,6 +148,61 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
   };
 }
 
+// Every field `TournamentUpdateInput` can carry, keyed the same as
+// `TournamentFormState` (minus `phase_schedule`, which travels through
+// `setTournamentSchedule` instead). Kept in one place so the diff below and
+// `getTournamentForm` above cannot drift out of sync field-by-field.
+type TournamentUpdateValues = Required<Omit<TournamentUpdateInput, "description" | "challonge_slug" | "division_grid_version_id" | "roster_slots_json">> & {
+  description: string | null;
+  challonge_slug: string | null;
+  division_grid_version_id: number | null;
+  roster_slots_json: RosterSlotMap | null;
+};
+
+function normalizeTournamentFormValues(form: TournamentFormState): TournamentUpdateValues {
+  return {
+    name: form.name.trim(),
+    description: form.description.trim() || null,
+    challonge_slug: form.challonge_slug ? normalizeChallongeSlug(form.challonge_slug) : null,
+    is_league: form.is_league,
+    is_finished: form.is_finished,
+    is_hidden: form.is_hidden,
+    start_date: form.start_date,
+    end_date: form.end_date,
+    win_points: form.win_points,
+    draw_points: form.draw_points,
+    loss_points: form.loss_points,
+    auto_transitions_enabled: form.auto_transitions_enabled,
+    allow_late_registration: form.allow_late_registration,
+    division_grid_version_id: form.division_grid_version_id,
+    team_formation: form.team_formation,
+    roster_slots_json: form.roster_slots_json
+  };
+}
+
+/**
+ * Diffs the (normalized) current form against the (normalized) initial form
+ * and keeps only the fields that actually changed. The admin audit trail
+ * records exactly the keys a PATCH sends (`TournamentUpdate.model_dump(exclude_unset=True)`
+ * on the backend), so sending every field on every save -- even ones the
+ * admin never touched -- made every edit look like a full rewrite of the
+ * tournament in the audit log.
+ */
+export function getTournamentUpdatePayload(
+  current: TournamentFormState,
+  initial: TournamentFormState
+): TournamentUpdateInput {
+  const next = normalizeTournamentFormValues(current);
+  const prev = normalizeTournamentFormValues(initial);
+  const payload: TournamentUpdateInput = {};
+  for (const key of Object.keys(next) as (keyof TournamentUpdateValues)[]) {
+    if (JSON.stringify(next[key]) !== JSON.stringify(prev[key])) {
+      (payload as Record<string, unknown>)[key] = next[key];
+    }
+  }
+  return payload;
+}
+
 export function getEmptyEncounterForm(
   defaultStageId: number | null,
   defaultStageItemId: number | null
@@ -210,31 +252,6 @@ export function getEncounterScopeKey(encounter: Encounter): string {
   if (encounter.stage_item_id != null) return `stage-item-${encounter.stage_item_id}`;
   if (encounter.stage_id != null) return `stage-${encounter.stage_id}`;
   return "unassigned";
-}
-
-export function getEncounterScopeLabel(encounter: Encounter): string {
-  return encounter.stage_item?.name ?? encounter.stage?.name ?? "Unassigned";
-}
-
-export function getEncounterGroups(encounters: Encounter[]): EncounterGroupOption[] {
-  return Array.from(
-    new Map(
-      encounters.map((encounter) => [
-        getEncounterScopeKey(encounter),
-        {
-          id: getEncounterScopeKey(encounter),
-          name: getEncounterScopeLabel(encounter),
-          stageOrder: encounter.stage?.order ?? Number.MAX_SAFE_INTEGER,
-          itemOrder: encounter.stage_item?.order ?? Number.MAX_SAFE_INTEGER
-        }
-      ])
-    ).values()
-  ).sort(
-    (left, right) =>
-      left.stageOrder - right.stageOrder ||
-      left.itemOrder - right.itemOrder ||
-      left.name.localeCompare(right.name)
-  );
 }
 
 export function getStageScopeGroups(stages: Stage[]): EncounterGroupOption[] {
@@ -331,89 +348,4 @@ export function sortStandings(standings: Standings[], sort: StandingSortState): 
 
     return result * multiplier;
   });
-}
-
-export function getTournamentWorkspacePhases(params: {
-  stagesCount: number;
-  teamsCount: number | null;
-  encountersCount: number | null;
-  standingsCount: number | null;
-}): TournamentWorkspacePhase[] {
-  const { stagesCount, teamsCount, encountersCount, standingsCount } = params;
-  const teamsKnown = typeof teamsCount === "number";
-  const encountersKnown = typeof encountersCount === "number";
-  const standingsKnown = typeof standingsCount === "number";
-  const teamsReady = teamsKnown && teamsCount > 0;
-  const encountersReady = encountersKnown && encountersCount > 0;
-  const standingsReady = standingsKnown && standingsCount > 0;
-  const formatReadyMetric = (value: number | null) => {
-    if (typeof value !== "number") {
-      return "Loading";
-    }
-
-    return value > 0 ? `${value} ready` : "Missing";
-  };
-  const structureDescription = (() => {
-    if (!teamsKnown) {
-      return "Loading roster metrics before marking this phase complete.";
-    }
-
-    if (stagesCount > 0 && teamsReady) {
-      return `${stagesCount} stages configured and ${teamsCount} teams loaded.`;
-    }
-
-    if (stagesCount === 0 && teamsCount === 0) {
-      return "Create the tournament structure and add teams before scheduling play.";
-    }
-
-    return stagesCount === 0
-      ? "Create at least one stage before continuing."
-      : "Add or sync teams to complete the roster.";
-  })();
-  const playDescription = (() => {
-    if (!encountersKnown || !standingsKnown) {
-      return "Loading play and standings metrics before marking this phase complete.";
-    }
-
-    if (encountersReady && standingsReady) {
-      return `${encountersCount} encounters tracked and standings available.`;
-    }
-
-    if (encountersCount === 0 && standingsCount === 0) {
-      return "Create encounters first, then calculate standings once results exist.";
-    }
-
-    return encountersCount === 0
-      ? "Schedule or sync encounters before calculating standings."
-      : "Calculate standings after encounters have been completed.";
-  })();
-
-  return [
-    {
-      label: "Structure & roster",
-      icon: Layers3,
-      done: stagesCount > 0 && teamsReady,
-      description: structureDescription,
-      metrics: [
-        { label: "Stages", value: stagesCount ? `${stagesCount} ready` : "Missing" },
-        { label: "Teams", value: formatReadyMetric(teamsCount) }
-      ]
-    },
-    {
-      label: "Play & results",
-      icon: Trophy,
-      done: encountersReady && standingsReady,
-      description: playDescription,
-      metrics: [
-        {
-          label: "Encounters",
-          value: formatReadyMetric(encountersCount)
-        },
-        {
-          label: "Standings",
-          value: formatReadyMetric(standingsCount)
-        }
-      ]
-    }
-  ];
 }

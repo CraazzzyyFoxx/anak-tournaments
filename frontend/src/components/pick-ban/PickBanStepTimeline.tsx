@@ -1,10 +1,11 @@
 "use client";
 
-import { Ban, Check, CircleDashed, Flag, MapPin, Shield, Shuffle } from "lucide-react";
+import { Ban, Check, CircleDashed, Flag, Info, MapPin, Shield, Shuffle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { PickBanEntry, PickBanKind, PickBanSession } from "@/types/tournament.types";
 
@@ -119,6 +120,24 @@ export function PickBanStepTimeline({
           {parsed.action === "ban" ? <Ban className="h-3.5 w-3.5" aria-hidden /> : null}
           {parsed.action === "protect" ? <Shield className="h-3.5 w-3.5" aria-hidden /> : null}
           {actionLabel}
+          {parsed.action === "decider" ? (
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex text-[color:var(--aqt-fg-faint)] outline-none hover:text-[color:var(--aqt-teal)] focus-visible:text-[color:var(--aqt-teal)]"
+                    aria-label={t("steps.deciderHint")}
+                  >
+                    <Info className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[16rem] text-xs">
+                  {t("steps.deciderHint")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
         </span>
         {parsed.side ? (
           <span className="min-w-0 truncate text-[color:var(--aqt-fg-muted)]">

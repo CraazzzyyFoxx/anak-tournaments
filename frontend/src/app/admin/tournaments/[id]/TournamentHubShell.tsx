@@ -45,6 +45,9 @@ const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
   { key: "matches", label: "Play & Results" },
   { key: "draft", label: "Draft" },
   { key: "pickBan", label: "Pre-game Phase" },
+  // Label only, no icon: every other entry here is text, and lucide's `Link`
+  // would also collide with the `next/link` import above.
+  { key: "links", label: "Links" },
   { key: "settings", label: "Settings" }
 ];
 
@@ -166,6 +169,10 @@ export function TournamentHubShell({
   const canDeleteTournament = canAccessPermission("tournament.delete", tournamentWorkspaceId);
   const canReadAnalytics = canAccessPermission("analytics.read", tournamentWorkspaceId);
   const canTeamRead = canAccessPermission("team.read", tournamentWorkspaceId);
+  const canReadTournamentLink = canAccessPermission(
+    "tournament_link.read",
+    tournamentWorkspaceId
+  );
   const canCreateTeam = canAccessPermission("team.create", tournamentWorkspaceId);
   const canUpdateTeam = canAccessPermission("team.update", tournamentWorkspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", tournamentWorkspaceId);
@@ -190,6 +197,7 @@ export function TournamentHubShell({
     canUpdateTournament,
     canUpdateEncounter,
     canTeamRead,
+    canReadTournamentLink,
     teamFormation
   };
   const activeTabAllowed = allowedTab(activeTab, tabAccess);
@@ -249,7 +257,10 @@ export function TournamentHubShell({
       canSyncEncounters,
       canUpdateStanding,
       canDeleteStanding,
-      canRecalculateStandings
+      canRecalculateStandings,
+      // Otherwise a caller granted only `tournament_link.read` sees
+      // "Unauthorized" instead of the Links tab `allowedTab` just cleared.
+      canReadTournamentLink
     ].some(Boolean)
   ) {
     return (

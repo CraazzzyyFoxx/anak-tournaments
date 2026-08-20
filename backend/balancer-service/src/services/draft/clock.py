@@ -85,7 +85,8 @@ async def fire_autopick_if_expired(
             await session.rollback()
             return False
 
-        if result.blocked_reason:
+        if result.blocked_reason and result.next_pick is None:
+            # Nothing was picked (role shortage) — the block is the whole story.
             await draft_rt.publish_draft_event(
                 session,
                 redis,
@@ -119,6 +120,21 @@ async def fire_autopick_if_expired(
                 draft_session=draft,
                 event_type="draft.completed",
                 payload={"session_id": draft.id, "status": draft.status},
+            )
+        elif result.blocked_reason and result.next_pick is not None:
+            # The pick landed, but the next round re-seated the teams and the
+            # draft is paused: no pick_started, it would flip clients to live.
+            await draft_rt.publish_draft_event(
+                session,
+                redis,
+                draft_session=draft,
+                event_type="draft.blocked",
+                payload={
+                    "session_id": draft.id,
+                    "pick_id": result.next_pick.id,
+                    "draft_team_id": result.next_pick.draft_team_id,
+                    "reason": result.blocked_reason,
+                },
             )
         elif result.next_pick is not None:
             await draft_rt.publish_draft_event(

@@ -2,6 +2,7 @@ import copy
 import dataclasses
 import json
 import pickle
+import typing
 
 import pytest
 
@@ -13,8 +14,10 @@ from shared.domain.roster_shape import (
     MAX_TEAM_SIZE,
     MIN_TEAM_SIZE,
     ROSTER_SLOT_CODES,
+    RegistrationRoleCode,
     RosterShape,
     RosterShapeError,
+    RosterSlotCode,
     parse_roster_slots,
     resolve_roster_shape,
 )
@@ -26,6 +29,20 @@ def test_slot_codes_are_derived_from_registration_roles() -> None:
     # which is exactly the duplication this feature removes.
     assert ROSTER_SLOT_CODES == (*REGISTRATION_ROLE_CODES, FLEX_SLOT_CODE)
     assert FLEX_SLOT_CODE not in REGISTRATION_ROLE_CODES
+
+
+def test_slot_code_literal_cannot_drift_from_the_tuple() -> None:
+    # ``RosterSlotCode`` has to spell the codes out (a Literal cannot be built
+    # from a tuple), so this is the guard that keeps the static type and the
+    # runtime vocabulary the same thing. The Pydantic export contracts in
+    # balancer/parser/tournament-service all type their ``role`` field with it.
+    assert typing.get_args(RosterSlotCode) == ROSTER_SLOT_CODES
+
+
+def test_registration_role_literal_cannot_drift_from_the_tuple() -> None:
+    # Same guard as ``RosterSlotCode`` above, for the flex-less variant used by
+    # a player's fixed registration/draft role (``HeroClass.slot_code``).
+    assert typing.get_args(RegistrationRoleCode) == REGISTRATION_ROLE_CODES
 
 
 def test_slot_codes_and_defaults_have_the_expected_membership() -> None:

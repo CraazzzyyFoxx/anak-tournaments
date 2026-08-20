@@ -163,13 +163,7 @@ async def list_import_jobs(
 
 
 def _new_s3_client() -> S3Client:
-    return S3Client(
-        access_key=config.settings.s3_access_key,
-        secret_key=config.settings.s3_secret_key,
-        endpoint_url=config.settings.s3_endpoint_url,
-        bucket_name=config.settings.s3_bucket_name,
-        public_url=config.settings.s3_public_url,
-    )
+    return S3Client.from_settings(config.settings)
 
 
 async def recover_stale_import_jobs() -> int:

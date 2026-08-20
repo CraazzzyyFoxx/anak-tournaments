@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 import sqlalchemy as sa
 
@@ -51,6 +52,7 @@ from shared.core.enums import (  # noqa: E402
     PickBanKind,
     PickBanNoRepeatScope,
 )
+from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.models.matches.match import Match  # noqa: E402
 from shared.models.tournament.encounter import Encounter  # noqa: E402
 from shared.models.tournament.encounter_report import EncounterMapReport  # noqa: E402
@@ -610,3 +612,306 @@ class PregameLoopTests(IsolatedAsyncioTestCase):
             [(self.encounter_id, "hero"), (self.encounter_id, "map")],
             pop_registered_map_veto_realtime_updates(self.store),
         )
+
+
+class LoserChoiceStallTests(IsolatedAsyncioTestCase):
+    """``first_ban_rotation=result_loser_choice`` on the HERO config: the round
+    after each map cannot open until a human names its opener.
+
+    Standalone rather than a ``PregameLoopTests`` subclass on purpose — the
+    suite above cycles a series unattended, which this rotation by definition
+    cannot do.
+
+    The regression: nothing but the losing captain's own modal ever surfaced
+    the wait, and no override could resolve it. An unreachable captain left the
+    room showing a finished round with nothing to click, and the only admin
+    control on screen was a session-wiping reset — which re-creates round 1 and
+    walks into the same wall one map later.
+    """
+
+    async def asyncSetUp(self) -> None:
+        self.store = _Store()
+        self.map_config = _map_config()
+        self.hero_config = _hero_config()
+        self.hero_config.first_ban_rotation = FirstBanRotation.RESULT_LOSER_CHOICE
+        self.encounter = _encounter()
+        self.store.seed(
+            self.encounter,
+            self.map_config,
+            self.hero_config,
+            EncounterReadiness(encounter_id=1, side=MapPickSide.HOME.value, ready_user_id=None),
+            EncounterReadiness(encounter_id=1, side=MapPickSide.AWAY.value, ready_user_id=None),
+        )
+        self.encounter_id = self.encounter.id
+        for readiness in self.store.all_of(EncounterReadiness):
+            readiness.encounter_id = self.encounter_id
+
+    async def state(self, kind: PickBanKind) -> dict:
+        return await action_service.get_pick_ban_state(
+            self.store, self.encounter_id, kind, viewer_side=MapPickSide.HOME.value
+        )
+
+    async def play_map_one(self) -> None:
+        """Map 1 vetoed, its four hero bans taken, its result agreed (home wins),
+        and map 2 vetoed — the loop's state one step before hero round 2."""
+        for _ in range(2):
+            state = await self.state(PickBanKind.MAP)
+            available = [
+                entry["item_id"] for entry in state["pool"] if entry["status"] == MapPoolEntryStatus.AVAILABLE.value
+            ]
+            await action_service.perform_pick_ban_action(
+                self.store, self.encounter_id, PickBanKind.MAP, state["turn_side"], available[0], "ban"
+            )
+        map_one = next(
+            entry.item_id
+            for entry in self.store.all_of(PickBanEntry)
+            if entry.status == MapPoolEntryStatus.PICKED.value
+        )
+        for _ in range(4):
+            state = await self.state(PickBanKind.HERO)
+            available = [
+                entry["item_id"]
+                for entry in state["pool"]
+                if entry["status"] == MapPoolEntryStatus.AVAILABLE.value and entry["round"] == state["current_round"]
+            ]
+            await action_service.perform_pick_ban_action(
+                self.store, self.encounter_id, PickBanKind.HERO, state["turn_side"], available[0], "ban"
+            )
+        for team_id in (HOME_TEAM, AWAY_TEAM):
+            await map_report_service.submit_map_report(
+                self.store,
+                self.encounter,
+                map_id=map_one,
+                team_id=team_id,
+                reporter_user_id=None,
+                home_score=2,
+                away_score=1,
+            )
+        for _ in range(2):
+            state = await self.state(PickBanKind.MAP)
+            available = [
+                entry["item_id"]
+                for entry in state["pool"]
+                if entry["status"] == MapPoolEntryStatus.AVAILABLE.value and entry["round"] == state["current_round"]
+            ]
+            await action_service.perform_pick_ban_action(
+                self.store, self.encounter_id, PickBanKind.MAP, state["turn_side"], available[0], "ban"
+            )
+        # The hero session catches up with the map phase on a READ
+        # (`sync_hero_rounds`), which is where the choice gate is reached.
+        await self.state(PickBanKind.HERO)
+
+    def hero_session(self) -> PickBanSession:
+        return next(pick_ban for pick_ban in self.store.all_of(PickBanSession) if pick_ban.kind == PickBanKind.HERO)
+
+    def hero_rounds(self) -> set[int]:
+        hero_id = self.hero_session().id
+        return {entry.round for entry in self.store.all_of(PickBanEntry) if entry.session_id == hero_id}
+
+    async def test_the_wait_is_on_the_state_for_every_viewer_not_just_the_loser(self) -> None:
+        await self.play_map_one()
+
+        hero = await self.state(PickBanKind.HERO)
+        self.assertTrue(hero["is_complete"])
+        self.assertEqual({1}, {entry["round"] for entry in hero["pool"]}, "round 2 waits on the choice")
+        # Away lost map 1, so away chooses — and the room can say so to anybody,
+        # including the admin looking at a session that is `completed`.
+        self.assertTrue(hero["session"]["awaiting_choice"])
+        self.assertEqual(MapPickSide.AWAY.value, hero["session"]["pending_loser_side"])
+
+    async def test_the_winning_captain_may_not_elect(self) -> None:
+        await self.play_map_one()
+
+        with self.assertRaises(HTTPException) as caught:
+            await session_service.elect_round_opener(
+                self.store, self.hero_session(), first_side="home", acting_side=MapPickSide.HOME.value
+            )
+        self.assertEqual(403, caught.exception.status_code)
+        self.assertEqual({1}, self.hero_rounds())
+
+    async def test_an_admin_elects_for_an_unreachable_captain_and_the_round_opens(self) -> None:
+        await self.play_map_one()
+
+        await session_service.elect_round_opener(
+            self.store, self.hero_session(), first_side=MapPickSide.AWAY.value, acting_side=None
+        )
+
+        hero = await self.state(PickBanKind.HERO)
+        self.assertEqual(2, hero["current_round"])
+        self.assertFalse(hero["is_complete"])
+        self.assertEqual(MapPickSide.AWAY.value, hero["turn_side"], "the elected side opens the round")
+        self.assertFalse(hero["session"]["awaiting_choice"])
+        self.assertIsNone(hero["session"]["pending_loser_side"])
+
+    async def test_electing_twice_is_refused_rather_than_appending_a_second_round(self) -> None:
+        await self.play_map_one()
+        await session_service.elect_round_opener(
+            self.store, self.hero_session(), first_side=MapPickSide.AWAY.value, acting_side=None
+        )
+
+        with self.assertRaises(HTTPException) as caught:
+            await session_service.elect_round_opener(
+                self.store, self.hero_session(), first_side=MapPickSide.HOME.value, acting_side=None
+            )
+        self.assertEqual(400, caught.exception.status_code)
+        self.assertEqual({1, 2}, self.hero_rounds())
+
+
+class DeletedConfigStallTests(IsolatedAsyncioTestCase):
+    """A progressive session whose config was deleted mid-series names the
+    problem instead of declining in silence.
+
+    ``PickBanSession.config_id`` is ``ondelete=SET NULL``, so the session
+    survives its config and can never open another round. Returning quietly
+    from ``advance_to_next_round`` left the room frozen on a finished round with
+    no reason on screen and nothing in the logs.
+    """
+
+    async def asyncSetUp(self) -> None:
+        self.store = _Store()
+        self.encounter = _encounter()
+        self.store.seed(
+            self.encounter,
+            _map_config(),
+            _hero_config(),
+            EncounterReadiness(encounter_id=1, side=MapPickSide.HOME.value, ready_user_id=None),
+            EncounterReadiness(encounter_id=1, side=MapPickSide.AWAY.value, ready_user_id=None),
+        )
+        self.encounter_id = self.encounter.id
+        for readiness in self.store.all_of(EncounterReadiness):
+            readiness.encounter_id = self.encounter_id
+
+    async def test_it_says_the_config_is_gone(self) -> None:
+        state = await action_service.get_pick_ban_state(
+            self.store, self.encounter_id, PickBanKind.MAP, viewer_side=MapPickSide.HOME.value
+        )
+        pick_ban = next(row for row in self.store.all_of(PickBanSession) if row.kind == PickBanKind.MAP)
+        available = [
+            entry["item_id"] for entry in state["pool"] if entry["status"] == MapPoolEntryStatus.AVAILABLE.value
+        ]
+        for item_id in available[:2]:
+            state = await action_service.get_pick_ban_state(
+                self.store, self.encounter_id, PickBanKind.MAP, viewer_side=MapPickSide.HOME.value
+            )
+            await action_service.perform_pick_ban_action(
+                self.store, self.encounter_id, PickBanKind.MAP, state["turn_side"], item_id, "ban"
+            )
+        pick_ban.config_id = None
+
+        with self.assertRaises(HTTPException) as caught:
+            await session_service.advance_to_next_round(
+                self.store, pick_ban, completed_round=1, winner=MapPickSide.HOME.value
+            )
+        self.assertEqual(422, caught.exception.status_code)
+        self.assertIn("no longer", str(caught.exception.detail))
+
+
+class ScrimLoopTests(PregameLoopTests):
+    """The same loop for a scrim room: it must CYCLE identically while writing no
+    ``matches.match`` row.
+
+    A scrim's per-map score exists to run the series, not to record it — it is
+    what names the next map's opener under a result-dependent rotation, which
+    both real rulebooks use. Everything the progression needs still has to
+    happen; only the bookkeeping goes.
+
+    Inherits the whole suite deliberately: every loop assertion above is re-run
+    with the scrim predicate on, so a divergence in the progression itself shows
+    up here rather than only in the one case below. ``is_scrim_container`` is
+    patched rather than seeded — the predicate has its own tests
+    (``test_scrim_recalculation_exclusion.py``); what is under test here is what
+    ``submit_map_report`` does once it answers True.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        patcher = patch.object(map_report_service, "is_scrim_container", AsyncMock(return_value=True))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_a_bo3_cycles_without_writing_a_single_match_row(self) -> None:
+        for round_number in (1, 2):
+            played_map = await self.ban_out_the_map_round()
+            await self.ban_out_the_hero_round()
+            result = await self.report(played_map, 2, 1)
+
+            self.assertTrue(result["resolved"], f"round {round_number} did not reconcile")
+            # The one difference from a tournament: nothing to point at.
+            self.assertIsNone(result["match_id"])
+            self.assertEqual([], self.store.all_of(Match), "a scrim wrote a match row")
+
+        # And the progression the score drives is intact: home won both maps, so
+        # the series is decided and the loop stopped opening rounds.
+        self.assertEqual((2, 0), (self.encounter.home_score, self.encounter.away_score))
+        state = await self.map_state()
+        self.assertTrue(state["is_complete"])
+        self.assertEqual(
+            [MapPoolEntryStatus.PLAYED.value] * 2,
+            [entry["status"] for entry in state["pool"] if entry["picked_by"] == MapPickSide.DECIDER.value],
+            "both settled maps must still flip to played — that is what advances the series",
+        )
+
+    async def test_the_winner_still_opens_the_next_round(self) -> None:
+        """The reason the score is kept at all. ``result_winner_first``: away wins
+        map 1, so away opens map 2's bans — which is impossible to resolve from a
+        scoreless "map done" click."""
+        map_one = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(map_one, 1, 2)
+
+        state = await self.map_state()
+        self.assertEqual(2, state["current_round"])
+        self.assertEqual(MapPickSide.AWAY.value, state["turn_side"])
+
+    # -- overrides: the two inherited cases whose assertions ARE about the row a
+    #    scrim does not write. Re-stated so the behaviour they defend is still
+    #    covered here, minus the row.
+
+    async def test_amending_an_already_agreed_report_corrects_it_without_recounting(self) -> None:
+        map_one = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(map_one, 2, 1)
+        self.assertEqual((1, 0), (self.encounter.home_score, self.encounter.away_score))
+
+        await self.report(map_one, 1, 2)
+
+        # Counted once, exactly as for a tournament; the corrected score lives on
+        # the captains' own claims instead of on a match row.
+        self.assertEqual((1, 0), (self.encounter.home_score, self.encounter.away_score))
+        self.assertEqual([], self.store.all_of(Match))
+        state = await self.map_state()
+        self.assertEqual(
+            [(1, 2), (1, 2)],
+            [(report["home_score"], report["away_score"]) for report in state["map_reports"]],
+        )
+
+    async def test_a_map_played_twice_keeps_the_two_plays_apart(self) -> None:
+        self.map_config.slots[2].items = [PickBanConfigSlotItem(item_id=item_id) for item_id in (31, 32, 13)]
+
+        first_play = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(first_play, 2, 1)
+
+        map_two = await self.ban_out_the_map_round()
+        await self.ban_out_the_hero_round()
+        await self.report(map_two, 1, 2)
+
+        third_play = await self.ban_out_the_map_round()
+        self.assertEqual(first_play, third_play, "the fixture plays map 13 twice")
+        await self.ban_out_the_hero_round()
+        await self.report(third_play, 2, 0)
+
+        # The two plays are still told apart by POSITION -- the property this test
+        # exists for -- and that is carried by the claims, not by the match row.
+        state = await self.map_state()
+        thirteens = [report for report in state["map_reports"] if report["map_id"] == first_play]
+        self.assertEqual([1, 1, 3, 3], sorted(report["map_index"] for report in thirteens))
+        self.assertEqual([], self.store.all_of(Match))
+
+        played_rounds = {
+            entry["round"]
+            for entry in state["pool"]
+            if entry["item_id"] == first_play and entry["status"] == MapPoolEntryStatus.PLAYED.value
+        }
+        self.assertEqual({1, 3}, played_rounds)
+        self.assertEqual((2, 1), (self.encounter.home_score, self.encounter.away_score))

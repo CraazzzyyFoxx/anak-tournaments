@@ -13,13 +13,7 @@ from redis.asyncio import Redis
 from shared.clients import S3Client
 from src.core import config
 
-s3_client = S3Client(
-    access_key=config.settings.s3_access_key,
-    secret_key=config.settings.s3_secret_key,
-    endpoint_url=config.settings.s3_endpoint_url,
-    bucket_name=config.settings.s3_bucket_name,
-    public_url=config.settings.s3_public_url,
-)
+s3_client = S3Client.from_settings(config.settings)
 
 # Realtime fan-in bus client (Redis pub/sub) shared by the match-log signal and
 # any other worker-originated realtime publishes. Lazy-connects on first command;

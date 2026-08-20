@@ -16,6 +16,14 @@ CACHE_PREFIXES: tuple[str, ...] = ("fastapi:", "backend:")
 # This service intentionally has no default backend, so the lock namespace must
 # be registered explicitly or stampede protection cannot route its operations.
 CACHE_LOCK_PREFIX = "lock:"
+# ...and the lock is not enough on its own: ``Backend.lock()`` health-probes the
+# connection with ``ping(b"LOCK")``, while ``Cache.ping`` routes by the *decoded
+# message* as if it were a cache key (cashews 7.4: wrapper/commands.py). So the
+# probe looks up a backend for the literal key ``"LOCK"`` -- unroutable without a
+# default backend, which made every ``lock=True`` read raise NotConfiguredError
+# instead of serving the cache. ``"PING"`` is the message a bare ``cache.ping()``
+# health check sends; registered for the same reason.
+CACHE_PING_PREFIXES: tuple[str, ...] = ("LOCK", "PING")
 
 
 def configure_cache() -> None:
@@ -33,3 +41,5 @@ def configure_cache() -> None:
         # a backend URL must fail loudly at startup, not silently at invalidation.
         cache.setup(urls[prefix], prefix=prefix)
     cache.setup(config.settings.backend_cache_url, prefix=CACHE_LOCK_PREFIX)
+    for prefix in CACHE_PING_PREFIXES:
+        cache.setup(config.settings.backend_cache_url, prefix=prefix)

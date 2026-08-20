@@ -60,7 +60,7 @@ class UserRankSnapshot(db.TimeStampIntegerMixin):
     battle_tag: Mapped[str] = mapped_column(String(255))
 
     platform: Mapped[str] = mapped_column(String(16))  # enums.RankPlatform
-    role: Mapped[str] = mapped_column(String(16))  # enums.RankRole
+    role: Mapped[str] = mapped_column(String(16))  # enums.HeroClass.name (lowercase)
 
     # Native OverFast rank; null when the player is unranked in that role.
     division: Mapped[str | None] = mapped_column(String(32), nullable=True)

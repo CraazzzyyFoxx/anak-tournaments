@@ -17,6 +17,11 @@ import { Hero } from "@/types/hero.types";
 import { Achievement } from "@/types/achievement.types";
 import { Gamemode } from "@/types/gamemode.types";
 import { MapRead } from "@/types/map.types";
+import type {
+  TournamentLink,
+  TournamentLinkCreateInput,
+  TournamentLinkUpdateInput
+} from "@/types/stream.types";
 import {
   TournamentCreateInput,
   TournamentUpdateInput,
@@ -104,6 +109,7 @@ import {
   SubscriptionUserCollectionRow,
   SubscriptionCollectTriggerInput,
   SubscriptionCollectTriggerResult,
+  StreamPollHealth,
   EncounterResultAuditRead,
   EncounterResultRead,
   EncounterSetResultInput,
@@ -155,6 +161,26 @@ function buildAdminMatchesQuery(params: AdminMatchesQuery): string {
   if (params.unlinked_only) search.set("unlinked_only", "true");
   for (const status of params.log_status ?? []) search.append("log_status", status);
   return search.toString();
+}
+
+/**
+ * Serialise the common page/per_page/search/sort/order filter set shared by
+ * the simple admin list endpoints (users, gamemodes, ...).
+ */
+function buildAdminListQuery(params: {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  sort?: string;
+  order?: string;
+}): Record<string, unknown> {
+  return {
+    ...(params.page != null && { page: params.page }),
+    ...(params.per_page != null && { per_page: params.per_page }),
+    ...(params.search && { search: params.search }),
+    ...(params.sort && { sort: params.sort }),
+    ...(params.order && { order: params.order })
+  };
 }
 
 class AdminService {
@@ -284,6 +310,52 @@ class AdminService {
     });
   }
 
+  // ─── Tournament links (typed Discord/stream/VOD/... links) ─────────────────
+
+  /**
+   * Flat array, not a `PaginatedResponse`: a tournament carries a handful of
+   * links and the backend returns them already ordered by `(sort_order, id)`.
+   */
+  async listTournamentLinks(
+    tournamentId: number,
+    opts?: { activeOnly?: boolean }
+  ): Promise<TournamentLink[]> {
+    const response = await apiFetch("/api/v1/admin/tournament-links", {
+      query: {
+        tournament_id: tournamentId,
+        ...(opts?.activeOnly != null && { active_only: opts.activeOnly })
+      }
+    });
+    return response.json();
+  }
+
+  async createTournamentLink(data: TournamentLinkCreateInput): Promise<TournamentLink> {
+    const response = await apiFetch("/api/v1/admin/tournament-links", {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async updateTournamentLink(
+    linkId: number,
+    data: TournamentLinkUpdateInput
+  ): Promise<TournamentLink> {
+    const response = await apiFetch(`/api/v1/admin/tournament-links/${linkId}`, {
+      method: "PATCH",
+      body: data
+    });
+    return response.json();
+  }
+
+  /** Soft delete — the row is flipped to `is_active: false`, not destroyed.
+   *  Restoring is `updateTournamentLink(id, { is_active: true })`. */
+  async deleteTournamentLink(linkId: number): Promise<void> {
+    await apiFetch(`/api/v1/admin/tournament-links/${linkId}`, {
+      method: "DELETE"
+    });
+  }
+
   // ─── Team CRUD ─────────────────────────────────────────────────────────────
 
   async createTeam(data: TeamCreateInput): Promise<Team> {
@@ -311,6 +383,25 @@ class AdminService {
     await apiFetch(`/api/v1/admin/teams/${id}`, {
       method: "DELETE"
     });
+  }
+
+  // ─── Team image ────────────────────────────────────────────────────────────
+
+  async uploadTeamImage(teamId: number, file: File): Promise<Team> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiFetch(`/api/v1/admin/teams/${teamId}/image`, {
+      method: "POST",
+      body: formData
+    });
+    return response.json();
+  }
+
+  async deleteTeamImage(teamId: number): Promise<Team> {
+    const response = await apiFetch(`/api/v1/admin/teams/${teamId}/image`, {
+      method: "DELETE"
+    });
+    return response.json();
   }
 
   async addPlayerToTeam(teamId: number, data: PlayerCreateInput): Promise<Player> {
@@ -538,10 +629,17 @@ class AdminService {
     return response.json();
   }
 
-  async syncEncountersFromChallonge(tournamentId: number): Promise<BulkOperationResult> {
-    const response = await apiFetch("/api/v1/encounter/challonge", {
-      method: "POST",
-      query: { tournament_id: tournamentId }
+  /**
+   * Uses the same backend sync engine as the Integrations tab's "Import"
+   * button (`challongeImport`): both used to hit independently-maintained
+   * copies of the Challonge sync logic (parser-service vs tournament-service),
+   * which had drifted -- tournament-service's copy tracks pick-ban session
+   * resets on team changes and cache-invalidation reasoning that
+   * parser-service's never had. Consolidated onto tournament-service's route.
+   */
+  async syncEncountersFromChallonge(tournamentId: number): Promise<Record<string, unknown>> {
+    const response = await apiFetch(`/api/v1/admin/challonge/sync/import/${tournamentId}`, {
+      method: "POST"
     });
     return response.json();
   }
@@ -590,13 +688,7 @@ class AdminService {
     } = {}
   ): Promise<PaginatedResponse<User>> {
     const response = await apiFetch("/api/v1/admin/users", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
+      query: buildAdminListQuery(params)
     });
     return response.json();
   }
@@ -808,13 +900,7 @@ class AdminService {
     } = {}
   ): Promise<PaginatedResponse<Gamemode>> {
     const response = await apiFetch("/api/v1/admin/gamemodes", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
+      query: buildAdminListQuery(params)
     });
     return response.json();
   }
@@ -1465,6 +1551,13 @@ class AdminService {
     return response.json();
   }
 
+  async deactivateStage(stageId: number): Promise<Stage> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/deactivate`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async generateBracket(stageId: number): Promise<{ generated: number }> {
     const response = await apiFetch(`/api/v1/admin/stages/${stageId}/generate`, {
       method: "POST"
@@ -1567,6 +1660,19 @@ class AdminService {
     data: { kind: PickBanKind; side: "home" | "away"; item_id: number; action: "pick" | "ban" | "protect" }
   ): Promise<{ id: number; item_id: number; status: string; picked_by: string | null }> {
     const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-act`, {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  /** Name who opens the round a `result_loser_choice` rotation is holding, on
+   * behalf of a losing captain who is not there to name it (admin override). */
+  async adminPickBanElectOpener(
+    encounterId: number,
+    data: { kind: PickBanKind; first_side: "home" | "away" }
+  ): Promise<PickBanState> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-elect-opener`, {
       method: "POST",
       body: data
     });
@@ -1710,6 +1816,21 @@ class AdminService {
       method: "POST",
       body: data
     });
+    return response.json();
+  }
+
+  // ─── Twitch stream poller ──────────────────────────────────────────────────
+
+  /**
+   * Poller health. Note the domain: `/api/streams`, not `/api/v1`, so
+   * `domainBehavior` gives it `no-store` (no cache-policy dance) but still
+   * injects `workspace_id` by default — hence the explicit `skipWorkspace`.
+   * There is one poller and one Redis key behind this, so the read is
+   * platform-wide and authorizes against the GLOBAL `stream.read`; sending a
+   * workspace would be a scope the endpoint does not have.
+   */
+  async getStreamPollHealth(): Promise<StreamPollHealth> {
+    const response = await apiFetch("/api/streams/health", { skipWorkspace: true });
     return response.json();
   }
 

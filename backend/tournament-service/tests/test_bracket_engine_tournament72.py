@@ -577,6 +577,7 @@ def _gf_encounter() -> SimpleNamespace:
         away_team_id=away_team.id,
         home_team=home_team,
         away_team=away_team,
+        stage_id=175,
         stage=SimpleNamespace(stage_type=enums.StageType.DOUBLE_ELIMINATION),
         round=3,
         result_status=enums.EncounterResultStatus.NONE,
@@ -632,6 +633,7 @@ class _EditorSession(SimpleNamespace):
 
         super().__init__(
             execute=AsyncMock(side_effect=fake_execute),
+            get=AsyncMock(return_value=SimpleNamespace(is_published=True)),
             commit=AsyncMock(),
             refresh=AsyncMock(),
             flush=AsyncMock(),
@@ -988,8 +990,8 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
             ],
             teams={2069: "Averet", 2071: "litnik", 2060: "vac3x"},
             stages={
-                175: SimpleNamespace(id=175, stage_type=enums.StageType.DOUBLE_ELIMINATION),
-                165: SimpleNamespace(id=165, stage_type=enums.StageType.SWISS),
+                175: SimpleNamespace(id=175, stage_type=enums.StageType.DOUBLE_ELIMINATION, is_published=True),
+                165: SimpleNamespace(id=165, stage_type=enums.StageType.SWISS, is_published=True),
             },
             players_by_auth={AVERET_CAPTAIN: AVERET_CAPTAIN, LITNIK_CAPTAIN: LITNIK_CAPTAIN},
         )

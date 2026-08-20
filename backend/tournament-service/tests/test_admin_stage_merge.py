@@ -67,6 +67,7 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
             name="A",
             stage_type=enums.StageType.SWISS,
             is_active=False,
+            is_published=False,
             is_completed=True,
             order=0,
             items=[target_item],
@@ -77,6 +78,7 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
             name="B",
             stage_type=enums.StageType.SWISS,
             is_active=True,
+            is_published=True,
             is_completed=True,
             order=1,
         )
@@ -86,6 +88,7 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
             name="C",
             stage_type=enums.StageType.SWISS,
             is_active=False,
+            is_published=False,
             is_completed=True,
             order=2,
         )
@@ -155,6 +158,9 @@ class AdminStageMergeTests(IsolatedAsyncioTestCase):
         self.assertEqual("merged-stage", result)
         self.assertEqual("Groups", target_stage.name)
         self.assertTrue(target_stage.is_active)
+        # `source_stage_b` was already published; the merge must carry that
+        # forward so its retargeted encounters stay reportable.
+        self.assertTrue(target_stage.is_published)
         self.assertTrue(target_stage.is_completed)
         self.assertEqual(target_stage.id, source_item_b.stage_id)
         self.assertEqual(target_stage.id, source_item_c.stage_id)

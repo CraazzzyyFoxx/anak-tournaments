@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
-import { teamCrest } from "@/lib/draft-crest";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { PickBanSession } from "@/types/tournament.types";
@@ -29,7 +29,7 @@ export interface PregamePhaseStatus {
 }
 
 /** Where one map of the series stands, in the loop's own terms. */
-export type PregameSeriesMapState =
+type PregameSeriesMapState =
   /** Played and reconciled — it has a confirmed score. */
   | "played"
   /** The map the loop is waiting on right now: played or being played, unreported. */
@@ -145,8 +145,8 @@ export function PregameHeader({
       <Scoreboard
         homeName={homeTeam?.name ?? t("side.home")}
         awayName={awayTeam?.name ?? t("side.away")}
-        homeHue={homeTeam != null ? teamCrest(homeTeam).hue : null}
-        awayHue={awayTeam != null ? teamCrest(awayTeam).hue : null}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
         homeSeed={session?.home_seed ?? null}
         awaySeed={session?.away_seed ?? null}
         firstSide={session?.first_side ?? null}
@@ -190,17 +190,15 @@ function StatusMark({ status }: { status: PickBanSession["status"] }) {
 }
 
 /**
- * The matchup as a broadcast scoreboard: each side's crest and seed flanking
+ * The matchup as a broadcast scoreboard: each side's logo and seed flanking
  * the series score, with a dot per map of the Bo-N underneath so "2–1 of a
- * Bo5" reads as position in the series and not just two digits. Crest hue is
- * `teamCrest`'s stable per-id colour, the same identity the draft room's
- * captain tiles use.
+ * Bo5" reads as position in the series and not just two digits.
  */
 function Scoreboard({
   homeName,
   awayName,
-  homeHue,
-  awayHue,
+  homeTeam,
+  awayTeam,
   homeSeed,
   awaySeed,
   firstSide,
@@ -209,8 +207,8 @@ function Scoreboard({
 }: {
   homeName: string;
   awayName: string;
-  homeHue: number | null;
-  awayHue: number | null;
+  homeTeam: TeamNameInput | null | undefined;
+  awayTeam: TeamNameInput | null | undefined;
   homeSeed: number | null;
   awaySeed: number | null;
   firstSide: "home" | "away" | null;
@@ -235,7 +233,7 @@ function Scoreboard({
     >
       <TeamSide
         name={homeName}
-        hue={homeHue}
+        team={homeTeam}
         seed={homeSeed}
         accentVar="--aqt-teal"
         opens={firstSide === "home"}
@@ -290,7 +288,7 @@ function Scoreboard({
 
       <TeamSide
         name={awayName}
-        hue={awayHue}
+        team={awayTeam}
         seed={awaySeed}
         accentVar="--aqt-rose"
         opens={firstSide === "away"}
@@ -302,22 +300,20 @@ function Scoreboard({
 
 function TeamSide({
   name,
-  hue,
+  team,
   seed,
   accentVar,
   opens,
   align
 }: {
   name: string;
-  hue: number | null;
+  team: TeamNameInput | null | undefined;
   seed: number | null;
   accentVar: "--aqt-teal" | "--aqt-rose";
   opens: boolean;
   align: "start" | "end";
 }) {
   const t = useTranslations("pickBan.room");
-  const crestInitial = (name.match(/[\p{L}\p{N}]/u)?.[0] ?? "#").toUpperCase();
-  const crestHue = hue ?? 0;
 
   return (
     <div
@@ -326,17 +322,7 @@ function TeamSide({
         align === "end" ? "flex-row-reverse" : null
       )}
     >
-      <span
-        aria-hidden
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg font-onest text-sm font-bold"
-        style={
-          hue != null
-            ? { background: `hsl(${crestHue} 55% 22%)`, color: `hsl(${crestHue} 70% 72%)` }
-            : { background: "var(--aqt-card-2)", color: "var(--aqt-fg-faint)" }
-        }
-      >
-        {crestInitial}
-      </span>
+      <TeamLogo team={team} size="md" />
       {/* `flex-1`, never `items-end`: a non-stretch cross alignment sizes the
           name to its own min-content, so `truncate` stops clamping and a long
           team name rides over the score. The block stretches; `text-right` and
@@ -515,7 +501,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
   const t = useTranslations("pickBan.room");
 
   return (
-    <ol aria-label={t("series.label")} className="flex flex-wrap items-start gap-3">
+    <ol aria-label={t("series.label")} className="flex flex-wrap items-start gap-4">
       {series.map((map) => {
         const awaiting = map.state === "awaiting";
         const stateLabel = awaiting
@@ -524,31 +510,37 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
             ? t("series.upcoming")
             : null;
         return (
-          <li key={map.round} className="flex w-[5.5rem] flex-col items-center gap-1">
+          <li key={map.round} className="flex w-[7.5rem] flex-col items-center gap-1.5">
             {/* Ring on the wrapper, not the thumb: the map thumb already carries
                 an inset hairline ring, and `ring-inset` has no counter-utility
                 for `twMerge` to strip. */}
             <span
               className={cn(
+                // `rounded-md` to match the thumb's own radius: the ring is
+                // offset, so a rounder wrapper reads as a second, wrong corner.
                 "relative inline-block rounded-md",
-                awaiting ? "ring-2 ring-[color:var(--aqt-teal)]" : null
+                awaiting
+                  ? "ring-2 ring-[color:var(--aqt-teal)] ring-offset-2 ring-offset-[color:var(--aqt-card)]"
+                  : null
               )}
             >
               <PickBanItemThumb
                 kind="map"
                 item={map.item}
                 name={map.name}
-                size={40}
+                // Big enough to recognise the art at a glance. At the old 40px
+                // every still was a smear of skybox, so the filmstrip read as
+                // decoration and the caption did all the work — which is
+                // backwards for a strip whose whole point is the map.
+                size={72}
                 // Only an unreached map is dimmed. A played one keeps its colour:
-                // `muted` is the timeline's "banned" treatment (45% + grayscale)
-                // and at 40px it left the art unrecognisable, so a settled map
-                // became a grey smudge you could not name. Its score below and
-                // the absence of the ring already mark it as done.
+                // `muted` is the pool's "banned" treatment (45% + grayscale) and
+                // a settled map is not a rejected one.
                 muted={map.state === "upcoming"}
               />
               <span
                 aria-hidden
-                className="absolute -left-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[color:var(--aqt-card)] px-1 font-mono text-[9px] font-bold leading-none text-[color:var(--aqt-fg-muted)] ring-1 ring-[color:var(--aqt-border-2)]"
+                className="absolute -left-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[color:var(--aqt-card)] px-1 font-mono text-[10px] font-bold leading-none text-[color:var(--aqt-fg-muted)] ring-1 ring-[color:var(--aqt-border-2)]"
               >
                 {map.round}
               </span>
@@ -557,7 +549,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
                   aria-hidden
                   className="absolute inset-0 grid place-items-center rounded-md bg-[color:var(--aqt-card)]/55"
                 >
-                  <Hourglass className="h-4 w-4 text-[color:var(--aqt-teal)]" />
+                  <Hourglass className="h-5 w-5 text-[color:var(--aqt-teal)]" />
                 </span>
               ) : null}
             </span>
@@ -570,7 +562,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
                 nothing. The fixed height keeps every column's score aligned. */}
             <span
               title={map.name}
-              className="line-clamp-2 h-[2.1rem] w-full text-center text-[11px] leading-tight"
+              className="line-clamp-2 h-[2.2rem] w-full text-center text-[12px] font-medium leading-tight"
             >
               {map.name}
             </span>
@@ -579,7 +571,7 @@ function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
                 caption here wrapped to two lines and knocked every column out
                 of alignment. */}
             {map.score != null ? (
-              <span className="font-onest text-xs font-semibold tabular-nums">
+              <span className="font-onest text-sm font-semibold tabular-nums">
                 <span style={{ color: "var(--aqt-teal)" }}>{map.score.home}</span>
                 <span className="text-[color:var(--aqt-fg-faint)]">:</span>
                 <span style={{ color: "var(--aqt-rose)" }}>{map.score.away}</span>
