@@ -158,7 +158,7 @@ func (h *Handler) ServiceToken(w http.ResponseWriter, r *http.Request) {
 //
 // The name is historical: the worker drops the user's cached RBAC so their next
 // request re-reads permissions from the database. It does NOT revoke a token or
-// end a session -- see invalidate_session in identity-service service_flows.py.
+// end a session -- see ServiceTokenService.invalidate_rbac in identity-service.
 func (h *Handler) InvalidateSession(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
@@ -442,7 +442,7 @@ func (h *Handler) RevokeApiKey(w http.ResponseWriter, r *http.Request) {
 //
 // Query filters (search/role_id/is_active/is_superuser/workspace_id/provider/
 // status/user_id) ride as scalar fields in the RPC body; path params likewise.
-// Permission checks + cache invalidation run in identity-svc's rbac_flows.
+// Permission checks + cache invalidation run in identity-svc's rbac_admin services.
 
 // RbacListPermissions mirrors GET /rbac/permissions?page=&per_page=&sort=&order=&search=&workspace_id=.
 func (h *Handler) RbacListPermissions(w http.ResponseWriter, r *http.Request) {

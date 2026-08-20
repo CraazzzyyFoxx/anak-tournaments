@@ -186,7 +186,8 @@ describe("InfiniteScrollFooter", () => {
     expect(button?.textContent).toContain("Try loading logs again");
     expect(button?.disabled).toBe(false);
 
-    const status = container.querySelector('[role="status"]');
+    // The footer announces through a native <output> (implicit role=status).
+    const status = container.querySelector("output");
     expect(status?.textContent).toBe(
       "Unable to load more logs. Check your connection and try again."
     );
@@ -204,7 +205,7 @@ describe("InfiniteScrollFooter", () => {
       />
     );
 
-    const status = container.querySelector('[role="status"]');
+    const status = container.querySelector("output");
     expect(status?.textContent).toBe("Showing 60 of 60 logs");
     expect(loadMore(container)).toBeNull();
   });

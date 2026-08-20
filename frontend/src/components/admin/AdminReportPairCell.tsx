@@ -71,7 +71,7 @@ export function AdminReportPairCell({
   scoresMatch,
   seriesScoreValid,
   className
-}: AdminReportPairCellProps) {
+}: Readonly<AdminReportPairCellProps>) {
   const verdict =
     scoresMatch === null
       ? { tone: "neutral" as const, icon: Minus, label: "Awaiting second report" }

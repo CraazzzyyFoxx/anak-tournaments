@@ -46,7 +46,7 @@ export function BalanceEditorTeamCard({
   remoteDrags = [],
   resolveActorName,
   onSelectPlayer,
-}: BalanceEditorTeamCardProps) {
+}: Readonly<BalanceEditorTeamCardProps>) {
   const total = Math.round(calculateTeamTotalFromPayload(team));
   const average = Math.round(calculateTeamAverageFromPayload(team));
   const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];

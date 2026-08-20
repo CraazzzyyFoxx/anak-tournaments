@@ -73,7 +73,7 @@ interface ColumnFieldProps {
  * card-with-stepper: an empty value is how an optional column is skipped, so the
  * on/off switch and the +/- pair are both redundant.
  */
-function ColumnField({ id, label, value, onChange, required, min = 1, hint }: ColumnFieldProps) {
+function ColumnField({ id, label, value, onChange, required, min = 1, hint }: Readonly<ColumnFieldProps>) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id} className="text-xs">
@@ -108,7 +108,7 @@ interface CsvImportDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
+function CsvImportDialog({ open, onOpenChange }: Readonly<CsvImportDialogProps>) {
   const queryClient = useQueryClient();
   const fieldId = useId();
   const [tab, setTab] = useState<string>("file");

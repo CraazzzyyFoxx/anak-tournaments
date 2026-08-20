@@ -44,7 +44,7 @@ export function DraftConfigStep({
   rosterShape,
   tournamentId,
   locked = false
-}: DraftConfigStepProps) {
+}: Readonly<DraftConfigStepProps>) {
   const t = useTranslations("draftAdmin");
   // Straight off the server shape: deriving rounds from a size here is exactly
   // the mirror this feature removes.

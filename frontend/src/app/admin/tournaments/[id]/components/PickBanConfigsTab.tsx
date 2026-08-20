@@ -175,7 +175,7 @@ function GroupFilterRow({
   total,
   value,
   onChange,
-}: {
+}: Readonly<{
   /** Accessible name for the filter row, e.g. "Filter by game mode". */
   label: string;
   allLabel: string;
@@ -184,7 +184,7 @@ function GroupFilterRow({
   total: number;
   value: string;
   onChange: (value: string) => void;
-}) {
+}>) {
   if (groups.length <= 1) return null;
   return (
     <div role="group" aria-label={label} className="flex flex-wrap gap-1 border-b p-1.5">
@@ -225,7 +225,7 @@ function ItemChips({
   describeRemove,
   onRemove,
   trailing,
-}: {
+}: Readonly<{
   itemIds: number[];
   catalogue: Map<number, ItemOption>;
   disabled: boolean;
@@ -236,7 +236,7 @@ function ItemChips({
    * flows in the same wrapping row as the chips rather than sitting above
    * or below them. */
   trailing?: ReactNode;
-}) {
+}>) {
   return (
     <ul className="flex flex-wrap items-center gap-1.5">
       {itemIds.map((itemId, index) => {
@@ -282,7 +282,7 @@ function ItemChips({
  * names. Shared by both pickers so a map or hero reads identically wherever it
  * is offered.
  */
-function ItemOptionRow({ option, selected }: { option: ItemOption; selected: boolean }) {
+function ItemOptionRow({ option, selected }: Readonly<{ option: ItemOption; selected: boolean }>) {
   return (
     <>
       {option.imageSrc ? (
@@ -309,7 +309,7 @@ function ItemOptionRow({ option, selected }: { option: ItemOption; selected: boo
 }
 
 /** Item art behind a scrim, so a label stays legible whatever the image. */
-function ItemArt({ option }: { option: ItemOption }) {
+function ItemArt({ option }: Readonly<{ option: ItemOption }>) {
   return (
     <>
       {option.imageSrc ? (
@@ -339,14 +339,14 @@ function ItemPoolTile({
   selectionIndex,
   disabled,
   onToggle,
-}: {
+}: Readonly<{
   option: ItemOption;
   ariaLabel: string;
   /** Position in the persisted order, or -1 when unselected. */
   selectionIndex: number;
   disabled: boolean;
   onToggle: () => void;
-}) {
+}>) {
   const selected = selectionIndex >= 0;
   return (
     <button
@@ -464,7 +464,7 @@ function ItemGridPicker({
   onToggle,
   onSelectVisible,
   onClearVisible,
-}: {
+}: Readonly<{
   triggerLabel: string;
   /** Accessible name for the picker's own `role="group"`, e.g. "Add maps". */
   groupLabel: string;
@@ -483,7 +483,7 @@ function ItemGridPicker({
   /** Every item the filter and search currently show; the caller adds or removes them all. */
   onSelectVisible: (itemIds: number[]) => void;
   onClearVisible: (itemIds: number[]) => void;
-}) {
+}>) {
   const searchId = useId();
   const { open, onOpenChange, query, setQuery, groupFilter, setGroupFilter, groups, visibleOptions } =
     useItemFilterPopover(options);
@@ -603,7 +603,7 @@ function ItemSingleSelect({
   groupFilterUngroupedLabel,
   disabled,
   onChange,
-}: {
+}: Readonly<{
   /** Accessible name for a trigger that shows only a value. */
   label: string;
   prefix: string;
@@ -617,7 +617,7 @@ function ItemSingleSelect({
   groupFilterUngroupedLabel: string;
   disabled: boolean;
   onChange: (itemId: number | null) => void;
-}) {
+}>) {
   const {
     open,
     setOpen,
@@ -694,7 +694,7 @@ function ItemSingleSelect({
 // ── step order ───────────────────────────────────────────────────────────────
 
 /** Read-only step chips: the generated order, or a preview of a custom one. */
-function SequencePreview({ sequence }: { sequence: PickBanSequenceToken[] }) {
+function SequencePreview({ sequence }: Readonly<{ sequence: PickBanSequenceToken[] }>) {
   const t = useTranslations("pickBan.admin");
   if (sequence.length === 0) {
     return <p className="text-muted-foreground text-sm">{t("sequenceEmpty")}</p>;
@@ -728,7 +728,7 @@ function StepList({
   allowDecider,
   disabled,
   onChange,
-}: {
+}: Readonly<{
   sequence: PickBanSequenceToken[];
   /** Gates the protect action: the engine ignores it without the toggle. */
   allowProtect: boolean;
@@ -736,7 +736,7 @@ function StepList({
   allowDecider: boolean;
   disabled: boolean;
   onChange: (next: PickBanSequenceToken[]) => void;
-}) {
+}>) {
   const t = useTranslations("pickBan.admin");
 
   const replace = (index: number, token: PickBanSequenceToken) => {
@@ -883,7 +883,7 @@ function ConfigRow({
   canManage,
   onEdit,
   onDelete,
-}: {
+}: Readonly<{
   config: PickBanConfig;
   scopeLabel: string;
   /**
@@ -895,7 +895,7 @@ function ConfigRow({
   canManage: boolean;
   onEdit: () => void;
   onDelete: () => void;
-}) {
+}>) {
   const t = useTranslations("pickBan.admin");
   const poolSize =
     config.mode === "pool"
@@ -969,7 +969,7 @@ function ConfigEditor({
   onChange,
   onSave,
   onCancel,
-}: {
+}: Readonly<{
   draft: PickBanDraft;
   /** Every saved config, to warn before an upsert replaces one. */
   configs: PickBanConfig[];
@@ -982,7 +982,7 @@ function ConfigEditor({
   onChange: (next: PickBanDraft) => void;
   onSave: () => void;
   onCancel: () => void;
-}) {
+}>) {
   const t = useTranslations("pickBan.admin");
   const ids = useId();
   const isHero = draft.kind === "hero";
@@ -1669,7 +1669,7 @@ function KindSection({
   onAdd,
   onEdit,
   onDelete,
-}: {
+}: Readonly<{
   kind: PickBanKind;
   configs: PickBanConfig[];
   canManage: boolean;
@@ -1682,7 +1682,7 @@ function KindSection({
   onAdd: () => void;
   onEdit: (config: PickBanConfig) => void;
   onDelete: (config: PickBanConfig) => void;
-}) {
+}>) {
   const t = useTranslations("pickBan.admin");
   return (
     <Card>
@@ -1742,7 +1742,7 @@ export function PickBanConfigsTab({
   stages,
   encounters,
   canManage,
-}: PickBanConfigsTabProps) {
+}: Readonly<PickBanConfigsTabProps>) {
   const t = useTranslations("pickBan.admin");
   const queryClient = useQueryClient();
   const configsQueryKey = ["admin", "tournament", tournamentId, "pick-ban-configs"] as const;

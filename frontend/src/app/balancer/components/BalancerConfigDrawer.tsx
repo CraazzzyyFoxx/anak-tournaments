@@ -62,12 +62,12 @@ function ConfigMapEditor({
   value,
   valueType,
   onChange,
-}: {
+}: Readonly<{
   id: string;
   value: Record<string, number | string>;
   valueType: "number" | "string";
   onChange: (value: Record<string, number | string>) => void;
-}) {
+}>) {
   const entries = Object.entries(value);
   const nextKeyPrefix = valueType === "number" ? "Role" : "role";
   const nextKey =
@@ -146,11 +146,11 @@ function ConfigFieldControl({
   field,
   value,
   onChange,
-}: {
+}: Readonly<{
   field: BalancerConfigField;
   value: unknown;
   onChange: (value: unknown) => void;
-}) {
+}>) {
   if (field.type === "boolean") {
     return <Switch checked={Boolean(value)} onCheckedChange={onChange} />;
   }
@@ -237,7 +237,7 @@ export function BalancerConfigDrawer({
   onChange,
   onSave,
   onReset,
-}: BalancerConfigDrawerProps) {
+}: Readonly<BalancerConfigDrawerProps>) {
   const fieldsByGroup = GROUP_ORDER.map((group) => ({
     group,
     fields: fields.filter((field) => field.group === group),

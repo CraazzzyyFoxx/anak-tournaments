@@ -30,14 +30,14 @@ export function SubrolesTab({
   selection,
   onToggleOffered,
   isLoading = false
-}: {
+}: Readonly<{
   /** Workspace catalog grouped by registration role code, with row ids. */
   catalog: Record<string, CatalogEntry[]>;
   /** Current per-role offered selection (slug list), or undefined = offer all. */
   selection: Record<string, string[] | undefined>;
   onToggleOffered: (role: string, slug: string, nextSlugs: string[]) => void;
   isLoading?: boolean;
-}) {
+}>) {
   const t = useTranslations("registrationFormAdmin.subroles");
 
   return (

@@ -307,11 +307,10 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
 
                 {expanded ? (
                   <div className={styles.participantExpandedCell}>
-                    <div
+                    <section
                       aria-labelledby={expanderId}
                       className={styles.participantExpandedRegion}
                       id={detailsId}
-                      role="region"
                     >
                       <div className={styles.participantRankHistory}>
                         <div className={styles.participantDetailLabel}>
@@ -340,7 +339,7 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
                           ))
                         )}
                       </div>
-                    </div>
+                    </section>
                   </div>
                 ) : null}
               </div>

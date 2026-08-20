@@ -55,7 +55,7 @@ export function PickCommandBar({
   board,
   isMyPick,
   myTeamId
-}: PickCommandBarProps) {
+}: Readonly<PickCommandBarProps>) {
   const t = useTranslations("draftRedesign");
   const [reviewOpen, setReviewOpen] = useState(false);
   const isConnected = connectionState === "connected";

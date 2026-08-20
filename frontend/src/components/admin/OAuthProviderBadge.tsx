@@ -25,7 +25,7 @@ const PROVIDER_COLORS: Record<OAuthProvider, string> = {
   github: "bg-[#6E7681]/15 text-[#c9d1d9] border-[#6E7681]/30"
 };
 
-export function ProviderBadge({ provider }: { provider: OAuthProvider }) {
+export function ProviderBadge({ provider }: Readonly<{ provider: OAuthProvider }>) {
   const meta = PROVIDER_META[provider];
   return (
     <Badge variant="outline" className={`gap-1.5 ${PROVIDER_COLORS[provider]}`}>

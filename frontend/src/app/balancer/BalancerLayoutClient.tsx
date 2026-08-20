@@ -65,7 +65,7 @@ type BalancerLayoutClientProps = {
   children: ReactNode;
 };
 
-export function BalancerLayoutClient({ children }: BalancerLayoutClientProps) {
+export function BalancerLayoutClient({ children }: Readonly<BalancerLayoutClientProps>) {
   const { isLoaded, isOrganizer, canAccessAdminRoute } = usePermissions();
   const { status: contextStatus, summary } = useToolContext();
 

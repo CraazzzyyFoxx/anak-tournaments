@@ -6,7 +6,6 @@ import {
   GripVertical,
   History,
   Loader2,
-  MoreHorizontal,
   Plus,
   Save,
   Sparkles,
@@ -41,7 +40,6 @@ import {
   SheetHeader,
   SheetTitle
 } from "@/components/ui/sheet";
-import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -209,16 +207,6 @@ function applyHistoryPreviewToRoleEntries(
 
 // getSubtypeLabel has been inline-replaced using dynamic subtypeOptions
 
-function getAverageRankValue(entries: BalancerPlayerRoleEntry[]): number | null {
-  const rankedEntries = entries.filter((entry) => entry.is_active && entry.rank_value != null);
-  if (rankedEntries.length === 0) {
-    return null;
-  }
-
-  const total = rankedEntries.reduce((sum, entry) => sum + (entry.rank_value ?? 0), 0);
-  return Math.round(total / rankedEntries.length);
-}
-
 function getDivisionGridBounds(grid: DivisionGrid): { min: number; max: number } {
   if (!grid.tiers.length) {
     return { min: 0, max: 5000 };
@@ -274,11 +262,6 @@ function getRankFillPercentFromDivisionIndex(
   return (divisionIndex / (totalDivisions - 1)) * 100;
 }
 
-function formatTournamentSource(entry: PlayerRankHistoryPreviewEntry): string {
-  if (entry.tournament_name) return entry.tournament_name;
-  return entry.source === "balancer" ? "Balancer history" : "Analytics";
-}
-
 function buildHistoryChangeText(
   currentEntry: BalancerPlayerRoleEntry | undefined,
   historyEntry: PlayerRankHistoryPreviewEntry
@@ -324,7 +307,7 @@ function SortableRoleEntry({
   onUpdate,
   onRemove,
   subtypeOptions
-}: SortableRoleEntryProps) {
+}: Readonly<SortableRoleEntryProps>) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id
   });
@@ -615,7 +598,7 @@ function HistoryPreviewCard({
   currentEntry,
   getDivisionName,
   getOriginalDivisionName
-}: HistoryPreviewCardProps) {
+}: Readonly<HistoryPreviewCardProps>) {
   const accent = ROLE_ACCENTS[entry.role];
   // Normalised name (target/workspace grid)
   const divisionName =
@@ -743,7 +726,7 @@ export function PlayerEditModal({
   onRemove,
   saving = false,
   rankHistory = null
-}: PlayerEditModalProps) {
+}: Readonly<PlayerEditModalProps>) {
   const divisionGrid = useDivisionGrid();
   const divisionGridVersion = useDivisionGridVersion();
 
@@ -842,7 +825,6 @@ export function PlayerEditModal({
     setRoleEntries(applyHistoryToSelectedRoles(normalized, rankHistory, resolveDivision));
   }, [player, registration, rankHistory, divisionGrid]);
 
-  const averageRankValue = useMemo(() => getAverageRankValue(roleEntries), [roleEntries]);
   const historyPreviewEntries = historyPreview?.entries ?? [];
   const historyPreviewAverage = historyPreview?.average_rank_value ?? null;
   const hasHistoryPreview = historyPreviewEntries.length > 0;

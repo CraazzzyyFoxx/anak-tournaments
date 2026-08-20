@@ -37,7 +37,7 @@ export function PoolAvailableList({
   searchQuery,
   onAddFromApplication,
   disabled = false,
-}: PoolAvailableListProps) {
+}: Readonly<PoolAvailableListProps>) {
   const matches = searchQuery
     ? applications.filter((application) => buildApplicationSearchIndex(application).includes(searchQuery))
     : applications;

@@ -39,7 +39,7 @@ export function DraftReviewStep({
   previewPending,
   previewError,
   isReseed
-}: DraftReviewStepProps) {
+}: Readonly<DraftReviewStepProps>) {
   const t = useTranslations("draftAdmin");
   const checks = [
     { label: t("reviewChecks.pool"), ok: readiness.blockers.length === 0 },
@@ -57,13 +57,10 @@ export function DraftReviewStep({
   return (
     <div className="space-y-6">
       {previewPending && (
-        <div
-          role="status"
-          className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm"
-        >
+        <output className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
           <RefreshCw className="h-4 w-4 animate-spin text-primary" aria-hidden />
           {t("validatingDraft")}
-        </div>
+        </output>
       )}
       {previewError && (
         <div
@@ -152,7 +149,7 @@ export function DraftReviewStep({
   );
 }
 
-function Diff({ label, before, after }: { label: string; before: number; after: number }) {
+function Diff({ label, before, after }: Readonly<{ label: string; before: number; after: number }>) {
   return (
     <div className="rounded-xl bg-background/70 px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>

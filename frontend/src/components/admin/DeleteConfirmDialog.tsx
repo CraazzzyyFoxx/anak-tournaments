@@ -43,7 +43,7 @@ export function DeleteConfirmDialog({
   confirmingLabel = "Deleting…",
   confirmVariant = "destructive",
   isDeleting = false
-}: DeleteConfirmDialogProps) {
+}: Readonly<DeleteConfirmDialogProps>) {
   const isDestructive = confirmVariant === "destructive";
 
   return (

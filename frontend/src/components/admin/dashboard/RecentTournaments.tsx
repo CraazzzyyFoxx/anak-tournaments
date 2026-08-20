@@ -19,7 +19,7 @@ interface RecentTournamentsProps {
   tournaments: Tournament[];
 }
 
-export function RecentTournaments({ canRead, tournaments }: RecentTournamentsProps) {
+export function RecentTournaments({ canRead, tournaments }: Readonly<RecentTournamentsProps>) {
   return (
     <SurfaceCard className="flex-1 flex flex-col">
       <SurfaceCardHeader>

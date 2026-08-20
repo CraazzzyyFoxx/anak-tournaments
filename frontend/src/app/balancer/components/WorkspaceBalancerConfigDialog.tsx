@@ -30,7 +30,7 @@ export function WorkspaceBalancerConfigDialog({
   config,
   open,
   onOpenChange
-}: WorkspaceBalancerConfigDialogProps) {
+}: Readonly<WorkspaceBalancerConfigDialogProps>) {
   const queryClient = useQueryClient();
 
   const [threshold, setThreshold] = useState<number | null>(

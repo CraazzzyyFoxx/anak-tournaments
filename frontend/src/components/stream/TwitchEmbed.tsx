@@ -63,7 +63,7 @@ const serverHostname = () => null;
  *    rendered at all during SSR/first paint — a frame emitted with a guessed
  *    `parent` would just be a dead iframe.
  */
-export function TwitchEmbed({ channel, title, className }: TwitchEmbedProps) {
+export function TwitchEmbed({ channel, title, className }: Readonly<TwitchEmbedProps>) {
   const parent = twitchParentFromHostname(useSyncExternalStore(subscribeToHostname, clientHostname, serverHostname));
 
   if (!parent || !channel) {

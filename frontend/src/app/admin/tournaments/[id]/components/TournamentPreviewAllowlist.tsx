@@ -24,7 +24,7 @@ interface TournamentPreviewAllowlistProps {
 export function TournamentPreviewAllowlist({
   tournamentId,
   workspaceId
-}: TournamentPreviewAllowlistProps) {
+}: Readonly<TournamentPreviewAllowlistProps>) {
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [candidateSearch, setCandidateSearch] = useState("");

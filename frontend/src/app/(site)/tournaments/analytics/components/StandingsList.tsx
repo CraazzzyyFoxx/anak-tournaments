@@ -50,7 +50,7 @@ function moveColor(delta: number | null): string {
  * the bracket is played there is no actual place to connect to, so the row
  * shows the forecast on its own.
  */
-function RowHorizon({ team, maxPosition }: { team: TeamVM; maxPosition: number }) {
+function RowHorizon({ team, maxPosition }: Readonly<{ team: TeamVM; maxPosition: number }>) {
   const t = useTranslations();
   const locale = useLocale();
   const predicted = team.predicted_place;
@@ -106,7 +106,7 @@ export default function StandingsList({
   mode,
   onModeChange,
   headerEnd,
-}: StandingsListProps) {
+}: Readonly<StandingsListProps>) {
   const t = useTranslations();
   const locale = useLocale();
   const rows = useMemo(() => sortTeams(teams, mode), [teams, mode]);

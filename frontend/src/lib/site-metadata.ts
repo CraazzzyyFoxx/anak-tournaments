@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { headers } from "next/headers";
 import workspaceService from "@/services/workspace.service";
-import { SITE_NAME, SITE_URL, SITE_URL_OBJ, SITE_FAVICON } from "@/config/site";
+import { SITE_NAME, SITE_URL_OBJ, SITE_FAVICON } from "@/config/site";
 
 export interface SiteMetadata {
   name: string;

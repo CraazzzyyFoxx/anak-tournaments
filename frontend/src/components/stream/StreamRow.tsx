@@ -51,7 +51,7 @@ const ROW_SHELL =
  * is streaming", and a channel's own title is written for its own audience: it
  * is flavour, clamped to one line, and never allowed to set the row height.
  */
-export function StreamRow({ entry, isSelected, onSelect, now }: StreamRowProps) {
+export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamRowProps>) {
   const t = useTranslations();
   const name = entry.player?.name ?? entry.channel;
   const uptime = formatStreamUptime(

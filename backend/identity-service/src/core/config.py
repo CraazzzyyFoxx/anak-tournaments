@@ -84,7 +84,7 @@ class Settings(BaseServiceSettings):
     # request's originating host/subdomain, since providers only allow a
     # static, pre-registered redirect_uri. The originating host, post-auth
     # redirect path, and action ("login"/"link") instead travel inside the
-    # signed ``state`` (see ``oauth_service.encode_state``/``verify_state``),
+    # signed ``state`` (see ``oauth_state.OAuthStateCodec``),
     # so the callback can send the user back to the tenant subdomain that
     # started the flow.
     OAUTH_REDIRECT: str | None = None

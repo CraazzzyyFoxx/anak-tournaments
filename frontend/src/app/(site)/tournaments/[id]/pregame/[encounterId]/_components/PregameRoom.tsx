@@ -91,7 +91,7 @@ const UNAVAILABLE_ICON: Record<PickBanUnavailableIcon, React.ReactNode> = {
  * `pick_ban_session.ensure_pick_ban_session`) until both captains confirm
  * readiness, shown here as a waiting screen with an "I'm ready" button.
  */
-export function PregameRoom({ encounterId, seriesReport = true }: PregameRoomProps) {
+export function PregameRoom({ encounterId, seriesReport = true }: Readonly<PregameRoomProps>) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
   const { isSuperuser, isWorkspaceAdmin, hasWorkspacePermission } = usePermissions();
@@ -547,7 +547,7 @@ function PickBanPanel({
   itemsById,
   isAdmin,
   header
-}: {
+}: Readonly<{
   kind: PickBanKind;
   encounterId: number;
   encounter: Encounter;
@@ -557,7 +557,7 @@ function PickBanPanel({
   itemsById: Record<number, PickBanItemLike | undefined>;
   isAdmin: boolean;
   header: React.ReactNode;
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
 
@@ -730,13 +730,13 @@ function EmptyRoomCard({
   hint,
   action,
   returnTo
-}: {
+}: Readonly<{
   icon: React.ReactNode;
   title: string;
   hint?: string;
   action?: React.ReactNode;
   returnTo: string;
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
 
   return (

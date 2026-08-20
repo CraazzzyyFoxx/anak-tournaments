@@ -67,7 +67,7 @@ export function PregameHeroBans({
   awayTeam,
   eyebrow,
   hint
-}: {
+}: Readonly<{
   actions: PregameHeroAction[];
   homeName: string;
   awayName: string;
@@ -82,7 +82,7 @@ export function PregameHeroBans({
   eyebrow?: ReactNode | null;
   /** Pass `null` to drop the lobby-setup hint: it only applies before a map is played. */
   hint?: string | null;
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
   const note = hint === undefined ? t("heroBans.hint") : hint;
   const caption =
@@ -142,12 +142,12 @@ function SideBans({
   name,
   team,
   actions
-}: {
+}: Readonly<{
   side: "home" | "away";
   name: string;
   team: TeamNameInput | null | undefined;
   actions: PregameHeroAction[];
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
   const accent = SIDE_ACCENT[side];
   const ordered = [...actions].sort(

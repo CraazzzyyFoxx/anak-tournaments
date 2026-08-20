@@ -43,7 +43,7 @@ export function BalanceActionsBar({
   onDownloadJson,
   onCopyNames,
   onScreenshot
-}: BalanceActionsBarProps) {
+}: Readonly<BalanceActionsBarProps>) {
   return (
     <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
       <BalanceStatsRow stats={activeVariantStats} />

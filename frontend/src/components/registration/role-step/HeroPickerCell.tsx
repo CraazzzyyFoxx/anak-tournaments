@@ -39,7 +39,7 @@ export function HeroPickerCell({
   selected,
   max,
   onChange,
-}: HeroPickerCellProps) {
+}: Readonly<HeroPickerCellProps>) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const atMax = selected.length >= max;
@@ -109,11 +109,13 @@ export function HeroPickerCell({
           roleCode={roleCode}
           onChange={onChange}
         />
-        <p role="status" className="text-[11px] leading-4 text-[color:var(--aqt-fg-muted)]">
+        {/* `block`: <output> is inline, so the popover's `space-y-2` rhythm
+            would skip it. */}
+        <output className="block text-[11px] leading-4 text-[color:var(--aqt-fg-muted)]">
           {atMax
             ? t("registration.roles.matrix.heroesAtMax", { max })
             : t("registration.roles.topHeroes.desc", { max })}
-        </p>
+        </output>
       </PopoverContent>
     </Popover>
   );

@@ -34,7 +34,7 @@ const EMPTY_FORM: TeamCreateForm = { name: "", captainId: 0, captainName: "" };
  * duplicated every roster control for a form that had to replay creates,
  * updates and deletes in dependency order on submit.
  */
-export function TeamCreateDialog({ open, onOpenChange, tournamentId }: TeamCreateDialogProps) {
+export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<TeamCreateDialogProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<TeamCreateForm>(EMPTY_FORM);

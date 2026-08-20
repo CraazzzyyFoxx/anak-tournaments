@@ -30,10 +30,10 @@ function PrimaryAction({
   onApprove,
   onToggleBalancer,
   onRestore
-}: Pick<
+}: Readonly<Pick<
   RegistrationRowActionsProps,
   "registration" | "onApprove" | "onToggleBalancer" | "onRestore"
->) {
+>>) {
   const { status, status_meta } = registration;
 
   if (status === "pending") {
@@ -96,7 +96,7 @@ export default function RegistrationRowActions({
   onWithdraw,
   onRestore,
   onDelete
-}: RegistrationRowActionsProps) {
+}: Readonly<RegistrationRowActionsProps>) {
   const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
 
   return (

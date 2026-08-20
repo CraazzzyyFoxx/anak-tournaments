@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { CheckCircle2, XCircle, Users, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -14,10 +13,10 @@ import { cn } from "@/lib/utils";
 export function DiscordServerStatus({
   workspaceId,
   className,
-}: {
+}: Readonly<{
   workspaceId: number | null | undefined;
   className?: string;
-}) {
+}>) {
   const t = useTranslations("discord.server");
   const { data, isLoading, refetch } = useDiscordGuildInfo(workspaceId);
 

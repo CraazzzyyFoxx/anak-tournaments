@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -39,7 +39,7 @@ export default function PlayerDetail({
   tournamentGrid,
   canReadV2 = false,
   onExplain,
-}: PlayerDetailProps) {
+}: Readonly<PlayerDetailProps>) {
   const t = useTranslations();
   const { hasPermission } = usePermissions();
   const [editing, setEditing] = useState(false);

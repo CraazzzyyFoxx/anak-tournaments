@@ -53,7 +53,7 @@ export function PickBanCommandBar({
   pending,
   onConfirm,
   onCancel
-}: PickBanCommandBarProps) {
+}: Readonly<PickBanCommandBarProps>) {
   const t = useTranslations("pickBan.room");
   const deadline = turnDeadlineMs(state);
 

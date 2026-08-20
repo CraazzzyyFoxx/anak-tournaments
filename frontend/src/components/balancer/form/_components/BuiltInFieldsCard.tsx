@@ -26,10 +26,10 @@ import { BUILT_IN_FIELDS } from "./formConfig";
 export function BuiltInFieldsCard({
   builtInFields,
   onUpdate
-}: {
+}: Readonly<{
   builtInFields: Record<string, BuiltInFieldConfig>;
   onUpdate: (key: string, updates: Partial<BuiltInFieldConfig>) => void;
-}) {
+}>) {
   const t = useTranslations("registrationFormAdmin.builtInFields");
   const idPrefix = useId();
   const [expandedFields, setExpandedFields] = useState<Record<string, boolean>>({});

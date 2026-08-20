@@ -26,10 +26,10 @@ export interface PlatformTotals {
 export function PlatformStatsGrid({
   totals,
   className
-}: {
+}: Readonly<{
   totals: PlatformTotals;
   className?: string;
-}) {
+}>) {
   const t = useTranslations();
 
   return (

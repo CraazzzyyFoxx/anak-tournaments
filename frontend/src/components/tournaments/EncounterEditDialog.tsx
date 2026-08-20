@@ -62,7 +62,7 @@ function closenessFloatToStars(closeness: number | null | undefined): number {
   return Math.max(1, Math.min(10, Math.round(closeness * 10)));
 }
 
-export function EncounterEditDialog({ open, onOpenChange, encounter }: EncounterEditDialogProps) {
+export function EncounterEditDialog({ open, onOpenChange, encounter }: Readonly<EncounterEditDialogProps>) {
   const resetKey = [
     encounter.id,
     encounter.score?.home ?? 0,
@@ -83,7 +83,7 @@ export function EncounterEditDialog({ open, onOpenChange, encounter }: Encounter
 function EncounterEditDialogBody({
   encounter,
   onOpenChange
-}: Omit<EncounterEditDialogProps, "open">) {
+}: Readonly<Omit<EncounterEditDialogProps, "open">>) {
   const qc = useQueryClient();
   const t = useTranslations();
   const homeTeamLabel = encounter.home_team?.name?.trim() || t("common.homeTeam");

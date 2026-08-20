@@ -19,7 +19,7 @@ interface BottomSheetProps {
   onClose: () => void;
 }
 
-function Kicker({ children }: { children: React.ReactNode }) {
+function Kicker({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-primary">
       {children}
@@ -27,7 +27,7 @@ function Kicker({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TermBody({ term }: { term: GlossaryTerm }) {
+function TermBody({ term }: Readonly<{ term: GlossaryTerm }>) {
   const t = useTranslations();
   return (
     <SheetHeader>
@@ -81,7 +81,7 @@ function HowBody() {
  * drawer). It only mounts while open (Radix portal), so nothing lingers in the
  * DOM when closed. Opened by info dots, dotted terms and the help card.
  */
-export default function BottomSheet({ state, onClose }: BottomSheetProps) {
+export default function BottomSheet({ state, onClose }: Readonly<BottomSheetProps>) {
   return (
     <Sheet
       open={state != null}

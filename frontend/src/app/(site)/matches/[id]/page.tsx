@@ -1,4 +1,3 @@
-import React from "react";
 import encounterService from "@/services/encounter.service";
 import { Metadata } from "next";
 import Image from "next/image";

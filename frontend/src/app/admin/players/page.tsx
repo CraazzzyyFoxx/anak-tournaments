@@ -32,7 +32,7 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
 import { Player, Team } from "@/types/team.types";
-import { PlayerCreateInput, PlayerSubRole, PlayerUpdateInput } from "@/types/admin.types";
+import { PlayerCreateInput, PlayerUpdateInput } from "@/types/admin.types";
 import { formatSubRoleLabel } from "@/utils/player";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
@@ -79,7 +79,7 @@ interface PlayerFormData {
 
 type PlayerRow = Player & { team: Team };
 
-function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
+function RoleOptionContent({ role }: Readonly<{ role: PlayerRoleOption }>) {
   return (
     <div className="flex items-center gap-2">
       <PlayerRoleIcon role={role} size={18} decorative />
@@ -114,7 +114,7 @@ function SearchableSelect({
   searchPlaceholder,
   emptyMessage,
   disabled = false
-}: SearchableSelectProps) {
+}: Readonly<SearchableSelectProps>) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const selected = options.find((option) => option.value === value);
@@ -160,7 +160,7 @@ function SearchableSelect({
  * Division is derived from rank by the division grid, so the form renders it
  * read-only as the grid icon instead of an editable number the API discards.
  */
-function DivisionField({ rank, grid }: { rank: number; grid: DivisionGridVersion | null }) {
+function DivisionField({ rank, grid }: Readonly<{ rank: number; grid: DivisionGridVersion | null }>) {
   const workspaceGrid = useDivisionGrid();
   const division = resolveDivisionFromRank(grid ?? workspaceGrid, rank);
 
@@ -261,11 +261,11 @@ function PlayerRoleField({
   id,
   formData,
   setFormData
-}: {
+}: Readonly<{
   id: string;
   formData: PlayerFormData;
   setFormData: React.Dispatch<React.SetStateAction<PlayerFormData>>;
-}) {
+}>) {
   return (
     <div>
       <Label htmlFor={id}>Role</Label>
@@ -295,13 +295,13 @@ function PlayerSubRoleField({
   setFormData,
   hasSubRoleCatalog,
   subRoleSelectOptions
-}: {
+}: Readonly<{
   id: string;
   formData: PlayerFormData;
   setFormData: React.Dispatch<React.SetStateAction<PlayerFormData>>;
   hasSubRoleCatalog: boolean;
   subRoleSelectOptions: PlayerOption[];
-}) {
+}>) {
   return (
     <div>
       <Label htmlFor={id}>Sub-role</Label>

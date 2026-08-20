@@ -30,7 +30,7 @@ export default function FieldLabel({
   required = false,
   icon,
   className,
-}: FieldLabelProps) {
+}: Readonly<FieldLabelProps>) {
   const t = useTranslations();
   const Tag = htmlFor ? "label" : "span";
   return (

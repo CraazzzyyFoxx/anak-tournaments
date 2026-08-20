@@ -34,7 +34,7 @@ export function CatalogToolbarActions({
   syncLabel,
   onCreate,
   createLabel
-}: CatalogToolbarActionsProps) {
+}: Readonly<CatalogToolbarActionsProps>) {
   if (!canSync) {
     return null;
   }

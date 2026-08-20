@@ -266,7 +266,7 @@ function DivisionGridEditorCard({
   activeVersion,
   saving,
   onSave
-}: DivisionGridEditorCardProps) {
+}: Readonly<DivisionGridEditorCardProps>) {
   const initialState = useMemo(() => buildEditorState(activeVersion), [activeVersion]);
   const [label, setLabel] = useState(initialState.label);
   const [tiers, setTiers] = useState<DivisionTier[]>(initialState.tiers);
@@ -724,10 +724,10 @@ function DivisionGridEditorCard({
 function VersionHistoryCard({
   versions,
   activeVersionId
-}: {
+}: Readonly<{
   versions: DivisionGridVersion[];
   activeVersionId: number | null;
-}) {
+}>) {
   const ordered = [...versions].sort((left, right) => right.version - left.version);
   return (
     <Card>

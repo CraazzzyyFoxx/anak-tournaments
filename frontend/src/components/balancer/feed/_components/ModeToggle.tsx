@@ -19,7 +19,7 @@ interface ModeToggleProps {
   disabled?: boolean;
 }
 
-export function ModeToggle({ value, onChange, availableModes, disabled }: ModeToggleProps) {
+export function ModeToggle({ value, onChange, availableModes, disabled }: Readonly<ModeToggleProps>) {
   const modes = availableModes ?? DEFAULT_MODES;
   return (
     <ToggleGroup

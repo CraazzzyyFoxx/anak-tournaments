@@ -25,7 +25,7 @@ interface MatchReportDialogProps {
  * form itself is `MatchReportForm`, which the pre-game room mounts inline as
  * the last step of its loop — this file is only the shell.
  */
-export function MatchReportDialog({ open, onOpenChange, encounter }: MatchReportDialogProps) {
+export function MatchReportDialog({ open, onOpenChange, encounter }: Readonly<MatchReportDialogProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open ? <MatchReportDialogBody encounter={encounter} onOpenChange={onOpenChange} /> : null}
@@ -36,7 +36,7 @@ export function MatchReportDialog({ open, onOpenChange, encounter }: MatchReport
 function MatchReportDialogBody({
   encounter,
   onOpenChange
-}: Omit<MatchReportDialogProps, "open">) {
+}: Readonly<Omit<MatchReportDialogProps, "open">>) {
   const t = useTranslations();
 
   // Reachable only from stale data — the callers hide the report action on a

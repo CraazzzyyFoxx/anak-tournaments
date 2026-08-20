@@ -18,7 +18,6 @@ import {
 } from "@/components/admin/tournament-filter";
 import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { notify } from "@/lib/notify";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import tournamentService from "@/services/tournament.service";

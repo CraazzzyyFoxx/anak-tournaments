@@ -1,4 +1,3 @@
-import React from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -44,7 +43,7 @@ interface StatusIconBadgeProps {
  * readable: the five badges this replaced each leaned on `title`, which no
  * screen reader announces reliably and touch devices cannot reach.
  */
-export function StatusIconBadge({ icon: Icon, label, tone, className }: StatusIconBadgeProps) {
+export function StatusIconBadge({ icon: Icon, label, tone, className }: Readonly<StatusIconBadgeProps>) {
   return (
     <span
       role="img"

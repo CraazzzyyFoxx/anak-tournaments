@@ -29,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { HeroFrame } from "@/components/site/PageHero";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { notify } from "@/lib/notify";
 import type { RosterShape } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -41,6 +42,9 @@ import type {
   DraftSeedResponse,
   DraftSession
 } from "@/types/draft.types";
+import type { DivisionGrid } from "@/types/workspace.types";
+
+import { useHubTournamentQuery } from "../../hubQueries";
 
 import { DraftCaptainsStep } from "./DraftCaptainsStep";
 import { DraftConfigStep } from "./DraftConfigStep";
@@ -96,7 +100,7 @@ function createEmptyCaptainSetup(): DraftCaptainSetup {
   };
 }
 
-export function DraftSetupWizard({ tournamentId, board, rosterShape }: DraftSetupWizardProps) {
+export function DraftSetupWizard({ tournamentId, board, rosterShape }: Readonly<DraftSetupWizardProps>) {
   const t = useTranslations("draftAdmin");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
@@ -121,6 +125,17 @@ export function DraftSetupWizard({ tournamentId, board, rosterShape }: DraftSetu
   >(null);
   const [reseedDialogOpen, setReseedDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+
+  // Tournament grid first, workspace default second — the captains list ranks
+  // players on the same grid the draft is seeded and balanced on. The hub shell
+  // already mounts this query under the same key, so this is a cache read.
+  const tournamentGridVersion =
+    useHubTournamentQuery(tournamentId).data?.division_grid_version ?? null;
+  const workspaceGrid = useDivisionGrid();
+  const divisionGrid: DivisionGrid = useMemo(
+    () => (tournamentGridVersion?.tiers ? { tiers: tournamentGridVersion.tiers } : workspaceGrid),
+    [tournamentGridVersion, workspaceGrid]
+  );
 
   const resetSetupState = () => {
     setLocalSession(null);
@@ -487,6 +502,7 @@ export function DraftSetupWizard({ tournamentId, board, rosterShape }: DraftSetu
               teamCount={config.teamCount}
               value={captains}
               onChange={setCaptainsAndReset}
+              divisionGrid={divisionGrid}
             />
           )}
           {step === "order" && (

@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/table";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
+import { ariaSortValue } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type {
   EncounterCreateInput,
@@ -107,7 +108,7 @@ interface TournamentMatchesTabProps {
   canRecalculateStandings: boolean;
 }
 
-function SortIcon({ state, active }: { state: StandingSortState; active: boolean }) {
+function SortIcon({ state, active }: Readonly<{ state: StandingSortState; active: boolean }>) {
   if (!active || !state) return <ArrowUpDown className="size-3.5" aria-hidden />;
   return state.dir === "asc" ? (
     <ArrowUp className="size-3.5" aria-hidden />
@@ -134,7 +135,7 @@ interface ScopeFilterProps {
 }
 
 /** Stage/scope narrowing control shared by the encounters and standings tables. */
-function ScopeFilter({ id, param, value, groups, onChange }: ScopeFilterProps) {
+function ScopeFilter({ id, param, value, groups, onChange }: Readonly<ScopeFilterProps>) {
   return (
     <div className="flex items-center gap-2">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
@@ -171,7 +172,7 @@ export function TournamentMatchesTab({
   canUpdateStanding,
   canDeleteStanding,
   canRecalculateStandings
-}: TournamentMatchesTabProps) {
+}: Readonly<TournamentMatchesTabProps>) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -450,9 +451,6 @@ export function TournamentMatchesTab({
       ? encounters
       : encounters.filter((encounter) => getEncounterScopeKey(encounter) === encounterScopeFilter);
   const visibleEncounters = filteredEncounters.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT);
-  const completedFilteredEncounterCount = filteredEncounters.filter(
-    (encounter) => encounter.status?.toUpperCase() === "COMPLETED"
-  ).length;
   const filteredStandings =
     standingsGroupFilter === "all"
       ? standings
@@ -807,13 +805,7 @@ export function TournamentMatchesTab({
                         <TableHead
                           key={column.key}
                           className={tableStyles.head}
-                          aria-sort={
-                            active
-                              ? standingsSort?.dir === "asc"
-                                ? "ascending"
-                                : "descending"
-                              : "none"
-                          }
+                          aria-sort={ariaSortValue(active ? standingsSort?.dir : null)}
                         >
                           <button
                             type="button"

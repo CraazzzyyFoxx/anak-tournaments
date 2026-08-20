@@ -84,7 +84,7 @@ interface SubscriptionProvidersCardProps {
   workspaceId: number;
 }
 
-export default function SubscriptionProvidersCard({ workspaceId }: SubscriptionProvidersCardProps) {
+export default function SubscriptionProvidersCard({ workspaceId }: Readonly<SubscriptionProvidersCardProps>) {
   const t = useTranslations("subscriptionProviders");
   const queryClient = useQueryClient();
   const queryKey = ["subscription-providers", workspaceId] as const;
@@ -124,17 +124,31 @@ export default function SubscriptionProvidersCard({ workspaceId }: SubscriptionP
   );
 }
 
+/** The editable role/code rows carry no server id, yet they can be removed from
+ *  the middle of the list — and every role row hosts a `DiscordRoleSelect` with
+ *  live UI state (open popover, manual-id mode, search text). Keyed by array
+ *  index that state stays put and re-attaches to whichever row slid up into the
+ *  removed slot, so each row gets a client-side id at creation time instead. */
+let rowIdSeq = 0;
+const nextRowId = () => {
+  rowIdSeq += 1;
+  return `row-${rowIdSeq}`;
+};
+
+type RoleTierRow = SubscriptionRoleTier & { rowId: string };
+type CodeRow = SubscriptionCodeUpsert & { rowId: string };
+
 function ProviderEditor({
   workspaceId,
   config,
   discordGuildId,
   onSaved,
-}: {
+}: Readonly<{
   workspaceId: number;
   config: SubscriptionProviderConfigRead;
   discordGuildId: string | null;
   onSaved: () => void;
-}) {
+}>) {
   const t = useTranslations("subscriptionProviders");
   const methodSelectId = useId();
   const label = PROVIDER_LABELS[config.provider] ?? config.provider;
@@ -143,8 +157,10 @@ function ProviderEditor({
   const [enabled, setEnabled] = useState(config.enabled);
   const [broadcasterId, setBroadcasterId] = useState(config.broadcaster_id ?? "");
   const [broadcasterLogin, setBroadcasterLogin] = useState(config.broadcaster_login ?? "");
-  const [roleTiers, setRoleTiers] = useState<SubscriptionRoleTier[]>(config.role_tiers);
-  const [newCodes, setNewCodes] = useState<SubscriptionCodeUpsert[]>([]);
+  const [roleTiers, setRoleTiers] = useState<RoleTierRow[]>(() =>
+    config.role_tiers.map((tier) => ({ ...tier, rowId: nextRowId() }))
+  );
+  const [newCodes, setNewCodes] = useState<CodeRow[]>([]);
   const [method, setMethod] = useState<VerificationMethod>(
     config.verification_method === "live" || config.verification_method === "code"
       ? config.verification_method
@@ -166,11 +182,16 @@ function ProviderEditor({
         provider: config.provider,
         enabled,
         verification_method: method,
-        ...(acceptsLive && isBoosty ? { role_tiers: roleTiers } : {}),
+        // `rowId` is a client-side key, never part of the wire contract.
+        ...(acceptsLive && isBoosty
+          ? { role_tiers: roleTiers.map(({ rowId, ...tier }) => tier) }
+          : {}),
         ...(acceptsLive && !isBoosty
           ? { broadcaster_id: broadcasterId.trim(), broadcaster_login: broadcasterLogin.trim() }
           : {}),
-        ...(acceptsCode && newCodes.length > 0 ? { codes: newCodes } : {}),
+        ...(acceptsCode && newCodes.length > 0
+          ? { codes: newCodes.map(({ rowId, ...code }) => code) }
+          : {}),
       }),
     onSuccess: () => {
       notify.success(t("saved", { provider: label }));
@@ -291,7 +312,7 @@ function ProviderEditor({
                     onClick={() =>
                       setRoleTiers((rows) => [
                         ...rows,
-                        { role_id: "", tier_rank: rows.length + 1, tier_label: "" },
+                        { role_id: "", tier_rank: rows.length + 1, tier_label: "", rowId: nextRowId() },
                       ])
                     }
                   >
@@ -301,7 +322,7 @@ function ProviderEditor({
                 </div>
 
                 {roleTiers.map((tier, index) => (
-                  <div key={index} className="flex flex-wrap items-center gap-2">
+                  <div key={tier.rowId} className="flex flex-wrap items-center gap-2">
                     <DiscordRoleSelect
                       workspaceId={workspaceId}
                       value={tier.role_id}
@@ -408,7 +429,9 @@ function ProviderEditor({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setNewCodes((rows) => [...rows, { code: "", tier_rank: 1 }])}
+                onClick={() =>
+                  setNewCodes((rows) => [...rows, { code: "", tier_rank: 1, rowId: nextRowId() }])
+                }
               >
                 <Plus className="mr-1.5 size-3.5" aria-hidden />
                 {t("codes.addCode")}
@@ -431,7 +454,7 @@ function ProviderEditor({
               )}
             </p>
             {newCodes.map((code, index) => (
-              <div key={index} className="flex flex-wrap items-center gap-2">
+              <div key={code.rowId} className="flex flex-wrap items-center gap-2">
                 <Input
                   value={code.code ?? ""}
                   onChange={(event) =>

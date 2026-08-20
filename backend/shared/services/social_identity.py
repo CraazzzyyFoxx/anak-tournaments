@@ -315,8 +315,8 @@ def _oauth_handle_candidates(provider: str, connection: models.OAuthConnection) 
     have named the account by, normalized for direct comparison against
     ``social_account.username_normalized``.
 
-    Mirrors the per-provider field shapes ``OAuthService`` actually populates
-    (``oauth_service.py``'s Discord/BattleNet/Twitch providers): a display
+    Mirrors the per-provider field shapes identity-svc's OAuth providers
+    actually populate (Discord/BattleNet/Twitch): a display
     username/display_name plus provider-specific raw fields stashed in
     ``provider_data``.
     """

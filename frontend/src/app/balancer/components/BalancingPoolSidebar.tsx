@@ -68,11 +68,11 @@ function BulkStatusMenu({
   statusOptions,
   disabled,
   onChange,
-}: {
+}: Readonly<{
   statusOptions?: StatusOptionGroups;
   disabled?: boolean;
   onChange: (status: string) => void;
-}) {
+}>) {
   if (!statusOptions) {
     return null;
   }

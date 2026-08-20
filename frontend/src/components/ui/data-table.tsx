@@ -14,7 +14,7 @@ import { DataTableSortButton } from "@/components/DataTableSortButton";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { ariaSortValue, cn } from "@/lib/utils";
 
 /** Column metadata this table understands. */
 export interface DataTableColumnMeta {
@@ -71,7 +71,7 @@ export interface DataTableProps<TData> {
   className?: string;
   /** Classes for the scroll region — max heights, sticky contexts. */
   scrollClassName?: string;
-  scrollRef?: React.Ref<HTMLDivElement>;
+  scrollRef?: React.Ref<HTMLElement>;
 }
 
 /**
@@ -99,7 +99,7 @@ export function DataTable<TData>({
   className,
   scrollClassName,
   scrollRef
-}: DataTableProps<TData>) {
+}: Readonly<DataTableProps<TData>>) {
   const router = useRouter();
 
   const modelRows = table.getRowModel().rows;
@@ -112,9 +112,8 @@ export function DataTable<TData>({
   }
 
   return (
-    <div
+    <section
       ref={scrollRef}
-      role="region"
       aria-label={label}
       tabIndex={0}
       className={cn(
@@ -138,15 +137,7 @@ export function DataTable<TData>({
                     key={header.id}
                     scope="col"
                     colSpan={header.colSpan}
-                    aria-sort={
-                      canSort
-                        ? sorted === "asc"
-                          ? "ascending"
-                          : sorted === "desc"
-                            ? "descending"
-                            : "none"
-                        : undefined
-                    }
+                    aria-sort={canSort ? ariaSortValue(sorted) : undefined}
                     className={cn(alignClass, meta.numeric && "tabular-nums", meta.headerClassName)}
                   >
                     {header.isPlaceholder ? null : canSort && typeof headerDef === "string" ? (
@@ -237,6 +228,6 @@ export function DataTable<TData>({
           )}
         </TableBody>
       </table>
-    </div>
+    </section>
   );
 }

@@ -81,7 +81,7 @@ export default async function StatisticsPage() {
 // Primitives
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-muted-foreground/50">
       {children}
@@ -89,7 +89,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function DashCard({ children }: { children: React.ReactNode }) {
+function DashCard({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div
       className="rounded-xl overflow-hidden"
@@ -100,7 +100,7 @@ function DashCard({ children }: { children: React.ReactNode }) {
   );
 }
 
-function DashCardHeader({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
+function DashCardHeader({ icon, children }: Readonly<{ icon?: React.ReactNode; children: React.ReactNode }>) {
   return (
     <div
       className="flex items-center gap-2 px-5 py-4 border-b font-display font-bold text-[15px] uppercase tracking-[0.04em]"
@@ -112,7 +112,7 @@ function DashCardHeader({ icon, children }: { icon?: React.ReactNode; children: 
   );
 }
 
-function ErrorBody({ message }: { message: string }) {
+function ErrorBody({ message }: Readonly<{ message: string }>) {
   return <div className="px-5 py-4 text-sm text-muted-foreground">{message}</div>;
 }
 

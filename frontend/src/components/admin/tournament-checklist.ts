@@ -163,6 +163,9 @@ export function buildChecklist(
 
   // ── Formation (by team_formation, §3) ──────────────────────────────────
   if (readiness.team_formation === "draft") {
+    const draftSessionDetail = readiness.draft_session_status
+      ? `Session: ${readiness.draft_session_status}`
+      : "No draft session";
     items.push({
       key: "draft_completed",
       phase: "formation",
@@ -172,11 +175,7 @@ export function buildChecklist(
         : readiness.draft_session_status === "completed"
           ? "done"
           : "todo",
-      detail: teamAccess
-        ? readiness.draft_session_status
-          ? `Session: ${readiness.draft_session_status}`
-          : "No draft session"
-        : undefined,
+      detail: teamAccess ? draftSessionDetail : undefined,
       href: teamsHref
     });
   } else {

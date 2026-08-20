@@ -41,7 +41,7 @@ export function PreviewTab({
   canPreview,
   onRefresh,
   onChangeRow,
-}: PreviewTabProps) {
+}: Readonly<PreviewTabProps>) {
   const rowCount = preview?.rows.length ?? 0;
   const safeIndex = Math.min(Math.max(activeRowIndex, 0), Math.max(rowCount - 1, 0));
   const activeRow = preview?.rows[safeIndex] ?? null;

@@ -221,7 +221,7 @@ func run() error {
 	mux.HandleFunc("PATCH /api/auth/api-keys/{id}", identityHandler.UpdateApiKey)
 	mux.HandleFunc("DELETE /api/auth/api-keys/{id}", identityHandler.RevokeApiKey)
 	// RBAC admin (typed RPC into identity-svc; permission checks + cache
-	// invalidation enforced in the worker's rbac_flows).
+	// invalidation enforced in the worker's rbac_admin services).
 	mux.HandleFunc("GET /api/auth/rbac/permissions", identityHandler.RbacListPermissions)
 	mux.HandleFunc("POST /api/auth/rbac/permissions", identityHandler.RbacCreatePermission)
 	mux.HandleFunc("DELETE /api/auth/rbac/permissions/{permission_id}", identityHandler.RbacDeletePermission)

@@ -55,7 +55,7 @@ type StreamTheaterProps = {
  * live) has no poster button at all: it keeps its thumbnail and its outbound
  * link, because there is no frame to offer.
  */
-export function StreamTheater({ entry, isPlaying, onPlay, now }: StreamTheaterProps) {
+export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<StreamTheaterProps>) {
   const t = useTranslations();
   const channel = embeddableTwitchChannel(entry);
   const meta = STREAM_STATUS_META[getStreamStatus(entry.live)];

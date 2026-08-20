@@ -59,7 +59,7 @@ export function DataPagination({
   onPageChange,
   className,
   summary
-}: DataPaginationProps) {
+}: Readonly<DataPaginationProps>) {
   const t = useTranslations();
 
   const hasControls = totalPages > 1;

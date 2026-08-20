@@ -52,7 +52,7 @@ export default function DetailsStep({
   onBalancerStatusChange,
   registrationStatusOptions,
   balancerStatusOptions,
-}: DetailsStepProps) {
+}: Readonly<DetailsStepProps>) {
   const t = useTranslations();
   const streamPovId = useId();
   const statusId = useId();

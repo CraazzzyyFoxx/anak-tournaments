@@ -28,7 +28,7 @@ const FALLBACK_ACCENTS = [
   "var(--aqt-gold)",
 ];
 
-function WorkspaceAvatar({ workspace, size = "sm" }: { workspace: Workspace; size?: "sm" | "md" | "header" }) {
+function WorkspaceAvatar({ workspace, size = "sm" }: Readonly<{ workspace: Workspace; size?: "sm" | "md" | "header" }>) {
   const sizeClass = size === "sm" ? "size-5" : "size-7";
   const textSize = size === "sm" ? "text-[10px]" : "text-xs";
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowLeft, Radio, ShieldAlert } from "lucide-react";
-import Link from "next/link";
+import { ShieldAlert } from "lucide-react";
 import { redirect, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -56,12 +55,12 @@ function DraftRoomState({
   title,
   hint,
   action
-}: {
+}: Readonly<{
   icon: ReactNode;
   title: string;
   hint: string;
   action?: ReactNode;
-}) {
+}>) {
   return (
     <section className="flex min-h-[60svh] flex-col items-center justify-center gap-3 text-center">
       {icon}

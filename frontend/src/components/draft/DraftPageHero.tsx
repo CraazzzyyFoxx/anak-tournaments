@@ -32,7 +32,7 @@ export function DraftPageHero({
   presence,
   connectionState,
   currentUserId
-}: DraftPageHeroProps) {
+}: Readonly<DraftPageHeroProps>) {
   const t = useTranslations("draftRedesign");
   const tc = useTranslations("common");
   const locale = useLocale();
@@ -198,7 +198,7 @@ function CaptainTile({
   onlineLabel,
   offlineLabel,
   youLabel
-}: {
+}: Readonly<{
   team: DraftTeam;
   index: number;
   online: boolean;
@@ -206,7 +206,7 @@ function CaptainTile({
   onlineLabel: string;
   offlineLabel: string;
   youLabel: string;
-}) {
+}>) {
   const { initial, hue } = teamCrest(team);
   const label = `${team.name}${isYou ? ` (${youLabel})` : ""} — ${online ? onlineLabel : offlineLabel}`;
   return (
@@ -235,7 +235,7 @@ function CaptainTile({
   );
 }
 
-function MetaPill({ label, value }: { label: ReactNode; value: ReactNode }) {
+function MetaPill({ label, value }: Readonly<{ label: ReactNode; value: ReactNode }>) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 py-1 text-[11.5px] text-[color:var(--aqt-fg-muted)]">
       <span className="text-[9.5px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-faint)]">
@@ -251,13 +251,13 @@ function HStat({
   value,
   title,
   valueClassName
-}: {
+}: Readonly<{
   label: ReactNode;
   value: ReactNode;
   /** Recovers the full text when `valueClassName` truncates it. */
   title?: string;
   valueClassName?: string;
-}) {
+}>) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[10px] font-bold uppercase tracking-[0.13em] text-[color:var(--aqt-fg-faint)]">

@@ -29,7 +29,6 @@ import { RosterShapeEditor } from "@/components/admin/tournaments/RosterShapeEdi
 import { payloadTotalError } from "@/components/admin/tournaments/roster-shape-editor.model";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
-import { normalizeChallongeSlug } from "@/lib/challonge";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { DEFAULT_WORKSPACE_TIMEZONE, getUtcOffsetLabel } from "@/lib/timezone";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -81,7 +80,7 @@ export function TournamentSettingsTab({
   hasChallongeSource,
   discordChannel,
   discordChannelLoading
-}: TournamentSettingsTabProps) {
+}: Readonly<TournamentSettingsTabProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
 

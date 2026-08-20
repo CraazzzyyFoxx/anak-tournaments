@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
@@ -56,7 +55,7 @@ export default function EncounterSeriesStats({
   homeTeamId,
   awayTeamId,
   tournamentGrid
-}: EncounterSeriesStatsProps) {
+}: Readonly<EncounterSeriesStatsProps>) {
   const t = useTranslations();
 
   const queries = useQueries({
@@ -113,13 +112,15 @@ export default function EncounterSeriesStats({
             {aggregate.home.players.length + aggregate.away.players.length}
           </Fact>
         </div>
+        {/* `block`: <output> is inline by default, so .cardBody's padding
+            would not reserve any vertical space. */}
         {partial ? (
-          <p className={cn(styles.cardBody, styles.statsNotice)} role="status">
+          <output className={cn("block", styles.cardBody, styles.statsNotice)}>
             {t("encounters.detail.statsPartial", {
               counted: loaded.length,
               total: matchIds.length
             })}
-          </p>
+          </output>
         ) : null}
       </div>
 
@@ -146,10 +147,10 @@ export default function EncounterSeriesStats({
 function SeriesPlayerTable({
   aggregate,
   tournamentGrid
-}: {
+}: Readonly<{
   aggregate: SeriesAggregate;
   tournamentGrid?: DivisionGridVersion | null;
-}) {
+}>) {
   const t = useTranslations();
   const columns = COLUMN_PRESETS.overview;
   const maxima = columnMaxima(aggregate.home, aggregate.away, aggregate.round, columns);
@@ -227,14 +228,14 @@ function SeriesPlayerRow({
   maxima,
   mapsPlayed,
   tournamentGrid
-}: {
+}: Readonly<{
   player: PlayerWithStats;
   round: number;
   columns: LogStatsName[];
   maxima: Record<string, number>;
   mapsPlayed: number;
   tournamentGrid?: DivisionGridVersion | null;
-}) {
+}>) {
   const heroes = player.heroes?.[round] ?? [];
   const placement = player.stats?.[round]?.[LogStatsName.Performance];
 
@@ -280,7 +281,7 @@ function SeriesPlayerRow({
 }
 
 /** Value plus the same 3px magnitude bar the per-map tables draw. */
-function SeriesStatCell({ name, value, max }: { name: LogStatsName; value: number; max: number }) {
+function SeriesStatCell({ name, value, max }: Readonly<{ name: LogStatsName; value: number; max: number }>) {
   const meta = STAT_META[name];
   const showBar = meta?.bar && max > 0;
 

@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { ChevronRight } from "lucide-react";
 
 import { useTranslations } from "next-intl";
@@ -11,7 +10,7 @@ interface HowItWorksCardProps {
 }
 
 /** The "New here? Read the analytics in 30s" prompt that opens the explainer. */
-export default function HowItWorksCard({ onOpen }: HowItWorksCardProps) {
+export default function HowItWorksCard({ onOpen }: Readonly<HowItWorksCardProps>) {
   const t = useTranslations();
   return (
     <button type="button" className={styles.cHowCard} onClick={onOpen}>

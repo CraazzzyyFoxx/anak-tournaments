@@ -88,7 +88,7 @@ export function ActiveTournamentReadiness({
   readiness,
   isLoading,
   failed,
-}: ActiveTournamentReadinessProps) {
+}: Readonly<ActiveTournamentReadinessProps>) {
   if (!canRead) {
     return (
       <SurfaceCard>

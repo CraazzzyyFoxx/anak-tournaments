@@ -24,7 +24,7 @@ type DistributionBucket = {
   points: DistributionPoint[];
 };
 
-export function TeamDistributionPanel({ variant, variantSelector }: TeamDistributionPanelProps) {
+export function TeamDistributionPanel({ variant, variantSelector }: Readonly<TeamDistributionPanelProps>) {
   const [collapsed, setCollapsed] = useLocalStorageState<boolean>(
     "balancer:distribution-collapsed",
     true

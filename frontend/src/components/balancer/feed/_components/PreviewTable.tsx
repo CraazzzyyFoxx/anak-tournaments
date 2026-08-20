@@ -24,7 +24,7 @@ interface PreviewTableProps {
 }
 
 /** Read the source value(s) for a target from the preview row's raw cells. */
-function sourceValue(target: MappingTargetDef, state: MappingTargetState | undefined, row: MappingPreviewRow): string {
+function sourceValue(_target: MappingTargetDef, state: MappingTargetState | undefined, row: MappingPreviewRow): string {
   if (!state || state.mode === "disabled") {
     return "";
   }
@@ -37,7 +37,7 @@ function sourceValue(target: MappingTargetDef, state: MappingTargetState | undef
     .join(" | ");
 }
 
-export function PreviewTable({ targets, mappingState, row }: PreviewTableProps) {
+export function PreviewTable({ targets, mappingState, row }: Readonly<PreviewTableProps>) {
   const errorByTarget = new Map<string, string>();
   for (const error of row.errors) {
     if (error.target && !errorByTarget.has(error.target)) {

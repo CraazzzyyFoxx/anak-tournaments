@@ -74,8 +74,12 @@ jobs:
 
 
     steps:
+      # checkout v5+ runs on Node 24 and needs a runner >= v2.327.1. This job is
+      # the only one on the self-hosted 'production' runner, so bumping this pin
+      # means checking that runner's version first — GitHub-hosted runners are
+      # always current, a self-hosted one is not.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - run: docker compose -f docker-compose.production.yml --project-name owt build
       # --remove-orphans drops the retired Kong container so nginx can bind APP_PORT.
       - run: docker compose -f docker-compose.production.yml --project-name owt up -d --remove-orphans

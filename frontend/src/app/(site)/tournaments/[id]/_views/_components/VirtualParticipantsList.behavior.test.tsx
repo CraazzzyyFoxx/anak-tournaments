@@ -429,7 +429,9 @@ describe("VirtualParticipantsList mount budget", () => {
     const region = container.querySelector<HTMLElement>(`#${detailsId}`)!;
     expect(container.querySelectorAll("[data-rank-history]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-heavy-detail]")).toHaveLength(1);
-    expect(region.getAttribute("role")).toBe("region");
+    // A named <section> is the region; the explicit role is redundant.
+    expect(region.tagName).toBe("SECTION");
+    expect(region.getAttribute("aria-labelledby")).toBeTruthy();
     expect(region.closest('[role="row"]')).toBeNull();
     expect(region.parentElement?.getAttribute("role")).toBeNull();
     expect(region.parentElement?.getAttribute("aria-colspan")).toBeNull();

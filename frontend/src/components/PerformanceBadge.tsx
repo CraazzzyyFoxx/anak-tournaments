@@ -1,4 +1,3 @@
-import React from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { PlaceBadge } from "@/components/ui/place-badge";

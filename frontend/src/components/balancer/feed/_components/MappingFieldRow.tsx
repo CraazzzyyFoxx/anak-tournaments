@@ -58,7 +58,7 @@ export function MappingFieldRow({
   onValueChange,
   onParserChange,
   onIsListChange,
-}: MappingFieldRowProps) {
+}: Readonly<MappingFieldRowProps>) {
   const acceptedParsers = parsers.filter((def) => target.accepted_parsers.includes(def.parser));
   const showParser = state.mode !== "disabled" && state.mode !== "auto" && acceptedParsers.length > 1;
   const activeParser = state.parser ?? target.default_parser;

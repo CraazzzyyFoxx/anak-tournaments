@@ -57,7 +57,7 @@ const CHIP_META: Record<TournamentLinkKind, ChipMeta | null> = {
  * organizer sets in the admin Links tab, mirrored here so a client-side sort can
  * never disagree with the table they were just looking at.
  */
-export function TournamentLinkChips({ links, className }: TournamentLinkChipsProps) {
+export function TournamentLinkChips({ links, className }: Readonly<TournamentLinkChipsProps>) {
   const t = useTranslations();
 
   // `flatMap` rather than filter-then-index: it resolves the registry entry once

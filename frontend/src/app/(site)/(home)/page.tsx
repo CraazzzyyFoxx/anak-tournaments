@@ -154,7 +154,7 @@ export default async function Home() {
 // Page intro (cinematic header)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function PageIntroSection({ tenantMode }: { tenantMode: boolean }) {
+async function PageIntroSection({ tenantMode }: Readonly<{ tenantMode: boolean }>) {
   const t = await getTranslations();
   return (
     <PageHero
@@ -244,11 +244,11 @@ async function EventCard({
   tournament,
   workspace,
   showWorkspaceBadge = true,
-}: {
+}: Readonly<{
   tournament: TournamentWithCount;
   workspace?: Workspace;
   showWorkspaceBadge?: boolean;
-}) {
+}>) {
   const t = await getTranslations();
   const locale = await getLocale();
   const isLive =
@@ -393,7 +393,7 @@ async function CommunitiesSection() {
   );
 }
 
-function WorkspaceCard({ workspace }: { workspace: Workspace }) {
+function WorkspaceCard({ workspace }: Readonly<{ workspace: Workspace }>) {
   const accent = workspaceAccent(workspace.id);
   const abbr = workspace.name.slice(0, 2).toUpperCase();
 
@@ -505,7 +505,7 @@ async function StatsGrid() {
 // Dashboard primitives
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DashHeader({ children }: { children: React.ReactNode }) {
+function DashHeader({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <CardHeader className="border-b border-border px-5 py-4 font-display text-[15px] font-bold uppercase tracking-[0.04em] text-foreground">
       {children}
@@ -523,10 +523,10 @@ function DashHeader({ children }: { children: React.ReactNode }) {
 function DashCardState({
   title,
   state,
-}: {
+}: Readonly<{
   title: string;
   state: "error" | "empty";
-}) {
+}>) {
   return (
     <>
       <DashHeader>{title}</DashHeader>
@@ -544,12 +544,12 @@ function LeaderboardRow({
   name,
   value,
   accent,
-}: {
+}: Readonly<{
   rank: number;
   name: string;
   value: string;
   accent: string;
-}) {
+}>) {
   return (
     <div
       className="flex items-center justify-between px-5 py-2.5 text-[13px] border-b last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)] transition-colors"
@@ -760,12 +760,12 @@ function TopListCard({
   top,
   valueFormatter,
   accent,
-}: {
+}: Readonly<{
   title: string;
   top: PlayerStatistics[] | null;
   valueFormatter: (value: number) => string;
   accent: string;
-}) {
+}>) {
   if (!top) {
     return <DashCardState title={title} state="error" />;
   }

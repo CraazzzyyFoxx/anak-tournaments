@@ -12,7 +12,7 @@ interface PermissionHiddenNoticeProps {
  * verbatim copy of this block; they share it now so the wording stays one
  * sentence that names who can grant access.
  */
-export function PermissionHiddenNotice({ title, permission }: PermissionHiddenNoticeProps) {
+export function PermissionHiddenNotice({ title, permission }: Readonly<PermissionHiddenNoticeProps>) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-background/45 p-5 text-sm text-muted-foreground">
       <div className="flex items-center gap-2 text-foreground">

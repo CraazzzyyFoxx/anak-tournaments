@@ -10,7 +10,7 @@ Design: docs/plans/2026-08-09-generic-pickban-engine.md §5.3-§5.4.
 
 from __future__ import annotations
 
-import random
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -105,7 +105,10 @@ def auto_complete_decider_entry(sequence: list[str], pool: list[PickBanEntry]) -
             detail="Decider step has no available item",
         )
 
-    entry = random.choice(available)
+    # CSPRNG, not ``random``: this draw decides the decider map, i.e. part of a
+    # competitive result. A predictable PRNG state would let a captain compute
+    # the outcome in advance.
+    entry = secrets.choice(available)
     entry.action_index = sum(1 for pool_entry in pool if pool_entry.status != MapPoolEntryStatus.AVAILABLE.value)
     entry.status = MapPoolEntryStatus.PICKED.value
     entry.picked_by = MapPickSide.DECIDER.value
@@ -275,7 +278,10 @@ async def auto_resolve_timeout(
         # the step as-is; it surfaces the same way it already would.
         return None
 
-    chosen = random.choice(candidates)
+    # CSPRNG for the same reason as in ``auto_complete_decider_entry``: this
+    # stands in for a captain's match-affecting choice, so it must not be
+    # predictable from PRNG state.
+    chosen = secrets.choice(candidates)
     entry = apply_pick_ban_action(
         pick_ban,
         pool,

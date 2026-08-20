@@ -154,7 +154,7 @@ type ScoreStepperProps = {
   onChange: (value: string | number) => void;
 };
 
-function ScoreStepper({ id, label, value, onChange }: ScoreStepperProps) {
+function ScoreStepper({ id, label, value, onChange }: Readonly<ScoreStepperProps>) {
   const decrement = () => onChange(value - 1);
   const increment = () => onChange(value + 1);
 

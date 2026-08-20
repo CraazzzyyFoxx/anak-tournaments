@@ -43,7 +43,7 @@ export default function VerifiedAccountSelect({
   onChange,
   required = false,
   error = null,
-}: VerifiedAccountSelectProps) {
+}: Readonly<VerifiedAccountSelectProps>) {
   const t = useTranslations();
   const controlId = useId();
   const errorId = `${controlId}-error`;

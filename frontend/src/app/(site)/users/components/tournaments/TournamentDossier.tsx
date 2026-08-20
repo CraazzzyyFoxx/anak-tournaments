@@ -275,7 +275,6 @@ const SingleDossier = ({
 };
 
 const DivisionHeader = ({ t }: { t: UserTournament }) => {
-  const tr = useTranslations();
   const agg = groupAggregate(t);
   return (
     <div className="flex items-center gap-3 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.018)] px-4 py-2.5">

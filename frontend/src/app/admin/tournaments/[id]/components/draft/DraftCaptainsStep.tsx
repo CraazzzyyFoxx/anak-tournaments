@@ -17,12 +17,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { TONE_CLASS } from "@/components/admin/tone";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { resolveDivisionFromRank } from "@/lib/division-grid";
 import { getRoleIconName, ROLE_ACCENT } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftRole } from "@/types/draft.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 import { filterCaptainRows, type DraftCaptainSort } from "./setup-model";
 import type { DraftCaptainSetup } from "./setup-types";
@@ -33,14 +33,22 @@ interface DraftCaptainsStepProps {
   teamCount: number;
   value: DraftCaptainSetup;
   onChange: (next: DraftCaptainSetup) => void;
+  /** The TOURNAMENT's grid (workspace default as fallback), resolved by the
+   *  wizard — never the global OW ladder `useDivisionGrid` alone would give. */
+  divisionGrid: DivisionGrid;
 }
 
 const FILTER_ROLES: DraftRole[] = ["tank", "dps", "support"];
 const SORTS: DraftCaptainSort[] = ["rank_desc", "rank_asc", "name"];
 
-export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCaptainsStepProps) {
+export function DraftCaptainsStep({
+  pool,
+  teamCount,
+  value,
+  onChange,
+  divisionGrid
+}: Readonly<DraftCaptainsStepProps>) {
   const t = useTranslations("draftAdmin");
-  const divisionGrid = useDivisionGrid();
   const [search, setSearch] = useState("");
   const [roles, setRoles] = useState<DraftRole[]>([]);
   const [sort, setSort] = useState<DraftCaptainSort>("rank_desc");
@@ -77,7 +85,14 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
     const division = resolveDivisionFromRank(divisionGrid, rank);
     return (
       <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums text-muted-foreground">
-        {division != null && <DivisionIcon division={division} width={size} height={size} />}
+        {division != null && (
+          <DivisionIcon
+            division={division}
+            tournamentGrid={divisionGrid}
+            width={size}
+            height={size}
+          />
+        )}
         {rank ?? "—"}
       </span>
     );

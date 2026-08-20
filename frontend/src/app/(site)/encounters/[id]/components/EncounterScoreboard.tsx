@@ -1,4 +1,3 @@
-import React from "react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -20,7 +19,7 @@ import styles from "../EncounterDetail.module.css";
  * above two bare numbers with no indication of the format, of how the maps fell,
  * or of which map is currently being played.
  */
-export default function EncounterScoreboard({ encounter }: { encounter: Encounter }) {
+export default function EncounterScoreboard({ encounter }: Readonly<{ encounter: Encounter }>) {
   const t = useTranslations();
   const slots = buildSeriesSlots(encounter);
   const verdict = getSeriesVerdict(encounter);
@@ -57,7 +56,7 @@ export default function EncounterScoreboard({ encounter }: { encounter: Encounte
   );
 }
 
-function TeamBlock({ encounter, side }: { encounter: Encounter; side: SeriesSide }) {
+function TeamBlock({ encounter, side }: Readonly<{ encounter: Encounter; side: SeriesSide }>) {
   const t = useTranslations();
   const team = side === "home" ? encounter.home_team : encounter.away_team;
   const name = team?.name ?? t("common.tbd");
@@ -98,11 +97,23 @@ function TeamBlock({ encounter, side }: { encounter: Encounter; side: SeriesSide
 }
 
 /**
+ * Pip hue, in the same precedence the aria summary below reads out: in-progress
+ * first, then never-played, then the winner's side, then a tie.
+ */
+function pipToneClass(slot: SeriesSlot): string {
+  if (slot.isLive) return styles.pipLive;
+  if (!slot.match) return styles.pipEmpty;
+  if (slot.winner === "home") return styles.pipHome;
+  if (slot.winner === "away") return styles.pipAway;
+  return styles.pipDraw;
+}
+
+/**
  * One pip per slot of the format: filled in the winner's hue, hollow for a map
  * the series never needed, ringed for the map in progress. This is what makes a
  * 3–1 in a Bo5 legible as "four maps played, one spare".
  */
-function MapPips({ slots }: { slots: SeriesSlot[] }) {
+function MapPips({ slots }: Readonly<{ slots: SeriesSlot[] }>) {
   const t = useTranslations();
   const summary = slots
     .map((slot) => {
@@ -120,22 +131,7 @@ function MapPips({ slots }: { slots: SeriesSlot[] }) {
       aria-label={t("encounters.detail.pipsAria", { summary })}
     >
       {slots.map((slot) => (
-        <span
-          key={slot.index}
-          aria-hidden
-          className={cn(
-            styles.pip,
-            slot.isLive
-              ? styles.pipLive
-              : !slot.match
-                ? styles.pipEmpty
-                : slot.winner === "home"
-                  ? styles.pipHome
-                  : slot.winner === "away"
-                    ? styles.pipAway
-                    : styles.pipDraw
-          )}
-        />
+        <span key={slot.index} aria-hidden className={cn(styles.pip, pipToneClass(slot))} />
       ))}
     </div>
   );

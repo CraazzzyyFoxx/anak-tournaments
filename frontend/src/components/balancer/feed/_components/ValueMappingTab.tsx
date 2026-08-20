@@ -37,7 +37,7 @@ export function ValueMappingTab({
   onUpdate,
   onRemove,
   onSeedDefaults,
-}: ValueMappingTabProps) {
+}: Readonly<ValueMappingTabProps>) {
   const booleanDefaults = categoryEntries(valueCategories, "booleans");
   const roleDefaults = categoryEntries(valueCategories, "roles");
   const subroleDefaults = categoryEntries(valueCategories, "subroles");

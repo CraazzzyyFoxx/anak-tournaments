@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { ArrowDown, ArrowRight, ArrowUp, Minus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -22,10 +21,10 @@ interface RosterRowProps {
 function MoveChip({
   player,
   tournamentGrid,
-}: {
+}: Readonly<{
   player: PlayerVM;
   tournamentGrid?: DivisionGridVersion | null;
-}) {
+}>) {
   const t = useTranslations();
   const target = player.predicted_division ?? player.division;
 
@@ -60,24 +59,15 @@ function MoveChip({
  * tag), impact bar, optional watch-flag chip, and the predicted move. Selecting
  * it opens the player detail.
  */
-export default function RosterRow({ player, tournamentGrid, onSelect }: RosterRowProps) {
+export default function RosterRow({ player, tournamentGrid, onSelect }: Readonly<RosterRowProps>) {
   const t = useTranslations();
   const isNew = player.is_newcomer || player.is_newcomer_role;
   const flag = player.anomalies[0];
 
   return (
-    <div
-      className={styles.cRosterRow}
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-    >
+    // A real button, not a div with role="button": `.cRosterRow` already
+    // carries the full button reset, and Enter/Space come for free.
+    <button type="button" className={styles.cRosterRow} onClick={onSelect}>
       <span className={styles.cRoleChip}>
         <PlayerRoleIcon role={player.role} size={19} />
       </span>
@@ -110,6 +100,6 @@ export default function RosterRow({ player, tournamentGrid, onSelect }: RosterRo
         </span>
       </span>
       <MoveChip player={player} tournamentGrid={tournamentGrid} />
-    </div>
+    </button>
   );
 }

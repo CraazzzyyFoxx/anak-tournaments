@@ -20,7 +20,7 @@ const C = 2 * Math.PI * R;
 /** Seconds at which the clock announces itself. A 250ms live region is unusable. */
 const ANNOUNCE_AT = [30, 10, 5];
 
-export function DraftClockRing({ expiresAt, paused, totalSeconds, accent }: DraftClockRingProps) {
+export function DraftClockRing({ expiresAt, paused, totalSeconds, accent }: Readonly<DraftClockRingProps>) {
   const t = useTranslations();
   const [now, setNow] = useState<number | null>(null);
 

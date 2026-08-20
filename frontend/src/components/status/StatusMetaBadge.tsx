@@ -32,7 +32,7 @@ export default function StatusMetaBadge({
   fallbackValue = "unknown",
   className,
   compact = false,
-}: StatusMetaBadgeProps) {
+}: Readonly<StatusMetaBadgeProps>) {
   const resolvedMeta: StatusMeta = meta ?? {
     value: fallbackValue,
     scope: "registration",

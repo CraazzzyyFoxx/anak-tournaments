@@ -51,7 +51,7 @@ export function RoleMatrixRow({
   onPriorityChange,
   onSubroleChange,
   onHeroesChange,
-}: RoleMatrixRowProps) {
+}: Readonly<RoleMatrixRowProps>) {
   const t = useTranslations();
   const subroleId = useId();
   const accent = ROLE_ACCENTS[roleCode] ?? ROLE_ACCENTS.flex;

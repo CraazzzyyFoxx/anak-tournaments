@@ -16,7 +16,7 @@ interface CaptainShortlistProps {
   divisionGrid: DivisionGrid;
 }
 
-export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: CaptainShortlistProps) {
+export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: Readonly<CaptainShortlistProps>) {
   const t = useTranslations("draftRedesign");
   if (players.length === 0) return null;
 

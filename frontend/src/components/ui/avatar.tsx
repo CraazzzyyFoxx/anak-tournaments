@@ -79,8 +79,12 @@ const AvatarStack = ({
   return (
     <div className={cn("flex items-center", className)} {...rest}>
       {shown.map((child, i) => (
+        // `Children.toArray` stamps every element with a key derived from the
+        // caller's own (`.$playerId`), so the wrapper reuses it: keying the
+        // wrapper by position would pin a removed avatar's ring/stacking slot
+        // to whichever avatar slid into it.
         <div
-          key={i}
+          key={(React.isValidElement(child) ? child.key : null) ?? i}
           className="relative rounded-full"
           style={{ marginLeft: i === 0 ? 0 : -ov, zIndex: shown.length - i, boxShadow: ring }}
         >

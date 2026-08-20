@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
@@ -31,7 +30,7 @@ const TONE_CLASS: Record<KpiTone, string> = {
  * The six fan-facing KPIs (climbing, dropping, watch flags, average confidence,
  * upsets, new faces) — each a value tinted by tone with an info-dot explainer.
  */
-export default function KpiRail({ kpis, onExplain, onSelect }: KpiRailProps) {
+export default function KpiRail({ kpis, onExplain, onSelect }: Readonly<KpiRailProps>) {
   const t = useTranslations();
 
   return (

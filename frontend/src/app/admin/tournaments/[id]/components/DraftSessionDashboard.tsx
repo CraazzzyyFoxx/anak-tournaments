@@ -19,7 +19,7 @@ interface DraftSessionDashboardProps {
   canManage: boolean;
 }
 
-export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionDashboardProps) {
+export function DraftSessionDashboard({ tournamentId, canManage }: Readonly<DraftSessionDashboardProps>) {
   const t = useTranslations("draftAdmin");
   const [wizardEpoch, setWizardEpoch] = useState(0);
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);

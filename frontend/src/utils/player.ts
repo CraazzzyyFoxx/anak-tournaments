@@ -1,4 +1,3 @@
-import { Player } from "@/types/team.types";
 import { Hero } from "@/types/hero.types";
 import { User, UserProfile } from "@/types/user.types";
 

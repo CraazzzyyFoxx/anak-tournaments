@@ -65,7 +65,7 @@ function formatParamValue(key: string, value: unknown, t: Translator): string {
   return JSON.stringify(value);
 }
 
-function LeafNode({ node }: { node: { type: string; params?: Record<string, unknown> } }) {
+function LeafNode({ node }: Readonly<{ node: { type: string; params?: Record<string, unknown> } }>) {
   const t = useTranslations();
   const label = isConditionType(node.type)
     ? t(`achievements.condition.${node.type}`)
@@ -91,7 +91,7 @@ function LeafNode({ node }: { node: { type: string; params?: Record<string, unkn
   );
 }
 
-function ConditionTreeNode({ node, depth = 0 }: { node: ConditionNode; depth?: number }) {
+function ConditionTreeNode({ node, depth = 0 }: Readonly<{ node: ConditionNode; depth?: number }>) {
   const t = useTranslations();
 
   if ("AND" in node) {
@@ -159,7 +159,7 @@ interface ConditionTreeViewProps {
   tree: ConditionNode;
 }
 
-export default function ConditionTreeView({ tree }: ConditionTreeViewProps) {
+export default function ConditionTreeView({ tree }: Readonly<ConditionTreeViewProps>) {
   return (
     <div className="flex flex-col gap-1.5 text-sm">
       <ConditionTreeNode node={tree} />

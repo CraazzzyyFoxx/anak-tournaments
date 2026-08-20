@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { LayoutGrid, ArrowUpRight } from "lucide-react";
@@ -152,9 +151,8 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
           clipped by the card at narrow widths — the last three columns were
           simply unreachable on a phone — and the row-wide overlay link leaked
           its width into the document, scrolling the whole page sideways. */}
-      <div
+      <section
         className="tn-table-scroll"
-        role="region"
         aria-label={t("common.tournaments")}
         tabIndex={0}
       >
@@ -185,7 +183,7 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
           ))}
         </tbody>
         </table>
-      </div>
+      </section>
 
       <DataPagination
         className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-[18px] py-3.5"

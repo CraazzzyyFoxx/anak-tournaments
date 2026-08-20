@@ -35,7 +35,7 @@ function moveItem(list: string[], index: number, direction: -1 | 1): string[] {
 }
 
 /** Multi-select combobox with selected chips that can be reordered/removed. */
-export function HeaderMultiCombobox({ options, value, onChange, disabled }: HeaderMultiComboboxProps) {
+export function HeaderMultiCombobox({ options, value, onChange, disabled }: Readonly<HeaderMultiComboboxProps>) {
   const [open, setOpen] = useState(false);
 
   const toggle = (option: string) => {

@@ -1,11 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import {
-  CheckCircle2,
-  Circle,
-  XCircle,
-} from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import {
@@ -76,7 +71,7 @@ function formatFullTimestamp(dateString: string | null | undefined): string | nu
   });
 }
 
-function ParticipantCell({ registration }: { registration: AdminRegistration }) {
+function ParticipantCell({ registration }: Readonly<{ registration: AdminRegistration }>) {
   const primary =
     registration.battle_tag ??
     registration.display_name ??
@@ -114,10 +109,10 @@ function ParticipantCell({ registration }: { registration: AdminRegistration }) 
 function RolesCell({
   roles,
   catalog,
-}: {
+}: Readonly<{
   roles: AdminRegistrationRole[];
   catalog?: SubroleCatalog;
-}) {
+}>) {
   if (!roles || roles.length === 0) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
@@ -168,7 +163,7 @@ function RolesCell({
   );
 }
 
-function SourceCell({ source }: { source: AdminRegistration["source"] }) {
+function SourceCell({ source }: Readonly<{ source: AdminRegistration["source"] }>) {
   const isSheets = source === "google_sheets";
   return (
     <span
@@ -184,7 +179,7 @@ function SourceCell({ source }: { source: AdminRegistration["source"] }) {
   );
 }
 
-function CompactListCell({ values }: { values: string[] }) {
+function CompactListCell({ values }: Readonly<{ values: string[] }>) {
   if (values.length === 0) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
@@ -208,7 +203,7 @@ function CompactListCell({ values }: { values: string[] }) {
   );
 }
 
-function TextBlockCell({ value }: { value: string | null | undefined }) {
+function TextBlockCell({ value }: Readonly<{ value: string | null | undefined }>) {
   if (!value) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
@@ -222,7 +217,7 @@ function TextBlockCell({ value }: { value: string | null | undefined }) {
 
 
 
-function SubmittedCell({ submittedAt }: { submittedAt: string | null }) {
+function SubmittedCell({ submittedAt }: Readonly<{ submittedAt: string | null }>) {
   const shortValue = formatTimestamp(submittedAt);
   const fullValue = formatFullTimestamp(submittedAt);
 
@@ -233,7 +228,7 @@ function SubmittedCell({ submittedAt }: { submittedAt: string | null }) {
   );
 }
 
-function ReviewedCell({ registration }: { registration: AdminRegistration }) {
+function ReviewedCell({ registration }: Readonly<{ registration: AdminRegistration }>) {
   const reviewedAt = formatTimestamp(registration.reviewed_at);
   if (!reviewedAt && !registration.reviewed_by_username) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
@@ -247,7 +242,7 @@ function ReviewedCell({ registration }: { registration: AdminRegistration }) {
   );
 }
 
-function ExclusionCell({ registration }: { registration: AdminRegistration }) {
+function ExclusionCell({ registration }: Readonly<{ registration: AdminRegistration }>) {
   if (registration.balancer_status !== "excluded") {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }

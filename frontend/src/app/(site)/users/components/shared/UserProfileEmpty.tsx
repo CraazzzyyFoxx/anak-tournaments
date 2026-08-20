@@ -1,4 +1,3 @@
-import React from "react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { CalendarSearch, Medal, Sparkles, Swords, Trophy, Users } from "lucide-react";

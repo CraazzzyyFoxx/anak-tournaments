@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useTranslations } from "next-intl";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { StagePill } from "@/components/match/cells";

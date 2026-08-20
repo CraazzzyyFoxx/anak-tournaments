@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useTranslations } from "next-intl";
 
 import { PageHero, HeroCoord, HeroStat } from "@/components/site/PageHero";

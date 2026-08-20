@@ -28,7 +28,7 @@ interface RankTaskHistoryProps {
 
 /** Live OverFast worker fetch log. Rows resolve to a player (when known) and are
  *  clickable through to that player's detail. */
-export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
+export function RankTaskHistory({ onSelectUser }: Readonly<RankTaskHistoryProps>) {
   const [status, setStatus] = useState("all");
   const [source, setSource] = useState("all");
   // Rows come back scoped to the workspace `apiFetch` injects — key on it so a

@@ -22,12 +22,12 @@ export function CustomFieldsCard({
   onAdd,
   onUpdate,
   onRemove,
-}: {
+}: Readonly<{
   customFields: AdminCustomFieldDef[];
   onAdd: () => void;
   onUpdate: (index: number, updates: Partial<AdminCustomFieldDef>) => void;
   onRemove: (index: number) => void;
-}) {
+}>) {
   const t = useTranslations("registrationFormAdmin.customFields");
   const idPrefix = useId();
   const [expandedFields, setExpandedFields] = useState<Record<number, boolean>>({});

@@ -74,7 +74,7 @@ export function PregameFinalReport({
   awayName,
   header,
   returnTo
-}: PregameFinalReportProps) {
+}: Readonly<PregameFinalReportProps>) {
   const t = useTranslations("pickBan.room");
   const router = useRouter();
 

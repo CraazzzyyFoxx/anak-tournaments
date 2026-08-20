@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 
 import { useTranslations } from "next-intl";
 import MetricTooltip from "@/app/(site)/tournaments/analytics/components/MetricTooltip";
@@ -20,7 +19,7 @@ interface InfoDotProps {
  * glossary explanation (via {@link MetricTooltip}); clicking opens the full
  * bottom-sheet entry when an `onExplain` handler is wired.
  */
-export default function InfoDot({ term, onExplain, focusable = true }: InfoDotProps) {
+export default function InfoDot({ term, onExplain, focusable = true }: Readonly<InfoDotProps>) {
   const t = useTranslations();
   const label = t(`analytics.glossary.${term}.label`);
 

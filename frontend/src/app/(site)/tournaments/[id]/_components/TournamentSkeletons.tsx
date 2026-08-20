@@ -18,11 +18,11 @@ function SkeletonRegion({
   variant,
   message,
   children
-}: {
+}: Readonly<{
   variant: "shell" | "bracket" | "teams" | "participants" | "schedule" | "matches" | "heroes" | "standings" | "maps" | "stream";
   message: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <div
       className={styles.skeletonRegion}
@@ -38,7 +38,7 @@ function SkeletonRegion({
 }
 
 
-function ControlRowSkeleton({ search = false }: { search?: boolean }) {
+function ControlRowSkeleton({ search = false }: Readonly<{ search?: boolean }>) {
   return (
     <div className={styles.skeletonControls}>
       <SkeletonBlock style={{ width: "5.75rem", height: "2.15rem", flex: "0 0 auto" }} />
@@ -58,7 +58,7 @@ function ControlRowSkeleton({ search = false }: { search?: boolean }) {
   );
 }
 
-function TableRowsSkeleton({ count = 6 }: { count?: number }) {
+function TableRowsSkeleton({ count = 6 }: Readonly<{ count?: number }>) {
   return (
     <div className={styles.skeletonRows}>
       {Array.from({ length: count }, (_, index) => (
@@ -72,7 +72,7 @@ function TableRowsSkeleton({ count = 6 }: { count?: number }) {
   );
 }
 
-function TournamentPageSkeletonLayout({ children }: { children: React.ReactNode }) {
+function TournamentPageSkeletonLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className={styles.skeletonStack}>{children}</div>;
 }
 

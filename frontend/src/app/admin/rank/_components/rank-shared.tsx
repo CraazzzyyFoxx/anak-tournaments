@@ -40,6 +40,6 @@ export const STATUS_ORDER = [
   "disabled"
 ] as const;
 
-export function StatusBadge({ status }: { status: string | null }) {
+export function StatusBadge({ status }: Readonly<{ status: string | null }>) {
   return <TintedBadge value={status} styles={STATUS_STYLES} fallback="never" />;
 }

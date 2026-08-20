@@ -1,4 +1,3 @@
-import React from "react";
 import { getTranslations } from "next-intl/server";
 import { ArrowRight, Star } from "lucide-react";
 import Link from "next/link";

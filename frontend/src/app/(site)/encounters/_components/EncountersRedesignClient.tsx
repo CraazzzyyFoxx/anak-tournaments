@@ -180,7 +180,7 @@ export default function EncountersRedesignClient({
   initialFilters,
   initialPage,
   initialError
-}: EncountersRedesignClientProps) {
+}: Readonly<EncountersRedesignClientProps>) {
   const t = useTranslations();
   const pathname = usePathname();
   const queryClient = useQueryClient();
@@ -923,7 +923,7 @@ export default function EncountersRedesignClient({
   );
 }
 
-function Hero({ overview }: { overview: EncounterOverview }) {
+function Hero({ overview }: Readonly<{ overview: EncounterOverview }>) {
   const t = useTranslations();
   return (
     <PageHero
@@ -992,11 +992,11 @@ function HeroStat({
   label,
   value,
   foot
-}: {
+}: Readonly<{
   label: string;
   value: React.ReactNode;
   foot: React.ReactNode;
-}) {
+}>) {
   return (
     <div className={styles.heroStat}>
       <span className={styles.statLabel}>{label}</span>
@@ -1013,14 +1013,14 @@ function FilterSelect({
   items,
   triggerLabel,
   className
-}: {
+}: Readonly<{
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   items: [string, string][];
   triggerLabel?: string;
   className?: string;
-}) {
+}>) {
   return (
     <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger className={cn(styles.filterSelectTrigger, className)} aria-label={label}>
@@ -1042,12 +1042,12 @@ function RowCells({
   cols,
   matrix,
   max
-}: {
+}: Readonly<{
   row: number;
   cols: number[];
   matrix: Record<string, number>;
   max: number;
-}) {
+}>) {
   return (
     <>
       <div className={styles.scoreSide}>{row}</div>
@@ -1077,12 +1077,12 @@ function FeaturedPanel({
   subtitle,
   encounters,
   variant
-}: {
+}: Readonly<{
   title: string;
   subtitle: string;
   encounters: Encounter[];
   variant: "closest" | "live";
-}) {
+}>) {
   const t = useTranslations();
   const format = useFormatter();
   return (
@@ -1179,7 +1179,7 @@ function FeaturedPanel({
   );
 }
 
-function TeamChip({ team }: { team?: TeamNameInput | null }) {
+function TeamChip({ team }: Readonly<{ team?: TeamNameInput | null }>) {
   const t = useTranslations();
   return (
     <span className={styles.teamChip}>
@@ -1193,12 +1193,12 @@ function Insight({
   value,
   meta,
   valueClassName
-}: {
+}: Readonly<{
   label: string;
   value: string;
   meta?: string;
   valueClassName?: string;
-}) {
+}>) {
   return (
     <div className={styles.insightRow}>
       <span className={styles.insightLabel}>{label}</span>

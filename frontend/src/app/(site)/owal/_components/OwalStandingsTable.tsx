@@ -51,7 +51,8 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "place", desc: false }]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [show3Plus, setShow3Plus] = React.useState(false);
-  const parentRef = React.useRef<HTMLDivElement>(null);
+  // DataTable renders the scroll host as a <section>, not a <div>.
+  const parentRef = React.useRef<HTMLElement>(null);
 
   const dayColumns = React.useMemo<ColumnDef<OwalStanding>[]>(
     () =>

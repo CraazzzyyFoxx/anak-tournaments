@@ -154,7 +154,7 @@ export function TournamentLinksTab({
   canUpdate,
   canDelete,
   canRepollStreams
-}: TournamentLinksTabProps) {
+}: Readonly<TournamentLinksTabProps>) {
   const queryClient = useQueryClient();
   const formId = useId();
   const kindFieldId = `${formId}-kind`;

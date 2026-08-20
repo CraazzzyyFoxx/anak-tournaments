@@ -30,7 +30,7 @@ interface StatusIconProps {
  * `aria-label` and the name was silently dropped. The label is therefore the
  * accessible name regardless of whether the pointer-only tooltip is reachable.
  */
-export function StatusIcon({ icon: Icon, label, variant = "default", className }: StatusIconProps) {
+export function StatusIcon({ icon: Icon, label, variant = "default", className }: Readonly<StatusIconProps>) {
   const tone = variantTone[variant];
   return (
     <Tooltip>

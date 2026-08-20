@@ -26,7 +26,7 @@ interface ScheduleStepProps {
   showDraftPhase: boolean;
 }
 
-export function ScheduleStep({ value, onChange, showDraftPhase }: ScheduleStepProps) {
+export function ScheduleStep({ value, onChange, showDraftPhase }: Readonly<ScheduleStepProps>) {
   const visiblePhases = SCHEDULABLE_PHASES.filter(
     (phase) => phase !== "draft" || showDraftPhase
   );

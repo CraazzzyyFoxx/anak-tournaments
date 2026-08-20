@@ -26,7 +26,7 @@ export function AssetPreview({
   assetLabel,
   shape = "square",
   className
-}: AssetPreviewProps) {
+}: Readonly<AssetPreviewProps>) {
   const trimmed = name.trim();
   const accessibleName = trimmed ? `${trimmed} ${assetLabel}` : assetLabel;
 

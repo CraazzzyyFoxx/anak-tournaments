@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";

@@ -38,7 +38,7 @@ export function DraftReadyStep({
   pending,
   onStart,
   onReseed
-}: DraftReadyStepProps) {
+}: Readonly<DraftReadyStepProps>) {
   const t = useTranslations("draftAdmin");
   const ready = feasibility?.is_feasible === true;
   // Going live is the one setup transition captains see instantly and that the

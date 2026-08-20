@@ -45,7 +45,7 @@ export function SourceSyncTab({
   onChangeAutoSyncEnabled,
   onChangeAutoSyncIntervalSeconds,
   onSync,
-}: SourceSyncTabProps) {
+}: Readonly<SourceSyncTabProps>) {
   return (
     <div className="space-y-4">
       <Card>

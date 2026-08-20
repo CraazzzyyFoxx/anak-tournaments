@@ -37,7 +37,7 @@ const PHASE_LABELS: Record<SchedulablePhase, string> = {
   live: "Live"
 };
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/30 py-2 last:border-b-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -55,7 +55,7 @@ export function ReviewStep({
   registrationVisible,
   divisionGridVersions,
   subscriptionRequirement
-}: ReviewStepProps) {
+}: Readonly<ReviewStepProps>) {
   const requirementRule = useRequirementDescription(subscriptionRequirement);
   const gridLabel =
     form.division_grid_version_id == null

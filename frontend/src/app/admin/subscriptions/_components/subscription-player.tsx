@@ -35,7 +35,7 @@ interface SelectUser {
 
 /** Compact search that lives in the page header; matches drop down below the
  *  input and open the player detail on select. */
-export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser }) {
+export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }>) {
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   // APG combobox: DOM focus never leaves the input, so the highlighted row is
@@ -92,6 +92,9 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
     }
   };
 
+  const foundLabel = `${results.length} ${results.length === 1 ? "player" : "players"} found`;
+  const resultsAnnouncement = showDropdown && !searchQuery.isLoading ? foundLabel : "";
+
   return (
     <div ref={containerRef} className="relative w-full sm:w-72">
       <Search
@@ -119,13 +122,7 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
       {/* Stable region, updated in place: an inserted live region announces
           unreliably, and the result count is the one thing a sighted user gets
           for free here. */}
-      <p role="status" className="sr-only">
-        {showDropdown && !searchQuery.isLoading
-          ? results.length === 1
-            ? "1 player found"
-            : `${results.length} players found`
-          : ""}
-      </p>
+      <output className="sr-only">{resultsAnnouncement}</output>
       {showDropdown && (
         <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
           {searchQuery.isLoading ? (
@@ -138,22 +135,27 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
               className="max-h-72 divide-y divide-border overflow-y-auto"
             >
               {results.map((user, index) => (
-                <div
+                <button
                   key={user.id}
                   id={`${listId}-${index}`}
+                  type="button"
                   role="option"
                   aria-selected={activeIndex === index}
+                  // Out of the tab order on purpose: DOM focus stays in the input
+                  // and `aria-activedescendant` points here, so the highlight
+                  // below is this option's visible focus. Still a real button, so
+                  // it is a control rather than a div that only answers a mouse.
                   tabIndex={-1}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => pick(user.id, user.name)}
                   className={cn(
-                    "cursor-pointer px-3 py-2 text-sm",
+                    "block w-full cursor-pointer px-3 py-2 text-left text-sm",
                     activeIndex === index ? "bg-muted/60" : "hover:bg-muted/50"
                   )}
                 >
                   {user.name}
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -176,7 +178,7 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
  * holds the latest verdict, so this is the only place a flap ("active on Monday,
  * inactive on Friday, active again after a re-subscribe") is visible at all.
  */
-function PlayerCheckTimeline({ userId }: { userId: number }) {
+function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
   // Scoped server-side to the injected workspace; see `admin.service.ts`.
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const query = useQuery({
@@ -237,7 +239,7 @@ interface SubscriptionPlayerDetailProps {
   onClose: () => void;
 }
 
-export function SubscriptionPlayerDetail({ userId, label, onClose }: SubscriptionPlayerDetailProps) {
+export function SubscriptionPlayerDetail({ userId, label, onClose }: Readonly<SubscriptionPlayerDetailProps>) {
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 

@@ -118,7 +118,7 @@ function getApiKeyStatus(apiKey: AccountApiKey): ApiKeyStatus {
   return "active";
 }
 
-function StatusCell({ status }: { status: ApiKeyStatus }) {
+function StatusCell({ status }: Readonly<{ status: ApiKeyStatus }>) {
   const meta = STATUS_META[status];
 
   return (
@@ -131,7 +131,7 @@ function StatusCell({ status }: { status: ApiKeyStatus }) {
   );
 }
 
-function LimitsText({ limits }: { limits: Partial<ApiKeyLimits> | undefined }) {
+function LimitsText({ limits }: Readonly<{ limits: Partial<ApiKeyLimits> | undefined }>) {
   const merged: ApiKeyLimits = { ...DEFAULT_LIMITS, ...(limits ?? {}) };
 
   return (
@@ -142,7 +142,7 @@ function LimitsText({ limits }: { limits: Partial<ApiKeyLimits> | undefined }) {
   );
 }
 
-function PolicyText({ policy }: { policy: Partial<ApiKeyConfigPolicy> | undefined }) {
+function PolicyText({ policy }: Readonly<{ policy: Partial<ApiKeyConfigPolicy> | undefined }>) {
   const merged = {
     allowed_keys: policy?.allowed_keys ?? DEFAULT_POLICY.allowed_keys,
     max_values: policy?.max_values ?? DEFAULT_POLICY.max_values
@@ -478,14 +478,14 @@ export default function AccessAdminApiKeysPage() {
               />
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span role="status" className="text-xs text-muted-foreground">
+              <output className="text-xs text-muted-foreground">
                 {copiedSecret ? (
                   <span className="inline-flex items-center gap-1">
                     <Check aria-hidden className="size-3.5" />
                     Copied to clipboard
                   </span>
                 ) : null}
-              </span>
+              </output>
               <Button
                 variant="outline"
                 size="sm"

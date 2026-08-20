@@ -48,7 +48,7 @@ export function PlayerInspector({
   onRoleChange,
   onClose,
   divisionGrid
-}: PlayerInspectorProps) {
+}: Readonly<PlayerInspectorProps>) {
   const t = useTranslations("draftRedesign");
   if (!player) {
     return (

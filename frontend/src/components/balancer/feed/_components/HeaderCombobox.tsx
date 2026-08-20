@@ -32,7 +32,7 @@ export function HeaderCombobox({
   onChange,
   disabled,
   placeholder = "Select column…",
-}: HeaderComboboxProps) {
+}: Readonly<HeaderComboboxProps>) {
   const [open, setOpen] = useState(false);
 
   return (

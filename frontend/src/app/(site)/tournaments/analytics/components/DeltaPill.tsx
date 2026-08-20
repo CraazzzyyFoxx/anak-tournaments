@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -16,7 +15,7 @@ interface DeltaPillProps {
  * A team's over/under-performance pill: green "+N" when it finished better than
  * forecast, rose "−N" when worse, a neutral "on form" when bang on.
  */
-export default function DeltaPill({ delta }: DeltaPillProps) {
+export default function DeltaPill({ delta }: Readonly<DeltaPillProps>) {
   const t = useTranslations();
   if (delta == null) return null;
 

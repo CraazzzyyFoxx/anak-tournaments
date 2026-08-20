@@ -269,7 +269,7 @@ function layoutBracketColumn(params: {
 function buildLayout(
   encounters: Encounter[],
   type: StageType,
-  t: Translate,
+  _t: Translate,
   roundLabel: BracketRoundLabelFormatter
 ): BracketLayout {
   const hasBracketConnections = type === "single_elimination" || type === "double_elimination";
@@ -517,7 +517,7 @@ function MatchCard({
   onHoveredTeamChange,
   returnTo,
   liveTeamStreams
-}: {
+}: Readonly<{
   data: MatchNodeData;
   encounter: Encounter;
   hoveredTeamId: number | null;
@@ -525,7 +525,7 @@ function MatchCard({
   /** This bracket's own location, so the pre-game room can send viewers back to it. */
   returnTo: string;
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
-}) {
+}>) {
   const t = useTranslations();
   const meta = getMatchMeta(encounter, t);
   const hasVisibleScore = data.isCompleted || data.homeScore !== 0 || data.awayScore !== 0;
@@ -773,7 +773,7 @@ export function BracketView({
   canEdit,
   canReport,
   liveTeamStreams
-}: BracketViewProps) {
+}: Readonly<BracketViewProps>) {
   const t = useTranslations();
   // The bracket's own location, stage/view query included: the pre-game room
   // carries it so its back button and its final report land the viewer back on

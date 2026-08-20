@@ -1,4 +1,3 @@
-import React from "react";
 
 import { UserOverviewPageSkeleton } from "@/app/(site)/users/_views/UserOverviewPage";
 import UserHeaderSkeleton from "@/app/(site)/users/components/header/UserHeaderSkeleton";

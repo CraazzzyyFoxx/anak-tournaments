@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   BarChart,
@@ -33,6 +33,9 @@ const METRICS: LogStatsName[] = [
 ];
 
 interface Datum {
+  /** Player row id — the cell key: `data` is re-sorted whenever the metric
+   *  changes, so a positional key would leave each bar's colour behind. */
+  id: number;
   name: string;
   value: number;
   side: "home" | "away";
@@ -44,11 +47,13 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
 
   const data: Datum[] = [
     ...activePlayers(home, round).map((player) => ({
+      id: player.id,
       name: player.name.split("#")[0],
       value: playerStat(player, round, metric),
       side: "home" as const
     })),
     ...activePlayers(away, round).map((player) => ({
+      id: player.id,
       name: player.name.split("#")[0],
       value: playerStat(player, round, metric),
       side: "away" as const
@@ -120,9 +125,9 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
               ]}
             />
             <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-              {data.map((datum, index) => (
+              {data.map((datum) => (
                 <Cell
-                  key={`cell-${index}`}
+                  key={datum.id}
                   fill={datum.side === "home" ? "var(--aqt-teal)" : "var(--aqt-rose)"}
                 />
               ))}

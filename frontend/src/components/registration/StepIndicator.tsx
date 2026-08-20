@@ -13,7 +13,7 @@ interface StepIndicatorProps {
   current: number;
 }
 
-export default function StepIndicator({ steps, current }: StepIndicatorProps) {
+export default function StepIndicator({ steps, current }: Readonly<StepIndicatorProps>) {
   return (
     <div className="flex items-center justify-center gap-1">
       {steps.map((step, i) => {

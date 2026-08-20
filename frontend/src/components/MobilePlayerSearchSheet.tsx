@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Loader2, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";

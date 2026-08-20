@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFormatter, useTranslations } from "next-intl";
 import { TriangleAlert } from "lucide-react";
@@ -33,7 +32,7 @@ export default function EncounterCaptainReports({
   awayTeamId,
   homeName,
   awayName
-}: EncounterCaptainReportsProps) {
+}: Readonly<EncounterCaptainReportsProps>) {
   const t = useTranslations();
   const reportsQuery = useQuery({
     queryKey: ["encounter-reports", encounterId],
@@ -72,10 +71,10 @@ export default function EncounterCaptainReports({
       </div>
       <div className={styles.statsStack}>
         {disagree ? (
-          <p className={styles.reportMismatch} role="status">
+          <output className={styles.reportMismatch}>
             <TriangleAlert aria-hidden width={15} height={15} className="mt-px shrink-0" />
             {t("encounters.detail.reportsDisagree")}
-          </p>
+          </output>
         ) : null}
         <div className={styles.reportGrid}>
           {reports.map((report) => (
@@ -98,12 +97,12 @@ function ReportCard({
   teamName,
   side,
   form
-}: {
+}: Readonly<{
   report: CaptainReport;
   teamName: string;
   side: "home" | "away";
   form?: MatchReportForm;
-}) {
+}>) {
   const t = useTranslations();
   const format = useFormatter();
   const submittedAt = report.updated_at ?? report.created_at;

@@ -125,7 +125,9 @@ const AchievementsPage = () => {
     for (const ach of results) {
       if (ach.category) present.add(ach.category);
     }
-    return Array.from(present).sort();
+    // Collate explicitly: these become filter chips, and bare `.sort()` orders
+    // by UTF-16 code unit rather than by how the labels actually read.
+    return Array.from(present).sort((a, b) => a.localeCompare(b));
   }, [results]);
 
   const stats = useMemo(() => {

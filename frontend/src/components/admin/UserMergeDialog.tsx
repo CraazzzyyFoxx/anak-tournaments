@@ -58,13 +58,13 @@ function FieldChoiceButtons({
   preview,
   value,
   onChange
-}: {
+}: Readonly<{
   label: string;
   fieldKey: FieldKey;
   preview: UserMergePreviewResponse;
   value: UserMergeFieldChoice;
   onChange: (value: UserMergeFieldChoice) => void;
-}) {
+}>) {
   const groupId = useId();
   const sourceValue = preview.field_options[fieldKey].source ?? "Empty";
   const targetValue = preview.field_options[fieldKey].target ?? "Empty";
@@ -109,12 +109,12 @@ function IdentitySelectionSection({
   items,
   selectedIds,
   onToggle
-}: {
+}: Readonly<{
   label: string;
   items: UserMergeIdentityOption[];
   selectedIds: number[];
   onToggle: (identityId: number, checked: boolean) => void;
-}) {
+}>) {
   const groupId = useId();
 
   if (items.length === 0) {
@@ -173,7 +173,7 @@ export function UserMergeDialog({
   open,
   onOpenChange,
   onMerged
-}: UserMergeDialogProps) {
+}: Readonly<UserMergeDialogProps>) {
   const queryClient = useQueryClient();
   const [targetUser, setTargetUser] = useState<MinimizedUser | undefined>();
   const [fieldPolicy, setFieldPolicy] = useState<UserMergeFieldPolicy>({
