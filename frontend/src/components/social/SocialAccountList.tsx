@@ -10,7 +10,7 @@ interface SocialAccountListProps {
 }
 
 /** Renders a player's social identities as provider-ordered badges. */
-export function SocialAccountList({ accounts, linkify = true, className }: SocialAccountListProps) {
+export function SocialAccountList({ accounts, linkify = true, className }: Readonly<SocialAccountListProps>) {
   if (!accounts || accounts.length === 0) {
     return null;
   }

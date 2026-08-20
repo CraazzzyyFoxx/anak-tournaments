@@ -118,7 +118,7 @@ function getErrorSummary(errorMessage: string | null) {
   return errorMessage.replace(/^(\d{3}:\s*)?/, "").slice(0, 120);
 }
 
-function LogStatusBadge({ status }: { status: LogProcessingStatus }) {
+function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
   const meta = STATUS_META[status];
   const Icon = meta.icon;
 
@@ -145,7 +145,7 @@ export function TournamentLogsTab({
   encounters,
   canUploadLogs,
   enabled
-}: TournamentLogsTabProps) {
+}: Readonly<TournamentLogsTabProps>) {
   const queryClient = useQueryClient();
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
   const [statusFilter, setStatusFilter] = useState<LogFilter>("all");

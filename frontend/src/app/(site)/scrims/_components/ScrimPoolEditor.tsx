@@ -120,7 +120,7 @@ function ItemPicker({
   options,
   selectedIds,
   onToggle
-}: {
+}: Readonly<{
   label: string;
   hint: string;
   searchPlaceholder: string;
@@ -131,7 +131,7 @@ function ItemPicker({
   options: ItemOption[];
   selectedIds: number[];
   onToggle: (id: number) => void;
-}) {
+}>) {
   const ids = useId();
   const [query, setQuery] = useState("");
   const visible = useMemo(
@@ -197,12 +197,12 @@ export function ScrimPoolEditor({
   bestOf,
   disabled,
   onChange
-}: {
+}: Readonly<{
   pool: ScrimPoolDraft;
   bestOf: number;
   disabled?: boolean;
   onChange: (next: ScrimPoolDraft) => void;
-}) {
+}>) {
   const t = useTranslations("scrims.pool");
   const ids = useId();
 

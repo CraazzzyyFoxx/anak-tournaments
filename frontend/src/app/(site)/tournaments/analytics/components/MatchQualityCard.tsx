@@ -25,13 +25,13 @@ function FeedbackButtons({
   onVerdict,
   confirmLabel,
   dismissLabel,
-}: {
+}: Readonly<{
   current?: AnomalyVerdict;
   pending: boolean;
   onVerdict: (verdict: AnomalyVerdict) => void;
   confirmLabel: string;
   dismissLabel: string;
-}) {
+}>) {
   return (
     <span className="inline-flex items-center gap-0.5">
       <button
@@ -96,7 +96,7 @@ function anomalyTone(kind: AnomalyKind): string {
  * sub-scores plus anomaly flags. Lives on the analytics page as a collapsible
  * section; expand to reveal flag reasons inline.
  */
-export default function MatchQualityCard({ tournamentId }: MatchQualityCardProps) {
+export default function MatchQualityCard({ tournamentId }: Readonly<MatchQualityCardProps>) {
   const { hasPermission } = usePermissions();
   const t = useTranslations();
   const canReview = hasPermission("analytics.update");

@@ -156,12 +156,12 @@ function MatrixCheckbox({
   disabled,
   label,
   onChange
-}: {
+}: Readonly<{
   checked: boolean;
   disabled?: boolean;
   label: string;
   onChange: (checked: boolean) => void;
-}) {
+}>) {
   return (
     <input
       type="checkbox"

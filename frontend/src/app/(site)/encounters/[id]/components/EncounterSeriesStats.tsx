@@ -55,7 +55,7 @@ export default function EncounterSeriesStats({
   homeTeamId,
   awayTeamId,
   tournamentGrid
-}: EncounterSeriesStatsProps) {
+}: Readonly<EncounterSeriesStatsProps>) {
   const t = useTranslations();
 
   const queries = useQueries({
@@ -145,10 +145,10 @@ export default function EncounterSeriesStats({
 function SeriesPlayerTable({
   aggregate,
   tournamentGrid
-}: {
+}: Readonly<{
   aggregate: SeriesAggregate;
   tournamentGrid?: DivisionGridVersion | null;
-}) {
+}>) {
   const t = useTranslations();
   const columns = COLUMN_PRESETS.overview;
   const maxima = columnMaxima(aggregate.home, aggregate.away, aggregate.round, columns);
@@ -226,14 +226,14 @@ function SeriesPlayerRow({
   maxima,
   mapsPlayed,
   tournamentGrid
-}: {
+}: Readonly<{
   player: PlayerWithStats;
   round: number;
   columns: LogStatsName[];
   maxima: Record<string, number>;
   mapsPlayed: number;
   tournamentGrid?: DivisionGridVersion | null;
-}) {
+}>) {
   const heroes = player.heroes?.[round] ?? [];
   const placement = player.stats?.[round]?.[LogStatsName.Performance];
 
@@ -279,7 +279,7 @@ function SeriesPlayerRow({
 }
 
 /** Value plus the same 3px magnitude bar the per-map tables draw. */
-function SeriesStatCell({ name, value, max }: { name: LogStatsName; value: number; max: number }) {
+function SeriesStatCell({ name, value, max }: Readonly<{ name: LogStatsName; value: number; max: number }>) {
   const meta = STAT_META[name];
   const showBar = meta?.bar && max > 0;
 

@@ -59,11 +59,11 @@ export function FilterChipGroup({
   label,
   className,
   children
-}: {
+}: Readonly<{
   label: string;
   className?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <div role="group" aria-label={label} className={cn("aqt-filters", className)}>
       {children}

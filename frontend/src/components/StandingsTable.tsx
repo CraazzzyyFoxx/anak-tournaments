@@ -55,13 +55,13 @@ function computeMaps(teamId: number, history: Encounter[]) {
   return { won, lost, diff: won - lost };
 }
 
-function MapDiff({ diff }: { diff: number }) {
+function MapDiff({ diff }: Readonly<{ diff: number }>) {
   const tone = diff > 0 ? "pos" : diff < 0 ? "neg" : "zero";
   const text = diff > 0 ? `+${diff}` : diff < 0 ? `−${Math.abs(diff)}` : "0";
   return <span className={cn("st-diff", tone)}>{text}</span>;
 }
 
-function FormChips({ results }: { results: ResultKind[] }) {
+function FormChips({ results }: Readonly<{ results: ResultKind[] }>) {
   if (results.length === 0) {
     return <span style={{ color: "var(--fg-faint)" }}>—</span>;
   }
@@ -76,7 +76,7 @@ function FormChips({ results }: { results: ResultKind[] }) {
   );
 }
 
-function TeamCell({ standing, showGroup }: { standing: Standings; showGroup: boolean }) {
+function TeamCell({ standing, showGroup }: Readonly<{ standing: Standings; showGroup: boolean }>) {
   const t = useTranslations();
   const groupName = standing.team?.group?.name;
   return (

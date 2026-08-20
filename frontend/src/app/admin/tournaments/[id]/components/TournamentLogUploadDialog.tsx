@@ -58,7 +58,7 @@ export function TournamentLogUploadDialog({
   trigger,
   initialEncounterId = null,
   onUploaded
-}: TournamentLogUploadDialogProps) {
+}: Readonly<TournamentLogUploadDialogProps>) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [selectedEncounterId, setSelectedEncounterId] = useState<string>(

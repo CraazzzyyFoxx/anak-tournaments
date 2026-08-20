@@ -99,7 +99,7 @@ export function DataTable<TData>({
   className,
   scrollClassName,
   scrollRef
-}: DataTableProps<TData>) {
+}: Readonly<DataTableProps<TData>>) {
   const router = useRouter();
 
   const modelRows = table.getRowModel().rows;

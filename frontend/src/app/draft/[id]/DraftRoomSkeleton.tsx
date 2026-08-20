@@ -9,7 +9,7 @@ function SkeletonBlock({ className = "", ...props }: SkeletonBlockProps) {
   return <span aria-hidden="true" className={`${styles.skeletonBlock} ${className}`} {...props} />;
 }
 
-function LoadingRegion({ className, children }: { className: string; children: ReactNode }) {
+function LoadingRegion({ className, children }: Readonly<{ className: string; children: ReactNode }>) {
   const t = useTranslations("draftRedesign");
 
   return (
@@ -78,7 +78,7 @@ function DraftHeroSkeleton() {
   );
 }
 
-function PickSlotSkeleton({ compact = false }: { compact?: boolean }) {
+function PickSlotSkeleton({ compact = false }: Readonly<{ compact?: boolean }>) {
   return (
     <div
       className={`${styles.skeletonPickSlot} ${compact ? styles.skeletonPickSlotCompact : ""}`}
@@ -94,7 +94,7 @@ function PickSlotSkeleton({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function RosterColumnSkeleton({ side }: { side: "left" | "right" }) {
+function RosterColumnSkeleton({ side }: Readonly<{ side: "left" | "right" }>) {
   return (
     <section
       className={`${styles.skeletonWorkspaceColumn} ${styles.skeletonRosterColumn}`}

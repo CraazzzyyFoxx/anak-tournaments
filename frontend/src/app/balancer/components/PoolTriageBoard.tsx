@@ -101,7 +101,7 @@ function TriagePlayerCard({
   onSelectPlayer,
   onSetPoolMembership,
   onSetBalancerStatus,
-}: {
+}: Readonly<{
   state: PlayerValidationState;
   registration: AdminRegistration | null;
   statusOptions?: StatusOptionGroups;
@@ -110,7 +110,7 @@ function TriagePlayerCard({
   onSelectPlayer: (playerId: number | null) => void;
   onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
   onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
-}) {
+}>) {
   const lane = derivePoolLane(state);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `pool-player:${state.player.id}`,
@@ -273,7 +273,7 @@ function TriageLaneColumn({
   onSelectPlayer,
   onSetPoolMembership,
   onSetBalancerStatus,
-}: {
+}: Readonly<{
   lane: PoolLane;
   states: PlayerValidationState[];
   registrationsById?: Map<number, AdminRegistration>;
@@ -283,7 +283,7 @@ function TriageLaneColumn({
   onSelectPlayer: (playerId: number | null) => void;
   onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
   onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
-}) {
+}>) {
   const { setNodeRef, isOver } = useDroppable({
     id: `pool-lane:${lane}`,
     data: { lane },
@@ -346,7 +346,7 @@ export function PoolTriageBoard({
   onSetPoolMembership,
   onSetBalancerStatus,
   actionsDisabled = false,
-}: PoolTriageBoardProps) {
+}: Readonly<PoolTriageBoardProps>) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const statesByLane = useMemo(
     () =>

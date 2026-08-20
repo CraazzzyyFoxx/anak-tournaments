@@ -54,7 +54,7 @@ export function PickBanUndoControl({
   sideName,
   invalidateKeys,
   className
-}: PickBanUndoControlProps) {
+}: Readonly<PickBanUndoControlProps>) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
 

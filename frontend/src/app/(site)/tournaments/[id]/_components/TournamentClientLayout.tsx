@@ -45,7 +45,7 @@ function formatLabel(stages: StageSummary[], t: Translate): string {
 export default function TournamentClientLayout({
   tournamentId,
   children
-}: TournamentClientLayoutProps) {
+}: Readonly<TournamentClientLayoutProps>) {
   const t = useTranslations();
   const locale = useLocale();
   const router = useRouter();

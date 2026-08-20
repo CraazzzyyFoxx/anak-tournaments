@@ -39,7 +39,7 @@ export function HeroPickerCell({
   selected,
   max,
   onChange,
-}: HeroPickerCellProps) {
+}: Readonly<HeroPickerCellProps>) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const atMax = selected.length >= max;

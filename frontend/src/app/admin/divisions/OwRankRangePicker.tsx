@@ -41,7 +41,7 @@ function rankLabel(value: number | null): string | null {
  * is always stored ordered (`min` <= `max`); the backend treats the pair as an
  * unordered interval either way.
  */
-export function OwRankRangePicker({ min, max, disabled, onChange }: OwRankRangePickerProps) {
+export function OwRankRangePicker({ min, max, disabled, onChange }: Readonly<OwRankRangePickerProps>) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);

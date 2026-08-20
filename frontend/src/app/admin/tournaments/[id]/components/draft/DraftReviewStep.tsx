@@ -39,7 +39,7 @@ export function DraftReviewStep({
   previewPending,
   previewError,
   isReseed
-}: DraftReviewStepProps) {
+}: Readonly<DraftReviewStepProps>) {
   const t = useTranslations("draftAdmin");
   const checks = [
     { label: t("reviewChecks.pool"), ok: readiness.blockers.length === 0 },
@@ -152,7 +152,7 @@ export function DraftReviewStep({
   );
 }
 
-function Diff({ label, before, after }: { label: string; before: number; after: number }) {
+function Diff({ label, before, after }: Readonly<{ label: string; before: number; after: number }>) {
   return (
     <div className="rounded-xl bg-background/70 px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>

@@ -44,7 +44,7 @@ export default function AnomalyTooltip({
   children,
   focusable = true,
   side = "top",
-}: AnomalyTooltipProps) {
+}: Readonly<AnomalyTooltipProps>) {
   const t = useTranslations();
   const isKnown = isAnomalyGlossaryTerm(kind);
   const label = isKnown ? t(`analytics.glossary.${kind as GlossaryTerm}.label`) : capitalize(kind);

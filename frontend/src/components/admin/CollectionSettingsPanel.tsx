@@ -90,7 +90,7 @@ export function CollectionSettingsPanel({
   saveError,
   onSave,
   children
-}: CollectionSettingsPanelProps) {
+}: Readonly<CollectionSettingsPanelProps>) {
   if (isLoading) {
     return <p className="text-muted-foreground">Loading…</p>;
   }

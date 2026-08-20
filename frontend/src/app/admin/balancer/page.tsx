@@ -124,10 +124,10 @@ function BalancerStatusTableHead() {
 function StatusColorPicker({
   value,
   onChange
-}: {
+}: Readonly<{
   value: string;
   onChange: (next: string) => void;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const triggerId = useId();
   const hexId = useId();
@@ -224,13 +224,13 @@ function StatusForm({
   onChange,
   disableScope = false,
   isBuiltin = false
-}: {
+}: Readonly<{
   value: StatusFormState;
   onChange: (next: StatusFormState) => void;
   disableScope?: boolean;
   /** True when editing a builtin-status override: pool-inclusion is fixed by the system, not admin-editable. */
   isBuiltin?: boolean;
-}) {
+}>) {
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   // Two dialogs mount this form, so the field ids have to be per-instance.
   const fieldId = useId();

@@ -119,17 +119,17 @@ const GRAIN_ICONS: Record<string, typeof Globe> = {
   user_match: Crosshair
 };
 
-function CategoryIcon({ category }: { category: string }) {
+function CategoryIcon({ category }: Readonly<{ category: string }>) {
   const Icon = CATEGORY_ICONS[category] ?? Globe;
   return <Icon className="h-4 w-4 text-muted-foreground" />;
 }
 
-function ScopeIcon({ scope }: { scope: string }) {
+function ScopeIcon({ scope }: Readonly<{ scope: string }>) {
   const Icon = SCOPE_ICONS[scope] ?? Globe;
   return <Icon className="h-4 w-4 text-muted-foreground" />;
 }
 
-function GrainIcon({ grain }: { grain: string }) {
+function GrainIcon({ grain }: Readonly<{ grain: string }>) {
   const Icon = GRAIN_ICONS[grain] ?? User;
   return <Icon className="h-4 w-4 text-muted-foreground" />;
 }
@@ -140,13 +140,13 @@ function SortableHead({
   currentSort,
   currentOrder,
   onSort
-}: {
+}: Readonly<{
   field: string;
   label: string;
   currentSort: string;
   currentOrder: "asc" | "desc";
   onSort: (field: string) => void;
-}) {
+}>) {
   const isActive = currentSort === field;
   return (
     <TableHead aria-sort={isActive ? (currentOrder === "asc" ? "ascending" : "descending") : "none"}>

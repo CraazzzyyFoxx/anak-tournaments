@@ -29,7 +29,7 @@ export function StatTile({
   icon: Icon,
   tone = "neutral",
   className
-}: StatTileProps) {
+}: Readonly<StatTileProps>) {
   return (
     <div
       className={cn(

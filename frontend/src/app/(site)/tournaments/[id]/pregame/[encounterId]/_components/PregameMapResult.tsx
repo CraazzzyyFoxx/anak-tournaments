@@ -87,7 +87,7 @@ export function PregameMapResult({
   heroUndo,
   header,
   invalidateKeys
-}: PregameMapResultProps) {
+}: Readonly<PregameMapResultProps>) {
   const t = useTranslations("pickBan.room");
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -260,13 +260,13 @@ function ClaimTile({
   report,
   revealed,
   accentVar
-}: {
+}: Readonly<{
   name: string;
   team: TeamNameInput | null | undefined;
   report: PickBanMapReport | null;
   revealed: boolean;
   accentVar: "--aqt-teal" | "--aqt-rose";
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
   const state: ClaimState = report == null ? "waiting" : revealed ? "filed" : "sealed";
   const StateIcon = state === "waiting" ? Hourglass : state === "sealed" ? Lock : Check;
@@ -341,7 +341,7 @@ function ClaimTile({
 }
 
 /** The operator between the two claims: `=` once they agree, `≠` once they clash. */
-function Verdict({ bothFiled, disputed }: { bothFiled: boolean; disputed: boolean }) {
+function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; disputed: boolean }>) {
   const t = useTranslations("pickBan.room");
   const tone = !bothFiled ? "pending" : disputed ? "bad" : "good";
   const Icon = tone === "pending" ? Hourglass : tone === "bad" ? X : Equal;

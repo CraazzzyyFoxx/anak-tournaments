@@ -141,10 +141,10 @@ function formatSubmittedAt(value: string | null | undefined): string {
 function RolesCell({
   roles,
   catalog
-}: {
+}: Readonly<{
   roles: AdminRegistration["roles"];
   catalog?: SubroleCatalog;
-}) {
+}>) {
   if (roles.length === 0) {
     return <span className="text-muted-foreground">-</span>;
   }

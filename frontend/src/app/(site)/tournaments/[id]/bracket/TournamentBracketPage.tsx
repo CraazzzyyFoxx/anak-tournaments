@@ -59,7 +59,7 @@ function GroupStagePanel({
   canReport,
   bracketTabs,
   liveTeamStreams
-}: {
+}: Readonly<{
   stage: Stage;
   stageItem?: StageItem;
   encounters: Encounter[];
@@ -76,7 +76,7 @@ function GroupStagePanel({
     isActive: boolean;
   }>;
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
-}) {
+}>) {
   const t = useTranslations();
   const hasStandings = standings.length > 0;
   const isPreview = !stage.is_published && !stage.is_completed;
@@ -180,7 +180,7 @@ function GroupStagePanel({
   );
 }
 
-function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
+function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewProps>) {
   const searchParams = useSearchParams();
   const selectedStageParam = searchParams.get("stage");
   const viewParam = searchParams.get("view");
@@ -644,7 +644,7 @@ function TournamentBracketView({ tournament }: TournamentBracketViewProps) {
  * already primed by the layout, so this is a cache read in practice — the
  * guards below only fire if that layout contract ever changes.
  */
-export default function TournamentBracketPage({ tournamentId }: { tournamentId: number }) {
+export default function TournamentBracketPage({ tournamentId }: Readonly<{ tournamentId: number }>) {
   const tournamentQuery = useTournamentQuery(tournamentId);
 
   if (!tournamentQuery.data) {

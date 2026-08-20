@@ -39,12 +39,12 @@ function ReportCard({
   teamName,
   report,
   customFields,
-}: {
+}: Readonly<{
   title: string;
   teamName: string;
   report: CaptainReport | null;
   customFields: ReportCustomFieldDefinition[];
-}) {
+}>) {
   const t = useTranslations();
   const comment = report?.comment?.trim();
   const customAnswers = Object.entries(report?.custom_fields ?? {}).filter(
@@ -118,7 +118,7 @@ export function CaptainReportsView({
   reports,
   form,
   className,
-}: CaptainReportsViewProps) {
+}: Readonly<CaptainReportsViewProps>) {
   const t = useTranslations();
   const homeReport = pickReport(reports, "home", encounter.home_team_id);
   const awayReport = pickReport(reports, "away", encounter.away_team_id);

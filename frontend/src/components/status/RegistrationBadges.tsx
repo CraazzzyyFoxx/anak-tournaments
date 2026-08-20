@@ -29,7 +29,7 @@ interface StatusBadgeProps {
   compact?: boolean;
 }
 
-export function RegistrationStatusBadge({ status, meta, className, compact }: StatusBadgeProps) {
+export function RegistrationStatusBadge({ status, meta, className, compact }: Readonly<StatusBadgeProps>) {
   return (
     <StatusMetaBadge
       meta={meta}
@@ -40,7 +40,7 @@ export function RegistrationStatusBadge({ status, meta, className, compact }: St
   );
 }
 
-export function BalancerStatusBadge({ status, meta, className, compact }: StatusBadgeProps) {
+export function BalancerStatusBadge({ status, meta, className, compact }: Readonly<StatusBadgeProps>) {
   return (
     <StatusMetaBadge
       meta={meta}
@@ -56,7 +56,7 @@ interface CheckInStatusBadgeProps {
   className?: string;
 }
 
-export function CheckInStatusBadge({ checkedIn, className }: CheckInStatusBadgeProps) {
+export function CheckInStatusBadge({ checkedIn, className }: Readonly<CheckInStatusBadgeProps>) {
   const t = useTranslations();
   const isCheckedIn = checkedIn === true;
 
@@ -124,7 +124,7 @@ export function AdmissionStatusBadge({
   requireSubscription,
   subscriptionOutcome,
   className
-}: AdmissionStatusBadgeProps) {
+}: Readonly<AdmissionStatusBadgeProps>) {
   const t = useTranslations();
 
   const isProfileClosed = requireOpenProfile && profilesOpen === false;
@@ -171,7 +171,7 @@ interface ProfileStatusBadgeProps {
   className?: string;
 }
 
-export function ProfileStatusBadge({ profilesOpen, className }: ProfileStatusBadgeProps) {
+export function ProfileStatusBadge({ profilesOpen, className }: Readonly<ProfileStatusBadgeProps>) {
   const t = useTranslations();
 
   if (profilesOpen === true) {
@@ -220,7 +220,7 @@ interface SubscriptionStatusBadgeProps {
  * would not scale, and under `any` mode a red provider cell beside a green one
  * reads as a failure when it is not.
  */
-export function SubscriptionStatusBadge({ outcome, className }: SubscriptionStatusBadgeProps) {
+export function SubscriptionStatusBadge({ outcome, className }: Readonly<SubscriptionStatusBadgeProps>) {
   const t = useTranslations();
 
   if (outcome === "satisfied") {
@@ -275,7 +275,7 @@ export function SubscriptionProviderBadge({
   providerLabel,
   verdict,
   className
-}: SubscriptionProviderBadgeProps) {
+}: Readonly<SubscriptionProviderBadgeProps>) {
   const t = useTranslations();
 
   let icon = Circle;

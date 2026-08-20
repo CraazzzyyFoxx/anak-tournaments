@@ -30,7 +30,7 @@ export function issueChipKey(issue: PlayerValidationIssue): string {
  * Amber validation chip. For rank-delta warnings it renders a compact icon form
  * (role · current-division-icon → ow-division-icon · Δpts); the full text is in the tooltip.
  */
-export function IssueChip({ issue }: { issue: PlayerValidationIssue }) {
+export function IssueChip({ issue }: Readonly<{ issue: PlayerValidationIssue }>) {
   if (issue.code === "rank_delta_warning") {
     return (
       <span className={CHIP_CLASS} title={issue.message}>

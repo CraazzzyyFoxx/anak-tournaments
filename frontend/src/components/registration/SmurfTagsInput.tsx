@@ -30,7 +30,7 @@ export default function SmurfTagsInput({
   required = false,
   config,
   onValidationChange,
-}: SmurfTagsInputProps) {
+}: Readonly<SmurfTagsInputProps>) {
   const t = useTranslations();
   const inputId = useId();
   const [inputValue, setInputValue] = useState("");

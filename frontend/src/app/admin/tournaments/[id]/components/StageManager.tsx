@@ -330,7 +330,7 @@ function getDefaultMergedStageName(stage: Stage) {
   return stageName;
 }
 
-export function StageManager({ tournamentId }: StageManagerProps) {
+export function StageManager({ tournamentId }: Readonly<StageManagerProps>) {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const [selectedStageId, setSelectedStageId] = useState<number | null>(null);

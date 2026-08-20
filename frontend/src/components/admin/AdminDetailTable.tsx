@@ -54,6 +54,6 @@ export function AdminDetailTableShell({
   children,
   className,
   variant = "compact",
-}: AdminDetailTableShellProps) {
+}: Readonly<AdminDetailTableShellProps>) {
   return <div className={cn(STYLES[variant].shell, className)}>{children}</div>;
 }

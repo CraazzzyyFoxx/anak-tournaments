@@ -38,7 +38,7 @@ interface DraftCaptainsStepProps {
 const FILTER_ROLES: DraftRole[] = ["tank", "dps", "support"];
 const SORTS: DraftCaptainSort[] = ["rank_desc", "rank_asc", "name"];
 
-export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCaptainsStepProps) {
+export function DraftCaptainsStep({ pool, teamCount, value, onChange }: Readonly<DraftCaptainsStepProps>) {
   const t = useTranslations("draftAdmin");
   const divisionGrid = useDivisionGrid();
   const [search, setSearch] = useState("");

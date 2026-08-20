@@ -35,7 +35,7 @@ interface SelectUser {
 
 /** Compact search that lives in the page header; matches drop down below the
  *  input and open the player detail on select. */
-export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser }) {
+export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }>) {
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   // APG combobox: DOM focus never leaves the input, so the highlighted row is
@@ -181,7 +181,7 @@ export function SubscriptionPlayerSearch({ onSelect }: { onSelect: SelectUser })
  * holds the latest verdict, so this is the only place a flap ("active on Monday,
  * inactive on Friday, active again after a re-subscribe") is visible at all.
  */
-function PlayerCheckTimeline({ userId }: { userId: number }) {
+function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
   // Scoped server-side to the injected workspace; see `admin.service.ts`.
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const query = useQuery({
@@ -242,7 +242,7 @@ interface SubscriptionPlayerDetailProps {
   onClose: () => void;
 }
 
-export function SubscriptionPlayerDetail({ userId, label, onClose }: SubscriptionPlayerDetailProps) {
+export function SubscriptionPlayerDetail({ userId, label, onClose }: Readonly<SubscriptionPlayerDetailProps>) {
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 

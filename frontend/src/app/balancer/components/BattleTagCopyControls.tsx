@@ -51,7 +51,7 @@ export function BattleTagCopyButton({
   battleTag,
   label = "BattleTag",
   className
-}: BattleTagCopyButtonProps) {
+}: Readonly<BattleTagCopyButtonProps>) {
   const copyBattleTag = useBattleTagClipboard();
 
   return (
@@ -72,7 +72,7 @@ export function BattleTagCopyButton({
   );
 }
 
-export function SmurfTagStrip({ smurfTags, className, compact = false }: SmurfTagStripProps) {
+export function SmurfTagStrip({ smurfTags, className, compact = false }: Readonly<SmurfTagStripProps>) {
   const copyBattleTag = useBattleTagClipboard();
 
   if (smurfTags.length === 0) {
@@ -127,7 +127,7 @@ export function SmurfTagStrip({ smurfTags, className, compact = false }: SmurfTa
   );
 }
 
-export function BattleTagContextMenuItems({ battleTags }: BattleTagMenuItemsProps) {
+export function BattleTagContextMenuItems({ battleTags }: Readonly<BattleTagMenuItemsProps>) {
   const copyBattleTag = useBattleTagClipboard();
   const [primaryBattleTag, ...smurfTags] = battleTags;
 

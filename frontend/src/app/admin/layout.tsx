@@ -8,7 +8,7 @@ type AdminLayoutProps = {
   children: ReactNode;
 };
 
-export default async function AdminLayout({ children }: AdminLayoutProps) {
+export default async function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
   const cookieStore = await cookies();
   const defaultSidebarOpen = parseSidebarOpenCookie(cookieStore.get(SIDEBAR_COOKIE_NAMES.admin)?.value) ?? true;
 

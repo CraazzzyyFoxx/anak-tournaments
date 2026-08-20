@@ -34,7 +34,7 @@ function percent(value: number): string {
 }
 
 /** Compact Monte-Carlo block — woven into the team detail for organizers. */
-function MonteCarlo({ distribution }: { distribution: StandingsDistribution }) {
+function MonteCarlo({ distribution }: Readonly<{ distribution: StandingsDistribution }>) {
   const t = useTranslations();
   const bars = useMemo(() => {
     const entries = Object.entries(distribution.position_histogram)
@@ -85,7 +85,7 @@ export default function TeamDetail({
   distribution,
   onSelectPlayer,
   onExplain,
-}: TeamDetailProps) {
+}: Readonly<TeamDetailProps>) {
   const t = useTranslations();
   const locale = useLocale();
   const tournamentGrid = team.tournament?.division_grid_version;

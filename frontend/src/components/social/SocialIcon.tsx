@@ -10,7 +10,7 @@ interface SocialIconProps {
 }
 
 /** Brand icon for a social provider, falling back to a generic link glyph. */
-export function SocialIcon({ provider, size = 12, className }: SocialIconProps) {
+export function SocialIcon({ provider, size = 12, className }: Readonly<SocialIconProps>) {
   const config = getSocialProviderConfig(provider);
   if (config.icon) {
     return <Image src={config.icon} width={size} height={size} alt={config.label} className={className} />;

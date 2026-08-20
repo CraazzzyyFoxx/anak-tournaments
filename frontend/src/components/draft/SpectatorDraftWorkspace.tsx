@@ -20,7 +20,7 @@ export function SpectatorDraftWorkspace({
   board,
   divisionGrid,
   onlineCaptainIds,
-}: SpectatorDraftWorkspaceProps) {
+}: Readonly<SpectatorDraftWorkspaceProps>) {
   const t = useTranslations("draftRedesign");
   const showCurrentPick =
     board.current_pick != null ||

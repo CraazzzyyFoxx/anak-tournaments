@@ -107,7 +107,7 @@ interface TournamentMatchesTabProps {
   canRecalculateStandings: boolean;
 }
 
-function SortIcon({ state, active }: { state: StandingSortState; active: boolean }) {
+function SortIcon({ state, active }: Readonly<{ state: StandingSortState; active: boolean }>) {
   if (!active || !state) return <ArrowUpDown className="size-3.5" aria-hidden />;
   return state.dir === "asc" ? (
     <ArrowUp className="size-3.5" aria-hidden />
@@ -134,7 +134,7 @@ interface ScopeFilterProps {
 }
 
 /** Stage/scope narrowing control shared by the encounters and standings tables. */
-function ScopeFilter({ id, param, value, groups, onChange }: ScopeFilterProps) {
+function ScopeFilter({ id, param, value, groups, onChange }: Readonly<ScopeFilterProps>) {
   return (
     <div className="flex items-center gap-2">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
@@ -171,7 +171,7 @@ export function TournamentMatchesTab({
   canUpdateStanding,
   canDeleteStanding,
   canRecalculateStandings
-}: TournamentMatchesTabProps) {
+}: Readonly<TournamentMatchesTabProps>) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

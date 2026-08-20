@@ -13,10 +13,10 @@ import { cn } from "@/lib/utils";
 export function DiscordServerStatus({
   workspaceId,
   className,
-}: {
+}: Readonly<{
   workspaceId: number | null | undefined;
   className?: string;
-}) {
+}>) {
   const t = useTranslations("discord.server");
   const { data, isLoading, refetch } = useDiscordGuildInfo(workspaceId);
 

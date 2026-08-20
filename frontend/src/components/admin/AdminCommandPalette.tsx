@@ -41,7 +41,7 @@ function ResultCountAnnouncer() {
   );
 }
 
-export function AdminCommandPalette({ groups, open, onOpenChange }: AdminCommandPaletteProps) {
+export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<AdminCommandPaletteProps>) {
   const router = useRouter();
 
   const handleSelect = useCallback(

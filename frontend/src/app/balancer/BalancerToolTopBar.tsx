@@ -19,7 +19,7 @@ type BalancerToolTopBarProps = {
  * `#balancer-header-slot` (Run controls from PresetRunPanel, no fallback) and
  * `#balancer-presence-slot` (live viewer stack from BalancerPresenceStack).
  */
-export function BalancerToolTopBar({ summary }: BalancerToolTopBarProps) {
+export function BalancerToolTopBar({ summary }: Readonly<BalancerToolTopBarProps>) {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("return");
   // Only trust internal paths from `?return=` (e.g. the creation wizard);

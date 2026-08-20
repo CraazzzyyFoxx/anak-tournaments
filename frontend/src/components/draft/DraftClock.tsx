@@ -15,7 +15,7 @@ interface DraftClockProps {
  * Local countdown from an absolute server deadline. At zero it waits for the
  * server event that will commit the autopick.
  */
-export function DraftClock({ expiresAt, paused, compact = false }: DraftClockProps) {
+export function DraftClock({ expiresAt, paused, compact = false }: Readonly<DraftClockProps>) {
   const t = useTranslations();
   const [now, setNow] = useState<number | null>(null);
 

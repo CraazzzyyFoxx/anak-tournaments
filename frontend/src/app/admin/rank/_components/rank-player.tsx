@@ -29,7 +29,7 @@ interface SelectUser {
 
 /** Compact search that lives in the page header; matches drop down below the
  *  input and open the player detail on select. */
-export function RankPlayerSearch({ onSelect }: { onSelect: SelectUser }) {
+export function RankPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }>) {
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -108,7 +108,7 @@ function rankLabel(rank: CurrentRank): string {
   return rank.tier != null ? `${division} ${rank.tier}` : division;
 }
 
-function CurrentRanksSection({ userId }: { userId: number }) {
+function CurrentRanksSection({ userId }: Readonly<{ userId: number }>) {
   const query = useQuery({
     queryKey: ["admin", "rank", "current", userId],
     queryFn: () => rankService.getUserCurrentRanks(userId)
@@ -143,7 +143,7 @@ interface RankPlayerDetailProps {
   onClose: () => void;
 }
 
-export function RankPlayerDetail({ userId, label, onClose }: RankPlayerDetailProps) {
+export function RankPlayerDetail({ userId, label, onClose }: Readonly<RankPlayerDetailProps>) {
   const queryClient = useQueryClient();
   // Scoped server-side to the injected workspace; see `admin.service.ts`.
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);

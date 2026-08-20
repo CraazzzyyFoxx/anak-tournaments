@@ -43,7 +43,7 @@ export function ColumnMappingTab({
   onValueChange,
   onParserChange,
   onIsListChange,
-}: ColumnMappingTabProps) {
+}: Readonly<ColumnMappingTabProps>) {
   const grouped = targetsByGroup(catalog);
   const hasHeaders = headerKeys.length > 0;
 

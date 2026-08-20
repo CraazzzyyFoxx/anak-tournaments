@@ -38,7 +38,7 @@ function WorkflowStep({
   detail,
   isLast,
   action,
-}: WorkflowStepProps) {
+}: Readonly<WorkflowStepProps>) {
   return (
     <div className="flex gap-4">
       <div className="flex flex-col items-center">
@@ -109,7 +109,7 @@ export function BalancerSetupChecklist({
   onBrowseAvailable,
   onReviewConflicts,
   onRunBalance,
-}: BalancerSetupChecklistProps) {
+}: Readonly<BalancerSetupChecklistProps>) {
   const hasPoolPlayers = poolPlayerCount > 0;
   const hasInvalidPlayers = invalidPlayerCount > 0;
 

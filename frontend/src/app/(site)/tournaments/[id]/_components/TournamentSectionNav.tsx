@@ -76,7 +76,7 @@ export default function TournamentSectionNav({
   hasTeams,
   hasStreams,
   className
-}: TournamentSectionNavProps) {
+}: Readonly<TournamentSectionNavProps>) {
   const t = useTranslations();
   const pathname = usePathname();
   const frameRef = useRef<HTMLElement>(null);

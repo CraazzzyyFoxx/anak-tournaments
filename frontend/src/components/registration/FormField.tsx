@@ -67,7 +67,7 @@ export default function FormField({
   endAdornment,
   className,
   containerClassName,
-}: FormFieldProps) {
+}: Readonly<FormFieldProps>) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
   const errorId = `${id}-error`;

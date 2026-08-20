@@ -124,13 +124,13 @@ function BlockHeading({
   label,
   required,
   hint
-}: {
+}: Readonly<{
   labelId?: string;
   htmlFor?: string;
   label: string;
   required: boolean;
   hint?: string;
-}) {
+}>) {
   const t = useTranslations();
   const headingClass =
     "text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]";
@@ -181,7 +181,7 @@ export function MatchReportForm({
   onSubmitted,
   cancelAction,
   fieldsClassName
-}: MatchReportFormProps) {
+}: Readonly<MatchReportFormProps>) {
   const qc = useQueryClient();
   const t = useTranslations();
   const homeTeamLabel = encounter.home_team?.name?.trim() || t("common.homeTeam");

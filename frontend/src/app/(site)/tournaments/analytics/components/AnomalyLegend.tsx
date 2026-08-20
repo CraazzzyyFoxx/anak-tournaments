@@ -22,7 +22,7 @@ const ANOMALY_KINDS: { term: GlossaryTerm; hue: string }[] = [
  * "troll" / "sandbag" mean. Copy comes from the shared `analytics.glossary`
  * entries, so it stays in sync with the inline tooltips.
  */
-export default function AnomalyLegend({ className }: { className?: string }) {
+export default function AnomalyLegend({ className }: Readonly<{ className?: string }>) {
   const t = useTranslations();
 
   return (

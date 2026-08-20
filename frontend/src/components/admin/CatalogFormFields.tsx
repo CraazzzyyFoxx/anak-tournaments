@@ -20,7 +20,7 @@ interface CatalogNameFieldProps {
   placeholder: string;
 }
 
-export function CatalogNameField({ id, value, onChange, placeholder }: CatalogNameFieldProps) {
+export function CatalogNameField({ id, value, onChange, placeholder }: Readonly<CatalogNameFieldProps>) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>Name *</Label>
@@ -50,7 +50,7 @@ export function CatalogAliasesField({
   onChange,
   placeholder,
   helperText,
-}: CatalogAliasesFieldProps) {
+}: Readonly<CatalogAliasesFieldProps>) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>Aliases</Label>

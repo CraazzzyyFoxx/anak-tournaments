@@ -38,7 +38,7 @@ export function PregameReadiness({
   viewerSide,
   pending,
   onReady
-}: PregameReadinessProps) {
+}: Readonly<PregameReadinessProps>) {
   const t = useTranslations("pickBan.room");
   const viewerReady = viewerSide != null && readiness[viewerSide];
 
@@ -93,12 +93,12 @@ function ReadyRow({
   fallbackName,
   ready,
   accentVar
-}: {
+}: Readonly<{
   team: TeamNameInput | null;
   fallbackName: string;
   ready: boolean;
   accentVar: "--aqt-teal" | "--aqt-rose";
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
   const StateIcon = ready ? Check : Hourglass;
   const stateLabel = ready ? t("ready.stateReady") : t("ready.statePending");

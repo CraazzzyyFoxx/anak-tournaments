@@ -35,7 +35,7 @@ function highlightTeam(
  * names and renders the let-down (when present) as a supporting line. Stays
  * quiet — a single calm sentence — when no team has strayed from its forecast.
  */
-export default function VerdictBanner({ verdict, onExplain }: VerdictBannerProps) {
+export default function VerdictBanner({ verdict, onExplain }: Readonly<VerdictBannerProps>) {
   const t = useTranslations();
   const locale = useLocale();
   const { story, letdown } = verdict;

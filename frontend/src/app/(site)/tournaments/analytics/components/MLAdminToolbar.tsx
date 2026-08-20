@@ -53,7 +53,7 @@ function statusTone(status: AnalyticsJob["status"]): string {
   }
 }
 
-function StageRow({ name, stage }: { name: string; stage: AnalyticsJobProgressStage }) {
+function StageRow({ name, stage }: Readonly<{ name: string; stage: AnalyticsJobProgressStage }>) {
   const tone =
     stage.state === "done"
       ? "text-[color:var(--aqt-emerald)]"
@@ -86,7 +86,7 @@ function formatRelative(
   return t("analytics.job.relativeDays", { count: days });
 }
 
-export default function MLAdminToolbar({ tournamentId, workspaceId }: MLAdminToolbarProps) {
+export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<MLAdminToolbarProps>) {
   const t = useTranslations();
 
   const trainScopeDescription = (scope: TrainScope, selectedCount: number): string => {

@@ -78,10 +78,10 @@ function serializeRoleSubroleItems(items: RoleSubroleItem[]): string {
 function RoleSubroleSubForm({
   row,
   onUpdate,
-}: {
+}: Readonly<{
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
-}) {
+}>) {
   const items = parseRoleSubroleItems(row.value);
 
   const commit = (next: RoleSubroleItem[]) => {
@@ -158,11 +158,11 @@ function ValueInput({
   kind,
   row,
   onUpdate,
-}: {
+}: Readonly<{
   kind: ValueEditorKind;
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
-}) {
+}>) {
   if (kind === "text" || kind === "number") {
     return (
       <Input
@@ -207,7 +207,7 @@ export function ValueMapEditor({
   onUpdate,
   onRemove,
   onSeedDefaults,
-}: ValueMapEditorProps) {
+}: Readonly<ValueMapEditorProps>) {
   return (
     <div className="space-y-3 rounded-lg border p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">

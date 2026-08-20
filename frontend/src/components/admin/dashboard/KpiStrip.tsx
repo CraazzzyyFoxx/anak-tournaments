@@ -31,7 +31,7 @@ interface KpiStripProps {
  * encounters) — numbers that only ever grow and answer no question an admin
  * arrives with. Each tile now states where the current cycle stands.
  */
-export function KpiStrip({ tournaments, registrationOpen, matches, logs }: KpiStripProps) {
+export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Readonly<KpiStripProps>) {
   const items: {
     icon: LucideIcon;
     value: string | number;

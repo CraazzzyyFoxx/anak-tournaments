@@ -110,7 +110,7 @@ export function PickBanGrid({
   locks,
   onSelect,
   header
-}: PickBanGridProps) {
+}: Readonly<PickBanGridProps>) {
   const t = useTranslations("pickBan.room");
   const tCommon = useTranslations("common");
   const [roleFilter, setRoleFilter] = useState<AqtRoleKey | "all">("all");

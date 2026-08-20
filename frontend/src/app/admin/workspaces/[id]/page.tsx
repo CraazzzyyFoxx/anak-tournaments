@@ -88,12 +88,12 @@ function BrandColorField({
   label,
   value,
   onChange,
-}: {
+}: Readonly<{
   id: string;
   label: string;
   value: string | null | undefined;
   onChange: (value: string) => void;
-}) {
+}>) {
   const hex = value ?? "";
   const valid = /^#[0-9a-fA-F]{6}$/.test(hex);
   return (
@@ -126,7 +126,7 @@ function BrandColorField({
 const errorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message ? `${fallback}: ${error.message}` : fallback;
 
-export default function WorkspaceEditPage({ params }: { params: Promise<{ id: string }> }) {
+export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id: idParam } = use(params);
   const id = Number(idParam);
   const router = useRouter();

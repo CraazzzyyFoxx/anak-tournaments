@@ -96,7 +96,7 @@ function parseSearchParams(params: Record<string, string | undefined>): ParsedSe
   };
 }
 
-async function EncountersContent({ page, filters }: ParsedSearchParams) {
+async function EncountersContent({ page, filters }: Readonly<ParsedSearchParams>) {
   const t = await getTranslations();
   const apiFilters = filtersToApiFilters(filters);
   let initialError: string | null = null;
@@ -143,7 +143,7 @@ async function EncountersContent({ page, filters }: ParsedSearchParams) {
   );
 }
 
-export default async function EncountersPage({ searchParams }: EncountersPageProps) {
+export default async function EncountersPage({ searchParams }: Readonly<EncountersPageProps>) {
   const params = parseSearchParams(await searchParams);
 
   return <EncountersContent page={params.page} filters={params.filters} />;

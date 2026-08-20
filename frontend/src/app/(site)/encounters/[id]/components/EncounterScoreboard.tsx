@@ -19,7 +19,7 @@ import styles from "../EncounterDetail.module.css";
  * above two bare numbers with no indication of the format, of how the maps fell,
  * or of which map is currently being played.
  */
-export default function EncounterScoreboard({ encounter }: { encounter: Encounter }) {
+export default function EncounterScoreboard({ encounter }: Readonly<{ encounter: Encounter }>) {
   const t = useTranslations();
   const slots = buildSeriesSlots(encounter);
   const verdict = getSeriesVerdict(encounter);
@@ -56,7 +56,7 @@ export default function EncounterScoreboard({ encounter }: { encounter: Encounte
   );
 }
 
-function TeamBlock({ encounter, side }: { encounter: Encounter; side: SeriesSide }) {
+function TeamBlock({ encounter, side }: Readonly<{ encounter: Encounter; side: SeriesSide }>) {
   const t = useTranslations();
   const team = side === "home" ? encounter.home_team : encounter.away_team;
   const name = team?.name ?? t("common.tbd");
@@ -101,7 +101,7 @@ function TeamBlock({ encounter, side }: { encounter: Encounter; side: SeriesSide
  * the series never needed, ringed for the map in progress. This is what makes a
  * 3–1 in a Bo5 legible as "four maps played, one spare".
  */
-function MapPips({ slots }: { slots: SeriesSlot[] }) {
+function MapPips({ slots }: Readonly<{ slots: SeriesSlot[] }>) {
   const t = useTranslations();
   const summary = slots
     .map((slot) => {

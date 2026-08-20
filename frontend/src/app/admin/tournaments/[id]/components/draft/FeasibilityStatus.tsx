@@ -12,7 +12,7 @@ interface FeasibilityStatusProps {
   loading?: boolean;
 }
 
-export function FeasibilityStatus({ feasibility, loading = false }: FeasibilityStatusProps) {
+export function FeasibilityStatus({ feasibility, loading = false }: Readonly<FeasibilityStatusProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
   if (loading) return <Skeleton className="h-28 w-full rounded-xl" />;
   if (!feasibility) {

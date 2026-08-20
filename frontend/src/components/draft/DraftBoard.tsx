@@ -31,7 +31,7 @@ interface DraftBoardProps {
   tournament: Tournament;
 }
 
-export function DraftBoard({ tournament }: DraftBoardProps) {
+export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
   const t = useTranslations("draftRedesign");
   const pathname = usePathname();
   const router = useRouter();
@@ -165,12 +165,12 @@ function DraftStateFrame({
   title,
   hint,
   action
-}: {
+}: Readonly<{
   icon: ReactNode;
   title: string;
   hint: string;
   action?: ReactNode;
-}) {
+}>) {
   return (
     <HeroFrame>
       <div className="flex min-h-64 flex-col items-start justify-center gap-3 px-6 py-12 md:px-10">

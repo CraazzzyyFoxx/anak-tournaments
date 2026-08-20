@@ -70,7 +70,7 @@ interface TournamentStatusControlProps {
   tournament: Tournament;
 }
 
-export function TournamentStatusControl({ tournament }: TournamentStatusControlProps) {
+export function TournamentStatusControl({ tournament }: Readonly<TournamentStatusControlProps>) {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const config = STATUS_CONFIG[tournament.status];

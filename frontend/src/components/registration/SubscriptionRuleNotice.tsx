@@ -17,7 +17,7 @@ interface SubscriptionRuleNoticeProps {
  * blocked. The rule text comes from the server (`rule`) so it can never disagree
  * with what the gate actually enforces.
  */
-export default function SubscriptionRuleNotice({ subscription }: SubscriptionRuleNoticeProps) {
+export default function SubscriptionRuleNotice({ subscription }: Readonly<SubscriptionRuleNoticeProps>) {
   const t = useTranslations();
 
   if (!subscription?.required || !subscription.rule) return null;

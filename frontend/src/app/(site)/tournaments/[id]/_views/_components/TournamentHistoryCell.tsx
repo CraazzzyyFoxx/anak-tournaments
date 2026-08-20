@@ -36,11 +36,11 @@ function getHistoryRoleLabel(
 export default function TournamentHistoryCell({
   history,
   count,
-}: {
+}: Readonly<{
   history: TournamentHistoryEntry[];
   /** True total of past tournaments; `history` may be capped to a recent subset. */
   count?: number;
-}) {
+}>) {
   const t = useTranslations();
 
   if (!history || history.length === 0) {

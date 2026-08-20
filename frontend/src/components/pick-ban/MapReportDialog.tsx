@@ -48,7 +48,7 @@ export function MapReportDialog({
   onOpenChange,
   filed = null,
   invalidateKeys,
-}: MapReportDialogProps) {
+}: Readonly<MapReportDialogProps>) {
   const t = useTranslations("pickBan.room.mapReport");
   const queryClient = useQueryClient();
   // The dialog is mounted on demand, so seeding state is enough to reopen an

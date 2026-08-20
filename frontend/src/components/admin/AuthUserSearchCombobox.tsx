@@ -32,7 +32,7 @@ export function AuthUserSearchCombobox({
   placeholder = "Select auth account",
   searchPlaceholder = "Search by email or username…",
   disabled = false
-}: AuthUserSearchComboboxProps) {
+}: Readonly<AuthUserSearchComboboxProps>) {
   const {
     open,
     setOpen,

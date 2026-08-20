@@ -30,11 +30,11 @@ function RoomCard({
   room,
   onClose,
   isClosing
-}: {
+}: Readonly<{
   room: ScrimRoom;
   onClose: () => void;
   isClosing: boolean;
-}) {
+}>) {
   const t = useTranslations("scrims.list");
   const format = useFormatter();
   const href = withReturnTo(`/scrims/${room.token}`, "/scrims");

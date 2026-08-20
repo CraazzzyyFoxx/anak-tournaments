@@ -112,7 +112,7 @@ export function PregameHeader({
   round,
   series,
   returnTo
-}: PregameHeaderProps) {
+}: Readonly<PregameHeaderProps>) {
   const t = useTranslations("pickBan.room");
   const homeTeam = encounter.home_team ?? null;
   const awayTeam = encounter.away_team ?? null;
@@ -167,7 +167,7 @@ export function PregameHeader({
  * words move to `title`/screen-reader text — the colour and glyph already say
  * it, and a third uppercase pill next to the room title said it twice.
  */
-function StatusMark({ status }: { status: PickBanSession["status"] }) {
+function StatusMark({ status }: Readonly<{ status: PickBanSession["status"] }>) {
   const t = useTranslations("pickBan.room");
   const label = t(`statusChip.${status}`);
   const color = STATUS_COLOR[status];
@@ -204,7 +204,7 @@ function Scoreboard({
   firstSide,
   score,
   bestOf
-}: {
+}: Readonly<{
   homeName: string;
   awayName: string;
   homeTeam: TeamNameInput | null | undefined;
@@ -214,7 +214,7 @@ function Scoreboard({
   firstSide: "home" | "away" | null;
   score: { home: number; away: number } | null;
   bestOf: number | null;
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
   const homeScore = score?.home ?? 0;
   const awayScore = score?.away ?? 0;
@@ -305,14 +305,14 @@ function TeamSide({
   accentVar,
   opens,
   align
-}: {
+}: Readonly<{
   name: string;
   team: TeamNameInput | null | undefined;
   seed: number | null;
   accentVar: "--aqt-teal" | "--aqt-rose";
   opens: boolean;
   align: "start" | "end";
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
 
   return (
@@ -376,11 +376,11 @@ function SeriesPips({
   homeScore,
   awayScore,
   toWin
-}: {
+}: Readonly<{
   homeScore: number;
   awayScore: number;
   toWin: number;
-}) {
+}>) {
   return (
     <span aria-hidden className="flex items-center gap-1">
       {Array.from({ length: toWin }, (_, index) => (
@@ -415,10 +415,10 @@ function SeriesPips({
 function PhaseRail({
   phases,
   activePhase
-}: {
+}: Readonly<{
   phases: PregamePhaseStatus[];
   activePhase: PregamePhase;
-}) {
+}>) {
   const t = useTranslations("pickBan.room");
   const activeEntry = phases.find((entry) => entry.phase === activePhase) ?? null;
 
@@ -497,7 +497,7 @@ function PhaseRail({
  * - `upcoming` — dimmed art, no overlay, no score: a map of the series the
  *                loop has not reached.
  */
-function SeriesStrip({ series }: { series: PregameSeriesMap[] }) {
+function SeriesStrip({ series }: Readonly<{ series: PregameSeriesMap[] }>) {
   const t = useTranslations("pickBan.room");
 
   return (

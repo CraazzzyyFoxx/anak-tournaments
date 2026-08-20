@@ -37,7 +37,7 @@ export function EncounterRostersModal({
   encounterId,
   homeTeamName,
   awayTeamName
-}: EncounterRostersModalProps) {
+}: Readonly<EncounterRostersModalProps>) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
 

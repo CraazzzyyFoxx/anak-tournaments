@@ -12,12 +12,12 @@ export function RegistrationStatusCard({
   autoApprove,
   onChangeOpen,
   onChangeAutoApprove,
-}: {
+}: Readonly<{
   isOpen: boolean;
   autoApprove: boolean;
   onChangeOpen: (value: boolean) => void;
   onChangeAutoApprove: (value: boolean) => void;
-}) {
+}>) {
   const t = useTranslations("registrationFormAdmin.status");
   const idPrefix = useId();
   return (

@@ -27,12 +27,12 @@ function ClaimGate({
   onClaim,
   onWatch,
   isClaiming
-}: {
+}: Readonly<{
   room: ScrimRoom;
   onClaim: () => void;
   onWatch: () => void;
   isClaiming: boolean;
-}) {
+}>) {
   const t = useTranslations("scrims.claim");
   const openSide = room.home_team.captain_claimed ? room.away_team : room.home_team;
 

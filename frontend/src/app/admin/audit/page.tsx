@@ -72,10 +72,10 @@ function parseId(value: string | null): number | null {
 function AuditEntryDialog({
   entry,
   onOpenChange,
-}: {
+}: Readonly<{
   entry: AuditLogRead | null;
   onOpenChange: (open: boolean) => void;
-}) {
+}>) {
   if (!entry) return null;
 
   const action = describeAuditAction(entry.action);

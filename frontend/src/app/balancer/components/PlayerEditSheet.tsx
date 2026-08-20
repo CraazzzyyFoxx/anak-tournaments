@@ -307,7 +307,7 @@ function SortableRoleEntry({
   onUpdate,
   onRemove,
   subtypeOptions
-}: SortableRoleEntryProps) {
+}: Readonly<SortableRoleEntryProps>) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id
   });
@@ -598,7 +598,7 @@ function HistoryPreviewCard({
   currentEntry,
   getDivisionName,
   getOriginalDivisionName
-}: HistoryPreviewCardProps) {
+}: Readonly<HistoryPreviewCardProps>) {
   const accent = ROLE_ACCENTS[entry.role];
   // Normalised name (target/workspace grid)
   const divisionName =
@@ -726,7 +726,7 @@ export function PlayerEditModal({
   onRemove,
   saving = false,
   rankHistory = null
-}: PlayerEditModalProps) {
+}: Readonly<PlayerEditModalProps>) {
   const divisionGrid = useDivisionGrid();
   const divisionGridVersion = useDivisionGridVersion();
 

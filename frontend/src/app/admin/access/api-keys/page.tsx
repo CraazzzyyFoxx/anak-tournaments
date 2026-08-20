@@ -118,7 +118,7 @@ function getApiKeyStatus(apiKey: AccountApiKey): ApiKeyStatus {
   return "active";
 }
 
-function StatusCell({ status }: { status: ApiKeyStatus }) {
+function StatusCell({ status }: Readonly<{ status: ApiKeyStatus }>) {
   const meta = STATUS_META[status];
 
   return (
@@ -131,7 +131,7 @@ function StatusCell({ status }: { status: ApiKeyStatus }) {
   );
 }
 
-function LimitsText({ limits }: { limits: Partial<ApiKeyLimits> | undefined }) {
+function LimitsText({ limits }: Readonly<{ limits: Partial<ApiKeyLimits> | undefined }>) {
   const merged: ApiKeyLimits = { ...DEFAULT_LIMITS, ...(limits ?? {}) };
 
   return (
@@ -142,7 +142,7 @@ function LimitsText({ limits }: { limits: Partial<ApiKeyLimits> | undefined }) {
   );
 }
 
-function PolicyText({ policy }: { policy: Partial<ApiKeyConfigPolicy> | undefined }) {
+function PolicyText({ policy }: Readonly<{ policy: Partial<ApiKeyConfigPolicy> | undefined }>) {
   const merged = {
     allowed_keys: policy?.allowed_keys ?? DEFAULT_POLICY.allowed_keys,
     max_values: policy?.max_values ?? DEFAULT_POLICY.max_values

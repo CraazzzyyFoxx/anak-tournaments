@@ -57,7 +57,7 @@ export function CaptainDraftWorkspace({
   mutations,
   divisionGrid,
   onlineCaptainIds
-}: CaptainDraftWorkspaceProps) {
+}: Readonly<CaptainDraftWorkspaceProps>) {
   const t = useTranslations("draftRedesign");
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [selectedRole, setSelectedRole] = useState<DraftRole | null>(null);

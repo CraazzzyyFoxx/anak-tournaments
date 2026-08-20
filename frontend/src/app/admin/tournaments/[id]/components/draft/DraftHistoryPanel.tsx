@@ -40,7 +40,7 @@ const STATUS_TONE: Record<DraftStatus, Tone> = {
   cancelled: "danger"
 };
 
-export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: DraftHistoryPanelProps) {
+export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<DraftHistoryPanelProps>) {
   const t = useTranslations("draftAdmin");
   const format = useFormatter();
   const queryClient = useQueryClient();

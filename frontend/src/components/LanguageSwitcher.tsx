@@ -25,7 +25,7 @@ const SEGMENT_W = 36;
  * the active one. Uses the global `--aqt-*` tokens (defined on :root, so it also
  * renders correctly inside the UserMenu dropdown portal).
  */
-export default function LanguageSwitcher({ className }: { className?: string }) {
+export default function LanguageSwitcher({ className }: Readonly<{ className?: string }>) {
   const t = useTranslations();
   const active = useLocale() as Locale;
   const router = useRouter();

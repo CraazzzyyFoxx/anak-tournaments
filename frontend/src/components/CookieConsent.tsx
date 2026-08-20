@@ -61,7 +61,7 @@ type CookieConsentProps = {
  * from coming back. "Cookie settings" in the footer reopens it, and then the
  * notice names the choice in force and can be closed without changing it.
  */
-export default function CookieConsent({ initial, gaId }: CookieConsentProps) {
+export default function CookieConsent({ initial, gaId }: Readonly<CookieConsentProps>) {
   const t = useTranslations();
   const [consent, setConsent] = useState<CookieConsentValue | null>(initial);
   const isReopened = useCookieConsentStore((state) => state.isReopened);

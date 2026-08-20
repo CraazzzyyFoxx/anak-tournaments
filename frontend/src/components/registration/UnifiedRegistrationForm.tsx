@@ -126,7 +126,7 @@ export default function UnifiedRegistrationForm({
   onSubmit,
   onCancel,
   submitPending = false,
-}: UnifiedRegistrationFormProps) {
+}: Readonly<UnifiedRegistrationFormProps>) {
   const t = useTranslations();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
   // The mode has to be the reducer's INITIAL state, not something applied later:

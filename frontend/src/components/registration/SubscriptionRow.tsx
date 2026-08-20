@@ -42,7 +42,7 @@ export default function SubscriptionRow({
   subscription,
   onLinkAccounts,
   onRedeemCode
-}: SubscriptionRowProps) {
+}: Readonly<SubscriptionRowProps>) {
   const t = useTranslations();
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);

@@ -16,7 +16,7 @@ type TournamentOverviewBoundaryProps = {
 // is `force-dynamic`) never unmounts the client shell/nav on tab navigation.
 export default async function TournamentOverviewBoundary({
   tournamentId
-}: TournamentOverviewBoundaryProps) {
+}: Readonly<TournamentOverviewBoundaryProps>) {
   const overviewState = await getTournamentOverviewState(tournamentId);
 
   if (overviewState.kind === "not-found") {

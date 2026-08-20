@@ -39,7 +39,7 @@ export default function PlayerDetail({
   tournamentGrid,
   canReadV2 = false,
   onExplain,
-}: PlayerDetailProps) {
+}: Readonly<PlayerDetailProps>) {
   const t = useTranslations();
   const { hasPermission } = usePermissions();
   const [editing, setEditing] = useState(false);

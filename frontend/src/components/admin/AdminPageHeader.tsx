@@ -25,7 +25,7 @@ export function AdminPageHeader({
   meta,
   titleHidden = false,
   footer,
-}: AdminPageHeaderProps) {
+}: Readonly<AdminPageHeaderProps>) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">

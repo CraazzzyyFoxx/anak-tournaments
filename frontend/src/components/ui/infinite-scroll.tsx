@@ -93,7 +93,7 @@ export function InfiniteScrollFooter({
   loadMoreLabel,
   className,
   ...options
-}: InfiniteScrollFooterProps) {
+}: Readonly<InfiniteScrollFooterProps>) {
   const sentinelRef = useInfiniteScroll(options);
   const { hasNextPage, isFetchingNextPage, fetchNextPage, isError, disabled } = options;
 

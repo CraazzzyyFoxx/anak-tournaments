@@ -64,7 +64,7 @@ export function TournamentWorkspaceHeader({
   standingsCountLoading,
   canReadAnalytics,
   canToggleFinished
-}: TournamentWorkspaceHeaderProps) {
+}: Readonly<TournamentWorkspaceHeaderProps>) {
   const queryClient = useQueryClient();
 
   const toggleFinishedMutation = useMutation({

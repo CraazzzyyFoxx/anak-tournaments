@@ -29,7 +29,7 @@ interface Props {
   onImported: (job: DivisionGridImportJob) => Promise<void> | void;
 }
 
-export function DivisionGridImportWizard({ workspaceId, canImport, onImported }: Props) {
+export function DivisionGridImportWizard({ workspaceId, canImport, onImported }: Readonly<Props>) {
   const fieldId = useId();
   const workspaceFieldId = `${fieldId}-workspace`;
   const gridFieldId = `${fieldId}-grid`;

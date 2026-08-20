@@ -6,6 +6,6 @@ type BalancerLayoutProps = {
   children: ReactNode;
 };
 
-export default function BalancerLayout({ children }: BalancerLayoutProps) {
+export default function BalancerLayout({ children }: Readonly<BalancerLayoutProps>) {
   return <BalancerLayoutClient>{children}</BalancerLayoutClient>;
 }

@@ -50,7 +50,7 @@ export function BalancerEditorPanel({
   onBrowseAvailable,
   onReviewConflicts,
   onRunBalance
-}: BalancerEditorPanelProps) {
+}: Readonly<BalancerEditorPanelProps>) {
   return (
     <div className={cn(PANEL_CLASS, "flex min-h-0 flex-1 flex-col p-4")}>
       {activeVariant ? (

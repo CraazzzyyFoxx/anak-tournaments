@@ -72,7 +72,7 @@ export function DivisionGridLibrary({
   error,
   onSelect,
   onChanged
-}: Props) {
+}: Readonly<Props>) {
   const gridFieldId = useId();
   const portableInputRef = useRef<HTMLInputElement>(null);
   const [forceDeleteOpen, setForceDeleteOpen] = useState(false);

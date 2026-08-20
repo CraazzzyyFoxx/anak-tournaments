@@ -54,7 +54,7 @@ export function DraftOrderStep({
   rounds,
   format,
   roundRules
-}: DraftOrderStepProps) {
+}: Readonly<DraftOrderStepProps>) {
   const t = useTranslations("draftAdmin");
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -180,7 +180,7 @@ interface SortableCaptainProps {
   rank: number | null;
 }
 
-function SortableCaptain({ id, position, label, rank }: SortableCaptainProps) {
+function SortableCaptain({ id, position, label, rank }: Readonly<SortableCaptainProps>) {
   const t = useTranslations("draftAdmin");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   return (

@@ -64,7 +64,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
   onChallongeSlugValueChange,
   divisionGridVersions = [],
   divisionGridLoading = false,
-}: TournamentFormFieldsProps<T>) {
+}: Readonly<TournamentFormFieldsProps<T>>) {
   const showDescription = mode !== "challonge-create";
   const showInlineChallonge = mode === "edit" || mode === "workspace-edit";
   const showSeparateChallonge = mode === "challonge-create";

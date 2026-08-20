@@ -58,7 +58,7 @@ export default function MasterDetail({
   performanceByPlayer,
   distributionByTeam,
   onExplain,
-}: MasterDetailProps) {
+}: Readonly<MasterDetailProps>) {
   const t = useTranslations();
   const isDesktop = useMediaQuery("(min-width: 860px)");
   const [view, setView] = useState<"list" | "table">("list");

@@ -27,7 +27,7 @@ export function AchievementCombobox({
   searchPlaceholder = "Search achievement…",
   disabled = false,
   allowClear = true,
-}: AchievementComboboxProps) {
+}: Readonly<AchievementComboboxProps>) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 

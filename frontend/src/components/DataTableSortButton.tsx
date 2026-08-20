@@ -21,7 +21,7 @@ export function DataTableSortButton<TData>({
   column,
   label,
   className
-}: DataTableSortButtonProps<TData>) {
+}: Readonly<DataTableSortButtonProps<TData>>) {
   const sorted = column.getIsSorted();
 
   return (

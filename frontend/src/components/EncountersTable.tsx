@@ -281,13 +281,13 @@ export function EncountersDataTable({
   columns = DEFAULT_ENCOUNTER_COLUMNS,
   loading = false,
   className
-}: {
+}: Readonly<{
   rows: Encounter[];
   columns?: readonly EncounterColumnKey[];
   /** Renders placeholder rows instead of collapsing the table to a single line. */
   loading?: boolean;
   className?: string;
-}) {
+}>) {
   const router = useRouter();
   const t = useTranslations();
   const format = useFormatter();

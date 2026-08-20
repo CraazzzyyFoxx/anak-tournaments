@@ -21,7 +21,7 @@ export default function CustomField({
   value,
   onChange,
   onValidationChange,
-}: CustomFieldProps) {
+}: Readonly<CustomFieldProps>) {
   const t = useTranslations();
   const id = useId();
   const errorId = `${id}-error`;

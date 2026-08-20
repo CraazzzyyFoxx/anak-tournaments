@@ -291,10 +291,10 @@ const ProfileBody = async ({
 export default async function UserPage({
   params,
   searchParams
-}: {
+}: Readonly<{
   params: Promise<{ slug: string }>;
   searchParams: Promise<UserPageSearchParams>;
-}) {
+}>) {
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
   const userAndProfile = getUserAndProfile(resolvedParams.slug);

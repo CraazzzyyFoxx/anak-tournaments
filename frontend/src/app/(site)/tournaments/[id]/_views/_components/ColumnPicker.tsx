@@ -25,7 +25,7 @@ export default function ColumnPicker({
   visibility,
   onToggle,
   onReset,
-}: ColumnPickerProps) {
+}: Readonly<ColumnPickerProps>) {
   const t = useTranslations();
 
   const categoryLabel = (category: "meta" | "built_in" | "custom"): string => {

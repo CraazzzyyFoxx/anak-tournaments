@@ -20,7 +20,7 @@ type LegalDocumentProps = {
  * `{ title, body }[]` section shape, so a single renderer keeps them
  * visually consistent instead of duplicating the article markup twice.
  */
-export function LegalDocument({ title, intro, sections, children }: LegalDocumentProps) {
+export function LegalDocument({ title, intro, sections, children }: Readonly<LegalDocumentProps>) {
   return (
     <div className="mx-auto max-w-2xl py-16">
       <h1 className="text-balance font-display text-2xl uppercase tracking-wide text-foreground sm:text-3xl">

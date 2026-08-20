@@ -18,7 +18,7 @@ export const TournamentTeamCardSkeleton = () => {
   return <Skeleton className="h-[380px] w-full rounded-xl" />;
 };
 
-function NewMark({ active }: { active: boolean }) {
+function NewMark({ active }: Readonly<{ active: boolean }>) {
   return (
     <div className="flex justify-center">
       {active ? (

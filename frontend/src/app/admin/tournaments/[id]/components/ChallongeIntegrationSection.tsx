@@ -52,7 +52,7 @@ export function ChallongeIntegrationSection({
   hasChallongeSource,
   slug,
   onSlugChange
-}: ChallongeIntegrationSectionProps) {
+}: Readonly<ChallongeIntegrationSectionProps>) {
   const queryClient = useQueryClient();
 
   const { data: logs = [], isLoading } = useQuery({

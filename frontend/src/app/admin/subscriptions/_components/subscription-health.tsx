@@ -31,7 +31,7 @@ const SUBSCRIPTION_KEY = "parser.subscription_collection";
  * The bar is `aria-hidden`: the legend directly under it repeats every segment
  * as `<state> <count>` text, so the state is never carried by colour alone.
  */
-function StateBar({ stats }: { stats: SubscriptionCollectionStats }) {
+function StateBar({ stats }: Readonly<{ stats: SubscriptionCollectionStats }>) {
   const total = stats.total || 1;
   const counts = stats.by_state ?? {};
   return (

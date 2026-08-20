@@ -79,7 +79,7 @@ interface SiteNavProps {
  * the destination. This is a rule about arity, not about a specific group, so
  * adding a second item turns the disclosure back on by itself.
  */
-export function SiteNav({ variant, className }: SiteNavProps) {
+export function SiteNav({ variant, className }: Readonly<SiteNavProps>) {
   const t = useTranslations();
   const pathname = usePathname() ?? "";
   const groups = useVisibleNavGroups();

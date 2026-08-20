@@ -96,7 +96,7 @@ function createEmptyCaptainSetup(): DraftCaptainSetup {
   };
 }
 
-export function DraftSetupWizard({ tournamentId, board, rosterShape }: DraftSetupWizardProps) {
+export function DraftSetupWizard({ tournamentId, board, rosterShape }: Readonly<DraftSetupWizardProps>) {
   const t = useTranslations("draftAdmin");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);

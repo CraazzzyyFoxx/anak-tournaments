@@ -80,7 +80,7 @@ export function TournamentSettingsTab({
   hasChallongeSource,
   discordChannel,
   discordChannelLoading
-}: TournamentSettingsTabProps) {
+}: Readonly<TournamentSettingsTabProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
 

@@ -10,7 +10,7 @@ interface HowItWorksCardProps {
 }
 
 /** The "New here? Read the analytics in 30s" prompt that opens the explainer. */
-export default function HowItWorksCard({ onOpen }: HowItWorksCardProps) {
+export default function HowItWorksCard({ onOpen }: Readonly<HowItWorksCardProps>) {
   const t = useTranslations();
   return (
     <button type="button" className={styles.cHowCard} onClick={onOpen}>

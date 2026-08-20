@@ -29,7 +29,7 @@ interface ChangeShiftDialogProps {
  * analytics queries so the view recomputes. Shared by the community player
  * detail and the expert team table.
  */
-export default function ChangeShiftDialog({ player, open, onOpenChange }: ChangeShiftDialogProps) {
+export default function ChangeShiftDialog({ player, open, onOpenChange }: Readonly<ChangeShiftDialogProps>) {
   const t = useTranslations();
   const [shift, setShift] = useState(player.shift ?? 0);
   const [saving, setSaving] = useState(false);

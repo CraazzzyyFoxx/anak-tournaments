@@ -207,14 +207,14 @@ function EncounterStageFields({
   stageItemId,
   onStageChange,
   onStageItemChange
-}: {
+}: Readonly<{
   idPrefix: string;
   stagesData: Stage[];
   stageId: number | null | undefined;
   stageItemId: number | null | undefined;
   onStageChange: (stage: Stage | null) => void;
   onStageItemChange: (value: string) => void;
-}) {
+}>) {
   return (
     <>
       <div>
@@ -270,13 +270,13 @@ function EncounterTeamField({
   teams,
   value,
   onSelect
-}: {
+}: Readonly<{
   id: string;
   label: string;
   teams: Team[];
   value: number | null | undefined;
   onSelect: (teamId: number | null) => void;
-}) {
+}>) {
   return (
     <div>
       <Label htmlFor={id}>{label}</Label>
@@ -299,13 +299,13 @@ function EncounterScoreFieldsSection({
   awayScore,
   isGroupStageForm,
   onChange
-}: {
+}: Readonly<{
   idPrefix: string;
   homeScore: number;
   awayScore: number;
   isGroupStageForm: boolean;
   onChange: (score: EncounterScore) => void;
-}) {
+}>) {
   return (
     <EncounterScoreControls
       idPrefix={idPrefix}

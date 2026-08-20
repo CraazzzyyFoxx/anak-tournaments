@@ -31,7 +31,7 @@ interface OverlayBarProps {
  * Pair with bottom padding on the page's scroll container (draft uses
  * `pb-36 sm:pb-32`) so the fixed bar never overlaps trailing content.
  */
-export function OverlayBar({ tone = "neutral", ariaLabel, className, children }: OverlayBarProps) {
+export function OverlayBar({ tone = "neutral", ariaLabel, className, children }: Readonly<OverlayBarProps>) {
   return (
     <section
       className={cn(

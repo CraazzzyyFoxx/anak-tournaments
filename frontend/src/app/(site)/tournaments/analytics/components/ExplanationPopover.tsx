@@ -43,7 +43,7 @@ export default function ExplanationPopover({
   playerId,
   tournamentId,
   algorithmId,
-}: ExplanationPopoverProps) {
+}: Readonly<ExplanationPopoverProps>) {
   const t = useTranslations();
   const [open, setOpen] = React.useState(false);
 

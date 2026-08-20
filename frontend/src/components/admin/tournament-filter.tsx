@@ -52,7 +52,7 @@ export function TournamentFilterSelect({
   tournaments,
   selectedTournamentId,
   onValueChange
-}: TournamentFilterSelectProps) {
+}: Readonly<TournamentFilterSelectProps>) {
   return (
     <Select value={selectedTournamentId?.toString() ?? "all"} onValueChange={onValueChange}>
       <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">

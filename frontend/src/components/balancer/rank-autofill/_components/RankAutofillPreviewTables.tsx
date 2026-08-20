@@ -70,7 +70,7 @@ function playerLabel(player: RegistrationRankAutofillPlayer): string {
   return player.battle_tag ?? player.display_name ?? `#${player.registration_id}`;
 }
 
-function RankAutofillRolePill({ role }: { role: RegistrationRankAutofillRole }) {
+function RankAutofillRolePill({ role }: Readonly<{ role: RegistrationRankAutofillRole }>) {
   const t = useTranslations();
   const grid = useDivisionGrid();
   const roleLabel = ROLE_LABELS[role.role] ?? role.role;
@@ -158,7 +158,7 @@ export function RankAutofillPreviewTables({
   selectedIds,
   onToggle,
   onToggleAll
-}: RankAutofillPreviewTablesProps) {
+}: Readonly<RankAutofillPreviewTablesProps>) {
   const t = useTranslations();
 
   if (!preview && !loading) {

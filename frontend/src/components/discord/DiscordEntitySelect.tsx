@@ -109,7 +109,7 @@ export function DiscordEntitySelect<T extends { id: string; name: string }>({
   renderOption,
   renderSelectedLabel,
   labels
-}: DiscordEntitySelectProps<T>) {
+}: Readonly<DiscordEntitySelectProps<T>>) {
   const sizeClasses = SIZE_CLASSES[size];
 
   // `className` lands on the WRAPPER, not the trigger: this renders a row --

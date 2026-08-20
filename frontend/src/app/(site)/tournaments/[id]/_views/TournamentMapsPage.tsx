@@ -229,7 +229,7 @@ function sharedGamemode(candidates: PoolEntry[]): string | null {
  * The hairline is pure white at 10%, not `--aqt-border`: a tinted neutral outline
  * picks up the map art underneath it and reads as dirt along the edge.
  */
-function CandidateTile({ art, name }: { art: string | null; name: string }) {
+function CandidateTile({ art, name }: Readonly<{ art: string | null; name: string }>) {
   const [failed, setFailed] = useState(false);
   return (
     <li className="relative flex h-[5.25rem] min-w-0 flex-1 basis-[calc(50%-0.25rem)] items-end overflow-hidden rounded-lg bg-[color:var(--aqt-overlay-2)] ring-1 ring-inset ring-[hsl(0_0%_100%/0.1)] sm:h-24 sm:w-44 sm:flex-none sm:basis-auto">
@@ -256,7 +256,7 @@ function CandidateTile({ art, name }: { art: string | null; name: string }) {
   );
 }
 
-export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageProps) {
+export default function TournamentMapsPage({ tournamentId }: Readonly<TournamentMapsPageProps>) {
   const t = useTranslations();
   const searchParams = useSearchParams();
 

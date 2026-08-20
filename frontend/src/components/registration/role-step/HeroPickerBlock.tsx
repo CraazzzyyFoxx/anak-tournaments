@@ -18,7 +18,7 @@ interface HeroPickerBlockProps {
   onChange: (slugs: string[]) => void;
 }
 
-export function HeroPickerBlock({ heroes, selected, max, roleCode, onChange }: HeroPickerBlockProps) {
+export function HeroPickerBlock({ heroes, selected, max, roleCode, onChange }: Readonly<HeroPickerBlockProps>) {
   const accent = ROLE_ACCENTS[roleCode] ?? ROLE_ACCENTS.flex;
   const atMax = selected.length >= max;
 

@@ -40,7 +40,7 @@ export function DivisionGridConflictResolver({
   sources,
   canEdit,
   onResolved
-}: Props) {
+}: Readonly<Props>) {
   const pending = useMemo(
     () => sources.filter((source) => source.conflict_tiers.length > 0),
     [sources]

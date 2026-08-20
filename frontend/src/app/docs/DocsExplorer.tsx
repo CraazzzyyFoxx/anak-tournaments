@@ -37,7 +37,7 @@ interface DomainIndex {
 }
 
 /** Render a string with `backtick`-delimited inline-code spans. */
-function RichText({ text }: { text: string }) {
+function RichText({ text }: Readonly<{ text: string }>) {
   const parts = text.split("`");
   return (
     <>
@@ -54,7 +54,7 @@ function RichText({ text }: { text: string }) {
   );
 }
 
-function DefinitionList({ items }: { items: DocEntry[] }) {
+function DefinitionList({ items }: Readonly<{ items: DocEntry[] }>) {
   return (
     <div className={styles.defList}>
       {items.map((item) => (
@@ -251,7 +251,7 @@ function domainKeyForSchema(schema: string): string | null {
   return owner ? owner.key : null;
 }
 
-function OverviewView({ onSelectSchema }: { onSelectSchema: (key: string) => void }) {
+function OverviewView({ onSelectSchema }: Readonly<{ onSelectSchema: (key: string) => void }>) {
   return (
     <div className={styles.overview}>
       <section className={styles.overviewSection}>

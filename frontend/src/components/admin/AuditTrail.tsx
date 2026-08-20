@@ -66,10 +66,10 @@ const DIFF_KIND_WORD: Record<AuditDiffKind, string> = {
 export function AuditFieldDiff({
   before,
   after,
-}: {
+}: Readonly<{
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
-}) {
+}>) {
   const rows = auditDiffRows(before, after);
 
   if (rows.length === 0) {
@@ -121,7 +121,7 @@ export function AuditFieldDiff({
 }
 
 /** Everything the compact line leaves out, shown only when asked for. */
-function AuditEntryDetail({ entry }: { entry: AuditLogRead }) {
+function AuditEntryDetail({ entry }: Readonly<{ entry: AuditLogRead }>) {
   const meta: Array<{ label: string; value: string }> = [
     { label: "Source", value: auditSourceLabel(entry.source) },
     ...(entry.ip_address ? [{ label: "IP", value: entry.ip_address }] : []),
@@ -154,7 +154,7 @@ function AuditEntryDetail({ entry }: { entry: AuditLogRead }) {
   );
 }
 
-function AuditEntry({ entry }: { entry: AuditLogRead }) {
+function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
   const [open, setOpen] = useState(false);
   const action = describeAuditAction(entry.action);
   const hasDetail =
@@ -233,7 +233,7 @@ export interface AuditTrailProps {
  * than a table: it lives inside a settings page, and one entity's history is
  * read top-to-bottom, not sorted and filtered.
  */
-export function AuditTrail({ entityType, entityId, workspaceId }: AuditTrailProps) {
+export function AuditTrail({ entityType, entityId, workspaceId }: Readonly<AuditTrailProps>) {
   const entityNoun = (auditEntityLabel(entityType) ?? "record").toLowerCase();
 
   const trailQuery = useQuery({

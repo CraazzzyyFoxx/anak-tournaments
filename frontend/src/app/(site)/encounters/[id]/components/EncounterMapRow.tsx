@@ -54,7 +54,7 @@ export default function EncounterMapRow({
   seriesCompleted,
   tournamentGrid,
   clockUnits
-}: EncounterMapRowProps) {
+}: Readonly<EncounterMapRowProps>) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const match = slot.match;

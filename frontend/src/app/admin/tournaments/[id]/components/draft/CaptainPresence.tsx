@@ -13,7 +13,7 @@ interface CaptainPresenceProps {
   presence: DraftPresenceState;
 }
 
-export function CaptainPresence({ teams, presence }: CaptainPresenceProps) {
+export function CaptainPresence({ teams, presence }: Readonly<CaptainPresenceProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
   const rows = captainPresenceRows(teams, presence);
   const online = rows.filter((row) => row.connected).length;

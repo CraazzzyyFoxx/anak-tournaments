@@ -33,7 +33,7 @@ interface ElectOpenerDialogProps {
  * true (`first_ban_rotation: result_loser_choice`). The backend enforces who
  * may submit this — `open` alone gates VISIBILITY, not authorization.
  */
-export function ElectOpenerDialog({ kind, encounterId, open, homeName, awayName, queryKey }: ElectOpenerDialogProps) {
+export function ElectOpenerDialog({ kind, encounterId, open, homeName, awayName, queryKey }: Readonly<ElectOpenerDialogProps>) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
   const [choice, setChoice] = useState<PickBanSide | null>(null);

@@ -69,11 +69,11 @@ const POOL_SOURCES: PoolSource[] = ["copy", "custom"];
 export function ScrimCreateDialog({
   workspaceId,
   listQueryKey
-}: {
+}: Readonly<{
   workspaceId: number;
   /** Invalidated on success so the new room shows up behind the closing dialog. */
   listQueryKey: readonly unknown[];
-}) {
+}>) {
   const t = useTranslations("scrims.create");
   const tAdmin = useTranslations("pickBan.admin");
   const ids = useId();

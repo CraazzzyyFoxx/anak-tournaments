@@ -26,11 +26,11 @@ export default function EncounterRosterPanel({
   team,
   side,
   tournamentGrid
-}: {
+}: Readonly<{
   team: Team | null;
   side: SeriesSide;
   tournamentGrid?: DivisionGridVersion | null;
-}) {
+}>) {
   const t = useTranslations();
   const players = sortTeamPlayers(team?.players ?? []);
   const captainId = team?.captain_id ?? null;
@@ -156,7 +156,7 @@ export default function EncounterRosterPanel({
   );
 }
 
-function Flag({ on, onLabel, offLabel }: { on: boolean; onLabel: string; offLabel: string }) {
+function Flag({ on, onLabel, offLabel }: Readonly<{ on: boolean; onLabel: string; offLabel: string }>) {
   const Icon = on ? CirclePlus : CircleMinus;
   return (
     <Icon

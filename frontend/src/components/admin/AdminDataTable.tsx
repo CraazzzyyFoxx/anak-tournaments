@@ -77,7 +77,7 @@ export function AdminDataTable<TData>({
   initialPageSize = 15,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   filterKey,
-}: AdminDataTableProps<TData>) {
+}: Readonly<AdminDataTableProps<TData>>) {
   const pathname = usePathname();
   const searchInputId = useId();
   const rowHintId = useId();

@@ -21,10 +21,10 @@ interface RosterRowProps {
 function MoveChip({
   player,
   tournamentGrid,
-}: {
+}: Readonly<{
   player: PlayerVM;
   tournamentGrid?: DivisionGridVersion | null;
-}) {
+}>) {
   const t = useTranslations();
   const target = player.predicted_division ?? player.division;
 
@@ -59,7 +59,7 @@ function MoveChip({
  * tag), impact bar, optional watch-flag chip, and the predicted move. Selecting
  * it opens the player detail.
  */
-export default function RosterRow({ player, tournamentGrid, onSelect }: RosterRowProps) {
+export default function RosterRow({ player, tournamentGrid, onSelect }: Readonly<RosterRowProps>) {
   const t = useTranslations();
   const isNew = player.is_newcomer || player.is_newcomer_role;
   const flag = player.anomalies[0];

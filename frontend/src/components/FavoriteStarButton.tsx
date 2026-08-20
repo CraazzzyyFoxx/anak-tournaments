@@ -35,7 +35,7 @@ const ICON_SIZE: Record<NonNullable<FavoriteStarButtonProps["size"]>, number> = 
  * visitor gets the login modal instead of a doomed API call, and an
  * authenticated click always stops propagation before toggling.
  */
-export default function FavoriteStarButton({ playerId, size = "md", className }: FavoriteStarButtonProps) {
+export default function FavoriteStarButton({ playerId, size = "md", className }: Readonly<FavoriteStarButtonProps>) {
   const t = useTranslations();
   const { user } = useAuthProfile();
   const openAuthModal = useAuthModalStore((state) => state.open);

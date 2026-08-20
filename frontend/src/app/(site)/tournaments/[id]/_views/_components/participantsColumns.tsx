@@ -100,11 +100,11 @@ function RolesCell({
   roles,
   grid,
   showRanks = false,
-}: {
+}: Readonly<{
   roles: RegistrationRole[];
   grid?: DivisionGrid | null;
   showRanks?: boolean;
-}) {
+}>) {
   const t = useTranslations();
   const resolvedGrid = grid || DEFAULT_DIVISION_GRID;
   if (!roles || roles.length === 0)
@@ -196,7 +196,7 @@ export function useHeroesMap({ enabled = true }: { enabled?: boolean } = {}): Ma
 function TopHeroesCell({
   roles,
   heroesMap,
-}: {
+}: Readonly<{
   roles: RegistrationRole[];
   /**
    * Hoisted by the caller. The cell must never query heroes itself: it renders
@@ -204,7 +204,7 @@ function TopHeroesCell({
    * cost this prop removes.
    */
   heroesMap: Map<string, Hero>;
-}) {
+}>) {
   const sortedRoles = useMemo(() => {
     if (!roles) return [];
     return [...roles].sort((a, b) => {
@@ -293,9 +293,9 @@ const MAX_VISIBLE_SMURF_TAGS = 3;
 
 function SmurfTagsCell({
   tags,
-}: {
+}: Readonly<{
   tags: string[] | null | undefined;
-}) {
+}>) {
   const t = useTranslations();
   const smurfTags = tags?.filter(Boolean) ?? [];
 
@@ -358,7 +358,7 @@ function SmurfTagsCell({
 // Stream POV cell
 // ---------------------------------------------------------------------------
 
-function StreamPovCell({ value }: { value: boolean | null | undefined }) {
+function StreamPovCell({ value }: Readonly<{ value: boolean | null | undefined }>) {
   const t = useTranslations();
   const label = value ? t("common.yes") : t("common.no");
   return (

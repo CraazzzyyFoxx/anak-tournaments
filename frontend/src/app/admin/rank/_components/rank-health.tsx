@@ -34,7 +34,7 @@ function formatInterval(seconds: number): string {
  * The bar is `aria-hidden`: the legend directly under it repeats every segment
  * as `<status> <count>` text, so the state is never carried by colour alone.
  */
-function StatusBar({ stats }: { stats: RankCollectionStats }) {
+function StatusBar({ stats }: Readonly<{ stats: RankCollectionStats }>) {
   const total = stats.total || 1;
   const counts = stats.by_status || {};
   return (

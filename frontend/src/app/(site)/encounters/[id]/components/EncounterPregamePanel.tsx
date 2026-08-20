@@ -28,7 +28,7 @@ export default function EncounterPregamePanel({
   encounterId,
   homeName,
   awayName
-}: EncounterPregamePanelProps) {
+}: Readonly<EncounterPregamePanelProps>) {
   const t = useTranslations();
   const mapQuery = usePregameState("map", encounterId);
   const heroQuery = usePregameState("hero", encounterId);
@@ -102,12 +102,12 @@ function PregameSection({
   state,
   homeName,
   awayName
-}: {
+}: Readonly<{
   title: string;
   state: PickBanState;
   homeName: string;
   awayName: string;
-}) {
+}>) {
   const t = useTranslations();
   const session = state.session;
   const decided = state.pool.filter(
@@ -191,7 +191,7 @@ function reasonKey(state: PickBanState): string {
   }
 }
 
-function ReadyMark({ ready }: { ready: boolean }) {
+function ReadyMark({ ready }: Readonly<{ ready: boolean }>) {
   const t = useTranslations();
   const Icon = ready ? Check : X;
   return (

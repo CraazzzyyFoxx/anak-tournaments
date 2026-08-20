@@ -95,7 +95,7 @@ function computeTeamRosterView(
  * asks for a role: under an all-flex shape a row of `0/0` per role would state
  * a requirement that does not exist, which is the confusion this feature removes.
  */
-function SlotCounters({ counters, accented }: { counters: SlotCounter[]; accented: boolean }) {
+function SlotCounters({ counters, accented }: Readonly<{ counters: SlotCounter[]; accented: boolean }>) {
   const t = useTranslations("draftRedesign");
   return (
     <>
@@ -137,11 +137,11 @@ function RosterRowIcon({
   player,
   role,
   hasRoleSlots
-}: {
+}: Readonly<{
   player: DraftPlayer;
   role: RosterRoleSlotCode;
   hasRoleSlots: boolean;
-}) {
+}>) {
   if (player.is_captain) return <Crown className="h-4 w-4 text-[color:var(--aqt-warm)]" />;
   if (!hasRoleSlots) return <Shuffle className="h-4 w-4 text-[color:var(--aqt-fg-muted)]" aria-hidden />;
   return <PlayerRoleIcon role={getRoleIconName(role)} size={16} />;
@@ -158,7 +158,7 @@ export function TeamRosters({
   divisionGrid,
   variant = "grid",
   onlineCaptainIds
-}: TeamRostersProps) {
+}: Readonly<TeamRostersProps>) {
   const t = useTranslations("draftRedesign");
   const rosters = buildRosterByTeam(players);
 

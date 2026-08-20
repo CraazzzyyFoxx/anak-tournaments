@@ -11,12 +11,12 @@ export async function LiveUpcomingBadge({
   upcomingCount,
   dotClassName,
   textClassName,
-}: {
+}: Readonly<{
   liveCount: number;
   upcomingCount: number;
   dotClassName: string;
   textClassName: string;
-}) {
+}>) {
   const t = await getTranslations();
   return (
     <div className="flex items-center gap-2.5 mb-4">

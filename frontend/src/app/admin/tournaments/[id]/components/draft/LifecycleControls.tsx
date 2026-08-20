@@ -47,7 +47,7 @@ interface LifecycleControlsProps {
 
 type ConfirmedAction = Extract<DraftLifecycleAction, "rollback" | "cancel" | "export"> | "autopick";
 
-export function LifecycleControls({ tournamentId, board, options }: LifecycleControlsProps) {
+export function LifecycleControls({ tournamentId, board, options }: Readonly<LifecycleControlsProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
   const mutations = useDraftMutations(tournamentId);
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction | null>(null);

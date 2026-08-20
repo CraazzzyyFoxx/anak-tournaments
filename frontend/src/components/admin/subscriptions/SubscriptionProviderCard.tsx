@@ -84,7 +84,7 @@ interface SubscriptionProvidersCardProps {
   workspaceId: number;
 }
 
-export default function SubscriptionProvidersCard({ workspaceId }: SubscriptionProvidersCardProps) {
+export default function SubscriptionProvidersCard({ workspaceId }: Readonly<SubscriptionProvidersCardProps>) {
   const t = useTranslations("subscriptionProviders");
   const queryClient = useQueryClient();
   const queryKey = ["subscription-providers", workspaceId] as const;
@@ -129,12 +129,12 @@ function ProviderEditor({
   config,
   discordGuildId,
   onSaved,
-}: {
+}: Readonly<{
   workspaceId: number;
   config: SubscriptionProviderConfigRead;
   discordGuildId: string | null;
   onSaved: () => void;
-}) {
+}>) {
   const t = useTranslations("subscriptionProviders");
   const methodSelectId = useId();
   const label = PROVIDER_LABELS[config.provider] ?? config.provider;

@@ -52,7 +52,7 @@ const ROWS: Array<{
   }
 ];
 
-export function RegistrationStep({ value, onChange, draftId }: RegistrationStepProps) {
+export function RegistrationStep({ value, onChange, draftId }: Readonly<RegistrationStepProps>) {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">

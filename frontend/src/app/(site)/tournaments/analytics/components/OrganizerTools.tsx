@@ -23,7 +23,7 @@ interface OrganizerToolsProps {
  * one collapsed "Organizer tools" panel, so the default read view is free of
  * admin controls. Only rendered for users with `analytics.update`.
  */
-export default function OrganizerTools({ tournamentId, workspaceId }: OrganizerToolsProps) {
+export default function OrganizerTools({ tournamentId, workspaceId }: Readonly<OrganizerToolsProps>) {
   const t = useTranslations();
   const [open, setOpen] = React.useState(false);
 

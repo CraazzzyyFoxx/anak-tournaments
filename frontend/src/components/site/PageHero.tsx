@@ -42,7 +42,7 @@ export function HeroFrame({
   className,
   variant = "default",
   roleTint,
-}: HeroFrameProps) {
+}: Readonly<HeroFrameProps>) {
   const isProfile = variant === "profile";
   return (
     <section
@@ -132,7 +132,7 @@ export function PageHero({
   className,
   titleClassName,
   align = "end",
-}: PageHeroProps) {
+}: Readonly<PageHeroProps>) {
   return (
     <HeroFrame className={className}>
       <div
@@ -181,10 +181,10 @@ export function PageHero({
 export function HeroCoord({
   children,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <span
       className={cn(
@@ -202,11 +202,11 @@ export function HeroStamp({
   label,
   value,
   valueClassName,
-}: {
+}: Readonly<{
   label: React.ReactNode;
   value: React.ReactNode;
   valueClassName?: string;
-}) {
+}>) {
   return (
     <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
       {label}
@@ -228,12 +228,12 @@ export function HeroStat({
   value,
   sub,
   className,
-}: {
+}: Readonly<{
   label: React.ReactNode;
   value: React.ReactNode;
   sub?: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">

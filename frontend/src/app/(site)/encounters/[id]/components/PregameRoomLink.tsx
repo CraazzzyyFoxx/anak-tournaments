@@ -28,7 +28,7 @@ interface PregameRoomLinkProps {
  * creation, not room existence). Replaces the retired `VetoRoomLink` /
  * `HeroBanRoomLink` pair.
  */
-export function PregameRoomLink({ encounterId, tournamentId, className }: PregameRoomLinkProps) {
+export function PregameRoomLink({ encounterId, tournamentId, className }: Readonly<PregameRoomLinkProps>) {
   const t = useTranslations();
   const mapQuery = useQuery({
     queryKey: ["pregame-state", encounterId, "map"],

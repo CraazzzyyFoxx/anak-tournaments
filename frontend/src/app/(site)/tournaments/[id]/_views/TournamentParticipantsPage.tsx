@@ -205,7 +205,7 @@ const CHECK_IN_OVER_TOURNAMENT_STATUSES = new Set<string>([
   "archived"
 ]);
 
-function RegistrationStepMarker({ tone }: { tone: RegistrationStepTone }) {
+function RegistrationStepMarker({ tone }: Readonly<{ tone: RegistrationStepTone }>) {
   switch (tone) {
     case "done":
       return (
@@ -241,11 +241,11 @@ function RegistrationRoleChip({
   role,
   showPrimaryMark,
   t
-}: {
+}: Readonly<{
   role: Registration["roles"][number];
   showPrimaryMark: boolean;
   t: ReturnType<typeof useTranslations<never>>;
-}) {
+}>) {
   return (
     <div
       className={cn(
@@ -279,7 +279,7 @@ function MyRegistrationCard({
   tournament,
   requireOpenProfile,
   requireSubscription
-}: {
+}: Readonly<{
   registration: Registration;
   canCheckIn: boolean;
   onCheckIn: () => void;
@@ -289,7 +289,7 @@ function MyRegistrationCard({
   tournament: Tournament;
   requireOpenProfile: boolean;
   requireSubscription: boolean;
-}) {
+}>) {
   const t = useTranslations();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -679,7 +679,7 @@ function isCheckInWindowActive(tournament: Tournament) {
 // Main page
 // ---------------------------------------------------------------------------
 
-function TournamentParticipantsView({ tournament }: { tournament: Tournament }) {
+function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations();
   const locale = useLocale();
   const { user, status: authStatus } = useAuthProfile();
@@ -1268,7 +1268,7 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
  * already primed by the layout, so this is a cache read in practice — the
  * guards below only fire if that layout contract ever changes.
  */
-export default function TournamentParticipantsPage({ tournamentId }: { tournamentId: number }) {
+export default function TournamentParticipantsPage({ tournamentId }: Readonly<{ tournamentId: number }>) {
   const tournamentQuery = useTournamentQuery(tournamentId);
 
   if (!tournamentQuery.data) {

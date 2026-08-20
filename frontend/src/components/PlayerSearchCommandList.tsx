@@ -49,7 +49,7 @@ export default function PlayerSearchCommandList({
   setActiveIndex,
   removeFromHistory,
   clearHistory
-}: PlayerSearchCommandListProps) {
+}: Readonly<PlayerSearchCommandListProps>) {
   const t = useTranslations();
   const showHistory = searchValue.trim().length === 0 && history.length > 0;
 
