@@ -130,7 +130,10 @@ export default function SubscriptionProvidersCard({ workspaceId }: Readonly<Subs
  *  index that state stays put and re-attaches to whichever row slid up into the
  *  removed slot, so each row gets a client-side id at creation time instead. */
 let rowIdSeq = 0;
-const nextRowId = () => `row-${(rowIdSeq += 1)}`;
+const nextRowId = () => {
+  rowIdSeq += 1;
+  return `row-${rowIdSeq}`;
+};
 
 type RoleTierRow = SubscriptionRoleTier & { rowId: string };
 type CodeRow = SubscriptionCodeUpsert & { rowId: string };
