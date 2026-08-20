@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.services import social_identity  # noqa: E402
 from src import schemas  # noqa: E402
-from src.services.oauth_service import OAuthService  # noqa: E402
+from src.services.oauth_accounts import OAuthAccountService, oauth_accounts  # noqa: E402
 
 TOKEN_DATA = {"access_token": "provider-access", "refresh_token": "provider-refresh"}
 
@@ -64,6 +64,14 @@ def _oauth_info(provider: str = "discord", subject: str = "subject-1") -> schema
     )
 
 
+def _row(value):
+    """A repository ``SELECT`` result: ``result.unique().scalars().first()``."""
+    scalars = SimpleNamespace(first=lambda: value, all=lambda: [] if value is None else [value])
+    result = SimpleNamespace(scalars=lambda: scalars)
+    result.unique = lambda: result
+    return result
+
+
 class _ConflictSession:
     """Answers the "is this subject already connected?" lookup with one row."""
 
@@ -72,24 +80,27 @@ class _ConflictSession:
         self.commit_called = False
 
     async def execute(self, _query):
-        return SimpleNamespace(scalar_one_or_none=lambda: self._existing_conn)
+        return _row(self._existing_conn)
 
     async def commit(self):
         self.commit_called = True
 
 
 class _AttachSession:
-    """Captures the statements ``_attach_verified_social_account`` issues."""
+    """Captures the write statements ``_attach_verified_social_account`` issues.
+
+    Repository reads (the caller's own player) and the release ``UPDATE`` both
+    arrive through ``execute`` now, so only the latter is recorded.
+    """
 
     def __init__(self, player):
         self._player = player
         self.executed: list = []
         self.commit_called = False
 
-    async def scalar(self, _query):
-        return self._player
-
     async def execute(self, query):
+        if query.is_select:
+            return _row(self._player)
         self.executed.append(query)
         return SimpleNamespace(rowcount=1)
 
@@ -105,7 +116,7 @@ def test_link_refused_when_another_account_still_owns_the_provider_identity() ->
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            OAuthService.link_oauth_to_existing_user(
+            oauth_accounts.link_to_user(
                 session, SimpleNamespace(id=1, username="me"), _oauth_info(), TOKEN_DATA
             )
         )
@@ -125,7 +136,7 @@ def test_relinking_the_same_provider_account_is_idempotent() -> None:
     session.refresh = lambda _instance: asyncio.sleep(0)
 
     result = asyncio.run(
-        OAuthService.link_oauth_to_existing_user(
+        oauth_accounts.link_to_user(
             session, SimpleNamespace(id=1, username="me"), _oauth_info(), TOKEN_DATA
         )
     )
@@ -148,14 +159,16 @@ def test_explicit_link_releases_a_stale_pin_and_verifies_the_callers_player(
 
     monkeypatch.setattr(social_identity, "upsert_social_account", fake_upsert)
     monkeypatch.setattr(
-        OAuthService,
+        OAuthAccountService,
         "_find_player_by_provider_record",
-        classmethod(lambda cls, session, info: _fail("must not target the pinned player on an explicit link")),
+        lambda self, session, info: _fail("must not target the pinned player on an explicit link"),
     )
 
     session = _AttachSession(SimpleNamespace(id=42))
     asyncio.run(
-        OAuthService._attach_verified_social_account(session, SimpleNamespace(id=1), _oauth_info(), claim_subject=True)
+        oauth_accounts._attach_verified_social_account(
+            session, SimpleNamespace(id=1), _oauth_info(), claim_subject=True
+        )
     )
 
     assert len(session.executed) == 1
@@ -181,13 +194,13 @@ def test_login_flow_still_targets_the_pinned_player_and_releases_nothing(
 
     monkeypatch.setattr(social_identity, "upsert_social_account", fake_upsert)
     monkeypatch.setattr(
-        OAuthService,
+        OAuthAccountService,
         "_find_player_by_provider_record",
-        classmethod(lambda cls, session, info: _resolved(SimpleNamespace(id=7))),
+        lambda self, session, info: _resolved(SimpleNamespace(id=7)),
     )
 
     session = _AttachSession(SimpleNamespace(id=42))
-    asyncio.run(OAuthService._attach_verified_social_account(session, SimpleNamespace(id=1), _oauth_info()))
+    asyncio.run(oauth_accounts._attach_verified_social_account(session, SimpleNamespace(id=1), _oauth_info()))
 
     assert session.executed == []
     assert upserted["user_id"] == 7

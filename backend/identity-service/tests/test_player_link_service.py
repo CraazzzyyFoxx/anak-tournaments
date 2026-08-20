@@ -8,9 +8,13 @@ the DB-skip pattern in ``test_signup_provisions_player.py`` /
 any connection failure (e.g. anak_dev unreachable) skips cleanly instead of
 failing, and the tests refuse to run against a production database name.
 
-A separate DB-free unit test asserts that ``link_player`` still enforces the
-Discord/Battle.net ownership verification gate (the storage swap must not weaken
-it).
+The DB-free unit tests cover the guards around that storage: the
+Discord/Battle.net ownership gate (400 when no such connection exists, 403 when
+neither identity matches the player's handles, including the ``provider_data``
+fallbacks), the 409 when the player belongs to another account, idempotent
+re-link, the baseline ``member`` role autofill, and the unlink guards (404 for a
+foreign player, 409 naming the blocking workspaces). Data access is injected, so
+these use stub repositories rather than a faked ``session.execute``.
 """
 
 import asyncio
@@ -52,64 +56,262 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
-from src.services import player_link_service as pls_module  # noqa: E402
-from src.services.player_link_service import PlayerLinkService  # noqa: E402
+from src.services import players as players_module  # noqa: E402
+from src.services.players import PlayerLinkService, players  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# DB-free unit test: ownership verification gate is preserved.
+# DB-free unit tests: stub repositories, real service logic.
 # ---------------------------------------------------------------------------
 
-
-def test_link_player_requires_oauth_ownership_gate() -> None:
-    """``link_player`` must still run ownership verification before storing.
-
-    With no OAuth connections on the (fake) session, ``_get_oauth_connections``
-    raises 400 and the link never touches ``auth_user_id`` — proving the gate
-    runs first and the storage swap did not bypass it. This needs no DB.
-    """
-
-    class _EmptyScalars:
-        def all(self):
-            return []
-
-    class _Result:
-        def scalars(self):
-            return _EmptyScalars()
-
-    class _FakeSession:
-        async def execute(self, _query):
-            return _Result()
-
-    current_user = SimpleNamespace(id=1, username="tester")
-
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            PlayerLinkService.link_player(
-                _FakeSession(),
-                current_user,
-                player_id=99,
-                is_primary=True,
-            )
-        )
-
-    assert exc_info.value.status_code == 400
+NO_CONNECTION_DETAIL = "Link Discord or Battle.net OAuth account before linking a player"
+NO_MATCH_DETAIL = "Discord or Battle.net account does not match selected player"
 
 
-class _UnlinkFakeSession:
-    """Minimal async session for the guard unit tests: ``get`` returns a fixed
-    player, ``commit`` records that it happened."""
+class _StubConnections:
+    """``OAuthConnectionRepository`` stand-in: canned connections, filtered by
+    the providers the service asks for."""
 
-    def __init__(self, player: SimpleNamespace) -> None:
+    def __init__(self, connections=()) -> None:
+        self._connections = list(connections)
+
+    async def list_by_user_providers(self, _session, *, auth_user_id: int, providers):
+        assert auth_user_id is not None
+        return [conn for conn in self._connections if conn.provider in providers]
+
+
+class _StubSocials:
+    """``SocialAccountRepository`` stand-in: the player's handles per provider."""
+
+    def __init__(self, handles=None) -> None:
+        self._handles = dict(handles or {})
+
+    async def list_handles(self, _session, *, user_id: int, provider: str):
+        assert user_id is not None
+        return list(self._handles.get(provider, []))
+
+
+class _StubPlayers:
+    """``UserRepository`` stand-in over a single in-memory player row."""
+
+    def __init__(self, player=None) -> None:
         self._player = player
-        self.committed = False
 
-    async def get(self, _model, _pk):
-        return self._player
+    async def get(self, _session, player_id: int):
+        if self._player is not None and self._player.id == player_id:
+            return self._player
+        return None
+
+    async def get_by_auth_user_id(self, _session, auth_user_id: int):
+        if self._player is not None and self._player.auth_user_id == auth_user_id:
+            return self._player
+        return None
+
+
+class _StubMembers:
+    """``WorkspaceMemberRepository`` stand-in for the role-autofill lookup."""
+
+    def __init__(self, workspace_ids=()) -> None:
+        self._workspace_ids = list(workspace_ids)
+
+    async def workspace_ids_for_player(self, _session, player_id: int):
+        assert player_id is not None
+        return list(self._workspace_ids)
+
+
+class _FakeSession:
+    """Records whether the link/unlink actually reached the DB."""
+
+    def __init__(self) -> None:
+        self.committed = False
+        self.flushed = False
+
+    async def flush(self) -> None:
+        self.flushed = True
 
     async def commit(self) -> None:
         self.committed = True
+
+    async def refresh(self, _obj) -> None:
+        return None
+
+
+def _conn(provider: str, **kwargs):
+    return SimpleNamespace(
+        provider=provider,
+        username=kwargs.pop("username", "provider-subject"),
+        display_name=kwargs.pop("display_name", None),
+        email=kwargs.pop("email", None),
+        provider_data=kwargs.pop("provider_data", None),
+        **kwargs,
+    )
+
+
+def _service(*, connections=(), handles=None, player=None, workspace_ids=()) -> PlayerLinkService:
+    return PlayerLinkService(
+        connections=_StubConnections(connections),
+        socials=_StubSocials(handles),
+        players=_StubPlayers(player),
+        members=_StubMembers(workspace_ids),
+    )
+
+
+def _player(player_id: int = 99, auth_user_id: int | None = None):
+    return SimpleNamespace(id=player_id, auth_user_id=auth_user_id)
+
+
+CURRENT_USER = SimpleNamespace(id=7, username="tester")
+
+
+def test_link_player_requires_oauth_ownership_gate() -> None:
+    """``link`` must still run ownership verification before storing.
+
+    With no Discord/Battle.net connection the gate raises 400 and the link never
+    touches ``auth_user_id`` — proving the gate runs first and the storage swap
+    did not bypass it.
+    """
+    player = _player()
+    service = _service(player=player)
+    session = _FakeSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == NO_CONNECTION_DETAIL
+    assert player.auth_user_id is None
+    assert session.committed is False
+
+
+@pytest.mark.parametrize(
+    ("connection", "handles"),
+    [
+        pytest.param(
+            _conn("discord", username="Mercy"),
+            {SocialProvider.DISCORD: ["mercy"]},
+            id="discord-username",
+        ),
+        pytest.param(
+            _conn("discord", provider_data={"global_name": "AnaMain"}),
+            {SocialProvider.DISCORD: ["anamain"]},
+            id="discord-provider-data-global-name",
+        ),
+        pytest.param(
+            _conn("battlenet", username="Hero#2100"),
+            {SocialProvider.BATTLENET: ["hero#2100"]},
+            id="battlenet-username-battletag",
+        ),
+        pytest.param(
+            _conn("battlenet", provider_data={"battletag": "Hero#2100"}),
+            {SocialProvider.BATTLENET: ["Hero#2100"]},
+            id="battlenet-provider-data-battletag",
+        ),
+    ],
+)
+def test_link_accepts_matching_oauth_identity(connection, handles) -> None:
+    """Ownership matches on the player's Discord names or battletags, including
+    the ``provider_data`` fallbacks."""
+    player = _player()
+    service = _service(connections=[connection], handles=handles, player=player)
+    session = _FakeSession()
+
+    linked = asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+
+    assert linked is player
+    assert player.auth_user_id == CURRENT_USER.id
+    assert session.committed is True
+
+
+def test_link_rejects_when_no_identity_matches() -> None:
+    """A connected but non-matching Discord/Battle.net identity is 403, and the
+    link is not written."""
+    player = _player()
+    service = _service(
+        connections=[_conn("discord", username="Someone"), _conn("battlenet", username="Other#1111")],
+        handles={SocialProvider.DISCORD: ["mercy"], SocialProvider.BATTLENET: ["hero#2100"]},
+        player=player,
+    )
+    session = _FakeSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == NO_MATCH_DETAIL
+    assert player.auth_user_id is None
+    assert session.committed is False
+
+
+def test_link_conflicts_when_player_owned_by_another_account() -> None:
+    """Ownership can match and the link still be refused (409) when the player
+    already belongs to a different auth user."""
+    player = _player(auth_user_id=42)
+    service = _service(
+        connections=[_conn("discord", username="Mercy")],
+        handles={SocialProvider.DISCORD: ["mercy"]},
+        player=player,
+    )
+    session = _FakeSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "Player is already linked to another account"
+    assert player.auth_user_id == 42
+    assert session.committed is False
+
+
+def test_relink_to_same_account_is_idempotent() -> None:
+    """Re-linking a player to its current owner is a no-op (no 409)."""
+    player = _player(auth_user_id=CURRENT_USER.id)
+    service = _service(
+        connections=[_conn("discord", username="Mercy")],
+        handles={SocialProvider.DISCORD: ["mercy"]},
+        player=player,
+    )
+
+    again = asyncio.run(service.link(_FakeSession(), CURRENT_USER, player_id=99, is_primary=True))
+
+    assert again.auth_user_id == CURRENT_USER.id
+
+
+def test_link_autofills_baseline_member_role() -> None:
+    """Every workspace the player is anchored to gets the baseline ``member``
+    role for the freshly linked auth user."""
+    service = _service(
+        connections=[_conn("discord", username="Mercy")],
+        handles={SocialProvider.DISCORD: ["mercy"]},
+        player=_player(),
+        workspace_ids=(11, 22),
+    )
+    autofill = AsyncMock()
+
+    with patch.object(players_module, "assign_default_member_role_if_roleless", autofill):
+        asyncio.run(service.link(_FakeSession(), CURRENT_USER, player_id=99, is_primary=True))
+
+    granted = [call.kwargs for call in autofill.await_args_list]
+    assert granted == [
+        {"user_id": CURRENT_USER.id, "workspace_id": 11},
+        {"user_id": CURRENT_USER.id, "workspace_id": 22},
+    ]
+
+
+def test_unlink_rejects_player_linked_to_another_account() -> None:
+    """Unlinking someone else's player is 404 — the link is not the caller's."""
+    player = _player(auth_user_id=42)
+    service = _service(player=player)
+    session = _FakeSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(service.unlink(session, CURRENT_USER, player_id=99))
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Player link not found"
+    assert player.auth_user_id == 42
+    assert session.committed is False
 
 
 def test_unlink_blocked_when_workspace_membership_role_present() -> None:
@@ -119,16 +321,17 @@ def test_unlink_blocked_when_workspace_membership_role_present() -> None:
     must be left intact, no commit issued, and the 409 must name the blocking
     workspaces so the user knows which to leave first.
     """
-    player = SimpleNamespace(id=99, auth_user_id=7)
-    session = _UnlinkFakeSession(player)
+    player = _player(auth_user_id=7)
+    service = _service(player=player)
+    session = _FakeSession()
 
     with patch.object(
-        pls_module,
+        players_module,
         "workspace_names_blocking_player_unlink",
         AsyncMock(return_value=["Alpha Cup", "Beta League"]),
     ):
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(PlayerLinkService._unlink_player_from_auth_user(session, player_id=99))
+            asyncio.run(service._unlink_from_auth_user(session, player_id=99))
 
     assert exc_info.value.status_code == 409
     assert "Alpha Cup" in exc_info.value.detail
@@ -140,15 +343,16 @@ def test_unlink_blocked_when_workspace_membership_role_present() -> None:
 def test_unlink_allowed_when_no_workspace_membership_role() -> None:
     """A pure participant (no workspace membership role) can still unlink: the
     link is nulled and the change committed."""
-    player = SimpleNamespace(id=99, auth_user_id=7)
-    session = _UnlinkFakeSession(player)
+    player = _player(auth_user_id=7)
+    service = _service(player=player)
+    session = _FakeSession()
 
     with patch.object(
-        pls_module,
+        players_module,
         "workspace_names_blocking_player_unlink",
         AsyncMock(return_value=[]),
     ):
-        asyncio.run(PlayerLinkService._unlink_player_from_auth_user(session, player_id=99))
+        asyncio.run(service._unlink_from_auth_user(session, player_id=99))
 
     assert player.auth_user_id is None
     assert session.committed is True
@@ -157,11 +361,12 @@ def test_unlink_allowed_when_no_workspace_membership_role() -> None:
 def test_unlink_already_unlinked_is_noop() -> None:
     """Idempotent: unlinking a player whose link is already NULL neither checks
     membership nor commits."""
-    player = SimpleNamespace(id=99, auth_user_id=None)
-    session = _UnlinkFakeSession(player)
+    player = _player(auth_user_id=None)
+    service = _service(player=player)
+    session = _FakeSession()
 
-    with patch.object(pls_module, "workspace_names_blocking_player_unlink", AsyncMock()) as guard:
-        asyncio.run(PlayerLinkService._unlink_player_from_auth_user(session, player_id=99))
+    with patch.object(players_module, "workspace_names_blocking_player_unlink", AsyncMock()) as guard:
+        asyncio.run(service._unlink_from_auth_user(session, player_id=99))
 
     guard.assert_not_awaited()
     assert player.auth_user_id is None
@@ -225,7 +430,7 @@ async def _make_player(session, suffix: str) -> User:
 
 
 def test_link_sets_auth_user_id(db_session) -> None:
-    """``_link_player_to_auth_user`` writes ``players.user.auth_user_id``."""
+    """``_link_to_auth_user`` writes ``players.user.auth_user_id``."""
 
     suffix = uuid.uuid4().hex[:10]
 
@@ -233,9 +438,7 @@ def test_link_sets_auth_user_id(db_session) -> None:
         auth_user = await _make_auth_user(db_session, suffix)
         player = await _make_player(db_session, suffix)
 
-        linked = await PlayerLinkService._link_player_to_auth_user(
-            db_session, auth_user_id=auth_user.id, player_id=player.id
-        )
+        linked = await players._link_to_auth_user(db_session, auth_user_id=auth_user.id, player_id=player.id)
         return auth_user.id, player.id, linked
 
     auth_user_id, player_id, linked = asyncio.run(_run())
@@ -254,10 +457,10 @@ def test_double_link_to_other_account_raises_409(db_session) -> None:
         other = await _make_auth_user(db_session, f"x{suffix}")
         player = await _make_player(db_session, suffix)
 
-        await PlayerLinkService._link_player_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
+        await players._link_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
 
         with pytest.raises(HTTPException) as exc_info:
-            await PlayerLinkService._link_player_to_auth_user(db_session, auth_user_id=other.id, player_id=player.id)
+            await players._link_to_auth_user(db_session, auth_user_id=other.id, player_id=player.id)
         return exc_info.value
 
     exc = asyncio.run(_run())
@@ -273,10 +476,8 @@ def test_relink_same_account_is_idempotent(db_session) -> None:
         owner = await _make_auth_user(db_session, suffix)
         player = await _make_player(db_session, suffix)
 
-        await PlayerLinkService._link_player_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
-        again = await PlayerLinkService._link_player_to_auth_user(
-            db_session, auth_user_id=owner.id, player_id=player.id
-        )
+        await players._link_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
+        again = await players._link_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
         return owner.id, again
 
     owner_id, again = asyncio.run(_run())
@@ -284,7 +485,7 @@ def test_relink_same_account_is_idempotent(db_session) -> None:
 
 
 def test_unlink_nulls_auth_user_id(db_session) -> None:
-    """``_unlink_player_from_auth_user`` clears the column back to NULL."""
+    """``_unlink_from_auth_user`` clears the column back to NULL."""
 
     suffix = uuid.uuid4().hex[:10]
 
@@ -292,8 +493,8 @@ def test_unlink_nulls_auth_user_id(db_session) -> None:
         owner = await _make_auth_user(db_session, suffix)
         player = await _make_player(db_session, suffix)
 
-        await PlayerLinkService._link_player_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
-        await PlayerLinkService._unlink_player_from_auth_user(db_session, player_id=player.id)
+        await players._link_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
+        await players._unlink_from_auth_user(db_session, player_id=player.id)
 
         refreshed = await db_session.get(User, player.id)
         return refreshed.auth_user_id
@@ -302,7 +503,7 @@ def test_unlink_nulls_auth_user_id(db_session) -> None:
 
 
 def test_get_linked_players_returns_list_then_empty(db_session) -> None:
-    """``get_linked_players`` returns ``[player]`` then ``[]`` after unlink."""
+    """``linked_players`` returns ``[player]`` then ``[]`` after unlink."""
 
     suffix = uuid.uuid4().hex[:10]
 
@@ -311,11 +512,11 @@ def test_get_linked_players_returns_list_then_empty(db_session) -> None:
         player = await _make_player(db_session, suffix)
         current_user = SimpleNamespace(id=owner.id, username=owner.username)
 
-        await PlayerLinkService._link_player_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
-        before = await PlayerLinkService.get_linked_players(db_session, current_user)
+        await players._link_to_auth_user(db_session, auth_user_id=owner.id, player_id=player.id)
+        before = await players.linked_players(db_session, current_user)
 
-        await PlayerLinkService._unlink_player_from_auth_user(db_session, player_id=player.id)
-        after = await PlayerLinkService.get_linked_players(db_session, current_user)
+        await players._unlink_from_auth_user(db_session, player_id=player.id)
+        after = await players.linked_players(db_session, current_user)
 
         return player.id, before, after
 
@@ -326,7 +527,7 @@ def test_get_linked_players_returns_list_then_empty(db_session) -> None:
 
 
 def test_admin_link_and_unlink_round_trip(db_session) -> None:
-    """``admin_link_player``/``admin_unlink_player`` use the same column."""
+    """``admin_link``/``admin_unlink`` use the same column."""
 
     suffix = uuid.uuid4().hex[:10]
 
@@ -334,10 +535,10 @@ def test_admin_link_and_unlink_round_trip(db_session) -> None:
         owner = await _make_auth_user(db_session, suffix)
         player = await _make_player(db_session, suffix)
 
-        linked = await PlayerLinkService.admin_link_player(db_session, owner.id, player.id, is_primary=True)
+        linked = await players.admin_link(db_session, owner.id, player.id, is_primary=True)
         linked_id = linked.auth_user_id
 
-        await PlayerLinkService.admin_unlink_player(db_session, owner.id, player.id)
+        await players.admin_unlink(db_session, owner.id, player.id)
         refreshed = await db_session.get(User, player.id)
         return owner.id, linked_id, refreshed.auth_user_id
 

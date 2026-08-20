@@ -17,6 +17,7 @@ lifted off an envelope.
 import asyncio
 import json
 import os
+import secrets
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -52,7 +53,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.models.platform.audit import AuditLog  # noqa: E402
 from src import models, schemas  # noqa: E402
-from src.services import api_key_service, rbac_flows  # noqa: E402
+from src.services.api_keys import ApiKeyService, api_keys  # noqa: E402
+from src.services.rbac_admin import PermissionDenyService, RoleAdminService  # noqa: E402
 
 _SECRET = "secret-token"
 _PUBLIC_ID = "publicid"
@@ -86,11 +88,11 @@ def _api_key_row(*, revoked_at: datetime | None = None) -> models.ApiKey:
         auth_user_id=7,
         workspace_id=11,
         public_id=_PUBLIC_ID,
-        secret_hash=api_key_service._hash_secret(_SECRET),
+        secret_hash=api_keys._hash_secret(_SECRET),
         name="Balancer API",
-        scopes_json=list(api_key_service.DEFAULT_API_KEY_SCOPES),
-        limits_json=dict(api_key_service.DEFAULT_API_KEY_LIMITS),
-        config_policy_json=dict(api_key_service.DEFAULT_API_KEY_CONFIG_POLICY),
+        scopes_json=list(ApiKeyService.DEFAULT_SCOPES),
+        limits_json=dict(ApiKeyService.DEFAULT_LIMITS),
+        config_policy_json=dict(ApiKeyService.DEFAULT_CONFIG_POLICY),
         expires_at=None,
         revoked_at=revoked_at,
         last_used_at=None,
@@ -100,9 +102,10 @@ def _api_key_row(*, revoked_at: datetime | None = None) -> models.ApiKey:
 
 
 class _Result:
-    """Covers the three ``Result`` access shapes these flows use: a direct
-    ``scalar_one_or_none()``, the repository's ``unique().scalars().first()``,
-    and ``list_user_denies``' row-tuple ``all()``."""
+    """Covers the ``Result`` access shapes these flows use: a direct
+    ``scalar_one_or_none()`` (the repository EXISTS probe), the repository's
+    ``unique().scalars().first()`` row load, and the deny listing's row-tuple
+    ``all()``."""
 
     def __init__(self, value) -> None:
         self._value = value
@@ -124,7 +127,7 @@ class _EventSession:
     """Fakes a session as an ordered event log so call ORDER can be asserted.
 
     ``execute``/``scalar`` pop from one FIFO of canned values, mirroring the
-    ``_ScalarQueueSession`` pattern in ``test_rbac_user_deny_workspace.py``.
+    ``_QueueSession`` pattern in ``test_rbac_user_deny_workspace.py``.
     """
 
     def __init__(self, results: list | None = None) -> None:
@@ -166,6 +169,14 @@ class _EventSession:
         return self._results.pop(0)
 
 
+class _NoopCache:
+    """Stands in for the ``session_cache`` singleton: these tests assert on the
+    journal, not on Redis."""
+
+    async def invalidate_rbac(self, _user_id: int) -> None:
+        return None
+
+
 def _audit_rows(session: _EventSession) -> list[AuditLog]:
     return [row for kind, row in session.events if kind == "add" and isinstance(row, AuditLog)]
 
@@ -182,10 +193,6 @@ def _one_audit_row(session: _EventSession) -> AuditLog:
     return rows[0]
 
 
-async def _noop_invalidate(_user_id) -> None:
-    return None
-
-
 async def _allow_manage(*_args, **_kwargs) -> None:
     return None
 
@@ -194,11 +201,12 @@ async def _allow_manage(*_args, **_kwargs) -> None:
 
 
 def test_create_role_records_one_audit_row_before_commit() -> None:
-    # execute() order in create_role: workspace existence, then name uniqueness.
-    session = _EventSession(results=[7, None])
+    # Repository order in RoleAdminService.create: workspace EXISTS probe via
+    # execute(), then the name-uniqueness probe via scalar().
+    session = _EventSession(results=[True, None])
     role_data = SimpleNamespace(name="Referees", description="Match referees", workspace_id=7, permission_ids=None)
 
-    role = asyncio.run(rbac_flows.create_role(session, _actor(), role_data))
+    role = asyncio.run(RoleAdminService(cache=_NoopCache()).create(session, _actor(), role_data))
 
     row = _one_audit_row(session)
     assert row.action == "role.create"
@@ -212,15 +220,19 @@ def test_create_role_records_one_audit_row_before_commit() -> None:
     assert row.after_json["name"] == "Referees"
 
 
-def test_assign_role_records_audit_row_scoped_to_the_role_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_assign_role_records_audit_row_scoped_to_the_role_workspace() -> None:
     target = SimpleNamespace(id=9, username="grace", email="grace@example.com", roles=[])
     role = SimpleNamespace(id=5, name="Referees", workspace_id=7, permissions=[])
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", _noop_invalidate, raising=False)
 
-    # execute() order in assign_role_to_user: target user, role, workspace membership.
-    session = _EventSession(results=[target, role, SimpleNamespace(id=3)])
+    # Repository order in assign_to_user: target user and role via execute(),
+    # then the workspace-membership EXISTS probe via scalar().
+    session = _EventSession(results=[target, role, True])
 
-    asyncio.run(rbac_flows.assign_role_to_user(session, _actor(), SimpleNamespace(user_id=9, role_id=5)))
+    asyncio.run(
+        RoleAdminService(cache=_NoopCache()).assign_to_user(
+            session, _actor(), SimpleNamespace(user_id=9, role_id=5)
+        )
+    )
 
     row = _one_audit_row(session)
     assert row.action == "role.assign"
@@ -236,7 +248,7 @@ def test_assign_role_records_audit_row_scoped_to_the_role_workspace(monkeypatch:
     assert row.after_json == {"role_id": 5, "role_name": "Referees", "workspace_id": 7}
 
 
-def test_add_user_deny_records_audit_row_carrying_the_operator_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_user_deny_records_audit_row_carrying_the_operator_reason() -> None:
     user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
     permission = SimpleNamespace(
         id=3,
@@ -245,14 +257,13 @@ def test_add_user_deny_records_audit_row_carrying_the_operator_reason(monkeypatc
         action="self_register",
         description=None,
     )
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", _noop_invalidate, raising=False)
 
-    # scalar() order: user, permission, workspace, existing-deny; then the
-    # trailing list_user_denies re-fetch goes through execute().
+    # Repository order: user, permission and workspace via execute(), the
+    # existing-deny probe via scalar(), then the trailing deny-list re-fetch.
     session = _EventSession(results=[user, permission, SimpleNamespace(id=7), None, []])
 
     asyncio.run(
-        rbac_flows.add_user_deny(
+        PermissionDenyService(cache=_NoopCache()).add(
             session,
             _actor(),
             9,
@@ -275,7 +286,7 @@ def test_add_user_deny_records_audit_row_carrying_the_operator_reason(monkeypatc
     assert row.after_json["permission_name"] == "registration.self_register"
 
 
-def test_add_user_deny_records_nothing_when_the_deny_already_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_user_deny_records_nothing_when_the_deny_already_exists() -> None:
     """Idempotent re-add: nothing changed, so the journal must stay silent."""
     user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
     permission = SimpleNamespace(
@@ -285,12 +296,11 @@ def test_add_user_deny_records_nothing_when_the_deny_already_exists(monkeypatch:
         action="self_register",
         description=None,
     )
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", _noop_invalidate, raising=False)
 
     existing = SimpleNamespace(id=1)
     session = _EventSession(results=[user, permission, SimpleNamespace(id=7), existing, []])
 
-    asyncio.run(rbac_flows.add_user_deny(session, _actor(), 9, 3, workspace_id=7))
+    asyncio.run(PermissionDenyService(cache=_NoopCache()).add(session, _actor(), 9, 3, workspace_id=7))
 
     assert _audit_rows(session) == []
 
@@ -300,13 +310,13 @@ def test_add_user_deny_records_nothing_when_the_deny_already_exists(monkeypatch:
 
 def test_create_api_key_records_one_audit_row_before_commit(monkeypatch: pytest.MonkeyPatch) -> None:
     tokens = iter([_PUBLIC_ID, _SECRET])
-    monkeypatch.setattr(api_key_service, "ensure_can_manage_api_keys", _allow_manage)
-    monkeypatch.setattr(api_key_service.secrets, "token_hex", lambda _bytes: next(tokens))
+    monkeypatch.setattr(api_keys, "ensure_can_manage", _allow_manage)
+    monkeypatch.setattr(secrets, "token_hex", lambda _bytes: next(tokens))
 
     session = _EventSession()
 
     asyncio.run(
-        api_key_service.create_api_key(
+        api_keys.create(
             session,
             user=_api_actor(),
             payload=schemas.ApiKeyCreate(name="Balancer API", workspace_id=11),
@@ -327,13 +337,13 @@ def test_create_api_key_records_one_audit_row_before_commit(monkeypatch: pytest.
 def test_create_api_key_audit_row_never_carries_the_key_material(monkeypatch: pytest.MonkeyPatch) -> None:
     """The one field of this feature that could leak a credential."""
     tokens = iter([_PUBLIC_ID, _SECRET])
-    monkeypatch.setattr(api_key_service, "ensure_can_manage_api_keys", _allow_manage)
-    monkeypatch.setattr(api_key_service.secrets, "token_hex", lambda _bytes: next(tokens))
+    monkeypatch.setattr(api_keys, "ensure_can_manage", _allow_manage)
+    monkeypatch.setattr(secrets, "token_hex", lambda _bytes: next(tokens))
 
     session = _EventSession()
 
     response = asyncio.run(
-        api_key_service.create_api_key(
+        api_keys.create(
             session,
             user=_api_actor(),
             payload=schemas.ApiKeyCreate(name="Balancer API", workspace_id=11),
@@ -353,11 +363,11 @@ def test_create_api_key_audit_row_never_carries_the_key_material(monkeypatch: py
 
 
 def test_revoke_api_key_records_one_audit_row_before_commit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(api_key_service, "ensure_can_manage_api_keys", _allow_manage)
+    monkeypatch.setattr(api_keys, "ensure_can_manage", _allow_manage)
 
     session = _EventSession(results=[_api_key_row()])
 
-    asyncio.run(api_key_service.revoke_api_key(session, user=_api_actor(), api_key_id=123))
+    asyncio.run(api_keys.revoke(session, user=_api_actor(), api_key_id=123))
 
     row = _one_audit_row(session)
     assert row.action == "api_key.revoke"
@@ -373,11 +383,11 @@ def test_revoke_api_key_records_one_audit_row_before_commit(monkeypatch: pytest.
 
 def test_revoke_api_key_records_nothing_when_already_revoked(monkeypatch: pytest.MonkeyPatch) -> None:
     """The revoke is idempotent, so a repeat must not add a second row."""
-    monkeypatch.setattr(api_key_service, "ensure_can_manage_api_keys", _allow_manage)
+    monkeypatch.setattr(api_keys, "ensure_can_manage", _allow_manage)
 
     session = _EventSession(results=[_api_key_row(revoked_at=datetime.now(UTC))])
 
-    asyncio.run(api_key_service.revoke_api_key(session, user=_api_actor(), api_key_id=123))
+    asyncio.run(api_keys.revoke(session, user=_api_actor(), api_key_id=123))
 
     assert _audit_rows(session) == []
     assert [kind for kind, _row in session.events] == []

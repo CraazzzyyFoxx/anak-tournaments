@@ -1,14 +1,14 @@
 """Workspace-scoped per-user permission denies (negative RBAC).
 
 Covers the admin CRUD surface added on top of the existing (Phase A/B)
-``UserPermissionDeny.workspace_id`` column: ``add_user_deny``/``remove_user_deny``
-now accept an optional ``workspace_id`` (``None`` = global deny, a concrete id =
-scoped to that workspace only), and ``list_user_denies`` surfaces the scope of
-every deny row. The critical invariant under test is the NULL-safe scope match
-(``_workspace_scope_filter``): a global deny and a workspace-scoped deny for the
-same permission must never be conflated by add's idempotency check or by
-remove's delete, mirroring the ``COALESCE(workspace_id, 0)`` partial-unique
-index in ``shared.models.identity.rbac.UserPermissionDeny``.
+``UserPermissionDeny.workspace_id`` column: ``permission_denies.add``/``.remove``
+accept an optional ``workspace_id`` (``None`` = global deny, a concrete id =
+scoped to that workspace only), and ``permission_denies.list`` surfaces the scope
+of every deny row. The critical invariant under test is the NULL-safe scope match
+(``UserPermissionDenyRepository.workspace_scope``): a global deny and a
+workspace-scoped deny for the same permission must never be conflated by add's
+idempotency check or by remove's delete, mirroring the ``COALESCE(workspace_id,
+0)`` partial-unique index in ``shared.models.identity.rbac.UserPermissionDeny``.
 """
 
 import asyncio
@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import UserPermissionDenyRepository
 
 
 def _ensure_test_env() -> None:
@@ -47,7 +48,7 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.services import rbac_flows  # noqa: E402
+from src.services.rbac_admin import PermissionDenyService  # noqa: E402
 
 
 def _current_user(user_id: int = 1) -> SimpleNamespace:
@@ -60,13 +61,31 @@ def _current_user(user_id: int = 1) -> SimpleNamespace:
     )
 
 
-class _AllResult:
-    """Fakes the ``Result`` object returned by ``session.execute(select(...))`` for
-    the ``.all()`` (row-tuple) access pattern used by ``list_user_denies``.
+class _NoopCache:
+    """Stands in for the ``session_cache`` singleton so these SQL-shape tests
+    never reach Redis; the ids are recorded because every deny mutation must drop
+    the target's RBAC entry."""
 
-    ``rowcount`` is the DELETE-result attribute ``remove_user_deny`` reads to tell
-    a real removal from an idempotent no-op; 0 keeps these SQL-shape tests off the
-    audit path they do not assert on.
+    def __init__(self) -> None:
+        self.invalidated: list[int] = []
+
+    async def invalidate_rbac(self, user_id: int) -> None:
+        self.invalidated.append(user_id)
+
+
+def _service(cache: _NoopCache | None = None) -> PermissionDenyService:
+    return PermissionDenyService(cache=cache or _NoopCache())
+
+
+class _AllResult:
+    """Fakes the ``Result`` object returned by ``session.execute(select(...))``.
+
+    Covers the row-tuple ``.all()`` access of
+    ``UserPermissionDenyRepository.list_with_permissions``, the
+    ``unique().scalars().first()`` load ``BaseRepository.get`` performs, and
+    ``rowcount`` — the DELETE-result attribute ``remove`` reads to tell a real
+    removal from an idempotent no-op; 0 keeps these SQL-shape tests off the audit
+    path they do not assert on.
     """
 
     rowcount = 0
@@ -77,29 +96,39 @@ class _AllResult:
     def all(self):
         return self._rows
 
+    def unique(self):
+        return self
 
-class _ScalarQueueSession:
-    """Fakes ``session.scalar(...)`` as a FIFO queue of canned results (mirrors
-    the ``_FakeSession`` pattern in ``test_rbac_admin_users.py``), plus a fixed
-    ``execute(...)`` result for the trailing ``list_user_denies`` re-fetch."""
+    def scalars(self):
+        return SimpleNamespace(first=lambda: self._rows, all=lambda: list(self._rows or []))
 
-    def __init__(self, scalars: list, list_rows: list[tuple] | None = None) -> None:
-        self._scalars = list(scalars)
-        self._list_result = _AllResult(list_rows or [])
+
+class _QueueSession:
+    """Fakes a session whose ``execute``/``scalar`` calls pop from one FIFO of
+    canned values, in the repository call order of the flow under test.
+
+    ``execute`` results are wrapped in a ``Result`` (that is how the repositories
+    read a row load); ``scalar`` returns the value as-is.
+    """
+
+    def __init__(self, results: list) -> None:
+        self._results = list(results)
         self.added: list = []
         self.commit_called = False
 
+    async def execute(self, _query):
+        assert self._results, "unexpected execute() call"
+        return _AllResult(self._results.pop(0))
+
     async def scalar(self, _query):
-        return self._scalars.pop(0)
+        assert self._results, "unexpected scalar() call"
+        return self._results.pop(0)
 
     def add(self, obj) -> None:
         self.added.append(obj)
 
     async def commit(self) -> None:
         self.commit_called = True
-
-    async def execute(self, _query):
-        return self._list_result
 
 
 class _CapturingSession:
@@ -123,25 +152,25 @@ def _compiled(clause) -> str:
     return str(clause.compile(compile_kwargs={"literal_binds": True}))
 
 
-# --- _workspace_scope_filter: the NULL-safe scope predicate ---
+# --- UserPermissionDenyRepository.workspace_scope: the NULL-safe scope predicate ---
 
 
 def test_workspace_scope_filter_global_renders_is_null() -> None:
-    clause = rbac_flows._workspace_scope_filter(None)
+    clause = UserPermissionDenyRepository.workspace_scope(None)
     assert "IS NULL" in _compiled(clause)
 
 
 def test_workspace_scope_filter_scoped_renders_equality() -> None:
-    clause = rbac_flows._workspace_scope_filter(42)
+    clause = UserPermissionDenyRepository.workspace_scope(42)
     compiled = _compiled(clause)
     assert "= 42" in compiled
     assert "IS NULL" not in compiled
 
 
-# --- list_user_denies: surfaces workspace_id per row ---
+# --- permission_denies.list: surfaces workspace_id per row ---
 
 
-def test_list_user_denies_returns_workspace_id_per_row(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_list_user_denies_returns_workspace_id_per_row() -> None:
     global_permission = SimpleNamespace(
         id=1, name="account.avatar", resource="account", action="avatar", description=None
     )
@@ -157,7 +186,7 @@ def test_list_user_denies_returns_workspace_id_per_row(monkeypatch: pytest.Monke
         async def execute(self, _query):
             return _AllResult([(global_permission, None), (scoped_permission, 7)])
 
-    result = asyncio.run(rbac_flows.list_user_denies(_Session(), _current_user(), 9))
+    result = asyncio.run(_service().list(_Session(), _current_user(), 9))
 
     assert result == [
         {
@@ -179,10 +208,10 @@ def test_list_user_denies_returns_workspace_id_per_row(monkeypatch: pytest.Monke
     ]
 
 
-# --- add_user_deny: workspace-scoped create ---
+# --- permission_denies.add: workspace-scoped create ---
 
 
-def test_add_user_deny_scopes_new_row_to_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_user_deny_scopes_new_row_to_workspace() -> None:
     user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
     permission = SimpleNamespace(
         id=3,
@@ -193,20 +222,15 @@ def test_add_user_deny_scopes_new_row_to_workspace(monkeypatch: pytest.MonkeyPat
     )
     workspace = SimpleNamespace(id=7, name="Test Workspace")
 
-    async def fake_invalidate_rbac(_user_id):
-        return None
+    # Repository call order in add: user, permission and workspace via execute(),
+    # then the existing-deny probe via scalar(), then the trailing list re-fetch.
+    session = _QueueSession([user, permission, workspace, None, [(permission, 7)]])
+    cache = _NoopCache()
 
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", fake_invalidate_rbac, raising=False)
-
-    # scalar() call order in add_user_deny: user, permission, workspace, existing-deny.
-    session = _ScalarQueueSession(
-        scalars=[user, permission, workspace, None],
-        list_rows=[(permission, 7)],
-    )
-
-    result = asyncio.run(rbac_flows.add_user_deny(session, _current_user(), 9, 3, workspace_id=7))
+    result = asyncio.run(_service(cache).add(session, _current_user(), 9, 3, workspace_id=7))
 
     assert session.commit_called is True
+    assert cache.invalidated == [9]
     # One deny row plus its audit row.
     assert len(session.added) == 2
     created = session.added[0]
@@ -225,23 +249,35 @@ def test_add_user_deny_scopes_new_row_to_workspace(monkeypatch: pytest.MonkeyPat
     ]
 
 
-def test_add_user_deny_defaults_to_global_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_user_deny_defaults_to_global_scope() -> None:
     user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
     permission = SimpleNamespace(id=4, name="account.social", resource="account", action="social", description=None)
 
-    async def fake_invalidate_rbac(_user_id):
-        return None
-
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", fake_invalidate_rbac, raising=False)
-
     # No workspace lookup call is expected when workspace_id is omitted.
-    session = _ScalarQueueSession(scalars=[user, permission, None], list_rows=[(permission, None)])
+    session = _QueueSession([user, permission, None, [(permission, None)]])
 
-    result = asyncio.run(rbac_flows.add_user_deny(session, _current_user(), 9, 4))
+    result = asyncio.run(_service().add(session, _current_user(), 9, 4))
 
     created = session.added[0]
     assert created.workspace_id is None
     assert result[0]["workspace_id"] is None
+
+
+def test_add_user_deny_rejects_governance_permissions() -> None:
+    """A deny on the RBAC surface itself could lock administration out of the
+    system, so those resources are never deniable -- in any scope."""
+    user = SimpleNamespace(id=9, username="grace", email="grace@example.com")
+    permission = SimpleNamespace(id=5, name="role.update", resource="role", action="update", description=None)
+
+    session = _QueueSession([user, permission])
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(_service().add(session, _current_user(), 9, 5, workspace_id=7))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Cannot deny governance permission 'role.update'"
+    assert session.added == []
+    assert session.commit_called is False
 
 
 def test_add_user_deny_raises_404_for_unknown_workspace() -> None:
@@ -254,47 +290,37 @@ def test_add_user_deny_raises_404_for_unknown_workspace() -> None:
         description=None,
     )
 
-    session = _ScalarQueueSession(scalars=[user, permission, None])
+    session = _QueueSession([user, permission, None])
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(rbac_flows.add_user_deny(session, _current_user(), 9, 3, workspace_id=999))
+        asyncio.run(_service().add(session, _current_user(), 9, 3, workspace_id=999))
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Workspace not found"
     assert session.added == []
 
 
-# --- remove_user_deny: scoped delete never crosses scopes ---
+# --- permission_denies.remove: scoped delete never crosses scopes ---
 
 
-def test_remove_user_deny_global_scope_matches_null_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_invalidate_rbac(_user_id):
-        return None
-
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", fake_invalidate_rbac, raising=False)
-
+def test_remove_user_deny_global_scope_matches_null_only() -> None:
     session = _CapturingSession()
+    cache = _NoopCache()
 
-    asyncio.run(rbac_flows.remove_user_deny(session, _current_user(), 9, 3, workspace_id=None))
+    asyncio.run(_service(cache).remove(session, _current_user(), 9, 3, workspace_id=None))
 
     assert session.commit_called is True
+    assert cache.invalidated == [9]
     delete_stmt = session.executed[0]
     compiled = _compiled(delete_stmt)
     assert "workspace_id IS NULL" in compiled
     assert "workspace_id = " not in compiled
 
 
-def test_remove_user_deny_workspace_scope_matches_that_workspace_only(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_invalidate_rbac(_user_id):
-        return None
-
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", fake_invalidate_rbac, raising=False)
-
+def test_remove_user_deny_workspace_scope_matches_that_workspace_only() -> None:
     session = _CapturingSession()
 
-    asyncio.run(rbac_flows.remove_user_deny(session, _current_user(), 9, 3, workspace_id=7))
+    asyncio.run(_service().remove(session, _current_user(), 9, 3, workspace_id=7))
 
     assert session.commit_called is True
     delete_stmt = session.executed[0]
