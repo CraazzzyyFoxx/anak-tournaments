@@ -27,7 +27,7 @@ export function TeamCombobox({
   searchPlaceholder = "Search team…",
   disabled = false,
   allowClear = true
-}: TeamComboboxProps) {
+}: Readonly<TeamComboboxProps>) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 

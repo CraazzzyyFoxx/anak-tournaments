@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useTranslations } from "next-intl";
 import { Map as MapIcon } from "lucide-react";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";

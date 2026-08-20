@@ -36,7 +36,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src import models, schemas  # noqa: E402
-from src.services import auth_flows, auth_service, rbac_flows  # noqa: E402
+from src.services.auth import auth  # noqa: E402
+from src.services.auth_users import auth_users  # noqa: E402
+from src.services.players import players  # noqa: E402
+from src.services.rbac_admin import (  # noqa: E402
+    AuthUserAdminService,
+    RoleAdminService,
+    auth_user_admin,
+    role_admin,
+    session_admin,
+)
+from src.services.rbac_policy import rbac_policy  # noqa: E402
+from src.services.sessions import sessions  # noqa: E402
 
 
 def _role(
@@ -99,27 +110,112 @@ def _user(
     )
 
 
+class _Result:
+    """Covers the ``Result`` access shapes the repository layer uses: the
+    ``BaseRepository`` ``unique().scalars().first()`` load, ``scalar_one()`` for a
+    COUNT, ``scalar_one_or_none()`` for an EXISTS probe and the row-tuple
+    ``all()``."""
+
+    def __init__(self, value) -> None:
+        self._value = value
+
+    def unique(self):
+        return self
+
+    def scalars(self):
+        return SimpleNamespace(first=lambda: self._value, all=lambda: list(self._value or []))
+
+    def scalar_one(self):
+        return self._value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+    def all(self):
+        return list(self._value or [])
+
+
+class _QueueSession:
+    """Fakes a session whose ``execute``/``scalar`` calls pop from one FIFO of
+    canned values, in the repository call order of the flow under test."""
+
+    def __init__(self, results: list | None = None) -> None:
+        self._results = list(results or [])
+        self.added: list = []
+        self.deleted: list = []
+        self.commit_called = False
+        self.delete_called = False
+
+    async def execute(self, _query):
+        assert self._results, "unexpected execute() call"
+        return _Result(self._results.pop(0))
+
+    async def scalar(self, _query):
+        assert self._results, "unexpected scalar() call"
+        return self._results.pop(0)
+
+    def add(self, row) -> None:
+        self.added.append(row)
+
+    async def flush(self) -> None:
+        return None
+
+    async def refresh(self, _row) -> None:
+        return None
+
+    async def delete(self, row) -> None:
+        self.delete_called = True
+        self.deleted.append(row)
+
+    async def commit(self) -> None:
+        self.commit_called = True
+
+
+class _RecordingCache:
+    """Stands in for the ``session_cache`` singleton, recording every user whose
+    RBAC entry a flow dropped."""
+
+    def __init__(self) -> None:
+        self.invalidated: list[int] = []
+
+    async def invalidate_rbac(self, user_id: int) -> None:
+        self.invalidated.append(user_id)
+
+
+class _RoleGrants:
+    """Stands in for ``UserRoleRepository``: the last-admin guard only reads the
+    tally, so that is all this exposes."""
+
+    def __init__(self, count: int) -> None:
+        self._count = count
+        self.counted: list[int] = []
+
+    async def count_for_role(self, _session, role_id: int) -> int:
+        self.counted.append(role_id)
+        return self._count
+
+    async def user_ids_for_role(self, _session, _role_id: int) -> list[int]:
+        return []
+
+
 def test_list_auth_users_route_returns_user_summaries(monkeypatch: pytest.MonkeyPatch) -> None:
     admin_role = _role(1, "admin")
     users = [_user(7, "ada@example.com", roles=[admin_role], player=_linked_player(12, "AdaPlayer"))]
 
-    async def fake_list_users_with_rbac(session, params, *, include_player_links=False):
+    async def fake_list_with_rbac(session, params, *, include_player=False):
         assert params.search == "ada"
         assert params.role_id == 1
         assert params.is_active is True
         assert params.is_superuser is False
         assert params.page == 2
         assert params.per_page == 25
-        assert include_player_links is True
+        assert include_player is True
         return users, 51
 
-    monkeypatch.setattr(
-        "src.services.rbac_flows.auth_service.AuthService.list_users_with_rbac",
-        fake_list_users_with_rbac,
-    )
+    monkeypatch.setattr(auth_users, "list_with_rbac", fake_list_with_rbac)
 
     response = asyncio.run(
-        rbac_flows.list_auth_users(
+        auth_user_admin.list(
             object(),
             SimpleNamespace(is_superuser=True),
             schemas.AuthUserListParams(
@@ -144,11 +240,8 @@ def test_require_permission_allows_user_with_matching_permission() -> None:
         has_permission=lambda resource, action: resource == "role" and action == "read",
     )
 
-    dependency = auth_service.require_permission("role", "read")
-
-    response = asyncio.run(dependency(current_user=current_user))
-
-    assert response is current_user
+    # The guard is a raise-or-pass check now, so "allowed" is "did not raise".
+    assert rbac_policy.require_permission(current_user, "role", "read") is None
 
 
 def test_require_permission_rejects_user_without_matching_permission() -> None:
@@ -157,10 +250,8 @@ def test_require_permission_rejects_user_without_matching_permission() -> None:
         has_permission=lambda _resource, _action: False,
     )
 
-    dependency = auth_service.require_permission("role", "update")
-
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(dependency(current_user=current_user))
+        rbac_policy.require_permission(current_user, "role", "update")
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Permission denied: role.update required"
@@ -265,18 +356,15 @@ def test_get_auth_user_route_returns_effective_permissions(monkeypatch: pytest.M
     linked_player = _linked_player(42, "GracePlayer")
     user = _user(9, "grace@example.com", roles=[admin_role], player=linked_player)
 
-    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
+    async def fake_get_with_rbac(session, user_id, *, include_player=False):
         assert user_id == 9
-        assert include_player_links is True
+        assert include_player is True
         return user
 
-    monkeypatch.setattr(
-        "src.services.rbac_flows.auth_service.AuthService.get_user_with_rbac",
-        fake_get_user_with_rbac,
-    )
+    monkeypatch.setattr(auth_users, "get_with_rbac", fake_get_with_rbac)
 
     response = asyncio.run(
-        rbac_flows.get_auth_user(
+        auth_user_admin.get(
             object(),
             SimpleNamespace(is_superuser=True, has_permission=lambda r, a: True),
             9,
@@ -293,19 +381,16 @@ def test_get_auth_user_route_returns_effective_permissions(monkeypatch: pytest.M
 
 
 def test_get_auth_user_route_raises_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
+    async def fake_get_with_rbac(session, user_id, *, include_player=False):
         assert user_id == 404
-        assert include_player_links is True
+        assert include_player is True
         return None
 
-    monkeypatch.setattr(
-        "src.services.rbac_flows.auth_service.AuthService.get_user_with_rbac",
-        fake_get_user_with_rbac,
-    )
+    monkeypatch.setattr(auth_users, "get_with_rbac", fake_get_with_rbac)
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.get_auth_user(
+            auth_user_admin.get(
                 object(),
                 SimpleNamespace(is_superuser=True, has_permission=lambda r, a: True),
                 404,
@@ -321,14 +406,14 @@ def test_get_current_user_info_returns_linked_players(monkeypatch: pytest.Monkey
     linked_player = _linked_player(42, "GracePlayer")
     user = _user(9, "grace@example.com", roles=[admin_role], player=linked_player)
 
-    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
+    async def fake_get_with_rbac(session, user_id, *, include_player=False):
         assert user_id == 9
-        assert include_player_links is True
+        assert include_player is True
         return user
 
-    async def fake_get_workspace_roles_and_permissions_db(session, user_id, ws_ids):
+    async def fake_workspace_rbac_for_user(session, user_id, ws_ids):
         assert user_id == 9
-        assert ws_ids == []
+        assert list(ws_ids) == []
         return {}
 
     class _WorkspaceRows:
@@ -341,21 +426,10 @@ def test_get_current_user_info_returns_linked_players(monkeypatch: pytest.Monkey
         async def execute(_query):
             return _WorkspaceRows()
 
-    monkeypatch.setattr(
-        "src.services.auth_flows.AuthService.get_user_with_rbac",
-        fake_get_user_with_rbac,
-    )
-    monkeypatch.setattr(
-        "src.services.auth_flows.AuthService.get_workspace_roles_and_permissions_db",
-        fake_get_workspace_roles_and_permissions_db,
-    )
+    monkeypatch.setattr(auth_users, "get_with_rbac", fake_get_with_rbac)
+    monkeypatch.setattr(auth.roles, "workspace_rbac_for_user", fake_workspace_rbac_for_user)
 
-    response = asyncio.run(
-        auth_flows.get_me(
-            session=_SessionStub(),
-            user_id=9,
-        )
-    )
+    response = asyncio.run(auth.get_me(_SessionStub(), 9))
 
     assert response.email == "grace@example.com"
     assert len(response.linked_players) == 1
@@ -387,10 +461,10 @@ def test_list_auth_sessions_route_returns_superuser_inventory(monkeypatch: pytes
             }
         ]
 
-    monkeypatch.setattr("src.services.rbac_flows.SessionService.list_all_sessions", fake_list_all_sessions)
+    monkeypatch.setattr(sessions, "list_all_sessions", fake_list_all_sessions)
 
     response = asyncio.run(
-        rbac_flows.list_auth_sessions(
+        session_admin.list_auth_sessions(
             object(),
             SimpleNamespace(is_superuser=True),
             schemas.SessionListParams(user_id=12, search="ada", status="active"),
@@ -429,11 +503,11 @@ def test_list_auth_sessions_route_sorts_and_paginates(monkeypatch: pytest.Monkey
     async def fake_list_all_sessions(session, *, user_id=None, search=None, status=None):
         return list(summaries)
 
-    monkeypatch.setattr("src.services.rbac_flows.SessionService.list_all_sessions", fake_list_all_sessions)
+    monkeypatch.setattr(sessions, "list_all_sessions", fake_list_all_sessions)
 
     # last_seen_at desc, page 1 of size 2 -> newest two sessions.
     response = asyncio.run(
-        rbac_flows.list_auth_sessions(
+        session_admin.list_auth_sessions(
             object(),
             SimpleNamespace(is_superuser=True),
             schemas.SessionListParams(page=1, per_page=2, sort="last_seen_at", order="desc"),
@@ -446,7 +520,7 @@ def test_list_auth_sessions_route_sorts_and_paginates(monkeypatch: pytest.Monkey
 
     # page 2 -> the remaining oldest session.
     response_page2 = asyncio.run(
-        rbac_flows.list_auth_sessions(
+        session_admin.list_auth_sessions(
             object(),
             SimpleNamespace(is_superuser=True),
             schemas.SessionListParams(page=2, per_page=2, sort="last_seen_at", order="desc"),
@@ -459,41 +533,20 @@ def test_list_auth_sessions_route_sorts_and_paginates(monkeypatch: pytest.Monkey
 
 def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _user(9, "grace@example.com", roles=[])
+    session = _QueueSession(results=[user])
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        def __init__(self) -> None:
-            self.added: list[object] = []
-
-        async def execute(self, _query):
-            return _ScalarResult(user)
-
-        def add(self, row) -> None:
-            self.added.append(row)
-
-    async def fake_admin_link_player(session, auth_user_id, player_id, is_primary):
-        assert session is fake_session
+    async def fake_admin_link(link_session, auth_user_id, player_id, is_primary):
+        assert link_session is session
         assert auth_user_id == 9
         assert player_id == 42
         assert is_primary is False
         return SimpleNamespace()
 
-    fake_session = _FakeSession()
-
-    monkeypatch.setattr(
-        "src.services.rbac_flows.PlayerLinkService.admin_link_player",
-        fake_admin_link_player,
-    )
+    monkeypatch.setattr(players, "admin_link", fake_admin_link)
 
     response = asyncio.run(
-        rbac_flows.assign_linked_player_to_auth_user(
-            fake_session,
+        auth_user_admin.assign_linked_player(
+            session,
             SimpleNamespace(
                 id=1,
                 username="root",
@@ -511,40 +564,19 @@ def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkey
 
 def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _user(9, "grace@example.com", roles=[])
+    session = _QueueSession(results=[user])
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        def __init__(self) -> None:
-            self.added: list[object] = []
-
-        async def execute(self, _query):
-            return _ScalarResult(user)
-
-        def add(self, row) -> None:
-            self.added.append(row)
-
-    async def fake_admin_unlink_player(session, auth_user_id, player_id):
-        assert session is fake_session
+    async def fake_admin_unlink(link_session, auth_user_id, player_id):
+        assert link_session is session
         assert auth_user_id == 9
         assert player_id == 42
         return None
 
-    fake_session = _FakeSession()
-
-    monkeypatch.setattr(
-        "src.services.rbac_flows.PlayerLinkService.admin_unlink_player",
-        fake_admin_unlink_player,
-    )
+    monkeypatch.setattr(players, "admin_unlink", fake_admin_unlink)
 
     response = asyncio.run(
-        rbac_flows.remove_linked_player_from_auth_user(
-            fake_session,
+        auth_user_admin.remove_linked_player(
+            session,
             SimpleNamespace(
                 id=1,
                 username="root",
@@ -560,44 +592,19 @@ def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(mo
     assert response is None
 
 
-def test_remove_role_route_blocks_removing_last_admin_assignment(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_remove_role_route_blocks_removing_last_admin_assignment() -> None:
     admin_role = _role(1, "admin")
     current_user = _user(1, "root@example.com", roles=[admin_role])
     current_user.is_superuser = True
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        def __init__(self):
-            self._values = [current_user, admin_role]
-            self.commit_called = False
-
-        async def execute(self, _query):
-            return _ScalarResult(self._values.pop(0))
-
-        async def commit(self):
-            self.commit_called = True
-
-    async def fake_count_users_with_role(_session, role_id):
-        assert role_id == 1
-        return 1
-
-    async def fake_invalidate_rbac(_user_id):
-        return None
-
-    monkeypatch.setattr("src.services.rbac_flows._count_users_with_role", fake_count_users_with_role, raising=False)
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", fake_invalidate_rbac, raising=False)
-
-    session = _FakeSession()
+    grants = _RoleGrants(1)
+    service = RoleAdminService(role_grants=grants, cache=_RecordingCache())
+    # execute() order in remove_from_user: target user (with roles), then the role.
+    session = _QueueSession(results=[current_user, admin_role])
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.remove_role_from_user(
+            service.remove_from_user(
                 session,
                 current_user,
                 SimpleNamespace(user_id=1, role_id=1),
@@ -606,80 +613,41 @@ def test_remove_role_route_blocks_removing_last_admin_assignment(monkeypatch: py
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Cannot remove the last admin role assignment"
+    assert grants.counted == [1]
     assert session.commit_called is False
 
 
-def test_remove_role_route_allows_admin_removal_when_another_assignment_exists(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_remove_role_route_allows_admin_removal_when_another_assignment_exists() -> None:
     admin_role = _role(1, "admin")
     current_user = _user(1, "root@example.com", roles=[admin_role])
     current_user.is_superuser = True
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        def __init__(self):
-            self._values = [current_user, admin_role]
-            self.commit_called = False
-            self.added: list[object] = []
-
-        async def execute(self, _query):
-            return _ScalarResult(self._values.pop(0))
-
-        def add(self, row):
-            self.added.append(row)
-
-        async def commit(self):
-            self.commit_called = True
-
-    async def fake_count_users_with_role(_session, role_id):
-        assert role_id == 1
-        return 2
-
-    async def fake_invalidate_rbac(_user_id):
-        return None
-
-    monkeypatch.setattr("src.services.rbac_flows._count_users_with_role", fake_count_users_with_role, raising=False)
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", fake_invalidate_rbac, raising=False)
-
-    session = _FakeSession()
+    grants = _RoleGrants(2)
+    cache = _RecordingCache()
+    service = RoleAdminService(role_grants=grants, cache=cache)
+    session = _QueueSession(results=[current_user, admin_role])
 
     asyncio.run(
-        rbac_flows.remove_role_from_user(
+        service.remove_from_user(
             session,
             current_user,
             SimpleNamespace(user_id=1, role_id=1),
         )
     )
 
+    assert grants.counted == [1]
     assert session.commit_called is True
     assert current_user.roles == []
+    assert cache.invalidated == [1]
 
 
 def test_update_role_route_rejects_system_roles() -> None:
     system_role = _role(11, "moderator", is_system=True)
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        async def execute(self, _query):
-            return _ScalarResult(system_role)
-
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.update_role(
-                _FakeSession(),
+            role_admin.update(
+                _QueueSession(results=[system_role]),
                 SimpleNamespace(is_superuser=True),
                 11,
                 SimpleNamespace(name="moderator_v2", description=None, permission_ids=None),
@@ -693,21 +661,10 @@ def test_update_role_route_rejects_system_roles() -> None:
 def test_delete_role_route_rejects_system_roles() -> None:
     system_role = _role(12, "admin", is_system=True)
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        async def execute(self, _query):
-            return _ScalarResult(system_role)
-
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.delete_role(
-                _FakeSession(),
+            role_admin.delete(
+                _QueueSession(results=[system_role]),
                 SimpleNamespace(is_superuser=True),
                 12,
             )
@@ -717,7 +674,7 @@ def test_delete_role_route_rejects_system_roles() -> None:
     assert exc_info.value.detail == "Cannot delete system roles"
 
 
-def test_delete_oauth_connection_route_deletes_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_delete_oauth_connection_route_deletes_connection() -> None:
     auth_user = SimpleNamespace(id=11, username="linked-user", hashed_password="hashed")
     connection = SimpleNamespace(
         id=21,
@@ -726,35 +683,10 @@ def test_delete_oauth_connection_route_deletes_connection(monkeypatch: pytest.Mo
         auth_user=auth_user,
     )
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        def __init__(self):
-            self.commit_called = False
-            self.deleted: list[object] = []
-            self.added: list[object] = []
-
-        async def execute(self, _query):
-            return _ScalarResult(connection)
-
-        def add(self, row):
-            self.added.append(row)
-
-        async def delete(self, value):
-            self.deleted.append(value)
-
-        async def commit(self):
-            self.commit_called = True
-
-    session = _FakeSession()
+    session = _QueueSession(results=[connection])
 
     asyncio.run(
-        rbac_flows.delete_oauth_connection(
+        auth_user_admin.delete_oauth_connection(
             session,
             SimpleNamespace(
                 id=1,
@@ -780,43 +712,13 @@ def test_delete_oauth_connection_route_blocks_last_passwordless_login() -> None:
         auth_user=auth_user,
     )
 
-    class _ScalarValues:
-        def __init__(self, values):
-            self._values = values
-
-        def all(self):
-            return self._values
-
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-        def scalars(self):
-            return _ScalarValues(self._value)
-
-    class _FakeSession:
-        def __init__(self):
-            self._values = [connection, [31]]
-            self.commit_called = False
-            self.delete_called = False
-
-        async def execute(self, _query):
-            return _ScalarResult(self._values.pop(0))
-
-        async def delete(self, _value):
-            self.delete_called = True
-
-        async def commit(self):
-            self.commit_called = True
-
-    session = _FakeSession()
+    # execute() order: the connection with its auth user, then the COUNT of the
+    # user's remaining connections (1 -> this is the last one).
+    session = _QueueSession(results=[connection, 1])
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.delete_oauth_connection(
+            auth_user_admin.delete_oauth_connection(
                 session,
                 SimpleNamespace(id=1, is_superuser=True, has_permission=lambda r, a: True),
                 31,
@@ -831,45 +733,15 @@ def test_delete_oauth_connection_route_blocks_last_passwordless_login() -> None:
     assert session.commit_called is False
 
 
-def test_delete_auth_user_route_deletes_and_invalidates(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_delete_auth_user_route_deletes_and_invalidates() -> None:
     target = SimpleNamespace(id=9, username="grace", email="grace@example.com")
 
-    class _ScalarResult:
-        def __init__(self, value):
-            self._value = value
-
-        def scalar_one_or_none(self):
-            return self._value
-
-    class _FakeSession:
-        def __init__(self):
-            self.commit_called = False
-            self.deleted: list[object] = []
-            self.added: list[object] = []
-
-        async def execute(self, _query):
-            return _ScalarResult(target)
-
-        def add(self, row):
-            self.added.append(row)
-
-        async def delete(self, value):
-            self.deleted.append(value)
-
-        async def commit(self):
-            self.commit_called = True
-
-    invalidated: list[int] = []
-
-    async def fake_invalidate_rbac(user_id):
-        invalidated.append(user_id)
-
-    monkeypatch.setattr("src.services.rbac_flows.invalidate_rbac", fake_invalidate_rbac, raising=False)
-
-    session = _FakeSession()
+    cache = _RecordingCache()
+    service = AuthUserAdminService(cache=cache)
+    session = _QueueSession(results=[target])
 
     asyncio.run(
-        rbac_flows.delete_auth_user(
+        service.delete(
             session,
             SimpleNamespace(id=1, username="root", email="root@example.com", is_superuser=True),
             9,
@@ -878,13 +750,13 @@ def test_delete_auth_user_route_deletes_and_invalidates(monkeypatch: pytest.Monk
 
     assert session.deleted == [target]
     assert session.commit_called is True
-    assert invalidated == [9]
+    assert cache.invalidated == [9]
 
 
 def test_delete_auth_user_route_blocks_self_delete() -> None:
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.delete_auth_user(
+            auth_user_admin.delete(
                 object(),
                 SimpleNamespace(id=7, is_superuser=True),
                 7,
@@ -898,7 +770,7 @@ def test_delete_auth_user_route_blocks_self_delete() -> None:
 def test_delete_auth_user_route_requires_superuser() -> None:
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.delete_auth_user(
+            auth_user_admin.delete(
                 object(),
                 SimpleNamespace(id=1, is_superuser=False),
                 9,
@@ -909,18 +781,10 @@ def test_delete_auth_user_route_requires_superuser() -> None:
 
 
 def test_delete_auth_user_route_raises_not_found() -> None:
-    class _ScalarResult:
-        def scalar_one_or_none(self):
-            return None
-
-    class _FakeSession:
-        async def execute(self, _query):
-            return _ScalarResult()
-
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            rbac_flows.delete_auth_user(
-                _FakeSession(),
+            auth_user_admin.delete(
+                _QueueSession(results=[None]),
                 SimpleNamespace(id=1, is_superuser=True),
                 404,
             )
@@ -928,3 +792,95 @@ def test_delete_auth_user_route_raises_not_found() -> None:
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "User not found"
+
+
+def test_create_role_route_rejects_reserved_role_names() -> None:
+    """``admin`` is a hardcoded full-bypass marker in the shared AuthUser model,
+    so minting a self-service role under it (or the other trusted names) would be
+    an escalation path. The check is case-insensitive and runs before any write."""
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            role_admin.create(
+                object(),
+                SimpleNamespace(is_superuser=True),
+                SimpleNamespace(name="Admin", description=None, workspace_id=None, permission_ids=None),
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Role name 'Admin' is reserved"
+
+
+def test_create_role_route_blocks_granting_permissions_the_actor_lacks() -> None:
+    """Privilege ceiling: ``role.create`` must not let a limited operator mint a
+    role more powerful than the operator's own permission set."""
+    permission = SimpleNamespace(id=5, name="team.delete", resource="team", action="delete", description=None)
+    actor = SimpleNamespace(
+        is_superuser=False,
+        has_permission=lambda resource, action: (resource, action) == ("role", "create"),
+    )
+    # Repository order in create: name-uniqueness probe via scalar(), then the
+    # requested permissions via execute().
+    session = _QueueSession(results=[None, [permission]])
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            role_admin.create(
+                session,
+                actor,
+                SimpleNamespace(name="Referees", description=None, workspace_id=None, permission_ids=[5]),
+            )
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == (
+        "Permission denied: cannot grant a role carrying a permission you do not hold (team.delete)"
+    )
+    assert session.added == []
+    assert session.commit_called is False
+
+
+def test_assign_role_route_requires_workspace_membership() -> None:
+    """A workspace role may only be granted to someone who is in that workspace."""
+    target = SimpleNamespace(id=9, username="grace", email="grace@example.com", roles=[])
+    role = _role(5, "Referees", is_system=False, workspace_id=7)
+    # execute(): target user, then the role; scalar(): the membership EXISTS probe.
+    session = _QueueSession(results=[target, role, None])
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            role_admin.assign_to_user(
+                session,
+                SimpleNamespace(id=1, username="root", email="root@example.com", is_superuser=True),
+                SimpleNamespace(user_id=9, role_id=5),
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Target user must be a member of the workspace"
+    assert target.roles == []
+    assert session.commit_called is False
+
+
+def test_remove_role_route_blocks_removing_last_workspace_owner() -> None:
+    """The workspace-scoped twin of the last-admin guard: a workspace must never
+    be left without an owner."""
+    owner_role = _role(5, "owner", workspace_id=7)
+    target = _user(9, "grace@example.com", roles=[owner_role])
+    # execute(): target user, the role, then the workspace owner role lookup;
+    # scalar(): "target holds owner", then the owner tally (1 -> the last one).
+    session = _QueueSession(results=[target, owner_role, owner_role, True, 1])
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            RoleAdminService(cache=_RecordingCache()).remove_from_user(
+                session,
+                SimpleNamespace(id=1, username="root", email="root@example.com", is_superuser=True),
+                SimpleNamespace(user_id=9, role_id=5),
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Cannot remove the last workspace owner role assignment"
+    assert target.roles == [owner_role]
+    assert session.commit_called is False

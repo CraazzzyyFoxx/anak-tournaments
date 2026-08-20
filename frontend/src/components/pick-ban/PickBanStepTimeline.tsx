@@ -41,7 +41,7 @@ export function PickBanStepTimeline({
   itemsById,
   sideName,
   session
-}: PickBanStepTimelineProps) {
+}: Readonly<PickBanStepTimelineProps>) {
   const t = useTranslations("pickBan.room");
   // Done-ness derives from committed pool actions, not from the step pointer:
   // every acted entry carries a global action_index (bans, picks, protects, decider).

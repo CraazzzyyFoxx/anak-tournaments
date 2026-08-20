@@ -9,7 +9,7 @@ DOCS: dict[str, dict] = {
     "rpc.identity.validate_token": {
         "summary": "Validate token",
         # 401, not 403: every not-authenticated path in validate_token raises
-        # HTTP_401_UNAUTHORIZED (token_validation.py, auth_token_helpers.py), and
+        # HTTP_401_UNAUTHORIZED (token_validation.py), and
         # the gateway pins that mapping in TestValidate_ErrorEnvelopeMapsStatus.
         # This line said 403 and the committed manifest said 401, which is what
         # had the OpenAPI drift gate — and so all of Lint Backend — red on master.

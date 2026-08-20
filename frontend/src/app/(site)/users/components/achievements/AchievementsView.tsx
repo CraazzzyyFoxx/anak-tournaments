@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useMemo, useState, useTransition } from "react";
-import { Award, Crown, Flame, Gem, Sparkles } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Award, Crown, Flame, Gem, Sparkles, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -28,6 +28,17 @@ import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";
+
+// Crest per tier. `uncommon` and `common` share the neutral award crest: the
+// tiers exist in the ranking, but nothing about them is worth its own symbol.
+const RARITY_ICON: Record<Rarity, LucideIcon> = {
+  mythic: Flame,
+  legendary: Crown,
+  epic: Gem,
+  rare: Sparkles,
+  uncommon: Award,
+  common: Award
+};
 
 interface Props {
   achievements: AchievementRarity[];
@@ -239,12 +250,13 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
         const list = visibleGrouped[r];
         if (list.length === 0) return null;
         const sectionUnlocked = list.filter((a) => a.count > 0).length;
+        const RarityIcon = RARITY_ICON[r];
         return (
           <div key={r} className="aqt-card-surface">
             <div className="aqt-card-head">
               <div className="aqt-card-title">
                 <span aria-hidden className="aqt-card-title-ic">
-                  {r === "mythic" ? <Flame size={15} /> : r === "legendary" ? <Crown size={15} /> : r === "epic" ? <Gem size={15} /> : r === "rare" ? <Sparkles size={15} /> : <Award size={15} />}
+                  <RarityIcon size={15} />
                 </span>
                 <span>{titles[r]}</span>
               </div>

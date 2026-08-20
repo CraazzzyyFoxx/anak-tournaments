@@ -281,13 +281,13 @@ export function EncountersDataTable({
   columns = DEFAULT_ENCOUNTER_COLUMNS,
   loading = false,
   className
-}: {
+}: Readonly<{
   rows: Encounter[];
   columns?: readonly EncounterColumnKey[];
   /** Renders placeholder rows instead of collapsing the table to a single line. */
   loading?: boolean;
   className?: string;
-}) {
+}>) {
   const router = useRouter();
   const t = useTranslations();
   const format = useFormatter();
@@ -466,7 +466,14 @@ export function EncountersDataTable({
       case "logs":
         return (
           <td key={column} className="c">
+            {/* Layout box and click shield, not a control: the whole row
+                navigates, so a click landing on the badge must not. There is
+                deliberately no keyboard twin — this only ever catches clicks on
+                the indicator's non-focusable `<span>` variants. Its focusable
+                variants stop propagation themselves, and the row's key handler
+                already ignores events whose target is not the row. */}
             <div
+              role="presentation"
               className="m-media justify-center"
               onClick={(event) => event.stopPropagation()}
             >
@@ -493,9 +500,8 @@ export function EncountersDataTable({
     // element — not on the card itself.
     <div className={cn("aqt-matches min-w-0", className)}>
       <div className="matches-card min-w-0">
-        <div
+        <section
           className={cn("m-scroll", styles.tableViewport)}
-          role="region"
           aria-label={t("tournamentDetail.publicPages.matches.tableLabel")}
           tabIndex={0}
         >
@@ -539,7 +545,7 @@ export function EncountersDataTable({
                   })}
             </tbody>
           </table>
-        </div>
+        </section>
       </div>
     </div>
   );

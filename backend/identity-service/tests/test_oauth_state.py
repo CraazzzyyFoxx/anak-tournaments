@@ -1,14 +1,14 @@
 """Signed OAuth ``state`` payload: encode/verify round-trip (Task 9) plus the
 browser-binding CSRF hash (Task 9b).
 
-Pure and Redis/DB-free by design — ``encode_state``/``verify_state`` only do
+Pure and Redis/DB-free by design — ``oauth_state.encode``/``verify`` only do
 HMAC signing + an embedded expiry check. Nonce single-use (replay) protection
-is enforced separately in ``oauth_flows.callback`` where a Redis client is
+is enforced separately in ``oauth.callback`` where a Redis client is
 available; that half is intentionally NOT exercised here (see brief).
 
 Task 9b adds a ``csrf`` field: the state carries only ``sha256(raw_token)``,
 never the raw token itself. The flow-level compare against the raw cookie
-value (``oauth_flows._verify_csrf_binding``, exercised via ``callback``/
+value (``OAuthFlowService._verify_csrf_binding``, exercised via ``callback``/
 ``link``) IS unit-testable without infra, because a missing/mismatched
 cookie is rejected before either function ever touches Redis or the DB --
 see ``test_callback_rejects_missing_csrf`` / ``test_link_rejects_mismatched_csrf``.
@@ -51,12 +51,12 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.services import oauth_flows  # noqa: E402
-from src.services.oauth_service import OAuthService  # noqa: E402
+from src.services.oauth import oauth  # noqa: E402
+from src.services.oauth_state import oauth_state  # noqa: E402
 
 
 def test_state_roundtrip_carries_origin_and_action() -> None:
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://team-a.owt.craazzzyyfoxx.me",
         redirect="/account",
         action="login",
@@ -64,7 +64,7 @@ def test_state_roundtrip_carries_origin_and_action() -> None:
         csrf="raw-csrf-token",
     )
 
-    payload = OAuthService.verify_state(state)
+    payload = oauth_state.verify(state)
 
     assert payload.origin == "https://team-a.owt.craazzzyyfoxx.me"
     assert payload.redirect == "/account"
@@ -75,7 +75,7 @@ def test_state_roundtrip_carries_origin_and_action() -> None:
 
 
 def test_state_roundtrip_carries_link_action() -> None:
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://owt.craazzzyyfoxx.me",
         redirect="/account",
         action="link",
@@ -83,7 +83,7 @@ def test_state_roundtrip_carries_link_action() -> None:
         csrf="raw-csrf-token",
     )
 
-    payload = OAuthService.verify_state(state)
+    payload = oauth_state.verify(state)
 
     assert payload.action == "link"
     assert payload.provider == "battlenet"
@@ -91,7 +91,7 @@ def test_state_roundtrip_carries_link_action() -> None:
 
 def test_state_roundtrip_carries_csrf_hash() -> None:
     """The state stores sha256(raw token), never the raw token itself."""
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://team-a.owt.craazzzyyfoxx.me",
         redirect="/account",
         action="login",
@@ -99,10 +99,33 @@ def test_state_roundtrip_carries_csrf_hash() -> None:
         csrf="super-secret-cookie-value",
     )
 
-    payload = OAuthService.verify_state(state)
+    payload = oauth_state.verify(state)
 
     assert payload.csrf == hashlib.sha256(b"super-secret-cookie-value").hexdigest()
     assert "super-secret-cookie-value" not in state
+    # No custom-domain apex bounce ran, so there is no cross-domain binding at
+    # all -- surfaced as None rather than an empty string that could read as one.
+    assert payload.guard_hash is None
+
+
+def test_state_roundtrip_carries_optional_guard_hash() -> None:
+    """``guard_hash`` is ALREADY a hash (the frontend hashed the host-only
+    ``owt_xdomain_guard`` cookie), so it round-trips verbatim -- and is the
+    only thing that lets a cross-domain ticket be bound to a browser."""
+    guard_hash = hashlib.sha256(b"raw-xdomain-guard-value").hexdigest()
+    state = oauth_state.encode(
+        origin="https://tourney.customer.com",
+        redirect="/account",
+        action="login",
+        provider="discord",
+        csrf="raw-csrf-token",
+        guard_hash=guard_hash,
+    )
+
+    payload = oauth_state.verify(state)
+
+    assert payload.guard_hash == guard_hash
+    assert "raw-xdomain-guard-value" not in state
 
 
 def test_state_nonces_are_unique() -> None:
@@ -114,14 +137,14 @@ def test_state_nonces_are_unique() -> None:
         "csrf": "raw-csrf-token",
     }
 
-    first = OAuthService.verify_state(OAuthService.encode_state(**kwargs))
-    second = OAuthService.verify_state(OAuthService.encode_state(**kwargs))
+    first = oauth_state.verify(oauth_state.encode(**kwargs))
+    second = oauth_state.verify(oauth_state.encode(**kwargs))
 
     assert first.nonce != second.nonce
 
 
 def test_state_rejects_tamper() -> None:
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://team-a.owt.craazzzyyfoxx.me",
         redirect="/",
         action="login",
@@ -131,19 +154,19 @@ def test_state_rejects_tamper() -> None:
     tampered = state[:-2] + ("aa" if not state.endswith("aa") else "bb")
 
     with pytest.raises(ValueError):
-        OAuthService.verify_state(tampered)
+        oauth_state.verify(tampered)
 
 
 def test_state_rejects_malformed() -> None:
     with pytest.raises(ValueError):
-        OAuthService.verify_state("not-a-valid-state")
+        oauth_state.verify("not-a-valid-state")
 
     with pytest.raises(ValueError):
-        OAuthService.verify_state("")
+        oauth_state.verify("")
 
 
 def test_state_rejects_expired() -> None:
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://team-a.owt.craazzzyyfoxx.me",
         redirect="/",
         action="login",
@@ -151,22 +174,22 @@ def test_state_rejects_expired() -> None:
         csrf="raw-csrf-token",
     )
     encoded_payload, _signature = state.split(".", maxsplit=1)
-    payload = json.loads(OAuthService._decode_state_part(encoded_payload))
+    payload = json.loads(oauth_state._decode_part(encoded_payload))
     payload["e"] = 0  # epoch 0 -- long expired
 
     expired_payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    expired_signature = OAuthService._build_payload_signature(expired_payload_json)
-    expired_state = f"{OAuthService._encode_state_part(expired_payload_json)}.{expired_signature}"
+    expired_signature = oauth_state._signature(expired_payload_json)
+    expired_state = f"{oauth_state._encode_part(expired_payload_json)}.{expired_signature}"
 
     with pytest.raises(ValueError):
-        OAuthService.verify_state(expired_state)
+        oauth_state.verify(expired_state)
 
 
 def test_get_url_embeds_origin_redirect_action(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("src.services.oauth_service.settings.DISCORD_OAUTH_ENABLED", True)
-    monkeypatch.setattr("src.services.oauth_service.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
+    monkeypatch.setattr("src.services.oauth_providers.settings.DISCORD_OAUTH_ENABLED", True)
+    monkeypatch.setattr("src.services.oauth_providers.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
 
-    result = oauth_flows.get_url(
+    result = oauth.authorization_url(
         "discord",
         origin="https://team-a.owt.craazzzyyfoxx.me",
         redirect="/account",
@@ -174,7 +197,7 @@ def test_get_url_embeds_origin_redirect_action(monkeypatch: pytest.MonkeyPatch) 
         csrf="raw-csrf-token",
     )
 
-    payload = OAuthService.verify_state(result.state)
+    payload = oauth_state.verify(result.state)
     assert payload.origin == "https://team-a.owt.craazzzyyfoxx.me"
     assert payload.redirect == "/account"
     assert payload.action == "login"
@@ -193,10 +216,10 @@ def test_get_url_accepts_well_formed_custom_domain_origin(monkeypatch: pytest.Mo
     custom domain, so a well-formed non-platform FQDN must be accepted here;
     the frontend allow-list + the workspace-bound ticket handoff are what
     actually gate it."""
-    monkeypatch.setattr("src.services.oauth_service.settings.DISCORD_OAUTH_ENABLED", True)
-    monkeypatch.setattr("src.services.oauth_service.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
+    monkeypatch.setattr("src.services.oauth_providers.settings.DISCORD_OAUTH_ENABLED", True)
+    monkeypatch.setattr("src.services.oauth_providers.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
 
-    result = oauth_flows.get_url(
+    result = oauth.authorization_url(
         "discord",
         origin="https://tourney.customer.com",
         redirect="/account",
@@ -204,7 +227,7 @@ def test_get_url_accepts_well_formed_custom_domain_origin(monkeypatch: pytest.Mo
         csrf="raw-csrf-token",
     )
 
-    payload = OAuthService.verify_state(result.state)
+    payload = oauth_state.verify(result.state)
     assert payload.origin == "https://tourney.customer.com"
 
 
@@ -224,11 +247,11 @@ def test_get_url_accepts_well_formed_custom_domain_origin(monkeypatch: pytest.Mo
     ],
 )
 def test_get_url_rejects_malformed_origin(monkeypatch: pytest.MonkeyPatch, bad_origin: str) -> None:
-    monkeypatch.setattr("src.services.oauth_service.settings.DISCORD_OAUTH_ENABLED", True)
-    monkeypatch.setattr("src.services.oauth_service.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
+    monkeypatch.setattr("src.services.oauth_providers.settings.DISCORD_OAUTH_ENABLED", True)
+    monkeypatch.setattr("src.services.oauth_providers.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
 
     with pytest.raises(HTTPException) as exc_info:
-        oauth_flows.get_url(
+        oauth.authorization_url(
             "discord",
             origin=bad_origin,
             redirect="/",
@@ -240,11 +263,11 @@ def test_get_url_rejects_malformed_origin(monkeypatch: pytest.MonkeyPatch, bad_o
 
 
 def test_get_url_rejects_invalid_action(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("src.services.oauth_service.settings.DISCORD_OAUTH_ENABLED", True)
-    monkeypatch.setattr("src.services.oauth_service.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
+    monkeypatch.setattr("src.services.oauth_providers.settings.DISCORD_OAUTH_ENABLED", True)
+    monkeypatch.setattr("src.services.oauth_providers.settings.OAUTH_REDIRECT", "http://localhost:3000/auth/callback")
 
     with pytest.raises(HTTPException) as exc_info:
-        oauth_flows.get_url(
+        oauth.authorization_url(
             "discord",
             origin="https://team-a.owt.craazzzyyfoxx.me",
             redirect="/",
@@ -260,10 +283,10 @@ def test_callback_rejects_missing_csrf() -> None:
 
     Both ``_verify_state_for`` and ``_verify_csrf_binding`` run before
     ``callback`` ever touches Redis (``_consume_state_nonce``) or the DB
-    (``OAuthService.handle_callback``), so this is testable with ``session``
+    (``oauth_accounts.handle_callback``), so this is testable with ``session``
     left as ``None`` and no infra running.
     """
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://team-a.owt.craazzzyyfoxx.me",
         redirect="/",
         action="login",
@@ -273,7 +296,7 @@ def test_callback_rejects_missing_csrf() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            oauth_flows.callback(
+            oauth.callback(
                 session=None,
                 provider="discord",
                 code="unused-code",
@@ -292,7 +315,7 @@ def test_callback_rejects_mismatched_csrf() -> None:
     reject a callback presenting any other value -- e.g. an attacker's own
     cookie, forwarded while replaying a state they tricked the victim into
     using (login CSRF)."""
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://team-a.owt.craazzzyyfoxx.me",
         redirect="/",
         action="login",
@@ -302,7 +325,7 @@ def test_callback_rejects_mismatched_csrf() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            oauth_flows.callback(
+            oauth.callback(
                 session=None,
                 provider="discord",
                 code="unused-code",
@@ -319,7 +342,7 @@ def test_callback_rejects_mismatched_csrf() -> None:
 def test_link_rejects_mismatched_csrf() -> None:
     """Account-linking CSRF: the same browser-binding must be enforced on
     the ``link`` flow, not just ``callback``."""
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://owt.craazzzyyfoxx.me",
         redirect="/account",
         action="link",
@@ -329,7 +352,7 @@ def test_link_rejects_mismatched_csrf() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            oauth_flows.link(
+            oauth.link(
                 session=None,
                 user=None,
                 provider="battlenet",
@@ -350,7 +373,7 @@ def test_link_rejects_missing_csrf() -> None:
     ``link`` ever touches the DB, so this is testable with ``session``
     left as ``None`` and no infra running.
     """
-    state = OAuthService.encode_state(
+    state = oauth_state.encode(
         origin="https://owt.craazzzyyfoxx.me",
         redirect="/account",
         action="link",
@@ -360,7 +383,7 @@ def test_link_rejects_missing_csrf() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            oauth_flows.link(
+            oauth.link(
                 session=None,
                 user=None,
                 provider="battlenet",

@@ -19,7 +19,7 @@ interface PickBanCountdownProps {
  * `pickBan.room` translation namespace and renders the deadline as a shrinking
  * bar plus a mm:ss readout.
  */
-export function PickBanCountdown({ deadline, totalSeconds }: PickBanCountdownProps) {
+export function PickBanCountdown({ deadline, totalSeconds }: Readonly<PickBanCountdownProps>) {
   const t = useTranslations("pickBan.room");
   const [now, setNow] = useState<number | null>(null);
 

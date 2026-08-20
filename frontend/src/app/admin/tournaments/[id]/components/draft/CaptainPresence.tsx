@@ -13,7 +13,7 @@ interface CaptainPresenceProps {
   presence: DraftPresenceState;
 }
 
-export function CaptainPresence({ teams, presence }: CaptainPresenceProps) {
+export function CaptainPresence({ teams, presence }: Readonly<CaptainPresenceProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
   const rows = captainPresenceRows(teams, presence);
   const online = rows.filter((row) => row.connected).length;
@@ -24,9 +24,10 @@ export function CaptainPresence({ teams, presence }: CaptainPresenceProps) {
           <h3 id="captain-presence-heading" className="font-onest text-base font-semibold">
             {t("captainPresence")}
           </h3>
-          <p className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]" role="status">
+          {/* `block`: <output> is inline, so `mt-1` would be dropped. */}
+          <output className="mt-1 block text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
             {t("captainPresenceCount", { online, total: rows.length })}
-          </p>
+          </output>
         </div>
         <span
           className="flex items-center gap-2 font-mono text-xs tabular-nums text-[color:var(--aqt-fg-muted)]"

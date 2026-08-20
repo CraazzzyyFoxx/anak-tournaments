@@ -30,7 +30,7 @@ export function DraftOrder({
   compact = false,
   divisionGrid,
   headingId = "draft-order-heading"
-}: DraftOrderProps) {
+}: Readonly<DraftOrderProps>) {
   const t = useTranslations("draftRedesign");
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const playerById = new Map(players.map((player) => [player.id, player]));

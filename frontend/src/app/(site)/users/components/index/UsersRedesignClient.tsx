@@ -20,7 +20,6 @@ import { getPlayerSlug } from "@/utils/player";
 import { roleImageSrc } from "@/lib/player-role";
 import {
   UserCatalogEntry,
-  UserOverviewHero,
   UserOverviewRoleDivision,
   UserOverviewRow,
   UserRoleType

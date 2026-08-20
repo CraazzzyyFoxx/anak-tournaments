@@ -62,7 +62,7 @@ export function PageStateCard({
   onAction,
   actionLabel,
   className
-}: PageStateCardProps) {
+}: Readonly<PageStateCardProps>) {
   const t = useTranslations();
   const Icon = ICONS[state];
 

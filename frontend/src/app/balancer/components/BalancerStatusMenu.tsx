@@ -108,7 +108,7 @@ export function BalancerStatusMenu({
 }
 
 /** Context-menu submenu variant of the same picker, for right-click actions. */
-export function BalancerStatusContextMenuItems({ value, statusOptions, disabled, onChange }: StatusPickerProps) {
+export function BalancerStatusContextMenuItems({ value, statusOptions, disabled, onChange }: Readonly<StatusPickerProps>) {
   const options = pickableBalancerStatusOptions(statusOptions);
   if (!statusOptions || !onChange) {
     return null;

@@ -25,7 +25,7 @@ export default function BalancerRegistrationsColumnPicker({
   visibility,
   onToggle,
   onReset,
-}: BalancerRegistrationsColumnPickerProps) {
+}: Readonly<BalancerRegistrationsColumnPickerProps>) {
   const groups = new Map<BalancerRegistrationColumnDefinition["category"], BalancerRegistrationColumnDefinition[]>();
 
   for (const column of columns) {

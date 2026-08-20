@@ -57,7 +57,7 @@ export default function SubscriptionRequirementEditor({
   onChange,
   availableProviders,
   disabled = false
-}: SubscriptionRequirementEditorProps) {
+}: Readonly<SubscriptionRequirementEditorProps>) {
   const t = useTranslations("subscriptionRequirement");
   const modeSelectId = useId();
   const description = useRequirementDescription(value);

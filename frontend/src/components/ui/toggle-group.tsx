@@ -58,7 +58,7 @@ function ToggleGroup({
   children,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy
-}: ToggleGroupProps) {
+}: Readonly<ToggleGroupProps>) {
   const roving = value != null && value !== ""
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -107,7 +107,7 @@ function ToggleGroupItem({
   variant,
   size,
   disabled,
-}: ToggleGroupItemProps) {
+}: Readonly<ToggleGroupItemProps>) {
   const context = React.useContext(ToggleGroupContext)
   const isOn = context.value === value
 

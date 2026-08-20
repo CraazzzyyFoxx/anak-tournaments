@@ -48,7 +48,7 @@ const SECTION_TITLE_CLASS =
 const EMPTY_CLASS =
   "rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-4 py-5 text-sm text-[color:var(--aqt-fg-muted)]";
 
-function StatusText({ status }: { status: AccountSessionStatus }) {
+function StatusText({ status }: Readonly<{ status: AccountSessionStatus }>) {
   const t = useTranslations("accountSettings.sessions");
   const meta = STATUS_CLASS[status];
 
@@ -60,7 +60,7 @@ function StatusText({ status }: { status: AccountSessionStatus }) {
   );
 }
 
-function DetailCell({ label, value }: { label: string; value: string }) {
+function DetailCell({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="min-w-0 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3 py-2">
       <p className="text-[10px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
@@ -71,7 +71,7 @@ function DetailCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SummaryCell({ label, value }: { label: string; value: number }) {
+function SummaryCell({ label, value }: Readonly<{ label: string; value: number }>) {
   return (
     <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-3 py-2">
       <p className="text-[10px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
@@ -86,11 +86,11 @@ function SessionRow({
   session,
   isRevoking,
   onRevoke
-}: {
+}: Readonly<{
   session: AccountSession;
   isRevoking: boolean;
   onRevoke: (sessionId: string) => void;
-}) {
+}>) {
   const t = useTranslations("accountSettings.sessions");
   // next-intl's formatter already carries the active locale, so the timestamps
   // follow it. This file used to hand-map `locale === "ru" ? "ru-RU" : "en-US"`.

@@ -57,7 +57,7 @@ export default function AccountStep({
   verifiedErrors = {},
   onLinkAccounts,
   subscription,
-}: AccountStepProps) {
+}: Readonly<AccountStepProps>) {
   const t = useTranslations();
   const fields = form.built_in_fields;
   const showBattleTag = fields?.battle_tag?.enabled !== false;

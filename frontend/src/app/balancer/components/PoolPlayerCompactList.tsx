@@ -297,7 +297,7 @@ export function PoolPlayerCompactList({
   actionsDisabled = false,
   emptyTitle = "No players match the current filters",
   emptyDescription = "Try another search or change the pool filter.",
-}: PoolPlayerCompactListProps) {
+}: Readonly<PoolPlayerCompactListProps>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldVirtualize = playerStates.length > VIRTUALIZATION_THRESHOLD;
   const virtualizer = useVirtualizer({

@@ -33,7 +33,7 @@ interface IssuesQueueProps {
   items: IssueItem[];
 }
 
-export function IssuesQueue({ items }: IssuesQueueProps) {
+export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
   // The count badge takes the worst severity present. It used to be
   // `variant="destructive"` unconditionally, so an info-only list raised a red
   // alarm. `aria-hidden` because the CardDescription below states the same

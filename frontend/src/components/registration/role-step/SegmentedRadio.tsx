@@ -37,7 +37,7 @@ export function SegmentedRadio<T extends string>({
   value,
   options,
   onChange,
-}: SegmentedRadioProps<T>) {
+}: Readonly<SegmentedRadioProps<T>>) {
   const groupRef = useRef<HTMLDivElement>(null);
 
   const move = (delta: number) => {

@@ -9,13 +9,31 @@ Hybrid approach:
 
 Usage:
     cd backend
+    export MIGRATE_V4_DSN="postgresql://USER:PASSWORD@HOST:PORT/anak_v4"
+    export MIGRATE_V5_DSN="postgresql://USER:PASSWORD@HOST:PORT/anak_v5"
     uv run python scripts/migrate_v4_to_v5.py
 """
 
+import os
+
 import psycopg
 
-V4_DSN = "postgresql://system:0wJxwO4x3OQXw9unSolw@home.craazzzyyfoxx.me:6432/anak_v4"
-V5_DSN = "postgresql://system:0wJxwO4x3OQXw9unSolw@home.craazzzyyfoxx.me:6432/anak_v5"
+# These DSNs used to be hardcoded here, so the migration role's password is
+# already in this repo's git history: rotate that role before running this.
+# No defaults on purpose — a silent fallback would reconnect to the leaked
+# credentials, and an unset variable must fail loudly instead.
+_MISSING_DSN_HINT = (
+    "Set MIGRATE_V4_DSN and MIGRATE_V5_DSN to the source/target Postgres DSNs, e.g.\n"
+    '  export MIGRATE_V4_DSN="postgresql://USER:PASSWORD@HOST:PORT/anak_v4"\n'
+    '  export MIGRATE_V5_DSN="postgresql://USER:PASSWORD@HOST:PORT/anak_v5"'
+)
+
+# ``or ""`` keeps these plain ``str`` for callers: the guard below rejects the
+# empty case, and module-level narrowing does not reach function bodies.
+V4_DSN = os.environ.get("MIGRATE_V4_DSN") or ""
+V5_DSN = os.environ.get("MIGRATE_V5_DSN") or ""
+if not V4_DSN or not V5_DSN:
+    raise SystemExit(_MISSING_DSN_HINT)
 
 # Tables that can be copied as-is (no structural changes)
 # Order matters: parents before children (FK dependencies)
@@ -210,7 +228,7 @@ def phase_c_reset_sequences(v5: psycopg.Connection) -> None:
     print("  All sequences reset")
 
 
-def phase_d_validate(v4: psycopg.Connection, v5: psycopg.Connection) -> None:
+def phase_d_validate(v4: psycopg.Connection, v5: psycopg.Connection) -> bool:
     """Validate row counts match between v4 and v5."""
     print("\n=== Phase D: Validation ===")
 

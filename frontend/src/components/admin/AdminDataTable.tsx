@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { ariaSortValue, cn } from "@/lib/utils";
 
 const ADMIN_ACTION_COLUMN_ID = "actions";
 const ADMIN_ACTION_COLUMN_MIN_WIDTH = 80;
@@ -77,7 +77,7 @@ export function AdminDataTable<TData>({
   initialPageSize = 15,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   filterKey,
-}: AdminDataTableProps<TData>) {
+}: Readonly<AdminDataTableProps<TData>>) {
   const pathname = usePathname();
   const searchInputId = useId();
   const rowHintId = useId();
@@ -303,10 +303,10 @@ export function AdminDataTable<TData>({
           </div>
 
           {isRefreshing ? (
-            <span role="status" className="flex shrink-0 items-center text-muted-foreground">
+            <output className="flex shrink-0 items-center text-muted-foreground">
               <LoaderCircle aria-hidden className="size-3 animate-spin" />
               <span className="sr-only">Refreshing results…</span>
-            </span>
+            </output>
           ) : null}
         </div>
 
@@ -334,15 +334,7 @@ export function AdminDataTable<TData>({
                   return (
                     <TableHead
                       key={header.id}
-                      aria-sort={
-                        canSort
-                          ? sorted === "asc"
-                            ? "ascending"
-                            : sorted === "desc"
-                              ? "descending"
-                              : "none"
-                          : undefined
-                      }
+                      aria-sort={canSort ? ariaSortValue(sorted) : undefined}
                       className={cn(
                         "h-9 border-b border-border/40 bg-muted/20 text-xs font-medium text-muted-foreground",
                         isFirstColumn && "pl-4",

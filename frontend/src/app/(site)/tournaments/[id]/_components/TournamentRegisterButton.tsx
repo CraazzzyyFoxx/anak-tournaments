@@ -25,7 +25,7 @@ type Props = {
   tournament: Tournament;
 };
 
-export default function TournamentRegisterButton({ tournament }: Props) {
+export default function TournamentRegisterButton({ tournament }: Readonly<Props>) {
   const workspaceId = tournament.workspace_id;
   const tournamentId = tournament.id;
   const tournamentName = tournament.name;

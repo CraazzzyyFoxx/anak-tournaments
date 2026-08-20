@@ -61,7 +61,7 @@ const SLOT_CHIP: Record<RosterSlotCode, string> = {
  * registration form already use, so one slot kind reads identically everywhere.
  * Always decorative -- every call site pairs it with the slot name.
  */
-function SlotIcon({ code, size = 18 }: { code: RosterSlotCode; size?: number }) {
+function SlotIcon({ code, size = 18 }: Readonly<{ code: RosterSlotCode; size?: number }>) {
   if (isRoleSlotCode(code)) {
     return (
       <PlayerRoleIcon
@@ -103,7 +103,7 @@ export function RosterShapeEditor({
   disabled = false,
   onChange,
   className
-}: RosterShapeEditorProps) {
+}: Readonly<RosterShapeEditorProps>) {
   const t = useTranslations("rosterShape");
   const errorId = useId();
   const inherited = effective?.slots ?? {};

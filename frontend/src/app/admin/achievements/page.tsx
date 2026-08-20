@@ -91,7 +91,6 @@ import type {
   AchievementCategory,
   AchievementScope,
   AchievementGrain,
-  AchievementOverrideRead,
   EvaluationRunRead,
 } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -118,7 +117,7 @@ const GRAIN_ICONS: Record<string, LucideIcon> = {
   user: User, user_tournament: Target, user_match: Crosshair,
 };
 
-function IconLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+function IconLabel({ icon: Icon, label }: Readonly<{ icon: LucideIcon; label: string }>) {
   return (
     <span className="flex items-center gap-1.5">
       <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />

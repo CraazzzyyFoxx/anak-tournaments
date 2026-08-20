@@ -38,9 +38,9 @@ export const dynamic = "force-dynamic";
 
 export default async function WorkspaceHome({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ slug: string }>;
-}) {
+}>) {
   const { slug } = await params;
   const t = await getTranslations();
 
@@ -131,7 +131,7 @@ export default async function WorkspaceHome({
 // Workspace header
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function WorkspaceHeader({ workspace }: { workspace: Workspace }) {
+async function WorkspaceHeader({ workspace }: Readonly<{ workspace: Workspace }>) {
   const t = await getTranslations();
   return (
     <div className="liquid-glass rounded-xl p-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
@@ -173,7 +173,7 @@ async function WorkspaceHeader({ workspace }: { workspace: Workspace }) {
 
 type TournamentWithCount = Tournament & { registrations_count?: number };
 
-async function WorkspaceEventsSection({ workspaceId }: { workspaceId: number }) {
+async function WorkspaceEventsSection({ workspaceId }: Readonly<{ workspaceId: number }>) {
   let activeTournaments: TournamentWithCount[] = [];
 
   try {
@@ -210,7 +210,7 @@ async function WorkspaceEventsSection({ workspaceId }: { workspaceId: number }) 
   );
 }
 
-async function EventCard({ tournament }: { tournament: TournamentWithCount }) {
+async function EventCard({ tournament }: Readonly<{ tournament: TournamentWithCount }>) {
   const t = await getTranslations();
   const locale = await getLocale();
   const isLive = tournament.status === "live" || tournament.status === "playoffs";
@@ -293,7 +293,7 @@ async function EventCard({ tournament }: { tournament: TournamentWithCount }) {
 // Stats grid
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function StatsGrid({ workspaceId }: { workspaceId: number }) {
+async function StatsGrid({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = await getTranslations();
   let overall = null;
   let hasError = false;
@@ -323,7 +323,7 @@ async function StatsGrid({ workspaceId }: { workspaceId: number }) {
 // Dashboard cards
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function TournamentsChartCard({ workspaceId }: { workspaceId: number }) {
+async function TournamentsChartCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = await getTranslations();
   let tournaments = null;
   let hasError = false;
@@ -351,7 +351,7 @@ async function TournamentsChartCard({ workspaceId }: { workspaceId: number }) {
   );
 }
 
-async function TournamentsDivisionChartCard({ workspaceId }: { workspaceId: number }) {
+async function TournamentsDivisionChartCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = await getTranslations();
   let data = null;
   let hasError = false;
@@ -379,7 +379,7 @@ async function TournamentsDivisionChartCard({ workspaceId }: { workspaceId: numb
   );
 }
 
-async function ChampionsLeaderboard({ workspaceId }: { workspaceId: number }) {
+async function ChampionsLeaderboard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = await getTranslations();
   let champions = null;
   let hasError = false;
@@ -411,7 +411,7 @@ async function ChampionsLeaderboard({ workspaceId }: { workspaceId: number }) {
   );
 }
 
-async function TopWinrateLeaderboard({ workspaceId }: { workspaceId: number }) {
+async function TopWinrateLeaderboard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = await getTranslations();
   let players = null;
   let hasError = false;
@@ -445,7 +445,7 @@ async function TopWinrateLeaderboard({ workspaceId }: { workspaceId: number }) {
   );
 }
 
-async function PopularHeroesCard({ workspaceId }: { workspaceId: number }) {
+async function PopularHeroesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = await getTranslations();
   let heroPlaytime = null;
   let hasError = false;

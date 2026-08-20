@@ -53,7 +53,7 @@ function SortableStageRow({
   disabled,
   onToggle,
   onLookbackChange
-}: SortableStageRowProps) {
+}: Readonly<SortableStageRowProps>) {
   const t = useTranslations();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: stage.source
@@ -130,7 +130,7 @@ export function RankAutofillStageList({
   onReorder,
   onToggle,
   onLookbackChange
-}: RankAutofillStageListProps) {
+}: Readonly<RankAutofillStageListProps>) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })

@@ -78,7 +78,7 @@ export function PlayerPool({
   onResetFilters,
   divisionGrid,
   headingId = "player-pool-heading"
-}: PlayerPoolProps) {
+}: Readonly<PlayerPoolProps>) {
   const t = useTranslations("draftRedesign");
   const [heroFilter, setHeroFilter] = useState<Set<string>>(() => new Set());
   const heroOptions = useMemo(() => {

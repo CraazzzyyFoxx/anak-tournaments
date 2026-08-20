@@ -31,7 +31,7 @@ export function InlineEditText({
   className,
   textClassName,
   inputClassName
-}: InlineEditTextProps) {
+}: Readonly<InlineEditTextProps>) {
   const [draft, setDraft] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

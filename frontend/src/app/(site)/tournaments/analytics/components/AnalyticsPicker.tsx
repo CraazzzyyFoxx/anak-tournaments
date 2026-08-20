@@ -57,7 +57,7 @@ function TooltipSelect({
   className,
   onValueChange,
   children,
-}: TooltipSelectProps) {
+}: Readonly<TooltipSelectProps>) {
   return (
     <TooltipProvider delayDuration={200}>
       <Select value={value} onValueChange={onValueChange} disabled={disabled}>
@@ -90,7 +90,7 @@ export default function AnalyticsPicker({
   isErrorAlgorithms,
   onTournamentChange,
   onAlgorithmChange,
-}: AnalyticsPickerProps) {
+}: Readonly<AnalyticsPickerProps>) {
   const t = useTranslations();
 
   return (

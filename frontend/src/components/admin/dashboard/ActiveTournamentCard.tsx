@@ -35,7 +35,7 @@ export function ActiveTournamentCard({
   missingLogs,
   logCoveragePercent,
   canReadMatches,
-}: ActiveTournamentCardProps) {
+}: Readonly<ActiveTournamentCardProps>) {
   const completedLogs = encounterCount - missingLogs;
 
   if (!canRead) {

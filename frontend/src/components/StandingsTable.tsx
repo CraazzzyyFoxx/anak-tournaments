@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { sortStandingsMatches } from "@/lib/tournament-match-order";
 import { useTranslations } from "next-intl";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
-import { formatTiebreakOrder, tiebreakerLabel, type TiebreakerMetricId } from "@/lib/tiebreakers";
+import { tiebreakerLabel, type TiebreakerMetricId } from "@/lib/tiebreakers";
 import tournamentService from "@/services/tournament.service";
 import styles from "./StandingsTable.module.css";
 import TeamName from "@/components/TeamName";
@@ -55,13 +55,13 @@ function computeMaps(teamId: number, history: Encounter[]) {
   return { won, lost, diff: won - lost };
 }
 
-function MapDiff({ diff }: { diff: number }) {
+function MapDiff({ diff }: Readonly<{ diff: number }>) {
   const tone = diff > 0 ? "pos" : diff < 0 ? "neg" : "zero";
   const text = diff > 0 ? `+${diff}` : diff < 0 ? `−${Math.abs(diff)}` : "0";
   return <span className={cn("st-diff", tone)}>{text}</span>;
 }
 
-function FormChips({ results }: { results: ResultKind[] }) {
+function FormChips({ results }: Readonly<{ results: ResultKind[] }>) {
   if (results.length === 0) {
     return <span style={{ color: "var(--fg-faint)" }}>—</span>;
   }
@@ -76,7 +76,7 @@ function FormChips({ results }: { results: ResultKind[] }) {
   );
 }
 
-function TeamCell({ standing, showGroup }: { standing: Standings; showGroup: boolean }) {
+function TeamCell({ standing, showGroup }: Readonly<{ standing: Standings; showGroup: boolean }>) {
   const t = useTranslations();
   const groupName = standing.team?.group?.name;
   return (
@@ -110,16 +110,15 @@ const StandingsTable = ({
   const settings = stage?.settings_json ?? {};
   // Prefer the explicit, admin-configured Stage.advance_count column; fall back
   // to legacy settings_json keys, then to the derived bracket-wiring count.
+  // Order is the precedence: the first candidate that is actually a number wins.
+  const advanceCountCandidates: unknown[] = [
+    stage?.advance_count,
+    settings.advance_count,
+    settings.advanceCount,
+    settings.top
+  ];
   let settingsCount =
-    typeof stage?.advance_count === "number"
-      ? stage.advance_count
-      : typeof settings.advance_count === "number"
-        ? settings.advance_count
-        : typeof settings.advanceCount === "number"
-          ? settings.advanceCount
-          : typeof settings.top === "number"
-            ? settings.top
-            : null;
+    advanceCountCandidates.find((value): value is number => typeof value === "number") ?? null;
 
   if (settingsCount == null && stage != null && stages.length > 0) {
     const currentStage = stages.find((s) => s.id === stage.id);
@@ -163,15 +162,11 @@ const StandingsTable = ({
     const label = t(key);
     return label === key ? undefined : label;
   };
-  const tiebreakLegend = is_groups
-    ? formatTiebreakOrder(sortedStandings[0]?.tiebreak_order, labelFor)
-    : "";
 
   return (
     <div>
-      <div
+      <section
         className={cn("st-scroll", styles.standingsViewport)}
-        role="region"
         aria-label={t("tournamentDetail.publicPages.standings.tableLabel")}
         tabIndex={0}
       >
@@ -337,7 +332,7 @@ const StandingsTable = ({
             })}
           </tbody>
         </table>
-      </div>
+      </section>
       {is_groups &&
       sortedStandings[0]?.tiebreak_order &&
       sortedStandings[0].tiebreak_order.length > 0 ? (

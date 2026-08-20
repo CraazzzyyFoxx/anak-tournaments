@@ -47,7 +47,7 @@ function sameRule(a: SubscriptionRequirement, b: SubscriptionRequirement): boole
   return key(a) === key(b);
 }
 
-export function WorkspaceSubscriptionPanel({ workspaceId }: { workspaceId: number }) {
+export function WorkspaceSubscriptionPanel({ workspaceId }: Readonly<{ workspaceId: number }>) {
   return (
     <div className="space-y-6">
       <SubscriptionProvidersCard workspaceId={workspaceId} />
@@ -58,7 +58,7 @@ export function WorkspaceSubscriptionPanel({ workspaceId }: { workspaceId: numbe
 
 /** Exported so its own behaviour can be exercised without the provider card's
  *  queries and second Save button in the way. */
-export function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number }) {
+export function WorkspaceRequirementCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = useTranslations("subscriptionWorkspace");
   const queryClient = useQueryClient();
   const requirementKey = ["subscription-requirement", workspaceId] as const;

@@ -24,7 +24,7 @@ export function DraftSetupPreview({
   rounds,
   format,
   roundRules
-}: DraftSetupPreviewProps) {
+}: Readonly<DraftSetupPreviewProps>) {
   const t = useTranslations("draftAdmin");
   const schedule = buildDraftSchedule(orderedCaptainIds, rounds, format, roundRules);
 

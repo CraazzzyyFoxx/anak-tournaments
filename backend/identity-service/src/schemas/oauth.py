@@ -76,7 +76,7 @@ class OAuthCallbackResult(Token):
     instead: cookies set on the apex are not readable on a custom domain, so
     the tokens themselves never leave identity-svc's Redis until the custom
     domain redeems the ticket via ``rpc.identity.sso_exchange`` (see
-    ``sso_tickets``). Token fields are optional because ticket mode omits
+    ``tickets.SSO_TICKETS``). Token fields are optional because ticket mode omits
     them entirely -- never populate both a ticket AND raw tokens.
     """
 

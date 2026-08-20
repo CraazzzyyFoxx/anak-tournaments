@@ -37,7 +37,7 @@ type VariantCardProps = {
   className?: string;
 };
 
-function VariantCard({ variant, isActive, onSelect, onDelete, className }: VariantCardProps) {
+function VariantCard({ variant, isActive, onSelect, onDelete, className }: Readonly<VariantCardProps>) {
   const stats = variant.payload.statistics;
   const offRoles = stats?.off_role_count ?? 0;
   const offRoleAboveMin = stats?.off_role_above_minimum ?? null;
@@ -158,7 +158,7 @@ export function VariantSelector({
   activeVariantId,
   onSelectVariant,
   onDeleteVariant
-}: VariantSelectorProps) {
+}: Readonly<VariantSelectorProps>) {
   const [showAll, setShowAll] = useState(false);
 
   if (variants.length <= 1) return null;

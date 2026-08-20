@@ -64,7 +64,7 @@ export default function RoleStep({
   topHeroesEnabled,
   maxHeroes,
   flexMode,
-}: RoleStepProps) {
+}: Readonly<RoleStepProps>) {
   const t = useTranslations();
   const isForced = flexMode === "forced";
   const isAllRoles = flexMode === "all_roles";

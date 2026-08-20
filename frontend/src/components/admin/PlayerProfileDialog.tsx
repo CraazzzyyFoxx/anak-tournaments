@@ -32,7 +32,7 @@ interface AvatarSectionProps {
   onUserUpdated: (user: User) => void;
 }
 
-function AvatarSection({ user, canEdit, onUserUpdated }: AvatarSectionProps) {
+function AvatarSection({ user, canEdit, onUserUpdated }: Readonly<AvatarSectionProps>) {
   const queryClient = useQueryClient();
 
   const uploadMutation = useMutation({
@@ -87,7 +87,7 @@ interface NameSectionProps {
   onUserUpdated: (user: User) => void;
 }
 
-function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
+function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps>) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.name);
@@ -242,13 +242,12 @@ export function PlayerProfileDialog({
   user: initialUser,
   onClose,
   canEdit,
-  canDelete,
   canManageIdentity,
   canSetVisibility,
   workspaceId,
   canMerge = false,
   onMergeRequested,
-}: PlayerProfileDialogProps) {
+}: Readonly<PlayerProfileDialogProps>) {
   const [user, setUser] = useState(initialUser);
 
   // Every section updates local state through this; also bust the Next Data

@@ -28,7 +28,7 @@ export function UserSearchCombobox({
   searchPlaceholder = "Search user…",
   disabled = false,
   allowClear = true,
-}: UserSearchComboboxProps) {
+}: Readonly<UserSearchComboboxProps>) {
   const {
     open,
     setOpen,

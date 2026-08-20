@@ -47,7 +47,7 @@ export default function AccountCombobox({
   fieldKey,
   config,
   onValidationChange,
-}: AccountComboboxProps) {
+}: Readonly<AccountComboboxProps>) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);

@@ -51,7 +51,7 @@ export function updateOperationStepStatus(
   return steps.map((step) => (step.id === stepId ? { ...step, status } : step));
 }
 
-function OperationStepIcon({ status }: { status: BalancerOperationStepStatus }) {
+function OperationStepIcon({ status }: Readonly<{ status: BalancerOperationStepStatus }>) {
   if (status === "running") {
     return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
   }
@@ -85,7 +85,7 @@ export function BalancerOperationDialog({
   error,
   retryLabel = "Retry",
   onRetry
-}: BalancerOperationDialogProps) {
+}: Readonly<BalancerOperationDialogProps>) {
   const completedSteps = steps.filter((step) => step.status === "succeeded").length;
   const progress = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
 

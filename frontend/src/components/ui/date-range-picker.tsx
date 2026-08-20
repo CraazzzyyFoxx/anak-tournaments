@@ -44,7 +44,7 @@ export function DateRangePicker({
   onChange,
   placeholder = "Pick a date range",
   id,
-}: DateRangePickerProps) {
+}: Readonly<DateRangePickerProps>) {
   const [open, setOpen] = React.useState(false);
 
   const from = React.useMemo(() => parseDateValue(startDate), [startDate]);

@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 
 import styles from "@/app/(site)/tournaments/analytics/components/AnalyticsRedesign.module.css";
 
@@ -17,7 +16,7 @@ function impactColor(value: number): string {
 }
 
 /** A horizontal 0–100 impact bar with the value tucked at the end. */
-export default function ImpactBar({ value }: ImpactBarProps) {
+export default function ImpactBar({ value }: Readonly<ImpactBarProps>) {
   const color = impactColor(value);
   return (
     <span className={styles.cImpact}>

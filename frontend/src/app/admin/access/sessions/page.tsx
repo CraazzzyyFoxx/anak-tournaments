@@ -49,7 +49,7 @@ function formatDeviceLabel(userAgent: string | null | undefined): string {
   return userAgent.length > 64 ? `${userAgent.slice(0, 64)}…` : userAgent;
 }
 
-function StatusCell({ status }: { status: AdminSessionStatus }) {
+function StatusCell({ status }: Readonly<{ status: AdminSessionStatus }>) {
   const meta = STATUS_META[status];
 
   return (

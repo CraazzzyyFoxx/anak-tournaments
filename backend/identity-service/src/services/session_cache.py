@@ -1,194 +1,115 @@
-"""Redis-backed RBAC cache for instant role/permission propagation."""
+"""Redis-backed session state: RBAC cache, revoked sessions, refresh idempotency.
 
-import json
+All three are best-effort by design (see ``RedisStore``): an outage costs extra
+database work or a shorter-lived guarantee, never a failed request. The durable
+source of truth is always the database — refresh tokens carry ``is_revoked``,
+roles and denies live in ``auth.*``.
+"""
+
+from __future__ import annotations
+
+from typing import Any
 
 from loguru import logger
-from redis.exceptions import RedisError
 
-from src.core.redis import get_redis
+from src.core.cache import RedisStore
 
-RBAC_CACHE_VERSION = 2  # v2: deny entries carry workspace_id (Phase A, Task 8)
-RBAC_KEY_PREFIX = f"rbac:v{RBAC_CACHE_VERSION}:user:"
+# v3: the cached payload now also carries the user's workspace memberships
+# (id + slug), so a hit answers the token path with no database round trip at
+# all. A v2 entry has no ``workspaces`` key and would look like "member of
+# nothing", so the version bump is what retires those entries rather than
+# silently stripping a user's workspaces for one TTL.
+RBAC_CACHE_VERSION = 3
 RBAC_TTL_SECONDS = 60
 
-# Idempotency cache for token refresh — prevents concurrent refresh
-# requests from triggering false reuse-attack detection.
-REFRESH_IDEM_PREFIX = "refresh:idem:"
+# Concurrent refreshes of the same token must not look like a reuse attack: the
+# first rotation publishes its result here for the others to read.
 REFRESH_IDEM_TTL_SECONDS = 30
 
-# Blacklist of revoked session ids (``sid`` JWT claim). Access tokens are
-# stateless and short-lived (~15 min), so revoking a session (logout / revoke /
-# reuse-detection) must also block any still-valid access token carrying that
-# sid until it naturally expires. Entries are set with a TTL equal to the access
-# token lifetime so the key self-expires once no live token can reference it.
-SESSION_BLACKLIST_PREFIX = "auth:sid:revoked:"
+
+class SessionCache:
+    """Owns the three Redis namespaces that back a live session."""
+
+    def __init__(
+        self,
+        *,
+        rbac_ttl: int = RBAC_TTL_SECONDS,
+        refresh_idem_ttl: int = REFRESH_IDEM_TTL_SECONDS,
+    ) -> None:
+        self._rbac = RedisStore(f"rbac:v{RBAC_CACHE_VERSION}:user:", ttl=rbac_ttl, purpose="RBAC cache")
+        # Access tokens are stateless and short-lived, so revoking a session
+        # (logout / revoke / reuse-detection) must also block the still-valid
+        # access tokens carrying its ``sid``. Entries are written with a TTL
+        # equal to the access-token lifetime, so the key self-expires once no
+        # live token can reference it — hence no default TTL here.
+        self._revoked_sessions = RedisStore("auth:sid:revoked:", ttl=0, purpose="session blacklist")
+        self._refresh_idem = RedisStore("refresh:idem:", ttl=refresh_idem_ttl, purpose="refresh idempotency")
+
+    # --- RBAC ---
+
+    async def get_rbac(self, user_id: int) -> dict[str, Any] | None:
+        """Cached RBAC payload, or None on a miss/outage."""
+        return await self._rbac.get_json(user_id)
+
+    async def set_rbac(
+        self,
+        user_id: int,
+        *,
+        roles: list[str],
+        permissions: list[dict[str, str]],
+        workspaces: list[list[Any]] | None = None,
+        workspace_roles: dict[str, dict] | None = None,
+        denies: list[dict[str, Any]] | None = None,
+    ) -> None:
+        # Every component is stored unconditionally, empty included. A missing
+        # key means "unknown, go and load it", so omitting an empty answer
+        # ("this user has no denies", "no memberships") would make the entry a
+        # permanent partial hit: the load would repeat on every single request
+        # and the entry would be rewritten each time.
+        payload: dict[str, Any] = {
+            "roles": roles,
+            "permissions": permissions,
+            "workspaces": workspaces or [],
+            "workspace_roles": workspace_roles or {},
+            "denies": denies or [],
+        }
+        await self._rbac.put_json(user_id, payload)
+
+    async def invalidate_rbac(self, user_id: int) -> None:
+        await self._rbac.drop(user_id)
+        logger.info(f"RBAC cache invalidated for user {user_id}")
+
+    # --- Revoked sessions ---
+
+    async def blacklist_session(self, session_id: str, ttl_seconds: int) -> None:
+        """Block a revoked session's access tokens until they expire on their own."""
+        if not session_id or ttl_seconds <= 0:
+            return
+        await self._revoked_sessions.mark(session_id, ttl=ttl_seconds)
+
+    async def blacklist_sessions(self, session_ids: set[str], ttl_seconds: int) -> None:
+        for session_id in session_ids:
+            await self.blacklist_session(session_id, ttl_seconds)
+
+    async def is_session_blacklisted(self, session_id: str | None) -> bool:
+        """True only when the session is known-revoked (fails open otherwise).
+
+        On an outage we cannot prove the session was revoked; the database
+        revocation still applies at the next refresh, so a stale access token
+        survives at most one access-token TTL.
+        """
+        return await self._revoked_sessions.has(session_id or "")
+
+    # --- Refresh idempotency ---
+
+    async def get_refresh_idem(self, token_hash: str) -> dict[str, str] | None:
+        return await self._refresh_idem.get_json(token_hash)
+
+    async def set_refresh_idem(self, token_hash: str, access_token: str, refresh_token: str) -> None:
+        await self._refresh_idem.put_json(
+            token_hash,
+            {"access_token": access_token, "refresh_token": refresh_token},
+        )
 
 
-def _key(user_id: int) -> str:
-    return f"{RBAC_KEY_PREFIX}{user_id}"
-
-
-def _log_redis_degraded(action: str, exc: Exception) -> None:
-    logger.warning(f"Redis unavailable during {action}; falling back gracefully: {exc}")
-
-
-async def get_rbac(user_id: int) -> dict | None:
-    """Return cached RBAC payload or None on miss."""
-    try:
-        redis = get_redis()
-    except RuntimeError as exc:
-        _log_redis_degraded("RBAC cache read", exc)
-        return None
-
-    try:
-        raw = await redis.get(_key(user_id))
-    except (RedisError, OSError, RuntimeError) as exc:
-        _log_redis_degraded("RBAC cache read", exc)
-        return None
-
-    if raw is None:
-        return None
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        logger.warning(f"Corrupted RBAC cache for user {user_id}, evicting")
-        try:
-            await redis.delete(_key(user_id))
-        except (RedisError, OSError, RuntimeError) as exc:
-            _log_redis_degraded("RBAC cache eviction", exc)
-        return None
-
-
-async def set_rbac(
-    user_id: int,
-    roles: list[str],
-    permissions: list[dict[str, str]],
-    workspace_roles: dict | None = None,
-    denies: list[dict[str, object]] | None = None,
-) -> None:
-    """Store RBAC data with TTL."""
-    try:
-        redis = get_redis()
-    except RuntimeError as exc:
-        _log_redis_degraded("RBAC cache write", exc)
-        return
-
-    data: dict = {"roles": roles, "permissions": permissions}
-    if workspace_roles:
-        data["workspace_roles"] = workspace_roles
-    if denies:
-        data["denies"] = denies
-    payload = json.dumps(data)
-    try:
-        await redis.set(_key(user_id), payload, ex=RBAC_TTL_SECONDS)
-    except (RedisError, OSError, RuntimeError) as exc:
-        _log_redis_degraded("RBAC cache write", exc)
-
-
-async def invalidate_rbac(user_id: int) -> None:
-    """Immediately remove cached RBAC for a user."""
-    try:
-        redis = get_redis()
-    except RuntimeError as exc:
-        _log_redis_degraded("RBAC cache invalidation", exc)
-        return
-
-    try:
-        await redis.delete(_key(user_id))
-    except (RedisError, OSError, RuntimeError) as exc:
-        _log_redis_degraded("RBAC cache invalidation", exc)
-        return
-
-    logger.info(f"RBAC cache invalidated for user {user_id}")
-
-
-def _sid_key(session_id: str) -> str:
-    return f"{SESSION_BLACKLIST_PREFIX}{session_id}"
-
-
-async def blacklist_session(session_id: str, ttl_seconds: int) -> None:
-    """Mark a session id as revoked for ``ttl_seconds`` (= access-token TTL).
-
-    Best-effort: if Redis is unavailable the blacklist degrades to fail-open
-    (the access token stays valid until it expires on its own), matching the
-    graceful-degradation contract of the rest of this cache. Refresh-token
-    revocation in the DB is the durable source of truth regardless.
-    """
-    if not session_id or ttl_seconds <= 0:
-        return
-    try:
-        redis = get_redis()
-    except RuntimeError as exc:
-        _log_redis_degraded("session blacklist write", exc)
-        return
-    try:
-        await redis.set(_sid_key(session_id), "1", ex=ttl_seconds)
-    except (RedisError, OSError, RuntimeError) as exc:
-        _log_redis_degraded("session blacklist write", exc)
-
-
-async def is_session_blacklisted(session_id: str | None) -> bool:
-    """Return True only when the session id is known-revoked.
-
-    Fails open (returns False) on a Redis outage: we cannot prove the session
-    was revoked, and the DB refresh-token revocation still applies on the next
-    refresh, so a stale access token lives at most one access-token TTL.
-    """
-    if not session_id:
-        return False
-    try:
-        redis = get_redis()
-    except RuntimeError as exc:
-        _log_redis_degraded("session blacklist read", exc)
-        return False
-    try:
-        return await redis.get(_sid_key(session_id)) is not None
-    except (RedisError, OSError, RuntimeError) as exc:
-        _log_redis_degraded("session blacklist read", exc)
-        return False
-
-
-def _refresh_idem_key(token_hash: str) -> str:
-    return f"{REFRESH_IDEM_PREFIX}{token_hash}"
-
-
-async def get_refresh_idem(token_hash: str) -> dict | None:
-    """Return cached token pair for an already-rotated refresh token, or None on miss."""
-    try:
-        redis = get_redis()
-    except RuntimeError as exc:
-        _log_redis_degraded("refresh idem read", exc)
-        return None
-
-    try:
-        raw = await redis.get(_refresh_idem_key(token_hash))
-    except (RedisError, OSError, RuntimeError) as exc:
-        _log_redis_degraded("refresh idem read", exc)
-        return None
-
-    if raw is None:
-        return None
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
-
-
-async def set_refresh_idem(token_hash: str, access_token: str, refresh_token: str) -> None:
-    """Cache the new token pair produced by a refresh rotation (TTL=30s).
-
-    A subsequent concurrent request with the same old refresh token will hit
-    this cache and get back the already-issued pair instead of triggering
-    the reuse-attack detection path.
-    """
-    try:
-        redis = get_redis()
-    except RuntimeError as exc:
-        _log_redis_degraded("refresh idem write", exc)
-        return
-
-    payload = json.dumps({"access_token": access_token, "refresh_token": refresh_token})
-    try:
-        await redis.set(_refresh_idem_key(token_hash), payload, ex=REFRESH_IDEM_TTL_SECONDS)
-    except (RedisError, OSError, RuntimeError) as exc:
-        _log_redis_degraded("refresh idem write", exc)
+session_cache = SessionCache()

@@ -48,7 +48,7 @@ export function PregameAdminControls({
   selectedItemId,
   selectedItemName,
   onMutated
-}: PregameAdminControlsProps) {
+}: Readonly<PregameAdminControlsProps>) {
   const t = useTranslations("pickBan.room");
   const defaultSide: PickBanSide = state.turn_side ?? "home";
   const defaultAction: PickBanAction =
@@ -214,12 +214,12 @@ function ChoiceGroup<TValue extends string>({
   options,
   value,
   onChange
-}: {
+}: Readonly<{
   label: string;
   options: { value: TValue; label: string }[];
   value: TValue;
   onChange: (value: TValue) => void;
-}) {
+}>) {
   return (
     <div className="flex flex-col gap-1">
       <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">

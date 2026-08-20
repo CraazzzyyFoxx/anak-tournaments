@@ -93,6 +93,28 @@ function resolveBracketHref(tournamentId: string, stages: StageSummary[]): strin
     : `/tournaments/${tournamentId}/bracket`;
 }
 
+/**
+ * Why a section is locked, or `null` when nothing locks it. Order is the
+ * precedence the rail explains: the phase gate is the broadest reason, so it
+ * speaks first, and the per-section gates only get a say once the phase allows
+ * the section at all. `available` is the absence of any reason, so the tooltip
+ * and the lock can never disagree.
+ */
+function resolveNavLockReason(
+  locks: Readonly<{
+    phaseLocked: boolean;
+    stageLocked: boolean;
+    scheduleLocked: boolean;
+    teamsLocked: boolean;
+  }>
+): TournamentNavReasonKey | null {
+  if (locks.phaseLocked) return "tournamentDetail.nav.reasons.competitionNotStarted";
+  if (locks.stageLocked) return "tournamentDetail.nav.reasons.noStages";
+  if (locks.scheduleLocked) return "tournamentDetail.nav.reasons.noSchedule";
+  if (locks.teamsLocked) return "tournamentDetail.nav.reasons.noTeams";
+  return null;
+}
+
 export function buildTournamentSectionNav({
   tournamentId,
   status,
@@ -127,22 +149,20 @@ export function buildTournamentSectionNav({
     const stageLocked = id === "bracket" && competitionStarted && stages.length === 0;
     const scheduleLocked = id === "schedule" && !hasSchedule;
     const teamsLocked = id === "teams" && !hasTeams && !competitionStarted;
+    const reasonKey = resolveNavLockReason({
+      phaseLocked,
+      stageLocked,
+      scheduleLocked,
+      teamsLocked
+    });
 
     return {
       id,
       labelKey: `common.${id}`,
       href,
       active: currentPath === canonicalPath,
-      available: !phaseLocked && !stageLocked && !scheduleLocked && !teamsLocked,
-      reasonKey: phaseLocked
-        ? "tournamentDetail.nav.reasons.competitionNotStarted"
-        : stageLocked
-          ? "tournamentDetail.nav.reasons.noStages"
-          : scheduleLocked
-            ? "tournamentDetail.nav.reasons.noSchedule"
-            : teamsLocked
-              ? "tournamentDetail.nav.reasons.noTeams"
-              : null
+      available: reasonKey === null,
+      reasonKey
     };
   });
 }
@@ -171,13 +191,15 @@ type RailResizeObserver = {
   disconnect(): void;
 };
 
+type RailResizeObserverFactory = (callback: () => void) => RailResizeObserver;
+
 type WindowResizeTarget = {
   addEventListener(type: "resize", listener: () => void): void;
   removeEventListener(type: "resize", listener: () => void): void;
 };
 
 type ObserveTournamentRailOptions = {
-  createResizeObserver?: ((callback: () => void) => RailResizeObserver) | null;
+  createResizeObserver?: RailResizeObserverFactory | null;
   measurementContainer?: TournamentRailMeasurementContainer;
   windowTarget?: WindowResizeTarget;
   requestAnimationFrame?: (callback: FrameRequestCallback) => number;
@@ -211,6 +233,29 @@ export function scrollTournamentRail(
   });
 }
 
+/**
+ * The platform `ResizeObserver`, adapted to `RailResizeObserver`; `null` where
+ * the API is absent (SSR, older jsdom) and the rail has to fall back to window
+ * resize events alone. Kept out of `observeTournamentRail` so that its option
+ * plumbing stays a single flat choice: `undefined` means "use this default",
+ * `null` means "observing is deliberately off".
+ */
+function defaultRailResizeObserverFactory(): RailResizeObserverFactory | null {
+  if (typeof ResizeObserver === "undefined") return null;
+
+  return (callback: () => void): RailResizeObserver => {
+    const observer = new ResizeObserver(callback);
+    return {
+      observe(target) {
+        observer.observe(target as Element);
+      },
+      disconnect() {
+        observer.disconnect();
+      }
+    };
+  };
+}
+
 export function observeTournamentRail(
   rail: TournamentRailElement,
   onChange: (state: TournamentRailScrollState) => void,
@@ -221,19 +266,7 @@ export function observeTournamentRail(
   const windowTarget = options.windowTarget ?? (typeof window === "undefined" ? null : window);
   const createResizeObserver =
     options.createResizeObserver === undefined
-      ? typeof ResizeObserver === "undefined"
-        ? null
-        : (callback: () => void): RailResizeObserver => {
-            const observer = new ResizeObserver(callback);
-            return {
-              observe(target) {
-                observer.observe(target as Element);
-              },
-              disconnect() {
-                observer.disconnect();
-              }
-            };
-          }
+      ? defaultRailResizeObserverFactory()
       : options.createResizeObserver;
   let frameId: number | null = null;
   let disposed = false;

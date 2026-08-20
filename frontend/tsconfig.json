@@ -8,6 +8,13 @@
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
+    // Dead-declaration gate. Kept here rather than left to the linter so a
+    // stale import or an orphaned local fails `pnpm typecheck` instead of
+    // surfacing weeks later in a cloud scan. Enabling this required first
+    // dropping 118 stale `import React` lines left over from the react-jsx
+    // transform, plus 62 genuinely dead declarations.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",

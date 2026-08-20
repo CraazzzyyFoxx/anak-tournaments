@@ -96,14 +96,14 @@ export function ChartEmptyState({
   body,
   tone = "neutral",
   className
-}: {
+}: Readonly<{
   icon: LucideIcon;
   title: string;
   body: string;
   /** `error` announces assertively and accents the icon. */
   tone?: "neutral" | "error";
   className?: string;
-}) {
+}>) {
   const isError = tone === "error";
   return (
     <div
@@ -148,7 +148,7 @@ export default function RankHistoryChart({
   className,
   granularity,
   onGranularityChange
-}: RankHistoryChartProps) {
+}: Readonly<RankHistoryChartProps>) {
   const platforms = useMemo(() => uniqueBy(series.map((s) => s.platform), (p) => p), [series]);
   const [platform, setPlatform] = useState<string>(platforms.includes("pc") ? "pc" : platforms[0] ?? "pc");
   const [groupBy, setGroupBy] = useState<GroupBy>(defaultGroupBy);
@@ -428,7 +428,7 @@ export default function RankHistoryChart({
   );
 }
 
-export function RankHistorySkeleton({ className }: { className?: string }) {
+export function RankHistorySkeleton({ className }: Readonly<{ className?: string }>) {
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex flex-wrap items-center gap-3">

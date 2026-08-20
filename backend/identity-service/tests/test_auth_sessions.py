@@ -37,9 +37,12 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.services import auth_flows  # noqa: E402
-from src.services.auth_service import AuthService  # noqa: E402
-from src.services.session_service import SessionService  # noqa: E402
+from shared.repository import RefreshTokenRepository  # noqa: E402
+from src.services.auth import auth  # noqa: E402
+from src.services.auth_users import auth_users  # noqa: E402
+from src.services.security import token_codec  # noqa: E402
+from src.services.session_cache import session_cache  # noqa: E402
+from src.services.sessions import RefreshTokenService, refresh_tokens, sessions  # noqa: E402
 
 
 class _FakeExecuteResult:
@@ -70,37 +73,119 @@ class _FakeSession:
         self.commit_calls += 1
 
 
-def test_revoke_user_session_tokens_revokes_only_matching_browser() -> None:
-    chrome_primary = SimpleNamespace(user_id=7, user_agent="Chrome", ip_address="10.0.0.1", is_revoked=False)
-    firefox = SimpleNamespace(user_id=7, user_agent="Firefox", ip_address="10.0.0.1", is_revoked=False)
-    chrome_rotated = SimpleNamespace(user_id=7, user_agent="Chrome", ip_address="10.0.0.2", is_revoked=False)
-    already_revoked = SimpleNamespace(user_id=7, user_agent="Chrome", ip_address="10.0.0.1", is_revoked=True)
+class _RecordingCache:
+    def __init__(self) -> None:
+        self.blacklisted: list[tuple[str, int]] = []
 
-    session = _FakeSession(
-        [
-            {"scalars": [chrome_primary, firefox, chrome_rotated, already_revoked]},
-        ]
-    )
+    async def blacklist_session(self, session_id: str, ttl_seconds: int) -> None:
+        self.blacklisted.append((session_id, ttl_seconds))
+
+    async def blacklist_sessions(self, session_ids: set[str], ttl_seconds: int) -> None:
+        for session_id in sorted(session_ids):
+            await self.blacklist_session(session_id, ttl_seconds)
+
+
+class _FakeTokenRepo:
+    """Records what the service asks the repository for; no SQL."""
+
+    def __init__(self, **returns) -> None:
+        self.calls: list[tuple] = []
+        self._returns = returns
+
+    async def get_by_hashes(self, session, hashes):
+        self.calls.append(("get_by_hashes", tuple(hashes)))
+        return self._returns.get("get_by_hashes")
+
+    async def revoke_by_hashes(self, session, hashes, *, now):
+        self.calls.append(("revoke_by_hashes", tuple(hashes)))
+        return self._returns.get("revoke_by_hashes", False)
+
+    async def revoke_session(self, session, *, user_id, session_id, now):
+        self.calls.append(("revoke_session", user_id, session_id))
+        return self._returns.get("revoke_session", 0)
+
+    async def revoke_client_family(self, session, *, user_id, user_agent, ip_address, now):
+        self.calls.append(("revoke_client_family", user_id, user_agent, ip_address))
+        return self._returns.get("revoke_client_family", (0, set()))
+
+    async def revoke_all_for_user(self, session, *, user_id, now):
+        self.calls.append(("revoke_all_for_user", user_id))
+        return self._returns.get("revoke_all_for_user", (0, set()))
+
+
+def _service(**returns) -> tuple[RefreshTokenService, _FakeTokenRepo, _RecordingCache]:
+    repo = _FakeTokenRepo(**returns)
+    cache = _RecordingCache()
+    return RefreshTokenService(tokens=repo, cache=cache), repo, cache
+
+
+class _AddSession:
+    def __init__(self) -> None:
+        self.added: list = []
+        self.commit_calls = 0
+
+    def add(self, obj) -> None:
+        self.added.append(obj)
+
+    async def commit(self) -> None:
+        self.commit_calls += 1
+
+
+def test_revoke_client_family_blacklists_every_returned_session() -> None:
+    service, repo, cache = _service(revoke_client_family=(2, {"sid-a", "sid-b"}))
 
     revoked = asyncio.run(
-        AuthService.revoke_user_session_tokens(
-            session,
-            user_id=7,
-            user_agent="Chrome",
-            ip_address="10.0.0.1",
-            commit=False,
-        )
+        service.revoke_client_family(_AddSession(), 7, "Chrome", "10.0.0.1", commit=False)
     )
 
     assert revoked == 2
-    assert chrome_primary.is_revoked is True
-    assert chrome_rotated.is_revoked is True
-    assert firefox.is_revoked is False
-    assert already_revoked.is_revoked is True
-    assert session.commit_calls == 0
+    assert repo.calls == [("revoke_client_family", 7, "Chrome", "10.0.0.1")]
+    ttl = token_codec.access_token_ttl_seconds
+    assert cache.blacklisted == [("sid-a", ttl), ("sid-b", ttl)]
 
 
-def test_get_request_client_metadata_prefers_forwarded_headers() -> None:
+def test_revoke_client_family_sql_scopes_to_one_browser() -> None:
+    """Different browsers on the same device stay independent.
+
+    The user-agent-first / IP-fallback precedence now lives in the emitted
+    UPDATE, so pin it there rather than on flipped ORM rows.
+    """
+    from sqlalchemy.dialects import postgresql
+
+    repo = RefreshTokenRepository()
+    now = datetime.now(UTC)
+
+    by_agent = _FakeSession([{"scalars": [uuid4(), uuid4()]}])
+    count, _ = asyncio.run(
+        repo.revoke_client_family(by_agent, user_id=7, user_agent="Chrome", ip_address="10.0.0.1", now=now)
+    )
+    compiled = str(by_agent.executed[0].compile(dialect=postgresql.dialect()))
+    assert count == 2
+    # Scoped to the one user, only its live tokens, and narrowed by browser.
+    assert "user_id =" in compiled
+    assert "is_revoked IS false" in compiled
+    assert "user_agent =" in compiled
+    assert "ip_address =" not in compiled
+    # The revoked session ids come back from the same statement, so the caller
+    # can blacklist their access tokens without a second query.
+    assert "RETURNING auth.refresh_token.session_id" in compiled
+
+    # No user-agent: fall back to the network the tokens were last seen on.
+    by_ip = _FakeSession([{"scalars": [uuid4()]}])
+    asyncio.run(repo.revoke_client_family(by_ip, user_id=7, user_agent=None, ip_address="10.0.0.1", now=now))
+    compiled = str(by_ip.executed[0].compile(dialect=postgresql.dialect()))
+    assert "ip_address =" in compiled
+    assert "user_agent =" not in compiled
+
+    # Neither: nothing narrows the blast radius, so revoke everything.
+    blind = _FakeSession([{"scalars": [uuid4()]}])
+    asyncio.run(repo.revoke_client_family(blind, user_id=7, user_agent=None, ip_address=None, now=now))
+    compiled = str(blind.executed[0].compile(dialect=postgresql.dialect()))
+    assert "user_agent" not in compiled
+    assert "ip_address" not in compiled
+
+
+def test_client_metadata_prefers_forwarded_headers() -> None:
     request = SimpleNamespace(
         headers={
             "x-original-user-agent": "Mozilla/5.0",
@@ -111,135 +196,183 @@ def test_get_request_client_metadata_prefers_forwarded_headers() -> None:
         client=SimpleNamespace(host="172.18.0.9"),
     )
 
-    user_agent, ip_address = AuthService.get_request_client_metadata(request)
+    user_agent, ip_address = token_codec.client_metadata(request)
 
     assert user_agent == "Mozilla/5.0"
     assert ip_address == "198.51.100.10"
 
 
-def test_get_request_client_metadata_falls_back_to_direct_connection() -> None:
+def test_client_metadata_falls_back_to_direct_connection() -> None:
     request = SimpleNamespace(
         headers={"user-agent": "Mozilla/5.0"},
         client=SimpleNamespace(host="172.18.0.9"),
     )
 
-    user_agent, ip_address = AuthService.get_request_client_metadata(request)
+    user_agent, ip_address = token_codec.client_metadata(request)
 
     assert user_agent == "Mozilla/5.0"
     assert ip_address == "172.18.0.9"
 
 
-def test_revoke_session_tokens_revokes_only_matching_session_family() -> None:
-    active_primary = SimpleNamespace(user_id=7, session_id=uuid4(), is_revoked=False, revoked_at=None)
-    target_session_id = uuid4()
-    target_current = SimpleNamespace(user_id=7, session_id=target_session_id, is_revoked=False, revoked_at=None)
-    target_rotated = SimpleNamespace(user_id=7, session_id=target_session_id, is_revoked=False, revoked_at=None)
+def test_issue_prefers_explicit_client_metadata_over_the_request() -> None:
+    request = SimpleNamespace(
+        headers={"user-agent": "node", "x-real-ip": "172.18.0.9"},
+        client=None,
+    )
+    service, _, _ = _service()
+    db = _AddSession()
 
-    session = _FakeSession(
-        [
-            {"scalars": [active_primary, target_current, target_rotated]},
-        ]
+    record = asyncio.run(
+        service.issue(db, user_id=7, token="raw-token", user_agent="Chrome", request=request, commit=False)
     )
 
-    revoked = asyncio.run(
-        AuthService.revoke_session_tokens(
-            session,
+    assert db.added == [record]
+    assert db.commit_calls == 0
+    assert record.user_agent == "Chrome"
+    assert record.ip_address == "172.18.0.9"
+    # Never the raw token.
+    assert record.token == token_codec.hash_refresh_token("raw-token")
+    # A session identity is minted when the caller has none to continue.
+    assert record.session_id is not None
+    assert record.session_started_at is not None
+
+
+def test_issue_keeps_the_session_identity_across_rotation() -> None:
+    session_id = uuid4()
+    started_at = datetime.now(UTC)
+    service, _, _ = _service()
+    db = _AddSession()
+
+    record = asyncio.run(
+        service.issue(
+            db,
             user_id=7,
-            session_id=target_session_id,
-            commit=False,
+            token="raw-token",
+            session_id=session_id,
+            session_started_at=started_at,
         )
     )
 
+    assert (record.session_id, record.session_started_at) == (session_id, started_at)
+    assert db.commit_calls == 1
+
+
+def test_revoke_token_reports_only_unknown_tokens_as_missing() -> None:
+    known, _, _ = _service(revoke_by_hashes=True)
+    assert asyncio.run(known.revoke_token(_AddSession(), "known-token")) is True
+
+    unknown, repo, _ = _service(revoke_by_hashes=False)
+    db = _AddSession()
+    assert asyncio.run(unknown.revoke_token(db, "unknown-token", commit=False)) is False
+    assert repo.calls == [("revoke_by_hashes", tuple(token_codec.refresh_token_hashes("unknown-token")))]
+    assert db.commit_calls == 0
+
+
+def test_revoke_session_blacklists_the_session_family() -> None:
+    session_id = uuid4()
+    service, repo, cache = _service(revoke_session=2)
+
+    revoked = asyncio.run(service.revoke_session(_AddSession(), 7, session_id, commit=False))
+
     assert revoked == 2
-    assert active_primary.is_revoked is False
-    assert target_current.is_revoked is True
-    assert target_current.revoked_at is not None
-    assert target_rotated.is_revoked is True
-    assert session.commit_calls == 0
+    assert repo.calls == [("revoke_session", 7, session_id)]
+    assert cache.blacklisted == [(str(session_id), token_codec.access_token_ttl_seconds)]
 
 
-def test_get_user_by_refresh_token_reuse_revokes_only_same_browser(monkeypatch: pytest.MonkeyPatch) -> None:
-    reused_token = SimpleNamespace(user_id=42, user_agent="Chrome", ip_address="10.0.0.1")
-    session = _FakeSession(
-        [
-            {"scalar": None},
-            {"scalar": reused_token},
-        ]
+def test_revoke_session_can_keep_the_sid_alive_for_rotation_grace() -> None:
+    """The grace replay retires the family's tokens but keeps the session.
+
+    It mints a fresh pair under the same ``sid`` immediately afterwards, so
+    banning the sid here would kill the access token just issued.
+    """
+    service, _, cache = _service(revoke_session=1)
+
+    asyncio.run(service.revoke_session(_AddSession(), 7, uuid4(), commit=False, blacklist=False))
+
+    assert cache.blacklisted == []
+
+
+def test_revoke_session_sql_scopes_to_one_logical_session() -> None:
+    from sqlalchemy.dialects import postgresql
+
+    session_id = uuid4()
+    db = _FakeSession([{"scalars": [uuid4(), uuid4()]}])
+
+    revoked = asyncio.run(
+        RefreshTokenRepository().revoke_session(db, user_id=7, session_id=session_id, now=datetime.now(UTC))
     )
 
-    scoped_revocations: list[tuple[int, str | None, str | None, bool]] = []
-    global_revocations: list[int] = []
-
-    async def fake_revoke_user_session_tokens(session, user_id, user_agent, ip_address, commit=True):
-        scoped_revocations.append((user_id, user_agent, ip_address, commit))
-        return 1
-
-    async def fake_revoke_all_user_tokens(session, user_id, commit=True):
-        global_revocations.append(user_id)
-        return 1
-
-    monkeypatch.setattr(AuthService, "revoke_user_session_tokens", fake_revoke_user_session_tokens, raising=False)
-    monkeypatch.setattr(AuthService, "revoke_all_user_tokens", fake_revoke_all_user_tokens)
-
-    result = asyncio.run(AuthService.get_user_by_refresh_token(session, "reused-refresh-token"))
-
-    assert result is None
-    assert scoped_revocations == [(42, "Chrome", "10.0.0.1", True)]
-    assert global_revocations == []
+    compiled = str(db.executed[0].compile(dialect=postgresql.dialect()))
+    assert revoked == 2
+    assert "session_id =" in compiled
+    assert "user_id =" in compiled
 
 
-def test_get_user_by_refresh_token_reuse_revokes_logical_session(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_handle_reuse_revokes_only_the_matching_logical_session() -> None:
     reused_session_id = uuid4()
-    reused_token = SimpleNamespace(user_id=42, session_id=reused_session_id, user_agent="Chrome", ip_address="10.0.0.1")
-    session = _FakeSession(
-        [
-            {"scalar": None},
-            {"scalar": reused_token},
-        ]
+    reused = SimpleNamespace(
+        user_id=42,
+        session_id=reused_session_id,
+        user_agent="Chrome",
+        ip_address="10.0.0.1",
     )
+    service, repo, cache = _service(get_by_hashes=reused, revoke_session=1)
 
-    session_revocations: list[tuple[int, object, bool]] = []
-    scoped_revocations: list[tuple[int, str | None, str | None, bool]] = []
+    asyncio.run(service.handle_reuse(_AddSession(), "reused-refresh-token"))
 
-    async def fake_revoke_session_tokens(session, user_id, session_id, commit=True):
-        session_revocations.append((user_id, session_id, commit))
-        return 1
+    # One lookup, then the narrowest revocation the record supports.
+    assert repo.calls == [
+        ("get_by_hashes", tuple(token_codec.refresh_token_hashes("reused-refresh-token"))),
+        ("revoke_session", 42, reused_session_id),
+    ]
+    assert cache.blacklisted == [(str(reused_session_id), token_codec.access_token_ttl_seconds)]
 
-    async def fake_revoke_user_session_tokens(session, user_id, user_agent, ip_address, commit=True):
-        scoped_revocations.append((user_id, user_agent, ip_address, commit))
-        return 1
 
-    monkeypatch.setattr(AuthService, "revoke_session_tokens", fake_revoke_session_tokens, raising=False)
-    monkeypatch.setattr(AuthService, "revoke_user_session_tokens", fake_revoke_user_session_tokens, raising=False)
+def test_handle_reuse_falls_back_to_the_same_browser() -> None:
+    reused = SimpleNamespace(user_id=42, session_id=None, user_agent="Chrome", ip_address="10.0.0.1")
+    service, repo, _ = _service(get_by_hashes=reused, revoke_client_family=(1, set()))
 
-    result = asyncio.run(AuthService.get_user_by_refresh_token(session, "reused-refresh-token"))
+    asyncio.run(service.handle_reuse(_AddSession(), "reused-refresh-token"))
 
-    assert result is None
-    assert session_revocations == [(42, reused_session_id, True)]
-    assert scoped_revocations == []
+    assert repo.calls[1] == ("revoke_client_family", 42, "Chrome", "10.0.0.1")
+
+
+def test_handle_reuse_revokes_everything_when_the_client_is_unknown() -> None:
+    reused = SimpleNamespace(user_id=42, session_id=None, user_agent=None, ip_address=None)
+    service, repo, _ = _service(get_by_hashes=reused, revoke_all_for_user=(3, {"sid-a"}))
+
+    asyncio.run(service.handle_reuse(_AddSession(), "reused-refresh-token"))
+
+    assert repo.calls[1] == ("revoke_all_for_user", 42)
+
+
+def test_handle_reuse_is_a_no_op_for_an_unknown_token() -> None:
+    service, repo, cache = _service(get_by_hashes=None)
+
+    asyncio.run(service.handle_reuse(_AddSession(), "never-issued"))
+
+    assert len(repo.calls) == 1
+    assert cache.blacklisted == []
 
 
 def test_logout_rejects_refresh_token_owned_by_other_user(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_get_refresh_token_record(session, token):
+    async def fake_get_record(session, token):
         assert token == "foreign-refresh-token"
         return SimpleNamespace(user_id=999)
 
-    async def fake_revoke_refresh_token(session, token, commit=True):
+    async def fake_revoke_token(session, token, *, commit=True):
         raise AssertionError("logout should not revoke another user's refresh token")
 
-    monkeypatch.setattr(
-        "src.services.auth_flows.AuthService.get_refresh_token_record",
-        fake_get_refresh_token_record,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "src.services.auth_flows.AuthService.revoke_refresh_token",
-        fake_revoke_refresh_token,
-    )
+    async def fake_revoke_session(session, user_id, session_id, *, commit=True, blacklist=True):
+        raise AssertionError("logout should not revoke another user's session")
+
+    monkeypatch.setattr(refresh_tokens, "get_record", fake_get_record)
+    monkeypatch.setattr(refresh_tokens, "revoke_token", fake_revoke_token)
+    monkeypatch.setattr(refresh_tokens, "revoke_session", fake_revoke_session)
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            auth_flows.logout(
+            auth.logout(
                 session=object(),
                 user=SimpleNamespace(id=1, is_active=True),
                 refresh_token="foreign-refresh-token",
@@ -254,35 +387,24 @@ def test_logout_revokes_logical_session_family(monkeypatch: pytest.MonkeyPatch) 
     session_id = uuid4()
     revoke_calls: list[tuple[int, object]] = []
 
-    async def fake_get_refresh_token_record(session, token):
+    async def fake_get_record(session, token):
         assert token == "own-refresh-token"
         return SimpleNamespace(user_id=1, session_id=session_id)
 
-    async def fake_revoke_session_tokens(session, user_id, session_id_arg, commit=True):
+    async def fake_revoke_session(session, user_id, session_id_arg, *, commit=True, blacklist=True):
         revoke_calls.append((user_id, session_id_arg))
         assert commit is True
         return 1
 
-    async def fake_revoke_refresh_token(session, token, commit=True):
+    async def fake_revoke_token(session, token, *, commit=True):
         raise AssertionError("logout should revoke the whole logical session family")
 
-    monkeypatch.setattr(
-        "src.services.auth_flows.AuthService.get_refresh_token_record",
-        fake_get_refresh_token_record,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "src.services.auth_flows.AuthService.revoke_session_tokens",
-        fake_revoke_session_tokens,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "src.services.auth_flows.AuthService.revoke_refresh_token",
-        fake_revoke_refresh_token,
-    )
+    monkeypatch.setattr(refresh_tokens, "get_record", fake_get_record)
+    monkeypatch.setattr(refresh_tokens, "revoke_session", fake_revoke_session)
+    monkeypatch.setattr(refresh_tokens, "revoke_token", fake_revoke_token)
 
     asyncio.run(
-        auth_flows.logout(
+        auth.logout(
             session=object(),
             user=SimpleNamespace(id=1, is_active=True),
             refresh_token="own-refresh-token",
@@ -305,48 +427,49 @@ def test_refresh_route_preserves_session_id_during_rotation(monkeypatch: pytest.
     )
     create_calls: list[tuple[object, object, bool]] = []
 
-    async def fake_get_active_refresh_token_record(session, token):
+    async def fake_get_active_record(session, token):
         assert token == "refresh-token"
         return fake_refresh_record
 
-    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
+    async def fake_get_with_rbac(session, user_id, *, include_player=False):
         assert user_id == 5
-        assert include_player_links is False
+        assert include_player is False
         return fake_user
 
-    async def fake_revoke_refresh_token(session, token, commit=True):
+    async def fake_revoke_token(session, token, *, commit=True):
         assert token == "refresh-token"
         assert commit is False
         return True
 
-    async def fake_create_refresh_token_db(
+    async def fake_issue(
         session,
+        *,
         user_id,
         token,
-        request=None,
         session_id=None,
         session_started_at=None,
-        commit=True,
         user_agent=None,
         ip_address=None,
+        request=None,
+        commit=True,
     ):
         create_calls.append((session_id, session_started_at, commit))
         assert user_id == 5
         assert token == "new-refresh-token"
         return SimpleNamespace()
 
-    monkeypatch.setattr(AuthService, "get_active_refresh_token_record", fake_get_active_refresh_token_record)
-    monkeypatch.setattr(AuthService, "get_user_with_rbac", fake_get_user_with_rbac)
-    monkeypatch.setattr(AuthService, "revoke_refresh_token", fake_revoke_refresh_token)
-    monkeypatch.setattr(AuthService, "create_refresh_token", lambda: "new-refresh-token")
-    monkeypatch.setattr(AuthService, "create_refresh_token_db", fake_create_refresh_token_db)
-    monkeypatch.setattr("src.services.auth_flows.get_refresh_idem", AsyncMock(return_value=None))
-    monkeypatch.setattr("src.services.auth_flows.set_refresh_idem", AsyncMock())
+    monkeypatch.setattr(refresh_tokens, "get_active_record", fake_get_active_record)
+    monkeypatch.setattr(auth_users, "get_with_rbac", fake_get_with_rbac)
+    monkeypatch.setattr(refresh_tokens, "revoke_token", fake_revoke_token)
+    monkeypatch.setattr(token_codec, "new_refresh_token", lambda: "new-refresh-token")
+    monkeypatch.setattr(refresh_tokens, "issue", fake_issue)
+    monkeypatch.setattr(session_cache, "get_refresh_idem", AsyncMock(return_value=None))
+    monkeypatch.setattr(session_cache, "set_refresh_idem", AsyncMock())
 
     fake_session = SimpleNamespace(commit=AsyncMock())
 
     response = asyncio.run(
-        auth_flows.refresh(
+        auth.refresh(
             session=fake_session,
             refresh_token="refresh-token",
             user_agent="Chrome",
@@ -354,7 +477,7 @@ def test_refresh_route_preserves_session_id_during_rotation(monkeypatch: pytest.
         )
     )
 
-    payload = AuthService.decode_token(response.access_token)
+    payload = token_codec.decode(response.access_token)
 
     assert response.refresh_token == "new-refresh-token"
     assert payload["sid"] == str(session_id)
@@ -381,10 +504,10 @@ def test_list_current_user_sessions_route_uses_current_session_marker(monkeypatc
             }
         ]
 
-    monkeypatch.setattr("src.services.auth_flows.SessionService.list_user_sessions", fake_list_user_sessions)
+    monkeypatch.setattr(sessions, "list_user_sessions", fake_list_user_sessions)
 
     response = asyncio.run(
-        auth_flows.list_sessions(
+        auth.list_sessions(
             session=object(),
             user=SimpleNamespace(id=7, is_active=True, _current_session_id="session-1"),
         )
@@ -404,7 +527,7 @@ def test_list_user_sessions_returns_all_active_and_limited_history() -> None:
         {"session_id": "expired-2", "status": "expired"},
     ]
 
-    limited = SessionService._limit_user_session_history(summaries, history_limit=2)
+    limited = sessions._limit_user_session_history(summaries, history_limit=2)
 
     assert [item["session_id"] for item in limited] == [
         "active-1",
@@ -419,7 +542,7 @@ def test_revoke_current_user_session_blocks_current_session() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-            auth_flows.revoke_session(
+            auth.revoke_session(
                 session=object(),
                 user=SimpleNamespace(id=7, is_active=True, _current_session_id=str(session_id)),
                 session_id=session_id,
@@ -464,7 +587,7 @@ def test_list_all_sessions_aggregates_in_sql_and_filters_status() -> None:
     )
 
     session = _FakeSession([{"scalars": [active, revoked]}])
-    summaries = asyncio.run(SessionService.list_all_sessions(session))
+    summaries = asyncio.run(sessions.list_all_sessions(session))
 
     from sqlalchemy.dialects import postgresql
 
@@ -479,7 +602,7 @@ def test_list_all_sessions_aggregates_in_sql_and_filters_status() -> None:
 
     # Status filtering is applied after aggregation.
     session_filtered = _FakeSession([{"scalars": [active, revoked]}])
-    only_active = asyncio.run(SessionService.list_all_sessions(session_filtered, status="active"))
+    only_active = asyncio.run(sessions.list_all_sessions(session_filtered, status="active"))
     assert [summary["session_id"] for summary in only_active] == [str(active.session_id)]
 
 
@@ -499,52 +622,52 @@ def test_refresh_grace_replay_rotates_instead_of_killing_the_session(monkeypatch
     reuse_detection_calls: list[str] = []
     create_calls: list[tuple[object, object, bool]] = []
 
-    async def fake_get_active_refresh_token_record(session, token):
+    async def fake_get_active_record(session, token):
         return None
 
-    async def fake_get_rotation_grace_record(session, token):
+    async def fake_get_grace_record(session, token):
         assert token == "rotated-token"
         return grace_record
 
-    async def fake_get_user_by_refresh_token(session, token):
+    async def fake_handle_reuse(session, token):
         reuse_detection_calls.append(token)
-        return None
 
-    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
+    async def fake_get_with_rbac(session, user_id, *, include_player=False):
         return fake_user
 
-    async def fake_revoke_session_tokens(session, user_id, sid, commit=True, blacklist=True):
+    async def fake_revoke_session(session, user_id, sid, *, commit=True, blacklist=True):
         revoke_session_calls.append((user_id, sid, commit, blacklist))
         return 1
 
-    async def fake_create_refresh_token_db(
+    async def fake_issue(
         session,
+        *,
         user_id,
         token,
-        request=None,
         session_id=None,
         session_started_at=None,
-        commit=True,
         user_agent=None,
         ip_address=None,
+        request=None,
+        commit=True,
     ):
         create_calls.append((session_id, session_started_at, commit))
         return SimpleNamespace()
 
-    monkeypatch.setattr(AuthService, "get_active_refresh_token_record", fake_get_active_refresh_token_record)
-    monkeypatch.setattr(AuthService, "get_rotation_grace_record", fake_get_rotation_grace_record, raising=False)
-    monkeypatch.setattr(AuthService, "get_user_by_refresh_token", fake_get_user_by_refresh_token)
-    monkeypatch.setattr(AuthService, "get_user_with_rbac", fake_get_user_with_rbac)
-    monkeypatch.setattr(AuthService, "revoke_session_tokens", fake_revoke_session_tokens, raising=False)
-    monkeypatch.setattr(AuthService, "create_refresh_token", lambda: "new-refresh-token")
-    monkeypatch.setattr(AuthService, "create_refresh_token_db", fake_create_refresh_token_db)
-    monkeypatch.setattr("src.services.auth_flows.get_refresh_idem", AsyncMock(return_value=None))
-    monkeypatch.setattr("src.services.auth_flows.set_refresh_idem", AsyncMock())
+    monkeypatch.setattr(refresh_tokens, "get_active_record", fake_get_active_record)
+    monkeypatch.setattr(refresh_tokens, "get_grace_record", fake_get_grace_record)
+    monkeypatch.setattr(refresh_tokens, "handle_reuse", fake_handle_reuse)
+    monkeypatch.setattr(auth_users, "get_with_rbac", fake_get_with_rbac)
+    monkeypatch.setattr(refresh_tokens, "revoke_session", fake_revoke_session)
+    monkeypatch.setattr(token_codec, "new_refresh_token", lambda: "new-refresh-token")
+    monkeypatch.setattr(refresh_tokens, "issue", fake_issue)
+    monkeypatch.setattr(session_cache, "get_refresh_idem", AsyncMock(return_value=None))
+    monkeypatch.setattr(session_cache, "set_refresh_idem", AsyncMock())
 
     fake_session = SimpleNamespace(commit=AsyncMock())
 
     response = asyncio.run(
-        auth_flows.refresh(
+        auth.refresh(
             session=fake_session,
             refresh_token="rotated-token",
             user_agent="Chrome",
@@ -552,7 +675,7 @@ def test_refresh_grace_replay_rotates_instead_of_killing_the_session(monkeypatch
         )
     )
 
-    payload = AuthService.decode_token(response.access_token)
+    payload = token_codec.decode(response.access_token)
 
     assert reuse_detection_calls == [], "grace replay must not run reuse detection"
     # blacklist=False: the sid stays usable — the access token issued below carries it.
@@ -566,24 +689,23 @@ def test_refresh_outside_grace_still_triggers_reuse_detection(monkeypatch: pytes
     """Beyond the grace window a revoked token is still treated as an attack."""
     reuse_detection_calls: list[str] = []
 
-    async def fake_get_active_refresh_token_record(session, token):
+    async def fake_get_active_record(session, token):
         return None
 
-    async def fake_get_rotation_grace_record(session, token):
+    async def fake_get_grace_record(session, token):
         return None
 
-    async def fake_get_user_by_refresh_token(session, token):
+    async def fake_handle_reuse(session, token):
         reuse_detection_calls.append(token)
-        return None
 
-    monkeypatch.setattr(AuthService, "get_active_refresh_token_record", fake_get_active_refresh_token_record)
-    monkeypatch.setattr(AuthService, "get_rotation_grace_record", fake_get_rotation_grace_record, raising=False)
-    monkeypatch.setattr(AuthService, "get_user_by_refresh_token", fake_get_user_by_refresh_token)
-    monkeypatch.setattr("src.services.auth_flows.get_refresh_idem", AsyncMock(return_value=None))
+    monkeypatch.setattr(refresh_tokens, "get_active_record", fake_get_active_record)
+    monkeypatch.setattr(refresh_tokens, "get_grace_record", fake_get_grace_record)
+    monkeypatch.setattr(refresh_tokens, "handle_reuse", fake_handle_reuse)
+    monkeypatch.setattr(session_cache, "get_refresh_idem", AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as caught:
         asyncio.run(
-            auth_flows.refresh(
+            auth.refresh(
                 session=SimpleNamespace(commit=AsyncMock()),
                 refresh_token="stale-token",
                 user_agent="Chrome",
@@ -595,22 +717,31 @@ def test_refresh_outside_grace_still_triggers_reuse_detection(monkeypatch: pytes
     assert reuse_detection_calls == ["stale-token"]
 
 
-def test_get_rotation_grace_record_requires_a_live_session_family() -> None:
+def test_grace_record_requires_a_live_session_family() -> None:
     """A logged-out session can never be resurrected through the grace window."""
+    from sqlalchemy.dialects import postgresql
+
     revoked_token = SimpleNamespace(user_id=7, session_id=uuid4(), is_revoked=True, revoked_at=datetime.now(UTC))
 
-    # No non-revoked sibling => the whole family is gone (logout / revoke session).
-    dead_family = _FakeSession([{"scalar": revoked_token}, {"scalar": None}])
-    assert asyncio.run(AuthService.get_rotation_grace_record(dead_family, "rotated-token")) is None
+    # The liveness probe is an EXISTS inside the same statement, so a dead
+    # family (logout / revoke session) simply matches nothing.
+    dead_family = _FakeSession([{"scalar": None}])
+    assert asyncio.run(refresh_tokens.get_grace_record(dead_family, "rotated-token")) is None
 
-    # A live sibling (the successor minted by the lost rotation) => replay allowed.
-    live_family = _FakeSession([{"scalar": revoked_token}, {"scalar": 4242}])
-    assert asyncio.run(AuthService.get_rotation_grace_record(live_family, "rotated-token")) is revoked_token
+    live_family = _FakeSession([{"scalar": revoked_token}])
+    assert asyncio.run(refresh_tokens.get_grace_record(live_family, "rotated-token")) is revoked_token
 
     # The window itself is enforced in SQL, so pin that the emitted statement
     # really filters on revocation recency and not just "is_revoked".
-    from sqlalchemy.dialects import postgresql
-
     compiled = str(live_family.executed[0].compile(dialect=postgresql.dialect()))
     assert "revoked_at >" in compiled
     assert "expires_at >" in compiled
+    assert "EXISTS" in compiled
+
+
+def test_grace_window_of_zero_disables_replay_without_touching_the_database() -> None:
+    service = RefreshTokenService(config=SimpleNamespace(REFRESH_ROTATION_GRACE_SECONDS=0))
+    db = _FakeSession([])
+
+    assert asyncio.run(service.get_grace_record(db, "rotated-token")) is None
+    assert db.executed == []

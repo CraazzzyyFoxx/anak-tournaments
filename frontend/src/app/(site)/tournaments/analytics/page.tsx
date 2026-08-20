@@ -241,6 +241,69 @@ const AnalyticsPage = () => {
     />
   );
 
+  // One body per state, in priority order: the filters have to settle before
+  // "nothing selected" means anything, and a failed fetch outranks a pending
+  // one so a retry is offered instead of a skeleton that will never resolve.
+  const renderAnalyticsBody = () => {
+    if (!isFiltersReady) {
+      return <AnalyticsContentSkeleton />;
+    }
+    if (tournamentId == null || algorithmId == null) {
+      return (
+        <PageStateCard
+          state="empty"
+          title={t("analytics.page.chooseParams")}
+          description={t("analytics.page.chooseParamsDesc")}
+        />
+      );
+    }
+    if (isErrorAnalytics) {
+      return (
+        <PageStateCard
+          state="error"
+          title={t("analytics.page.unavailable")}
+          description={t("analytics.page.unavailableDesc")}
+          onAction={() => void refetchAnalytics()}
+        />
+      );
+    }
+    if (loadingAnalytics || !analytics) {
+      return <AnalyticsContentSkeleton />;
+    }
+    if (isEmptyTeams) {
+      return (
+        <PageStateCard
+          state="empty"
+          title={t("analytics.page.noTeams")}
+          description={t("analytics.page.noTeamsDesc")}
+        />
+      );
+    }
+    if (!viewModel) {
+      return null;
+    }
+    return (
+      <>
+        <VerdictBanner verdict={viewModel.verdict} onExplain={explain} />
+        <KpiRail kpis={viewModel.kpis} onExplain={explain} onSelect={onKpiSelect} />
+        <div ref={standingsRef}>
+          <MasterDetail
+            key={`${tournamentId}-${algorithmId}`}
+            tournamentId={tournamentId}
+            teams={viewModel.teams}
+            canReadV2={canReadV2}
+            mode={standingsMode}
+            onModeChange={setStandingsMode}
+            performanceByPlayer={performanceByPlayer}
+            distributionByTeam={distributionByTeam}
+            onExplain={explain}
+          />
+        </div>
+        <HowItWorksCard onOpen={showHow} />
+      </>
+    );
+  };
+
   return (
     <div className={cn(styles.surface, styles.cRoot)}>
       {/* Persistent header: tournament identity + stat blocks + the analytics
@@ -265,49 +328,7 @@ const AnalyticsPage = () => {
         <OrganizerTools tournamentId={tournamentId} workspaceId={currentWorkspaceId} />
       ) : null}
 
-      {!isFiltersReady ? (
-        <AnalyticsContentSkeleton />
-      ) : tournamentId == null || algorithmId == null ? (
-        <PageStateCard
-          state="empty"
-          title={t("analytics.page.chooseParams")}
-          description={t("analytics.page.chooseParamsDesc")}
-        />
-      ) : isErrorAnalytics ? (
-        <PageStateCard
-          state="error"
-          title={t("analytics.page.unavailable")}
-          description={t("analytics.page.unavailableDesc")}
-          onAction={() => void refetchAnalytics()}
-        />
-      ) : loadingAnalytics || !analytics ? (
-        <AnalyticsContentSkeleton />
-      ) : isEmptyTeams ? (
-        <PageStateCard
-          state="empty"
-          title={t("analytics.page.noTeams")}
-          description={t("analytics.page.noTeamsDesc")}
-        />
-      ) : viewModel ? (
-        <>
-          <VerdictBanner verdict={viewModel.verdict} onExplain={explain} />
-          <KpiRail kpis={viewModel.kpis} onExplain={explain} onSelect={onKpiSelect} />
-          <div ref={standingsRef}>
-            <MasterDetail
-              key={`${tournamentId}-${algorithmId}`}
-              tournamentId={tournamentId}
-              teams={viewModel.teams}
-              canReadV2={canReadV2}
-              mode={standingsMode}
-              onModeChange={setStandingsMode}
-              performanceByPlayer={performanceByPlayer}
-              distributionByTeam={distributionByTeam}
-              onExplain={explain}
-            />
-          </div>
-          <HowItWorksCard onOpen={showHow} />
-        </>
-      ) : null}
+      {renderAnalyticsBody()}
 
       <BottomSheet state={sheet} onClose={closeSheet} />
     </div>

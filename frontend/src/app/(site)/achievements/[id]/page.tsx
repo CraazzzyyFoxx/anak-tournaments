@@ -1,4 +1,3 @@
-import React from "react";
 
 import achievementsService from "@/services/achievements.service";
 import { cn } from "@/lib/utils";

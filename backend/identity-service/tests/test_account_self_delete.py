@@ -1,7 +1,7 @@
 """Self-service account deletion: what goes away, and what must NOT.
 
 ``delete_me`` exists so a user locked out of a stale account can free the OAuth
-identities behind it (see ``oauth_service.link_oauth_to_existing_user``'s 409).
+identities behind it (see ``OAuthAccountService.link_to_user``'s 409).
 That only works if two things hold, and both are what these tests pin down:
 
 - the account row is the ONLY thing deleted -- the player identity carrying the
@@ -48,7 +48,10 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.services import auth_flows  # noqa: E402
+from src.services import auth as auth_module  # noqa: E402
+from src.services.auth import auth  # noqa: E402
+from src.services.session_cache import session_cache  # noqa: E402
+from src.services.sessions import refresh_tokens  # noqa: E402
 
 
 class _FakeSession:
@@ -87,22 +90,38 @@ def _user(*, is_superuser: bool = False) -> SimpleNamespace:
 
 @pytest.fixture
 def patched(monkeypatch: pytest.MonkeyPatch) -> dict:
-    calls: dict = {"revoked": [], "invalidated": [], "audited": []}
+    # Each collaborator also snapshots the session state it observed, so the
+    # ordering guarantees (revoke and audit before the delete/commit, cache
+    # invalidation only after it) are assertable without an event log.
+    calls: dict = {
+        "revoked": [],
+        "invalidated": [],
+        "audited": [],
+        "deleted_at_revoke": None,
+        "state_at_audit": None,
+        "committed_at_invalidate": None,
+        "session": None,
+    }
 
-    async def fake_revoke(_session, user_id, commit=True):
+    async def fake_revoke(_session, user_id, *, commit=True):
+        calls["session"] = _session
+        calls["deleted_at_revoke"] = list(_session.deleted)
         calls["revoked"].append((user_id, commit))
         return 1
 
     async def fake_invalidate(user_id):
+        session = calls["session"]
+        calls["committed_at_invalidate"] = session.commit_called if session else None
         calls["invalidated"].append(user_id)
 
     async def fake_audit(_session, **kwargs):
+        calls["state_at_audit"] = (list(_session.deleted), _session.commit_called)
         calls["audited"].append(kwargs)
         return SimpleNamespace()
 
-    monkeypatch.setattr(auth_flows.AuthService, "revoke_all_user_tokens", staticmethod(fake_revoke))
-    monkeypatch.setattr(auth_flows, "invalidate_rbac", fake_invalidate)
-    monkeypatch.setattr(auth_flows, "record_audit", fake_audit)
+    monkeypatch.setattr(refresh_tokens, "revoke_all", fake_revoke)
+    monkeypatch.setattr(session_cache, "invalidate_rbac", fake_invalidate)
+    monkeypatch.setattr(auth_module, "record_audit", fake_audit)
     return calls
 
 
@@ -110,17 +129,20 @@ def test_deleting_an_account_never_deletes_the_player(patched: dict) -> None:
     session = _FakeSession(player_id=42)
     user = _user()
 
-    asyncio.run(auth_flows.delete_me(session, user))
+    asyncio.run(auth.delete_me(session, user))
 
     assert session.deleted == [user]
     assert session.commit_called is True
     assert patched["invalidated"] == [9]
+    # The stale RBAC entry is dropped only once the delete has committed:
+    # invalidating earlier would let a concurrent request repopulate it.
+    assert patched["committed_at_invalidate"] is True
 
 
 def test_verified_marks_are_released_so_the_provider_can_be_linked_again(patched: dict) -> None:
     session = _FakeSession(player_id=42)
 
-    asyncio.run(auth_flows.delete_me(session, _user()))
+    asyncio.run(auth.delete_me(session, _user()))
 
     assert len(session.executed) == 1
     release = str(session.executed[0].compile(compile_kwargs={"literal_binds": True}))
@@ -134,7 +156,7 @@ def test_no_player_means_nothing_to_release(patched: dict) -> None:
     session = _FakeSession(player_id=None)
     user = _user()
 
-    asyncio.run(auth_flows.delete_me(session, user))
+    asyncio.run(auth.delete_me(session, user))
 
     assert session.executed == []
     assert session.deleted == [user]
@@ -145,13 +167,15 @@ def test_live_sessions_are_revoked_inside_the_deleting_transaction(patched: dict
     """``commit=False``: the revoke must not commit ahead of the delete, but it
     still blacklists the session ids so already-issued access tokens die now
     instead of outliving the account by an access-token TTL."""
-    asyncio.run(auth_flows.delete_me(_FakeSession(player_id=42), _user()))
+    asyncio.run(auth.delete_me(_FakeSession(player_id=42), _user()))
 
     assert patched["revoked"] == [(9, False)]
+    # ...and it runs while the account row is still there to revoke against.
+    assert patched["deleted_at_revoke"] == []
 
 
 def test_audit_row_is_written_before_the_delete(patched: dict) -> None:
-    asyncio.run(auth_flows.delete_me(_FakeSession(player_id=42), _user(), ip_address="10.0.0.1"))
+    asyncio.run(auth.delete_me(_FakeSession(player_id=42), _user(), ip_address="10.0.0.1"))
 
     assert len(patched["audited"]) == 1
     entry = patched["audited"][0]
@@ -159,15 +183,21 @@ def test_audit_row_is_written_before_the_delete(patched: dict) -> None:
     assert entry["entity_id"] == 9
     assert entry["before"]["player_id"] == 42
     assert entry["ip_address"] == "10.0.0.1"
+    # Written into the same transaction, before the row it describes is gone
+    # and before the commit that persists both together.
+    assert patched["state_at_audit"] == ([], False)
 
 
 def test_superuser_account_is_refused(patched: dict) -> None:
     session = _FakeSession(player_id=42)
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(auth_flows.delete_me(session, _user(is_superuser=True)))
+        asyncio.run(auth.delete_me(session, _user(is_superuser=True)))
 
     assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == (
+        "Superuser accounts cannot be deleted here. Ask another administrator to remove it."
+    )
     assert session.deleted == []
     assert session.executed == []
     assert patched["revoked"] == []

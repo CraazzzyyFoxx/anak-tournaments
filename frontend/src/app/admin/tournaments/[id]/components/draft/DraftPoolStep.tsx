@@ -28,7 +28,7 @@ const BLOCKER_MESSAGE_KEYS = {
   "role_shortage:support": "blockers.role_shortage_support"
 } as const;
 
-export function DraftPoolStep({ readiness, feasibility, loading, failed }: DraftPoolStepProps) {
+export function DraftPoolStep({ readiness, feasibility, loading, failed }: Readonly<DraftPoolStepProps>) {
   const t = useTranslations("draftAdmin");
   const percent = readiness.requiredPlayers
     ? Math.min(100, Math.round((readiness.actualPlayers / readiness.requiredPlayers) * 100))

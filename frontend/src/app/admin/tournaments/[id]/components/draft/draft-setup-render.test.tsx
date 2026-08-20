@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { RosterShape } from "@/lib/roster-shape";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftSession } from "@/types/draft.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 import { DraftCaptainsStep } from "./DraftCaptainsStep";
 import { DraftConfigStep } from "./DraftConfigStep";
@@ -81,6 +82,16 @@ const POOL = [
   registration(3, ["dps"], 3800)
 ];
 
+// Deliberately NOT the OW ladder: 2600 and 3800 sit in Diamond/Grandmaster
+// there, so a step that quietly fell back to the global grid (or the workspace
+// default) would resolve different tiers than the two named here.
+const TOURNAMENT_GRID: DivisionGrid = {
+  tiers: [
+    { number: 1, name: "Iron League", rank_min: 0, rank_max: 2999, icon_url: "/iron.png" },
+    { number: 2, name: "Steel League", rank_min: 3000, rank_max: null, icon_url: "/steel.png" }
+  ]
+};
+
 describe("draft config step", () => {
   const html = renderToStaticMarkup(
     <DraftConfigStep value={CONFIG} onChange={() => {}} rosterShape={SHAPE} tournamentId={5} />
@@ -140,6 +151,7 @@ describe("draft captains step", () => {
       teamCount={2}
       value={{ ids: [], teamNames: {}, order: "weakest_first", randomSeed: 1 }}
       onChange={() => {}}
+      divisionGrid={TOURNAMENT_GRID}
     />
   );
 
@@ -165,6 +177,16 @@ describe("draft captains step", () => {
     expect(html).toContain("<img");
     expect(html).toContain("3800");
     expect(html).toContain("—");
+  });
+
+  test("resolves divisions on the tournament's grid, not the global OW ladder", () => {
+    // `alt` comes from the tier NAME the grid resolves the rank to, so these two
+    // names appear only if the passed grid — not the OW ladder underneath
+    // `useDivisionGrid` — did the lookup.
+    expect(html).toContain('alt="Iron League"');
+    expect(html).toContain('alt="Steel League"');
+    expect(html).not.toContain('alt="Diamond');
+    expect(html).not.toContain('alt="Grandmaster');
   });
 
   test("sorts the pool by rank descending by default", () => {

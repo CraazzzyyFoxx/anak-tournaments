@@ -18,10 +18,10 @@ import { Card } from "@/components/ui/card";
 export default function SiteError({
   error,
   reset
-}: {
+}: Readonly<{
   error: Error & { digest?: string };
   reset: () => void;
-}) {
+}>) {
   const t = useTranslations();
 
   useEffect(() => {

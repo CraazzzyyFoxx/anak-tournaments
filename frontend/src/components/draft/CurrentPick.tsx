@@ -15,7 +15,7 @@ interface CurrentPickProps {
   myTeamId?: number | null;
 }
 
-export function CurrentPick({ board, isMyPick = false, myTeamId = null }: CurrentPickProps) {
+export function CurrentPick({ board, isMyPick = false, myTeamId = null }: Readonly<CurrentPickProps>) {
   const t = useTranslations("draftRedesign");
   const current = board.current_pick;
   const team = current

@@ -26,7 +26,7 @@ export function BasicsStep({
   onChallongeSlugChange,
   divisionGridVersions,
   divisionGridLoading
-}: BasicsStepProps) {
+}: Readonly<BasicsStepProps>) {
   return (
     <Tabs value={source} onValueChange={(next) => onSourceChange(next as WizardSource)}>
       <TabsList className="mb-4" aria-label="Tournament source">

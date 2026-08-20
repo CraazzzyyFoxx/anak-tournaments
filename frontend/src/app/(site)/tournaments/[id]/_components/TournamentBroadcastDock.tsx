@@ -105,7 +105,7 @@ const ANCHOR =
  * thinks a one-sided POV is the cast will read the match wrong. An official
  * channel is never displaced, and every official link stays listed.
  */
-export function TournamentBroadcastDock({ streams, className }: TournamentBroadcastDockProps) {
+export function TournamentBroadcastDock({ streams, className }: Readonly<TournamentBroadcastDockProps>) {
   const t = useTranslations();
   const [isOpen, setIsOpen] = useState(true);
   const closeRef = useRef<HTMLButtonElement>(null);

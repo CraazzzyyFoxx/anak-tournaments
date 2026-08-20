@@ -1,4 +1,3 @@
-import React from "react";
 
 import { TournamentShellSkeleton } from "./_components/TournamentSkeletons";
 

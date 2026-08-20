@@ -75,7 +75,7 @@ interface MermaidDiagramProps {
   inline?: boolean;
 }
 
-export function MermaidDiagram({ code, diagramKey, inline = false }: MermaidDiagramProps) {
+export function MermaidDiagram({ code, diagramKey, inline = false }: Readonly<MermaidDiagramProps>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

@@ -8,7 +8,6 @@ import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
-import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 import { getTournamentWorkspaceQueryKeys } from "./components/tournamentWorkspace.queryKeys";
 

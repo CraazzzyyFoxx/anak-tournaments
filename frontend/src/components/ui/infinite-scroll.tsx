@@ -93,7 +93,7 @@ export function InfiniteScrollFooter({
   loadMoreLabel,
   className,
   ...options
-}: InfiniteScrollFooterProps) {
+}: Readonly<InfiniteScrollFooterProps>) {
   const sentinelRef = useInfiniteScroll(options);
   const { hasNextPage, isFetchingNextPage, fetchNextPage, isError, disabled } = options;
 
@@ -104,16 +104,15 @@ export function InfiniteScrollFooter({
 
   return (
     <div className={cn("flex flex-col items-center gap-2 pt-1", className)}>
-      <p
+      <output
         className={cn("text-xs tabular-nums", isError ? "text-danger" : "text-muted-foreground")}
-        role="status"
       >
         {isError
           ? `Unable to load more ${unit}. Check your connection and try again.`
           : isFetchingNextPage
             ? `Loading more ${unit}…`
             : progress}
-      </p>
+      </output>
       {hasNextPage ? (
         <>
           <div ref={sentinelRef} aria-hidden className="h-px w-full" />

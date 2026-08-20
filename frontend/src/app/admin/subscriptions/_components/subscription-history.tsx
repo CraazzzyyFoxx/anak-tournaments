@@ -44,7 +44,7 @@ interface SubscriptionHistoryProps {
  * registration was refused. Rows resolve to a player (when the auth account has
  * a profile) and are clickable through to that player's detail.
  */
-export function SubscriptionTaskHistory({ onSelectUser }: SubscriptionHistoryProps) {
+export function SubscriptionTaskHistory({ onSelectUser }: Readonly<SubscriptionHistoryProps>) {
   const [state, setState] = useState("all");
   const [source, setSource] = useState("all");
   const [provider, setProvider] = useState("all");

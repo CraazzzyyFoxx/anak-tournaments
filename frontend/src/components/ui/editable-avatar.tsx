@@ -67,7 +67,7 @@ export function EditableAvatar({
   onError,
   disabled = false,
   className,
-}: EditableAvatarProps) {
+}: Readonly<EditableAvatarProps>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const interactive = editable && !disabled && !busy;

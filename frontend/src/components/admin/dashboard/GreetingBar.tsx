@@ -17,7 +17,7 @@ interface GreetingBarProps {
   canCreateTournament?: boolean;
 }
 
-export function GreetingBar({ canCreateTournament }: GreetingBarProps) {
+export function GreetingBar({ canCreateTournament }: Readonly<GreetingBarProps>) {
   const { user } = useAuthProfile();
 
   const greeting = getGreeting();

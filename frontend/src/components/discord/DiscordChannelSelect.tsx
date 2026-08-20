@@ -33,7 +33,7 @@ export function DiscordChannelSelect({
   ariaLabel,
   id,
   className
-}: DiscordChannelSelectProps) {
+}: Readonly<DiscordChannelSelectProps>) {
   const t = useTranslations("discord.channel");
   const { data, isLoading, refetch } = useDiscordChannels(workspaceId);
   const [manualMode, setManualMode] = React.useState(false);

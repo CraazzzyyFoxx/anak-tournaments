@@ -33,7 +33,7 @@ function scopeToWorkspaceId(scope: DenyScope): number | null {
   return scope === "global" ? null : scope;
 }
 
-export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: boolean }) {
+export function UserDenyEditor({ userId, canEdit }: Readonly<{ userId: number; canEdit: boolean }>) {
   const queryClient = useQueryClient();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [scope, setScope] = useState<DenyScope>("global");

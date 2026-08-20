@@ -72,7 +72,7 @@ export function BalanceEditorPlayerPreviewRow({
   rowRef,
   style,
   onSelectPlayer,
-}: BalanceEditorPlayerPreviewRowProps) {
+}: Readonly<BalanceEditorPlayerPreviewRowProps>) {
   return (
     <div className="w-[24rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40">
       <table className="w-full caption-bottom text-sm">
@@ -105,7 +105,7 @@ function BalanceEditorPlayerTableRow({
   rowRef,
   style,
   onSelectPlayer,
-}: BalanceEditorPlayerTableRowProps) {
+}: Readonly<BalanceEditorPlayerTableRowProps>) {
   const playerId = parseInternalBalancePlayerId(player);
   const division = resolveDivisionFromRank(divisionGrid, player.assigned_rating);
   const isSelected = playerId !== null && selectedPlayerId === playerId;
@@ -204,12 +204,12 @@ function BalanceEditorInsertSlotRow({
   roleKey,
   insertIndex,
   disabled = false,
-}: {
+}: Readonly<{
   teamIndex: number;
   roleKey: BalancerRosterKey;
   insertIndex: number;
   disabled?: boolean;
-}) {
+}>) {
   const { setNodeRef, isOver } = useDroppable({
     id: `player-slot:${teamIndex}:${roleKey}:${insertIndex}`,
     data: {
@@ -288,7 +288,7 @@ export function DroppableRoleSection({
   selectedPlayerId,
   dropDisabled = false,
   onSelectPlayer,
-}: DroppableRoleSectionProps) {
+}: Readonly<DroppableRoleSectionProps>) {
   const { setNodeRef, isOver } = useDroppable({
     id: containerId,
     data: {

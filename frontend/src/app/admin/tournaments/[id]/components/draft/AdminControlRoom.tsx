@@ -27,7 +27,7 @@ interface AdminControlRoomProps {
 
 const BLOCKED_REASONS = ["role_shortage", "order_recalculated"] as const;
 
-export function AdminControlRoom({ tournamentId, board }: AdminControlRoomProps) {
+export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlRoomProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const { presence, connectionState } = useDraftRealtime(tournamentId, board);
@@ -180,11 +180,11 @@ function AdminMetric({
   icon: Icon,
   label,
   value
-}: {
+}: Readonly<{
   icon: typeof Users;
   label: string;
   value: number;
-}) {
+}>) {
   return (
     <div className="flex items-center gap-3 border-t border-[color:var(--aqt-border)] pt-3">
       <Icon className="h-4 w-4 text-[color:var(--aqt-teal)]" aria-hidden />

@@ -30,7 +30,7 @@ const CHIP_CLASS = "rounded-full whitespace-nowrap";
  * whether anyone was left out. The pool diagnostics that explain *why* the balancer could not do
  * better — per-role supply, the structural off-role floor, flex headroom — sit one click away.
  */
-export function BalanceStatsRow({ stats }: { stats: VariantStats }) {
+export function BalanceStatsRow({ stats }: Readonly<{ stats: VariantStats }>) {
   if (!stats) {
     return null;
   }
@@ -112,7 +112,7 @@ export function BalanceStatsRow({ stats }: { stats: VariantStats }) {
   );
 }
 
-function OffRoleChip({ stats }: { stats: NonNullable<VariantStats> }) {
+function OffRoleChip({ stats }: Readonly<{ stats: NonNullable<VariantStats> }>) {
   const count = stats.off_role_count;
   if (count == null) {
     return null;
@@ -161,10 +161,10 @@ function OffRoleChip({ stats }: { stats: NonNullable<VariantStats> }) {
 function PoolDiagnostics({
   stats,
   feasibility,
-}: {
+}: Readonly<{
   stats: NonNullable<VariantStats>;
   feasibility: FeasibilityReport;
-}) {
+}>) {
   const rows: Array<{ label: string; value: string; hint?: string; tone?: "warn" }> = [];
 
   if (feasibility.structural_min_off_role > 0) {

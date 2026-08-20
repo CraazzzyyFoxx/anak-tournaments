@@ -79,7 +79,7 @@ export function AdminCombobox({
   shouldFilter,
   clear,
   children
-}: AdminComboboxProps) {
+}: Readonly<AdminComboboxProps>) {
   // `aria-controls` is supplied by Radix's PopoverTrigger (it points at the
   // content id it also stamps on PopoverContent). Overriding it here would
   // break that link, and cmdk ignores an `id` passed to CommandList.
@@ -142,7 +142,7 @@ export function AdminCombobox({
 }
 
 /** Selection tick for a `CommandItem`; keeps the row height stable when unselected. */
-export function AdminComboboxCheck({ selected }: { selected: boolean }) {
+export function AdminComboboxCheck({ selected }: Readonly<{ selected: boolean }>) {
   return (
     <Check
       aria-hidden

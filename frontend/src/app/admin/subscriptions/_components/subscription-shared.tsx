@@ -80,7 +80,7 @@ export const REASON_LABELS: Record<string, string> = {
   not_resolved: "provider gave no answer"
 };
 
-export function StateBadge({ state }: { state: string | null }) {
+export function StateBadge({ state }: Readonly<{ state: string | null }>) {
   return (
     <TintedBadge value={state} styles={STATE_STYLES} labels={STATE_LABELS} fallback="Never checked" />
   );

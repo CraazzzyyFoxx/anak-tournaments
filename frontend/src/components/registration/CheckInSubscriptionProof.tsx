@@ -35,7 +35,7 @@ export default function CheckInSubscriptionProof({
   tournamentId,
   requirement,
   active
-}: CheckInSubscriptionProofProps) {
+}: Readonly<CheckInSubscriptionProofProps>) {
   const queryClient = useQueryClient();
 
   const statusQuery = useQuery({

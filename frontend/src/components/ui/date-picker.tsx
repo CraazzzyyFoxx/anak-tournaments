@@ -5,7 +5,7 @@ import { CalendarIcon, ChevronDownIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { TimeInput } from "@/components/ui/time-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -104,7 +104,7 @@ function isBeforeMinDate(date: Date, minDate: Date | undefined): boolean {
   return target < min;
 }
 
-export function DatePicker({ value, onChange, placeholder = "Pick a date", id }: DatePickerProps) {
+export function DatePicker({ value, onChange, placeholder = "Pick a date", id }: Readonly<DatePickerProps>) {
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => parseDateValue(value), [value]);
 
@@ -160,7 +160,7 @@ export function DateTimePicker({
   timeId,
   value,
   labelClassName
-}: DateTimePickerProps) {
+}: Readonly<DateTimePickerProps>) {
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => parseDateTimeValue(value), [value]);
   const timeValue = getTimeValue(selected);

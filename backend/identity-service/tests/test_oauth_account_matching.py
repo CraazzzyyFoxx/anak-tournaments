@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.models.identity.user import User  # noqa: E402
 from src import schemas  # noqa: E402
-from src.services.oauth_service import OAuthService  # noqa: E402
+from src.services.oauth_accounts import OAuthAccountService, oauth_accounts  # noqa: E402
 
 
 class _FakeScalarsResult:
@@ -46,6 +46,13 @@ class _FakeScalarsResult:
     def first(self):
         return self._values[0] if self._values else None
 
+
+class _FakeExecuteResult:
+    """What a repository sees: ``result.unique().scalars().first()/.all()``."""
+
+    def __init__(self, values) -> None:
+        self._values = list(values)
+
     def unique(self):
         seen = set()
         unique_values = []
@@ -55,29 +62,23 @@ class _FakeScalarsResult:
                 continue
             seen.add(key)
             unique_values.append(value)
-        return _FakeScalarsResult(unique_values)
-
-
-class _FakeExecuteResult:
-    def __init__(self, *, scalar=None, scalars=None) -> None:
-        self._scalar = scalar
-        self._scalars = list(scalars or [])
-
-    def scalar_one_or_none(self):
-        return self._scalar
-
-    def scalar_one(self):
-        if self._scalar is None:
-            raise AssertionError("Expected scalar result")
-        return self._scalar
+        return _FakeExecuteResult(unique_values)
 
     def scalars(self):
-        return _FakeScalarsResult(self._scalars)
+        return _FakeScalarsResult(self._values)
 
 
 class _FakeSession:
-    def __init__(self, results: list[dict]) -> None:
-        self._results = list(results)
+    """Answers each repository query in turn from a canned list of row sets.
+
+    Every lookup the service makes now goes through a repository, and every
+    repository read goes through ``execute``, so one flat queue covers them all
+    -- and an unexpected extra query fails loudly instead of silently reusing a
+    row set meant for something else.
+    """
+
+    def __init__(self, results: list[list]) -> None:
+        self._results = [list(rows) for rows in results]
         self.added = []
         self.refresh_calls = []
         self.commit_calls = 0
@@ -86,12 +87,7 @@ class _FakeSession:
     async def execute(self, stmt):
         if not self._results:
             raise AssertionError("Unexpected execute() call")
-        return _FakeExecuteResult(**self._results.pop(0))
-
-    async def scalar(self, stmt):
-        if not self._results:
-            raise AssertionError("Unexpected scalar() call")
-        return _FakeExecuteResult(**self._results.pop(0)).scalar_one_or_none()
+        return _FakeExecuteResult(self._results.pop(0))
 
     def add(self, obj) -> None:
         self.added.append(obj)
@@ -117,9 +113,9 @@ def test_find_existing_auth_user_ignores_email_only_match() -> None:
         [
             # _find_player_by_provider_record: provider_user_id subject match → none.
             # NOTE: there is deliberately NO email query anymore.
-            {"scalars": []},
+            [],
             # _find_unowned_player_by_handle: no player carries this handle → none.
-            {"scalars": []},
+            [],
         ]
     )
     oauth_info = schemas.OAuthUserInfo(
@@ -132,7 +128,7 @@ def test_find_existing_auth_user_ignores_email_only_match() -> None:
         raw_data={"verified": True},
     )
 
-    auth_user, matched_player = asyncio.run(OAuthService._find_existing_auth_user(session, oauth_info))
+    auth_user, matched_player = asyncio.run(oauth_accounts._find_existing_auth_user(session, oauth_info))
 
     assert auth_user is None
     assert matched_player is None
@@ -146,8 +142,8 @@ def test_find_existing_auth_user_links_unowned_player_by_handle() -> None:
     shadow = SimpleNamespace(id=500, auth_user_id=None)
     session = _FakeSession(
         [
-            {"scalars": []},  # _find_player_by_provider_record: subject match → none
-            {"scalars": [shadow]},  # _find_unowned_player_by_handle → the shadow player
+            [],  # _find_player_by_provider_record: subject match → none
+            [shadow],  # _find_unowned_player_by_handle → the shadow player
         ]
     )
     oauth_info = schemas.OAuthUserInfo(
@@ -159,7 +155,7 @@ def test_find_existing_auth_user_links_unowned_player_by_handle() -> None:
         raw_data={"battletag": "Shadow#1234"},
     )
 
-    auth_user, matched_player = asyncio.run(OAuthService._find_existing_auth_user(session, oauth_info))
+    auth_user, matched_player = asyncio.run(oauth_accounts._find_existing_auth_user(session, oauth_info))
 
     assert auth_user is None
     assert matched_player is shadow
@@ -170,7 +166,7 @@ def test_find_unowned_player_by_handle_skips_already_owned_player() -> None:
     some auth account is a merge conflict — never auto-claimed by a login with a
     different (unverified) provider subject."""
     owned = SimpleNamespace(id=501, auth_user_id=42)
-    session = _FakeSession([{"scalars": [owned]}])
+    session = _FakeSession([[owned]])
     oauth_info = schemas.OAuthUserInfo(
         provider=schemas.OAuthProvider.DISCORD,
         provider_user_id="discord-x",
@@ -180,7 +176,7 @@ def test_find_unowned_player_by_handle_skips_already_owned_player() -> None:
         raw_data={},
     )
 
-    result = asyncio.run(OAuthService._find_unowned_player_by_handle(session, oauth_info))
+    result = asyncio.run(oauth_accounts._find_unowned_player_by_handle(session, oauth_info))
 
     assert result is None
 
@@ -195,15 +191,15 @@ def test_find_or_create_oauth_user_reuses_existing_user_by_provider_user_id() ->
     player = SimpleNamespace(id=210, auth_user_id=existing_user.id)
     session = _FakeSession(
         [
-            {"scalar": None},  # OAuthConnection lookup → none
+            [],  # OAuthConnection lookup → none
             # _find_player_by_provider_record: provider_user_id subject match → player
-            {"scalars": [player]},
+            [player],
             # _find_auth_user_for_player: player.auth_user_id set → AuthUser lookup
-            {"scalar": existing_user},
+            [existing_user],
             # matched_player.auth_user_id already == auth_user.id → no backfill query
             # _attach_verified_social_account: subject miss then fallback miss → no-op
-            {"scalars": []},  # subject match → none
-            {"scalar": None},  # players.user.auth_user_id fallback → none
+            [],  # subject match → none
+            [],  # players.user.auth_user_id fallback → none
         ]
     )
     oauth_info = schemas.OAuthUserInfo(
@@ -216,7 +212,7 @@ def test_find_or_create_oauth_user_reuses_existing_user_by_provider_user_id() ->
     )
 
     auth_user = asyncio.run(
-        OAuthService.find_or_create_oauth_user(
+        oauth_accounts.find_or_create_user(
             session,
             oauth_info,
             {"access_token": "access-token", "expires_in": 3600},
@@ -243,7 +239,7 @@ def test_link_player_if_unowned_sets_link_when_unowned() -> None:
     player = SimpleNamespace(id=1, auth_user_id=None)
     auth_user = SimpleNamespace(id=99)
 
-    linked = OAuthService._link_player_if_unowned(player, auth_user)
+    linked = OAuthAccountService._link_player_if_unowned(player, auth_user)
 
     assert linked is True
     assert player.auth_user_id == 99
@@ -253,7 +249,7 @@ def test_link_player_if_unowned_is_idempotent_for_same_owner() -> None:
     player = SimpleNamespace(id=1, auth_user_id=99)
     auth_user = SimpleNamespace(id=99)
 
-    linked = OAuthService._link_player_if_unowned(player, auth_user)
+    linked = OAuthAccountService._link_player_if_unowned(player, auth_user)
 
     assert linked is False
     assert player.auth_user_id == 99
@@ -265,7 +261,7 @@ def test_link_player_if_unowned_never_overwrites_a_different_owner() -> None:
     player = SimpleNamespace(id=1, auth_user_id=7)
     auth_user = SimpleNamespace(id=99)
 
-    linked = OAuthService._link_player_if_unowned(player, auth_user)
+    linked = OAuthAccountService._link_player_if_unowned(player, auth_user)
 
     assert linked is False
     assert player.auth_user_id == 7
@@ -278,7 +274,7 @@ def test_find_or_create_oauth_user_provisions_own_player_when_matched_player_is_
 
     Before the fix: ``_link_player_if_unowned`` correctly refused to steal the
     foreign player's link (returning False), but the surrounding branch only
-    called ``ensure_player_for_auth_user`` in the `else` of `matched_player is
+    called ``ensure_player`` in the `else` of `matched_player is
     not None`, so this new auth user silently ended up with NO player at all
     — violating the "every signup path provisions a players.user" invariant.
     """
@@ -287,20 +283,19 @@ def test_find_or_create_oauth_user_provisions_own_player_when_matched_player_is_
 
     session = _FakeSession(
         [
-            {"scalar": None},  # OAuthConnection lookup → none
+            [],  # OAuthConnection lookup → none
             # _find_existing_auth_user is patched below (returns no auth_user,
             # but the foreign-owned player as matched_player)
-            {"scalar": None},  # username-uniqueness check → free
-            {"scalar": None},  # default "user" Role lookup → none present
+            [],  # taken-username set for the base handle → free
+            [],  # default "user" Role lookup → none present
             # (no user_roles insert query — it's skipped since default_role is None)
-            # ensure_player_for_auth_user: existing-by-auth_user_id lookup → none
-            {"scalar": None},
+            # ensure_player: existing-by-auth_user_id lookup → none
+            [],
+            [],  # ensure_player: players.user.name collision probe → free
             # _attach_verified_social_account: no player found by provider record
-            {"scalars": []},  # subject match
-            {"scalars": []},  # handle match
+            [],  # subject match
             # falls back to players.user.auth_user_id lookup for the NEW auth_user
-            # → the player we just provisioned via ensure_player_for_auth_user
-            {"scalar": None},
+            [],
         ]
     )
     oauth_info = schemas.OAuthUserInfo(
@@ -312,12 +307,12 @@ def test_find_or_create_oauth_user_provisions_own_player_when_matched_player_is_
         raw_data={"battletag": "Foreign#1234"},
     )
 
-    async def _fake_find_existing(_session, _oauth_info):
+    async def _fake_find_existing(_self, _session, _oauth_info):
         return None, foreign_player
 
-    with patch.object(OAuthService, "_find_existing_auth_user", staticmethod(_fake_find_existing)):
+    with patch.object(OAuthAccountService, "_find_existing_auth_user", _fake_find_existing):
         auth_user = asyncio.run(
-            OAuthService.find_or_create_oauth_user(
+            oauth_accounts.find_or_create_user(
                 session,
                 oauth_info,
                 {"access_token": "access-token", "expires_in": 3600},
@@ -348,11 +343,10 @@ def test_find_or_create_oauth_user_never_overwrites_conflicting_player_link() ->
     player = SimpleNamespace(id=310, auth_user_id=other_owner_id)
     session = _FakeSession(
         [
-            {"scalar": None},  # OAuthConnection lookup → none
+            [],  # OAuthConnection lookup → none
             # _attach_verified_social_account: no player found by provider record → no-op
-            {"scalars": []},  # subject match
-            {"scalars": []},  # handle match
-            {"scalar": None},  # players.user.auth_user_id lookup for auth_user → none
+            [],  # subject match
+            [],  # players.user.auth_user_id lookup for auth_user → none
         ]
     )
     oauth_info = schemas.OAuthUserInfo(
@@ -364,12 +358,12 @@ def test_find_or_create_oauth_user_never_overwrites_conflicting_player_link() ->
         raw_data={"battletag": "Conflict#1234"},
     )
 
-    async def _fake_find_existing(_session, _oauth_info):
+    async def _fake_find_existing(_self, _session, _oauth_info):
         return existing_user, player
 
-    with patch.object(OAuthService, "_find_existing_auth_user", staticmethod(_fake_find_existing)):
+    with patch.object(OAuthAccountService, "_find_existing_auth_user", _fake_find_existing):
         auth_user = asyncio.run(
-            OAuthService.find_or_create_oauth_user(
+            oauth_accounts.find_or_create_user(
                 session,
                 oauth_info,
                 {"access_token": "access-token", "expires_in": 3600},

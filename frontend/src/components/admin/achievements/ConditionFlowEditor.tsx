@@ -210,10 +210,10 @@ function buildNodePaths(nodes: FlatNode[]): Record<string, string> {
 function TreeOutline({
   nodes,
   paths,
-}: {
+}: Readonly<{
   nodes: FlatNode[];
   paths: Record<string, string>;
-}) {
+}>) {
   const headingId = useId();
 
   const renderLevel = (parentId: string | undefined) => {
@@ -463,11 +463,11 @@ function StatOpValueFields({
   params,
   setParam,
   controlName
-}: {
+}: Readonly<{
   params: Record<string, unknown>;
   setParam: (key: string, value: unknown) => void;
   controlName: (field: string) => string;
-}) {
+}>) {
   return (
     <>
       <Select value={(params.stat as string) ?? ""} onValueChange={(v) => setParam("stat", v)}>
@@ -1061,7 +1061,7 @@ const SIDEBAR_GROUPS: { label: string; items: SidebarItem[] }[] = [
  * cannot perform. Clicking appends to the top-level group — the same place a
  * drop lands — after which the node's own buttons move it around.
  */
-function DragSidebar({ onAdd }: { onAdd: (item: SidebarItem) => void }) {
+function DragSidebar({ onAdd }: Readonly<{ onAdd: (item: SidebarItem) => void }>) {
   const [search, setSearch] = useState("");
   const lc = search.toLowerCase();
 
@@ -1127,7 +1127,7 @@ function DragSidebar({ onAdd }: { onAdd: (item: SidebarItem) => void }) {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function ConditionFlowEditor(props: ConditionFlowEditorProps) {
+export function ConditionFlowEditor(props: Readonly<ConditionFlowEditorProps>) {
   if (props.readOnly) {
     return <ConditionFlowEditorInner {...props} />;
   }
@@ -1138,7 +1138,7 @@ export function ConditionFlowEditor(props: ConditionFlowEditorProps) {
   );
 }
 
-function ConditionFlowEditorInner({ value, onChange, readOnly = false }: ConditionFlowEditorProps) {
+function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Readonly<ConditionFlowEditorProps>) {
   const [prevValue, setPrevValue] = useState(value);
   const [flatNodes, setFlatNodes] = useState<FlatNode[]>(() => {
     return treeToFlat(value);

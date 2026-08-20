@@ -25,7 +25,7 @@ export default function RegistrationWizard({
   tournamentName,
   form,
   onClose,
-}: RegistrationWizardProps) {
+}: Readonly<RegistrationWizardProps>) {
   const { user: authUser } = useAuthProfile();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);

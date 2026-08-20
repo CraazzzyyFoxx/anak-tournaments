@@ -32,7 +32,7 @@ export function BalancerActionsPanel({
   onExportBalance,
   onCopyNames,
   onScreenshot
-}: BalancerActionsPanelProps) {
+}: Readonly<BalancerActionsPanelProps>) {
   if (!activeVariant) {
     return null;
   }

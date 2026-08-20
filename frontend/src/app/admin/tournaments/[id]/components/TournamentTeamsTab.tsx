@@ -106,7 +106,7 @@ export function TournamentTeamsTab({
   canCreatePlayer,
   canUpdatePlayer,
   canDeletePlayer
-}: TournamentTeamsTabProps) {
+}: Readonly<TournamentTeamsTabProps>) {
   const queryClient = useQueryClient();
   const tableStyles = getAdminDetailTableStyles("compact");
   const importTeamsFileRef = useRef<HTMLInputElement>(null);

@@ -1,4 +1,3 @@
-import React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { getPlayerSlug, getPlayerType } from "@/utils/player";

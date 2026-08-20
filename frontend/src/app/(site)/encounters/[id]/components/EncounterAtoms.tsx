@@ -26,10 +26,10 @@ export interface PlayerIdentityInput {
 export function PlayerIdentity({
   player,
   className
-}: {
+}: Readonly<{
   player: PlayerIdentityInput;
   className?: string;
-}) {
+}>) {
   const [handle, tag] = player.name.split("#");
   const specialization = formatSubRoleLabel(player.sub_role);
 
@@ -49,11 +49,11 @@ export function Fact({
   label,
   children,
   className
-}: {
+}: Readonly<{
   label: React.ReactNode;
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <div className={cn(styles.fact, className)}>
       <span className={styles.label}>{label}</span>
@@ -77,13 +77,13 @@ export function Pill({
   live,
   className,
   children
-}: {
+}: Readonly<{
   tone?: PillTone;
   /** Prefix the pill with the pulsing live dot. */
   live?: boolean;
   className?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <span className={cn(styles.pill, PILL_TONE[tone], className)}>
       {live ? <span aria-hidden className={styles.livePulse} /> : null}
@@ -97,11 +97,11 @@ export function PillFact({
   label,
   value,
   tone
-}: {
+}: Readonly<{
   label: React.ReactNode;
   value: React.ReactNode;
   tone?: PillTone;
-}) {
+}>) {
   return (
     <Pill tone={tone}>
       <span className={styles.label}>{label}</span>

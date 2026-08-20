@@ -39,7 +39,7 @@ export default function MetricTooltip({
   className,
   showIcon,
   focusable = true,
-}: MetricTooltipProps) {
+}: Readonly<MetricTooltipProps>) {
   const t = useTranslations();
   const label = t(`analytics.glossary.${term}.label`);
   const plain = t(`analytics.glossary.${term}.plain`);

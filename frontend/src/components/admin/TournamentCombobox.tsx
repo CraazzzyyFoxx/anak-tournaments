@@ -26,7 +26,7 @@ export function TournamentCombobox({
   searchPlaceholder = "Search tournament…",
   disabled = false,
   allowClear = true,
-}: TournamentComboboxProps) {
+}: Readonly<TournamentComboboxProps>) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 

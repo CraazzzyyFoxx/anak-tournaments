@@ -205,7 +205,7 @@ const CHECK_IN_OVER_TOURNAMENT_STATUSES = new Set<string>([
   "archived"
 ]);
 
-function RegistrationStepMarker({ tone }: { tone: RegistrationStepTone }) {
+function RegistrationStepMarker({ tone }: Readonly<{ tone: RegistrationStepTone }>) {
   switch (tone) {
     case "done":
       return (
@@ -241,11 +241,11 @@ function RegistrationRoleChip({
   role,
   showPrimaryMark,
   t
-}: {
+}: Readonly<{
   role: Registration["roles"][number];
   showPrimaryMark: boolean;
   t: ReturnType<typeof useTranslations<never>>;
-}) {
+}>) {
   return (
     <div
       className={cn(
@@ -279,7 +279,7 @@ function MyRegistrationCard({
   tournament,
   requireOpenProfile,
   requireSubscription
-}: {
+}: Readonly<{
   registration: Registration;
   canCheckIn: boolean;
   onCheckIn: () => void;
@@ -289,7 +289,7 @@ function MyRegistrationCard({
   tournament: Tournament;
   requireOpenProfile: boolean;
   requireSubscription: boolean;
-}) {
+}>) {
   const t = useTranslations();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -384,6 +384,23 @@ function MyRegistrationCard({
       }
     : null;
 
+  // Check-in is the one step whose marker has four distinct outcomes, so it is
+  // resolved here rather than inline: a completed check-in wins outright, a dead
+  // registration has no step to run, an open window is the live call to action,
+  // and a window that closed unused is a failure the reader has to see.
+  let checkInTone: RegistrationStepTone;
+  if (isCheckedIn) {
+    checkInTone = "done";
+  } else if (isTerminal) {
+    checkInTone = "idle";
+  } else if (canCheckIn) {
+    checkInTone = "active";
+  } else if (checkInPhaseOver) {
+    checkInTone = "failed";
+  } else {
+    checkInTone = "idle";
+  }
+
   const steps: RegistrationStep[] = [
     {
       key: "submitted",
@@ -416,15 +433,7 @@ function MyRegistrationCard({
     {
       key: "checkIn",
       label: t("registration.myCard.steps.checkIn"),
-      tone: isCheckedIn
-        ? "done"
-        : isTerminal
-          ? "idle"
-          : canCheckIn
-            ? "active"
-            : checkInPhaseOver
-              ? "failed"
-              : "idle"
+      tone: checkInTone
     }
   ];
 
@@ -679,7 +688,7 @@ function isCheckInWindowActive(tournament: Tournament) {
 // Main page
 // ---------------------------------------------------------------------------
 
-function TournamentParticipantsView({ tournament }: { tournament: Tournament }) {
+function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations();
   const locale = useLocale();
   const { user, status: authStatus } = useAuthProfile();
@@ -1268,7 +1277,7 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
  * already primed by the layout, so this is a cache read in practice — the
  * guards below only fire if that layout contract ever changes.
  */
-export default function TournamentParticipantsPage({ tournamentId }: { tournamentId: number }) {
+export default function TournamentParticipantsPage({ tournamentId }: Readonly<{ tournamentId: number }>) {
   const tournamentQuery = useTournamentQuery(tournamentId);
 
   if (!tournamentQuery.data) {

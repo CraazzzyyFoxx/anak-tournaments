@@ -474,14 +474,14 @@ function AddMemberDialog({
   scopedRoles,
   defaultRoleId,
   onAdded
-}: {
+}: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: number;
   scopedRoles: RbacRole[];
   defaultRoleId?: number;
   onAdded: () => void;
-}) {
+}>) {
   const userFieldId = useId();
   const [userId, setUserId] = useState<string>("");
   const [roleIds, setRoleIds] = useState<number[]>([]);
@@ -602,11 +602,11 @@ function RoleMultiSelect({
   roles,
   value,
   onChange
-}: {
+}: Readonly<{
   roles: RbacRole[];
   value: number[];
   onChange: (roleIds: number[]) => void;
-}) {
+}>) {
   const fieldId = useId();
   const [open, setOpen] = useState(false);
   const selected = useMemo(() => roles.filter((role) => value.includes(role.id)), [roles, value]);

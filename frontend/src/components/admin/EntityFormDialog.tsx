@@ -73,7 +73,7 @@ export function EntityFormDialog({
   contentClassName,
   children,
   isReadOnly = false,
-}: EntityFormDialogProps) {
+}: Readonly<EntityFormDialogProps>) {
   const router = useRouter();
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null);

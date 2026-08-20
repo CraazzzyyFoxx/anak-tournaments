@@ -36,7 +36,7 @@ export interface LeaderboardCardProps {
  * `TopWinratePlayersTable`, which were an English-only, medal-less duplicate of
  * the same thing rendered as a shadcn `<Table>`.
  */
-export async function LeaderboardCard({ title, icon, rows, format, accent }: LeaderboardCardProps) {
+export async function LeaderboardCard({ title, icon, rows, format, accent }: Readonly<LeaderboardCardProps>) {
   const t = await getTranslations();
   const accentColor = ACCENT[accent];
 

@@ -119,7 +119,6 @@ interface UnifiedRegistrationFormProps {
 export default function UnifiedRegistrationForm({
   mode,
   tournamentId,
-  workspaceId,
   formConfig,
   tournamentName,
   initialData,
@@ -127,7 +126,7 @@ export default function UnifiedRegistrationForm({
   onSubmit,
   onCancel,
   submitPending = false,
-}: UnifiedRegistrationFormProps) {
+}: Readonly<UnifiedRegistrationFormProps>) {
   const t = useTranslations();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
   // The mode has to be the reducer's INITIAL state, not something applied later:
@@ -265,11 +264,10 @@ export default function UnifiedRegistrationForm({
       for (const field of formConfig.custom_fields) {
         const stored = initialData.custom_fields_json?.[field.key];
         if (stored == null) continue;
+        // Only JSON `true` or the string "true" counts as a checked box.
         initCustomFields[field.key] =
           field.type === "checkbox"
-            ? stored === true || stored === "true"
-              ? "true"
-              : "false"
+            ? String(stored === true || stored === "true")
             : String(stored);
       }
 
@@ -513,9 +511,7 @@ export default function UnifiedRegistrationForm({
         .map((field) => [
           field.key,
           field.type === "checkbox"
-            ? state.customFieldsValues[field.key] === "true"
-              ? "true"
-              : "false"
+            ? String(state.customFieldsValues[field.key] === "true")
             : (state.customFieldsValues[field.key] ?? ""),
         ])
         .filter(([, value]) => value !== "")

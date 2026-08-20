@@ -59,7 +59,7 @@ export function ResolveRoleConflictDialog({
   tournamentId,
   board,
   feasibility
-}: ResolveRoleConflictDialogProps) {
+}: Readonly<ResolveRoleConflictDialogProps>) {
   const t = useTranslations("draftAdmin.roleConflict");
   const queryClient = useQueryClient();
   const [playerId, setPlayerId] = useState<number | null>(null);
@@ -322,11 +322,11 @@ function ImpactValue({
   label,
   value,
   good = false
-}: {
+}: Readonly<{
   label: string;
   value: string;
   good?: boolean;
-}) {
+}>) {
   return (
     <div>
       <p className="font-mono text-xs uppercase tracking-wider text-[color:var(--aqt-fg-faint)]">

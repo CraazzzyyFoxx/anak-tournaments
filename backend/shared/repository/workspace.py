@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
-from shared.models.identity.rbac import user_roles
+from shared.core.pagination import PaginationSortParams
+from shared.models.identity.rbac import role_permissions, user_roles
 from shared.repository.base import BaseRepository
 
 
@@ -121,6 +122,44 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         )
         return result.scalars().first()
 
+    async def list_memberships_for_auth_user(
+        self,
+        session: AsyncSession,
+        auth_user_id: int,
+    ) -> list[tuple[int, str]]:
+        """``(workspace_id, slug)`` for every workspace an auth user belongs to.
+
+        ``workspace_member`` is anchored on ``player_id``, so the auth identity is
+        reached through ``players.user.auth_user_id``. Returns bare tuples: this
+        feeds the JWT/RBAC payload, which needs the id and slug and nothing else.
+        """
+        result = await session.execute(
+            sa.select(models.WorkspaceMember.workspace_id, models.Workspace.slug)
+            .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
+            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+            .where(models.User.auth_user_id == auth_user_id)
+        )
+        return [(workspace_id, slug) for workspace_id, slug in result.all()]
+
+    async def exists_for_auth_user(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        auth_user_id: int,
+    ) -> bool:
+        found = await session.scalar(
+            sa.select(sa.literal(True))
+            .select_from(models.WorkspaceMember)
+            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+            .where(
+                models.WorkspaceMember.workspace_id == workspace_id,
+                models.User.auth_user_id == auth_user_id,
+            )
+            .limit(1)
+        )
+        return found is True
+
     async def list_by_workspace(
         self,
         session: AsyncSession,
@@ -154,6 +193,17 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .order_by(models.WorkspaceMember.id.asc())
         )
         return result.scalars().all()
+
+    async def workspace_ids_for_player(self, session: AsyncSession, player_id: int) -> Sequence[int]:
+        """Workspaces this player is anchored to, ids only.
+
+        Feeds the role-autofill run after a player↔auth-user link: the caller
+        needs the scope of each membership row, never the row itself.
+        """
+        result = await session.scalars(
+            sa.select(models.WorkspaceMember.workspace_id).where(models.WorkspaceMember.player_id == player_id)
+        )
+        return result.all()
 
 
 async def get_or_create_workspace_member(
@@ -217,6 +267,48 @@ class RoleRepository(BaseRepository[models.Role]):
     ) -> models.Role | None:
         return await self.get_by(session, name=name, workspace_id=workspace_id)
 
+    async def get_with_permissions(self, session: AsyncSession, role_id: int) -> models.Role | None:
+        return await self.get(session, role_id, options=[selectinload(models.Role.permissions)])
+
+    async def find_in_scope(
+        self,
+        session: AsyncSession,
+        *,
+        name: str,
+        workspace_id: int | None,
+        exclude_id: int | None = None,
+    ) -> models.Role | None:
+        """Name-uniqueness probe within one scope (global vs a workspace).
+
+        ``workspace_id IS NULL`` and a concrete workspace are separate uniqueness
+        namespaces (see ``uq_roles_name_global`` / ``uq_roles_name_workspace``),
+        so the NULL case must use ``IS NULL`` rather than ``==``.
+        """
+        query = self.select().where(models.Role.name == name)
+        if workspace_id is None:
+            query = query.where(models.Role.workspace_id.is_(None))
+        else:
+            query = query.where(models.Role.workspace_id == workspace_id)
+        if exclude_id is not None:
+            query = query.where(models.Role.id != exclude_id)
+        return await session.scalar(query)
+
+    async def list_in_scope(
+        self,
+        session: AsyncSession,
+        params: PaginationSortParams,
+        *,
+        workspace_id: int | None,
+        search: str | None = None,
+    ) -> tuple[Sequence[models.Role], int]:
+        filters: list[sa.ColumnElement[bool]] = [
+            models.Role.workspace_id.is_(None) if workspace_id is None else models.Role.workspace_id == workspace_id
+        ]
+        if search:
+            term = f"%{search}%"
+            filters.append(sa.or_(models.Role.name.ilike(term), models.Role.description.ilike(term)))
+        return await self.list(session, params, filters=filters)
+
     async def list_for_user_workspace(
         self,
         session: AsyncSession,
@@ -232,6 +324,90 @@ class RoleRepository(BaseRepository[models.Role]):
         )
         return list(result.scalars().all())
 
+    async def global_rbac_for_user(
+        self,
+        session: AsyncSession,
+        user_id: int,
+    ) -> tuple[list[str], list[dict[str, str]]]:
+        """Global (``workspace_id IS NULL``) role names + deduped permissions.
+
+        Explicit joins rather than relationship traversal: this runs on the token
+        path, where an ORM lazy-load would raise under AsyncSession.
+        """
+        rows = await session.execute(
+            sa.select(models.Role.name, models.Permission.resource, models.Permission.action)
+            .select_from(user_roles)
+            .join(models.Role, user_roles.c.role_id == models.Role.id)
+            .outerjoin(role_permissions, role_permissions.c.role_id == models.Role.id)
+            .outerjoin(models.Permission, role_permissions.c.permission_id == models.Permission.id)
+            .where(user_roles.c.user_id == user_id, models.Role.workspace_id.is_(None))
+        )
+        return _collect_rbac(rows.all())
+
+    async def workspace_rbac_for_user(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        workspace_ids: Sequence[int],
+    ) -> dict[int, tuple[list[str], list[dict[str, str]]]]:
+        """Same shape as ``global_rbac_for_user``, keyed by workspace id.
+
+        Every requested workspace is present in the result (empty lists when the
+        user holds no role there), so callers never need a ``.get`` default.
+        """
+        result: dict[int, tuple[list[str], list[dict[str, str]]]] = {ws_id: ([], []) for ws_id in workspace_ids}
+        if not workspace_ids:
+            return result
+
+        rows = await session.execute(
+            sa.select(
+                models.Role.workspace_id,
+                models.Role.name,
+                models.Permission.resource,
+                models.Permission.action,
+            )
+            .select_from(user_roles)
+            .join(models.Role, user_roles.c.role_id == models.Role.id)
+            .outerjoin(role_permissions, role_permissions.c.role_id == models.Role.id)
+            .outerjoin(models.Permission, role_permissions.c.permission_id == models.Permission.id)
+            .where(user_roles.c.user_id == user_id, models.Role.workspace_id.in_(list(workspace_ids)))
+        )
+
+        grouped: dict[int, list[tuple[str, str | None, str | None]]] = {}
+        for ws_id, role_name, resource, action in rows.all():
+            grouped.setdefault(ws_id, []).append((role_name, resource, action))
+        for ws_id, ws_rows in grouped.items():
+            result[ws_id] = _collect_rbac(ws_rows)
+        return result
+
+
+def _collect_rbac(
+    rows: Sequence[tuple[str, str | None, str | None]],
+) -> tuple[list[str], list[dict[str, str]]]:
+    """Fold ``(role_name, resource, action)`` rows into deduped roles + permissions.
+
+    The outer joins above emit one row per role×permission pair (and a single row
+    with NULL resource/action for a role that carries none), so both lists are
+    deduped here while preserving first-seen order.
+    """
+    role_names: list[str] = []
+    seen_roles: set[str] = set()
+    permissions: list[dict[str, str]] = []
+    seen_permissions: set[tuple[str, str]] = set()
+
+    for role_name, resource, action in rows:
+        if role_name not in seen_roles:
+            seen_roles.add(role_name)
+            role_names.append(role_name)
+        if resource is None or action is None:
+            continue
+        key = (resource, action)
+        if key not in seen_permissions:
+            seen_permissions.add(key)
+            permissions.append({"resource": resource, "action": action})
+
+    return role_names, permissions
+
 
 class PermissionRepository(BaseRepository[models.Permission]):
     def __init__(self) -> None:
@@ -239,3 +415,29 @@ class PermissionRepository(BaseRepository[models.Permission]):
 
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Permission | None:
         return await self.get_by(session, name=name)
+
+    async def list_searchable(
+        self,
+        session: AsyncSession,
+        params: PaginationSortParams,
+        *,
+        search: str | None = None,
+    ) -> tuple[Sequence[models.Permission], int]:
+        filters: list[sa.ColumnElement[bool]] = []
+        if search:
+            term = f"%{search}%"
+            filters.append(
+                sa.or_(
+                    models.Permission.name.ilike(term),
+                    models.Permission.resource.ilike(term),
+                    models.Permission.action.ilike(term),
+                    models.Permission.description.ilike(term),
+                )
+            )
+        return await self.list(session, params, filters=filters)
+
+    async def role_ids_with_permission(self, session: AsyncSession, permission_id: int) -> Sequence[int]:
+        result = await session.execute(
+            sa.select(role_permissions.c.role_id).where(role_permissions.c.permission_id == permission_id)
+        )
+        return result.scalars().all()

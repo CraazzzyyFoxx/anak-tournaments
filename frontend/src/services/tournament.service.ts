@@ -1,7 +1,6 @@
 import { LookupItem, PaginatedResponse } from "@/types/pagination.types";
 import { MapVetoConfig, OwalStack, OwalStandings, Stage, Standings, Tournament } from "@/types/tournament.types";
 import { apiFetch } from "@/lib/api-fetch";
-import { PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
 import { normalizePaginatedResponse } from "@/lib/normalize-paginated-response";
 
 type GetStandingsOptions = {
@@ -103,6 +102,12 @@ export default class tournamentService {
           // opt-in), paid once here so the shell's link row needs no read of its
           // own — the same payload already feeds the hero and the section nav.
           "links",
+          // The tournament's OWN division grid. Without this entity the read
+          // returns `division_grid_version: null` and every consumer silently
+          // falls back to the global OW ladder (`getDefaultDivisionGrid`), so
+          // the draft room rendered ladder divisions instead of the grid the
+          // tournament is actually seeded and balanced on.
+          "division_grid_version",
         ],
       },
     }).then((response) => response.json());

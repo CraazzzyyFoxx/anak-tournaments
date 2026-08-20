@@ -16,7 +16,7 @@ interface ClickableLogRowProps {
  * Log-table row that opens a player detail dialog when it resolves to a known
  * user; shared by every collector's live task/check history table.
  */
-export function ClickableLogRow({ clickable, onOpen, children }: ClickableLogRowProps) {
+export function ClickableLogRow({ clickable, onOpen, children }: Readonly<ClickableLogRowProps>) {
   return (
     <TableRow
       className={cn(clickable && "cursor-pointer hover:bg-muted/50")}
@@ -39,7 +39,7 @@ interface ClickableLogCellProps {
  * keyboard users reach it — stopping propagation so the row handler doesn't
  * fire the same open twice.
  */
-export function ClickableLogCell({ clickable, onOpen, label }: ClickableLogCellProps) {
+export function ClickableLogCell({ clickable, onOpen, label }: Readonly<ClickableLogCellProps>) {
   return (
     <TableCell className="font-medium">
       {clickable ? (

@@ -88,10 +88,10 @@ function getBreadcrumbEntityRef(
 function EntityBreadcrumbName({
   queryKey,
   fallback,
-}: {
+}: Readonly<{
   queryKey: readonly unknown[];
   fallback: string;
-}) {
+}>) {
   const { data } = useQuery({ queryKey, queryFn: skipToken });
   const name = (data as { name?: unknown } | undefined)?.name;
   return <>{typeof name === "string" && name ? name : fallback}</>;
@@ -152,7 +152,7 @@ type AdminLayoutClientProps = {
   defaultSidebarOpen: boolean;
 };
 
-export function AdminLayoutClient({ children, defaultSidebarOpen }: AdminLayoutClientProps) {
+export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<AdminLayoutClientProps>) {
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { isLoaded, canAccessAdminRoute } = usePermissions();

@@ -33,7 +33,7 @@ const accessNavItems: AccessNavItem[] = [
   { href: "/admin/access/sessions", label: "Sessions", permissions: [], superuserOnly: true },
 ];
 
-export default function AccessAdminLayout({ children }: { children: React.ReactNode }) {
+export default function AccessAdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
   const { isSuperuser, hasAnyPermission, hasAnyWorkspacePermission, canManageAnyWorkspace } = usePermissions();
   const visibleNavItems = accessNavItems.filter((item) => {

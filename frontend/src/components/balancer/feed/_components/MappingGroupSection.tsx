@@ -50,7 +50,7 @@ export function MappingGroupSection({
   onValueChange,
   onParserChange,
   onIsListChange,
-}: MappingGroupSectionProps) {
+}: Readonly<MappingGroupSectionProps>) {
   if (targets.length === 0) {
     return null;
   }

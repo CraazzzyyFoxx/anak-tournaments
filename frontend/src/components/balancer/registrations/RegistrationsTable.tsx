@@ -2,9 +2,6 @@
 
 import {
   Fragment,
-  type Dispatch,
-  type ReactNode,
-  type SetStateAction,
   useMemo,
   useState
 } from "react";
@@ -13,36 +10,24 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  BadgeInfo,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
   FileCog,
-  Globe,
   Loader2,
-  Lock,
-  MessageSquareText,
   MoreHorizontal,
   Search,
-  RadioTower,
-  Pencil,
   ShieldBan,
   Sheet,
-  ShieldX,
   Sparkles,
-  Trash2,
   Undo2,
   Upload,
   UserPlus,
-  UserRound,
-  X,
   XCircle
 } from "lucide-react";
 
@@ -61,7 +46,6 @@ import {
   normalizeRegistrationGroupingMode
 } from "@/components/balancer/registrations/_components/registrationGrouping";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -69,7 +53,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
@@ -91,15 +74,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { useColumnVisibility } from "@/hooks/useColumnVisibility";
 import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import { notify } from "@/lib/notify";
@@ -109,10 +83,7 @@ import registrationService from "@/services/registration.service";
 import type {
   AdminRegistration,
   AdminRegistrationCreateInput,
-  AdminRegistrationRole,
-  AdminRegistrationUpdateInput,
-  BalancerRoleCode,
-  BalancerRoleSubtype
+  AdminRegistrationUpdateInput
 } from "@/types/balancer-admin.types";
 import type { RegistrationForm, SubroleCatalog } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
@@ -138,10 +109,6 @@ const ALIGN_CLASS: Record<NonNullable<BalancerRegistrationColumnDefinition["alig
   right: "text-right"
 };
 
-const ROLE_OPTIONS: BalancerRoleCode[] = ["tank", "dps", "support"];
-
-const ADMIN_FORM_STEPS = [{ label: "Accounts" }, { label: "Roles" }, { label: "Details" }];
-
 // Minimal fallback used only until the real registration form (with its
 // workspace sub-role catalog) loads. Sub-role options are then data-driven.
 const ADMIN_ROLE_FORM: RegistrationForm = {
@@ -155,11 +122,6 @@ const ADMIN_ROLE_FORM: RegistrationForm = {
   },
   custom_fields: []
 };
-
-const ADMIN_INPUT_CLASS =
-  "h-9 rounded-lg border-[color:var(--aqt-border-2)] bg-white/[0.03] px-3 text-sm text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)] focus-visible:ring-0 focus-visible:border-[color:var(--aqt-border-2)]";
-const ADMIN_TEXTAREA_CLASS =
-  "min-h-[96px] rounded-lg border-[color:var(--aqt-border-2)] bg-white/[0.03] px-3 py-2 text-sm text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)] focus-visible:ring-0 focus-visible:border-[color:var(--aqt-border-2)]";
 
 const STATUS_CONFIG: Record<string, { icon: typeof Clock; className: string; label: string }> = {
   pending: { icon: Clock, className: "text-amber-500", label: "Pending" },
@@ -179,10 +141,10 @@ function formatSubmittedAt(value: string | null | undefined): string {
 function RolesCell({
   roles,
   catalog
-}: {
+}: Readonly<{
   roles: AdminRegistration["roles"];
   catalog?: SubroleCatalog;
-}) {
+}>) {
   if (roles.length === 0) {
     return <span className="text-muted-foreground">-</span>;
   }
@@ -218,34 +180,6 @@ function RolesCell({
           );
         })}
     </div>
-  );
-}
-
-function SourceBadge({ source }: { source: AdminRegistration["source"] }) {
-  return (
-    <Badge variant={source === "google_sheets" ? "secondary" : "outline"}>
-      {source === "google_sheets" ? "Google Sheets" : "Manual"}
-    </Badge>
-  );
-}
-
-function BalancerBadge({ registration }: { registration: AdminRegistration }) {
-  const status = registration.balancer_status ?? "not_in_balancer";
-  const config: Record<string, { variant: "default" | "outline" | "destructive"; label: string }> =
-    {
-      not_in_balancer: { variant: "outline", label: "Not Added" },
-      incomplete: { variant: "destructive", label: "Incomplete" },
-      ready: { variant: "default", label: "Ready" }
-    };
-  const { variant, label } = config[status] ?? config.not_in_balancer;
-  return <Badge variant={variant}>{label}</Badge>;
-}
-
-function CheckInBadge({ registration }: { registration: AdminRegistration }) {
-  return (
-    <Badge variant={registration.checked_in ? "default" : "outline"}>
-      {registration.checked_in ? "Checked In" : "Not Checked In"}
-    </Badge>
   );
 }
 
@@ -370,10 +304,6 @@ export default function RegistrationsTable({
   });
   const registrationStatusOptions = useMemo(
     () => mergeStatusOptions("registration", customStatusesQuery.data),
-    [customStatusesQuery.data]
-  );
-  const balancerStatusOptions = useMemo(
-    () => mergeStatusOptions("balancer", customStatusesQuery.data),
     [customStatusesQuery.data]
   );
 
@@ -973,10 +903,6 @@ export default function RegistrationsTable({
                       ) : null}
                       {group.registrations.map((registration, index) => {
                         const selectable = registration.status === "pending";
-                        const statusConfig =
-                          STATUS_CONFIG[registration.status] ?? STATUS_CONFIG.pending;
-                        const StatusIcon = statusConfig.icon;
-                        const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
                         const isExpanded = expandedIds.has(registration.id);
                         return (
                           <Fragment key={registration.id}>
@@ -1063,147 +989,6 @@ export default function RegistrationsTable({
                                   }
                                 />
                               </td>
-                              {false && (
-                                <>
-                                  <TableCell>
-                                    <div className="space-y-1">
-                                      <div className="font-medium">
-                                        {registration.battle_tag ??
-                                          registration.display_name ??
-                                          `Registration #${registration.id}`}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {[registration.discord_nick, registration.twitch_nick]
-                                          .filter(Boolean)
-                                          .join(" · ") ||
-                                          registration.source_record_key ||
-                                          "-"}
-                                      </div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <SourceBadge source={registration.source} />
-                                  </TableCell>
-                                  <TableCell>
-                                    <RolesCell
-                                      roles={registration.roles}
-                                      catalog={subroleCatalog}
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className={statusConfig.className}>
-                                      <StatusIcon className="mr-1 h-3.5 w-3.5" />
-                                      {statusConfig.label}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell>
-                                    <BalancerBadge registration={registration} />
-                                  </TableCell>
-                                  <TableCell>
-                                    <CheckInBadge registration={registration} />
-                                  </TableCell>
-                                  <TableCell className="text-sm text-muted-foreground">
-                                    {formatSubmittedAt(registration.submitted_at)}
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex flex-wrap gap-2">
-                                      {registration.status === "pending" ? (
-                                        <>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => approveMutation.mutate(registration.id)}
-                                          >
-                                            <Check className="mr-1.5 h-3.5 w-3.5" />
-                                            Approve
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => rejectMutation.mutate(registration.id)}
-                                          >
-                                            <X className="mr-1.5 h-3.5 w-3.5" />
-                                            Reject
-                                          </Button>
-                                        </>
-                                      ) : null}
-                                      {registration.status !== "withdrawn" ? (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => {
-                                            setEditingRegistration(registration);
-                                          }}
-                                        >
-                                          <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                          Edit
-                                        </Button>
-                                      ) : null}
-                                      {registration.status === "approved" ? (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() =>
-                                            balancerInclusionMutation.mutate({
-                                              registrationId: registration.id,
-                                              include: !inBalancer
-                                            })
-                                          }
-                                        >
-                                          {inBalancer ? (
-                                            <ShieldX className="mr-1.5 h-3.5 w-3.5" />
-                                          ) : (
-                                            <Check className="mr-1.5 h-3.5 w-3.5" />
-                                          )}
-                                          {inBalancer ? "Remove from Balancer" : "Add to Balancer"}
-                                        </Button>
-                                      ) : null}
-                                      {registration.status === "approved" ? (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() =>
-                                            checkInMutation.mutate({
-                                              registrationId: registration.id,
-                                              checkedIn: !registration.checked_in
-                                            })
-                                          }
-                                        >
-                                          <Check className="mr-1.5 h-3.5 w-3.5" />
-                                          {registration.checked_in ? "Uncheck-in" : "Check-in"}
-                                        </Button>
-                                      ) : null}
-                                      {registration.status === "withdrawn" ? (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => restoreMutation.mutate(registration.id)}
-                                        >
-                                          <Undo2 className="mr-1.5 h-3.5 w-3.5" />
-                                          Restore
-                                        </Button>
-                                      ) : (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => withdrawMutation.mutate(registration.id)}
-                                        >
-                                          <Undo2 className="mr-1.5 h-3.5 w-3.5" />
-                                          Withdraw
-                                        </Button>
-                                      )}
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => deleteMutation.mutate(registration.id)}
-                                      >
-                                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                                        Delete
-                                      </Button>
-                                    </div>
-                                  </TableCell>
-                                </>
-                              )}
                             </tr>
                             {isExpanded ? (
                               <tr className="border-b border-[color:var(--aqt-border)] bg-white/[0.015]">

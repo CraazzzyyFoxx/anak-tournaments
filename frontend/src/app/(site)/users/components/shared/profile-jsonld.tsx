@@ -1,4 +1,3 @@
-import React from "react";
 import type { User, UserProfile } from "@/types/user.types";
 import { getPlayerImage } from "@/utils/player";
 import { SITE_NAME, SITE_URL_OBJ } from "@/config/site";

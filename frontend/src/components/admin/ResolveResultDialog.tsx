@@ -65,7 +65,7 @@ export function ResolveResultDialog({
   open,
   onOpenChange,
   onResolved
-}: ResolveResultDialogProps) {
+}: Readonly<ResolveResultDialogProps>) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
 

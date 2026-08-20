@@ -115,7 +115,7 @@ function CommitField({
   disabled,
   className,
   inputMode
-}: {
+}: Readonly<{
   value: string;
   onCommit: (next: string) => void;
   /** Accessible name, e.g. `Rank of Nickname`. */
@@ -123,7 +123,7 @@ function CommitField({
   disabled?: boolean;
   className?: string;
   inputMode?: "numeric";
-}) {
+}>) {
   const [draft, setDraft] = useState<string | null>(null);
 
   const commit = () => {
@@ -178,13 +178,13 @@ function RoleSelect({
   onChange,
   label,
   disabled
-}: {
+}: Readonly<{
   value: PlayerRoleOption;
   onChange: (role: PlayerRoleOption) => void;
   /** Field name, e.g. `Role of Nickname`. */
   label: string;
   disabled?: boolean;
-}) {
+}>) {
   return (
     <Select
       value={value}
@@ -216,14 +216,14 @@ function SubRoleSelect({
   onChange,
   label,
   disabled
-}: {
+}: Readonly<{
   value: string;
   options: Array<{ slug: string; label: string }>;
   onChange: (subRole: string) => void;
   /** Field name, e.g. `Sub-role of Nickname`. */
   label: string;
   disabled?: boolean;
-}) {
+}>) {
   // A saved sub-role missing from the catalog (renamed, deactivated) still needs
   // an option, or Radix renders the trigger empty.
   const items =
@@ -259,13 +259,13 @@ function FlagToggle({
   icon: Icon,
   onToggle,
   disabled
-}: {
+}: Readonly<{
   active: boolean;
   label: string;
   icon: typeof Sparkles;
   onToggle: () => void;
   disabled?: boolean;
-}) {
+}>) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -304,7 +304,7 @@ export function TeamRosterEditor({
   canCreatePlayer,
   canUpdatePlayer,
   canDeletePlayer
-}: TeamRosterEditorProps) {
+}: Readonly<TeamRosterEditorProps>) {
   const queryClient = useQueryClient();
   const tableStyles = getAdminDetailTableStyles("compact");
   const [draft, setDraft] = useState<RosterDraft | null>(null);

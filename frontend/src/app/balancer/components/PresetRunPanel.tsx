@@ -73,7 +73,7 @@ export function PresetRunPanel({
   jobStatus,
   jobMessage,
   jobProgress
-}: PresetRunPanelProps) {
+}: Readonly<PresetRunPanelProps>) {
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 

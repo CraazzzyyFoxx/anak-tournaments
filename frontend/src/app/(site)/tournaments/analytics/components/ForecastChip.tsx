@@ -69,7 +69,7 @@ export default function ForecastChip({
   rawTooltip,
   className,
   focusable = true,
-}: ForecastChipProps) {
+}: Readonly<ForecastChipProps>) {
   const t = useTranslations();
   const meta = DIRECTION_META[direction];
   const { Icon } = meta;

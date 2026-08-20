@@ -43,7 +43,7 @@ interface VisibilityControlsProps {
   onUserUpdated: (user: User) => void;
 }
 
-function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: VisibilityControlsProps) {
+function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Readonly<VisibilityControlsProps>) {
   const queryClient = useQueryClient();
   const globalVisible = account.visible_global ?? true;
   const workspaceVisible = workspaceId != null && (account.visible_workspace_ids ?? []).includes(workspaceId);
@@ -95,7 +95,7 @@ interface AccountRowProps {
   onUserUpdated: (user: User) => void;
 }
 
-function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId, onUserUpdated }: AccountRowProps) {
+function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId, onUserUpdated }: Readonly<AccountRowProps>) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(account.username);
@@ -277,7 +277,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
 
 // ─── Add row (per provider) ──────────────────────────────────────────────────
 
-function AddAccountRow({ provider, userId, onUserUpdated }: { provider: SocialProvider; userId: number; onUserUpdated: (user: User) => void }) {
+function AddAccountRow({ provider, userId, onUserUpdated }: Readonly<{ provider: SocialProvider; userId: number; onUserUpdated: (user: User) => void }>) {
   const queryClient = useQueryClient();
   const [value, setValue] = useState("");
   const config = getSocialProviderConfig(provider);
@@ -338,7 +338,7 @@ export function SocialAccountsEditor({
   canSetVisibility,
   workspaceId,
   onUserUpdated,
-}: SocialAccountsEditorProps) {
+}: Readonly<SocialAccountsEditorProps>) {
   const countByProvider = useMemo(() => {
     const map = {} as Record<SocialProvider, number>;
     for (const provider of SOCIAL_PROVIDER_ORDER) map[provider] = socialAccountsForProvider(accounts, provider).length;

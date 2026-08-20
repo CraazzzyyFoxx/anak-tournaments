@@ -18,7 +18,7 @@ interface TintedBadgeProps {
  * subscriptions, streams): each domain supplies its own status vocabulary as
  * data (`styles`/`labels`) instead of re-implementing the badge.
  */
-export function TintedBadge({ value, styles, labels, fallback }: TintedBadgeProps) {
+export function TintedBadge({ value, styles, labels, fallback }: Readonly<TintedBadgeProps>) {
   return (
     <Badge variant="outline" className={styles[value ?? ""] ?? TONE_CLASS.neutral}>
       {value ? (labels?.[value] ?? value) : fallback}

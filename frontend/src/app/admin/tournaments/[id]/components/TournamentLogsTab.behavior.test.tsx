@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, type ReactNode } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -152,7 +152,7 @@ describe("TournamentLogsTab", () => {
   it("reports loaded-vs-matched progress and offers the next page", async () => {
     const scope = await mount();
 
-    const statuses = [...scope.querySelectorAll("[role='status']")].map((node) => node.textContent);
+    const statuses = [...scope.querySelectorAll("output")].map((node) => node.textContent);
     expect(statuses).toContain("Showing 25 of 128 logs");
     expect(scope.textContent).toContain("Load more logs");
   });

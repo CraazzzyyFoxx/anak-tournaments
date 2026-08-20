@@ -14,7 +14,7 @@ interface SocialAccountBadgeProps {
 }
 
 /** A single social identity rendered as a provider-tinted badge with a verified mark. */
-export function SocialAccountBadge({ account, linkify = true }: SocialAccountBadgeProps) {
+export function SocialAccountBadge({ account, linkify = true }: Readonly<SocialAccountBadgeProps>) {
   const t = useTranslations();
   const config = getSocialProviderConfig(account.provider);
   const url = linkify ? socialProfileUrl(account) : null;

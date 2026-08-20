@@ -122,14 +122,20 @@ async def _resolve_division_grid_version_id(
 
 
 async def get_tournament(session: AsyncSession, tournament_id: int) -> models.Tournament:
-    """Get one tournament with stages loaded for admin workspaces."""
+    """Get one tournament with stages and its own division grid loaded for admin workspaces."""
     result = await session.execute(
         select(models.Tournament)
         .where(models.Tournament.id == tournament_id)
         .options(
             selectinload(models.Tournament.stages)
             .selectinload(models.Stage.items)
-            .selectinload(models.StageItem.inputs)
+            .selectinload(models.StageItem.inputs),
+            # Eager, because `flows._loaded_relationship` reports an unloaded
+            # relationship as None rather than lazy-loading it outside the
+            # greenlet. Without this the admin read serializes
+            # `division_grid_version: null` even when the tournament pins one,
+            # and the hub falls back to the workspace/OW grid.
+            selectinload(models.Tournament.division_grid_version),
         )
     )
     tournament = result.scalar_one_or_none()

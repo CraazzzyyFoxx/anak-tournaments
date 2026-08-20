@@ -75,7 +75,7 @@ export function TournamentIntegrationsPanel({
   discordChannelLoading,
   challongeSlug,
   onChallongeSlugChange
-}: TournamentIntegrationsPanelProps) {
+}: Readonly<TournamentIntegrationsPanelProps>) {
   const queryClient = useQueryClient();
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
 

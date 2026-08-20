@@ -66,10 +66,10 @@ const DIFF_KIND_WORD: Record<AuditDiffKind, string> = {
 export function AuditFieldDiff({
   before,
   after,
-}: {
+}: Readonly<{
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
-}) {
+}>) {
   const rows = auditDiffRows(before, after);
 
   if (rows.length === 0) {
@@ -121,7 +121,7 @@ export function AuditFieldDiff({
 }
 
 /** Everything the compact line leaves out, shown only when asked for. */
-function AuditEntryDetail({ entry }: { entry: AuditLogRead }) {
+function AuditEntryDetail({ entry }: Readonly<{ entry: AuditLogRead }>) {
   const meta: Array<{ label: string; value: string }> = [
     { label: "Source", value: auditSourceLabel(entry.source) },
     ...(entry.ip_address ? [{ label: "IP", value: entry.ip_address }] : []),
@@ -154,7 +154,7 @@ function AuditEntryDetail({ entry }: { entry: AuditLogRead }) {
   );
 }
 
-function AuditEntry({ entry }: { entry: AuditLogRead }) {
+function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
   const [open, setOpen] = useState(false);
   const action = describeAuditAction(entry.action);
   const hasDetail =
@@ -233,7 +233,7 @@ export interface AuditTrailProps {
  * than a table: it lives inside a settings page, and one entity's history is
  * read top-to-bottom, not sorted and filtered.
  */
-export function AuditTrail({ entityType, entityId, workspaceId }: AuditTrailProps) {
+export function AuditTrail({ entityType, entityId, workspaceId }: Readonly<AuditTrailProps>) {
   const entityNoun = (auditEntityLabel(entityType) ?? "record").toLowerCase();
 
   const trailQuery = useQuery({
@@ -260,6 +260,51 @@ export function AuditTrail({ entityType, entityId, workspaceId }: AuditTrailProp
   const entries = trailQuery.data?.results ?? [];
   const feedHref = `/admin/audit?entity_type=${encodeURIComponent(entityType)}&entity_id=${entityId}`;
 
+  // One body per state, in priority order. The three empty states below are
+  // distinct claims about history, so they are never collapsed into one.
+  const renderTrailBody = () => {
+    if (trailQuery.isLoading) {
+      return <p className="text-xs text-muted-foreground">Loading…</p>;
+    }
+    if (trailQuery.isError) {
+      return renderTrailError(trailQuery.error, entityNoun);
+    }
+    if (entries.length > 0) {
+      return (
+        <ul className="divide-y divide-border/30">
+          {entries.map((entry) => (
+            <AuditEntry key={entry.id} entry={entry} />
+          ))}
+        </ul>
+      );
+    }
+    if (historyStart.isLoading) {
+      return <p className="text-xs text-muted-foreground">Loading…</p>;
+    }
+    if (historyStart.data) {
+      // Empty state 1 of 3: the journal runs, this entity is simply older than
+      // it. There is no backfill, so for the first months this is the common
+      // case — and saying only "no changes" here would assert that nobody
+      // touched the record, which is the one claim the audit log exists to be
+      // able to make truthfully.
+      return (
+        <p className="text-xs text-muted-foreground">
+          No changes recorded for this {entityNoun}. The audit log in this workspace starts on{" "}
+          <span className="text-foreground">{formatAuditDate(historyStart.data)}</span> — anything
+          done before that date left no trail.
+        </p>
+      );
+    }
+    // Empty state 2 of 3: nothing anywhere in this workspace yet, so there is
+    // no start date to quote and no claim to make about this entity.
+    return (
+      <p className="text-xs text-muted-foreground">
+        The audit log has no entries in this workspace yet. It records admin actions from the moment
+        it was switched on, so history begins with the next change.
+      </p>
+    );
+  };
+
   return (
     <section className="rounded-xl border border-border/50 bg-card/50">
       <header className="flex items-center gap-2 border-b border-border/40 px-4 py-2.5">
@@ -269,10 +314,10 @@ export function AuditTrail({ entityType, entityId, workspaceId }: AuditTrailProp
           <span className="text-xs tabular-nums text-muted-foreground">{total} recorded</span>
         ) : null}
         {trailQuery.isFetching ? (
-          <span role="status" className="flex items-center text-muted-foreground">
+          <output className="flex items-center text-muted-foreground">
             <LoaderCircle aria-hidden className="size-3 animate-spin" />
             <span className="sr-only">Loading change history…</span>
-          </span>
+          </output>
         ) : null}
         {total > entries.length ? (
           <Link
@@ -284,39 +329,7 @@ export function AuditTrail({ entityType, entityId, workspaceId }: AuditTrailProp
         ) : null}
       </header>
 
-      <div className="px-4 py-3">
-        {trailQuery.isLoading ? (
-          <p className="text-xs text-muted-foreground">Loading…</p>
-        ) : trailQuery.isError ? (
-          renderTrailError(trailQuery.error, entityNoun)
-        ) : entries.length > 0 ? (
-          <ul className="divide-y divide-border/30">
-            {entries.map((entry) => (
-              <AuditEntry key={entry.id} entry={entry} />
-            ))}
-          </ul>
-        ) : historyStart.isLoading ? (
-          <p className="text-xs text-muted-foreground">Loading…</p>
-        ) : historyStart.data ? (
-          // Empty state 1 of 3: the journal runs, this entity is simply older
-          // than it. There is no backfill, so for the first months this is the
-          // common case — and saying only "no changes" here would assert that
-          // nobody touched the record, which is the one claim the audit log
-          // exists to be able to make truthfully.
-          <p className="text-xs text-muted-foreground">
-            No changes recorded for this {entityNoun}. The audit log in this workspace starts on{" "}
-            <span className="text-foreground">{formatAuditDate(historyStart.data)}</span> — anything
-            done before that date left no trail.
-          </p>
-        ) : (
-          // Empty state 2 of 3: nothing anywhere in this workspace yet, so there
-          // is no start date to quote and no claim to make about this entity.
-          <p className="text-xs text-muted-foreground">
-            The audit log has no entries in this workspace yet. It records admin actions from the
-            moment it was switched on, so history begins with the next change.
-          </p>
-        )}
-      </div>
+      <div className="px-4 py-3">{renderTrailBody()}</div>
     </section>
   );
 }

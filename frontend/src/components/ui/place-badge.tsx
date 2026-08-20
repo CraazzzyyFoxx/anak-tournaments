@@ -1,4 +1,3 @@
-import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -12,10 +11,10 @@ import { cn } from "@/lib/utils";
 export function PlaceBadge({
   place,
   className
-}: {
+}: Readonly<{
   place: number;
   className?: string;
-}) {
+}>) {
   const tier = place === 1 ? "gold" : place === 2 ? "silver" : place === 3 ? "bronze" : "default";
 
   return (

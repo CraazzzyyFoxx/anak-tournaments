@@ -50,7 +50,7 @@ function getInitials(username?: string | null) {
   return username.slice(0, 2).toUpperCase();
 }
 
-export function SidebarWorkspaceLogoItem({ href }: { href: string }) {
+export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
   const { user, status } = useAuthProfile();
   const { workspaces: allWorkspaces, currentWorkspaceId } = useWorkspaceStore();
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);

@@ -112,8 +112,10 @@ def _dump(obj: Any) -> Any:
 
 async def _ser_tournament(session: AsyncSession, m: Any) -> Any:
     # `roster_shape` is opt-in (D16): the admin Settings tab renders the roster
-    # form from it, so this read must ask for it explicitly.
-    return _dump(await tournament_flows.to_pydantic(session, m, ["stages", "roster_shape"]))
+    # form from it, so this read must ask for it explicitly. `division_grid_version`
+    # is the same kind of opt-in: the hub's draft setup resolves player divisions
+    # against the tournament's OWN grid, not the workspace default.
+    return _dump(await tournament_flows.to_pydantic(session, m, ["stages", "roster_shape", "division_grid_version"]))
 
 
 async def _ser_team(session: AsyncSession, m: Any) -> Any:

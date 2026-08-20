@@ -37,7 +37,7 @@ export default function TournamentHero({
   algorithmName,
   totals,
   controlsSlot,
-}: TournamentHeroProps) {
+}: Readonly<TournamentHeroProps>) {
   const t = useTranslations();
   const locale = useLocale();
 

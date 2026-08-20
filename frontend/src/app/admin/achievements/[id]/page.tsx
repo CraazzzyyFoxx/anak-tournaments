@@ -8,7 +8,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  Check,
   Crosshair,
   Eye,
   EyeOff,
@@ -16,7 +15,6 @@ import {
   Hash,
   Layers,
   Map,
-  ImagePlus,
   Pencil,
   Play,
   Swords,
@@ -31,7 +29,6 @@ import {
   X
 } from "lucide-react";
 
-import { AchievementCombobox } from "@/components/admin/achievements/AchievementCombobox";
 import { ConditionFlowEditor } from "@/components/admin/achievements/ConditionFlowEditor";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
@@ -122,17 +119,17 @@ const GRAIN_ICONS: Record<string, typeof Globe> = {
   user_match: Crosshair
 };
 
-function CategoryIcon({ category }: { category: string }) {
+function CategoryIcon({ category }: Readonly<{ category: string }>) {
   const Icon = CATEGORY_ICONS[category] ?? Globe;
   return <Icon className="h-4 w-4 text-muted-foreground" />;
 }
 
-function ScopeIcon({ scope }: { scope: string }) {
+function ScopeIcon({ scope }: Readonly<{ scope: string }>) {
   const Icon = SCOPE_ICONS[scope] ?? Globe;
   return <Icon className="h-4 w-4 text-muted-foreground" />;
 }
 
-function GrainIcon({ grain }: { grain: string }) {
+function GrainIcon({ grain }: Readonly<{ grain: string }>) {
   const Icon = GRAIN_ICONS[grain] ?? User;
   return <Icon className="h-4 w-4 text-muted-foreground" />;
 }
@@ -143,13 +140,13 @@ function SortableHead({
   currentSort,
   currentOrder,
   onSort
-}: {
+}: Readonly<{
   field: string;
   label: string;
   currentSort: string;
   currentOrder: "asc" | "desc";
   onSort: (field: string) => void;
-}) {
+}>) {
   const isActive = currentSort === field;
   return (
     <TableHead aria-sort={isActive ? (currentOrder === "asc" ? "ascending" : "descending") : "none"}>
@@ -236,12 +233,6 @@ export default function AchievementDetailPage() {
   const { data: tournaments } = useQuery({
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll(null)
-  });
-
-  const { data: allRules } = useQuery({
-    queryKey: ["admin", "achievements", workspaceId],
-    queryFn: () => adminService.getAchievementRules(workspaceId!),
-    enabled: !!workspaceId
   });
 
   const {

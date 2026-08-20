@@ -79,7 +79,7 @@ export function BalanceImageExportDialog({
   payload,
   divisionGrid,
   tournamentId
-}: BalanceImageExportDialogProps) {
+}: Readonly<BalanceImageExportDialogProps>) {
   const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const fullImageRef = useRef<HTMLDivElement | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
@@ -334,11 +334,11 @@ function BalanceImageCaptureFrame({
   refCallback,
   entries,
   divisionGrid
-}: {
+}: Readonly<{
   refCallback: (node: HTMLDivElement | null) => void;
   entries: TeamExportEntry[];
   divisionGrid: DivisionGrid;
-}) {
+}>) {
   return (
     <div
       ref={refCallback}
@@ -363,11 +363,11 @@ function BalanceExportTeamCard({
   team,
   teamIndex,
   divisionGrid
-}: {
+}: Readonly<{
   team: InternalBalanceTeam;
   teamIndex: number;
   divisionGrid: DivisionGrid;
-}) {
+}>) {
   const total = Math.round(calculateTeamTotalFromPayload(team));
   const average = Math.round(calculateTeamAverageFromPayload(team));
   const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
@@ -483,7 +483,7 @@ function BalanceExportTeamCard({
   );
 }
 
-function ExportDivisionIcon({ divisionGrid, rank }: { divisionGrid: DivisionGrid; rank: number }) {
+function ExportDivisionIcon({ divisionGrid, rank }: Readonly<{ divisionGrid: DivisionGrid; rank: number }>) {
   const division = resolveDivisionFromRank(divisionGrid, rank);
   const src = getDivisionIconSrc(divisionGrid, division);
   const label = getDivisionLabel(divisionGrid, division);

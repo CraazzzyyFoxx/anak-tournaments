@@ -27,7 +27,7 @@ interface PickBanItemThumbProps {
  * app's canonical hero renderer, initials fallback included — so only the map
  * shape is implemented here.
  */
-export function PickBanItemThumb({ kind, item, name, size = 28, muted }: PickBanItemThumbProps) {
+export function PickBanItemThumb({ kind, item, name, size = 28, muted }: Readonly<PickBanItemThumbProps>) {
   if (kind === "hero") {
     return (
       <HeroImage

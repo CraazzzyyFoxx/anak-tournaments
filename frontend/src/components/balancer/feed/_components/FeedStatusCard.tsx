@@ -22,7 +22,7 @@ interface FeedStatusCardProps {
 }
 
 /** Lifted from the original page's `FeedStatus`, wrapped in a Card. */
-export function FeedStatusCard({ feed }: FeedStatusCardProps) {
+export function FeedStatusCard({ feed }: Readonly<FeedStatusCardProps>) {
   return (
     <Card>
       <CardHeader>

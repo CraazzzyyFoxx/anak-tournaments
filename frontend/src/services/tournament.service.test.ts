@@ -70,6 +70,7 @@ describe("tournamentService.getPublicOverview", () => {
               "registrations_count",
               "teams_count",
               "links",
+              "division_grid_version",
             ],
           },
         },

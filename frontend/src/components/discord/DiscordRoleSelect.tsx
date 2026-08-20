@@ -25,7 +25,7 @@ export interface DiscordRoleSelectProps {
 
 /** Discord ships a per-role hex, which is real data and belongs inline. Anything
  *  else is not a colour we will hand to `style`, so it falls back to a token. */
-function RoleDot({ color }: { color: string | null | undefined }) {
+function RoleDot({ color }: Readonly<{ color: string | null | undefined }>) {
   const hex = color && /^#[0-9A-Fa-f]{6}$/.test(color) ? color : null;
   return (
     <span
@@ -46,7 +46,7 @@ export function DiscordRoleSelect({
   ariaLabel,
   id,
   className
-}: DiscordRoleSelectProps) {
+}: Readonly<DiscordRoleSelectProps>) {
   const t = useTranslations("discord.role");
   const { data, isLoading, refetch } = useDiscordRoles(workspaceId);
   const [manualMode, setManualMode] = React.useState(false);

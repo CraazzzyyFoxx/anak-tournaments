@@ -1,4 +1,3 @@
-import React from "react";
 import { getTranslations } from "next-intl/server";
 import { ArrowRight, Award } from "lucide-react";
 import Image from "next/image";

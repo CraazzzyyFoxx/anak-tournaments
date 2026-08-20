@@ -8,7 +8,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { GlossaryTerm, isAnomalyGlossaryTerm } from "../analytics-glossary";
 
@@ -45,7 +44,7 @@ export default function AnomalyTooltip({
   children,
   focusable = true,
   side = "top",
-}: AnomalyTooltipProps) {
+}: Readonly<AnomalyTooltipProps>) {
   const t = useTranslations();
   const isKnown = isAnomalyGlossaryTerm(kind);
   const label = isKnown ? t(`analytics.glossary.${kind as GlossaryTerm}.label`) : capitalize(kind);

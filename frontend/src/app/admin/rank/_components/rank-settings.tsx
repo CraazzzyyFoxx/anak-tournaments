@@ -98,9 +98,9 @@ export function RankSettingsPanel() {
 /** Shared save button + success/error status shown by both settings cards below. */
 function SaveButtonStatus({
   mutation
-}: {
+}: Readonly<{
   mutation: { mutate: () => void; isPending: boolean; isSuccess: boolean; isError: boolean };
-}) {
+}>) {
   return (
     <>
       <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
@@ -117,10 +117,10 @@ function SaveButtonStatus({
 function RankCollectionSection({
   setting,
   onSaved
-}: {
+}: Readonly<{
   setting: SettingRead | undefined;
   onSaved: () => void;
-}) {
+}>) {
   const initial = useMemo<RankCollectionConfig>(
     () => ({ ...DEFAULT_COLLECTION, ...((setting?.value as Partial<RankCollectionConfig>) ?? {}) }),
     [setting]
@@ -286,10 +286,10 @@ function RankCollectionSection({
 function RankMappingSection({
   setting,
   onSaved
-}: {
+}: Readonly<{
   setting: SettingRead | undefined;
   onSaved: () => void;
-}) {
+}>) {
   // The OW ladder, NOT the current workspace's grid: `parser.rank_mapping` is a
   // global setting, and the backend re-resolves each stored rank_value through a
   // tournament's own grid at autofill time (rank_sources._map_ow_rank_value), so
