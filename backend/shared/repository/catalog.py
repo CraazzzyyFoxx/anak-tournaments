@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core import enums
@@ -161,27 +162,46 @@ class GamemodeRepository(BaseRepository[models.Gamemode]):
         result = await session.execute(sa.select(models.Gamemode.id, models.Gamemode.name).order_by(models.Gamemode.name))
         return result.all()
 
-    async def get_with_maps(self, session: AsyncSession, gamemode_id: int) -> models.Gamemode | None:
-        return await self.get(session, gamemode_id, options=[selectinload(models.Gamemode.maps)])
+    @staticmethod
+    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
+        """Loader options for the relations an ``entities`` token list asks for.
+
+        ``maps`` is the only expandable relation on a gamemode. Which relation a
+        token loads is a property of the table, not of the request, so it lives
+        here rather than in a per-caller ``if "maps" in entities`` branch — and
+        unknown tokens are ignored, so a caller may pass its whole list through.
+        """
+        return [selectinload(models.Gamemode.maps)] if "maps" in entities else []
+
+    async def get_expanded(
+        self, session: AsyncSession, gamemode_id: int, entities: Sequence[str] = ()
+    ) -> models.Gamemode | None:
+        return await self.get(session, gamemode_id, options=self.load_options(entities))
 
     async def all(
         self,
         session: AsyncSession,
         params: PaginationSortSearchParams,
         *,
-        with_maps: bool = False,
+        entities: Sequence[str] = (),
     ) -> tuple[Sequence[models.Gamemode], int]:
-        """Paginated gamemodes — optionally eager-loads `Gamemode.maps`."""
-        options = [selectinload(models.Gamemode.maps)] if with_maps else None
-        return await self.get_all(session, params, options=options)
+        return await self.get_all(session, params, options=self.load_options(entities))
 
 
 class MapRepository(BaseRepository[models.Map]):
     def __init__(self) -> None:
         super().__init__(models.Map)
 
-    async def get_with_gamemode(self, session: AsyncSession, map_id: int) -> models.Map | None:
-        return await self.get(session, map_id, options=[selectinload(models.Map.gamemode)])
+    @staticmethod
+    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
+        """``gamemode`` is the only expandable relation on a map — see
+        `GamemodeRepository.load_options`."""
+        return [selectinload(models.Map.gamemode)] if "gamemode" in entities else []
+
+    async def get_expanded(
+        self, session: AsyncSession, map_id: int, entities: Sequence[str] = ()
+    ) -> models.Map | None:
+        return await self.get(session, map_id, options=self.load_options(entities))
 
     async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
         """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
@@ -193,10 +213,9 @@ class MapRepository(BaseRepository[models.Map]):
         session: AsyncSession,
         name: str,
         *,
-        with_gamemode: bool = False,
+        entities: Sequence[str] = (),
     ) -> models.Map | None:
-        options = [selectinload(models.Map.gamemode)] if with_gamemode else None
-        return await self.get_by(session, options=options, name=name)
+        return await self.get_by(session, options=self.load_options(entities), name=name)
 
     @staticmethod
     def build_name_or_alias_query(*, name: str, gamemode: str) -> sa.Select:
@@ -243,11 +262,9 @@ class MapRepository(BaseRepository[models.Map]):
         session: AsyncSession,
         params: PaginationSortParams | PaginationSortSearchParams,
         *,
-        with_gamemode: bool = False,
+        entities: Sequence[str] = (),
     ) -> tuple[Sequence[models.Map], int]:
-        """Paginated maps — optionally eager-loads `Map.gamemode`."""
-        options = [selectinload(models.Map.gamemode)] if with_gamemode else None
-        return await self.get_all(session, params, options=options)
+        return await self.get_all(session, params, options=self.load_options(entities))
 
 
 class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):

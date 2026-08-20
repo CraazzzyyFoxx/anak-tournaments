@@ -82,7 +82,7 @@ class MapAdminService:
 
     async def update_map(self, session: AsyncSession, map_id: int, data: admin_schemas.MapUpdate) -> models.Map:
         """Update map fields"""
-        map_obj = await self.repo.get_with_gamemode(session, map_id)
+        map_obj = await self.repo.get_expanded(session, map_id, ("gamemode",))
 
         if not map_obj:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")

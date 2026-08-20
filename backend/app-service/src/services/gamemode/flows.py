@@ -28,11 +28,7 @@ class GamemodeService:
 
         ``entities`` accepts ``"maps"``; without that token the maps are not loaded.
         """
-        gamemode = (
-            await self.repo.get_with_maps(session, gamemode_id)
-            if "maps" in entities
-            else await self.repo.get(session, gamemode_id)
-        )
+        gamemode = await self.repo.get_expanded(session, gamemode_id, entities)
 
         if not gamemode:
             raise errors.ApiHTTPException(
@@ -53,7 +49,7 @@ class GamemodeService:
         """Paginated gamemodes, with their maps eager-loaded when ``params.entities``
         contains ``"maps"``.
         """
-        gamemodes, total = await self.repo.all(session, params, with_maps="maps" in params.entities)
+        gamemodes, total = await self.repo.all(session, params, entities=params.entities)
         return pagination.Paginated(
             total=total,
             per_page=params.per_page,

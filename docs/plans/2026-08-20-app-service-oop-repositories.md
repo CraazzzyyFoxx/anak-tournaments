@@ -394,3 +394,34 @@ its forbidden list along with the modules.
 
 Gates unchanged: **338 passed, 0 failed, 172 skipped**; ruff clean; import-linter 4/4; zero
 app-service entries in `APPROVED_DIRECT_WRITE_FILES` and zero offenders.
+
+### 7.1 `entities` token resolution moved into the repositories
+
+`GamemodeService.get` and `MapService.get`/`get_by_name`/`get_all` each branched on an entity token
+to pick between two named repository methods:
+
+```python
+game_map = await self.repo.get_with_gamemode(session, id) if "gamemode" in entities else await self.repo.get(session, id)
+```
+
+Which relation a token eager-loads is a property of the table, not of the request, and the
+repositories already owned the loader options (`get_with_maps`, `get_with_gamemode`,
+`all(with_maps=...)`). `services/user/queries/_scope.py` already resolved tokens to options below the
+service layer, so the precedent existed. `GamemodeRepository`/`MapRepository` now expose
+`load_options(entities)` plus `get_expanded(session, id, entities)`, and `all` / `get_by_name` take
+`entities` instead of a boolean flag. Unknown tokens are ignored, so a caller passes its whole list
+straight through and six `if "x" in entities` branches disappear.
+
+Nothing else in the backend used the old signatures — verified before changing them; the only other
+consumer of `MapRepository` is parser-service's alias resolution, which never passed the flag.
+
+What this does **not** do is delete the service: the 404 and the ORM->pydantic mapping stay, and
+`repository-boundaries.md` bars both from a repository (no HTTP errors, no pydantic), while
+`src/schemas/**` imports no ORM model by design. `GamemodeService.get` is now four lines instead of
+a branch, which is the honest floor for that method.
+
+There is a route to deleting it entirely — `CrudDispatcher._get` already raises the 404 from
+`cfg.not_found_detail` when the generic `cfg.repo.get` path returns None, and `cfg.serializer` could
+carry the projection. It needs `EntityConfig` to pass request-scoped load options into that generic
+path, i.e. a change to `shared/rpc/crud.py`, which `tournament-service/src/services/admin/registry.py`
+relies on for 7 of its 10 entities. Cross-service engine surgery for one saved class: not taken.

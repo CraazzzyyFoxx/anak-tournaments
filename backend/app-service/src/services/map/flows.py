@@ -32,8 +32,8 @@ class MapService:
         """Serialize a Map into ``MapRead``, expanding the requested relations.
 
         ``entities`` only gates ``gamemode``; the relation must already be loaded by
-        the caller's query (``MapRepository.get_with_gamemode`` / ``selectinload``),
-        so this stays a pure in-memory projection.
+        the caller's query (`MapRepository.load_options`), so this stays a pure
+        in-memory projection.
 
         The one-line ``GamemodeRead`` construction is duplicated from
         ``GamemodeService.to_read`` on purpose: importing the gamemode service would
@@ -50,8 +50,7 @@ class MapService:
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> schemas.MapRead:
         """Retrieve a map by ID and convert to its Pydantic schema."""
-        with_gamemode = "gamemode" in entities
-        game_map = await self.repo.get_with_gamemode(session, id) if with_gamemode else await self.repo.get(session, id)
+        game_map = await self.repo.get_expanded(session, id, entities)
         if not game_map:
             raise errors.ApiHTTPException(
                 status_code=404,
@@ -63,7 +62,7 @@ class MapService:
 
     async def get_by_name(self, session: AsyncSession, name: str, entities: list[str]) -> schemas.MapRead:
         """Retrieve a map by name (404 if missing)."""
-        game_map = await self.repo.get_by_name(session, name, with_gamemode="gamemode" in entities)
+        game_map = await self.repo.get_by_name(session, name, entities=entities)
         if not game_map:
             raise errors.ApiHTTPException(
                 status_code=404,
@@ -77,7 +76,7 @@ class MapService:
         self, session: AsyncSession, params: pagination.PaginationSortParams
     ) -> pagination.Paginated[schemas.MapRead]:
         """Paginated maps — delegates to `MapRepository.all`."""
-        game_maps, total = await self.repo.all(session, params, with_gamemode="gamemode" in params.entities)
+        game_maps, total = await self.repo.all(session, params, entities=params.entities)
         return pagination.Paginated(
             total=total,
             page=params.page,
