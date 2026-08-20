@@ -1,4 +1,3 @@
-import React from "react";
 import { HeroFrame } from "@/components/site/PageHero";
 
 /**

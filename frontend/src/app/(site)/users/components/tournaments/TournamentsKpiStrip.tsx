@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useTranslations } from "next-intl";
 import { UserProfile, UserTournament } from "@/types/user.types";
 import { leagueKey } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";

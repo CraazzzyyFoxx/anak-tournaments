@@ -24,7 +24,7 @@ interface PreviewTableProps {
 }
 
 /** Read the source value(s) for a target from the preview row's raw cells. */
-function sourceValue(target: MappingTargetDef, state: MappingTargetState | undefined, row: MappingPreviewRow): string {
+function sourceValue(_target: MappingTargetDef, state: MappingTargetState | undefined, row: MappingPreviewRow): string {
   if (!state || state.mode === "disabled") {
     return "";
   }

@@ -1,4 +1,3 @@
-import React from "react";
 import { getTranslations } from "next-intl/server";
 import userService from "@/services/user.service";
 import { User } from "@/types/user.types";

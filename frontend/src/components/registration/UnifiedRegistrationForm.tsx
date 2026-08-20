@@ -119,7 +119,6 @@ interface UnifiedRegistrationFormProps {
 export default function UnifiedRegistrationForm({
   mode,
   tournamentId,
-  workspaceId,
   formConfig,
   tournamentName,
   initialData,

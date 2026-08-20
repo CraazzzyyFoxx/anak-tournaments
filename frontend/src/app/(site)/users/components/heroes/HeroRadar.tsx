@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useTranslations } from "next-intl";
 import { LogStatsName } from "@/types/stats.types";
 import { getHumanizedStats } from "@/utils/stats";

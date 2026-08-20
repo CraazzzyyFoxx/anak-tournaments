@@ -1,4 +1,3 @@
-import React from "react";
 import { getTranslations } from "next-intl/server";
 import { Medal } from "lucide-react";
 import { UserProfile, UserTournament } from "@/types/user.types";

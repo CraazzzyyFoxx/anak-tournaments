@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { ScrollText } from "lucide-react";
 import { useTranslations } from "next-intl";
 

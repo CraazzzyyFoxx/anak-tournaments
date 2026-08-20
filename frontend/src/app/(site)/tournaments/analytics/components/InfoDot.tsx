@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 
 import { useTranslations } from "next-intl";
 import MetricTooltip from "@/app/(site)/tournaments/analytics/components/MetricTooltip";

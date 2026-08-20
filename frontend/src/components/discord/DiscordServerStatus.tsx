@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { CheckCircle2, XCircle, Users, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 

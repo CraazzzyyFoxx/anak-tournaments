@@ -1,7 +1,6 @@
 import { LookupItem, PaginatedResponse } from "@/types/pagination.types";
 import { MapVetoConfig, OwalStack, OwalStandings, Stage, Standings, Tournament } from "@/types/tournament.types";
 import { apiFetch } from "@/lib/api-fetch";
-import { PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
 import { normalizePaginatedResponse } from "@/lib/normalize-paginated-response";
 
 type GetStandingsOptions = {

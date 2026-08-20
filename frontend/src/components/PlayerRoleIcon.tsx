@@ -1,4 +1,3 @@
-import React from "react";
 import { useTranslations } from "next-intl";
 import TankIcon from "@/components/icons/TankIcon";
 import DamageIcon from "@/components/icons/DamageIcon";

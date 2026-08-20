@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useTranslations } from "next-intl";
 import { ArrowDown, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";

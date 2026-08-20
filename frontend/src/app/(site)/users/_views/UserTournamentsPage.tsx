@@ -1,4 +1,3 @@
-import React from "react";
 import { User } from "@/types/user.types";
 import { Skeleton } from "@/components/ui/skeleton";
 import userService from "@/services/user.service";

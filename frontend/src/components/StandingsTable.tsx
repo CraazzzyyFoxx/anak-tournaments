@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { sortStandingsMatches } from "@/lib/tournament-match-order";
 import { useTranslations } from "next-intl";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
-import { formatTiebreakOrder, tiebreakerLabel, type TiebreakerMetricId } from "@/lib/tiebreakers";
+import { tiebreakerLabel, type TiebreakerMetricId } from "@/lib/tiebreakers";
 import tournamentService from "@/services/tournament.service";
 import styles from "./StandingsTable.module.css";
 import TeamName from "@/components/TeamName";
@@ -163,9 +163,6 @@ const StandingsTable = ({
     const label = t(key);
     return label === key ? undefined : label;
   };
-  const tiebreakLegend = is_groups
-    ? formatTiebreakOrder(sortedStandings[0]?.tiebreak_order, labelFor)
-    : "";
 
   return (
     <div>

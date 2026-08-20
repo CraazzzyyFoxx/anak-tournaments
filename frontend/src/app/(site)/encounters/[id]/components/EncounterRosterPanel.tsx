@@ -1,4 +1,3 @@
-import React from "react";
 import { useTranslations } from "next-intl";
 import { CircleMinus, CirclePlus, Crown, Repeat2 } from "lucide-react";
 

@@ -8,7 +8,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  Check,
   Crosshair,
   Eye,
   EyeOff,
@@ -16,7 +15,6 @@ import {
   Hash,
   Layers,
   Map,
-  ImagePlus,
   Pencil,
   Play,
   Swords,
@@ -31,7 +29,6 @@ import {
   X
 } from "lucide-react";
 
-import { AchievementCombobox } from "@/components/admin/achievements/AchievementCombobox";
 import { ConditionFlowEditor } from "@/components/admin/achievements/ConditionFlowEditor";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
@@ -236,12 +233,6 @@ export default function AchievementDetailPage() {
   const { data: tournaments } = useQuery({
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll(null)
-  });
-
-  const { data: allRules } = useQuery({
-    queryKey: ["admin", "achievements", workspaceId],
-    queryFn: () => adminService.getAchievementRules(workspaceId!),
-    enabled: !!workspaceId
   });
 
   const {

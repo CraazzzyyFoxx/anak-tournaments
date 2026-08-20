@@ -6,7 +6,6 @@ import {
   buildRosterByTeam,
   filterDraftPlayers,
   normalizeTopHeroes,
-  roleTopHeroes,
   groupPicksByRound,
   rosterRoleForPlayer,
   slotRankForPlayer,

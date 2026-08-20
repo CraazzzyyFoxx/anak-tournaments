@@ -242,7 +242,6 @@ export function PlayerProfileDialog({
   user: initialUser,
   onClose,
   canEdit,
-  canDelete,
   canManageIdentity,
   canSetVisibility,
   workspaceId,

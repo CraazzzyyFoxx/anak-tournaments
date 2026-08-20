@@ -91,7 +91,6 @@ import type {
   AchievementCategory,
   AchievementScope,
   AchievementGrain,
-  AchievementOverrideRead,
   EvaluationRunRead,
 } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";

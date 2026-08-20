@@ -13,7 +13,7 @@ import {
   isRegistrationAvailableForBalancer,
   type BalanceVariant,
 } from "./workspace-helpers";
-import { countTeamPlayers, type PlayerValidationState } from "./balancer-page-helpers";
+import { type PlayerValidationState } from "./balancer-page-helpers";
 
 export type BalancerPageCollections = {
   registrationsById: Map<number, AdminRegistration>;
@@ -110,16 +110,6 @@ export function getDefaultCollapsedTeamIds(variant: BalanceVariant | null): numb
   const teamIds = variant.payload.teams.map((team) => team.id);
   const expandedByDefault = new Set(teamIds.slice(0, 4));
   return teamIds.filter((teamId) => !expandedByDefault.has(teamId));
-}
-
-function getVariantPlayerCount(
-  payload: InternalBalancePayload | null | undefined,
-): number {
-  if (!payload) {
-    return 0;
-  }
-
-  return payload.teams.reduce((sum, team) => sum + countTeamPlayers(team), 0);
 }
 
 export function getCanRunBalance(options: {

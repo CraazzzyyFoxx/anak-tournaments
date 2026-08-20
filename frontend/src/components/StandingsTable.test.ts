@@ -28,7 +28,7 @@ describe("StandingsTable", () => {
   it("renders the active tiebreaker legend for group standings", () => {
     const source = readFileSync(join(import.meta.dir, "StandingsTable.tsx"), "utf8");
 
-    expect(source).toContain("formatTiebreakOrder");
+    expect(source).toContain("tiebreakerLabel");
     expect(source).toContain('t("common.tiebreakers")');
   });
 });

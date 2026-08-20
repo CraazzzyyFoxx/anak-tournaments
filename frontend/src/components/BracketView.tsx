@@ -269,7 +269,7 @@ function layoutBracketColumn(params: {
 function buildLayout(
   encounters: Encounter[],
   type: StageType,
-  t: Translate,
+  _t: Translate,
   roundLabel: BracketRoundLabelFormatter
 ): BracketLayout {
   const hasBracketConnections = type === "single_elimination" || type === "double_elimination";

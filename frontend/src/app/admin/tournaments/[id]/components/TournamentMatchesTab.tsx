@@ -450,9 +450,6 @@ export function TournamentMatchesTab({
       ? encounters
       : encounters.filter((encounter) => getEncounterScopeKey(encounter) === encounterScopeFilter);
   const visibleEncounters = filteredEncounters.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT);
-  const completedFilteredEncounterCount = filteredEncounters.filter(
-    (encounter) => encounter.status?.toUpperCase() === "COMPLETED"
-  ).length;
   const filteredStandings =
     standingsGroupFilter === "all"
       ? standings

@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import type { ReactNode } from "react";
 import { useFormatter } from "next-intl";
 

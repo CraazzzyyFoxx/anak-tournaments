@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 

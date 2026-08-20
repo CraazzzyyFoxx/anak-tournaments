@@ -1,4 +1,3 @@
-import React from "react";
 import { getTranslations } from "next-intl/server";
 import { Layers } from "lucide-react";
 import { UserProfile, UserRole, UserMapRead } from "@/types/user.types";

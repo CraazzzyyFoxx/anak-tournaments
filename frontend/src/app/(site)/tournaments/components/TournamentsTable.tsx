@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { LayoutGrid, ArrowUpRight } from "lucide-react";

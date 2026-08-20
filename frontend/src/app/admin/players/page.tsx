@@ -32,7 +32,7 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
 import { Player, Team } from "@/types/team.types";
-import { PlayerCreateInput, PlayerSubRole, PlayerUpdateInput } from "@/types/admin.types";
+import { PlayerCreateInput, PlayerUpdateInput } from "@/types/admin.types";
 import { formatSubRoleLabel } from "@/utils/player";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";

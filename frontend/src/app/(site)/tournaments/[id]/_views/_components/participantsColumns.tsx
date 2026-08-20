@@ -23,7 +23,7 @@ import type {
 } from "@/types/registration.types";
 import type { Hero } from "@/types/hero.types";
 import heroService from "@/services/hero.service";
-import HeroImage, { HeroStrip } from "@/components/hero/HeroImage";
+import { HeroStrip } from "@/components/hero/HeroImage";
 
 import {
   AdmissionStatusBadge,

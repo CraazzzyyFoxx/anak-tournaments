@@ -1,4 +1,3 @@
-import React from "react";
 import { User, UserProfile } from "@/types/user.types";
 import { AchievementRarity } from "@/types/achievement.types";
 import userService from "@/services/user.service";

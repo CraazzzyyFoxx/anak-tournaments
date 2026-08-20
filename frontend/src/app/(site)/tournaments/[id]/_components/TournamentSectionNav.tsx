@@ -10,8 +10,6 @@ import {
   BarChart3,
   Calendar,
   CalendarClock,
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   LayoutGrid,
   ListOrdered,

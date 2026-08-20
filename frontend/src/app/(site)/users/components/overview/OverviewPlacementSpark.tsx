@@ -1,4 +1,3 @@
-import React from "react";
 import { getTranslations } from "next-intl/server";
 import { TrendingUp } from "lucide-react";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";

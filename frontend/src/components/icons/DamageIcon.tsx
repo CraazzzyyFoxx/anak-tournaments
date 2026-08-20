@@ -1,4 +1,3 @@
-import React from "react";
 
 interface DamageIconProps {
   width?: number;

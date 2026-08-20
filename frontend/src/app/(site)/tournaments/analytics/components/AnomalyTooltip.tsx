@@ -8,7 +8,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { GlossaryTerm, isAnomalyGlossaryTerm } from "../analytics-glossary";
 

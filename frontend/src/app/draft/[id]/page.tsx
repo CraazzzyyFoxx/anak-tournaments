@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowLeft, Radio, ShieldAlert } from "lucide-react";
-import Link from "next/link";
+import { ShieldAlert } from "lucide-react";
 import { redirect, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";

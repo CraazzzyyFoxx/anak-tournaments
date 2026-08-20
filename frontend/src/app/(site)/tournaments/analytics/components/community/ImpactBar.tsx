@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 
 import styles from "@/app/(site)/tournaments/analytics/components/AnalyticsRedesign.module.css";
 
