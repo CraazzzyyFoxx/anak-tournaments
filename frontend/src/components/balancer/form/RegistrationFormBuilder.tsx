@@ -297,13 +297,10 @@ export default function RegistrationFormBuilder({
   // Avoid flashing default toggles while the saved form is still loading.
   if (formQuery.isLoading) {
     return (
-      <div
-        role="status"
-        className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground"
-      >
+      <output className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
         <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden />
         {t("loading")}
-      </div>
+      </output>
     );
   }
 
@@ -523,9 +520,9 @@ export default function RegistrationFormBuilder({
       <div className="flex items-center justify-end gap-3 border-t py-3">
         {/* Stable region, not a conditionally mounted node: a polite live region
             only announces reliably when it is already in the tree. */}
-        <span role="status" className="text-xs text-muted-foreground">
+        <output className="text-xs text-muted-foreground">
           {hasChanges ? t("unsavedChanges") : ""}
-        </span>
+        </output>
         <Button
           size="lg"
           onClick={() => saveMutation.mutate()}

@@ -71,9 +71,9 @@ const HeroRadar = ({ radarData }: { radarData: RadarPoint[] | null }) => {
             points={radarPolygon(radarData.map(() => r / 100), 100)}
           />
         ))}
-        {radarData.map((_, i) => {
+        {radarData.map((d, i) => {
           const p = radarSpoke(i, radarData.length, 100);
-          return <line key={i} className="aqt-radar-spoke" x1={0} y1={0} x2={p.x} y2={p.y} />;
+          return <line key={d.stat} className="aqt-radar-spoke" x1={0} y1={0} x2={p.x} y2={p.y} />;
         })}
         <polygon className="aqt-radar-global" points={radarPolygon(radarData.map((d) => d.global), 100)} />
         <polygon className="aqt-radar-you" points={radarPolygon(radarData.map((d) => d.you), 100)} />
@@ -81,7 +81,7 @@ const HeroRadar = ({ radarData }: { radarData: RadarPoint[] | null }) => {
           const p = radarSpoke(i, radarData.length, 116);
           return (
             <text
-              key={i}
+              key={d.stat}
               className="aqt-radar-axis"
               x={p.x}
               y={p.y}

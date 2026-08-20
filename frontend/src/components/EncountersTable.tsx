@@ -500,9 +500,8 @@ export function EncountersDataTable({
     // element — not on the card itself.
     <div className={cn("aqt-matches min-w-0", className)}>
       <div className="matches-card min-w-0">
-        <div
+        <section
           className={cn("m-scroll", styles.tableViewport)}
-          role="region"
           aria-label={t("tournamentDetail.publicPages.matches.tableLabel")}
           tabIndex={0}
         >
@@ -546,7 +545,7 @@ export function EncountersDataTable({
                   })}
             </tbody>
           </table>
-        </div>
+        </section>
       </div>
     </div>
   );

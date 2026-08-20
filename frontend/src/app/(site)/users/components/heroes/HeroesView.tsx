@@ -187,12 +187,11 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
       if (!stat || !Number.isFinite(stat.avg_10)) continue;
       const reversed = isRevertedStat(name);
       const delta = computeDelta(stat.avg_10, stat.avg_10_all, reversed);
+      // Winrate arrives either as a 0..1 ratio or as an already-scaled percent.
+      const winrateValue =
+        stat.avg_10 <= 1 ? formatPercent(stat.avg_10, 0) : `${stat.avg_10.toFixed(0)}%`;
       const value =
-        name === LogStatsName.Winrate
-          ? stat.avg_10 <= 1
-            ? formatPercent(stat.avg_10, 0)
-            : `${stat.avg_10.toFixed(0)}%`
-          : formatStatValue(name, stat.avg_10);
+        name === LogStatsName.Winrate ? winrateValue : formatStatValue(name, stat.avg_10);
       out.push({ name, label: quickLabel(name), value, delta });
       if (out.length === 4) break;
     }

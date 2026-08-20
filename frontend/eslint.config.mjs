@@ -33,6 +33,10 @@ export default [
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
           caughtErrors: "all",
+          // `({ rowId, ...rest }) => rest` is the idiom for stripping a field
+          // before it crosses a wire contract. The named sibling is unused by
+          // design, so flagging it only invites renaming it to `_rowId`.
+          ignoreRestSiblings: true,
         },
       ],
     },

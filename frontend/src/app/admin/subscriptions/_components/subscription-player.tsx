@@ -92,6 +92,9 @@ export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: Sele
     }
   };
 
+  const foundLabel = `${results.length} ${results.length === 1 ? "player" : "players"} found`;
+  const resultsAnnouncement = showDropdown && !searchQuery.isLoading ? foundLabel : "";
+
   return (
     <div ref={containerRef} className="relative w-full sm:w-72">
       <Search
@@ -119,13 +122,7 @@ export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: Sele
       {/* Stable region, updated in place: an inserted live region announces
           unreliably, and the result count is the one thing a sighted user gets
           for free here. */}
-      <p role="status" className="sr-only">
-        {showDropdown && !searchQuery.isLoading
-          ? results.length === 1
-            ? "1 player found"
-            : `${results.length} players found`
-          : ""}
-      </p>
+      <output className="sr-only">{resultsAnnouncement}</output>
       {showDropdown && (
         <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
           {searchQuery.isLoading ? (

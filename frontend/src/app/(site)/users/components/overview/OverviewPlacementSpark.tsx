@@ -12,6 +12,9 @@ interface Props {
 type Shape = "podium" | "mid" | "bottom";
 
 interface TrendPoint {
+  /** Tournament id — the dot/tick key: the series is filtered and sliced from
+   *  the career list, so a positional key would follow the slot, not the event. */
+  id: number;
   /** Compact axis tick ("T42"), or null when the name yields no usable handle. */
   label: string | null;
   /** Full tournament name — the hover title, so the tick can stay terse. */
@@ -55,6 +58,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
     const shape: Shape =
       placement <= 3 ? "podium" : placement > Math.ceil(tour.count_teams / 2) ? "bottom" : "mid";
     return {
+      id: tour.id,
       label: tournamentTag(tour.name),
       name: tour.name,
       placement,
@@ -117,9 +121,9 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
               />
             ) : null}
           </svg>
-          {points.map((p, i) => (
+          {points.map((p) => (
             <div
-              key={i}
+              key={p.id}
               className="absolute"
               style={{ left: `${(p.xFrac * 100).toFixed(2)}%`, top: `${p.yPct.toFixed(2)}%`, transform: "translate(-50%, -50%)" }}
               title={`#${p.placement} · ${p.name}`}
@@ -134,10 +138,10 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
           ))}
         </div>
         <div className="relative mt-1 h-[13px]">
-          {points.map((p, i) =>
+          {points.map((p) =>
             p.label ? (
               <span
-                key={i}
+                key={p.id}
                 className="aqt-mono absolute -translate-x-1/2 whitespace-nowrap text-[9px] text-[color:var(--aqt-fg-faint)]"
                 style={{ left: `${(p.xFrac * 100).toFixed(2)}%` }}
                 title={p.name}

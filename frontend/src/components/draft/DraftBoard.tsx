@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { DraftBoardSkeleton } from "@/app/draft/[id]/DraftRoomSkeleton";
 import { shouldShowInitialDraftSkeleton } from "@/app/draft/[id]/draft-loading-state";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { getDefaultDivisionGrid } from "@/lib/division-grid";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
@@ -57,12 +57,17 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
     () => parseDraftViewParams(new URLSearchParams(searchParams.toString())),
     [searchParams]
   );
+  // Tournament grid first — a draft is seeded, balanced and displayed on the
+  // grid its OWN tournament is configured with. The workspace default is the
+  // next-best guess when the tournament pins no version of its own; only with
+  // neither does this reach the hardcoded OW ladder inside `useDivisionGrid`.
+  const workspaceGrid = useDivisionGrid();
   const divisionGrid: DivisionGrid = useMemo(
     () =>
       tournament.division_grid_version?.tiers
         ? { tiers: tournament.division_grid_version.tiers }
-        : getDefaultDivisionGrid(),
-    [tournament.division_grid_version]
+        : workspaceGrid,
+    [tournament.division_grid_version, workspaceGrid]
   );
 
   const updateViewParams = (patch: Partial<DraftViewParams>) => {

@@ -195,9 +195,11 @@ export function CaptainDraftWorkspace({
   return (
     <div className={cn("space-y-5", pickBarVisible && "pb-36 sm:pb-32")}>
       {optionsLoading && gating.isMyPick && (
-        <p className="border-l-2 border-[color:var(--aqt-teal)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]" role="status">
+        // `block`: <output> is inline, so the left rule would be drawn per
+        // line box instead of down the whole notice.
+        <output className="block border-l-2 border-[color:var(--aqt-teal)] pl-3 text-sm text-[color:var(--aqt-fg-muted)]">
           {t("checkingSafeOptions")}
-        </p>
+        </output>
       )}
 
       {/* Radix Tabs, not hand-rolled roles: it wires aria-controls, roving

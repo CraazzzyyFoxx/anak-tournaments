@@ -416,6 +416,15 @@ const CONFIDENCE_TONE_CLASS: Record<"high" | "medium" | "low", string> = {
   low: "text-muted-foreground"
 };
 
+// Group band tint. Only A–D get a hue; a fifth group (or a team without one)
+// falls through to the neutral band rather than reusing another group's colour.
+const GROUP_BAND_CLASS: Record<string, string | undefined> = {
+  A: styles.groupA,
+  B: styles.groupB,
+  C: styles.groupC,
+  D: styles.groupD
+};
+
 const TeamRow = ({
   team,
   open,
@@ -434,15 +443,7 @@ const TeamRow = ({
   const conf = confidenceWord(team.avg_confidence);
   const shiftDirection =
     team.total_shift > 0 ? "promote" : team.total_shift < 0 ? "demote" : "flat";
-  const groupClass = groupName === "A"
-    ? styles.groupA
-    : groupName === "B"
-      ? styles.groupB
-      : groupName === "C"
-        ? styles.groupC
-        : groupName === "D"
-          ? styles.groupD
-          : undefined;
+  const groupClass = GROUP_BAND_CLASS[groupName];
   const placementDelta = team.placement_delta;
   const deltaClass = placementDelta == null
     ? undefined

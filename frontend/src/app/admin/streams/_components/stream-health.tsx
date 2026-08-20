@@ -168,7 +168,7 @@ export function StreamHealthDashboard() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Refetches every 30s — announce the pause/resume flip and the pacing. */}
-        <div role="status" className="flex flex-wrap items-center gap-2 text-sm">
+        <output className="flex flex-wrap items-center gap-2 text-sm">
           <span
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium",
@@ -188,7 +188,7 @@ export function StreamHealthDashboard() {
             every <span className="tabular-nums">{formatInterval(health.interval_seconds)}</span> ·{" "}
             <span className="tabular-nums">{health.batch_size}</span>/batch
           </span>
-        </div>
+        </output>
         {isSuperuser && (
           <Button
             variant="outline"

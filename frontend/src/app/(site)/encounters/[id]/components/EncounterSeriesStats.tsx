@@ -112,13 +112,15 @@ export default function EncounterSeriesStats({
             {aggregate.home.players.length + aggregate.away.players.length}
           </Fact>
         </div>
+        {/* `block`: <output> is inline by default, so .cardBody's padding
+            would not reserve any vertical space. */}
         {partial ? (
-          <p className={cn(styles.cardBody, styles.statsNotice)} role="status">
+          <output className={cn("block", styles.cardBody, styles.statsNotice)}>
             {t("encounters.detail.statsPartial", {
               counted: loaded.length,
               total: matchIds.length
             })}
-          </p>
+          </output>
         ) : null}
       </div>
 

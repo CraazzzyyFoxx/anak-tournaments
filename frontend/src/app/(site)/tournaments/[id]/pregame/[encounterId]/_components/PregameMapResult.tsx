@@ -350,7 +350,7 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
   );
 
   return (
-    <div className="flex flex-col items-center justify-center gap-1.5 self-center" role="status">
+    <output className="flex flex-col items-center justify-center gap-1.5 self-center">
       <span
         aria-hidden
         className={cn(
@@ -376,6 +376,6 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
       >
         {label}
       </span>
-    </div>
+    </output>
   );
 }

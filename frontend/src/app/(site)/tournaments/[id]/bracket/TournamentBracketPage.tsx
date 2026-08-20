@@ -159,8 +159,7 @@ function GroupStagePanel({
       )}
 
       <TabsContent value="matches" className="mt-0 p-4">
-        <div
-          role="region"
+        <section
           aria-label={t("tournamentDetail.bracketRegion")}
           tabIndex={0}
           className={styles.bracketScroller}
@@ -174,7 +173,7 @@ function GroupStagePanel({
             canReport={canReport}
             liveTeamStreams={liveTeamStreams}
           />
-        </div>
+        </section>
       </TabsContent>
     </Tabs>
   );
@@ -292,13 +291,14 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
   const shouldShowGroupStage =
     viewParam === "groups" ||
     (primaryStage ? groupStages.some((stage) => stage.id === primaryStage.id) : false);
-  const activeGroupStages = shouldShowGroupStage
-    ? viewParam === "groups"
+  // The dedicated groups view lists every group stage; arriving on a group
+  // stage by any other route shows only that one.
+  const activeGroupStages =
+    shouldShowGroupStage && viewParam === "groups"
       ? groupStages
-      : primaryStage
+      : shouldShowGroupStage && primaryStage
         ? [primaryStage]
-        : []
-    : [];
+        : [];
   const activeStages = shouldShowGroupStage
     ? activeGroupStages
     : primaryStage
@@ -575,8 +575,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                           {t("common.noMatches", { stage: stage.name })}
                         </div>
                       ) : (
-                        <div
-                          role="region"
+                        <section
                           aria-label={t("tournamentDetail.bracketRegion")}
                           tabIndex={0}
                           className={styles.bracketScroller}
@@ -590,7 +589,7 @@ function TournamentBracketView({ tournament }: Readonly<TournamentBracketViewPro
                             canReport={canReport}
                             liveTeamStreams={liveTeamStreams}
                           />
-                        </div>
+                        </section>
                       )}
                     </TabsContent>
                   </Tabs>

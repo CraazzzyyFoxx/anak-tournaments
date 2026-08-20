@@ -127,7 +127,7 @@ export function RankHealthDashboard() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Polls every 10s — announce the pause/resume flip and the pacing. */}
-        <div role="status" className="flex flex-wrap items-center gap-2 text-sm">
+        <output className="flex flex-wrap items-center gap-2 text-sm">
           <span
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium",
@@ -148,7 +148,7 @@ export function RankHealthDashboard() {
             <span className="tabular-nums">{formatInterval(stats.interval_seconds)}</span> ·{" "}
             <span className="tabular-nums">{stats.rate_limit_per_minute}</span>/min
           </span>
-        </div>
+        </output>
         {isSuperuser && (
           <Button
             variant="outline"

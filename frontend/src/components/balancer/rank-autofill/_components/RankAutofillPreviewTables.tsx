@@ -58,6 +58,30 @@ function roleHasMismatch(role: RegistrationRankAutofillRole): boolean {
   );
 }
 
+type RolePillTone = "update" | "mismatch" | "unverified" | "blocked" | "neutral";
+
+const ROLE_PILL_TONE_CLASS: Record<RolePillTone, string> = {
+  update: "border-emerald-400/25 bg-emerald-500/10 text-emerald-100",
+  mismatch: "border-rose-400/25 bg-rose-500/10 text-rose-100",
+  unverified: "border-amber-400/25 bg-amber-500/10 text-amber-100",
+  blocked: "border-orange-400/25 bg-orange-500/10 text-orange-100",
+  neutral: "border-[color:var(--aqt-border-2)] bg-white/5 text-[color:var(--aqt-fg-muted)]"
+};
+
+/**
+ * Precedence is deliberate: what will be written outranks a kept rank that
+ * merely disagrees with the suggestion, which in turn outranks the reasons
+ * nothing was written at all. A mismatched unverified rank reads as a mismatch,
+ * because the disagreement is the thing a reviewer has to resolve.
+ */
+function resolveRolePillTone(role: RegistrationRankAutofillRole): RolePillTone {
+  if (role.action === "set" || role.action === "overwrite") return "update";
+  if (roleHasMismatch(role)) return "mismatch";
+  if (role.action === "unverified") return "unverified";
+  if (role.action === "blocked" || role.action === "missing_rank") return "blocked";
+  return "neutral";
+}
+
 function playerHasMismatch(player: RegistrationRankAutofillPlayer): boolean {
   return player.roles.some(roleHasMismatch);
 }
@@ -76,12 +100,16 @@ function RankAutofillRolePill({ role }: Readonly<{ role: RegistrationRankAutofil
   const roleLabel = ROLE_LABELS[role.role] ?? role.role;
   const source = formatRankSource(role);
   const breakdown = formatBlendBreakdown(role);
-  const isUpdate = role.action === "set" || role.action === "overwrite";
+  const tone = resolveRolePillTone(role);
+  // The tone already ranks these two apart: an update is what gets written, a
+  // mismatch is a kept rank that disagrees with the suggestion (overwrite off)
+  // — surfaced, not applied. The layout below branches on that distinction.
+  const isUpdate = tone === "update";
+  const isMismatch = tone === "mismatch";
+  // Read straight off the action: an unverified rank that also disagrees shows
+  // the mismatch tone, yet still has to say it was never verified.
   const isUnverified = role.action === "unverified";
-  const isBlocked = role.action === "blocked" || role.action === "missing_rank";
   const isMissing = role.action === "missing_rank";
-  // A kept rank that disagrees with the suggestion (overwrite off) — surfaced, not applied.
-  const isMismatch = !isUpdate && roleHasMismatch(role);
 
   const parsedDivision =
     role.parsed_rank_value != null ? resolveDivisionFromRank(grid, role.parsed_rank_value) : null;
@@ -97,15 +125,7 @@ function RankAutofillRolePill({ role }: Readonly<{ role: RegistrationRankAutofil
     <div
       className={cn(
         "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]",
-        isUpdate
-          ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
-          : isMismatch
-            ? "border-rose-400/25 bg-rose-500/10 text-rose-100"
-            : isUnverified
-              ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
-              : isBlocked
-                ? "border-orange-400/25 bg-orange-500/10 text-orange-100"
-                : "border-[color:var(--aqt-border-2)] bg-white/5 text-[color:var(--aqt-fg-muted)]"
+        ROLE_PILL_TONE_CLASS[tone]
       )}
       title={[[role.reason, source].filter(Boolean).join(" / "), ...breakdown]
         .filter(Boolean)

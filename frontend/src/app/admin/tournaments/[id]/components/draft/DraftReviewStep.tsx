@@ -57,13 +57,10 @@ export function DraftReviewStep({
   return (
     <div className="space-y-6">
       {previewPending && (
-        <div
-          role="status"
-          className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm"
-        >
+        <output className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
           <RefreshCw className="h-4 w-4 animate-spin text-primary" aria-hidden />
           {t("validatingDraft")}
-        </div>
+        </output>
       )}
       {previewError && (
         <div

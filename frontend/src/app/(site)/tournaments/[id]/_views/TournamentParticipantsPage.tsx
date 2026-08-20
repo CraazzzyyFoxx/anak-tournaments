@@ -384,6 +384,23 @@ function MyRegistrationCard({
       }
     : null;
 
+  // Check-in is the one step whose marker has four distinct outcomes, so it is
+  // resolved here rather than inline: a completed check-in wins outright, a dead
+  // registration has no step to run, an open window is the live call to action,
+  // and a window that closed unused is a failure the reader has to see.
+  let checkInTone: RegistrationStepTone;
+  if (isCheckedIn) {
+    checkInTone = "done";
+  } else if (isTerminal) {
+    checkInTone = "idle";
+  } else if (canCheckIn) {
+    checkInTone = "active";
+  } else if (checkInPhaseOver) {
+    checkInTone = "failed";
+  } else {
+    checkInTone = "idle";
+  }
+
   const steps: RegistrationStep[] = [
     {
       key: "submitted",
@@ -416,15 +433,7 @@ function MyRegistrationCard({
     {
       key: "checkIn",
       label: t("registration.myCard.steps.checkIn"),
-      tone: isCheckedIn
-        ? "done"
-        : isTerminal
-          ? "idle"
-          : canCheckIn
-            ? "active"
-            : checkInPhaseOver
-              ? "failed"
-              : "idle"
+      tone: checkInTone
     }
   ];
 

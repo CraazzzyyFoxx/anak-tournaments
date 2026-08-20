@@ -6,6 +6,20 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * `aria-sort` for a sortable column header, from either a TanStack column's
+ * `getIsSorted()` (`false | "asc" | "desc"`) or a hand-rolled sort state's
+ * direction. Non-sortable columns must omit the attribute entirely rather than
+ * report `"none"`, so that decision stays at the call site.
+ */
+export function ariaSortValue(
+  direction: "asc" | "desc" | false | null | undefined
+): "ascending" | "descending" | "none" {
+  if (direction === "asc") return "ascending";
+  if (direction === "desc") return "descending";
+  return "none";
+}
+
+/**
  * Localized inclusive date range, e.g. `Jan 15 – 20, 2026` / `15–20 янв. 2026 г.`
  *
  * `locale` is REQUIRED on purpose. It used to default to `"ru"`, and the two

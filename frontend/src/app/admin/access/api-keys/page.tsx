@@ -478,14 +478,14 @@ export default function AccessAdminApiKeysPage() {
               />
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span role="status" className="text-xs text-muted-foreground">
+              <output className="text-xs text-muted-foreground">
                 {copiedSecret ? (
                   <span className="inline-flex items-center gap-1">
                     <Check aria-hidden className="size-3.5" />
                     Copied to clipboard
                   </span>
                 ) : null}
-              </span>
+              </output>
               <Button
                 variant="outline"
                 size="sm"

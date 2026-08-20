@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/table";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
+import { ariaSortValue } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type {
   EncounterCreateInput,
@@ -804,13 +805,7 @@ export function TournamentMatchesTab({
                         <TableHead
                           key={column.key}
                           className={tableStyles.head}
-                          aria-sort={
-                            active
-                              ? standingsSort?.dir === "asc"
-                                ? "ascending"
-                                : "descending"
-                              : "none"
-                          }
+                          aria-sort={ariaSortValue(active ? standingsSort?.dir : null)}
                         >
                           <button
                             type="button"

@@ -65,18 +65,9 @@ export default function RosterRow({ player, tournamentGrid, onSelect }: Readonly
   const flag = player.anomalies[0];
 
   return (
-    <div
-      className={styles.cRosterRow}
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-    >
+    // A real button, not a div with role="button": `.cRosterRow` already
+    // carries the full button reset, and Enter/Space come for free.
+    <button type="button" className={styles.cRosterRow} onClick={onSelect}>
       <span className={styles.cRoleChip}>
         <PlayerRoleIcon role={player.role} size={19} />
       </span>
@@ -109,6 +100,6 @@ export default function RosterRow({ player, tournamentGrid, onSelect }: Readonly
         </span>
       </span>
       <MoveChip player={player} tournamentGrid={tournamentGrid} />
-    </div>
+    </button>
   );
 }

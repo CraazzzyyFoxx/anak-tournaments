@@ -429,7 +429,9 @@ describe("public tournament data page contracts", () => {
     expect(css).toMatch(/\.publicDataPage > \*\s*\{[\s\S]*?min-width:\s*0/);
     expect(css).toMatch(/\.bracketScroller\s*\{[\s\S]*?overflow-x:\s*auto/);
     expect(page).toContain("styles.bracketScroller");
-    expect(page).toContain('role="region"');
+    // <section> + an accessible name is the region; no explicit role needed.
+    expect(page).toContain("<section");
+    expect(page).not.toContain('role="region"');
     expect(page).toContain("tabIndex={0}");
     expect(page).toContain('aria-label={t("tournamentDetail.bracketRegion")}');
   });

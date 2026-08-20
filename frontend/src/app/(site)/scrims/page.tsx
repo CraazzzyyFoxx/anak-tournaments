@@ -133,6 +133,73 @@ export default function ScrimsPage() {
 
   const rooms = roomsQuery.data?.rooms ?? [];
 
+  // One body per state, in priority order. `idle` counts as loading: the
+  // profile fetch has not run yet, and flashing the sign-in card at an
+  // authenticated captain is worse than a skeleton.
+  const renderRooms = () => {
+    if (status === "loading" || status === "idle") {
+      return <Skeleton className="h-40 w-full rounded-xl" />;
+    }
+    if (!user) {
+      return (
+        <PageStateCard
+          state="empty"
+          title={t("signInTitle")}
+          description={t("signInDescription")}
+          actionLabel={t("signIn")}
+          onAction={() => openAuthModal(getCurrentPathForAuthRedirect(window.location))}
+        />
+      );
+    }
+    if (workspaceId == null) {
+      return (
+        <PageStateCard
+          state="empty"
+          title={t("noWorkspaceTitle")}
+          description={t("noWorkspaceDescription")}
+        />
+      );
+    }
+    if (roomsQuery.isPending) {
+      return (
+        <div className="space-y-3">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
+      );
+    }
+    if (roomsQuery.isError) {
+      return (
+        <PageStateCard
+          state="error"
+          actionLabel={t("list.retry")}
+          onAction={() => void roomsQuery.refetch()}
+        />
+      );
+    }
+    if (rooms.length === 0) {
+      return (
+        <PageStateCard
+          state="empty"
+          title={t("list.emptyTitle")}
+          description={t("list.emptyDescription")}
+        />
+      );
+    }
+    return (
+      <div className="space-y-3">
+        {rooms.map((room) => (
+          <RoomCard
+            key={room.id}
+            room={room}
+            isClosing={closeMutation.isPending && closeMutation.variables === room.token}
+            onClose={() => closeMutation.mutate(room.token)}
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <PageHero
@@ -146,54 +213,7 @@ export default function ScrimsPage() {
         }
       />
 
-      {/* `idle` counts as loading: the profile fetch has not run yet, and
-          flashing the sign-in card at an authenticated captain is worse than
-          a skeleton. */}
-      {status === "loading" || status === "idle" ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : !user ? (
-        <PageStateCard
-          state="empty"
-          title={t("signInTitle")}
-          description={t("signInDescription")}
-          actionLabel={t("signIn")}
-          onAction={() => openAuthModal(getCurrentPathForAuthRedirect(window.location))}
-        />
-      ) : workspaceId == null ? (
-        <PageStateCard
-          state="empty"
-          title={t("noWorkspaceTitle")}
-          description={t("noWorkspaceDescription")}
-        />
-      ) : roomsQuery.isPending ? (
-        <div className="space-y-3">
-          <Skeleton className="h-24 w-full rounded-xl" />
-          <Skeleton className="h-24 w-full rounded-xl" />
-        </div>
-      ) : roomsQuery.isError ? (
-        <PageStateCard
-          state="error"
-          actionLabel={t("list.retry")}
-          onAction={() => void roomsQuery.refetch()}
-        />
-      ) : rooms.length === 0 ? (
-        <PageStateCard
-          state="empty"
-          title={t("list.emptyTitle")}
-          description={t("list.emptyDescription")}
-        />
-      ) : (
-        <div className="space-y-3">
-          {rooms.map((room) => (
-            <RoomCard
-              key={room.id}
-              room={room}
-              isClosing={closeMutation.isPending && closeMutation.variables === room.token}
-              onClose={() => closeMutation.mutate(room.token)}
-            />
-          ))}
-        </div>
-      )}
+      {renderRooms()}
 
       <p className="text-muted-foreground flex items-center gap-2 text-xs">
         <Swords aria-hidden className="size-3.5" />

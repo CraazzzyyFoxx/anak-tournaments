@@ -158,16 +158,15 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
     const entry = s?.[def.key];
     if (!entry || !Number.isFinite(entry.rank) || entry.total <= 0) continue;
     const isDelta = def.key === "damage_delta";
+    // A negative delta already shows its sign; a positive one needs the `+` to
+    // read as a delta rather than a plain count.
+    const formatted = compactNumber(entry.value);
     statTiles.push({
       key: def.key,
       statName: def.key,
       label: t(def.labelKey as Parameters<typeof t>[0]),
       entry: { rank: entry.rank, total: entry.total },
-      value: isDelta
-        ? entry.value >= 0
-          ? `+${compactNumber(entry.value)}`
-          : compactNumber(entry.value)
-        : compactNumber(entry.value),
+      value: isDelta && entry.value >= 0 ? `+${formatted}` : formatted,
       highlight: isDelta ? (entry.value >= 0 ? "good" : "bad") : undefined
     });
   }

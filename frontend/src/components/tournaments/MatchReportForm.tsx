@@ -259,13 +259,15 @@ export function MatchReportForm({
   const homeScore = draft.homeScore ?? ownReport?.home_score ?? encounter.score?.home ?? 0;
   const awayScore = draft.awayScore ?? ownReport?.away_score ?? encounter.score?.away ?? 0;
   // `encounter.closeness` is a 0..1 float; a report's is 1..10 stars.
-  const savedCloseness = ownReport
-    ? ownReport.closeness != null
-      ? clampCloseness(ownReport.closeness)
-      : null
-    : encounter.closeness != null && encounter.closeness > 0
+  const reportCloseness =
+    ownReport?.closeness != null ? clampCloseness(ownReport.closeness) : null;
+  const encounterCloseness =
+    encounter.closeness != null && encounter.closeness > 0
       ? clampCloseness(encounter.closeness * 10)
       : null;
+  // Own report wins outright: a saved report carrying no rating means the
+  // captain left it unrated, not "fall back to the encounter's number".
+  const savedCloseness = ownReport ? reportCloseness : encounterCloseness;
   // Nothing to derive a rating from: prefill only when the answer is mandatory,
   // otherwise "not rated" has to be the honest starting state.
   const closeness =
@@ -665,9 +667,9 @@ export function MatchReportForm({
           submit from ever being unexplained on screen. */}
       <div className="mt-6 flex flex-row flex-wrap items-center justify-end gap-x-4 gap-y-2">
         {validationError ? (
-          <p role="status" className="mr-auto text-xs font-semibold text-danger">
+          <output className="mr-auto text-xs font-semibold text-danger">
             {validationError}
-          </p>
+          </output>
         ) : null}
         {cancelAction}
         <Button

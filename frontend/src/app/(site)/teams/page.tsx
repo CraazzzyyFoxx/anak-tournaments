@@ -112,6 +112,48 @@ const TeamsPage = () => {
   const hasNoTeams = !isLoading && tournamentId != null && teams.length === 0;
   const isFiltered = search.trim() !== "";
 
+  // One body per state, in priority order: a failed tournament list hides
+  // everything downstream, and a missing selection has nothing to load yet.
+  const renderTeams = () => {
+    if (isErrorTournaments) {
+      return (
+        <PageStateCard
+          state="error"
+          description={t("teams.tournamentsLoadError")}
+          onAction={() => void refetchTournaments()}
+        />
+      );
+    }
+    if (tournamentId == null && !loadingTournaments) {
+      return <PageStateCard state="empty" description={t("teams.selectTournamentToView")} />;
+    }
+    if (isErrorTeams) {
+      return (
+        <PageStateCard
+          state="error"
+          description={t("teams.teamsLoadError")}
+          onAction={() => void refetchTeams()}
+        />
+      );
+    }
+    if (hasNoTeams) {
+      return (
+        <PageStateCard
+          state={isFiltered ? "filtered-empty" : "empty"}
+          description={isFiltered ? undefined : t("teams.noTeamsFound")}
+          onAction={isFiltered ? () => setParams({ q: null }) : undefined}
+        />
+      );
+    }
+    return (
+      <div className={TEAM_GRID}>
+        {isLoading
+          ? Array.from({ length: 6 }).map((_, index) => <TournamentTeamCardSkeleton key={index} />)
+          : teams.map((team) => <TournamentTeamCard key={team.id} team={team} />)}
+      </div>
+    );
+  };
+
   return (
     <div className="liquid-glass flex flex-col gap-4 md:gap-8">
       <div className="sticky top-[var(--aqt-header-h)] z-40 -mx-4 px-4 pb-4 md:-mx-6 md:px-6 xl:-mx-10 xl:px-10">
@@ -205,33 +247,7 @@ const TeamsPage = () => {
         </Card>
       </div>
 
-      {isErrorTournaments ? (
-        <PageStateCard
-          state="error"
-          description={t("teams.tournamentsLoadError")}
-          onAction={() => void refetchTournaments()}
-        />
-      ) : tournamentId == null && !loadingTournaments ? (
-        <PageStateCard state="empty" description={t("teams.selectTournamentToView")} />
-      ) : isErrorTeams ? (
-        <PageStateCard
-          state="error"
-          description={t("teams.teamsLoadError")}
-          onAction={() => void refetchTeams()}
-        />
-      ) : hasNoTeams ? (
-        <PageStateCard
-          state={isFiltered ? "filtered-empty" : "empty"}
-          description={isFiltered ? undefined : t("teams.noTeamsFound")}
-          onAction={isFiltered ? () => setParams({ q: null }) : undefined}
-        />
-      ) : (
-        <div className={TEAM_GRID}>
-          {isLoading
-            ? Array.from({ length: 6 }).map((_, index) => <TournamentTeamCardSkeleton key={index} />)
-            : teams.map((team) => <TournamentTeamCard key={team.id} team={team} />)}
-        </div>
-      )}
+      {renderTeams()}
     </div>
   );
 };

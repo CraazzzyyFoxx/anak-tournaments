@@ -110,16 +110,15 @@ const StandingsTable = ({
   const settings = stage?.settings_json ?? {};
   // Prefer the explicit, admin-configured Stage.advance_count column; fall back
   // to legacy settings_json keys, then to the derived bracket-wiring count.
+  // Order is the precedence: the first candidate that is actually a number wins.
+  const advanceCountCandidates: unknown[] = [
+    stage?.advance_count,
+    settings.advance_count,
+    settings.advanceCount,
+    settings.top
+  ];
   let settingsCount =
-    typeof stage?.advance_count === "number"
-      ? stage.advance_count
-      : typeof settings.advance_count === "number"
-        ? settings.advance_count
-        : typeof settings.advanceCount === "number"
-          ? settings.advanceCount
-          : typeof settings.top === "number"
-            ? settings.top
-            : null;
+    advanceCountCandidates.find((value): value is number => typeof value === "number") ?? null;
 
   if (settingsCount == null && stage != null && stages.length > 0) {
     const currentStage = stages.find((s) => s.id === stage.id);
@@ -166,9 +165,8 @@ const StandingsTable = ({
 
   return (
     <div>
-      <div
+      <section
         className={cn("st-scroll", styles.standingsViewport)}
-        role="region"
         aria-label={t("tournamentDetail.publicPages.standings.tableLabel")}
         tabIndex={0}
       >
@@ -334,7 +332,7 @@ const StandingsTable = ({
             })}
           </tbody>
         </table>
-      </div>
+      </section>
       {is_groups &&
       sortedStandings[0]?.tiebreak_order &&
       sortedStandings[0].tiebreak_order.length > 0 ? (
