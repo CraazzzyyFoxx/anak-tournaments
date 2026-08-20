@@ -21,7 +21,8 @@ def _tier(code: str, rank: int, expires: datetime | None = None) -> CodeTier:
 
 class TestHashCode:
     def test_is_stable_hex_sha256(self):
-        assert hash_code("abc") == hash_code("abc")
+        """Pinned digest: stored hashes must survive any change to normalization."""
+        assert hash_code("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         assert len(hash_code("abc")) == 64
 
     def test_is_case_and_whitespace_insensitive(self):
