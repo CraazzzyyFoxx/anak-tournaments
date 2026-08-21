@@ -23,8 +23,8 @@ from src.core import db
 from src.core.auth import _get_balance_workspace_id, _get_tournament_workspace_id
 from src.rpc import _common as c
 from src.schemas.admin import balancer as admin_schemas
-from src.services.admin import balancer as admin_balancer
 from src.services.admin._mappers import serialize_balance, serialize_tournament_config
+from src.services.admin.balancer import balancer_admin_service
 from src.services.balancer.realtime import emit_balancer_data_event
 
 _SF = db.async_session_maker
@@ -62,7 +62,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "read")
-            cfg = await admin_balancer.get_tournament_config(session, tournament_id)
+            cfg = await balancer_admin_service.get_tournament_config(session, tournament_id)
             return serialize_tournament_config(cfg) if cfg is not None else None
 
         return await c.envelope(logger, "admin.tournament_config_get", op, session_factory=_SF)
@@ -76,7 +76,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             body = admin_schemas.BalancerTournamentConfigUpsert.model_validate(c.payload(data))
-            cfg = await admin_balancer.upsert_tournament_config(session, tournament_id, ws_id, body.config_json, user)
+            cfg = await balancer_admin_service.upsert_tournament_config(session, tournament_id, ws_id, body.config_json, user)
             await emit_balancer_data_event(
                 tournament_id,
                 BALANCER_CONFIG_CHANGED,
@@ -98,7 +98,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_workspace_permission(data, user, ws_id, "team", "read")
             # Tournament row, not config: id/name/status are non-nullable by
             # construction, and hidden tournaments stay visible (team.read gate).
-            t = await admin_balancer.get_tournament_row(session, tournament_id)
+            t = await balancer_admin_service.get_tournament_row(session, tournament_id)
             return {"id": t.id, "name": t.name, "status": t.status, "workspace_id": ws_id}
 
         return await c.envelope(logger, "admin.tournament_summary_get", op, session_factory=_SF)
@@ -112,7 +112,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "read")
-            balance = await admin_balancer.get_balance(session, tournament_id)
+            balance = await balancer_admin_service.get_balance(session, tournament_id)
             return serialize_balance(balance) if balance is not None else None
 
         return await c.envelope(logger, "admin.balance_get", op, session_factory=_SF)
@@ -126,7 +126,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             body = admin_schemas.BalanceSaveRequest.model_validate(c.payload(data))
-            balance = await admin_balancer.save_balance(session, tournament_id, body, user)
+            balance = await balancer_admin_service.save_balance(session, tournament_id, body, user)
             await emit_balancer_data_event(tournament_id, BALANCER_BALANCE_SAVED, actor_user_id=user.id)
             return serialize_balance(balance, already_normalized=True)
 
@@ -140,7 +140,7 @@ def register(broker: Any, logger: Any) -> None:
             balance_id = c.require_id(data)
             ws_id = await _get_balance_workspace_id(session, balance_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
-            balance, removed_teams, imported_teams = await admin_balancer.export_balance(session, balance_id)
+            balance, removed_teams, imported_teams = await balancer_admin_service.export_balance(session, balance_id)
             await emit_balancer_data_event(balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
             return admin_schemas.BalanceExportResponse(
                 success=True,
@@ -159,7 +159,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
             c.require_workspace_permission(data, user, workspace_id, "workspace", "read")
-            cfg = await admin_balancer.get_workspace_balancer_config(session, workspace_id)
+            cfg = await balancer_admin_service.get_workspace_balancer_config(session, workspace_id)
             return _config_to_read(cfg, workspace_id)
 
         return await c.envelope(logger, "admin.workspace_config_get", op, session_factory=_SF)
@@ -172,7 +172,7 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = c.require_id(data)
             c.require_workspace_permission(data, user, workspace_id, "workspace", "update")
             body = admin_schemas.WorkspaceBalancerConfigUpsert.model_validate(c.payload(data))
-            cfg = await admin_balancer.upsert_workspace_balancer_config(
+            cfg = await balancer_admin_service.upsert_workspace_balancer_config(
                 session,
                 workspace_id=workspace_id,
                 rank_delta_threshold=body.rank_delta_threshold,

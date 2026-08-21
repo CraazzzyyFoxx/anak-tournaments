@@ -36,18 +36,33 @@ from src import models  # noqa: E402
 from src.services import registered_teams  # noqa: E402
 
 
-class _Session:
-    """Answers only the tournament lookup `export_registered` starts with.
+class _Result:
+    """Mimics the ``session.execute(...)`` result shape ``BaseRepository.get`` expects."""
 
-    ``scalar``, not ``get``: the module deliberately avoids ``session.get`` so it
-    needs no repository-boundary exemption, and this fake pins that.
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    def unique(self) -> _Result:
+        return self
+
+    def scalars(self) -> _Result:
+        return self
+
+    def first(self) -> Any:
+        return self._value
+
+
+class _Session:
+    """Answers only the tournament lookup ``export_registered`` starts with, via
+    ``TournamentRepository.get`` (which issues ``session.execute``, not
+    ``session.get``, so this module still needs no repository-boundary exemption).
     """
 
     def __init__(self, tournament: object | None) -> None:
         self.tournament = tournament
 
-    async def scalar(self, statement: Any) -> Any:
-        return self.tournament
+    async def execute(self, statement: Any) -> _Result:
+        return _Result(self.tournament)
 
 
 def _tournament() -> models.Tournament:
@@ -80,7 +95,7 @@ class PlanWiringTests(IsolatedAsyncioTestCase):
             mock.patch.object(registered_teams, "get_workspace_roster_slots", return_value=None),
             mock.patch.object(registered_teams.team_materialization, "run", side_effect=_run),
         ):
-            await registered_teams.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
+            await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
         self.assertEqual(1, len(captured))
         return captured[0]
 
@@ -123,7 +138,7 @@ class NoOpExportTests(IsolatedAsyncioTestCase):
             mock.patch.object(registered_teams, "get_workspace_roster_slots", return_value=None),
             mock.patch.object(registered_teams.team_materialization, "run", runner),
         ):
-            result = await registered_teams.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
+            result = await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
 
         runner.assert_not_awaited()
         self.assertEqual(0, result.imported_teams)
@@ -144,12 +159,12 @@ class NoOpExportTests(IsolatedAsyncioTestCase):
             mock.patch.object(registered_teams, "get_workspace_roster_slots", return_value=None),
             mock.patch.object(registered_teams.team_materialization, "run", side_effect=_run),
         ):
-            result = await registered_teams.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
+            result = await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
 
         self.assertEqual(1, result.imported_teams)
         self.assertEqual(["team_incomplete"], [item.code for item in result.skipped])
 
     async def test_a_missing_tournament_is_a_404(self) -> None:
         with self.assertRaises(Exception) as caught:
-            await registered_teams.export_registered(_Session(None), 7)  # type: ignore[arg-type]
+            await registered_teams.registered_teams_service.export_registered(_Session(None), 7)  # type: ignore[arg-type]
         self.assertEqual(404, getattr(caught.exception, "status_code", None))

@@ -38,6 +38,7 @@ from src import openapi_docs, openapi_schemas  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.schemas import draft as schemas  # noqa: E402
 from src.services.draft import board, lifecycle  # noqa: E402
+from src.services.draft.feasibility import feasibility_service  # noqa: E402
 
 
 class _FakeBroker:
@@ -281,7 +282,7 @@ def test_delete_session_refuses_an_in_flight_draft(status: DraftStatus) -> None:
     draft = DraftSession(id=1, tournament_id=2, workspace_id=3, status=status.value)
 
     with pytest.raises(Exception) as exc_info:
-        asyncio.run(lifecycle.delete_session(None, draft))  # type: ignore[arg-type]
+        asyncio.run(lifecycle.lifecycle_service.delete_session(None, draft))  # type: ignore[arg-type]
 
     assert exc_info.value.detail[0]["code"] == "draft_in_flight"
 
@@ -368,7 +369,7 @@ def test_visible_custom_fields_takes_only_flagged_definitions_in_form_order() ->
         ]
     )
 
-    fields = asyncio.run(board.visible_custom_fields(session, 7))  # type: ignore[arg-type]
+    fields = asyncio.run(board.board_service.visible_custom_fields(session, 7))  # type: ignore[arg-type]
 
     assert fields == [
         board.VisibleCustomField(key="vk", label="VK profile", type="url"),
@@ -406,29 +407,40 @@ class _ScalarsResult:
         return self._rows
 
 
+class _ExecuteResult:
+    def __init__(self, rows: list) -> None:
+        self._rows = rows
+
+    def unique(self) -> _ExecuteResult:
+        return self
+
+    def scalars(self) -> _ScalarsResult:
+        return _ScalarsResult(self._rows)
+
+
 class _BoardSession:
     """Answers ``build_board``'s reads in call order, with no DB behind them.
 
     ``scalar``: max(WorkspaceEvent.id), then the form's ``custom_fields_json``.
-    ``scalars``: teams, picks, players.
+    ``execute``: teams, picks, players (repository ``list_by_session`` reads).
     """
 
     def __init__(self, *, custom_fields_json: list, players: list) -> None:
         self._scalar = [None, custom_fields_json]
-        self._scalars = [[], [], players]
+        self._results = [[], [], players]
 
     async def scalar(self, _statement):
         return self._scalar.pop(0)
 
-    async def scalars(self, _statement) -> _ScalarsResult:
-        return _ScalarsResult(self._scalars.pop(0))
+    async def execute(self, _statement) -> _ExecuteResult:
+        return _ExecuteResult(self._results.pop(0))
 
 
 def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) -> None:
     async def _shape(*_args, **_kwargs):
         return DEFAULT_ROSTER_SHAPE
 
-    monkeypatch.setattr(board.feasibility, "resolve_shape", _shape)
+    monkeypatch.setattr(feasibility_service, "resolve_shape", _shape)
     draft = DraftSession(
         id=1,
         tournament_id=2,
@@ -474,7 +486,7 @@ def test_board_projects_flagged_answers_and_never_ships_the_rest(monkeypatch) ->
         players=[player],
     )
 
-    snapshot = asyncio.run(board.build_board(session, draft))  # type: ignore[arg-type]
+    snapshot = asyncio.run(board.board_service.build_board(session, draft))  # type: ignore[arg-type]
 
     read = snapshot.players[0]
     assert [(f.key, f.label, f.type, f.value) for f in read.custom_fields] == [

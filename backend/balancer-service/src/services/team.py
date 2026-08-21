@@ -8,6 +8,9 @@ admin teams-import RPC.
 The export paths (``admin/balancer.py``, ``draft/export.py``) build their own
 :class:`~shared.services.team_export.ExportPlan` because they also need the
 destructive cleanup, the ``exported_team_id`` backfill and their own stamp.
+
+``to_materialization_teams`` stays a plain module-level function (not a class
+method): ``draft/export.py`` and ``admin/balancer.py`` both import it directly.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from shared.services.team_export import (
 )
 from src.schemas.team import BalancerTeam
 
-__all__ = ("import_teams", "to_materialization_teams")
+__all__ = ("TeamService", "team_service", "to_materialization_teams")
 
 logger = logging.getLogger(__name__)
 
@@ -55,24 +58,29 @@ def to_materialization_teams(payload: Sequence[BalancerTeam]) -> list[Materializ
     ]
 
 
-async def import_teams(
-    session: AsyncSession,
-    tournament_id: int,
-    payload: Sequence[BalancerTeam],
-) -> ExportOutcome:
-    """Plain import: create teams/players, no prior-export cleanup, no stamp.
+class TeamService:
+    async def import_teams(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        payload: Sequence[BalancerTeam],
+    ) -> ExportOutcome:
+        """Plain import: create teams/players, no prior-export cleanup, no stamp.
 
-    Commits once (the orchestrator owns the boundary), which is what the previous
-    ``bulk_create_from_balancer`` did internally — callers that relied on that
-    commit keep working unchanged.
-    """
-    return await team_materialization.run(
-        session,
-        ExportPlan(
-            tournament_id=tournament_id,
-            teams=to_materialization_teams(payload),
-            # Lenient, as balancer-service has always been: an unresolvable
-            # battle tag skips that player rather than failing the whole import.
-            on_unresolved="skip",
-        ),
-    )
+        Commits once (the orchestrator owns the boundary), which is what the previous
+        ``bulk_create_from_balancer`` did internally — callers that relied on that
+        commit keep working unchanged.
+        """
+        return await team_materialization.run(
+            session,
+            ExportPlan(
+                tournament_id=tournament_id,
+                teams=to_materialization_teams(payload),
+                # Lenient, as balancer-service has always been: an unresolvable
+                # battle tag skips that player rather than failing the whole import.
+                on_unresolved="skip",
+            ),
+        )
+
+
+team_service = TeamService()

@@ -10,22 +10,31 @@ permission (or just the active user, for /select).
 The orchestration mirrors the HTTP routes; the underlying draft services are
 reused unchanged. A single worker-lifetime Redis client backs the realtime
 publish (publish failures are swallowed by publish_event).
+
+Zero SQL lives in this module: every handler decodes, gates, and calls exactly
+one draft-package service singleton. All DB access goes through
+``shared.repository.draft``'s repositories (see the service modules for how).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import HERO_TYPE_CLASSES, DraftAutopickStrategy, DraftStatus, HeroClass
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.models.balancer.draft import DraftAuditEvent, DraftPick, DraftSession, DraftTeam
+from shared.models.balancer.draft import DraftAuditEvent, DraftPick, DraftSession
+from shared.repository.draft import (
+    DraftAuditEventRepository,
+    DraftPickRepository,
+    DraftSessionRepository,
+    DraftTeamRepository,
+)
+from shared.repository.identity import UserRepository
 from shared.services.roster_shape_access import get_effective_roster_shape
-from src import models
 from src.core import db
 from src.core.auth import (
     _get_draft_session_workspace_id,
@@ -52,15 +61,24 @@ from src.schemas.draft import (
     DraftSuggestion,
     DraftSuggestionsResponse,
 )
-from src.services.draft import board as board_svc
 from src.services.draft import clock as clock_svc
-from src.services.draft import export as export_svc
-from src.services.draft import feasibility, lifecycle, loaders, selection
+from src.services.draft import lifecycle, loaders, selection
 from src.services.draft import realtime as draft_rt
-from src.services.draft import role_edit as role_edit_svc
 from src.services.draft import suggestions as sug
+from src.services.draft.board import board_service
+from src.services.draft.export import export_service
+from src.services.draft.feasibility import feasibility_service
+from src.services.draft.lifecycle import lifecycle_service
+from src.services.draft.role_edit import role_edit_service
+from src.services.draft.selection import selection_service
 
 _SF = db.async_session_maker
+
+_sessions_repo = DraftSessionRepository()
+_teams_repo = DraftTeamRepository()
+_picks_repo = DraftPickRepository()
+_audit_repo = DraftAuditEventRepository()
+_users_repo = UserRepository()
 
 # A single worker-lifetime client (asyncio redis is safe for concurrent use via
 # its pool). publish_event swallows publish failures, so realtime is best-effort.
@@ -87,36 +105,29 @@ async def close() -> None:
 
 
 async def _load_session(session: AsyncSession, session_id: int) -> DraftSession:
-    draft = await session.get(DraftSession, session_id)
+    draft = await _sessions_repo.get(session, session_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft session not found")
     return draft
 
 
 async def _load_pick(session: AsyncSession, pick_id: int) -> tuple[DraftSession, DraftPick]:
-    pick = await session.get(DraftPick, pick_id)
+    pick = await _picks_repo.get(session, pick_id)
     if pick is None:
         raise HTTPException(status_code=404, detail="Draft pick not found")
     draft = await _load_session(session, pick.session_id)
     return draft, pick
 
 
-async def _seed_counts(session: AsyncSession, session_id: int) -> tuple[int, int, int]:
-    # One round-trip: three scalar subqueries instead of three COUNT queries.
-    row = (
-        await session.execute(
-            sa.select(
-                *(
-                    sa.select(sa.func.count())
-                    .select_from(model)
-                    .where(model.session_id == session_id)
-                    .scalar_subquery()
-                    for model in (models.DraftTeam, models.DraftPlayer, models.DraftPick)
-                )
-            )
-        )
-    ).one()
-    return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
+async def _actor_player_ids(session: AsyncSession, auth_user_id: int) -> list[int]:
+    """Domain player ids for an acting auth user.
+
+    The single-link model (``players.user.auth_user_id`` is a unique FK) means
+    this is always 0 or 1 ids; kept as a list because callers pass it straight
+    into ``_is_on_clock_captain``'s ``actor_player_ids`` collection.
+    """
+    player_id = await _users_repo.get_id_by_auth_user_id(session, auth_user_id)
+    return [player_id] if player_id is not None else []
 
 
 def _pick_event_payload(draft: DraftSession, pick: DraftPick) -> dict:
@@ -271,7 +282,7 @@ async def _lifecycle_action(session, redis, session_id, action, event_type, user
     await action(session, draft, **action_kwargs)
     extra: dict = {"session_id": draft.id, "status": draft.status}
     if event_type == "draft.pick_started" and draft.current_pick_id:
-        current = await session.get(DraftPick, draft.current_pick_id)
+        current = await _picks_repo.get(session, draft.current_pick_id)
         extra["pick_id"] = current.id
         extra["clock_expires_at"] = current.clock_expires_at.isoformat() if current.clock_expires_at else None
     await draft_rt.publish_draft_event(
@@ -282,7 +293,7 @@ async def _lifecycle_action(session, redis, session_id, action, event_type, user
         # Wake the supervisor so a freshly started/resumed draft gets its
         # autopick clock loop immediately (the idle discovery poll is relaxed).
         await clock_svc.notify_supervisor(redis)
-    return await board_svc.session_read(session, draft)
+    return await board_service.session_read(session, draft)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -291,10 +302,10 @@ def register(broker: Any, logger: Any) -> None:
     async def _tournament_board(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             tournament_id = c.require_id(data)
-            draft = await board_svc.get_active_session(session, tournament_id)
+            draft = await board_service.get_active_session(session, tournament_id)
             if draft is None:
                 return None
-            return await board_svc.build_board(session, draft)
+            return await board_service.build_board(session, draft)
 
         return await c.envelope(logger, "draft.tournament_board", op, session_factory=_SF)
 
@@ -302,7 +313,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _session_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             draft = await _load_session(session, c.require_id(data))
-            return await board_svc.session_read(session, draft)
+            return await board_service.session_read(session, draft)
 
         return await c.envelope(logger, "draft.session_get", op, session_factory=_SF)
 
@@ -310,7 +321,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _session_board(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             draft = await _load_session(session, c.require_id(data))
-            return await board_svc.build_board(session, draft)
+            return await board_service.build_board(session, draft)
 
         return await c.envelope(logger, "draft.session_board", op, session_factory=_SF)
 
@@ -322,7 +333,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_draft_session_workspace_id(session, session_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             draft = await _load_session(session, session_id)
-            report = await feasibility.analyze_session(session, draft)
+            report = await feasibility_service.analyze_session(session, draft)
             return DraftFeasibilityResponse.model_validate(report)
 
         return await c.envelope(logger, "draft.feasibility", op, session_factory=_SF)
@@ -334,11 +345,9 @@ def register(broker: Any, logger: Any) -> None:
             draft, pick = await _load_pick(session, c.require_id(data))
             if draft.current_pick_id != pick.id:
                 raise HTTPException(status_code=409, detail="Options are available only for the current pick")
-            public_user_ids = list(
-                await session.scalars(sa.select(models.User.id).where(models.User.auth_user_id == user.id))
-            )
-            team = await session.get(
-                DraftTeam,
+            public_user_ids = await _actor_player_ids(session, user.id)
+            team = await _teams_repo.get(
+                session,
                 pick.draft_team_id,
                 options=loaders.team_options(),
                 populate_existing=True,
@@ -349,7 +358,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_player_ids=public_user_ids,
             ):
                 raise HTTPException(status_code=403, detail="Only the on-clock captain or an admin may read options")
-            options = await feasibility.evaluate_session_pick_options(
+            options = await feasibility_service.evaluate_session_pick_options(
                 session,
                 draft,
                 team_id=pick.draft_team_id,
@@ -373,7 +382,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftRoleEditRequest.model_validate(c.payload(data))
             draft = await _load_session(session, session_id)
-            result = await role_edit_svc.edit_player_role(
+            result = await role_edit_service.edit_player_role(
                 session,
                 draft,
                 player_id=player_id,
@@ -422,13 +431,13 @@ def register(broker: Any, logger: Any) -> None:
             draft = await _load_session(session, session_id)
             if draft.current_pick_id is None:
                 raise HTTPException(status_code=409, detail="Draft has no current pick")
-            current = await session.get(DraftPick, draft.current_pick_id)
-            snapshot = await feasibility.load_snapshot(session, draft)
+            current = await _picks_repo.get(session, draft.current_pick_id)
+            snapshot = await feasibility_service.load_snapshot(session, draft)
             # Fit construction reads secondary_roles_json/user_id/role_ranks;
             # snapshot players carry loaders.player_options() so those never
             # lazy-load.
             available = [p for p in snapshot.players if p.status == "available"]
-            shape = await feasibility.resolve_shape(session, draft)
+            shape = await feasibility_service.resolve_shape(session, draft)
             counts = selection._team_slot_counts(snapshot.players, snapshot.picks, current.draft_team_id, shape)
             capacity = selection._role_openings(shape, counts)
             fit_players = [
@@ -447,11 +456,11 @@ def register(broker: Any, logger: Any) -> None:
                 )
                 for p in available
             ]
-            options = await feasibility.evaluate_session_pick_options(
+            options = await feasibility_service.evaluate_session_pick_options(
                 session,
                 draft,
                 team_id=current.draft_team_id,
-                state=await feasibility.state_from_snapshot(session, draft, snapshot),
+                state=await feasibility_service.state_from_snapshot(session, draft, snapshot),
             )
             safe_options = {(option.player_id, option.role) for option in options if option.is_safe}
             ranked = sug.rank_suggestions(
@@ -485,7 +494,7 @@ def register(broker: Any, logger: Any) -> None:
             # The roster shape is the tournament's, not the request's: a draft
             # cannot be created at a size the tournament does not run.
             shape = await get_effective_roster_shape(session, tournament_id=tournament_id, workspace_id=workspace_id)
-            draft = await lifecycle.create_session(
+            draft = await lifecycle_service.create_session(
                 session,
                 tournament_id=tournament_id,
                 workspace_id=workspace_id,
@@ -507,7 +516,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
-            return await board_svc.session_read(session, draft)
+            return await board_service.session_read(session, draft)
 
         return await c.envelope(logger, "draft.session_create", op, session_factory=_SF)
 
@@ -520,16 +529,16 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftSeedRequest.model_validate(c.payload(data))
-            draft = await session.scalar(sa.select(DraftSession).where(DraftSession.id == session_id).with_for_update())
+            draft = await _sessions_repo.get_for_update(session, session_id)
             if draft is None:
                 raise HTTPException(status_code=404, detail="Draft session not found")
             lifecycle.validate_seed_version(draft, expected_version=payload.expected_version)
-            before = await _seed_counts(session, draft.id)
+            before = await lifecycle_service.seed_row_counts(session, draft.id)
             version_before = draft.version
             savepoint = await session.begin_nested() if payload.preview_only else None
             try:
                 if payload.pool_captains:
-                    await lifecycle.seed_from_pool(
+                    await lifecycle_service.seed_from_pool(
                         session,
                         draft,
                         captain_registration_ids=[c_.registration_id for c_ in payload.pool_captains],
@@ -561,17 +570,17 @@ def register(broker: Any, logger: Any) -> None:
                         )
                         for p in payload.players
                     ]
-                    await lifecycle.seed(session, draft, captains=captains, players=players)
+                    await lifecycle_service.seed(session, draft, captains=captains, players=players)
                 else:
                     raise HTTPException(
                         status_code=422,
                         detail="Provide pool_captains (from the balancer pool) or manual captains",
                     )
 
-                after = await _seed_counts(session, draft.id)
-                report = await feasibility.analyze_session(session, draft)
+                after = await lifecycle_service.seed_row_counts(session, draft.id)
+                report = await feasibility_service.analyze_session(session, draft)
                 response = DraftSeedResponse(
-                    session=await board_svc.session_read(session, draft),
+                    session=await board_service.session_read(session, draft),
                     preview_only=payload.preview_only,
                     diff=_seed_diff(
                         before=before,
@@ -622,7 +631,7 @@ def register(broker: Any, logger: Any) -> None:
                 # Kept only so a stale client cannot silently desync the board:
                 # the sole accepted value is the one the shape already implies.
                 lifecycle.validate_draft_rounds(
-                    rounds=payload.rounds, shape=await feasibility.resolve_shape(session, draft)
+                    rounds=payload.rounds, shape=await feasibility_service.resolve_shape(session, draft)
                 )
                 draft.rounds = payload.rounds
             if payload.settings is not None:
@@ -631,8 +640,8 @@ def register(broker: Any, logger: Any) -> None:
             # a rules change that stopped at `settings_json` left the board picking
             # in the order it was seeded with while the wizard previewed the new
             # one. Rounds already in progress keep their order (see
-            # lifecycle.resync_pick_order).
-            moved = await lifecycle.resync_pick_order(session, draft)
+            # lifecycle_service.resync_pick_order).
+            moved = await lifecycle_service.resync_pick_order(session, draft)
             if moved:
                 await draft_rt.publish_draft_event(
                     session,
@@ -644,7 +653,7 @@ def register(broker: Any, logger: Any) -> None:
                 )
             await session.commit()
             await session.refresh(draft)
-            return await board_svc.session_read(session, draft)
+            return await board_service.session_read(session, draft)
 
         return await c.envelope(logger, "draft.session_patch", op, session_factory=_SF)
 
@@ -663,11 +672,11 @@ def register(broker: Any, logger: Any) -> None:
 
             return await c.envelope(logger, subject, op, session_factory=_SF)
 
-    _make_lifecycle("rpc.balancer.draft.start", lifecycle.start, "draft.pick_started", superuser_forces=True)
-    _make_lifecycle("rpc.balancer.draft.pause", lifecycle.pause, "draft.paused")
-    _make_lifecycle("rpc.balancer.draft.resume", lifecycle.resume, "draft.resumed")
-    _make_lifecycle("rpc.balancer.draft.cancel", lifecycle.cancel, "draft.cancelled")
-    _make_lifecycle("rpc.balancer.draft.rollback", lifecycle.rollback, "draft.rollback")
+    _make_lifecycle("rpc.balancer.draft.start", lifecycle_service.start, "draft.pick_started", superuser_forces=True)
+    _make_lifecycle("rpc.balancer.draft.pause", lifecycle_service.pause, "draft.paused")
+    _make_lifecycle("rpc.balancer.draft.resume", lifecycle_service.resume, "draft.resumed")
+    _make_lifecycle("rpc.balancer.draft.cancel", lifecycle_service.cancel, "draft.cancelled")
+    _make_lifecycle("rpc.balancer.draft.rollback", lifecycle_service.rollback, "draft.rollback")
 
     @broker.subscriber("rpc.balancer.draft.session_list")
     async def _session_list(data: dict, msg: RabbitMessage) -> dict:
@@ -676,16 +685,10 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = c.require_id(data)
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "read")
-            rows = (
-                await session.scalars(
-                    sa.select(DraftSession)
-                    .where(DraftSession.tournament_id == tournament_id)
-                    .order_by(DraftSession.id.desc())
-                )
-            ).all()
+            rows = await _sessions_repo.list_by_tournament(session, tournament_id)
             # The shape lookup behind session_read is cache-backed at both
             # levels, so one call per row costs a dict hit, not a query.
-            return [await board_svc.session_read(session, row) for row in rows]
+            return [await board_service.session_read(session, row) for row in rows]
 
         return await c.envelope(logger, "draft.session_list", op, session_factory=_SF)
 
@@ -710,7 +713,7 @@ def register(broker: Any, logger: Any) -> None:
                 payload={"session_id": draft.id, "status": draft.status, "deleted": True},
                 actor_user_id=user.id,
             )
-            await lifecycle.delete_session(session, draft)
+            await lifecycle_service.delete_session(session, draft)
             await session.commit()
             return None
 
@@ -725,7 +728,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             draft = await _load_session(session, session_id)
-            updated, _removed, _imported = await export_svc.export(session, draft)
+            updated, _removed, _imported = await export_service.export(session, draft)
             await draft_rt.publish_draft_event(
                 session,
                 _redis(logger),
@@ -735,7 +738,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
-            return await board_svc.session_read(session, updated)
+            return await board_service.session_read(session, updated)
 
         return await c.envelope(logger, "draft.export", op, session_factory=_SF)
 
@@ -747,12 +750,10 @@ def register(broker: Any, logger: Any) -> None:
             pick_id = c.require_id(data)
             payload = DraftPickSelectRequest.model_validate(c.payload(data))
             draft, pick = await _load_pick(session, pick_id)
-            public_user_ids = list(
-                await session.scalars(sa.select(models.User.id).where(models.User.auth_user_id == user.id))
-            )
+            public_user_ids = await _actor_player_ids(session, user.id)
             public_user_id = public_user_ids[0] if public_user_ids else None
             is_admin = user.is_workspace_admin(draft.workspace_id)
-            result = await selection.select(
+            result = await selection_service.select(
                 session,
                 draft,
                 pick,
@@ -768,7 +769,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, _redis(logger), draft, result, made_event="draft.pick_made", actor_user_id=public_user_id
             )
             await session.commit()
-            return await board_svc.session_read(session, draft)
+            return await board_service.session_read(session, draft)
 
         return await c.envelope(logger, "draft.pick_select", op, session_factory=_SF)
 
@@ -781,12 +782,12 @@ def register(broker: Any, logger: Any) -> None:
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             payload = DraftPickAutopickRequest.model_validate(c.payload(data))
             draft, pick = await _load_pick(session, pick_id)
-            result = await selection.autopick(session, draft, pick, expected_version=payload.expected_version)
+            result = await selection_service.autopick(session, draft, pick, expected_version=payload.expected_version)
             await _publish_result(
                 session, _redis(logger), draft, result, made_event="draft.autopicked", actor_user_id=None
             )
             await session.commit()
-            return await board_svc.session_read(session, draft)
+            return await board_service.session_read(session, draft)
 
         return await c.envelope(logger, "draft.pick_autopick", op, session_factory=_SF)
 
@@ -806,8 +807,8 @@ def register(broker: Any, logger: Any) -> None:
                 "rank_value": pick.target_rank_value,
                 "version": pick.version,
             }
-            public_user_id = await session.scalar(sa.select(models.User.id).where(models.User.auth_user_id == user.id))
-            result = await selection.override(
+            public_user_id = await _users_repo.get_id_by_auth_user_id(session, user.id)
+            result = await selection_service.override(
                 session,
                 draft,
                 pick,
@@ -816,7 +817,8 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=public_user_id,
                 target_role=payload.target_role,
             )
-            session.add(
+            await _audit_repo.create(
+                session,
                 _override_audit_event(
                     session_id=draft.id,
                     pick_id=pick.id,
@@ -830,12 +832,12 @@ def register(broker: Any, logger: Any) -> None:
                         "rank_value": pick.target_rank_value,
                         "version": pick.version,
                     },
-                )
+                ),
             )
             await _publish_result(
                 session, _redis(logger), draft, result, made_event="draft.pick_made", actor_user_id=public_user_id
             )
             await session.commit()
-            return await board_svc.session_read(session, draft)
+            return await board_service.session_read(session, draft)
 
         return await c.envelope(logger, "draft.pick_override", op, session_factory=_SF)

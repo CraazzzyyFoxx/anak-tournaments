@@ -48,8 +48,19 @@ class BaseRepository[ModelType: Base]:
         id: int | str,
         *,
         options: Sequence[_AbstractLoad] | None = None,
+        populate_existing: bool = False,
     ) -> ModelType | None:
+        """Fetch by primary key.
+
+        ``populate_existing`` forces a fresh load of an already identity-mapped
+        row: without it, ``session.get``-equivalent lookups silently return the
+        row exactly as it was first loaded in this session, which can be missing
+        the eager-load ``options`` a later caller needs (and would otherwise
+        raise ``MissingGreenlet`` on the first async lazy-load of the relationship).
+        """
         query = self._apply_options(self.select().where(self.model.id == id), options)
+        if populate_existing:
+            query = query.execution_options(populate_existing=True)
         result = await session.execute(query)
         return result.unique().scalars().first()
 

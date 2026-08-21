@@ -21,9 +21,9 @@ from src.core import db
 from src.core.auth import _get_tournament_workspace_id
 from src.rpc import _common as c
 from src.schemas.team import BalancerTeam, InternalBalancerTeamsPayload
-from src.services import registered_teams
-from src.services import team as team_service
 from src.services.balancer.realtime import emit_balancer_data_event
+from src.services.registered_teams import registered_teams_service
+from src.services.team import team_service
 
 _SF = db.async_session_maker
 _PAYLOAD_FORMATS = ("auto", "atravkovs", "internal")
@@ -100,7 +100,7 @@ def register(broker: Any, logger: Any) -> None:
             raw_ids = c.payload(data).get("team_ids")
             team_ids = [int(value) for value in raw_ids] if isinstance(raw_ids, list) and raw_ids else None
 
-            result = await registered_teams.export_registered(session, tournament_id, team_ids=team_ids)
+            result = await registered_teams_service.export_registered(session, tournament_id, team_ids=team_ids)
             if result.imported_teams:
                 await emit_balancer_data_event(tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
             return {

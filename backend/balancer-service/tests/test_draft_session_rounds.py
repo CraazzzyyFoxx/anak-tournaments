@@ -57,7 +57,7 @@ class _FakeSession:
 
 def _create(**kwargs: Any):
     return asyncio.run(
-        lifecycle.create_session(_FakeSession(), tournament_id=1, workspace_id=2, **kwargs)  # type: ignore[arg-type]
+        lifecycle.lifecycle_service.create_session(_FakeSession(), tournament_id=1, workspace_id=2, **kwargs)  # type: ignore[arg-type]
     )
 
 
@@ -77,7 +77,7 @@ def test_rounds_come_from_the_shape(slots: dict[str, int], expected_rounds: int)
 
 
 def test_the_shape_is_required_and_the_scalars_are_gone() -> None:
-    parameters = inspect.signature(lifecycle.create_session).parameters
+    parameters = inspect.signature(lifecycle.lifecycle_service.create_session).parameters
 
     assert parameters["shape"].default is inspect.Parameter.empty
     assert "team_size" not in parameters
@@ -93,6 +93,6 @@ def test_passing_a_scalar_size_is_a_type_error(scalar: str) -> None:
 def test_the_session_row_never_stores_a_size_of_its_own() -> None:
     # Phase B drops the column; until then the model still has a default, so this
     # asserts the writer stopped SETTING it rather than that it cannot exist.
-    source = inspect.getsource(lifecycle.create_session)
+    source = inspect.getsource(lifecycle.lifecycle_service.create_session)
 
     assert "team_size" not in source

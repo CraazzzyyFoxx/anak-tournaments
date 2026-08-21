@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
 import sys
@@ -24,7 +25,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.core.enums import DraftStatus, HeroClass  # noqa: E402
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftPlayerRole, DraftSession  # noqa: E402
-from src.services.draft import feasibility  # noqa: E402
+from src.services.draft import entities as feasibility  # noqa: E402
 
 
 def _module():
@@ -162,6 +163,9 @@ class _FakeSession:
     def add(self, value: object) -> None:
         self.added.append(value)
 
+    async def flush(self) -> None:
+        return None
+
 
 def test_apply_role_edit_updates_snapshot_version_and_private_audit() -> None:
     role_edit = _module()
@@ -175,15 +179,17 @@ def test_apply_role_edit_updates_snapshot_version_and_private_audit() -> None:
     preview = role_edit.preview_role_addition(state, player_id=20, role=HeroClass.support)
     session = _FakeSession()
 
-    audit = role_edit.apply_role_edit(
-        session,
-        _draft(),
-        player,
-        role=HeroClass.support,
-        rank_value=2750,
-        reason="  Confirmed secondary role  ",
-        actor_auth_user_id=99,
-        preview=preview,
+    audit = asyncio.run(
+        role_edit.role_edit_service.apply_role_edit(
+            session,
+            _draft(),
+            player,
+            role=HeroClass.support,
+            rank_value=2750,
+            reason="  Confirmed secondary role  ",
+            actor_auth_user_id=99,
+            preview=preview,
+        )
     )
 
     assert player.version == 5

@@ -10,49 +10,9 @@ autopick and ``/suggestions`` stay synchronous and deterministic.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 
 from shared.core.enums import DraftAutopickStrategy, HeroClass
-
-# Role-impact weights — mirror moo_core/src/lib.rs (tank 1.4 / dps 1.0 / support 1.1).
-DEFAULT_ROLE_IMPACT: dict[HeroClass, float] = {
-    HeroClass.tank: 1.4,
-    HeroClass.damage: 1.0,
-    HeroClass.support: 1.1,
-}
-
-
-@dataclass(frozen=True)
-class FitPlayer:
-    player_id: int
-    rank_value: int
-    playable_roles: frozenset[HeroClass]
-    preference_order: tuple[HeroClass, ...] = ()
-    is_flex: bool = False
-    user_id: int | None = None
-    # Per-role ranks (role -> SR). ``rank_value`` is the fallback when a role
-    # has no specific entry, so candidates are scored at the rank of the role
-    # they'd actually fill — not their primary-role rank.
-    rank_by_role: Mapping[HeroClass, int] = field(default_factory=dict)
-
-    def rank_for(self, role: HeroClass) -> int:
-        return self.rank_by_role.get(role, self.rank_value)
-
-
-@dataclass(frozen=True)
-class FitConfig:
-    role_impact: Mapping[HeroClass, float] = field(default_factory=lambda: dict(DEFAULT_ROLE_IMPACT))
-    discomfort_weight: float = 1.0
-    # Large enough that role-need dominates raw fit when filling scarce roles.
-    role_need_bonus: float = 1_000_000.0
-
-
-@dataclass(frozen=True)
-class FitResult:
-    player_id: int
-    role: HeroClass
-    fit_score: float
-    breakdown: dict[str, float]
+from src.services.draft.entities import FitConfig, FitPlayer, FitResult
 
 
 def role_discomfort(player: FitPlayer, role: HeroClass) -> int:

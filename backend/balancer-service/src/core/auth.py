@@ -12,7 +12,6 @@ everything else here is genuinely balancer-local.
 
 from typing import Any
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
@@ -22,7 +21,12 @@ from shared.models.identity.rbac import Permission, Role
 from shared.rbac.workspace_lookup import (
     get_tournament_workspace_id as _get_tournament_workspace_id,  # noqa: F401 -- re-exported for rpc/admin.py, rpc/binary.py, rpc/draft.py
 )
-from src import models
+from shared.repository import BalancerBalanceRepository
+from shared.repository.draft import DraftPickRepository, DraftSessionRepository
+
+_drafts = DraftSessionRepository()
+_draft_picks = DraftPickRepository()
+_balances = BalancerBalanceRepository()
 
 
 def _safe_str(value: Any) -> str:
@@ -146,11 +150,7 @@ async def _resolve_user_from_token(user_id: int, payload: dict[str, Any]) -> Aut
 
 
 async def _get_balance_workspace_id(session: AsyncSession, balance_id: int) -> int:
-    workspace_id = await session.scalar(
-        sa.select(sa.func.coalesce(models.BalancerBalance.workspace_id, models.Tournament.workspace_id))
-        .join(models.Tournament, models.Tournament.id == models.BalancerBalance.tournament_id)
-        .where(models.BalancerBalance.id == balance_id)
-    )
+    workspace_id = await _balances.get_workspace_id(session, balance_id)
     if workspace_id is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -160,20 +160,14 @@ async def _get_balance_workspace_id(session: AsyncSession, balance_id: int) -> i
 
 
 async def _get_draft_session_workspace_id(session: AsyncSession, session_id: int) -> int:
-    workspace_id = await session.scalar(
-        sa.select(models.DraftSession.workspace_id).where(models.DraftSession.id == session_id)
-    )
+    workspace_id = await _drafts.get_workspace_id(session, session_id)
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft session not found")
     return int(workspace_id)
 
 
 async def _get_pick_workspace_id(session: AsyncSession, pick_id: int) -> int:
-    workspace_id = await session.scalar(
-        sa.select(models.DraftSession.workspace_id)
-        .join(models.DraftPick, models.DraftPick.session_id == models.DraftSession.id)
-        .where(models.DraftPick.id == pick_id)
-    )
+    workspace_id = await _draft_picks.get_workspace_id(session, pick_id)
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft pick not found")
     return int(workspace_id)

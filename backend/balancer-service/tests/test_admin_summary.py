@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from src.rpc import admin as admin_rpc  # noqa: E402
-from src.services.admin import balancer as admin_balancer  # noqa: E402
+from src.services.admin.balancer import balancer_admin_service  # noqa: E402
 
 SUBJECT = "rpc.balancer.admin.tournament_summary_get"
 
@@ -165,7 +165,7 @@ class TournamentSummaryHandlerUnitTests(IsolatedAsyncioTestCase):
         """Hidden (preview) tournaments must stay resolvable — the row query
         may key on the tournament id only, never on ``is_hidden``."""
         fake = _FakeSession(workspace_id=9, row=SimpleNamespace(id=7, name="x", status="registration"))
-        await admin_balancer.get_tournament_row(fake, 7)
+        await balancer_admin_service.get_tournament_row(fake, 7)
 
         sql = str(fake.statements[-1].compile(compile_kwargs={"literal_binds": True}))
         assert "is_hidden" not in sql

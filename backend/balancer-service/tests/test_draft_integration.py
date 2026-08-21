@@ -163,13 +163,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         ]
 
     async def _new_session(self, s):
-        draft = await lifecycle.create_session(
+        draft = await lifecycle.lifecycle_service.create_session(
             s,
             tournament_id=self.tournament_id,
             workspace_id=self.workspace_id,
             shape=_SHAPE,
         )
-        await lifecycle.seed(s, draft, captains=self._captains(), players=self._players())
+        await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
         await s.commit()
         return draft
 
@@ -193,7 +193,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_start_arms_first_pick(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
             self.assertIsNotNone(draft.current_pick_id)
@@ -214,13 +214,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await _set_status(s, TournamentStatus.REGISTRATION)
 
             with self.assertRaises(ApiHTTPException) as ctx:
-                await lifecycle.start(s, draft)
+                await lifecycle.lifecycle_service.start(s, draft)
             self.assertEqual(ctx.exception.status_code, 409)
             self.assertEqual(ctx.exception.detail[0]["code"], "tournament_not_in_draft_phase")
             self.assertEqual(draft.status, DraftStatus.READY.value)
 
             await _set_status(s, TournamentStatus.DRAFT)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
 
@@ -234,14 +234,14 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
             await s.commit()
 
-            await lifecycle.start(s, draft, force=True)
+            await lifecycle.lifecycle_service.start(s, draft, force=True)
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
 
     async def test_select_advances_board(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             team = await s.get(
@@ -259,7 +259,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
             ).all()
             chosen = available[0]
-            res = await selection.select(
+            res = await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -281,7 +281,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
     async def test_select_off_role_records_role_and_its_rank(self) -> None:
         async with self.Session() as s:
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
@@ -295,9 +295,9 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 rank_value=3000,
                 role_ranks={"tank": 3000, "dps": 2500},
             )
-            await lifecycle.seed(s, draft, captains=self._captains(), players=[special, *self._players()])
+            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=[special, *self._players()])
             await s.commit()
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             team = await s.get(
@@ -312,7 +312,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                     lifecycle.DraftPlayer.battle_tag == "Flex#1",
                 )
             )
-            res = await selection.select(
+            res = await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -331,7 +331,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
     async def test_select_allows_captain_auth_user_without_team_import(self) -> None:
         async with self.Session() as s:
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
@@ -345,8 +345,8 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
                 for i, auth_user_id in enumerate(self.captain_auth_user_ids)
             ]
-            await lifecycle.seed(s, draft, captains=captains, players=self._players())
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.seed(s, draft, captains=captains, players=self._players())
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
             current = await s.get(DraftPick, draft.current_pick_id)
@@ -367,7 +367,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
             ).first()
 
-            res = await selection.select(
+            res = await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -387,7 +387,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_select_allows_linked_public_player_id(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             team = await s.get(
@@ -407,7 +407,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
             ).first()
 
-            res = await selection.select(
+            res = await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -426,7 +426,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_select_rejects_wrong_captain(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             chosen = (
@@ -441,7 +441,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             ).first()
 
             with self.assertRaises(ApiHTTPException) as ctx:
-                await selection.select(
+                await selection.selection_service.select(
                     s,
                     draft,
                     current,
@@ -459,7 +459,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_select_allows_admin_bypass(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             chosen = (
@@ -473,7 +473,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
             ).first()
 
-            res = await selection.select(
+            res = await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -492,11 +492,11 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_finalize_race_only_one_winner(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             v = current.version
-            won_first = await selection._finalize(
+            won_first = await selection.selection_service._finalize(
                 s,
                 current.id,
                 status=DraftPickStatus.COMPLETED,
@@ -507,7 +507,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 expected_version=v,
             )
             # Second writer with the same expected_version must lose.
-            won_second = await selection._finalize(
+            won_second = await selection.selection_service._finalize(
                 s,
                 current.id,
                 status=DraftPickStatus.AUTOPICKED,
@@ -524,10 +524,10 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_autopick_picks_available_and_advances(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
-            res = await selection.autopick(s, draft, current, expected_version=current.version)
+            res = await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
             await s.commit()
             self.assertIn(res.pick.status, {DraftPickStatus.AUTOPICKED.value})
             self.assertIsNotNone(res.pick.picked_player_id)
@@ -539,7 +539,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await self._new_session(s)
         async with self.Session() as s2:
             with self.assertRaises(ApiHTTPException):
-                await lifecycle.create_session(
+                await lifecycle.lifecycle_service.create_session(
                     s2,
                     tournament_id=self.tournament_id,
                     workspace_id=self.workspace_id,
@@ -552,7 +552,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             draft = await self._new_session(s)
             draft_id = draft.id
 
-            await lifecycle.delete_session(s, draft)
+            await lifecycle.lifecycle_service.delete_session(s, draft)
             await s.commit()
 
             from shared.models.balancer.draft import DraftPlayer, DraftSession, DraftTeam
@@ -564,7 +564,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
         # The active-session index is free again, so a fresh draft can be set up.
         async with self.Session() as s2:
-            replacement = await lifecycle.create_session(
+            replacement = await lifecycle.lifecycle_service.create_session(
                 s2,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
@@ -576,11 +576,11 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_delete_session_erases_a_cancelled_draft(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.cancel(s, draft)
+            await lifecycle.lifecycle_service.cancel(s, draft)
             await s.commit()
             draft_id = draft.id
 
-            await lifecycle.delete_session(s, draft)
+            await lifecycle.lifecycle_service.delete_session(s, draft)
             await s.commit()
 
             from shared.models.balancer.draft import DraftSession
@@ -590,7 +590,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_full_run_autopick_to_completion_then_export(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
             # Autopick every pick until the draft completes.
@@ -602,12 +602,12 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 guard += 1
                 self.assertLess(guard, 50, "draft did not converge")
                 current = await s.get(DraftPick, draft.current_pick_id)
-                await selection.autopick(s, draft, current, expected_version=current.version)
+                await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
                 await s.commit()
 
             self.assertEqual(draft.status, DraftStatus.COMPLETED.value)
 
-            _, removed, imported = await draft_export.export(s, draft)
+            _, removed, imported = await draft_export.export_service.export(s, draft)
             await s.commit()
             self.assertEqual(removed, 0)
             self.assertEqual(imported, 3)
@@ -626,15 +626,15 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_export_rejects_incomplete_draft(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             with self.assertRaises(ApiHTTPException):
-                await draft_export.export(s, draft)
+                await draft_export.export_service.export(s, draft)
 
     async def test_clock_fires_autopick_when_expired(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             current.clock_expires_at = datetime.now(UTC) - timedelta(seconds=1)  # force overdue
@@ -642,7 +642,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             pick_id = current.id
             session_id = draft.id
 
-        fired = await draft_clock.fire_autopick_if_expired(self.Session, None, session_id)
+        fired = await draft_clock.draft_clock_service.fire_autopick_if_expired(self.Session, None, session_id)
         self.assertTrue(fired)
         async with self.Session() as s:
             pick = await s.get(DraftPick, pick_id)
@@ -652,10 +652,10 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_clock_noop_when_not_expired(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()  # clock_expires_at ~45s in the future
             session_id = draft.id
-        fired = await draft_clock.fire_autopick_if_expired(self.Session, None, session_id)
+        fired = await draft_clock.draft_clock_service.fire_autopick_if_expired(self.Session, None, session_id)
         self.assertFalse(fired)
 
     async def test_board_snapshot_carries_event_cursor(self) -> None:
@@ -673,7 +673,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             topic = f"tournament:{self.tournament_id}:draft"
             max_id = await s.scalar(sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic))
-            board = await draft_board.build_board(s, draft)
+            board = await draft_board.board_service.build_board(s, draft)
             self.assertIsNotNone(board.last_event_id)
             self.assertEqual(board.last_event_id, max_id)
             # all pool players present (rosters renderable), not just available
@@ -682,7 +682,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_export_is_idempotent(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
             guard = 0
             while True:
@@ -692,15 +692,15 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 guard += 1
                 self.assertLess(guard, 50)
                 current = await s.get(DraftPick, draft.current_pick_id)
-                await selection.autopick(s, draft, current, expected_version=current.version)
+                await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
                 await s.commit()
 
-            _, removed1, imported1 = await draft_export.export(s, draft)
+            _, removed1, imported1 = await draft_export.export_service.export(s, draft)
             await s.commit()
             self.assertEqual((removed1, imported1), (0, 3))
 
             # Re-export: prior teams are removed first, then re-created.
-            _, removed2, imported2 = await draft_export.export(s, draft)
+            _, removed2, imported2 = await draft_export.export_service.export(s, draft)
             await s.commit()
             self.assertEqual(removed2, 3)
             self.assertEqual(imported2, 3)
@@ -743,12 +743,12 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
     async def test_seed_from_pool_uses_existing_balancer_pool(self) -> None:
         async with self.Session() as s:
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             pool_ids = await self._build_balancer_pool(s, 9)
             captain_ids = pool_ids[:3]
-            await lifecycle.seed_from_pool(s, draft, captain_registration_ids=captain_ids)
+            await lifecycle.lifecycle_service.seed_from_pool(s, draft, captain_registration_ids=captain_ids)
             await s.commit()
 
             self.assertEqual(draft.status, DraftStatus.READY.value)
@@ -773,13 +773,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         from shared.core.enums import DraftCaptainOrder
 
         async with self.Session() as s:
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             pool_ids = await self._build_balancer_pool(s, 9)
             # ranks = 3000 + i*25, so captains[0..2] have ranks 3000 < 3025 < 3050
             captain_ids = pool_ids[:3]
-            await lifecycle.seed_from_pool(
+            await lifecycle.lifecycle_service.seed_from_pool(
                 s, draft, captain_registration_ids=captain_ids, captain_order=DraftCaptainOrder.WEAKEST_FIRST
             )
             await s.commit()
@@ -804,12 +804,12 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_can_create_new_draft_after_cancel(self) -> None:
         async with self.Session() as s:
             first = await self._new_session(s)
-            await lifecycle.cancel(s, first)
+            await lifecycle.lifecycle_service.cancel(s, first)
             await s.commit()
             self.assertEqual(first.status, DraftStatus.CANCELLED.value)
         # A cancelled draft must not block creating a fresh one.
         async with self.Session() as s:
-            second = await lifecycle.create_session(
+            second = await lifecycle.lifecycle_service.create_session(
                 s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             await s.commit()
@@ -818,12 +818,12 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
     async def test_seed_from_pool_rejects_captain_not_in_pool(self) -> None:
         async with self.Session() as s:
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s, tournament_id=self.tournament_id, workspace_id=self.workspace_id, shape=_SHAPE
             )
             await self._build_balancer_pool(s, 4)
             with self.assertRaises(ApiHTTPException):
-                await lifecycle.seed_from_pool(s, draft, captain_registration_ids=[999999])
+                await lifecycle.lifecycle_service.seed_from_pool(s, draft, captain_registration_ids=[999999])
 
     async def test_realtime_publisher_persists_event(self) -> None:
         async with self.Session() as s:
@@ -850,7 +850,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def test_rollback_reverts_pick_and_players(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
             # Execute first pick
@@ -871,7 +871,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             ).all()
             chosen = available[0]
 
-            await selection.select(
+            await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -891,7 +891,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             self.assertEqual(chosen.status, DraftPlayerStatus.PICKED.value)
 
             # Rollback
-            await lifecycle.rollback(s, draft)
+            await lifecycle.lifecycle_service.rollback(s, draft)
             await s.commit()
 
             # Draft status should be PAUSED, current pick back to pick 1 (on_clock), player status available

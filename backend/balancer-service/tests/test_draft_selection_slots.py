@@ -33,7 +33,8 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftPlayerRole  # noqa: E402
-from src.services.draft import feasibility, selection  # noqa: E402
+from src.services.draft import feasibility_algorithm as feasibility  # noqa: E402
+from src.services.draft import selection  # noqa: E402
 
 
 def _shape(slots: dict[str, int]):

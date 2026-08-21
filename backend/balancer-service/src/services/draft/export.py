@@ -13,17 +13,18 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftStatus
+from shared.core.enums import DraftPlayerStatus, DraftStatus
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
 from shared.services.team_export import ExportPlan, team_materialization
 from src import models
 from src.schemas.team import BalancerTeam, BalancerTeamMember
-from src.services.draft import feasibility, loaders, ranks
+from src.services.draft import loaders, ranks
 from src.services.draft._errors import err as _err
+from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.team import to_materialization_teams
 
 
@@ -86,77 +87,86 @@ def _draft_to_balancer_payload(
     return payload
 
 
-async def export(session: AsyncSession, draft_session: DraftSession) -> tuple[DraftSession, int, int]:
-    """Export a COMPLETED draft. Returns (session, removed_teams, imported_teams)."""
-    if draft_session.status != DraftStatus.COMPLETED.value:
-        raise _err("draft_not_completed", "Only a completed draft can be exported")
+class DraftExportService:
+    def __init__(
+        self,
+        *,
+        teams_repo: DraftTeamRepository = DraftTeamRepository(),
+        players_repo: DraftPlayerRepository = DraftPlayerRepository(),
+        picks_repo: DraftPickRepository = DraftPickRepository(),
+        feasibility: DraftFeasibilityService = feasibility_service,
+    ) -> None:
+        self.teams_repo = teams_repo
+        self.players_repo = players_repo
+        self.picks_repo = picks_repo
+        self.feasibility = feasibility
 
-    teams = (await session.scalars(sa.select(DraftTeam).where(DraftTeam.session_id == draft_session.id))).all()
-    roster_rows = (
-        await session.scalars(
-            sa.select(DraftPlayer)
-            .where(
-                DraftPlayer.session_id == draft_session.id,
-                DraftPlayer.status == DraftPlayerStatus.PICKED.value,
+    async def export(self, session: AsyncSession, draft_session: DraftSession) -> tuple[DraftSession, int, int]:
+        """Export a COMPLETED draft. Returns (session, removed_teams, imported_teams)."""
+        if draft_session.status != DraftStatus.COMPLETED.value:
+            raise _err("draft_not_completed", "Only a completed draft can be exported")
+
+        teams = await self.teams_repo.list_by_session(session, draft_session.id)
+        roster_rows = [
+            p
+            for p in await self.players_repo.list_by_session(
+                # payload reads p.user_id and ranks.role_rank(p, ...) -> role_ranks.
+                session,
+                draft_session.id,
+                options=loaders.player_options(),
             )
-            # payload reads p.user_id and ranks.role_rank(p, ...) -> role_ranks.
-            .options(*loaders.player_options())
+            if p.status == DraftPlayerStatus.PICKED.value
+        ]
+        roster_by_team: dict[int, list[DraftPlayer]] = defaultdict(list)
+        for p in roster_rows:
+            if p.drafted_by_team_id is not None:
+                roster_by_team[p.drafted_by_team_id].append(p)
+
+        # Resolved picks carry the drafted role + its rank (frozen at finalize).
+        pick_rows = await self.picks_repo.list_resolved(session, draft_session.id)
+        pick_by_player_id = {pk.picked_player_id: pk for pk in pick_rows if pk.picked_player_id is not None}
+
+        payload = _draft_to_balancer_payload(
+            list(teams),
+            roster_by_team,
+            await self.feasibility.resolve_shape(session, draft_session),
+            pick_by_player_id,
         )
-    ).all()
-    roster_by_team: dict[int, list[DraftPlayer]] = defaultdict(list)
-    for p in roster_rows:
-        if p.drafted_by_team_id is not None:
-            roster_by_team[p.drafted_by_team_id].append(p)
+        # Idempotent cleanup + insert + backfill + stamp, all in the shared
+        # orchestrator's single transaction (it used to be two: the writer committed
+        # the deletes and inserts internally, and the caller committed the backfill).
+        linked_ids = [t.exported_team_id for t in teams if t.exported_team_id is not None]
 
-    # Resolved picks carry the drafted role + its rank (frozen at finalize).
-    pick_rows = (
-        await session.scalars(
-            sa.select(DraftPick).where(
-                DraftPick.session_id == draft_session.id,
-                DraftPick.status.in_([DraftPickStatus.COMPLETED.value, DraftPickStatus.AUTOPICKED.value]),
-            )
+        def _unlink() -> None:
+            for t in teams:
+                t.exported_team_id = None
+
+        async def _finalize(inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
+            for team, mapped in zip(teams, payload, strict=False):
+                public_team = by_name.get(mapped.name)
+                if public_team is not None:
+                    team.exported_team_id = public_team.id
+            draft_session.exported_at = datetime.now(UTC)
+            draft_session.export_status = "success"
+
+        async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
+            fresh = await inner.get(DraftSession, draft_session.id)
+            if fresh is not None:
+                fresh.export_status = "failed"
+
+        outcome = await team_materialization.run(
+            session,
+            ExportPlan(
+                tournament_id=draft_session.tournament_id,
+                teams=to_materialization_teams(payload),
+                prior_team_ids=linked_ids,
+                on_unresolved="skip",
+                unlink=_unlink,
+                finalize=_finalize,
+                on_failure=_on_failure,
+            ),
         )
-    ).all()
-    pick_by_player_id = {pk.picked_player_id: pk for pk in pick_rows if pk.picked_player_id is not None}
+        return draft_session, outcome.removed_teams, outcome.imported_teams
 
-    payload = _draft_to_balancer_payload(
-        list(teams),
-        roster_by_team,
-        await feasibility.resolve_shape(session, draft_session),
-        pick_by_player_id,
-    )
-    # Idempotent cleanup + insert + backfill + stamp, all in the shared
-    # orchestrator's single transaction (it used to be two: the writer committed
-    # the deletes and inserts internally, and the caller committed the backfill).
-    linked_ids = [t.exported_team_id for t in teams if t.exported_team_id is not None]
 
-    def _unlink() -> None:
-        for t in teams:
-            t.exported_team_id = None
-
-    async def _finalize(inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
-        for team, mapped in zip(teams, payload, strict=False):
-            public_team = by_name.get(mapped.name)
-            if public_team is not None:
-                team.exported_team_id = public_team.id
-        draft_session.exported_at = datetime.now(UTC)
-        draft_session.export_status = "success"
-
-    async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
-        fresh = await inner.get(DraftSession, draft_session.id)
-        if fresh is not None:
-            fresh.export_status = "failed"
-
-    outcome = await team_materialization.run(
-        session,
-        ExportPlan(
-            tournament_id=draft_session.tournament_id,
-            teams=to_materialization_teams(payload),
-            prior_team_ids=linked_ids,
-            on_unresolved="skip",
-            unlink=_unlink,
-            finalize=_finalize,
-            on_failure=_on_failure,
-        ),
-    )
-    return draft_session, outcome.removed_teams, outcome.imported_teams
+export_service = DraftExportService()

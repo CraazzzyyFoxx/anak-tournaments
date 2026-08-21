@@ -37,7 +37,7 @@ from src.services.draft import lifecycle, selection  # noqa: E402
 def _load_feature_modules():
     try:
         matching = importlib.import_module("src.services.role_matching")
-        feasibility = importlib.import_module("src.services.draft.feasibility")
+        feasibility = importlib.import_module("src.services.draft.feasibility_algorithm")
     except ModuleNotFoundError as exc:
         pytest.fail(f"draft feasibility feature is not implemented: {exc}")
     return matching, feasibility

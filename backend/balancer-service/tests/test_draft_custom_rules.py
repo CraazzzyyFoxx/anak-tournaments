@@ -130,7 +130,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
     async def test_custom_format_static_rules(self) -> None:
         async with self.Session() as s:
             rules = ["linear", "reverse", "weakest_first", "strongest_first"]
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
@@ -138,7 +138,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": rules},
             )
-            await lifecycle.seed(s, draft, captains=self._captains(), players=self._players())
+            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
             await s.commit()
 
             picks = (
@@ -184,7 +184,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         previewed the new order while the board kept drafting the seeded one.
         """
         async with self.Session() as s:
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
@@ -192,8 +192,8 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": ["linear", "linear", "linear", "linear"]},
             )
-            await lifecycle.seed(s, draft, captains=self._captains(), players=self._players())
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
             teams = (
@@ -203,7 +203,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
 
             # Round 1 is on the clock, so it is history and must not move.
             draft.settings_json = {"round_rules": ["reverse", "reverse", "linear", "linear"]}
-            moved = await lifecycle.resync_pick_order(s, draft)
+            moved = await lifecycle.lifecycle_service.resync_pick_order(s, draft)
             await s.commit()
 
             picks = (
@@ -228,12 +228,12 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 [p.draft_team_id for p in picks[6:9]],
                 [team_by_pos[1], team_by_pos[2], team_by_pos[3]],
             )
-            self.assertEqual(await lifecycle.resync_pick_order(s, draft), 0)
+            self.assertEqual(await lifecycle.lifecycle_service.resync_pick_order(s, draft), 0)
 
     async def test_custom_format_dynamic_rules(self) -> None:
         async with self.Session() as s:
             rules = ["linear", "team_avg_asc", "linear", "linear"]
-            draft = await lifecycle.create_session(
+            draft = await lifecycle.lifecycle_service.create_session(
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
@@ -241,8 +241,8 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": rules},
             )
-            await lifecycle.seed(s, draft, captains=self._captains(), players=self._players())
-            await lifecycle.start(s, draft)
+            await lifecycle.lifecycle_service.seed(s, draft, captains=self._captains(), players=self._players())
+            await lifecycle.lifecycle_service.start(s, draft)
             await s.commit()
 
             available = (
@@ -275,7 +275,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
 
             # Execute Pick 1 (Cap0)
             current = await s.get(DraftPick, draft.current_pick_id)
-            await selection.select(
+            await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -289,7 +289,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
 
             # Execute Pick 2 (Cap1)
             current = await s.get(DraftPick, draft.current_pick_id)
-            await selection.select(
+            await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -303,7 +303,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
 
             # Execute Pick 3 (Cap2) - triggers dynamic sort for Round 2
             current = await s.get(DraftPick, draft.current_pick_id)
-            await selection.select(
+            await selection.selection_service.select(
                 s,
                 draft,
                 current,
@@ -343,7 +343,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
 
             # Nobody — captain or admin — can pick through the lock.
             with self.assertRaises(ApiHTTPException):
-                await selection.select(
+                await selection.selection_service.select(
                     s,
                     draft,
                     picks[3],
@@ -355,7 +355,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 )
 
             # Resuming arms a full timer for whoever the new order put on clock.
-            await lifecycle.resume(s, draft)
+            await lifecycle.lifecycle_service.resume(s, draft)
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
             self.assertIsNone(draft.blocked_reason)
             self.assertIsNotNone(picks[3].clock_expires_at)
@@ -364,7 +364,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             # is on the clock, so `resync_pick_order` treats it as history; only
             # rounds that have not started are re-seated from the rules.
             draft.settings_json = {"round_rules": ["linear", "team_avg_asc", "reverse", "linear"]}
-            moved = await lifecycle.resync_pick_order(s, draft)
+            moved = await lifecycle.lifecycle_service.resync_pick_order(s, draft)
             await s.commit()
 
             picks = (

@@ -24,18 +24,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.roster_shape import resolve_roster_shape
-from shared.models.registration.registration import BalancerRegistrationTeam
+from shared.repository import BalancerRegistrationTeamRepository, TournamentRepository
 from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
 from shared.services.team_export import ExportPlan, team_materialization
 from shared.services.team_export.registered import SkippedTeam, build_registered_export
 from src import models
 
-__all__ = ("RegisteredExportResult", "export_registered")
+__all__ = ("RegisteredExportResult", "RegisteredTeamsService", "registered_teams_service")
 
 logger = logging.getLogger(__name__)
 
@@ -52,81 +51,90 @@ def _err(code: str, msg: str, status_code: int = 400) -> ApiHTTPException:
     return ApiHTTPException(status_code=status_code, detail=[ApiExc(msg=msg, code=code)])
 
 
-async def export_registered(
-    session: AsyncSession,
-    tournament_id: int,
-    *,
-    team_ids: Sequence[int] | None = None,
-) -> RegisteredExportResult:
-    """Export this tournament's complete registered teams. Commits (via the
-    orchestrator) or rolls back as one unit.
+class RegisteredTeamsService:
+    def __init__(
+        self,
+        *,
+        tournaments: TournamentRepository = TournamentRepository(),
+        registration_teams: BalancerRegistrationTeamRepository = BalancerRegistrationTeamRepository(),
+    ) -> None:
+        self.tournaments = tournaments
+        self.registration_teams = registration_teams
 
-    Nothing to export is a **success with an empty result**, not an error: an
-    organizer clicking export before any team completed should be told which teams
-    are incomplete, which is exactly what ``skipped`` carries.
-    """
-    # ``session.scalar(select(...))`` rather than ``session.get``: the repository
-    # boundary guard (tests/test_repository_boundaries.py) treats the latter as a
-    # direct DB access, and this module has no reason to need an exemption.
-    tournament = await session.scalar(sa.select(models.Tournament).where(models.Tournament.id == tournament_id))
-    if tournament is None:
-        raise _err("not_found", f"Tournament {tournament_id} not found", status_code=404)
+    async def export_registered(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        *,
+        team_ids: Sequence[int] | None = None,
+    ) -> RegisteredExportResult:
+        """Export this tournament's complete registered teams. Commits (via the
+        orchestrator) or rolls back as one unit.
 
-    tournament_slots = await get_tournament_roster_slots(session, tournament_id)
-    workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
-    shape = resolve_roster_shape(tournament_slots, workspace_slots)
+        Nothing to export is a **success with an empty result**, not an error: an
+        organizer clicking export before any team completed should be told which teams
+        are incomplete, which is exactly what ``skipped`` carries.
+        """
+        tournament = await self.tournaments.get(session, tournament_id)
+        if tournament is None:
+            raise _err("not_found", f"Tournament {tournament_id} not found", status_code=404)
 
-    payload = await build_registered_export(session, tournament_id, shape, team_ids=team_ids)
-    if not payload.teams:
-        # No transaction at all: there is nothing to delete and nothing to write,
-        # so running the orchestrator would only take the standings guard for no
-        # reason.
-        return RegisteredExportResult(skipped=payload.skipped)
+        tournament_slots = await get_tournament_roster_slots(session, tournament_id)
+        workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
+        shape = resolve_roster_shape(tournament_slots, workspace_slots)
 
-    source_teams = payload.source_teams
+        payload = await build_registered_export(session, tournament_id, shape, team_ids=team_ids)
+        if not payload.teams:
+            # No transaction at all: there is nothing to delete and nothing to write,
+            # so running the orchestrator would only take the standings guard for no
+            # reason.
+            return RegisteredExportResult(skipped=payload.skipped)
 
-    def _unlink() -> None:
-        for team in source_teams:
-            team.exported_team_id = None
+        source_teams = payload.source_teams
 
-    async def _finalize(inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
-        stamped = datetime.now(UTC)
-        for source, mapped in zip(source_teams, payload.teams, strict=True):
-            public_team = by_name.get(mapped.balancer_name)
-            if public_team is not None:
-                source.exported_team_id = public_team.id
-            source.exported_at = stamped
-            source.export_status = "success"
-            source.export_error = None
+        def _unlink() -> None:
+            for team in source_teams:
+                team.exported_team_id = None
 
-    async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
-        # Fresh reads: the rollback detached everything the failed attempt loaded.
-        # Row-by-row rather than one bulk UPDATE, matching ``draft/export.py``'s
-        # failure hook — the count is tens of teams on an error path, and a
-        # ``sa.update`` here would need a repository-boundary exemption this module
-        # otherwise does not.
-        for source in source_teams:
-            fresh = await inner.get(BalancerRegistrationTeam, source.id)
-            if fresh is not None:
-                fresh.export_status = "failed"
-                fresh.export_error = str(exc)[:500]
+        async def _finalize(inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
+            stamped = datetime.now(UTC)
+            for source, mapped in zip(source_teams, payload.teams, strict=True):
+                public_team = by_name.get(mapped.balancer_name)
+                if public_team is not None:
+                    source.exported_team_id = public_team.id
+                source.exported_at = stamped
+                source.export_status = "success"
+                source.export_error = None
 
-    outcome = await team_materialization.run(
-        session,
-        ExportPlan(
-            tournament_id=tournament_id,
-            teams=payload.teams,
-            prior_team_ids=payload.prior_team_ids,
-            on_unresolved="error",
-            guard_standings=True,
-            unlink=_unlink,
-            finalize=_finalize,
-            on_failure=_on_failure,
-        ),
-    )
-    return RegisteredExportResult(
-        removed_teams=outcome.removed_teams,
-        imported_teams=outcome.imported_teams,
-        created_players=outcome.materialization.created_players,
-        skipped=payload.skipped,
-    )
+        async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
+            # Fresh reads: the rollback detached everything the failed attempt loaded.
+            # Row-by-row rather than one bulk UPDATE, matching ``draft/export.py``'s
+            # failure hook — the count is tens of teams on an error path.
+            for source in source_teams:
+                fresh = await self.registration_teams.get(inner, source.id)
+                if fresh is not None:
+                    fresh.export_status = "failed"
+                    fresh.export_error = str(exc)[:500]
+
+        outcome = await team_materialization.run(
+            session,
+            ExportPlan(
+                tournament_id=tournament_id,
+                teams=payload.teams,
+                prior_team_ids=payload.prior_team_ids,
+                on_unresolved="error",
+                guard_standings=True,
+                unlink=_unlink,
+                finalize=_finalize,
+                on_failure=_on_failure,
+            ),
+        )
+        return RegisteredExportResult(
+            removed_teams=outcome.removed_teams,
+            imported_teams=outcome.imported_teams,
+            created_players=outcome.materialization.created_players,
+            skipped=payload.skipped,
+        )
+
+
+registered_teams_service = RegisteredTeamsService()
