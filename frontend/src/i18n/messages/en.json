@@ -423,7 +423,7 @@
       "slotHint": "You are a member of the team like anyone else — pick the slot you will play.",
       "submit": "Create team",
       "success": "Team created. Invite your players next.",
-      "blockedBySolo": "You already have an individual registration for this tournament, so you cannot create or join a team. Withdrawing is final and cannot be undone, so contact an organizer."
+      "blockedBySolo": "You are registered as an individual player, so you cannot create a team — but a captain can still invite you, and accepting will move your existing registration onto their roster."
     },
     "invite": {
       "action": "Invite a player",

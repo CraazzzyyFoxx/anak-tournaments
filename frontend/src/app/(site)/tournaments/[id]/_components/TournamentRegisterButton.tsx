@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, LogIn, UserPlus, UsersRound, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, LogIn, UserPlus, XCircle } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -20,6 +20,7 @@ import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
 import RegistrationWizard from "@/components/registration/RegistrationWizard";
+import TeamRegistrationEntry from "@/components/registration/TeamRegistrationEntry";
 
 type Props = {
   tournament: Tournament;
@@ -141,19 +142,15 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
         </button>
 
         {/* On a team-registration tournament both choices belong HERE, together.
-            The team entry used to live only inside the Teams tab, which meant a
-            player found the solo button first, registered, and was then locked
-            out of founding a team (the server answers `already_registered`, and
-            a withdrawn registration cannot be resubmitted). Presenting the fork
-            before either action is taken is the whole fix. */}
+            Registering solo first permanently forecloses founding a team (there is
+            one registration row per player), so the fork has to be presented
+            before either action is taken.
+
+            A real button, not a link to the Teams tab: the primary action of a
+            team tournament must not be a navigation step, and the tab rendered its
+            own copy, which put two identical buttons on one screen. */}
         {tournament.team_formation === "registration" && (
-          <Link
-            href={`/tournaments/${tournamentId}/registration-teams`}
-            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
-          >
-            <UsersRound className="size-4" aria-hidden />
-            {t("registrationTeams.create.action")}
-          </Link>
+          <TeamRegistrationEntry tournament={tournament} />
         )}
       </div>
       <Dialog open={showModal} onOpenChange={setShowModal}>
