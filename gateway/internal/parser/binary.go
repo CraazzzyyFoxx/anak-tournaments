@@ -94,64 +94,6 @@ func (b *Binary) AdminLogsUpload(w http.ResponseWriter, r *http.Request) {
 	b.relayJSON(w, r, "rpc.parser.logs.upload", body, http.StatusOK)
 }
 
-// TeamsBalancerUpload: POST /api/v1/teams/create/balancer. Multipart "file"
-// (a balancer JSON export) -> base64; tournament_id arrives as a form field and
-// payload_format as a query param.
-func (b *Binary) TeamsBalancerUpload(w http.ResponseWriter, r *http.Request) {
-	if b.identity == nil {
-		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
-		return
-	}
-	id, ok, err := b.identity(r)
-	if err != nil {
-		b.log.Error("identity resolution unavailable", "err", err)
-		w.Header().Set("Retry-After", "1")
-		writeDetail(w, http.StatusServiceUnavailable, "service unavailable")
-		return
-	}
-	if !ok {
-		writeDetail(w, http.StatusUnauthorized, "Not authenticated")
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
-	if err := r.ParseMultipartForm(maxUpload); err != nil {
-		writeDetail(w, http.StatusBadRequest, "invalid multipart form")
-		return
-	}
-	body := map[string]any{"identity": id}
-	if v := r.FormValue("tournament_id"); v != "" {
-		body["tournament_id"] = v
-	}
-	if q := r.URL.Query(); len(q) > 0 {
-		qm := map[string]any{}
-		for k, vs := range q {
-			if len(vs) > 0 {
-				qm[k] = vs
-			}
-		}
-		if len(qm) > 0 {
-			body["query"] = qm
-		}
-	}
-	if r.MultipartForm != nil {
-		if files := r.MultipartForm.File["file"]; len(files) > 0 {
-			f, err := files[0].Open()
-			if err != nil {
-				writeDetail(w, http.StatusBadRequest, "failed to read file")
-				return
-			}
-			raw, err := io.ReadAll(io.LimitReader(f, maxUpload))
-			_ = f.Close()
-			if err != nil {
-				writeDetail(w, http.StatusBadRequest, "failed to read file")
-				return
-			}
-			body["content_b64"] = base64.StdEncoding.EncodeToString(raw)
-		}
-	}
-	b.relayJSON(w, r, "rpc.parser.teams.create_balancer", body, http.StatusOK)
-}
-
 // relayJSON calls the RPC and relays the success envelope data as a JSON response.
 func (b *Binary) relayJSON(w http.ResponseWriter, r *http.Request, queue string, data map[string]any, success int) {
 	body, _ := json.Marshal(data)

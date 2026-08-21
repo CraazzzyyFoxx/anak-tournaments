@@ -1,10 +1,16 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 __all__ = (
     "TeamCreate",
     "TeamUpdate",
     "PlayerCreate",
     "PlayerUpdate",
+    "ChallongeTeamMapping",
+    "ChallongeTeamSyncRequest",
+    "ChallongeTeamPreviewTeam",
+    "ChallongeTeamPreviewParticipant",
+    "ChallongeTeamSyncPreview",
+    "ChallongeTeamSyncResult",
 )
 
 
@@ -52,3 +58,46 @@ class PlayerUpdate(BaseModel):
     is_newcomer_role: bool | None = None
     is_substitution: bool | None = None
     related_player_id: int | None = None
+
+
+class ChallongeTeamMapping(BaseModel):
+    participant_id: int = Field(gt=0)
+    group_id: int | None = None
+    team_id: int = Field(gt=0)
+
+
+class ChallongeTeamSyncRequest(BaseModel):
+    mappings: list[ChallongeTeamMapping]
+
+
+class ChallongeTeamPreviewTeam(BaseModel):
+    id: int
+    name: str
+    balancer_name: str | None
+
+
+class ChallongeTeamPreviewParticipant(BaseModel):
+    participant_id: int
+    challonge_id: int
+    group_id: int | None
+    group_name: str | None
+    challonge_tournament_id: int
+    name: str
+    active: bool
+    suggested_team_id: int | None
+    mapped_team_id: int | None
+
+
+class ChallongeTeamSyncPreview(BaseModel):
+    teams: list[ChallongeTeamPreviewTeam]
+    participants: list[ChallongeTeamPreviewParticipant]
+
+
+class ChallongeTeamSyncResult(BaseModel):
+    success: bool
+    count: int
+    created: int
+    updated: int
+    unchanged: int
+    skipped: int
+    errors: list[str] = Field(default_factory=list)

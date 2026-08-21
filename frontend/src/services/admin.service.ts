@@ -418,21 +418,6 @@ class AdminService {
     });
   }
 
-  async bulkCreateTeamsFromBalancer(
-    tournamentId: number,
-    file: File
-  ): Promise<BulkOperationResult> {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("tournament_id", tournamentId.toString());
-
-    const response = await apiFetch("/api/v1/teams/create/balancer", {
-      method: "POST",
-      body: formData
-    });
-    return response.json();
-  }
-
   async getChallongeTeamSyncPreview(tournamentId: number): Promise<ChallongeTeamSyncPreview> {
     const response = await apiFetch("/api/v1/teams/challonge/preview", {
       query: { tournament_id: tournamentId }

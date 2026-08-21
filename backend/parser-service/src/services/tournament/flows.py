@@ -1,27 +1,20 @@
 import typing
-from datetime import date
 
-from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.repository import ChallongeMappingRepository
 from shared.services.challonge_refs import (
     ChallongeRef,
     resolve_stage_challonge,
     resolve_tournament_challonge,
 )
-from shared.services.division_grid_access import get_workspace_division_grid_version_id
 from src import models, schemas
-from src.clients.challonge import challonge_client
 from src.core import errors
-from src.domain.tournament_groups import _apply_stage_challonge, get_groups_from_matches
+from src.domain.tournament_groups import _apply_stage_challonge
 
 from . import service
 
 
 class TournamentFlowsService:
-    def __init__(self, *, challonge_repo: ChallongeMappingRepository = ChallongeMappingRepository()) -> None:
-        self.challonge_repo = challonge_repo
 
     async def to_pydantic(
         self,
@@ -113,122 +106,9 @@ class TournamentFlowsService:
             stage_challonge_refs=stage_challonge_refs,
         )
 
-    async def create_groups(
-        self,
-        session: AsyncSession,
-        tournament: models.Tournament,
-        challonge_tournament: schemas.ChallongeTournament,
-    ) -> models.Tournament:
-        # Release the DB connection before the Challonge round-trip: under
-        # pgBouncer transaction pooling an open transaction pins a backend slot for the whole
-        # network wait. expire_on_commit=False keeps ``tournament`` usable.
-        await session.commit()
-        matches = await challonge_client.fetch_matches(challonge_tournament.id)
-        for match in matches:
-            logger.info(match)
-        groups = get_groups_from_matches(matches)
-
-        specs = [
-            service.GroupSpec(
-                name=name,
-                is_groups=True,
-                challonge_id=group_id,
-                challonge_slug=challonge_tournament.url,
-            )
-            for group_id, name in groups
-        ]
-        specs.append(
-            service.GroupSpec(
-                name="Playoffs",
-                is_groups=False,
-                challonge_slug=challonge_tournament.url,
-            )
-        )
-        await service.create_groups(session, tournament, specs)
-
-        return tournament
-
-    async def create_with_groups(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-        is_league: bool,
-        start_date: date,
-        end_date: date,
-        challonge_slug: str,
-        division_grid_version_id: int | None = None,
-    ) -> models.Tournament:
-        resolved_division_grid_version_id = division_grid_version_id
-        if resolved_division_grid_version_id is None:
-            resolved_division_grid_version_id = await get_workspace_division_grid_version_id(session, workspace_id)
-        if resolved_division_grid_version_id is None:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="workspace_default_division_grid_missing",
-                        msg="Workspace does not have a default division grid version",
-                    )
-                ],
-            )
-
-        # Commit before the Challonge round-trip so no transaction (opened by the
-        # reads above) stays pinned to a pgBouncer slot during the network wait.
-        await session.commit()
-        challonge_tournament = await challonge_client.fetch_tournament(challonge_slug)
-        if challonge_tournament.grand_finals_modifier is None:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="invalid_tournament",
-                        msg="Tournament does not have group stage",
-                    )
-                ],
-            )
-        if (
-            await service.get_by_name_and_league(session, workspace_id, challonge_tournament.name, is_league, [])
-            is not None
-        ):
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="tournament_exists",
-                        msg="Tournament with this name already exists",
-                    )
-                ],
-            )
-        tournament = await service.create(
-            session,
-            workspace_id=workspace_id,
-            is_league=is_league,
-            name=challonge_tournament.name,
-            description=challonge_tournament.description,
-            start_date=start_date,
-            end_date=end_date,
-            division_grid_version_id=resolved_division_grid_version_id,
-        )
-        # Link the tournament to Challonge through the normalized challonge_source
-        # (source_type='tournament') instead of the deprecated tournament.challonge_id/
-        # slug columns. discover_sources reads this row on import/export.
-        await self.challonge_repo.sources.create(
-            session,
-            models.ChallongeSource(
-                tournament_id=tournament.id,
-                challonge_tournament_id=challonge_tournament.id,
-                slug=challonge_tournament.url,
-                source_type="tournament",
-            ),
-        )
-        await session.commit()
-        tournament = await service.get(session, tournament.id, [])
-        return await create_groups(session, tournament, challonge_tournament)
 
 
 tournament_flows_service = TournamentFlowsService()
 to_pydantic = tournament_flows_service.to_pydantic
 get = tournament_flows_service.get
 get_read = tournament_flows_service.get_read
-create_groups = tournament_flows_service.create_groups
-create_with_groups = tournament_flows_service.create_with_groups

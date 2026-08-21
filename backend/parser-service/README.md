@@ -38,7 +38,7 @@ The RPC surface is grouped as representative `rpc.parser.*` methods served behin
   a worker killed mid-parse leaves a record on `processing`). See
   `src/services/match_logs/reaper.py`.
 - **Typed reads / admin** — parser-unique reads and admin operations (logs, rank, achievements,
-  misc, bootstrap, impact).
+  misc, impact).
 
 > **Note:** `ortools` is declared as a dependency but is not currently used (never imported); there
 > is no OR-Tools optimization in this service.

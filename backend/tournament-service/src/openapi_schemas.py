@@ -193,6 +193,26 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.challonge_fetch_tournament": Op(response=schemas.ChallongeTournament),
     "rpc.tournament.challonge_fetch_participants": Op(response=schemas.ChallongeParticipant, response_array=True),
     "rpc.tournament.challonge_fetch_matches": Op(response=schemas.ChallongeMatch, response_array=True),
+    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    "rpc.tournament.challonge_create_tournament": Op(
+        response=schemas.TournamentRead,
+        query_params=(
+            QueryParam("workspace_id", "integer", required=True),
+            QueryParam("start_date", required=True),
+            QueryParam("end_date", required=True),
+            QueryParam("challonge_slug", required=True),
+            QueryParam("is_league", "boolean"),
+            QueryParam("division_grid_version_id", "integer"),
+        ),
+    ),
+    "rpc.tournament.challonge_team_preview": Op(
+        response=admin_team.ChallongeTeamSyncPreview, query_params=(QueryParam("tournament_id", "integer", required=True),)
+    ),
+    "rpc.tournament.challonge_team_apply": Op(
+        request=admin_team.ChallongeTeamSyncRequest,
+        response=admin_team.ChallongeTeamSyncResult,
+        query_params=(QueryParam("tournament_id", "integer", required=True),),
+    ),
     # ── integrations: Google Sheets ────────────────────────────────────────
     "rpc.tournament.sheet_get": Op(response=admin_balancer.BalancerGoogleSheetFeedRead),
     "rpc.tournament.sheet_upsert": Op(

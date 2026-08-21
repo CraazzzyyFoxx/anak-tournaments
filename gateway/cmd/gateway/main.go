@@ -310,7 +310,6 @@ func run() error {
 	// can't handle.
 	parserBinary := parser.NewBinary(rpcClient, resolver.Resolve, logger)
 	mux.HandleFunc("POST /api/v1/admin/logs/upload", parserBinary.AdminLogsUpload)
-	mux.HandleFunc("POST /api/v1/teams/create/balancer", parserBinary.TeamsBalancerUpload)
 	// Achievement rule/library/override admin: ambiguous patterns under ServeMux
 	// (rules/export vs rules/{rule_id}) -> ordered subtree matcher. Mounted at the
 	// shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes there

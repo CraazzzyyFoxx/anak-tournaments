@@ -65,13 +65,8 @@ var Routes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.parser.discord_channel.get", IDParam: "id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.parser.discord_channel.upsert", IDParam: "id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.parser.discord_channel.delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
-
-	// Bootstrap importers (src/routes/{tournament,team,encounter}.py); workspace/admin gated in handler.
-	// teams/create/balancer is multipart -> the parser binary handler (see binary.go).
-	{Method: "POST", Pattern: "/api/v1/tournament/create/with_groups", Queue: "rpc.parser.tournament.create_with_groups", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/teams/challonge/preview", Queue: "rpc.parser.teams.challonge_preview", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/teams/create/challonge", Queue: "rpc.parser.teams.create_challonge", AllQuery: true, Body: true, Auth: edge.AuthRequired},
 }
+
 
 // AchievementAdminRoutes are the workspace-scoped achievement rule/library/override
 // admin endpoints (src/routes/admin/achievement_rule.py), served via the ordered

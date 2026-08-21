@@ -56,9 +56,6 @@ from src.rpc import (
     achievements as rpc_achievements,
 )
 from src.rpc import (
-    bootstrap as rpc_bootstrap,
-)
-from src.rpc import (
     impact as rpc_impact,
 )
 from src.rpc import (
@@ -142,7 +139,6 @@ rpc_logs.register(broker, logger)
 rpc_rank.register(broker, logger)
 rpc_achievements.register(broker, logger)
 rpc_misc.register(broker, logger)
-rpc_bootstrap.register(broker, logger)
 rpc_impact.register(broker, logger)
 rpc_subscription.register(broker, logger)
 
