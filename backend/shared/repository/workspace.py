@@ -77,6 +77,17 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         )
         return result.scalars().all()
 
+    async def list_ids_by_discord_guild(self, session: AsyncSession, guild_id: str) -> Sequence[int]:
+        """Workspace ids configured for this Discord guild — usually zero or one.
+
+        Backs instant subscription re-evaluation on Discord role/member events:
+        the bot doesn't know which workspace(s) map to a guild until it looks it up.
+        """
+        result = await session.execute(
+            sa.select(models.Workspace.id).where(models.Workspace.discord_guild_id == guild_id)
+        )
+        return result.scalars().all()
+
     @staticmethod
     def default_grid_options() -> list[object]:
         return [
@@ -282,9 +293,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             for user_id, role in role_rows.all():
                 roles_by_user.setdefault(user_id, []).append(role)
 
-        return total or 0, [
-            (member, auth_user, roles_by_user.get(auth_user.id, [])) for (member, auth_user) in rows
-        ]
+        return total or 0, [(member, auth_user, roles_by_user.get(auth_user.id, [])) for (member, auth_user) in rows]
 
     @staticmethod
     def _members_filter(
