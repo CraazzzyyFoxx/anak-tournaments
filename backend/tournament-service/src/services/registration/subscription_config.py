@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.social import SocialProvider
+from shared.services.registration_window import registration_open_clause
 from shared.subscriptions import parse_verification_method
 from shared.subscriptions.challenge_code import hash_code
 from src.schemas.registration import (
@@ -263,7 +264,8 @@ async def count_enforcing_tournaments(session: AsyncSession, workspace_id: int) 
                 models.Tournament.workspace_id == workspace_id,
                 models.Tournament.is_finished.is_(False),
                 form.require_subscription.is_(True),
-                form.is_open.is_(True),
+                # Openness is the REGISTRATION schedule window now, not a form flag.
+                registration_open_clause(),
             )
         )
     ) or 0

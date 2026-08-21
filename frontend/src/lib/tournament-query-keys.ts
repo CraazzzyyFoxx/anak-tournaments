@@ -42,6 +42,18 @@ export const tournamentQueryKeys = {
     ["registrations-list", workspaceId, tournamentId] as const,
   registrationForm: (workspaceId: number, tournamentId: number) =>
     ["registration-form", workspaceId, tournamentId] as const,
+  /** The public roster of registered teams (pre-formation). Distinct from
+   *  `teams`, which is the post-balancer materialized `tournament.team` list. */
+  registrationTeams: (workspaceId: number, tournamentId: number) =>
+    ["registration-teams", workspaceId, tournamentId] as const,
+  /** Organizer view: same rows plus invites, and optionally terminal teams. The
+   *  flag is part of the key because the two results are different data, not a
+   *  filtered view of one cache entry. */
+  registrationTeamsAdmin: (
+    workspaceId: number,
+    tournamentId: number,
+    includeTerminal: boolean,
+  ) => ["registration-teams-admin", workspaceId, tournamentId, includeTerminal] as const,
   subscriptionStatus: (tournamentId: number) =>
     ["subscription-status", tournamentId] as const,
   draftBoard: (tournamentId: number) => ["draft", tournamentId, "board"] as const,

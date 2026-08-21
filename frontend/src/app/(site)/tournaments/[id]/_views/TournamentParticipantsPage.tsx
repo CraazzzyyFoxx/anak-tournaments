@@ -39,11 +39,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { cn, hexToRgba } from "@/lib/utils";
+import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { isPhaseWindowActive } from "@/lib/tournament-status";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { getApiErrorMessage } from "@/lib/api-error";
 import registrationService from "@/services/registration.service";
+import registrationTeamService from "@/services/registration-team.service";
 import CheckInSubscriptionProof from "@/components/registration/CheckInSubscriptionProof";
 import type { Tournament } from "@/types/tournament.types";
 import type { Registration, RegistrationStatus } from "@/types/registration.types";
@@ -291,7 +293,22 @@ function MyRegistrationCard({
   requireSubscription: boolean;
 }>) {
   const t = useTranslations();
+  const tSlot = useTranslations("rosterShape.slotCodes");
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // §12.5 needs two facts the inline brief deliberately omits: the per-slot
+  // shortfall ("what is still missing") and whether the team already made it
+  // into the tournament. Both live on the public team read, fetched only for a
+  // player who actually is on a team — solo tournaments send no request.
+  const teamBrief = registration.team ?? null;
+  const teamsQuery = useQuery({
+    queryKey: tournamentQueryKeys.registrationTeams(tournament.workspace_id, tournament.id),
+    queryFn: () => registrationTeamService.listPublic(tournament.id),
+    enabled: teamBrief !== null
+  });
+  const myTeam = teamBrief
+    ? (teamsQuery.data?.items.find((item) => item.id === teamBrief.id) ?? null)
+    : null;
 
   const primaryRole = registration.roles.find((r) => r.is_primary);
   const secondaryRoles = registration.roles
@@ -437,6 +454,44 @@ function MyRegistrationCard({
     }
   ];
 
+  // §12.5: the people in a stuck team must learn it from their own card. The
+  // sentence is resolved before the chain so the chain itself stays one branch
+  // per outcome; the "forming" case waits for the roster read rather than
+  // rendering "still missing: " with nothing after the colon.
+  let teamHint: { text: string; tone: string } | null = null;
+  if (teamBrief) {
+    const teamValues = { team: teamBrief.name };
+    if (myTeam?.exported_team_id != null) {
+      teamHint = {
+        text: t("registrationTeams.myCard.exported", teamValues),
+        tone: "font-medium text-[color:var(--aqt-emerald)]"
+      };
+    } else if (teamBrief.status === "rejected") {
+      teamHint = {
+        text: t("registrationTeams.myCard.rejected", teamValues),
+        tone: "text-[color:var(--aqt-rose)]"
+      };
+    } else if (teamBrief.status === "disbanded") {
+      teamHint = {
+        text: t("registrationTeams.myCard.disbanded", teamValues),
+        tone: "text-[color:var(--aqt-fg-dim)]"
+      };
+    } else if (teamBrief.status === "complete") {
+      teamHint = {
+        text: t("registrationTeams.myCard.complete", teamValues),
+        tone: "text-[color:var(--aqt-fg-muted)]"
+      };
+    } else if (myTeam) {
+      teamHint = {
+        text: t("registrationTeams.myCard.incomplete", {
+          ...teamValues,
+          shortfall: formatShortfall(myTeam.open_slots, tSlot)
+        }),
+        tone: "font-medium text-[color:var(--aqt-amber)]"
+      };
+    }
+  }
+
   // Single "what happens next" line next to the actions.
   let hintText: string;
   let hintClass = "text-[color:var(--aqt-fg-muted)]";
@@ -452,6 +507,14 @@ function MyRegistrationCard({
   } else if (isApproved && checkInPhaseOver) {
     hintText = t("registration.myCard.checkInClosedDesc");
     hintClass = "text-[color:var(--aqt-rose)]";
+  } else if (teamHint && !checkInPhaseOver) {
+    // Above the balancer line on purpose: a player whose roster is short must be
+    // told THAT, not that the organizer is still balancing. Below the terminal
+    // and missed-check-in branches, which are about this player's own entry and
+    // outrank any team news. Gated on the check-in phase still being open —
+    // once the tournament is under way the roster is no longer actionable.
+    hintText = teamHint.text;
+    hintClass = teamHint.tone;
   } else if (isApproved && !balancerReady) {
     hintText = t("registration.myCard.balancerWaitingDesc");
   } else if (isApproved) {
@@ -610,6 +673,27 @@ function MyRegistrationCard({
                 </p>
               )}
             </div>
+
+            {teamBrief && (
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
+                  {t("registrationTeams.myCard.teamLabel")}
+                </h4>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="font-semibold text-[color:var(--aqt-fg)]">{teamBrief.name}</span>
+                  {teamBrief.is_captain && (
+                    <span className="rounded border border-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_10%,transparent)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--aqt-amber)]">
+                      {t("registrationTeams.member.captain")}
+                    </span>
+                  )}
+                  {teamBrief.is_substitute && (
+                    <span className="rounded border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--aqt-fg-dim)]">
+                      {t("registrationTeams.member.substitute")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <h4 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-dim)]">
@@ -793,10 +877,15 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   const [needsHeroes, setNeedsHeroes] = useState(false);
   const heroesMap = useHeroesMap({ enabled: needsHeroes });
 
+  // A team column is blank on every row of a solo tournament, so the roster data
+  // is what decides whether it belongs in the default set — `RegistrationForm`
+  // carries no team-registration flag.
+  const hasTeams = useMemo(() => registrations.some((reg) => reg.team != null), [registrations]);
+
   // Dynamic columns
   const allColumns = useMemo(
-    () => buildParticipantColumns(form, t, locale, divisionGrid, heroesMap),
-    [form, t, locale, divisionGrid, heroesMap]
+    () => buildParticipantColumns(form, t, locale, divisionGrid, heroesMap, hasTeams),
+    [form, t, locale, divisionGrid, heroesMap, hasTeams]
   );
 
   // Status counts + chips present in the data.

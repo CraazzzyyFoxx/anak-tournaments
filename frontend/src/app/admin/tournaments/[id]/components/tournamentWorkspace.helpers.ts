@@ -28,7 +28,6 @@ export type TournamentFormState = {
   draw_points: number;
   loss_points: number;
   auto_transitions_enabled: boolean;
-  allow_late_registration: boolean;
   phase_schedule: PhaseScheduleFormState;
   division_grid_version_id: number | null;
   team_formation: string;
@@ -137,7 +136,6 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
     draw_points: tournament.draw_points ?? 0.5,
     loss_points: tournament.loss_points ?? 0,
     auto_transitions_enabled: tournament.auto_transitions_enabled ?? true,
-    allow_late_registration: tournament.allow_late_registration ?? false,
     phase_schedule: getPhaseScheduleForm(tournament, timezone),
     division_grid_version_id: tournament.division_grid_version_id ?? null,
     team_formation: tournament.team_formation ?? "balancer",
@@ -172,7 +170,6 @@ function normalizeTournamentFormValues(form: TournamentFormState): TournamentUpd
     draw_points: form.draw_points,
     loss_points: form.loss_points,
     auto_transitions_enabled: form.auto_transitions_enabled,
-    allow_late_registration: form.allow_late_registration,
     division_grid_version_id: form.division_grid_version_id,
     team_formation: form.team_formation,
     roster_slots_json: form.roster_slots_json

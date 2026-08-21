@@ -213,6 +213,17 @@ export interface TournamentHistoryEntry {
   division_grid_version?: DivisionGridVersion | null;
 }
 
+/** Inline team summary carried by every roster row. Mirrors the backend's
+ *  `RegistrationTeamBrief`; the full model lives in `registration-team.types.ts`. */
+export interface RegistrationTeamBrief {
+  id: number;
+  name: string;
+  status: "forming" | "complete" | "rejected" | "disbanded";
+  slot_code: string | null;
+  is_substitute: boolean;
+  is_captain: boolean;
+}
+
 export interface Registration {
   id: number;
   tournament_id: number;
@@ -235,6 +246,11 @@ export interface Registration {
   profiles_open?: boolean | null;
   subscription_outcome?: SubscriptionOutcome | null;
   subscription_verdicts?: Record<string, SubscriptionProviderVerdict> | null;
+  /** The registered team this player belongs to, when the tournament runs team
+   *  registration. Carries no invites — the public roster must not leak who was
+   *  asked and declined. Feeds the participants table's team column and the
+   *  "your team is still incomplete" line on the registration card. */
+  team?: RegistrationTeamBrief | null;
   submitted_at: string | null;
   reviewed_at: string | null;
   /** Capped to the most recent few entries; see `tournament_history_count` for the true total. */

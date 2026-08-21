@@ -7,16 +7,18 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DEFAULT_GRID
-from shared.domain.player_sub_roles import normalize_sub_role
-from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.services.division_grid_resolution import resolve_tournament_division
-from shared.services.newcomer_status import load_prior_participation
+from shared.services.team_export import (
+    ExportPlan,
+    MaterializationMember,
+    MaterializationTeam,
+    team_materialization,
+)
 from src import models, schemas
-from src.core import enums, errors, utils
+from src.core import errors, utils
 from src.services.challonge import service as challonge_service
 from src.services.tournament import flows as tournament_flows
 from src.services.user import flows as user_flows
-from src.services.user import service as user_service
 
 from . import service
 
@@ -29,31 +31,6 @@ def resolve_team_placement(team: models.Team) -> int | None:
     if positive_positions:
         return min(positive_positions)
     return None
-
-
-def resolve_hero_role_from_balancer(role: str) -> enums.HeroClass | None:
-    """Roster slot code -> the role stored on ``tournament.player``.
-
-    ``flex`` is a real slot, not a bad input: a role-less roster assigns no game
-    role and ``HeroClass.flex`` is how that survives the import. Anything else
-    unrecognized still fails loudly rather than silently becoming ``None``.
-    """
-    if role is None:
-        return None
-
-    normalized = role.lower()
-    if normalized == "tank":
-        return enums.HeroClass.tank
-    if normalized == "dps":
-        return enums.HeroClass.damage
-    if normalized == "support":
-        return enums.HeroClass.support
-    if normalized == FLEX_SLOT_CODE:
-        return enums.HeroClass.flex
-    raise errors.ApiHTTPException(
-        status_code=400,
-        detail=[errors.ApiExc(code="invalid_hero_role", msg=f"{role} is not a valid hero role.")],
-    )
 
 
 async def to_pydantic(
@@ -135,143 +112,54 @@ async def to_pydantic_player(
     )
 
 
+def _to_materialization_teams(payload: list[schemas.BalancerTeam]) -> list[MaterializationTeam]:
+    """``BalancerTeam`` -> shared writer input.
 
-
-async def _bulk_resolve_users_by_battle_tags(session: AsyncSession, battle_tags: list[str]) -> dict[str, models.User]:
-    """Resolve every tag in 1-2 queries and fail like ``find_by_battle_tag``.
-
-    Raises the same 400 ``not_found`` error as ``user_flows.find_by_battle_tag``
-    for the first unresolvable tag in input order, so callers keep the exact
-    per-item error contract of the old N+1 implementation.
+    ``BalancerTeam.name`` is both the stored ``balancer_name`` and, by
+    convention, the captain's battle tag; each member's ``name`` is their own tag.
     """
-    users_by_tag = await user_service.find_users_by_battle_tags(session, battle_tags)
-    for battle_tag in battle_tags:
-        if battle_tag not in users_by_tag:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="not_found",
-                        msg=f"User with battle tag {battle_tag} not found.",
-                    )
-                ],
-            )
-    return users_by_tag
+    return [
+        MaterializationTeam(
+            balancer_name=team_data.name,
+            members=tuple(
+                MaterializationMember(
+                    name=member.name,
+                    rank=member.rank,
+                    slot_code=member.role,
+                    sub_role=member.sub_role,
+                )
+                for member in team_data.members
+            ),
+        )
+        for team_data in payload
+    ]
 
 
 async def bulk_create_from_balancer(
     session: AsyncSession, tournament_id: int, payload: list[schemas.BalancerTeam]
 ) -> None:
-    tournament = await tournament_flows.get(session, tournament_id, [])
+    """Import balancer teams into a tournament.
 
-    # Resolve every battle tag (captains + members) up front: 1-2 queries for
-    # the whole import instead of 2-4 SELECTs per name. Tags are validated in
-    # payload order so the first missing tag raises the same error as before.
-    all_tags: list[str] = []
-    for team_data in payload:
-        all_tags.append(team_data.name)
-        all_tags.extend(member.name for member in team_data.members)
-    users_by_tag = await _bulk_resolve_users_by_battle_tags(session, all_tags)
+    Strict (``on_unresolved="error"``): the first unresolvable battle tag or an
+    unknown slot code fails the whole import with a 400, preserving this
+    service's per-item error contract. balancer-service is deliberately lenient
+    on the same writer instead.
 
-    # Prefetch existing teams and roster rows for this tournament (one query
-    # each) plus the resolved users' whole player history (one query) so the
-    # per-team/per-player loops below never touch the database for lookups.
-    teams_by_name: dict[str, models.Team] = {}
-    for existing_team in await service.get_by_tournament(session, tournament.id, []):
-        teams_by_name.setdefault(existing_team.name.lower(), existing_team)
+    Commits once — the shared orchestrator owns the transaction boundary, which
+    is why the RPC caller now commits nothing of its own.
+    """
+    # Preserves this service's 404 on an unknown tournament: the shared writer
+    # treats a missing tournament as a logged no-op (balancer-service's contract).
+    await tournament_flows.get(session, tournament_id, [])
 
-    tournament_user_ids: set[int] = set(
-        (
-            await session.execute(
-                sa.select(models.WorkspaceMember.player_id)
-                .select_from(models.Player)
-                .join(
-                    models.WorkspaceMember,
-                    models.WorkspaceMember.id == models.Player.workspace_member_id,
-                )
-                .where(models.Player.tournament_id == tournament.id)
-            )
-        )
-        .scalars()
-        .all()
+    await team_materialization.run(
+        session,
+        ExportPlan(
+            tournament_id=tournament_id,
+            teams=_to_materialization_teams(payload),
+            on_unresolved="error",
+        ),
     )
-
-    resolved_user_ids = {user.id for user in users_by_tag.values()}
-    # Chronological, scope-aware (per-workspace ``newcomer_scope`` setting) --
-    # see shared.services.newcomer_status.
-    history = await load_prior_participation(session, tournament=tournament, user_ids=resolved_user_ids)
-    pending_players: list[
-        tuple[schemas.BalancerTeamMember, models.Team, models.User, enums.HeroClass | None, bool, bool]
-    ] = []
-
-    for team_data in payload:
-        try:
-            name = team_data.name.split("#")[0]
-        except ValueError:
-            name = team_data.name
-
-        captain = users_by_tag[team_data.name]
-        team = teams_by_name.get(name.lower())
-        if not team:
-            team = models.Team(
-                name=name,
-                balancer_name=team_data.name,
-                tournament_id=tournament.id,
-                captain_id=captain.id,
-            )
-            session.add(team)
-            # Flush per new team only (a dozen INSERTs, not hundreds of
-            # SELECTs) so ``team.id`` is available for the roster rows below.
-            await session.flush()
-            teams_by_name[name.lower()] = team
-        else:
-            logger.info(f"Team {name} already exists in tournament {tournament.name}. Skipping...")
-
-        for player in team_data.members:
-            logger.info(f"Trying to add player {player.name} to team {team.name} in tournament {tournament.name}")
-            user = users_by_tag[player.name]
-            if user.id in tournament_user_ids:
-                logger.info(
-                    f"Player {player.name} already exists in team [name={team.name} tournament={tournament.name}]."
-                )
-                continue
-
-            is_newcomer = history.is_newcomer(user.id)
-            role = resolve_hero_role_from_balancer(player.role)
-            is_newcomer_role = history.is_newcomer_role(user.id, role)
-
-            # In-payload dedupe: the old per-item re-SELECT would find the row
-            # committed for a duplicate occurrence and skip it.
-            tournament_user_ids.add(user.id)
-            pending_players.append((player, team, user, role, is_newcomer, is_newcomer_role))
-
-    if pending_players:
-        member_ids = await service.resolve_workspace_member_ids(
-            session,
-            workspace_id=tournament.workspace_id,
-            player_ids={user.id for _, _, user, _, _, _ in pending_players},
-        )
-        for player, team, user, role, is_newcomer, is_newcomer_role in pending_players:
-            session.add(
-                models.Player(
-                    name=player.name,
-                    sub_role=normalize_sub_role(player.sub_role),
-                    rank=player.rank,
-                    role=role,
-                    tournament_id=tournament.id,
-                    team_id=team.id,
-                    is_substitution=False,
-                    related_player_id=None,
-                    is_newcomer=is_newcomer,
-                    is_newcomer_role=is_newcomer_role,
-                    workspace_member_id=member_ids[user.id],
-                )
-            )
-        await session.flush()
-        for player, team, _, _, _, _ in pending_players:
-            logger.info(f"Player {player.name} added to team {team.name} in tournament {tournament.id}")
-
-    await session.commit()
     return None
 
 

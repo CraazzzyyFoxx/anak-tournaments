@@ -14,6 +14,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_division_grid_version_id
 from shared.services.draft_guards import assert_no_active_draft_session
+from shared.services.registration_team_guards import assert_no_registered_teams
 from shared.services.roster_shape_access import invalidate_roster_shape_cache
 from src import models
 from src.schemas.admin import tournament as admin_schemas
@@ -214,6 +215,10 @@ async def update_tournament(
     )
     if roster_slots_changed:
         await assert_no_active_draft_session(session, tournament_id, change="roster shape")
+        # Registered teams hold slots assigned from the shape in force when their
+        # members accepted; changing it afterwards silently invalidates every one
+        # of those rosters. Same protection a live draft already gets.
+        await assert_no_registered_teams(session, tournament_id, change="the roster shape")
 
     if "challonge_slug" in update_data:
         raw_slug = update_data.pop("challonge_slug")

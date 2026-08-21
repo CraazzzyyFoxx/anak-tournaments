@@ -40,6 +40,11 @@ func StatusForCode(code string) int {
 		return 413
 	case "rate_limited":
 		return 429
+	case "unavailable":
+		// A dependency the worker needs is down (e.g. the Redis-backed invite rate
+		// limiter, which fails closed on purpose). 503 tells the client to retry
+		// shortly; the 500 this used to degrade to says "we are broken, do not".
+		return 503
 	default:
 		return 500
 	}

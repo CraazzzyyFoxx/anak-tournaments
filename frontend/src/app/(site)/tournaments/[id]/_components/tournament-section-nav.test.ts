@@ -190,6 +190,31 @@ describe("buildTournamentSectionNav", () => {
     });
   });
 
+  it("carries Registered teams only for a registration tournament", () => {
+    const registered = (teamFormation: string) =>
+      buildTournamentSectionNav({
+        tournamentId,
+        status: "registration",
+        stages: [stage()],
+        teamFormation,
+        hasSchedule: true,
+        hasTeams: true,
+        pathname: `/tournaments/${tournamentId}/registration-teams`
+      }).find((item) => item.id === "registration-teams");
+
+    // Present-or-absent like `draft`: a balancer or draft tournament never
+    // grows a registered-team roster, so a lock would promise it forever.
+    expect(registered("balancer")).toBeUndefined();
+    expect(registered("draft")).toBeUndefined();
+    expect(registered("registration")).toMatchObject({
+      href: `/tournaments/${tournamentId}/registration-teams`,
+      labelKey: "registrationTeams.tab.label",
+      active: true,
+      available: true,
+      reasonKey: null
+    });
+  });
+
   it("marks exactly the canonical nested route active", () => {
     const items = model("playoffs", `/tournaments/${tournamentId}/standings/`);
 

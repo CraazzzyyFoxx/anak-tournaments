@@ -177,6 +177,7 @@ class TestSerializer:
     def test_carries_the_toggle_and_the_workspace_rule(self):
         read = serialize_registration_form(
             _FormRow(require_subscription=True),
+            is_open=True,
             subscription_requirement=ANY_BOOSTY_OR_TWITCH,
         )
         assert read.require_subscription is True
@@ -184,11 +185,13 @@ class TestSerializer:
 
     def test_a_workspace_without_a_rule_serializes_as_an_empty_object(self):
         """The resolved projection must never be null -- the dialog reads it directly."""
-        read = serialize_registration_form(_FormRow(require_subscription=True), subscription_requirement=None)
+        read = serialize_registration_form(
+            _FormRow(require_subscription=True), is_open=True, subscription_requirement=None
+        )
         assert read.subscription_requirement_json == {}
 
     def test_untouched_form_serializes_as_disabled(self):
-        read = serialize_registration_form(_FormRow())
+        read = serialize_registration_form(_FormRow(), is_open=False)
         assert read.require_subscription is False
         assert read.subscription_requirement_json == {}
 
@@ -199,6 +202,7 @@ class TestRoundTrip:
         body = WorkspaceSubscriptionRequirementUpsert(requirement=ANY_BOOSTY_OR_TWITCH)
         read = serialize_registration_form(
             _FormRow(require_subscription=True),
+            is_open=True,
             subscription_requirement=body.requirement,
         )
         requirement = parse_requirement(read.subscription_requirement_json)

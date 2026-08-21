@@ -42,6 +42,18 @@ interface RoleStepProps {
    * main.
    */
   flexMode: FlexMode;
+  /**
+   * Restrict the matrix to ONE role, permanently `main`.
+   *
+   * The invitee flow needs it: an invite fixes which slot the player takes, so
+   * offering the other two rows would let them submit a role the team did not
+   * offer — and `normalize()`'s cross-role rebalancing (which demotes whichever
+   * main the user did not just touch) is meaningless with a single row.
+   *
+   * Specialization and top heroes stay editable: those are the invitee's own
+   * data, and only the *slot* is dictated by the invite.
+   */
+  lockedRole?: RoleCode | null;
 }
 
 /**
@@ -64,12 +76,17 @@ export default function RoleStep({
   topHeroesEnabled,
   maxHeroes,
   flexMode,
+  lockedRole = null,
 }: Readonly<RoleStepProps>) {
   const t = useTranslations();
+  const isLocked = lockedRole != null;
   const isForced = flexMode === "forced";
-  const isAllRoles = flexMode === "all_roles";
-  const showPriority = !isForced && !isAllRoles;
-  const isFlex = isForced || isFlexSelection(selections);
+  const isAllRoles = !isLocked && flexMode === "all_roles";
+  // A single row has nothing to prioritise against, so the control would only
+  // offer the invitee a way to mark their own dictated slot as "off".
+  const showPriority = !isLocked && !isForced && !isAllRoles;
+  const isFlex = !isLocked && (isForced || isFlexSelection(selections));
+  const visibleRoles = isLocked ? ROLES.filter((role) => role.code === lockedRole) : ROLES;
   const isAdditionalRolesRequired =
     form.built_in_fields?.additional_roles?.enabled !== false &&
     form.built_in_fields?.additional_roles?.required === true;
@@ -119,7 +136,9 @@ export default function RoleStep({
    * unreachable: `setSubrole`/`setHeroes` only ever promote.
    */
   const normalize = (next: RoleSelections, changed: RoleCode): RoleSelections => {
-    if (isForced) {
+    if (isForced || isLocked) {
+      // Locked: the one visible row is the invite's slot and stays `main`. The
+      // rebalancing below would read the two hidden rows and demote it.
       return next;
     }
     const mains = ROLES.filter((role) => next[role.code].priority === "main");
@@ -235,7 +254,7 @@ export default function RoleStep({
           </p>
         )}
 
-        {flexMode === "optional" && (
+        {!isLocked && flexMode === "optional" && (
           <button
             type="button"
             aria-pressed={isFlex}
@@ -288,7 +307,7 @@ export default function RoleStep({
       </div>
 
       <div className="grid gap-2">
-        {ROLES.map((role) => (
+        {visibleRoles.map((role) => (
           <RoleMatrixRow
             key={role.code}
             roleCode={role.code}

@@ -76,6 +76,10 @@ class TournamentRead(BaseRead):
     # would reject a roster-shape change. Lets the admin form disable the editor
     # up front instead of surfacing the block as a 400 on save.
     roster_locked_by_draft: bool | None = None
+    #: The other half of the same lock: a registering team's members hold slots
+    #: assigned from the current shape. Opt-in with `roster_shape`, like the flag
+    #: above, and for the same reason — it costs a query.
+    roster_locked_by_teams: bool | None = None
     # Opt-in too, and for the same reason: the rows live in their own table, so
     # filling them unconditionally would cost a query per nested TournamentRead.
     links: list[TournamentLinkRead] = []

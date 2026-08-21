@@ -116,6 +116,8 @@ export default function RegistrationFormBuilder({
     }
     loadedFormKeyRef.current = formKey;
     startTransition(() => {
+      // Derived + read-only: "is registration open right now", computed by the
+      // server from the REGISTRATION phase-schedule window.
       setIsOpen(data.is_open);
       setAutoApprove(data.auto_approve ?? false);
       setRequireOpenProfile(data.require_open_profile ?? false);
@@ -161,7 +163,8 @@ export default function RegistrationFormBuilder({
     mutationFn: () => {
       if (!tournamentId) throw new Error(t("noTournamentError"));
       const payload: AdminRegistrationFormUpsert = {
-        is_open: isOpen,
+        // No `is_open`: openness is the tournament's REGISTRATION schedule
+        // window now, and the server ignores the field.
         auto_approve: autoApprove,
         require_open_profile: requireOpenProfile,
         open_profile_scope: openProfileScope,
@@ -339,10 +342,6 @@ export default function RegistrationFormBuilder({
               <RegistrationStatusCard
                 isOpen={isOpen}
                 autoApprove={autoApprove}
-                onChangeOpen={(value) => {
-                  setIsOpen(value);
-                  setHasChanges(true);
-                }}
                 onChangeAutoApprove={(value) => {
                   setAutoApprove(value);
                   setHasChanges(true);

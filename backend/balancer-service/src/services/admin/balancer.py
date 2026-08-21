@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,14 +12,15 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer import WorkspaceBalancerConfig
+from shared.services.team_export import ExportPlan, team_materialization
 from src import models
 from src.schemas.admin import balancer as admin_schemas
 from src.schemas.team import InternalBalancerTeamsPayload
-from src.services import team as team_flows
 from src.services.admin.balance_analytics import enqueue_balance_exported_event
 from src.services.admin.balancer_dual_write import sync_balance_variants_and_slots
 from src.services.balancer.config.provider import normalize_tournament_config_payload, serialize_saved_config_payload
 from src.services.balancer.config.public_contract import normalize_balance_response_payload
+from src.services.team import to_materialization_teams
 
 logger = logging.getLogger(__name__)
 
@@ -213,8 +215,10 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
         sa.select(models.BalancerBalance)
         .where(models.BalancerBalance.id == balance_id)
         # ``variants`` is read by ``enqueue_balance_exported_event`` below; a lazy
-        # load there would blow up (async IO outside the greenlet) *after*
-        # ``bulk_create_from_balancer`` already committed the tournament teams.
+        # load there would blow up (async IO outside the greenlet). It used to
+        # blow up *after* the teams were already committed — the shared
+        # orchestrator now owns a single transaction, so such a failure rolls the
+        # teams back instead of leaving them half-created.
         .options(selectinload(models.BalancerBalance.teams), selectinload(models.BalancerBalance.variants))
     )
     balance = result.scalar_one_or_none()
@@ -222,34 +226,15 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
 
     payload = InternalBalancerTeamsPayload.model_validate(normalize_balance_response_payload(balance.result_json))
-
     linked_team_ids = [team.exported_team_id for team in balance.teams if team.exported_team_id is not None]
-    removed_teams = len(linked_team_ids)
 
-    if linked_team_ids:
-        await session.execute(sa.delete(models.Standing).where(models.Standing.team_id.in_(linked_team_ids)))
-        await session.execute(sa.delete(models.Player).where(models.Player.team_id.in_(linked_team_ids)))
-        await session.execute(sa.delete(models.Team).where(models.Team.id.in_(linked_team_ids)))
+    def _unlink() -> None:
         for team in balance.teams:
             team.exported_team_id = None
-        # No commit here: the pending deletes ride along with the next commit
-        # (``bulk_create_from_balancer`` commits internally; the failure path
-        # below commits too), so the final state is identical either way.
 
-    try:
-        balancer_teams = [team.to_balancer_team() for team in payload.teams]
-        await team_flows.bulk_create_from_balancer(session, balance.tournament_id, balancer_teams)
-
-        imported_names = [team.name for team in payload.teams]
-        result = await session.execute(
-            sa.select(models.Team).where(
-                models.Team.tournament_id == balance.tournament_id,
-                models.Team.balancer_name.in_(imported_names),
-            )
-        )
-        public_teams = {team.balancer_name: team for team in result.scalars().all()}
+    async def _finalize(inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
         for materialized_team in balance.teams:
-            public_team = public_teams.get(materialized_team.balancer_name)
+            public_team = by_name.get(materialized_team.balancer_name)
             if public_team is not None:
                 materialized_team.exported_team_id = public_team.id
 
@@ -257,16 +242,29 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
         balance.export_status = "success"
         balance.export_error = None
 
-        await enqueue_balance_exported_event(session, balance, payload, public_teams)
+        # Enqueued in the same transaction as the rows it describes: the outbox
+        # only INSERTs here, a separate relay pass publishes it.
+        await enqueue_balance_exported_event(inner, balance, payload, dict(by_name))
 
-        await session.commit()
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Failed to export balance %s", balance.id)
-        balance.export_status = "failed"
-        balance.export_error = str(exc)
-        await session.commit()
-        raise
+    async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
+        # Runs after the orchestrator's rollback, in a fresh transaction, so the
+        # ORM state from the failed attempt is gone — re-load before stamping.
+        logger.exception("Failed to export balance %s", balance_id)
+        fresh = await inner.get(models.BalancerBalance, balance_id)
+        if fresh is not None:
+            fresh.export_status = "failed"
+            fresh.export_error = str(exc)
 
-    # expire_on_commit=False: ``balance`` (with its teams loaded above) is
-    # still current after the commits — no refetch needed.
-    return balance, removed_teams, len(payload.teams)
+    outcome = await team_materialization.run(
+        session,
+        ExportPlan(
+            tournament_id=balance.tournament_id,
+            teams=to_materialization_teams([team.to_balancer_team() for team in payload.teams]),
+            prior_team_ids=linked_team_ids,
+            on_unresolved="skip",
+            unlink=_unlink,
+            finalize=_finalize,
+            on_failure=_on_failure,
+        ),
+    )
+    return balance, outcome.removed_teams, outcome.imported_teams

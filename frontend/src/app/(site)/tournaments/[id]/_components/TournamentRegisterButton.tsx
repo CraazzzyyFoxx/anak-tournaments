@@ -61,7 +61,9 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
   if (!form) return null;
   if (isAuthenticated && myRegQuery.isLoading) return null;
 
-  if (!isRegistrationOpen(tournament, form.is_open)) {
+  // The form must exist (checked above) but no longer decides openness — the
+  // tournament's REGISTRATION schedule window does.
+  if (!isRegistrationOpen(tournament)) {
     return (
       <div className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-2 text-sm text-[color:var(--aqt-fg-dim)]">
         <Clock className="size-4" aria-hidden />

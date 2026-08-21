@@ -66,10 +66,12 @@ from src.schemas.registration import (
     SubscriptionProviderConfigUpsert,
     WorkspaceSubscriptionRequirementUpsert,
 )
+from src.schemas.registration_team import RegistrationTeamListResponse
 from src.services.registration import admin as registration_service
 from src.services.registration import audit as reg_audit
 from src.services.registration import service as reg_svc
 from src.services.registration import status_catalog, subscription_config
+from src.services.registration import teams as team_service
 from src.services.registration.ow_rank_selection import select_main_account_ow_ranks
 from src.services.registration.realtime import emit_balancer_registrations_changed
 from src.services.registration.serializers import (
@@ -77,6 +79,7 @@ from src.services.registration.serializers import (
     serialize_registration_form,
     serialize_status,
 )
+from src.services.registration.windows import load_registration_open
 
 # --- helpers -----------------------------------------------------------------
 
@@ -239,7 +242,8 @@ def register(broker: Any, logger: Any) -> None:
                 return None
             # The rule is the workspace's now; one scalar read feeds the sync serializer.
             requirement = await subscription_config.load_workspace_requirement_blob(session, ctx.ws_id)
-            return _dump(serialize_registration_form(form, subscription_requirement=requirement))
+            is_open = await load_registration_open(session, ctx.id)
+            return _dump(serialize_registration_form(form, is_open=is_open, subscription_requirement=requirement))
 
         return await _run(logger, op)
 
@@ -254,7 +258,55 @@ def register(broker: Any, logger: Any) -> None:
             # upsert_registration_form commits internally.
             form = await reg_svc.upsert_registration_form(session, ctx.id, body, workspace_id=ctx.ws_id)
             requirement = await subscription_config.load_workspace_requirement_blob(session, ctx.ws_id)
-            return _dump(serialize_registration_form(form, subscription_requirement=requirement))
+            is_open = await load_registration_open(session, ctx.id)
+            return _dump(serialize_registration_form(form, is_open=is_open, subscription_requirement=requirement))
+
+        return await _run(logger, op)
+
+    # GET /balancer/tournaments/{tournament_id}/registration-teams
+    #   dep: require_tournament_permission("team", "read")
+    #
+    # §8/§12.5: the organizer's answer to "who is incomplete, and what are they
+    # missing?". Occupancy is recomputed rather than read off the denormalized
+    # ``status`` column, because the per-slot shortfall is what is actionable.
+    @broker.subscriber("rpc.tournament.regteam_list")
+    async def _regteam_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "read")
+            # `_q1`, not `data.get`: `AllQuery` nests the query string, so a direct
+            # lookup would silently read `False` for every request.
+            include_terminal = _q1(data, "include_terminal", _bool, default=False)
+            pairs = await team_service.list_teams(
+                session,
+                tournament_id=ctx.id,
+                include_terminal=include_terminal,
+            )
+            items = [
+                await team_service.describe_team(session, team, include_invites=True) for team, _occupancy in pairs
+            ]
+            return _dump(RegistrationTeamListResponse(items=items, total=len(items)))
+
+        return await _run(logger, op)
+
+    # POST /balancer/tournaments/{tournament_id}/registration-teams/{team_id}/reject
+    #   dep: require_tournament_permission("team", "update")
+    @broker.subscriber("rpc.tournament.regteam_reject")
+    async def _regteam_reject(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "update")
+            payload = _payload(data) or {}
+            # Defaults to True: leaving members approved is the §12.5 dead end.
+            # False is for "rejected because incomplete", which should return the
+            # players to the solo pool rather than strand them.
+            withdraw_members = bool(payload.get("withdraw_members", True))
+            team = await team_service.reject_team(
+                session,
+                tournament_id=ctx.id,
+                team_id=_path_int(data, "team_id"),
+                auth_user=ctx.user,
+                withdraw_members=withdraw_members,
+            )
+            return _dump(await team_service.describe_team(session, team, include_invites=True))
 
         return await _run(logger, op)
 

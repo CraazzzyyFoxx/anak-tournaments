@@ -1,14 +1,15 @@
 """Export a completed draft to tournament teams/players.
 
-Reuses the proven ``team_flows.bulk_create_from_balancer`` path by synthesizing
-a ``BalancerTeam`` payload from the final rosters, and mirrors
-``export_balance``'s idempotent cleanup (delete prior ``exported_team_id`` rows
-before re-import, then backfill the links by ``balancer_name``).
+Synthesizes a ``BalancerTeam`` payload from the final rosters and hands it to the
+shared team-materialization orchestrator, which owns the destructive cleanup, the
+``exported_team_id`` backfill and the transaction boundary — the same sequence
+``export_balance`` runs.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -18,11 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.services.team_export import ExportPlan, team_materialization
 from src import models
 from src.schemas.team import BalancerTeam, BalancerTeamMember
-from src.services import team as team_flows
 from src.services.draft import feasibility, loaders, ranks
 from src.services.draft._errors import err as _err
+from src.services.team import to_materialization_teams
 
 
 def _draft_to_balancer_payload(
@@ -123,39 +125,38 @@ async def export(session: AsyncSession, draft_session: DraftSession) -> tuple[Dr
         await feasibility.resolve_shape(session, draft_session),
         pick_by_player_id,
     )
-
-    # Idempotent cleanup of any prior export (mirror export_balance).
+    # Idempotent cleanup + insert + backfill + stamp, all in the shared
+    # orchestrator's single transaction (it used to be two: the writer committed
+    # the deletes and inserts internally, and the caller committed the backfill).
     linked_ids = [t.exported_team_id for t in teams if t.exported_team_id is not None]
-    removed = len(linked_ids)
-    if linked_ids:
-        await session.execute(sa.delete(models.Standing).where(models.Standing.team_id.in_(linked_ids)))
-        await session.execute(sa.delete(models.Player).where(models.Player.team_id.in_(linked_ids)))
-        await session.execute(sa.delete(models.Team).where(models.Team.id.in_(linked_ids)))
+
+    def _unlink() -> None:
         for t in teams:
             t.exported_team_id = None
-        await session.flush()
 
-    # bulk_create_from_balancer commits internally.
-    await team_flows.bulk_create_from_balancer(session, draft_session.tournament_id, payload)
+    async def _finalize(inner: AsyncSession, by_name: Mapping[str, models.Team]) -> None:
+        for team, mapped in zip(teams, payload, strict=False):
+            public_team = by_name.get(mapped.name)
+            if public_team is not None:
+                team.exported_team_id = public_team.id
+        draft_session.exported_at = datetime.now(UTC)
+        draft_session.export_status = "success"
 
-    # Backfill exported_team_id by balancer_name.
-    imported_names = [p.name for p in payload]
-    created = (
-        await session.scalars(
-            sa.select(models.Team).where(
-                models.Team.tournament_id == draft_session.tournament_id,
-                models.Team.balancer_name.in_(imported_names),
-            )
-        )
-    ).all()
-    by_name = {t.balancer_name: t for t in created}
-    for team, p in zip(teams, payload, strict=False):
-        public_team = by_name.get(p.name)
-        if public_team is not None:
-            team.exported_team_id = public_team.id
+    async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
+        fresh = await inner.get(DraftSession, draft_session.id)
+        if fresh is not None:
+            fresh.export_status = "failed"
 
-    draft_session.exported_at = datetime.now(UTC)
-    draft_session.export_status = "success"
-    # Python-side mutations only (expire_on_commit=False): the caller's commit
-    # persists the backfill; no flush+refresh round-trip needed here.
-    return draft_session, removed, len(payload)
+    outcome = await team_materialization.run(
+        session,
+        ExportPlan(
+            tournament_id=draft_session.tournament_id,
+            teams=to_materialization_teams(payload),
+            prior_team_ids=linked_ids,
+            on_unresolved="skip",
+            unlink=_unlink,
+            finalize=_finalize,
+            on_failure=_on_failure,
+        ),
+    )
+    return draft_session, outcome.removed_teams, outcome.imported_teams

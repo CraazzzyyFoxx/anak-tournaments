@@ -30,6 +30,7 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from typing import Any
 
 from faststream.rabbit import Channel
@@ -78,6 +79,13 @@ from src.schemas.registration_build import (
     _reg_to_read,
     _resolve_tournament_workspace,
 )
+from src.schemas.registration_team import (
+    RegistrationTeamAcceptRequest,
+    RegistrationTeamCreateRequest,
+    RegistrationTeamInviteCreateRequest,
+    RegistrationTeamListResponse,
+    serialize_invite,
+)
 from src.services import visibility_resolvers
 from src.services.encounter import captain as captain_service
 from src.services.encounter import flows as encounter_flows
@@ -88,6 +96,7 @@ from src.services.encounter import pick_ban_undo as pick_ban_undo_service
 from src.services.encounter import report_form as report_form_service
 from src.services.registration import service as reg_service
 from src.services.registration import subscription_config
+from src.services.registration import teams as team_service
 from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.subscription_gate import (
     assert_subscription_allows_check_in,
@@ -105,6 +114,7 @@ from src.services.registration.validation import (
     validate_registration_input,
     validate_verified_identity,
 )
+from src.services.registration.windows import load_registration_open
 
 
 def _subscription_resolver(session: Any) -> Any:
@@ -481,7 +491,15 @@ def register(broker: Any, logger: Any) -> None:
             # The rule is the workspace's now; fetched once here so the sync serializer
             # below stays free of round trips.
             requirement = await subscription_config.load_workspace_requirement_blob(session, form.workspace_id)
-            return _dump(_form_to_read(form, subrole_catalog=subrole_catalog, subscription_requirement=requirement))
+            is_open = await load_registration_open(session, tournament_id)
+            return _dump(
+                _form_to_read(
+                    form,
+                    is_open=is_open,
+                    subrole_catalog=subrole_catalog,
+                    subscription_requirement=requirement,
+                )
+            )
 
         return await _run(logger, op)
 
@@ -749,6 +767,174 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _path_int(data, "tournament_id")
             await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
             return _dump(await _coalesced_registration_list(tournament_id))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_list_public")
+    async def _regteam_list_public(data: dict, msg: RabbitMessage) -> dict:
+        """The public "Teams" roster for a tournament.
+
+        Distinct from the admin ``regteam_list``: invites are omitted, because a
+        public roster must not leak who has been asked and declined. Terminal teams
+        are omitted too — a rejected team is not part of the field.
+        """
+
+        async def op(session: Any) -> Any:
+            tournament_id = _path_int(data, "tournament_id")
+            await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
+            pairs = await team_service.list_teams(session, tournament_id=tournament_id, include_terminal=False)
+            items = [await team_service.describe_team(session, team) for team, _occupancy in pairs]
+            return _dump(RegistrationTeamListResponse(items=items, total=len(items)))
+
+        return await _run(logger, op)
+
+    # ── public team registration (captain + invitee flows) ─────────────────
+    #
+    # Every handler here is a *public* surface: the invitee flows in particular are
+    # reachable by anyone holding a link. The service layer owns the row lock, the
+    # slot decision and the machine error codes; these handlers only translate
+    # transport to arguments. See docs/plans/2026-08-20-team-registration.md §4.
+
+    @broker.subscriber("rpc.tournament.regteam_create")
+    async def _regteam_create(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _path_int(data, "tournament_id")
+            await assert_tournament_viewable(session, user, tournament_id)
+            body = RegistrationTeamCreateRequest.model_validate(_payload(data))
+
+            # Same gate as solo registration: the captain is a registrant like any
+            # other, so an unsubscribed account cannot slip in by founding a team.
+            form = await reg_service.get_registration_form(session, tournament_id)
+            await assert_subscription_allows_registration(
+                form=form,
+                auth_user_id=user.id,
+                resolver=_subscription_resolver(session),
+            )
+
+            team, _registration = await team_service.create_team(
+                session,
+                tournament_id=tournament_id,
+                auth_user=user,
+                name=body.name,
+                slot_code=body.slot_code,
+                body=body.registration,
+            )
+            # The captain sees their own outstanding offers; a public roster does not.
+            return _dump(await team_service.describe_team(session, team, include_invites=True))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_invite")
+    async def _regteam_invite(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            team_id = _path_int(data, "team_id")
+            body = RegistrationTeamInviteCreateRequest.model_validate(_payload(data))
+            ttl = timedelta(days=body.ttl_days) if body.ttl_days is not None else team_service.DEFAULT_INVITE_TTL
+            invite, raw_token = await team_service.invite_member(
+                session,
+                team_id=team_id,
+                auth_user=user,
+                slot_code=body.slot_code,
+                is_substitute=body.is_substitute,
+                target_auth_user_id=body.target_auth_user_id,
+                ttl=ttl,
+            )
+            # The raw token is returned exactly once, here, and never stored or
+            # re-served: only its sha256 is persisted.
+            return _dump(serialize_invite(invite)) | {"token": raw_token}
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_invite_revoke")
+    async def _regteam_invite_revoke(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            await team_service.revoke_invite(
+                session,
+                invite_id=_path_int(data, "invite_id"),
+                auth_user=user,
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_accept")
+    async def _regteam_accept(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            body = RegistrationTeamAcceptRequest.model_validate(_payload(data))
+            team, _registration = await team_service.accept_invite(
+                session,
+                auth_user=user,
+                body=body.registration,
+                token=body.token,
+                invite_id=body.invite_id,
+            )
+            # An invitee is now a member, so their own offers view is theirs to see.
+            return _dump(await team_service.describe_team(session, team, include_invites=True))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_decline")
+    async def _regteam_decline(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            payload = _payload(data) or {}
+            await team_service.decline_invite(
+                session,
+                auth_user=user,
+                token=payload.get("token"),
+                invite_id=payload.get("invite_id"),
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_kick")
+    async def _regteam_kick(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            await team_service.kick_member(
+                session,
+                team_id=_path_int(data, "team_id"),
+                registration_id=_path_int(data, "registration_id"),
+                auth_user=user,
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_leave")
+    async def _regteam_leave(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            await team_service.leave_team(session, team_id=_path_int(data, "team_id"), auth_user=user)
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_transfer_captain")
+    async def _regteam_transfer_captain(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            await team_service.transfer_captaincy(
+                session,
+                team_id=_path_int(data, "team_id"),
+                registration_id=_path_int(data, "registration_id"),
+                auth_user=user,
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_disband")
+    async def _regteam_disband(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            await team_service.disband_team(session, team_id=_path_int(data, "team_id"), auth_user=user)
+            return None
 
         return await _run(logger, op)
 

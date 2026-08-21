@@ -114,6 +114,14 @@ interface UnifiedRegistrationFormProps {
   onSubmit: (payload: any) => Promise<void>;
   onCancel: () => void;
   submitPending?: boolean;
+  /**
+   * Fix the role/slot this registration takes, hiding the other matrix rows.
+   *
+   * Used by the team-registration flows: an invite dictates the slot, and a
+   * captain picks theirs in the team section above. `null` is the ordinary
+   * free-choice behaviour.
+   */
+  lockedRole?: RoleCode | null;
 }
 
 export default function UnifiedRegistrationForm({
@@ -126,6 +134,7 @@ export default function UnifiedRegistrationForm({
   onSubmit,
   onCancel,
   submitPending = false,
+  lockedRole = null,
 }: Readonly<UnifiedRegistrationFormProps>) {
   const t = useTranslations();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
@@ -421,17 +430,24 @@ export default function UnifiedRegistrationForm({
     }
 
     if (stepKey === "roles") {
-      const active = ROLES.filter((role) => state.roleSelections[role.code].priority !== "off");
-      const hasMain = active.some((role) => state.roleSelections[role.code].priority === "main");
-      if ((isEnabled("primary_role") || isEnabled("additional_roles")) && !hasMain) {
-        return t("registration.wizard.validation.primaryRoleRequired");
-      }
-      if (
-        isRequired("additional_roles") &&
-        !isFlexSelection(state.roleSelections) &&
-        active.length < 2
-      ) {
-        return t("registration.wizard.validation.fallbackRoleRequired");
+      // A locked slot IS the answer to "which role", so the two rules that ask
+      // for one (a main role, and a fallback alongside it) cannot apply: the
+      // invitee has no second row to fill and no authority to change the first.
+      const active = lockedRole
+        ? ROLES.filter((role) => role.code === lockedRole)
+        : ROLES.filter((role) => state.roleSelections[role.code].priority !== "off");
+      if (!lockedRole) {
+        const hasMain = active.some((role) => state.roleSelections[role.code].priority === "main");
+        if ((isEnabled("primary_role") || isEnabled("additional_roles")) && !hasMain) {
+          return t("registration.wizard.validation.primaryRoleRequired");
+        }
+        if (
+          isRequired("additional_roles") &&
+          !isFlexSelection(state.roleSelections) &&
+          active.length < 2
+        ) {
+          return t("registration.wizard.validation.fallbackRoleRequired");
+        }
       }
       if (topHeroesEnabled && topHeroesConfig?.required) {
         const hasHero = active.some((role) => state.roleSelections[role.code].topHeroes.length > 0);
@@ -482,9 +498,14 @@ export default function UnifiedRegistrationForm({
   const roleStepError = stepKey === "roles" ? stepError : null;
   const footerError = error ?? (stepKey === "roles" ? null : stepError);
 
-  const orderedActiveRoles = ROLES.filter(
-    (role) => state.roleSelections[role.code].priority !== "off"
-  ).sort((a, b) => {
+  // A locked slot submits exactly that role. Without this filter the two hidden
+  // rows would still ride along if they carried a non-`off` priority from the
+  // reducer's initial state, and the invitee would register for roles the team
+  // never offered them.
+  const payloadRoles = lockedRole ? ROLES.filter((role) => role.code === lockedRole) : ROLES;
+  const orderedActiveRoles = payloadRoles
+    .filter((role) => lockedRole != null || state.roleSelections[role.code].priority !== "off")
+    .sort((a, b) => {
     const rank = (code: RoleCode) => (state.roleSelections[code].priority === "main" ? 0 : 1);
     return rank(a.code) - rank(b.code);
   });
@@ -495,7 +516,9 @@ export default function UnifiedRegistrationForm({
       return {
         role: role.code,
         ...(selection.subrole ? { subrole: selection.subrole } : {}),
-        is_primary: selection.priority === "main",
+        // A locked slot is always primary: it is the one role the invite bought,
+        // and `RoleStep` hides the priority control that could say otherwise.
+        is_primary: lockedRole != null || selection.priority === "main",
         ...(selection.topHeroes.length > 0 ? { top_heroes: selection.topHeroes } : {}),
       };
     });
@@ -753,6 +776,7 @@ export default function UnifiedRegistrationForm({
             maxHeroes={maxHeroes}
             flexMode={flexMode}
             hideHelperText={mode === "admin"}
+            lockedRole={lockedRole}
           />
         )}
 

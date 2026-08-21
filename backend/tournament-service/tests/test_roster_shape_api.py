@@ -103,20 +103,25 @@ def _patched(get_tournament: AsyncMock, get_workspace: AsyncMock) -> Any:
 
 
 class _LockProbeSession:
-    """A session that answers only the draft-lock probe, and counts it.
+    """Answers the two shape-lock probes independently, and counts them.
 
-    With both level getters patched, the roster-shape branch issues exactly one
-    query: `has_unfinished_draft_session`. Counting `scalar` therefore proves
-    both halves of the opt-in contract -- the probe runs when the entity is
-    requested, and never runs when it is not.
+    With both level getters patched, the roster-shape branch issues exactly two
+    queries: ``has_unfinished_draft_session`` and ``has_registered_teams``.
+    Dispatching on the table named in the statement (rather than returning one
+    canned value) is what lets each lock be asserted on its own — a fake that
+    answered both the same way would pass even if the flags were swapped.
     """
 
-    def __init__(self, *, draft_status: str | None = None) -> None:
+    def __init__(self, *, draft_status: str | None = None, team_status: str | None = None) -> None:
         self.draft_status = draft_status
+        self.team_status = team_status
         self.scalar_calls: list[Any] = []
 
     async def scalar(self, statement: Any) -> Any:
         self.scalar_calls.append(statement)
+        rendered = str(statement)
+        if "registration_team" in rendered:
+            return self.team_status
         return self.draft_status
 
 
@@ -280,8 +285,8 @@ class RosterShapeWiringTests(IsolatedAsyncioTestCase):
         # Drives the REAL `roster_shape_access` getters (unpatched) against a
         # fake session, so a wrong import or argument order in `to_pydantic`
         # cannot hide behind mocks. Order is tournament level first, then
-        # workspace level, then the draft-lock probe.
-        scalars = iter([{"flex": 4}, None, None])
+        # workspace level, then the two shape-lock probes (draft, then teams).
+        scalars = iter([{"flex": 4}, None, None, None])
         calls: list[object] = []
 
         class _FakeSession:
@@ -300,7 +305,7 @@ class RosterShapeWiringTests(IsolatedAsyncioTestCase):
         assert read.roster_shape is not None
         self.assertEqual("tournament", read.roster_shape.source)
         self.assertEqual({"flex": 4}, read.roster_shape.slots)
-        self.assertEqual(3, len(calls))
+        self.assertEqual(4, len(calls))
 
 
 class RosterShapeReadSchemaTests(IsolatedAsyncioTestCase):
@@ -357,15 +362,33 @@ class AdminTournamentSerializerTests(IsolatedAsyncioTestCase):
         get_tournament.assert_awaited_once()
 
 
-class RosterLockedByDraftTests(IsolatedAsyncioTestCase):
-    """`roster_locked_by_draft` mirrors the write-path guard, opt-in like the shape."""
+class RosterLockedTests(IsolatedAsyncioTestCase):
+    """Both lock flags mirror their write-path guards, opt-in like the shape."""
 
     async def test_unfinished_session_locks_the_shape(self) -> None:
         session = _LockProbeSession(draft_status="picking")
         read, _, _ = await _read(_tournament(tournament_id=20), ["roster_shape"], session=session)
 
         self.assertIs(True, read.roster_locked_by_draft)
-        self.assertEqual(1, len(session.scalar_calls))
+        # A draft must not be reported as a team lock.
+        self.assertIs(False, read.roster_locked_by_teams)
+        self.assertEqual(2, len(session.scalar_calls))
+
+    async def test_a_registered_team_locks_the_shape(self) -> None:
+        # The other half: members hold slots assigned from the current shape, so
+        # changing it would invalidate their rosters.
+        session = _LockProbeSession(team_status="forming")
+        read, _, _ = await _read(_tournament(tournament_id=24), ["roster_shape"], session=session)
+
+        self.assertIs(True, read.roster_locked_by_teams)
+        self.assertIs(False, read.roster_locked_by_draft)
+
+    async def test_both_locks_can_be_set_at_once(self) -> None:
+        session = _LockProbeSession(draft_status="picking", team_status="complete")
+        read, _, _ = await _read(_tournament(tournament_id=25), ["roster_shape"], session=session)
+
+        self.assertIs(True, read.roster_locked_by_draft)
+        self.assertIs(True, read.roster_locked_by_teams)
 
     async def test_terminal_session_does_not_lock_the_shape(self) -> None:
         # A cancelled/completed session is invisible to the guard's

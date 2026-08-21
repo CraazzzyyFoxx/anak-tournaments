@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.enums import SubscriptionCollectionSource
+from shared.services.registration_window import registration_open_clause
 from shared.services.subscription_wiring import build_resolver
 from shared.subscriptions import parse_requirement
 from src.core.broker import optional_broker
@@ -87,7 +88,8 @@ async def find_tournaments_requiring_subscriptions(
         .where(
             models.Tournament.is_finished.is_(False),
             models.BalancerRegistrationForm.require_subscription.is_(True),
-            models.BalancerRegistrationForm.is_open.is_(True),
+            # Openness is the REGISTRATION schedule window now, not a form flag.
+            registration_open_clause(),
         )
     )
     if workspace_id is not None:

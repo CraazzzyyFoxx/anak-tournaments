@@ -37,6 +37,14 @@ const PHASE_LABELS: Record<SchedulablePhase, string> = {
   live: "Live"
 };
 
+/** Same labels the Rules step offers, so the summary cannot rename a choice.
+ *  A ternary here used to read every non-draft formation as "Auto-balance". */
+const TEAM_FORMATION_LABELS: Record<string, string> = {
+  balancer: "Auto-balance (Balancer)",
+  draft: "Live draft",
+  registration: "Team registration"
+};
+
 function Row({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/30 py-2 last:border-b-0">
@@ -101,10 +109,6 @@ export function ReviewStep({
             label="Automatic phase transitions"
             value={schedule.auto_transitions_enabled ? "On" : "Off"}
           />
-          <Row
-            label="Allow late registration"
-            value={schedule.allow_late_registration ? "Allowed" : "Off"}
-          />
         </dl>
       </section>
 
@@ -113,7 +117,7 @@ export function ReviewStep({
         <dl>
           <Row
             label="Team formation"
-            value={form.team_formation === "draft" ? "Live draft" : "Auto-balance (Balancer)"}
+            value={TEAM_FORMATION_LABELS[form.team_formation ?? "balancer"] ?? form.team_formation}
           />
           <Row label="Division grid version" value={gridLabel} />
           <Row
@@ -131,7 +135,6 @@ export function ReviewStep({
             (Registration tab of the hub) after creation.
           </p>
           <dl>
-            <Row label="Open registration" value={registration.is_open ? "Open" : "Closed"} />
             <Row
               label="Auto-approve registrations"
               value={registration.auto_approve ? "On" : "Off"}

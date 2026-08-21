@@ -3,13 +3,22 @@
 Tournament status is the single source of truth for what is currently
 possible; ``tournament_phase_schedule`` rows only narrow the action window
 inside a phase (a missing row or ``ends_at IS NULL`` spans the whole phase).
+
+Registration is the one exception: it is governed *solely* by its schedule row,
+where a missing row means closed. See
+:mod:`shared.services.registration_window` for why that inversion lives there
+rather than in ``tournament_state.is_within_phase_window``.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.core import enums, tournament_state
+from shared.services.registration_window import is_registration_window_open, registration_open_clause
 from src import models
 
 
@@ -31,25 +40,30 @@ def is_check_in_window_active(
 
 def is_registration_open(
     tournament: models.Tournament,
-    form: models.BalancerRegistrationForm,
     *,
     now: datetime | None = None,
 ) -> bool:
     """Whether self-service registration is currently open.
 
-    ``form.is_open`` is the admin kill switch; COMPLETED/ARCHIVED tournaments
-    are always closed. Otherwise registration is open while the tournament is
-    in REGISTRATION and inside the REGISTRATION row's window, or at any
-    pre-terminal phase when ``allow_late_registration`` is set.
+    The tournament's REGISTRATION schedule window is the only switch: no row
+    means closed, COMPLETED/ARCHIVED is always closed, and late registration is
+    an ``ends_at`` that extends past the LIVE start. The former
+    ``BalancerRegistrationForm.is_open`` kill switch and
+    ``Tournament.allow_late_registration`` are gone — one question, one answer.
+
+    ``form`` is no longer a parameter: keeping it would imply the form still has
+    a say.
     """
-    if not form.is_open:
-        return False
-    if tournament_state.is_finished_for_status(tournament.status):
-        return False
-    if tournament.status == enums.TournamentStatus.REGISTRATION and tournament_state.is_within_phase_window(
-        enums.TournamentStatus.REGISTRATION,
-        tournament.phase_schedule,
-        now or datetime.now(UTC),
-    ):
-        return True
-    return tournament.allow_late_registration
+    return is_registration_window_open(tournament.status, tournament.phase_schedule, now)
+
+
+async def load_registration_open(session: AsyncSession, tournament_id: int) -> bool:
+    """Openness for a tournament we hold only the id of.
+
+    One scalar read of the *same* SQL clause the aggregate readers use, so the
+    per-tournament and in-query answers cannot drift apart. Prefer
+    :func:`is_registration_open` when a ``Tournament`` is already loaded.
+    """
+    return bool(
+        await session.scalar(sa.select(registration_open_clause()).where(models.Tournament.id == tournament_id))
+    )

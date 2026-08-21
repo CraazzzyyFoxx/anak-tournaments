@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
-import { tabFallback } from "../hubQueries";
+import { RegistrationTeamsCard } from "../components/RegistrationTeamsCard";
+import { tabFallback, useHubTournamentQuery } from "../hubQueries";
 
 // D25: the registrations table lives in a neutral place and is rendered by both
 // the hub tab (tournament from the path) and the legacy balancer route
@@ -15,11 +16,28 @@ const RegistrationsTable = dynamic(
 export default function RegistrationTabPage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
+  const validTournamentId =
+    Number.isFinite(tournamentId) && tournamentId > 0 ? tournamentId : null;
+
+  // Already in cache — the shell runs the same query under the same key.
+  const { data: tournament } = useHubTournamentQuery(tournamentId);
+  const workspaceId = tournament?.workspace_id ?? null;
+  // Only a tournament that forms its teams by registration has registered teams;
+  // for balancer/draft formation the card would always be empty.
+  const showRegistrationTeams =
+    validTournamentId != null &&
+    workspaceId != null &&
+    tournament?.team_formation === "registration";
 
   return (
-    <RegistrationsTable
-      tournamentId={Number.isFinite(tournamentId) && tournamentId > 0 ? tournamentId : null}
-      basePath={`/admin/tournaments/${params.id}/registration`}
-    />
+    <div className="space-y-4">
+      {showRegistrationTeams && (
+        <RegistrationTeamsCard tournamentId={validTournamentId} workspaceId={workspaceId} />
+      )}
+      <RegistrationsTable
+        tournamentId={validTournamentId}
+        basePath={`/admin/tournaments/${params.id}/registration`}
+      />
+    </div>
   );
 }

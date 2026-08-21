@@ -44,6 +44,13 @@ var RegistrationAdminRoutes = []edge.RouteSpec{
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/withdraw", Queue: "rpc.tournament.reg_withdraw", IDParam: "registration_id", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/restore", Queue: "rpc.tournament.reg_restore", IDParam: "registration_id", Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}", Queue: "rpc.tournament.reg_delete", IDParam: "registration_id", Auth: edge.AuthRequired, Success: 204},
+	// registration-teams: the organizer's incomplete-team view (§8/§12.5) and
+	// rejection. `IDParam` carries the tournament (that is what
+	// `_tournament_ctx` authorizes against, via `data["id"]`); `team_id` rides in
+	// `Path` because the service asserts the team belongs to that tournament —
+	// without it, an organizer of one event could reject teams in another.
+	{Method: "GET", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_list", IDParam: "tournament_id", AllQuery: true, Auth: edge.AuthRequired, Timeout: regReadTimeout},
+	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registration-teams/{team_id}/reject", Queue: "rpc.tournament.regteam_reject", IDParam: "tournament_id", Path: []string{"team_id"}, Body: true, Auth: edge.AuthRequired},
 	// bulk + balancer-status mutations.
 	{Method: "POST", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/registrations/bulk-approve", Queue: "rpc.tournament.reg_bulk_approve", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/balancer/registrations/{registration_id}/balancer-status", Queue: "rpc.tournament.reg_set_balancer_status", IDParam: "registration_id", Body: true, Auth: edge.AuthRequired},

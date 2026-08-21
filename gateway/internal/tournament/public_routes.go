@@ -56,6 +56,28 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// `Path` left `data["id"]` unset and 422'd every call.
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/veto-configs", Queue: "rpc.tournament.get_veto_configs", IDParam: "tournament_id", Auth: edge.AuthOptional},
 
+	// The public "Teams" roster. AuthOptional like the participants list: anyone
+	// may see the field. Invites are omitted server-side, so this cannot leak who
+	// was asked and declined.
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_list_public", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
+
+	// registration.py — public TEAM registration (captain + invitee flows).
+	// See docs/plans/2026-08-20-team-registration.md §4. All AuthRequired: even the
+	// link-invite path writes a registration bound to the redeemer's account, so
+	// there is no anonymous surface here — the token authorizes which SLOT you may
+	// take, never who you are.
+	{Method: "POST", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_create", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "POST", Pattern: "/api/v1/registration-teams/{team_id}/invites", Queue: "rpc.tournament.regteam_invite", Path: []string{"team_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/invites/{invite_id}", Queue: "rpc.tournament.regteam_invite_revoke", Path: []string{"invite_id"}, Auth: edge.AuthRequired, Success: 204},
+	// Accept/decline carry the invite reference in the BODY, not the path: a raw
+	// token in a URL lands in access logs, browser history and Referer headers.
+	{Method: "POST", Pattern: "/api/v1/registration-teams/invites/accept", Queue: "rpc.tournament.regteam_accept", Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "POST", Pattern: "/api/v1/registration-teams/invites/decline", Queue: "rpc.tournament.regteam_decline", Body: true, Auth: edge.AuthRequired, Success: 204},
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/members/{registration_id}", Queue: "rpc.tournament.regteam_kick", Path: []string{"team_id", "registration_id"}, Auth: edge.AuthRequired, Success: 204},
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/members/me", Queue: "rpc.tournament.regteam_leave", Path: []string{"team_id"}, Auth: edge.AuthRequired, Success: 204},
+	{Method: "POST", Pattern: "/api/v1/registration-teams/{team_id}/captain/{registration_id}", Queue: "rpc.tournament.regteam_transfer_captain", Path: []string{"team_id", "registration_id"}, Auth: edge.AuthRequired, Success: 204},
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}", Queue: "rpc.tournament.regteam_disband", Path: []string{"team_id"}, Auth: edge.AuthRequired, Success: 204},
+
 	// Subscription entitlements — the patron's own standing plus challenge-code
 	// redemption (the Boosty fallback for organizers without a Discord server).
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/subscription/me", Queue: "rpc.tournament.sub_me", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},

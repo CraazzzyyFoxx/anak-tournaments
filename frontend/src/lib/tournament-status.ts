@@ -149,16 +149,26 @@ export function isPhaseWindowActive(
 }
 
 /**
- * Mirrors the backend registration gate: the form kill switch must be on, the
- * tournament must not be over, and either the registration phase window is
- * currently active or late registration is allowed.
+ * Mirrors the backend registration gate: the tournament's REGISTRATION phase
+ * window is the only switch.
+ *
+ * A MISSING row means closed — deliberately the opposite of
+ * `isPhaseWindowActive` above, whose "no row spans the whole phase" rule stays
+ * as-is for check-in. The tournament's own phase does not participate: late
+ * registration is an `ends_at` that reaches past the LIVE start, which is what
+ * replaced the old `allow_late_registration` flag and the form's `is_open`
+ * kill switch.
  */
 export function isRegistrationOpen(
-  tournament: Pick<Tournament, "status" | "phase_schedule" | "allow_late_registration">,
-  formIsOpen: boolean,
+  tournament: Pick<Tournament, "status" | "phase_schedule">,
   now: number = Date.now()
 ) {
-  if (!formIsOpen) return false;
   if (tournament.status === "completed" || tournament.status === "archived") return false;
-  return isPhaseWindowActive(tournament, "registration", now) || tournament.allow_late_registration;
+
+  const row = tournament.phase_schedule?.find((entry) => entry.status === "registration");
+  if (!row) return false;
+
+  const startsAt = new Date(row.starts_at).getTime();
+  const endsAt = row.ends_at ? new Date(row.ends_at).getTime() : null;
+  return startsAt <= now && (endsAt === null || now <= endsAt);
 }

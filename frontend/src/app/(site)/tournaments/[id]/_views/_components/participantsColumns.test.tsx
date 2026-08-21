@@ -97,4 +97,24 @@ describe("participant column model", () => {
       "vk.com/player",
     );
   });
+
+  it("offers the team column off by default until the roster actually carries teams", () => {
+    // A solo tournament leaves every team cell empty, so the column must stay out
+    // of the default set; on a team tournament it must be ON, because search only
+    // walks visible columns and finding players by team is the point of it.
+    const withoutTeams = buildParticipantColumns(form(), t).find((column) => column.id === "team");
+    const withTeams = buildParticipantColumns(form(), t, "ru", null, undefined, true).find(
+      (column) => column.id === "team",
+    );
+
+    expect(withoutTeams?.defaultVisible).toBe(false);
+    expect(withTeams?.defaultVisible).toBe(true);
+    expect(
+      withTeams?.searchValue?.({
+        team: { id: 3, name: "Ночные совы", status: "forming", slot_code: "dps", is_substitute: false, is_captain: true },
+      } as never),
+    ).toBe("Ночные совы");
+    expect(withTeams?.searchValue?.({} as never)).toBeNull();
+    expect(withTeams?.render({} as never, 0)).toBeNull();
+  });
 });

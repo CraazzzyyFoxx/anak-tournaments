@@ -545,6 +545,10 @@ export function buildParticipantColumns(
   locale: string = "ru",
   grid?: DivisionGrid | null,
   heroesMap?: Map<string, Hero>,
+  /** Whether the loaded roster actually carries teams. Drives the team column's
+   *  `defaultVisible`; there is no team flag on `RegistrationForm`, so the data
+   *  itself is the only per-tournament signal available. */
+  hasTeams: boolean = false,
 ): ColumnDefinition[] {
   const columns: ColumnDefinition[] = [];
 
@@ -591,6 +595,41 @@ export function buildParticipantColumns(
     render: (_reg, index) => (
       <span className="text-[color:var(--aqt-fg-dim)] tabular-nums">{index + 1}</span>
     ),
+  });
+
+  // Meta: registered team. On by default ONLY when the roster actually carries
+  // teams: on a solo tournament every cell is empty, and a permanently blank
+  // column must not eat a grid track nor sit in the "Reset to defaults" set.
+  // A hardcoded `false` is equally wrong — search walks VISIBLE columns only,
+  // so it would kill find-players-by-team, which is the point of the column.
+  const teamCaptainLabel = t("registrationTeams.member.captain");
+  const teamSubstituteLabel = t("registrationTeams.member.substitute");
+  columns.push({
+    id: "team",
+    label: t("registrationTeams.myCard.teamLabel"),
+    category: "meta",
+    defaultVisible: hasTeams,
+    responsive: "sm",
+    width: "badge",
+    render: (reg) =>
+      reg.team ? (
+        <span className="inline-flex max-w-[200px] items-center gap-1.5">
+          <span className="truncate font-medium text-[color:var(--aqt-fg)]" title={reg.team.name}>
+            {reg.team.name}
+          </span>
+          {reg.team.is_captain ? (
+            <span className="shrink-0 rounded border border-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_10%,transparent)] px-1 py-px text-[10px] font-semibold leading-4 text-[color:var(--aqt-amber)]">
+              {teamCaptainLabel}
+            </span>
+          ) : null}
+          {reg.team.is_substitute ? (
+            <span className="shrink-0 rounded border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-1 py-px text-[10px] font-semibold leading-4 text-[color:var(--aqt-fg-dim)]">
+              {teamSubstituteLabel}
+            </span>
+          ) : null}
+        </span>
+      ) : null,
+    searchValue: (reg) => reg.team?.name ?? null,
   });
 
   // Built-in fields in a fixed canonical order: identity first, then gameplay

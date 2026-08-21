@@ -73,6 +73,7 @@ export default defineConfig({
       "src/app/(site)/tournaments/[id]/_views/TournamentMapsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_views/TournamentParticipantsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_views/TournamentSchedulePage.behavior.test.tsx",
+      "src/app/(site)/tournaments/[id]/_views/TournamentRegistrationTeamsPage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       "src/components/pick-ban/**/*.test.ts",
       "src/components/pick-ban/**/*.test.tsx",
@@ -103,6 +104,7 @@ export default defineConfig({
       "src/components/registration/SubscriptionRow.behavior.test.tsx",
       "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx",
       "src/components/registration/DetailsStep.behavior.test.tsx",
+      "src/components/registration/MyTeamPanel.i18n.test.tsx",
       // Same mixed-runner situation in `src/lib`, so file-level again. This one
       // mirrors the backend's best-of resolution and sequence generation, and
       // the veto room runs the SERVER's sequence — an unrun drift check is
