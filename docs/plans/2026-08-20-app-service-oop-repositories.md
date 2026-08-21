@@ -425,3 +425,32 @@ There is a route to deleting it entirely — `CrudDispatcher._get` already raise
 carry the projection. It needs `EntityConfig` to pass request-scoped load options into that generic
 path, i.e. a change to `shared/rpc/crud.py`, which `tournament-service/src/services/admin/registry.py`
 relies on for 7 of its 10 entities. Cross-service engine surgery for one saved class: not taken.
+
+### 7.2 Filenames now state what is in them
+
+Keeping the pre-refactor filenames left the layout lying. `flows.py` meant "orchestration functions"
+in the procedural era; after the rewrite it held a class called `XService`, while next door
+`service.py` held something that was *not* a service:
+
+| before | held | after |
+|---|---|---|
+| `hero/flows.py` | `HeroService` | `hero/service.py` |
+| `hero/service.py` | `HeroQueries` | `hero/queries.py` |
+| `statistics/flows.py` | `StatisticsService` | `statistics/service.py` |
+| `statistics/service.py` | `StatisticsQueries` | `statistics/queries.py` |
+| `achievements/flows_v2.py` | `AchievementService` | `achievements/service.py` |
+| `achievements/service_v2.py` | `AchievementQueries` | `achievements/queries.py` |
+| `map/flows.py` | `MapService` | `map/service.py` |
+| `gamemode/flows.py` | `GamemodeService` | `gamemode/service.py` |
+| `dashboard/flows.py` | `DashboardService` | `dashboard/service.py` |
+| `user/flows.py` | `UserService` | `user/service.py` |
+
+The `_v2` suffix went with it: there is no v1 to distinguish from, and
+`achievements/service.py` still opened with "Drop-in replacement for flows.py. Uses service_v2 under
+the hood."
+
+Every domain now reads the same way — `service.py` holds the service class, `queries.py` (or
+`queries/` for `user`) holds the SQL, `_mappers.py` holds sync projections. `flows` no longer appears
+as a module name anywhere in app-service. 42 import sites across 22 files plus four `.importlinter`
+contracts updated; rename only, no behaviour change: 338 passed, 81 RPC topics identical, boot smoke
+93 subscribers.

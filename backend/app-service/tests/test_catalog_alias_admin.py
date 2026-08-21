@@ -78,7 +78,7 @@ def test_the_gamemode_serializer_carries_every_column() -> None:
     """
     from types import SimpleNamespace
 
-    from src.services.gamemode.flows import gamemodes as gamemode_service
+    from src.services.gamemode.service import gamemodes as gamemode_service
 
     row = SimpleNamespace(
         to_dict=lambda: {

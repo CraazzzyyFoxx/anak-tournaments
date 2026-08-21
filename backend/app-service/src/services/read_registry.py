@@ -23,10 +23,10 @@ from shared.rpc.query import build_query_model
 from src import models
 from src.core import db, pagination
 from src.rpc import _common as c
-from src.services.achievements.flows_v2 import achievements as achievement_service
-from src.services.gamemode.flows import gamemodes as gamemode_service
-from src.services.hero.flows import heroes as hero_service
-from src.services.map.flows import maps as map_service
+from src.services.achievements.service import achievements as achievement_service
+from src.services.gamemode.service import gamemodes as gamemode_service
+from src.services.hero.service import heroes as hero_service
+from src.services.map.service import maps as map_service
 
 # Sort-field whitelists mirror the route declarations exactly. The Literal only
 # constrains the `sort` field; an out-of-set value raises ValidationError, which

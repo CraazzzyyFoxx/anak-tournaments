@@ -17,9 +17,9 @@ from shared.services.division_grid_resolution import (
 from src import models, schemas
 from src.core import config, enums, errors, pagination
 from src.core.workspace import get_division_grid_version
-from src.services.hero.flows import heroes as hero_service
-from src.services.statistics.service import StatisticsQueries
-from src.services.statistics.service import queries as statistics_queries
+from src.services.hero.service import heroes as hero_service
+from src.services.statistics.queries import StatisticsQueries
+from src.services.statistics.queries import queries as statistics_queries
 
 from . import _mappers
 from .queries.compare import COMPARE_METRIC_DEFINITIONS, DEFAULT_HERO_COMPARE_STATS, UserCompareQueries
@@ -832,9 +832,9 @@ class UserService:
                 detail=[errors.ApiExc(code="not_found", msg=f"Map with ID {params.map_id} not found")],
             )
 
-        # Local import: ``map.flows`` imports this module's ``users`` singleton at
+        # Local import: ``map.service`` imports this module's ``users`` singleton at
         # module level, so importing it at the top would be a cycle.
-        from src.services.map.flows import maps as map_service
+        from src.services.map.service import maps as map_service
 
         left_hero = hero_service.to_read(left_hero_model) if left_hero_model else None
         right_hero = hero_service.to_read(right_hero_model) if right_hero_model else None

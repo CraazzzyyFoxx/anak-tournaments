@@ -51,7 +51,7 @@ from src.services.admin.favorites import favorites as favorites_service
 from src.services.admin.user import users as admin_users
 from src.services.admin.user_csv import csv_import as csv_service
 from src.services.admin.user_merge import merges as merge_service
-from src.services.user.flows import users as user_service
+from src.services.user.service import users as user_service
 
 from . import _common as c
 

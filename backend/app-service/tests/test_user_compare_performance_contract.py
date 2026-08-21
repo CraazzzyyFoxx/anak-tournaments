@@ -9,7 +9,7 @@ from sqlalchemy.dialects import postgresql
 from shared.division_grid import DEFAULT_GRID
 from src import schemas
 from src.core import enums
-from src.services.user import flows
+from src.services.user import service as user_service
 from src.services.user.queries.compare import COMPARE_METRIC_DEFINITIONS
 from src.services.user.queries.compare import compare as compare_queries
 from src.services.user.queries.profile import profile as profile_queries
@@ -75,10 +75,10 @@ def test_target_compare_fetches_both_users_in_one_population_query() -> None:
 
     with (
         patch.object(compare_queries, "get_compare_population", get_population),
-        patch.object(flows.users, "get", get_user),
+        patch.object(user_service.users, "get", get_user),
     ):
         response = asyncio.run(
-            flows.users.get_compare(
+            user_service.users.get_compare(
                 AsyncMock(),
                 7,
                 schemas.UserCompareParams(baseline="target_user", target_user_id=9),

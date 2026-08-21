@@ -20,8 +20,8 @@ from src import schemas
 from src.core import db, enums, pagination
 from src.core.workspace import get_division_grid, resolve_workspace_context
 from src.rpc import _common as c
-from src.services.map.flows import maps as map_service
-from src.services.user.flows import users as user_service
+from src.services.map.service import maps as map_service
+from src.services.user.service import users as user_service
 
 _SF = db.async_session_maker
 

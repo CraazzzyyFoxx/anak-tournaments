@@ -8,7 +8,7 @@ from faststream.rabbit import RabbitMessage
 
 from src.core import db
 from src.rpc import _common as c
-from src.services.gamemode.flows import gamemodes as gamemode_service
+from src.services.gamemode.service import gamemodes as gamemode_service
 
 _SF = db.async_session_maker
 

@@ -25,7 +25,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-flows = importlib.import_module("src.services.user.flows")
+flows = importlib.import_module("src.services.user.service")
 schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("src.core.enums")
 division_grid = importlib.import_module("shared.division_grid")

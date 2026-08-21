@@ -8,7 +8,7 @@ from faststream.rabbit import RabbitMessage
 
 from src.core import db
 from src.rpc import _common as c
-from src.services.map.flows import maps as map_service
+from src.services.map.service import maps as map_service
 
 _SF = db.async_session_maker
 

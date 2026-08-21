@@ -14,7 +14,7 @@ from faststream.rabbit import RabbitMessage
 from shared.rpc.query import build_query_model
 from src.core import db, errors, pagination
 from src.rpc import _common as c
-from src.services.achievements.flows_v2 import achievements as achievement_service
+from src.services.achievements.service import achievements as achievement_service
 
 _SF = db.async_session_maker
 

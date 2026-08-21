@@ -3,7 +3,7 @@
 from shared.core.social import SocialProvider
 from shared.models.identity.social import SocialAccountVisibility
 from src import models
-from src.services.user.flows import UserService
+from src.services.user.service import UserService
 
 
 def _acc(id_: int, provider: str, username: str, *, is_primary: bool = False, is_verified: bool = False, url=None):

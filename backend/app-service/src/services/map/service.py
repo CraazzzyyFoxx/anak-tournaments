@@ -9,10 +9,10 @@ from sqlalchemy.orm import selectinload
 from shared.repository import MapRepository
 from src import models, schemas
 from src.core import config, errors, pagination
-from src.services.hero.flows import heroes as hero_service
-from src.services.hero.service import HeroQueries
-from src.services.hero.service import queries as hero_queries
-from src.services.user.flows import users as user_service
+from src.services.hero.queries import HeroQueries
+from src.services.hero.queries import queries as hero_queries
+from src.services.hero.service import heroes as hero_service
+from src.services.user.service import users as user_service
 
 __all__ = ("MapService", "maps")
 

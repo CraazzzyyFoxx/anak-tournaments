@@ -34,7 +34,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-flows = importlib.import_module("src.services.user.flows")
+flows = importlib.import_module("src.services.user.service")
 enums = importlib.import_module("src.core.enums")
 pagination = importlib.import_module("shared.core.pagination")
 user_cache = importlib.import_module("src.services.user_cache")

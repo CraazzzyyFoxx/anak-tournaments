@@ -116,7 +116,7 @@ class UserEncounterQueries:
         """All (team, encounter, match) rows the user participated in.
 
         Used to assemble the Tournaments-tab dossier's per-tournament encounter
-        list (`services.user.flows.get_tournament_encounters`). `tournament_id`,
+        list (`services.user.service.get_tournament_encounters`). `tournament_id`,
         when given, scopes the rows to one tournament — the flow calls this
         lazily per selected dossier entry rather than pulling the user's entire
         encounter history up front. Loads:

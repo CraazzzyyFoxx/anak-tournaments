@@ -2,7 +2,7 @@
 
 Schemas-only module (no flows/DB) consumed by the export script — see
 ``shared.rpc.openapi``. Models mirror the return annotations of the flows each
-handler calls (src/rpc/*.py + src/services/*/flows.py + the CRUD registries).
+handler calls (src/rpc/*.py + src/services/*/service.py + the CRUD registries).
 
 Generic CRUD engine keys are ``<subject>#<entity>``. Endpoints returning ad-hoc
 dicts / None (204) are omitted (generic object in the docs).

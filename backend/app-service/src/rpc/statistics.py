@@ -11,9 +11,9 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
 from src.core import db, pagination
 from src.rpc import _common as c
-from src.services.dashboard.flows import dashboard as dashboard_service
 from src.services.dashboard.readiness import readiness as readiness_service
-from src.services.statistics.flows import statistics as statistics_service
+from src.services.dashboard.service import dashboard as dashboard_service
+from src.services.statistics.service import statistics as statistics_service
 
 _SF = db.async_session_maker
 _STAT_SORT = typing.Literal["id", "name", "value"]

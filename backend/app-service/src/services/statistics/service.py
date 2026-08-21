@@ -1,456 +1,89 @@
-import typing
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Any
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
-from src.core import enums, pagination
+from src import schemas
+from src.core import pagination
 
-__all__ = ("StatisticsQueries", "away_score_case", "encounter_query", "home_score_case", "queries")
+from .queries import StatisticsQueries
+from .queries import queries as statistics_queries
 
-home_score_case = sa.case(
-    (models.Encounter.home_team_id == models.Team.id, models.Encounter.home_score),
-    else_=models.Encounter.away_score,
-).label("home_score_case")
-away_score_case = sa.case(
-    (models.Encounter.home_team_id == models.Team.id, models.Encounter.away_score),
-    else_=models.Encounter.home_score,
-).label("away_score_case")
+__all__ = ("StatisticsService", "statistics")
+
+# ``(player_row, value)`` pairs plus the unpaginated total — the shape every
+# leaderboard query on ``StatisticsQueries`` returns.
+_Leaderboard = tuple[Sequence[tuple[Any, float | int]], int]
 
 
-encounter_query = (
-    sa.select(
-        models.Player.id,
-        home_score_case.label("home_score"),
-        away_score_case.label("away_score"),
-    )
-    .select_from(models.Player)
-    .join(models.Team, models.Team.id == models.Player.team_id)
-    .join(
-        models.Encounter,
-        sa.or_(
-            models.Encounter.home_team_id == models.Team.id,
-            models.Encounter.away_team_id == models.Team.id,
-        ),
-    )
-).subquery("encounters")
+class StatisticsService:
+    """The three player leaderboards, as ``Paginated[PlayerStatistics]``.
 
+    All three differ only in which query feeds them and how the value is
+    rounded, so they share one assembler instead of three copies of it.
+    """
 
-class StatisticsQueries:
-    """Analytical statistics reads (leaderboards, per-tournament ranks, top-N pages)."""
+    def __init__(self, *, queries: StatisticsQueries = statistics_queries) -> None:
+        self.queries = queries
 
-    # ---- shared query builders -------------------------------------------------
-
-    def _encounter_scored_players_query(
-        self,
-        value: sa.ColumnElement[typing.Any],
-        *,
-        workspace_id: int | None,
-        extra_filters: typing.Sequence[sa.ColumnElement[bool]] = (),
-    ) -> sa.Select:
-        """Per-user aggregate over the map-score subquery, for players with > 3 tournaments.
-
-        The whole Player -> WorkspaceMember -> User -> ``encounter_query`` ->
-        Tournament chain is identical for the winrate and won-maps leaderboards;
-        only the aggregated ``value`` and the extra tournament filters differ.
-        """
-        return (
-            sa.select(models.User, value.label("value"))
-            .select_from(models.Player)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-            .join(encounter_query, encounter_query.c.id == models.Player.id)
-            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(
-                models.Player.is_substitution.is_(False),
-                *extra_filters,
-                models.Tournament.is_hidden.is_(False),
-                *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
-            )
-            .group_by(models.User.id)
-            .having(sa.func.count(models.Tournament.id.distinct()) > 3)
-        )
-
-    async def _page_with_window_total(
-        self,
-        session: AsyncSession,
-        query: sa.Select,
+    @staticmethod
+    async def _paginate(
+        query: Callable[[], Awaitable[_Leaderboard]],
         params: pagination.PaginationSortParams,
-    ) -> tuple[typing.Sequence[tuple[typing.Any, typing.Any]], int]:
-        """Fetch one page AND its grand total in a single round trip.
-
-        ``count(*) OVER ()`` is evaluated after GROUP BY/HAVING but before
-        LIMIT/OFFSET, so every returned row carries the full group count — the
-        separate ``SELECT count(*) FROM (<page query>)`` round trip is gone.
-        ``only_count`` requests are the one exception: they paginate to
-        ``LIMIT 0``, which would starve the window of rows, so they ask for the
-        count alone (still one round trip).
-        """
-        if params.only_count:
-            total = await session.scalar(sa.select(sa.func.count()).select_from(query.order_by(None).subquery()))
-            return [], total or 0
-        paged = params.apply_pagination_sort(query.add_columns(sa.func.count().over().label("total")))
-        rows = (await session.execute(paged)).all()
-        return [(row[0], row[1]) for row in rows], (rows[0][2] if rows else 0)
-
-    def _mvp_placement_stats_cte(self, tournament_id: int, *, cte_prefix: str) -> sa.CTE:
-        """Per-user average MVP placement, dense-ranked ascending (1 = best).
-
-        The MVP placement stat spans two ``LogStatsName`` columns instead of one:
-        ``ImpactRank`` (the newer impact-scoring rank) when the impact pipeline
-        computed it for a match, the legacy ``Performance`` rank otherwise — same
-        ``COALESCE(ImpactRank, Performance)`` per-match average as
-        ``services.user._repositories.get_roster_avg_mvp_bulk``.
-        """
-        per_match = (
-            sa.select(
-                models.MatchStatistics.user_id.label("user_id"),
-                models.MatchStatistics.match_id.label("match_id"),
-                sa.func.max(
-                    sa.case(
-                        (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
-                    )
-                ).label("impact_rank"),
-                sa.func.max(
-                    sa.case(
-                        (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
-                    )
-                ).label("performance"),
-            )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(
-                sa.and_(
-                    models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
-                    models.MatchStatistics.hero_id.is_(None),
-                    models.MatchStatistics.round == 0,
-                    models.Encounter.tournament_id == tournament_id,
+        *,
+        round_to: int | None = None,
+    ) -> pagination.Paginated[schemas.PlayerStatistics]:
+        rows, total = await query()
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=total,
+            results=[
+                schemas.PlayerStatistics(
+                    id=player.id,
+                    name=player.name,
+                    value=round(value, round_to) if round_to is not None else value,
                 )
-            )
-            .group_by(models.MatchStatistics.user_id, models.MatchStatistics.match_id)
-            .cte(f"{cte_prefix}per_match")
-        )
-        placement = sa.func.coalesce(per_match.c.impact_rank, per_match.c.performance)
-
-        return (
-            sa.select(
-                per_match.c.user_id.label("user_id"),
-                sa.func.avg(placement).cast(sa.Numeric(10, 2)).label("value"),
-                sa.func.dense_rank().over(order_by=sa.asc(sa.func.avg(placement))).label("rank"),
-            )
-            .where(placement.isnot(None))
-            .group_by(per_match.c.user_id)
-        ).cte(f"{cte_prefix}stats")
-
-    def _ranked_leaderboard_query(self, stats_query: sa.CTE, limit: int) -> sa.Select:
-        """``(user_id, name, value, rank)`` rows ordered by rank, for any ranked stats CTE."""
-        return (
-            sa.select(
-                stats_query.c.user_id,
-                models.User.name.label("name"),
-                stats_query.c.value,
-                stats_query.c.rank,
-            )
-            .join(models.User, models.User.id == stats_query.c.user_id)
-            .order_by(stats_query.c.rank.asc(), models.User.name.asc())
-            .limit(limit)
+                for player, value in rows
+            ],
         )
 
-    # ---- top-N leaderboards ---------------------------------------------------
-
-    async def get_top_champions(
+    async def get_most_champions(
         self,
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         workspace_id: int | None = None,
-    ) -> tuple[typing.Sequence[tuple[models.Player, int]], int]:
-        """Paginated players with their championship counts, plus the total player count."""
-        query = (
-            sa.select(models.User, sa.func.count("*").label("value"))
-            .select_from(models.Player)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-            .join(models.Team, models.Team.id == models.Player.team_id)
-            .join(models.Standing, models.Standing.team_id == models.Team.id)
-            .join(
-                models.TournamentGroup,
-                models.TournamentGroup.id == models.Standing.group_id,
-            )
-            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(
-                sa.and_(
-                    models.Standing.overall_position == 1,
-                    models.TournamentGroup.is_groups.is_(False),
-                    models.Player.is_substitution.is_(False),
-                    models.Tournament.is_league.is_(False),
-                    models.Tournament.is_hidden.is_(False),
-                    *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
-                )
-            )
-            .group_by(models.User.id)
+    ) -> pagination.Paginated[schemas.PlayerStatistics]:
+        """Players ranked by championships won."""
+        return await self._paginate(
+            lambda: self.queries.get_top_champions(session, params, workspace_id=workspace_id),
+            params,
         )
-        return await self._page_with_window_total(session, query, params)  # type: ignore[return-value]
 
-    async def get_top_winrate_players(
+    async def get_to_winrate_players(
         self,
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         workspace_id: int | None = None,
-    ) -> tuple[typing.Sequence[tuple[models.Player, float]], int]:
-        """Paginated players with their win rates, plus the total player count."""
-        query = self._encounter_scored_players_query(
-            (
-                sa.func.sum(encounter_query.c.home_score)
-                / (sa.func.sum(encounter_query.c.home_score) + sa.func.sum(encounter_query.c.away_score))
-            ),
-            workspace_id=workspace_id,
-            extra_filters=(models.Tournament.is_league.is_(False),),
+    ) -> pagination.Paginated[schemas.PlayerStatistics]:
+        """Players ranked by map win rate. Rounded — the query returns a ratio."""
+        return await self._paginate(
+            lambda: self.queries.get_top_winrate_players(session, params, workspace_id=workspace_id),
+            params,
+            round_to=2,
         )
-        return await self._page_with_window_total(session, query, params)  # type: ignore[return-value]
 
-    async def get_top_won_players(
+    async def get_to_won_players(
         self,
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         workspace_id: int | None = None,
-    ) -> tuple[typing.Sequence[tuple[models.Player, int]], int]:
-        """Paginated players with their win counts, plus the total player count."""
-        query = self._encounter_scored_players_query(
-            sa.func.sum(encounter_query.c.home_score),
-            workspace_id=workspace_id,
-        )
-        return await self._page_with_window_total(session, query, params)  # type: ignore[return-value]
-
-    # ---- per-tournament stats -------------------------------------------------
-
-    async def get_tournament_avg_match_stat_for_user(
-        self,
-        session: AsyncSession,
-        tournament: models.Tournament,
-        user_id: int,
-        stat_name: enums.LogStatsName,
-        order: bool = False,
-    ) -> tuple[tuple[int, float, int], int]:
-        """A user's average ``stat_name`` in a tournament as ``(user id, average, rank)``, plus
-        the total number of ranked users.
-
-        ``order=True`` ranks ascending (lowest average is rank 1) instead of descending.
-        """
-        if not order:
-            order_by = sa.desc(sa.func.avg(models.MatchStatistics.value))
-        else:
-            order_by = sa.asc(sa.func.avg(models.MatchStatistics.value))
-
-        stats_query = (
-            sa.select(
-                models.MatchStatistics.user_id,
-                sa.func.avg(models.MatchStatistics.value).cast(sa.Numeric(10, 2)).label("value"),
-                sa.func.dense_rank().over(order_by=order_by).label("rank"),
-            )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(
-                sa.and_(
-                    models.MatchStatistics.name == stat_name,
-                    models.Encounter.tournament_id == tournament.id,
-                    models.MatchStatistics.round == 0,
-                )
-            )
-            .group_by(models.MatchStatistics.user_id)
-        ).cte("stats_query")
-
-        query = sa.select(stats_query, sa.select(sa.func.count(stats_query.c.user_id)).scalar_subquery()).where(
-            stats_query.c.user_id == user_id
+    ) -> pagination.Paginated[schemas.PlayerStatistics]:
+        """Players ranked by maps won."""
+        return await self._paginate(
+            lambda: self.queries.get_top_won_players(session, params, workspace_id=workspace_id),
+            params,
         )
 
-        result = await session.execute(query)
 
-        return result.first()  # type: ignore
-
-    async def get_tournament_avg_match_stat_for_user_bulk(
-        self,
-        session: AsyncSession,
-        tournament: models.Tournament,
-        user_id: int,
-        stats_names: list[enums.LogStatsName],
-    ) -> typing.Sequence[tuple[enums.LogStatsName, int, float, int, int, int]]:
-        """Per-stat averages for a user in a tournament as ``(stat name, user id, average,
-        descending rank, ascending rank, ranked user count)`` rows, one per requested stat.
-        """
-        stats_query = (
-            sa.select(
-                models.MatchStatistics.name,
-                models.MatchStatistics.user_id,
-                sa.func.avg(models.MatchStatistics.value).cast(sa.Numeric(10, 2)).label("value"),
-                sa.func.dense_rank()
-                .over(
-                    order_by=sa.desc(sa.func.avg(models.MatchStatistics.value)),
-                    partition_by=models.MatchStatistics.name,
-                )
-                .label("rank"),
-                sa.func.dense_rank()
-                .over(
-                    order_by=sa.asc(sa.func.avg(models.MatchStatistics.value)),
-                    partition_by=models.MatchStatistics.name,
-                )
-                .label("rank_asc"),
-            )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(
-                sa.and_(
-                    models.MatchStatistics.name.in_(stats_names),
-                    models.Encounter.tournament_id == tournament.id,
-                    models.MatchStatistics.round == 0,
-                    models.MatchStatistics.hero_id.is_(None),
-                )
-            )
-            .group_by(models.MatchStatistics.user_id, models.MatchStatistics.name)
-        ).cte("stats_query")
-
-        query = sa.select(
-            stats_query,
-            sa.select(sa.func.count(stats_query.c.user_id) / len(stats_names)).scalar_subquery(),
-        ).where(stats_query.c.user_id == user_id)
-
-        result = await session.execute(query)
-        return result.all()  # type: ignore
-
-    async def get_tournament_mvp_stat_for_user(
-        self,
-        session: AsyncSession,
-        tournament: models.Tournament,
-        user_id: int,
-    ) -> sa.Row | None:
-        """Average MVP placement + rank/total for ONE user in a tournament.
-
-        Mirrors the ``(value, rank, total)`` shape
-        ``get_tournament_avg_match_stat_for_user_bulk`` returns for the other
-        ranked tournament stats, so ``get_tournament_with_stats`` can slot it
-        into that same ``stats[LogStatsName.Performance]`` entry.
-
-        Ranked ascending (1 = best, dense-ranked so ties share a rank) among every
-        player with an MVP placement in this tournament. Returns ``None`` when the
-        user has no such matches.
-        """
-        stats_query = self._mvp_placement_stats_cte(tournament.id, cte_prefix="tournament_mvp_")
-
-        query = sa.select(
-            stats_query,
-            sa.select(sa.func.count(stats_query.c.user_id)).scalar_subquery().label("total"),
-        ).where(stats_query.c.user_id == user_id)
-
-        result = await session.execute(query)
-        return result.first()
-
-    async def get_tournament_mvp_stat_leaderboard(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        *,
-        limit: int = 500,
-    ) -> typing.Sequence[tuple[int, str, float, int]]:
-        """Full ranked MVP-placement list of every player in a tournament.
-
-        ``get_tournament_stat_leaderboard``'s counterpart for the MVP placement
-        stat — see ``_mvp_placement_stats_cte`` for why it needs its own query
-        instead of that function's single-``MatchStatistics.name`` shape.
-        Returns rows shaped ``(user_id, name, value, rank)`` ordered by rank, same
-        contract as ``get_tournament_stat_leaderboard``.
-        """
-        stats_query = self._mvp_placement_stats_cte(tournament_id, cte_prefix="tournament_mvp_leaderboard_")
-
-        result = await session.execute(self._ranked_leaderboard_query(stats_query, limit))
-        return result.all()  # type: ignore
-
-    async def get_tournament_stat_leaderboard(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        stat_name: enums.LogStatsName,
-        *,
-        limit: int = 500,
-    ) -> typing.Sequence[tuple[int, str, float, int]]:
-        """Full ranked list of every player in a tournament for a single stat.
-
-        Generalizes ``get_tournament_avg_match_stat_for_user_bulk``: the same
-        per-user ``AVG(value)`` cast to ``Numeric(10, 2)`` + ``dense_rank()`` window
-        over ``MatchStatistics`` filtered to the tournament (``round == 0``,
-        hero-agnostic totals via ``hero_id IS NULL``), but WITHOUT narrowing to a
-        single ``user_id`` — so it returns EVERY player's row. Inverse
-        "lower-is-better" stats (Deaths, etc. — see ``enums.is_ascending_stat``)
-        rank ascending so the lowest average is rank 1; every other stat ranks
-        descending. This mirrors the ``rank_asc``/``rank`` pick the tournament-stats
-        flow makes, so a player's rank/value here matches their tournament-stats row.
-
-        Returns rows shaped ``(user_id, name, value, rank)`` ordered by rank.
-        ``limit`` is a defensive cap — lobbies are small (< ~200 players).
-        """
-        avg_value = sa.func.avg(models.MatchStatistics.value)
-        order_by = sa.asc(avg_value) if enums.is_ascending_stat(stat_name) else sa.desc(avg_value)
-
-        stats_query = (
-            sa.select(
-                models.MatchStatistics.user_id.label("user_id"),
-                avg_value.cast(sa.Numeric(10, 2)).label("value"),
-                sa.func.dense_rank().over(order_by=order_by).label("rank"),
-            )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(
-                sa.and_(
-                    models.MatchStatistics.name == stat_name,
-                    models.Encounter.tournament_id == tournament_id,
-                    models.MatchStatistics.round == 0,
-                    models.MatchStatistics.hero_id.is_(None),
-                )
-            )
-            .group_by(models.MatchStatistics.user_id)
-        ).cte("leaderboard_stats")
-
-        result = await session.execute(self._ranked_leaderboard_query(stats_query, limit))
-        return result.all()  # type: ignore
-
-    async def get_tournament_winrate(
-        self, session: AsyncSession, tournament: models.Tournament, user_id: int
-    ) -> tuple[int, float, int, int] | None:
-        """A user's tournament win rate as ``(user id, win rate, rank, ranked user count)``,
-        or ``None`` when the user has no encounters in the tournament.
-        """
-        winrate = (sa.func.sum(home_score_case) / (sa.func.sum(home_score_case) + sa.func.sum(away_score_case))).label(
-            "winrate"
-        )
-
-        stats_query = (
-            sa.select(
-                models.WorkspaceMember.player_id.label("user_id"),
-                winrate.cast(sa.Numeric(10, 2)).label("winrate"),
-                sa.func.dense_rank().over(order_by=(sa.desc(winrate))).label("rank"),
-            )
-            .select_from(models.Encounter)
-            .join(
-                models.Team,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.away_team_id == models.Team.id,
-                ),
-            )
-            .join(models.Player, models.Player.team_id == models.Team.id)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(sa.and_(models.Encounter.tournament_id == tournament.id))
-            .group_by(models.WorkspaceMember.player_id)
-        ).subquery()
-
-        query = sa.select(stats_query, sa.select(sa.func.max(stats_query.c.rank)).scalar_subquery()).where(
-            stats_query.c.user_id == user_id
-        )
-
-        result = await session.execute(query)
-        return result.first()
-
-
-queries = StatisticsQueries()
+statistics = StatisticsService()

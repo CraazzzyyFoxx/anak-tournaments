@@ -28,7 +28,7 @@ from shared.core.errors import BaseAPIException
 from src import models, schemas
 from src.rpc import users_admin
 from src.schemas.admin.user import StreamVisibilityUpdate
-from src.services.user.flows import UserService
+from src.services.user.service import UserService
 
 SUBJECT = "rpc.app.users.me_set_stream_visibility"
 

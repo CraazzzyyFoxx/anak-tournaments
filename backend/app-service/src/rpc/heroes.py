@@ -15,7 +15,7 @@ from src import schemas
 from src.core import db
 from src.core.workspace import resolve_workspace_context
 from src.rpc import _common as c
-from src.services.hero.flows import heroes as hero_service
+from src.services.hero.service import heroes as hero_service
 
 _SF = db.async_session_maker
 

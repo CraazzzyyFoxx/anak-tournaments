@@ -35,11 +35,11 @@ containers =
     src.services
 ignore_imports =
     # ---- Known debt: map -> hero ----
-    src.services.map.flows -> src.services.hero.service
-    src.services.map.flows -> src.services.hero.flows
+    src.services.map.service -> src.services.hero.queries
+    src.services.map.service -> src.services.hero.service
 
     # ---- Known debt: lower layers reaching into user ----
-    src.services.map.flows -> src.services.user.flows
+    src.services.map.service -> src.services.user.service
 
 
 # ----------------------------------------------------------------------------
@@ -58,9 +58,9 @@ source_modules =
     src.rpc
 forbidden_modules =
     src.services.user.queries
-    src.services.hero.service
-    src.services.statistics.service
-    src.services.achievements.service_v2
+    src.services.hero.queries
+    src.services.statistics.queries
+    src.services.achievements.queries
 
 # ----------------------------------------------------------------------------
 # Contract 3: private mappers / query packages stay inside their domain.

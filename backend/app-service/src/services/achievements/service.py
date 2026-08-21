@@ -1,6 +1,7 @@
-"""Achievement flows v2 — reads from AchievementRule + AchievementEvaluationResult.
+"""Achievements read surface: rules plus the effective per-user results.
 
-Drop-in replacement for flows.py. Uses service_v2 under the hood.
+Reads ``AchievementRule`` + ``AchievementEvaluationResult``, which the rules
+engine writes; the SQL behind it lives on ``AchievementQueries`` in ``queries.py``.
 """
 
 import typing
@@ -10,12 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.models.achievements.achievement import AchievementRule
 from src import schemas
 from src.core import errors, pagination
-from src.services.hero.flows import heroes as hero_service
-from src.services.user.flows import users as user_service
+from src.services.hero.service import heroes as hero_service
+from src.services.user.service import users as user_service
 
 from . import _mappers
-from .service_v2 import AchievementQueries
-from .service_v2 import queries as achievement_queries
+from .queries import AchievementQueries
+from .queries import queries as achievement_queries
 
 __all__ = ("AchievementService", "achievements")
 

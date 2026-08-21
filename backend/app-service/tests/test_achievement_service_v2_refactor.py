@@ -17,7 +17,7 @@ os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
-from src.services.achievements.service_v2 import queries  # noqa: E402
+from src.services.achievements.queries import queries  # noqa: E402
 
 
 class AchievementQueryTests(IsolatedAsyncioTestCase):
