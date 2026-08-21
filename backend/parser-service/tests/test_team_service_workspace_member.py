@@ -36,33 +36,26 @@ enums = importlib.import_module("src.core.enums")
 
 
 class TeamServiceWorkspaceMemberTests(IsolatedAsyncioTestCase):
-    async def test_resolve_workspace_member_id_uses_tournament_workspace(self) -> None:
+    async def test_resolve_workspace_member_id_delegates_to_the_shared_helper(self) -> None:
         session = SimpleNamespace()
-        created_member = SimpleNamespace(id=777)
 
-        with (
-            patch.object(
-                team_service.team_service.tournament_repo,
-                "get_workspace_id",
-                AsyncMock(return_value=55),
-            ) as get_workspace_id,
-            patch.object(
-                team_service,
-                "get_or_create_workspace_member",
-                AsyncMock(return_value=created_member),
-            ) as get_or_create,
-        ):
+        with patch.object(
+            team_service,
+            "resolve_workspace_member_id",
+            AsyncMock(return_value=777),
+        ) as resolve:
             member_id = await team_service._resolve_workspace_member_id(session, tournament_id=88, player_id=7)
 
         self.assertEqual(777, member_id)
-        get_workspace_id.assert_awaited_once_with(session, 88)
-        get_or_create.assert_awaited_once_with(session, workspace_id=55, player_id=7)
+        resolve.assert_awaited_once_with(session, tournament_id=88, player_id=7)
 
     async def test_resolve_workspace_member_id_raises_when_tournament_missing(self) -> None:
+        """The shared helper answers ``None`` for a tournament it cannot resolve
+        a workspace for; this service's own not-found error is what wraps it."""
         session = SimpleNamespace()
         with patch.object(
-            team_service.team_service.tournament_repo,
-            "get_workspace_id",
+            team_service,
+            "resolve_workspace_member_id",
             AsyncMock(return_value=None),
         ):
             with self.assertRaises(ValueError):

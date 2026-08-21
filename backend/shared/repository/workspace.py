@@ -434,6 +434,30 @@ async def get_or_create_workspace_member(
     return existing
 
 
+async def resolve_workspace_member_id(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    player_id: int,
+) -> int | None:
+    """The ``workspace_member`` anchor for a roster player being created,
+    resolved from the tournament they are joining — or ``None`` if
+    ``tournament_id`` names no tournament.
+
+    ``tournament-service`` (admin player CRUD) and ``parser-service`` (roster
+    import) each derived this identically — workspace from tournament, then
+    ``get_or_create_workspace_member`` — and each raises its own not-found
+    error on ``None``, so that part stays with the caller rather than here.
+    """
+    workspace_id = await session.scalar(
+        sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+    )
+    if workspace_id is None:
+        return None
+    member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=player_id)
+    return member.id
+
+
 class RoleRepository(BaseRepository[models.Role]):
     def __init__(self) -> None:
         super().__init__(models.Role)

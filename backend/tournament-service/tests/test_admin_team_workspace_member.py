@@ -41,29 +41,29 @@ def _result(value):
 
 
 class AdminTeamWorkspaceMemberTests(IsolatedAsyncioTestCase):
-    async def test_resolve_workspace_member_id_creates_member_from_tournament_workspace(self) -> None:
-        session = SimpleNamespace(execute=AsyncMock(return_value=_result(55)))
-        created_member = SimpleNamespace(id=777)
+    async def test_resolve_workspace_member_id_delegates_to_the_shared_helper(self) -> None:
+        session = SimpleNamespace()
 
         with patch.object(
             admin_team_service,
-            "get_or_create_workspace_member",
-            AsyncMock(return_value=created_member),
-        ) as get_or_create:
+            "resolve_workspace_member_id",
+            AsyncMock(return_value=777),
+        ) as resolve:
             member_id = await admin_team_service._resolve_workspace_member_id(session, tournament_id=88, player_id=7)
 
         self.assertEqual(777, member_id)
-        get_or_create.assert_awaited_once_with(session, workspace_id=55, player_id=7)
+        resolve.assert_awaited_once_with(session, tournament_id=88, player_id=7)
 
     async def test_resolve_workspace_member_id_raises_when_tournament_missing(self) -> None:
-        session = SimpleNamespace(execute=AsyncMock(return_value=_result(None)))
+        """The shared helper answers ``None`` for a tournament it cannot resolve
+        a workspace for; this service's own 404 is what wraps it."""
+        session = SimpleNamespace()
 
-        with patch.object(admin_team_service, "get_or_create_workspace_member", AsyncMock()) as get_or_create:
+        with patch.object(admin_team_service, "resolve_workspace_member_id", AsyncMock(return_value=None)):
             with self.assertRaises(Exception) as ctx:
                 await admin_team_service._resolve_workspace_member_id(session, tournament_id=404, player_id=7)
 
         self.assertEqual(404, ctx.exception.status_code)
-        get_or_create.assert_not_awaited()
 
     async def test_add_player_to_team_sets_workspace_member_id(self) -> None:
         team_result = Mock()

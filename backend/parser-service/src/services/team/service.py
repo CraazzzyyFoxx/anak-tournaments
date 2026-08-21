@@ -6,9 +6,8 @@ from shared.domain.player_sub_roles import normalize_sub_role
 from shared.repository import (
     PlayerRepository,
     TeamRepository,
-    TournamentRepository,
     WorkspaceMemberRepository,
-    get_or_create_workspace_member,
+    resolve_workspace_member_id,
 )
 from src import models
 from src.core import enums
@@ -20,12 +19,10 @@ class TeamService:
         *,
         player_repo: PlayerRepository = PlayerRepository(),
         team_repo: TeamRepository = TeamRepository(),
-        tournament_repo: TournamentRepository = TournamentRepository(),
         workspace_member_repo: WorkspaceMemberRepository = WorkspaceMemberRepository(),
     ) -> None:
         self.player_repo = player_repo
         self.team_repo = team_repo
-        self.tournament_repo = tournament_repo
         self.workspace_member_repo = workspace_member_repo
 
     async def _resolve_workspace_member_id(
@@ -37,15 +34,15 @@ class TeamService:
     ) -> int:
         """Resolve the ``workspace_member`` anchor for a roster player being created.
 
-        The workspace is derived from the player's tournament (``tournament.workspace_id``);
-        the member row is created idempotently if one does not already exist for this
-        (workspace, player) pair.
+        Delegates to the shared core (workspace from tournament, then an
+        idempotent get-or-create) that ``tournament-service``'s admin player CRUD
+        derives this identically from; only the not-found error differs per
+        service, which is why it stays here rather than in the shared helper.
         """
-        workspace_id = await self.tournament_repo.get_workspace_id(session, tournament_id)
-        if workspace_id is None:
+        member_id = await resolve_workspace_member_id(session, tournament_id=tournament_id, player_id=player_id)
+        if member_id is None:
             raise ValueError(f"Tournament {tournament_id} not found")
-        member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=player_id)
-        return member.id
+        return member_id
 
     async def resolve_workspace_member_ids(
         self,

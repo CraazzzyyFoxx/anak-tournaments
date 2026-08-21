@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import normalize_sub_role
-from shared.repository import get_or_create_workspace_member
+from shared.repository import resolve_workspace_member_id
 from src import models
 from src.schemas.admin import team as admin_schemas
 from src.services.tournament.events import enqueue_tournament_changed
@@ -45,17 +45,15 @@ async def _resolve_workspace_member_id(
 ) -> int:
     """Resolve the ``workspace_member`` anchor for a roster player being created.
 
-    The workspace is derived from the player's tournament (``tournament.workspace_id``);
-    the member row is created idempotently if one does not already exist for this
-    (workspace, player) pair.
+    Delegates to the shared core (workspace from tournament, then an
+    idempotent get-or-create) that ``parser-service``'s roster import derives
+    this identically from; only the not-found error differs per service, which
+    is why it stays here rather than in the shared helper.
     """
-    result = await session.execute(select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id))
-    workspace_id = result.scalar_one_or_none()
-    if workspace_id is None:
+    member_id = await resolve_workspace_member_id(session, tournament_id=tournament_id, player_id=player_id)
+    if member_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
-    member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=player_id)
-    return member.id
+    return member_id
 
 
 async def _get_related_player(

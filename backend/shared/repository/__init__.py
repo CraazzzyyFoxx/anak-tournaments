@@ -77,6 +77,7 @@ from .workspace import (
     WorkspaceMemberRepository,
     WorkspaceRepository,
     get_or_create_workspace_member,
+    resolve_workspace_member_id,
 )
 
 __all__ = (
@@ -145,4 +146,5 @@ __all__ = (
     "WorkspaceMemberRepository",
     "WorkspaceRepository",
     "get_or_create_workspace_member",
+    "resolve_workspace_member_id",
 )
