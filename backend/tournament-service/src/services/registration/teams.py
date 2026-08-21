@@ -78,6 +78,7 @@ __all__ = (
     "decline_invite",
     "disband_team",
     "invite_member",
+    "is_team_captain",
     "kick_member",
     "leave_team",
     "list_free_agents",
@@ -365,26 +366,36 @@ def _owned_by(auth_user_id: int) -> sa.ColumnElement[bool]:
     )
 
 
+async def is_team_captain(
+    session: AsyncSession,
+    team: models.BalancerRegistrationTeam,
+    auth_user_id: int,
+) -> bool:
+    """Does this account captain this team?
+
+    A team whose ``captain_registration_id`` is NULL is structurally broken (the
+    captain's registration was hard-deleted) — never true for that team.
+    """
+    if team.captain_registration_id is None:
+        return False
+    is_captain = await session.scalar(
+        sa.select(models.BalancerRegistration.id).where(
+            models.BalancerRegistration.id == team.captain_registration_id,
+            _owned_by(auth_user_id),
+        )
+    )
+    return is_captain is not None
+
+
 async def _assert_captain(
     session: AsyncSession,
     team: models.BalancerRegistrationTeam,
     auth_user: models.AuthUser,
 ) -> None:
-    """Only the captain edits a roster.
-
-    A team whose ``captain_registration_id`` is NULL is structurally broken (the
-    captain's registration was hard-deleted); deny every mutation rather than
-    letting any member take over, and leave it to the organizer to reject.
-    """
+    """Only the captain edits a roster."""
     if team.captain_registration_id is None:
         raise _fail(409, "team_has_no_captain", "This team has no captain and must be handled by an organizer")
-    is_captain = await session.scalar(
-        sa.select(models.BalancerRegistration.id).where(
-            models.BalancerRegistration.id == team.captain_registration_id,
-            _owned_by(auth_user.id),
-        )
-    )
-    if is_captain is None:
+    if not await is_team_captain(session, team, auth_user.id):
         raise _fail(403, "not_captain", "Only the team captain can do this")
 
 

@@ -922,3 +922,38 @@ class CaptainReadGateTests(TestCase):
 
         self.assertIn("assert_captain_of_team", edit_gate)
         self.assertIn("_assert_mutable(team)", edit_gate)
+
+
+class _CaptaincyScalarSession:
+    """Answers ``session.scalar(...)`` with one canned value, regardless of the
+    statement — the statement shape (``_owned_by``) is exercised by
+    ``_assert_captain``'s existing callers; only the boolean outcome matters here."""
+
+    def __init__(self, result: int | None) -> None:
+        self._result = result
+
+    async def scalar(self, _stmt: Any) -> int | None:
+        return self._result
+
+
+class IsTeamCaptainTests(IsolatedAsyncioTestCase):
+    """``is_team_captain`` is the boolean check ``_assert_captain`` used to inline
+    and the public team list (§ regteam_list_public) now shares, to decide whose
+    invites a captain's own row in that list may carry."""
+
+    async def test_a_team_with_no_captain_is_never_captained(self) -> None:
+        team = models.BalancerRegistrationTeam(captain_registration_id=None)
+
+        self.assertFalse(await teams.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
+
+    async def test_the_owning_account_is_the_captain(self) -> None:
+        team = models.BalancerRegistrationTeam(captain_registration_id=42)
+
+        self.assertTrue(await teams.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
+
+    async def test_a_non_owning_account_is_not_the_captain(self) -> None:
+        """The row exists (someone captains this team) but the query for THIS
+        account's ownership came back empty — the case an ordinary teammate hits."""
+        team = models.BalancerRegistrationTeam(captain_registration_id=42)
+
+        self.assertFalse(await teams.is_team_captain(_CaptaincyScalarSession(None), team, auth_user_id=1))

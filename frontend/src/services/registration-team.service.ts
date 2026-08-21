@@ -197,7 +197,7 @@ const registrationTeamService = {
     teamId: number,
   ): Promise<RegistrationTeamInviteHistoryResponse> {
     const response = await apiFetch(
-      `/api/balancer/tournaments/${tournamentId}/registration-teams/${teamId}/invite-history`,
+      `/api/v1/admin/balancer/tournaments/${tournamentId}/registration-teams/${teamId}/invite-history`,
     );
     return response.json();
   },
@@ -210,7 +210,7 @@ const registrationTeamService = {
    */
   async revokeInviteAdmin(tournamentId: number, inviteId: number): Promise<void> {
     await apiFetch(
-      `/api/balancer/tournaments/${tournamentId}/registration-teams/invites/${inviteId}`,
+      `/api/v1/admin/balancer/tournaments/${tournamentId}/registration-teams/invites/${inviteId}`,
       { method: "DELETE" },
     );
   },
@@ -223,7 +223,7 @@ const registrationTeamService = {
    */
   async resetInviteCap(tournamentId: number, teamId: number): Promise<void> {
     await apiFetch(
-      `/api/balancer/tournaments/${tournamentId}/registration-teams/${teamId}/invite-cap/reset`,
+      `/api/v1/admin/balancer/tournaments/${tournamentId}/registration-teams/${teamId}/invite-cap/reset`,
       { method: "POST" },
     );
   },

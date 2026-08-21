@@ -776,16 +776,27 @@ def register(broker: Any, logger: Any) -> None:
     async def _regteam_list_public(data: dict, msg: RabbitMessage) -> dict:
         """The public "Teams" roster for a tournament.
 
-        Distinct from the admin ``regteam_list``: invites are omitted, because a
-        public roster must not leak who has been asked and declined. Terminal teams
-        are omitted too — a rejected team is not part of the field.
+        Distinct from the admin ``regteam_list``: invites are omitted for every
+        team except one the caller themselves captains — a public roster must not
+        leak who else has been asked and declined, but a captain reading their own
+        outstanding offers is exactly the person `MyTeamPanel` needs this list to
+        answer for. Terminal teams are omitted too — a rejected team is not part
+        of the field.
         """
 
         async def op(session: Any) -> Any:
             tournament_id = _path_int(data, "tournament_id")
-            await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
+            user = _optional_identity(data)
+            await assert_tournament_viewable(session, user, tournament_id)
             pairs = await team_service.list_teams(session, tournament_id=tournament_id, include_terminal=False)
-            items = [await team_service.describe_team(session, team) for team, _occupancy in pairs]
+            items = [
+                await team_service.describe_team(
+                    session,
+                    team,
+                    include_invites=user is not None and await team_service.is_team_captain(session, team, user.id),
+                )
+                for team, _occupancy in pairs
+            ]
             # Free agents ride along: a captain reading this list is exactly the
             # person who can recruit them.
             return _dump(
