@@ -1,19 +1,17 @@
 import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.domain.player_sub_roles import normalize_sub_role
 from shared.repository import (
     PlayerRepository,
     TeamRepository,
     TournamentRepository,
-    UserRepository,
     WorkspaceMemberRepository,
     get_or_create_workspace_member,
 )
 from src import models
-from src.core import enums, utils
+from src.core import enums
 
 
 class TeamService:
@@ -72,7 +70,9 @@ class TeamService:
     async def get_by_tournament(
         self, session: AsyncSession, tournament_id: int, entities: list[str]
     ) -> typing.Sequence[models.Team]:
-        return await self.team_repo.list_by_tournament(session, tournament_id, options=team_entities(entities))
+        return await self.team_repo.list_by_tournament(
+            session, tournament_id, options=TeamRepository.team_entities(entities)
+        )
 
     async def get_by_players_by_ids_tournament(
         self,
@@ -82,21 +82,21 @@ class TeamService:
         entities: list[str],
     ) -> models.Team | None:
         return await self.team_repo.get_by_player_ids(
-            session, players_ids, tournament.id, options=team_entities(entities)
+            session, players_ids, tournament.id, options=TeamRepository.team_entities(entities)
         )
 
     async def get_player_by_team_and_user(
         self, session: AsyncSession, team_id: int, user_id: int, entities: list[str]
     ) -> models.Player | None:
         return await self.player_repo.get_by_team_and_user(
-            session, team_id=team_id, user_id=user_id, options=player_entities(entities)
+            session, team_id=team_id, user_id=user_id, options=PlayerRepository.player_entities(entities)
         )
 
     async def get_player_by_user_and_role(
         self, session: AsyncSession, user_id: int, role: enums.HeroClass, entities: list[str]
     ) -> typing.Sequence[models.Player]:
         return await self.player_repo.list_by_user_and_role(
-            session, user_id=user_id, role=role, options=player_entities(entities)
+            session, user_id=user_id, role=role, options=PlayerRepository.player_entities(entities)
         )
 
     async def create_player(
@@ -149,53 +149,3 @@ get_player_by_user_and_role = team_service.get_player_by_user_and_role
 create_player = team_service.create_player
 
 
-def team_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    entities: list[_AbstractLoad] = []
-
-    if "tournament" in in_entities:
-        entities.append(utils.join_entity(child, models.Team.tournament))
-    if "players" in in_entities:
-        players_entities = utils.prepare_entities(in_entities, "players")
-        players_entity = utils.join_entity(child, models.Team.players)
-        entities.append(players_entity)
-        # PlayerRead.user_id is a required field (resolved from
-        # workspace_member.player_id, contract step iwrefac07), so
-        # workspace_member itself must always be loaded here -- not just when
-        # "user"/"workspace_member" is requested. The nested
-        # workspace_member.player (+ further user sub-entities) stays gated
-        # behind "user" since that's the expensive/optional part.
-        workspace_member_entity = utils.join_entity(players_entity, models.Player.workspace_member)
-        entities.append(workspace_member_entity)
-        if "user" in players_entities:
-            user_entity = utils.join_entity(workspace_member_entity, models.WorkspaceMember.player)
-            entities.append(user_entity)
-            entities.extend(UserRepository.identity_options(utils.prepare_entities(players_entities, "user"), user_entity))
-    if "captain" in in_entities:
-        captain_entity = utils.join_entity(child, models.Team.captain)
-        entities.append(captain_entity)
-        entities.extend(UserRepository.identity_options(utils.prepare_entities(in_entities, "captain"), captain_entity))
-    if "placement" in in_entities:
-        entities.append(utils.join_entity(child, models.Team.standings))
-
-    return entities
-
-
-def player_entities(entities_in: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    entities = []
-
-    # PlayerRead.user_id is a required field resolved from
-    # workspace_member.player_id (contract step iwrefac07), so workspace_member
-    # is always loaded here -- the nested .player (full user profile) stays
-    # gated behind "user".
-    workspace_member_entity = utils.join_entity(child, models.Player.workspace_member)
-    entities.append(workspace_member_entity)
-    if "user" in entities_in:
-        entities.append(utils.join_entity(workspace_member_entity, models.WorkspaceMember.player))
-    if "tournament" in entities_in:
-        entities.append(utils.join_entity(child, models.Player.tournament))
-    if "team" in entities_in:
-        team_entity = utils.join_entity(child, models.Player.team)
-        entities.append(team_entity)
-        entities.extend(team_entities(utils.prepare_entities(entities_in, "team"), team_entity))
-
-    return entities

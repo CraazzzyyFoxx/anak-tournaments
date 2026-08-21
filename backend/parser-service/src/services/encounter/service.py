@@ -5,11 +5,10 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.repository import MatchRepository
+from shared.repository import MatchRepository, TeamRepository
 from src import models
 from src.core import utils
 from src.services.map import service as map_service
-from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
 
 
@@ -30,25 +29,21 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(home_team_entity)
         entities.append(away_team_entity)
-        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), home_team_entity))
-        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), away_team_entity))
+        entities.extend(TeamRepository.team_entities(utils.prepare_entities(in_entities, "teams"), home_team_entity))
+        entities.extend(TeamRepository.team_entities(utils.prepare_entities(in_entities, "teams"), away_team_entity))
     if "home_team" in in_entities:
         home_team_entity = utils.join_entity(child, models.Encounter.home_team)
         entities.append(home_team_entity)
         entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "home_team"),
-                home_team_entity,
-            )
+            TeamRepository.team_entities(utils.prepare_entities(in_entities, "home_team"),
+            home_team_entity,)
         )
     if "away_team" in in_entities:
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "away_team"),
-                away_team_entity,
-            )
+            TeamRepository.team_entities(utils.prepare_entities(in_entities, "away_team"),
+            away_team_entity,)
         )
     if "stage" in in_entities:
         stage_entity = utils.join_entity(child, models.Encounter.stage)
@@ -76,25 +71,21 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
         away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(home_team_entity)
         entities.append(away_team_entity)
-        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), home_team_entity))
-        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), away_team_entity))
+        entities.extend(TeamRepository.team_entities(utils.prepare_entities(in_entities, "teams"), home_team_entity))
+        entities.extend(TeamRepository.team_entities(utils.prepare_entities(in_entities, "teams"), away_team_entity))
     if "home_team" in in_entities:
         home_team_entity = utils.join_entity(child, models.Match.home_team)
         entities.append(home_team_entity)
         entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "home_team"),
-                home_team_entity,
-            )
+            TeamRepository.team_entities(utils.prepare_entities(in_entities, "home_team"),
+            home_team_entity,)
         )
     if "away_team" in in_entities:
         away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "away_team"),
-                away_team_entity,
-            )
+            TeamRepository.team_entities(utils.prepare_entities(in_entities, "away_team"),
+            away_team_entity,)
         )
     if "encounter" in in_entities:
         entities.append(utils.join_entity(child, models.Match.encounter))

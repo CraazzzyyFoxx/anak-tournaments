@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +9,9 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core.enums import HeroClass
+from shared.core.utils import join_entity, prepare_entities, selectin_entity
 from shared.repository.base import BaseRepository
+from shared.repository.identity import UserRepository
 
 
 class TournamentRepository(BaseRepository[models.Tournament]):
@@ -105,6 +108,51 @@ class TeamRepository(BaseRepository[models.Team]):
     def __init__(self) -> None:
         super().__init__(models.Team)
 
+    @staticmethod
+    def team_entities(in_entities: list[str], child: Any | None = None) -> list[_AbstractLoad]:
+        """Eager-load options for a ``Team`` read, gated by the requested entity
+        tokens (``tournament``, ``players``[``.user``], ``captain``, ``placement``,
+        ``group``). Shared by every service that serializes a Team -- the token
+        vocabulary is a superset across services (e.g. parser's ``TeamRead`` has
+        no ``group`` field, so it never requests that token; the branch simply
+        never runs for it).
+
+        ``players``/``placement``/``group`` use ``selectin_entity``, never
+        ``join_entity``: they're to-many relationships, and joinedload on a
+        to-many multiplies the row set (see ``shared.core.utils.selectin_entity``).
+        """
+        entities: list[_AbstractLoad] = []
+        if "tournament" in in_entities:
+            entities.append(join_entity(child, models.Team.tournament))
+        if "players" in in_entities:
+            players_entities = prepare_entities(in_entities, "players")
+            players_entity = selectin_entity(child, models.Team.players)
+            entities.append(players_entity)
+            # PlayerRead.user_id is a required field (resolved from
+            # workspace_member.player_id), so workspace_member itself must always
+            # be loaded here -- not just when "user" is requested. The nested
+            # workspace_member.player (+ further user sub-entities) stays gated
+            # behind "user" since that's the expensive/optional part.
+            workspace_member_entity = join_entity(players_entity, models.Player.workspace_member)
+            entities.append(workspace_member_entity)
+            if "user" in players_entities:
+                user_entity = join_entity(workspace_member_entity, models.WorkspaceMember.player)
+                entities.append(user_entity)
+                entities.extend(
+                    UserRepository.identity_options(prepare_entities(players_entities, "user"), user_entity)
+                )
+        if "captain" in in_entities:
+            captain_entity = join_entity(child, models.Team.captain)
+            entities.append(captain_entity)
+            entities.extend(UserRepository.identity_options(prepare_entities(in_entities, "captain"), captain_entity))
+        if "placement" in in_entities:
+            entities.append(selectin_entity(child, models.Team.standings))
+        if "group" in in_entities:
+            standings = selectin_entity(child, models.Team.standings)
+            entities.append(standings)
+            entities.append(join_entity(standings, models.Standing.group))
+        return entities
+
     async def get_by_name_and_tournament(
         self,
         session: AsyncSession,
@@ -162,6 +210,30 @@ class TeamRepository(BaseRepository[models.Team]):
 class PlayerRepository(BaseRepository[models.Player]):
     def __init__(self) -> None:
         super().__init__(models.Player)
+
+    @staticmethod
+    def player_entities(in_entities: list[str], child: Any | None = None) -> list[_AbstractLoad]:
+        """Eager-load options for a ``Player`` read, gated by the requested entity
+        tokens (``user``, ``tournament``, ``team``). Shared by every service that
+        serializes a Player.
+
+        ``workspace_member`` is always loaded, regardless of tokens:
+        ``PlayerRead.user_id`` is a required field resolved from
+        ``workspace_member.player_id`` -- the nested ``.player`` (full user
+        profile) stays gated behind ``"user"``.
+        """
+        entities: list[_AbstractLoad] = []
+        workspace_member_entity = join_entity(child, models.Player.workspace_member)
+        entities.append(workspace_member_entity)
+        if "user" in in_entities:
+            entities.append(join_entity(workspace_member_entity, models.WorkspaceMember.player))
+        if "tournament" in in_entities:
+            entities.append(join_entity(child, models.Player.tournament))
+        if "team" in in_entities:
+            team_entity = join_entity(child, models.Player.team)
+            entities.append(team_entity)
+            entities.extend(TeamRepository.team_entities(prepare_entities(in_entities, "team"), team_entity))
+        return entities
 
     async def get_by_user_and_tournament(
         self,

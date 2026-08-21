@@ -9,12 +9,12 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import TeamRepository
 from shared.services.tournament_visibility import visible_tournament_ids_subquery
 from src import models, schemas
 from src.core import enums, utils
 from src.core.workspace import workspace_filter
 from src.services.map import service as map_service
-from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
 
 hero_jsonb_object = sa.func.jsonb_build_object(
@@ -100,19 +100,17 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
             if include_teams
             else utils.prepare_entities(in_entities, "home_team")
         )
-        entities.extend(team_service.team_entities(home_team_entities, home_team_entity))
+        entities.extend(TeamRepository.team_entities(home_team_entities, home_team_entity))
     if include_away_team:
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            team_service.team_entities(
-                (
-                    utils.prepare_entities(in_entities, "teams")
-                    if include_teams
-                    else utils.prepare_entities(in_entities, "away_team")
-                ),
-                away_team_entity,
-            )
+            TeamRepository.team_entities((
+                utils.prepare_entities(in_entities, "teams")
+                if include_teams
+                else utils.prepare_entities(in_entities, "away_team")
+            ),
+            away_team_entity,)
         )
     if "matches" in in_entities:
         matches_entity = utils.join_entity(child, models.Encounter.matches)
@@ -142,27 +140,23 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
         home_team_entity = utils.join_entity(child, models.Match.home_team)
         entities.append(home_team_entity)
         entities.extend(
-            team_service.team_entities(
-                (
-                    utils.prepare_entities(in_entities, "teams")
-                    if include_teams
-                    else utils.prepare_entities(in_entities, "home_team")
-                ),
-                home_team_entity,
-            )
+            TeamRepository.team_entities((
+                utils.prepare_entities(in_entities, "teams")
+                if include_teams
+                else utils.prepare_entities(in_entities, "home_team")
+            ),
+            home_team_entity,)
         )
     if include_away_team:
         away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(away_team_entity)
         entities.extend(
-            team_service.team_entities(
-                (
-                    utils.prepare_entities(in_entities, "teams")
-                    if include_teams
-                    else utils.prepare_entities(in_entities, "away_team")
-                ),
-                away_team_entity,
-            )
+            TeamRepository.team_entities((
+                utils.prepare_entities(in_entities, "teams")
+                if include_teams
+                else utils.prepare_entities(in_entities, "away_team")
+            ),
+            away_team_entity,)
         )
     if "encounter" in in_entities:
         encounter_entity = utils.join_entity(child, models.Match.encounter)
