@@ -100,3 +100,25 @@ export interface RegistrationTeamAcceptInput {
   invite_id?: number;
   registration: RegistrationCreateInput;
 }
+
+/**
+ * What a shared invite link reveals before its holder signs in.
+ *
+ * Deliberately roster-free: whoever holds the token is not a member yet. It
+ * carries `state` AND `is_redeemable` because those answer different questions —
+ * the state says what happened to the invite, redeemability says whether the
+ * accept form is worth showing. An expired-but-pending invite is both.
+ */
+export interface RegistrationTeamInvitePreview {
+  tournament_id: number;
+  tournament_name: string;
+  workspace_id: number;
+  team_id: number;
+  team_name: string;
+  slot_code: string;
+  is_substitute: boolean;
+  state: string;
+  expires_at: string | null;
+  /** Server-computed: the client's clock is not the one the accept guard uses. */
+  is_redeemable: boolean;
+}

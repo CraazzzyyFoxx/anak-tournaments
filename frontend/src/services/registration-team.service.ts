@@ -5,6 +5,7 @@ import type {
   RegistrationTeamCreateInput,
   RegistrationTeamInviteCreated,
   RegistrationTeamInviteInput,
+  RegistrationTeamInvitePreview,
   RegistrationTeamListResponse,
 } from "@/types/registration-team.types";
 
@@ -151,6 +152,25 @@ const registrationTeamService = {
       `/api/balancer/tournaments/${tournamentId}/registered-teams/export`,
       { method: "POST", body: teamIds?.length ? { team_ids: teamIds } : {} },
     );
+    return response.json();
+  },
+
+  /**
+   * Resolve a shared invite link. The only anonymous call in this service.
+   *
+   * POST for a read on purpose: the token must not land in a query string, where
+   * it would be logged by every hop. It reaches the server in the body, and the
+   * link itself keeps it in the URL fragment, which no browser transmits at all.
+   */
+  async previewInvite(token: string): Promise<RegistrationTeamInvitePreview> {
+    const response = await apiFetch("/api/v1/registration-teams/invites/preview", {
+      method: "POST",
+      body: { token },
+      // Neither is known on the landing page, and neither is needed: the token is
+      // the whole credential and the invite names its own tournament.
+      skipAuth: true,
+      skipWorkspace: true,
+    });
     return response.json();
   },
 };

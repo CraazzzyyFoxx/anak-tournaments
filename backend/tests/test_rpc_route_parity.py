@@ -135,7 +135,8 @@ class RouteSubjectParityTests(TestCase):
 
 
 class TeamRouteShapeTests(TestCase):
-    """Two security decisions live in the route table itself."""
+    """Three security decisions live in the route table itself: which team routes
+    exist, that only a read may be anonymous, and that no token rides a URL."""
 
     def _team_route_lines(self) -> list[str]:
         lines: list[str] = []
@@ -146,25 +147,49 @@ class TeamRouteShapeTests(TestCase):
         return lines
 
     def test_all_team_routes_are_present(self) -> None:
-        """Twelve: eleven flows plus the public read."""
-        self.assertEqual(12, len(self._team_route_lines()))
+        """Fourteen: twelve flows, the public read, and the admin read."""
+        self.assertEqual(14, len(self._team_route_lines()))
 
     def test_no_team_WRITE_route_is_anonymous(self) -> None:
         """Even redeeming a link invite writes a registration bound to an account:
         the token authorizes which *slot* you may take, never who you are. An
         ``AuthOptional`` write would be an unauthenticated write surface.
 
+        The invite preview is the single exception, and it is named rather than
+        counted around: it is a POST only so the token stays out of the query
+        string, and it mutates nothing (pinned below). Bumping a number here
+        instead would let the next anonymous route in silently.
+
         Scoped to writes deliberately. The public roster read is ``AuthOptional`` by
         design — anyone may see the field, and the server omits invites from it —
         so asserting this over every team route would be asserting something false.
         """
         writes = [line for line in self._team_route_lines() if '"POST"' in line or '"DELETE"' in line]
-        # Ten writes; the other two team routes are the admin and public list GETs.
-        self.assertEqual(10, len(writes))
-        for line in writes:
+        preview = [line for line in writes if "regteam_invite_preview" in line]
+        mutating = [line for line in writes if "regteam_invite_preview" not in line]
+
+        self.assertEqual(1, len(preview))
+        self.assertIn("edge.AuthOptional", preview[0])
+        # Eleven mutating writes; the other two team routes are the admin and
+        # public list GETs.
+        self.assertEqual(11, len(mutating))
+        for line in mutating:
             with self.subTest(route=line.strip()[:80]):
                 self.assertIn("edge.AuthRequired", line)
                 self.assertNotIn("edge.AuthOptional", line)
+
+    def test_the_anonymous_invite_preview_only_reads(self) -> None:
+        """The one anonymous team route is a POST, so nothing about its method stops
+        it from growing a write. Its safety is that the service function it calls
+        mutates nothing — asserted here rather than trusted from the name."""
+        source = (
+            REPO_ROOT / "backend" / "tournament-service" / "src" / "services" / "registration" / "teams.py"
+        ).read_text(encoding="utf-8")
+        body = source[source.index("async def preview_invite") :]
+        body = body[: body.index("async def accept_invite")]
+        for writer in ("session.add", "sa.update", "sa.insert", "sa.delete", "commit()", "flush()"):
+            with self.subTest(writer=writer):
+                self.assertNotIn(writer, body)
 
     def test_the_public_team_read_leaks_no_invites(self) -> None:
         """The one AuthOptional team route. Its safety is server-side — the handler
@@ -179,11 +204,21 @@ class TeamRouteShapeTests(TestCase):
         self.assertNotIn("include_invites=True", handler)
 
     def test_the_invite_token_never_travels_in_a_url(self) -> None:
-        """A raw token in the path lands in access logs, browser history and
-        `Referer` headers — which is why accept/decline take it in the body."""
+        """A raw token in the path or query string lands in access logs, browser
+        history and `Referer` headers — which is why every route that takes one
+        takes it in the body.
+
+        The preview matters most here: it is the route the shareable link resolves
+        against, so a GET would put the token in the query string of the one request
+        every invitee makes. The link itself keeps the token in the URL *fragment*,
+        which no browser ever sends to a server.
+        """
         for line in self._team_route_lines():
             with self.subTest(route=line.strip()[:80]):
                 self.assertNotIn("{token}", line)
-        accept = [line for line in self._team_route_lines() if "regteam_accept" in line]
-        self.assertEqual(1, len(accept))
-        self.assertIn("Body: true", accept[0])
+        for queue in ("regteam_accept", "regteam_invite_preview"):
+            matches = [line for line in self._team_route_lines() if queue in line]
+            with self.subTest(queue=queue):
+                self.assertEqual(1, len(matches))
+                self.assertIn("Body: true", matches[0])
+                self.assertNotIn("AllQuery", matches[0])

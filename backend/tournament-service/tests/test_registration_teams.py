@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,7 @@ from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.domain.team_roster import RosterMember, RosterOccupancy  # noqa: E402
 from src import models  # noqa: E402
+from src.schemas.registration_team import RegistrationTeamInvitePreview  # noqa: E402
 from src.services.registration import teams  # noqa: E402
 
 FIVE_STACK = parse_roster_slots({"tank": 1, "dps": 2, "support": 2})
@@ -449,3 +450,98 @@ class UnassignedPlayerCountTests(TestCase):
         self.assertIn("_SLOT_RELEASING_STATUSES", source)
         self.assertIn("registration_team_id.is_(None)", source)
         self.assertEqual({"withdrawn", "rejected"}, set(teams._SLOT_RELEASING_STATUSES))
+
+
+@dataclass
+class _PreviewTournament:
+    name: str = "Autumn Cup"
+
+
+@dataclass
+class _PreviewTeam:
+    id: int = 7
+    name: str = "Alpha"
+    tournament_id: int = 3
+    workspace_id: int = 1
+    status: str = teams.TEAM_FORMING
+    exported_team_id: int | None = None
+    tournament: Any = field(default_factory=_PreviewTournament)
+
+
+@dataclass
+class _PreviewInvite:
+    """Just the fields `preview_invite` reads."""
+
+    state: str = teams.INVITE_PENDING
+    expires_at: datetime | None = None
+    slot_code: str = "tank"
+    is_substitute: bool = False
+    team: Any = field(default_factory=_PreviewTeam)
+
+
+class _PreviewSession:
+    def __init__(self, invite: Any) -> None:
+        self._invite = invite
+
+    async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
+        return self._invite
+
+
+class InvitePreviewTests(IsolatedAsyncioTestCase):
+    """The anonymous landing surface for a shared invite link.
+
+    Its contract is narrow and load-bearing: tell the holder what they were
+    invited to, tell them honestly whether it still works, and reveal nothing
+    about the roster. Each of those is a separate way to be wrong.
+    """
+
+    async def _preview(self, invite: Any) -> Any:
+        return await teams.preview_invite(_PreviewSession(invite), token="whatever")
+
+    async def test_a_live_invite_is_redeemable(self) -> None:
+        preview = await self._preview(_PreviewInvite())
+
+        self.assertTrue(preview.is_redeemable)
+        self.assertEqual("Alpha", preview.team_name)
+        # The tournament id is why this endpoint exists: the token alone tells the
+        # landing page nothing about where to register.
+        self.assertEqual(3, preview.tournament_id)
+        self.assertEqual("Autumn Cup", preview.tournament_name)
+
+    async def test_an_expired_invite_still_resolves_but_is_not_redeemable(self) -> None:
+        """The state stays `pending` — that IS the row's state — while redeemability
+        goes false. Collapsing the two would make the page either 404 a link whose
+        story it could tell, or offer a form the guarded UPDATE will reject."""
+        expired = _PreviewInvite(expires_at=datetime.now(UTC) - timedelta(hours=1))
+
+        preview = await self._preview(expired)
+
+        self.assertEqual(teams.INVITE_PENDING, preview.state)
+        self.assertFalse(preview.is_redeemable)
+
+    async def test_an_invite_to_a_team_that_already_exported_is_not_redeemable(self) -> None:
+        """The invite row is untouched by export, so only the team tells this story.
+        Without the check the page would offer a slot on a materialized roster."""
+        preview = await self._preview(_PreviewInvite(team=_PreviewTeam(exported_team_id=42)))
+
+        self.assertFalse(preview.is_redeemable)
+
+    async def test_an_invite_to_a_dead_team_is_not_redeemable(self) -> None:
+        for status in (teams.TEAM_REJECTED, teams.TEAM_DISBANDED):
+            with self.subTest(status=status):
+                preview = await self._preview(_PreviewInvite(team=_PreviewTeam(status=status)))
+                self.assertFalse(preview.is_redeemable)
+
+    async def test_an_unknown_token_is_a_404(self) -> None:
+        with self.assertRaises(ApiHTTPException) as caught:
+            await self._preview(None)
+
+        self.assertEqual(404, caught.exception.status_code)
+        self.assertEqual("invite_not_found", _code(caught.exception))
+
+    def test_the_preview_reveals_no_roster(self) -> None:
+        """Whoever holds the token is not a member yet. The team's name and the
+        offered slot are the invitation; who else accepted is not."""
+        fields = set(RegistrationTeamInvitePreview.model_fields)
+
+        self.assertEqual(set(), fields & {"members", "invites", "open_slots", "captain"})

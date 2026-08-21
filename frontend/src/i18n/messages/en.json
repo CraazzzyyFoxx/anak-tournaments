@@ -539,6 +539,22 @@
       "accept_rate_limited": "Too many attempts. Wait a little and try again.",
       "rate_limit_unavailable": "Invites are temporarily unavailable. Try again shortly.",
       "registration_terminal": "Your registration for this tournament is no longer active, so you cannot take a team slot."
+    },
+    "landing": {
+      "title": "Team invite",
+      "noLink": "This page opens an invite link. Ask the team captain to send you theirs.",
+      "invitedTo": "You have been invited to join {team} in {tournament}.",
+      "slot": "Slot offered: {slot}",
+      "slotSubstitute": "Slot offered: {slot} (substitute)",
+      "signInHint": "Sign in to take this slot. The invite is held for you until you do.",
+      "signInAction": "Sign in",
+      "dead": {
+        "expired": "This invite has expired. Ask the captain for a new link.",
+        "accepted": "This invite has already been used. Ask the captain for a new link.",
+        "declined": "This invite was declined. Ask the captain for a new link.",
+        "revoked": "This invite was withdrawn by the captain.",
+        "unavailable": "This slot is no longer available."
+      }
     }
   },
   "accountSettings": {

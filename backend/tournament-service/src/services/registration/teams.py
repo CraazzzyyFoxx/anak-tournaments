@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.invite_token import generate_invite_token, hash_invite_token
@@ -41,6 +42,7 @@ from shared.services.roster_shape_access import get_tournament_roster_slots, get
 from src import models
 from src.schemas.registration import RegistrationCreate, RegistrationRead
 from src.schemas.registration_team import (
+    RegistrationTeamInvitePreview,
     RegistrationTeamMemberRead,
     RegistrationTeamRead,
     serialize_invite,
@@ -72,6 +74,7 @@ __all__ = (
     "kick_member",
     "leave_team",
     "list_teams",
+    "preview_invite",
     "reject_team",
     "revoke_invite",
     "set_team_image",
@@ -585,6 +588,58 @@ async def _resolve_invite(
     if invite.target_auth_user_id is not None and invite.target_auth_user_id != auth_user.id:
         raise _fail(403, "invite_not_for_you", "This invite was sent to a different account")
     return invite
+
+
+async def preview_invite(session: AsyncSession, *, token: str) -> RegistrationTeamInvitePreview:
+    """What a link invite shows before anyone signs in.
+
+    Deliberately anonymous: the whole point of a link invite is that it reaches
+    someone with no account yet, and asking them to register before telling them
+    what they are joining is the wrong order. The token itself is the credential,
+    so holding it is the authorization — and this returns strictly the offer (team,
+    tournament, slot), never the roster.
+
+    Unmetered by necessity: with no actor there is nothing to key a limiter on. The
+    guessing space is a 256-bit token, and flooding is the gateway's anonymous IP
+    budget, not this handler's problem.
+
+    A dead or expired invite is NOT an error here. The landing page needs to say
+    *why* a link stopped working, so state travels in the payload and only a token
+    matching nothing at all is a 404.
+    """
+    invite = await session.scalar(
+        sa.select(models.BalancerRegistrationTeamInvite)
+        .where(models.BalancerRegistrationTeamInvite.token_sha256 == hash_invite_token(token))
+        .options(
+            selectinload(models.BalancerRegistrationTeamInvite.team).selectinload(
+                models.BalancerRegistrationTeam.tournament
+            )
+        )
+    )
+    if invite is None:
+        raise _fail(404, "invite_not_found", "Invite not found")
+
+    team = invite.team
+    # Expiry is computed here rather than client-side: the clock this compares
+    # against is the one the guarded UPDATE in `accept_invite` uses, not the
+    # visitor's. A link that looks live but rejects on submit is the worse bug.
+    live = invite.state == INVITE_PENDING and (
+        invite.expires_at is None or invite.expires_at > datetime.now(UTC)
+    )
+    return RegistrationTeamInvitePreview(
+        tournament_id=team.tournament_id,
+        tournament_name=team.tournament.name,
+        workspace_id=team.workspace_id,
+        team_id=team.id,
+        team_name=team.name,
+        slot_code=invite.slot_code,
+        is_substitute=invite.is_substitute,
+        state=invite.state,
+        expires_at=invite.expires_at,
+        # A team that already exported, or was disbanded, cannot take anyone —
+        # regardless of how healthy the invite row looks.
+        is_redeemable=live and team.status == TEAM_FORMING and team.exported_team_id is None,
+    )
 
 
 async def accept_invite(

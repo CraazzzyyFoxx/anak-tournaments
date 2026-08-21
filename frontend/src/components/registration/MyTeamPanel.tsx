@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { notify } from "@/lib/notify";
 import { MAX_AVATAR_BYTES } from "@/lib/avatar";
-import { formatShortfall } from "@/lib/registration-team-shortfall";
+import { buildInviteLink } from "@/lib/invite-link";
 import { translateRegistrationTeamError } from "@/lib/registration-team-errors";
+import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
@@ -380,14 +381,16 @@ export default function MyTeamPanel({
             <div className="grid gap-2">
               <p className="text-sm font-medium">{t("invite.tokenTitle")}</p>
               <p className="text-xs text-warning">{t("invite.tokenHint")}</p>
+              {/* The link, not the bare token: the token is a credential, not an
+                  instruction, and a recipient handed one had nowhere to put it. */}
               <code className="block overflow-x-auto rounded-lg border border-[color:var(--aqt-border)] bg-muted/30 px-3 py-2 text-xs">
-                {issuedToken}
+                {buildInviteLink(issuedToken)}
               </code>
               <Button
                 type="button"
                 size="sm"
                 onClick={() => {
-                  void navigator.clipboard.writeText(issuedToken);
+                  void navigator.clipboard.writeText(buildInviteLink(issuedToken));
                   notify.success(t("invite.copied"));
                 }}
               >

@@ -62,13 +62,19 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_list_public", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
 
 	// registration.py — public TEAM registration (captain + invitee flows).
-	// See docs/plans/2026-08-20-team-registration.md §4. All AuthRequired: even the
-	// link-invite path writes a registration bound to the redeemer's account, so
-	// there is no anonymous surface here — the token authorizes which SLOT you may
-	// take, never who you are.
+	// See docs/plans/2026-08-20-team-registration.md §4. Every WRITE is
+	// AuthRequired: even the link-invite path writes a registration bound to the
+	// redeemer's account, so the token authorizes which SLOT you may take, never
+	// who you are. The one exception is the invite PREVIEW below, which is
+	// deliberately anonymous.
 	{Method: "POST", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_create", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "POST", Pattern: "/api/v1/registration-teams/{team_id}/invites", Queue: "rpc.tournament.regteam_invite", Path: []string{"team_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "DELETE", Pattern: "/api/v1/registration-teams/invites/{invite_id}", Queue: "rpc.tournament.regteam_invite_revoke", Path: []string{"invite_id"}, Auth: edge.AuthRequired, Success: 204},
+	// The only anonymous invite surface: a link invite exists to reach someone with
+	// no account, and asking them to sign up before seeing what they were invited
+	// to is backwards. POST rather than GET so the token stays in the body — see
+	// the note below.
+	{Method: "POST", Pattern: "/api/v1/registration-teams/invites/preview", Queue: "rpc.tournament.regteam_invite_preview", Body: true, Auth: edge.AuthOptional},
 	// Accept/decline carry the invite reference in the BODY, not the path: a raw
 	// token in a URL lands in access logs, browser history and Referer headers.
 	{Method: "POST", Pattern: "/api/v1/registration-teams/invites/accept", Queue: "rpc.tournament.regteam_accept", Body: true, Auth: edge.AuthRequired, Success: 201},

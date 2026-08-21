@@ -69,6 +69,15 @@ export function isRoleSlotCode(code: string): code is RosterRoleSlotCode {
 }
 
 /**
+ * Whether a wire string is a slot code we know. A type guard so callers can hand
+ * the narrowed code to the slot-keyed translations, which are typed to the union
+ * — an unknown code from a newer server must render as itself, not as a key.
+ */
+export function isRosterSlotCode(code: string): code is RosterSlotCode {
+  return (ROSTER_SLOT_CODES as readonly string[]).includes(code);
+}
+
+/**
  * Live total of a slot map still being edited. This is NOT a stand-in for
  * `RosterShape.team_size`: wherever a server shape exists, read `team_size` off
  * it. This exists only for the roster-shape editor, where the steppers move

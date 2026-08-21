@@ -796,6 +796,26 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
+    @broker.subscriber("rpc.tournament.regteam_invite_preview")
+    async def _regteam_invite_preview(data: dict, msg: RabbitMessage) -> dict:
+        """What a link invite says before the holder signs in.
+
+        The only ANONYMOUS invite surface. That is deliberate: a link invite exists
+        to reach someone with no account, and demanding they register before seeing
+        what they were invited to is backwards. The token is the credential.
+
+        No tournament visibility check: the invite is the grant. A captain of a
+        private tournament handing out a link is exactly them choosing to admit
+        someone, and running the viewer gate here would refuse the very person the
+        link was minted for.
+        """
+
+        async def op(session: Any) -> Any:
+            token = str(data.get("token") or "")
+            return _dump(await team_service.preview_invite(session, token=token))
+
+        return await _run(logger, op)
+
     # ── public team registration (captain + invitee flows) ─────────────────
     #
     # Every handler here is a *public* surface: the invitee flows in particular are

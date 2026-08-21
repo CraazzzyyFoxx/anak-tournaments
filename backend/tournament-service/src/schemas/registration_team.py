@@ -160,6 +160,29 @@ class RegistrationTeamListResponse(BaseModel):
     unassigned_players: int = 0
 
 
+class RegistrationTeamInvitePreview(BaseModel):
+    """What a link invite reveals BEFORE it is redeemed.
+
+    Deliberately minimal: the holder of a token is not yet a member, so this shows
+    what they are being asked to join and nothing about who else is on the roster.
+    It carries ``state`` rather than 404-ing a dead invite, so the landing page can
+    say *why* a link no longer works instead of looking broken.
+    """
+
+    tournament_id: int
+    tournament_name: str
+    workspace_id: int
+    team_id: int
+    team_name: str
+    slot_code: str
+    is_substitute: bool
+    state: str
+    expires_at: datetime | None = None
+    #: False when the invite is pending but past its expiry. Computed server-side
+    #: because the client's clock is not the one the guarded UPDATE compares against.
+    is_redeemable: bool = False
+
+
 def serialize_registration_team(
     team: models.BalancerRegistrationTeam,
     occupancy: RosterOccupancy,
