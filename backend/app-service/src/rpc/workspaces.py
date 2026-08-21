@@ -42,6 +42,7 @@ from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_hos
 from src import models, schemas
 from src.core import config, db
 from src.rpc import _common as c
+from src.services.workspace.service import MEMBERS_SORT_FIELDS
 from src.services.workspace.service import workspaces as workspace_service
 
 _SF = db.async_session_maker
@@ -252,7 +253,7 @@ def register(broker: Any, logger: Any) -> None:
             search = c.q1(data, "search", str, None)
             role_id = c.q1(data, "role_id", int, None)
             sort = c.q1(data, "sort", str, "username")
-            if sort not in workspace_service.MEMBERS_SORT_FIELDS:
+            if sort not in MEMBERS_SORT_FIELDS:
                 sort = "username"
             order = "desc" if c.q1(data, "order", str, "asc") == "desc" else "asc"
             total, rows = await workspace_service.list_members_page(
