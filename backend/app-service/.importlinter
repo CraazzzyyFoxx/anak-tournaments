@@ -22,7 +22,7 @@ root_packages =
 # Layers (high -> low):
 #   - achievements: aggregates user/encounter/tournament behaviour
 #   - dashboard, user: cross-domain read APIs
-#   - hero, map, gamemode, statistics, workspace: leaf/core domains
+#   - hero, map, statistics, workspace: leaf/core domains
 # ----------------------------------------------------------------------------
 [importlinter:contract:services-layers]
 name = src.services layered hierarchy
@@ -30,7 +30,7 @@ type = layers
 layers =
     achievements
     dashboard | user
-    hero | map | gamemode | statistics | workspace
+    hero | map | statistics | workspace
 containers =
     src.services
 ignore_imports =
@@ -77,7 +77,6 @@ source_modules =
     src.services.statistics
     src.services.hero
     src.services.map
-    src.services.gamemode
     src.services.workspace
 forbidden_modules =
     src.services.user.queries
@@ -93,7 +92,6 @@ source_modules =
     src.services.statistics
     src.services.hero
     src.services.map
-    src.services.gamemode
     src.services.workspace
 forbidden_modules =
     src.services.achievements._mappers

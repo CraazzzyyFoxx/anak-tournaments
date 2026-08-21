@@ -78,7 +78,7 @@ def test_the_gamemode_serializer_carries_every_column() -> None:
     """
     from types import SimpleNamespace
 
-    from src.services.gamemode.service import gamemodes as gamemode_service
+    from src.services.read_registry import _gamemode_read
 
     row = SimpleNamespace(
         to_dict=lambda: {
@@ -90,4 +90,4 @@ def test_the_gamemode_serializer_carries_every_column() -> None:
             "aliases": ["Осада"],
         }
     )
-    assert gamemode_service.to_read(row).aliases == ["Осада"]
+    assert _gamemode_read(row).aliases == ["Осада"]

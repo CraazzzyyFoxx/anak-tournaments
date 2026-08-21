@@ -36,9 +36,8 @@ class MapService:
         in-memory projection.
 
         The one-line ``GamemodeRead`` construction is duplicated from
-        ``GamemodeService.to_read`` on purpose: importing the gamemode service would
-        add a same-layer sibling edge and a permanent import-linter exception, which
-        costs more than one repeated line.
+        ``read_registry._gamemode_read`` on purpose: reaching for it would add a
+        dependency on the generic read engine for one repeated line.
         """
         gamemode: schemas.GamemodeRead | None = None
         if "gamemode" in entities:
