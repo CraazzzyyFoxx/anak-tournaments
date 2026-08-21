@@ -65,6 +65,10 @@ export interface RegistrationTeam {
 export interface RegistrationTeamListResponse {
   items: RegistrationTeam[];
   total: number;
+  /** Live registrations on no team — the free agents. The export cannot place
+   *  them: it materializes registered teams only, and on a team-registration
+   *  tournament neither the balancer nor the draft runs. */
+  unassigned_players: number;
 }
 
 /** The raw invite token rides back exactly once, alongside the created invite. */

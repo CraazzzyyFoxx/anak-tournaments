@@ -407,7 +407,8 @@
       "count": "{count, plural, =1 {# team} other {# teams}}",
       "shortfall": "Still needed: {slots}",
       "complete": "Roster complete",
-      "substitutes": "{used} of {max} substitutes"
+      "substitutes": "{used} of {max} substitutes",
+      "freeAgents": "{count, plural, =1 {# player is} other {# players are}} registered without a team and can be invited."
     },
     "create": {
       "action": "Register a team",
@@ -489,7 +490,8 @@
       "export": "Add teams to the tournament",
       "exportSuccess": "{count, plural, =1 {# team} other {# teams}} added.",
       "exportSkipped": "Skipped: {names}",
-      "exportNothing": "No complete teams to add."
+      "exportNothing": "No complete teams to add.",
+      "unassigned": "{count, plural, =1 {# player is} other {# players are}} on no team. The export cannot place them — invite them to a team or withdraw them first."
     },
     "errors": {
       "team_name_required": "Enter a team name.",

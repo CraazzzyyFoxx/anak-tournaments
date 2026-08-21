@@ -63,6 +63,7 @@ __all__ = (
     "DEFAULT_INVITE_TTL",
     "TEAM_STATUSES",
     "accept_invite",
+    "count_unassigned_players",
     "create_team",
     "decline_invite",
     "disband_team",
@@ -808,6 +809,30 @@ async def disband_team(
 
 
 # ── organizer flows ──────────────────────────────────────────────────────────
+
+
+async def count_unassigned_players(session: AsyncSession, tournament_id: int) -> int:
+    """Live registrations belonging to no team — the free agents.
+
+    These are invisible to the export: it materializes registered teams, and on a
+    team-registration tournament neither the balancer nor the draft runs. So an
+    approved player nobody invited silently never becomes a ``tournament.player``.
+    Surfacing the count is what lets an organizer notice them BEFORE pressing
+    export, which is the only moment it is still cheap to fix.
+
+    Withdrawn and rejected rows are excluded on the same rule the roster reader
+    uses: they released their slot and are not waiting for anything.
+    """
+    return (
+        await session.scalar(
+            sa.select(sa.func.count(models.BalancerRegistration.id)).where(
+                models.BalancerRegistration.tournament_id == tournament_id,
+                models.BalancerRegistration.registration_team_id.is_(None),
+                models.BalancerRegistration.deleted_at.is_(None),
+                models.BalancerRegistration.status.notin_(_SLOT_RELEASING_STATUSES),
+            )
+        )
+    ) or 0
 
 
 async def list_teams(

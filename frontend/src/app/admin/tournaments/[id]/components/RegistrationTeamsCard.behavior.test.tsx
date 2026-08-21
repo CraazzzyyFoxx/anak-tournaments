@@ -187,6 +187,32 @@ describe("RegistrationTeamsCard", () => {
     expect(listAdmin).toHaveBeenCalledWith(TOURNAMENT_ID, { includeTerminal: false });
   });
 
+  it("warns the organizer about players the export cannot place", async () => {
+    // The silent failure this closes: the export materializes registered TEAMS, and
+    // on a team-registration tournament neither the balancer nor the draft runs, so
+    // a player nobody invited never becomes a tournament.player and nothing said so.
+    listAdmin
+      .mockReset()
+      .mockResolvedValue({ items: [team(), COMPLETE_TEAM], total: 2, unassigned_players: 3 });
+
+    const scope = await mount();
+
+    expect(scope.textContent).toContain("3 players are on no team");
+    // Actionable, not just a number: the two ways out are named.
+    expect(scope.textContent).toContain("invite them to a team or withdraw them");
+  });
+
+  it("stays quiet when every registered player is on a team", async () => {
+    // A warning that fires at zero is a warning organizers learn to ignore.
+    listAdmin
+      .mockReset()
+      .mockResolvedValue({ items: [COMPLETE_TEAM], total: 1, unassigned_players: 0 });
+
+    const scope = await mount();
+
+    expect(scope.textContent).not.toContain("on no team");
+  });
+
   it("shows the organizer the invites the public roster hides", async () => {
     const scope = await mount();
 

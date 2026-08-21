@@ -284,7 +284,15 @@ def register(broker: Any, logger: Any) -> None:
             items = [
                 await team_service.describe_team(session, team, include_invites=True) for team, _occupancy in pairs
             ]
-            return _dump(RegistrationTeamListResponse(items=items, total=len(items)))
+            # The number the organizer must see before pressing export: these
+            # players are on no team, so the export cannot place them.
+            return _dump(
+                RegistrationTeamListResponse(
+                    items=items,
+                    total=len(items),
+                    unassigned_players=await team_service.count_unassigned_players(session, ctx.id),
+                )
+            )
 
         return await _run(logger, op)
 

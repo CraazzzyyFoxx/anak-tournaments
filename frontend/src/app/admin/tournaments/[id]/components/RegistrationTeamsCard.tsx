@@ -165,6 +165,7 @@ export function RegistrationTeamsCard({
   };
 
   const teams = teamsQuery.data?.items ?? [];
+  const unassignedPlayers = teamsQuery.data?.unassigned_players ?? 0;
 
   return (
     <>
@@ -204,6 +205,20 @@ export function RegistrationTeamsCard({
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* The export materializes registered TEAMS. A player on no team is
+              invisible to it, and on a team-registration tournament neither the
+              balancer nor the draft runs either — so they silently never become a
+              tournament.player. Before pressing export is the only moment this is
+              still cheap to fix, which is why the warning sits above the button's
+              own results rather than in the toast. */}
+          {unassignedPlayers > 0 && (
+            <Alert>
+              <AlertDescription>
+                {t("admin.unassigned", { count: unassignedPlayers })}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {skippedNames && (
             <Alert variant="destructive">
               <AlertDescription>

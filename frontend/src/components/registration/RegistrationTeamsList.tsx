@@ -146,7 +146,10 @@ export default function RegistrationTeamsList({
   });
 
   const teams = teamsQuery.data?.items ?? [];
-  if (teams.length === 0) return null;
+  const freeAgents = teamsQuery.data?.unassigned_players ?? 0;
+  // Nothing registered at all: stay silent. A free-agent count alone is still
+  // worth showing, because it is what tells a captain there are people to recruit.
+  if (teams.length === 0 && freeAgents === 0) return null;
 
   return (
     <section className="flex flex-col gap-3">
@@ -157,6 +160,11 @@ export default function RegistrationTeamsList({
         <span className="text-sm text-[color:var(--aqt-fg-muted)]">
           {t("registrationTeams.list.count", { count: teams.length })}
         </span>
+        {freeAgents > 0 ? (
+          <span className="text-sm text-[color:var(--aqt-amber)]">
+            {t("registrationTeams.list.freeAgents", { count: freeAgents })}
+          </span>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

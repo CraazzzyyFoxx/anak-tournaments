@@ -407,7 +407,8 @@
       "count": "{count, plural, one {# команда} few {# команды} other {# команд}}",
       "shortfall": "Нужно ещё: {slots}",
       "complete": "Состав собран",
-      "substitutes": "Запасные: {used} из {max}"
+      "substitutes": "Запасные: {used} из {max}",
+      "freeAgents": "{count, plural, one {# игрок} few {# игрока} other {# игроков}} заявились без команды — их можно пригласить."
     },
     "create": {
       "action": "Зарегистрировать команду",
@@ -489,7 +490,8 @@
       "export": "Добавить команды в турнир",
       "exportSuccess": "Добавлено {count, plural, one {# команда} few {# команды} other {# команд}}.",
       "exportSkipped": "Пропущены: {names}",
-      "exportNothing": "Нет собранных команд для добавления."
+      "exportNothing": "Нет собранных команд для добавления.",
+      "unassigned": "{count, plural, one {# игрок} few {# игрока} other {# игроков}} не состоят ни в одной команде. Экспорт их не добавит — пригласите их в команду или отзовите заявки."
     },
     "errors": {
       "team_name_required": "Введите название команды.",

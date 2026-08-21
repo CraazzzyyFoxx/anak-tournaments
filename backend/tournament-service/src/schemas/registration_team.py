@@ -150,6 +150,14 @@ class RegistrationTeamRead(BaseModel):
 class RegistrationTeamListResponse(BaseModel):
     items: list[RegistrationTeamRead] = Field(default_factory=list)
     total: int = 0
+    #: Live registrations on no team at all — the free agents.
+    #:
+    #: Carried alongside the teams because the export cannot see them: it
+    #: materializes registered teams, and on a team-registration tournament
+    #: neither the balancer nor the draft runs, so a player nobody invited never
+    #: becomes a ``tournament.player``. An organizer needs the number before
+    #: pressing export; a captain needs it to know there are people to recruit.
+    unassigned_players: int = 0
 
 
 def serialize_registration_team(

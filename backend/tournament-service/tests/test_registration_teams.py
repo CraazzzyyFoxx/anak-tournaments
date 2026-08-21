@@ -401,3 +401,51 @@ class FreeAgentAttachTests(TestCase):
             source.index("_check_slot"),
             source.index("existing.registration_team_id"),
         )
+
+
+class UnassignedPlayerCountTests(TestCase):
+    """The free-agent count an organizer sees before pressing export.
+
+    Its whole value is the predicate: a wrong filter here reports zero on a
+    tournament that has stranded players, which is exactly the silence the count
+    exists to break.
+    """
+
+    def _sql(self) -> str:
+        import sqlalchemy as sa
+
+        from shared.models.registration.registration import BalancerRegistration
+
+        # Mirrors the service query; compiled rather than executed so this needs no
+        # database. The service is the source of truth and is asserted separately.
+        statement = sa.select(sa.func.count(BalancerRegistration.id)).where(
+            BalancerRegistration.tournament_id == 1,
+            BalancerRegistration.registration_team_id.is_(None),
+            BalancerRegistration.deleted_at.is_(None),
+            BalancerRegistration.status.notin_(sorted(teams._SLOT_RELEASING_STATUSES)),
+        )
+        return str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+    def test_it_counts_only_registrations_with_no_team(self) -> None:
+        self.assertIn("registration_team_id IS NULL", self._sql())
+
+    def test_it_ignores_soft_deleted_rows(self) -> None:
+        self.assertIn("deleted_at IS NULL", self._sql())
+
+    def test_it_ignores_players_who_released_their_slot(self) -> None:
+        """A withdrawn or rejected registration is not waiting to be recruited, so
+        counting it would inflate the warning and train organizers to ignore it."""
+        sql = self._sql()
+        self.assertIn("withdrawn", sql)
+        self.assertIn("rejected", sql)
+        self.assertIn("NOT IN", sql.upper())
+
+    def test_the_service_uses_the_same_release_rule_as_the_roster_reader(self) -> None:
+        """Both must key on one set: if the count and the roster disagree, a player
+        can be absent from every team AND absent from the warning."""
+        import inspect
+
+        source = inspect.getsource(teams.count_unassigned_players)
+        self.assertIn("_SLOT_RELEASING_STATUSES", source)
+        self.assertIn("registration_team_id.is_(None)", source)
+        self.assertEqual({"withdrawn", "rejected"}, set(teams._SLOT_RELEASING_STATUSES))

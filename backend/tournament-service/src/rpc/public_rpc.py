@@ -784,7 +784,15 @@ def register(broker: Any, logger: Any) -> None:
             await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
             pairs = await team_service.list_teams(session, tournament_id=tournament_id, include_terminal=False)
             items = [await team_service.describe_team(session, team) for team, _occupancy in pairs]
-            return _dump(RegistrationTeamListResponse(items=items, total=len(items)))
+            # Free agents ride along: a captain reading this list is exactly the
+            # person who can recruit them.
+            return _dump(
+                RegistrationTeamListResponse(
+                    items=items,
+                    total=len(items),
+                    unassigned_players=await team_service.count_unassigned_players(session, tournament_id),
+                )
+            )
 
         return await _run(logger, op)
 
