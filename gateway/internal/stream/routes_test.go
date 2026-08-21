@@ -27,6 +27,21 @@ func TestPublicCacheableReadsMatchRouteTable(t *testing.T) {
 	}
 }
 
+// The public read gates hidden tournaments with assert_tournament_viewable,
+// which reads the viewer from the gateway-injected data["identity"]. The edge
+// dispatcher only injects it when Auth != AuthNone, so AuthNone here silently
+// made every hidden tournament answer 404 for EVERY viewer — the workspace
+// admin and the preview allowlist included, on a page they can otherwise open.
+// Nothing about that fails to compile, hence this pin.
+func TestPublicReadForwardsOptionalIdentity(t *testing.T) {
+	for _, r := range PublicRoutes {
+		if r.Auth != edge.AuthOptional {
+			t.Errorf("%s %s: Auth=%v, want AuthOptional so the visibility gate sees the viewer",
+				r.Method, r.Pattern, r.Auth)
+		}
+	}
+}
+
 // TestRoutesRegisterWithoutConflict guards against ServeMux pattern conflicts,
 // which panic at registration time (runtime), not at build time. The repoll
 // pattern nests under the read pattern's {tournament_id}, so the two must

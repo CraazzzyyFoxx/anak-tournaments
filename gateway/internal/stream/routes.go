@@ -11,11 +11,14 @@ package stream
 import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 
 // PublicRoutes is the spectator read: which channels are live for a
-// tournament. Public (AuthNone) — the handler gates hidden tournaments itself
-// with assert_tournament_viewable, so an anonymous 200 already proves the
-// tournament is publicly visible.
+// tournament. Anonymous-friendly, but AuthOptional rather than AuthNone: the
+// handler gates with assert_tournament_viewable, and that gate needs the viewer
+// (`c.optional_actor`). Under AuthNone the dispatcher never injects
+// data["identity"], so a hidden tournament answered 404 for EVERY viewer —
+// including the workspace admin and the preview allowlist who can see the page
+// itself. Same mode as every other public tournament read (tournament.routes).
 var PublicRoutes = []edge.RouteSpec{
-	{Method: "GET", Pattern: "/api/streams/tournament/{tournament_id}", Queue: "rpc.stream.tournament_streams", Path: []string{"tournament_id"}, AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/streams/tournament/{tournament_id}", Queue: "rpc.stream.tournament_streams", Path: []string{"tournament_id"}, AllQuery: true, Auth: edge.AuthOptional},
 }
 
 // AdminRoutes carries the two operator surfaces:

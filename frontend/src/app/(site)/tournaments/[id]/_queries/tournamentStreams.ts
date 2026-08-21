@@ -10,5 +10,10 @@ export function tournamentStreamsQueryOptions(tournamentId: number) {
     // Half the poller's default 60s interval: the realtime signal carries the
     // change, this is only the floor for tab-focus refetches.
     staleTime: 30_000,
+    // No toast: every consumer renders its own state for a failed read — the
+    // dock and the nav tab disappear, the Stream page shows its error panel
+    // with a retry. A background read nobody asked for must not pop a dialog
+    // over a page that is otherwise fine.
+    meta: { suppressErrorToast: true },
   });
 }
