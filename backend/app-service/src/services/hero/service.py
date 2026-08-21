@@ -100,18 +100,6 @@ class HeroService:
             )
         return self.to_read(hero)
 
-    async def get_by_name(self, session: AsyncSession, name: str) -> models.Hero:
-        """Retrieve a hero by name (404 if missing)."""
-        hero = await self.repo.get_by_name(session, name)
-        if not hero:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[
-                    errors.ApiExc(code="not_found", msg=f"Hero with name {name} not found"),
-                ],
-            )
-        return hero
-
     async def get_all(
         self, session: AsyncSession, params: pagination.PaginationSortSearchParams
     ) -> pagination.Paginated[schemas.HeroRead]:

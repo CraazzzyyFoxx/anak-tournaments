@@ -60,18 +60,6 @@ class MapService:
             )
         return self.to_read(game_map, entities)
 
-    async def get_by_name(self, session: AsyncSession, name: str, entities: list[str]) -> schemas.MapRead:
-        """Retrieve a map by name (404 if missing)."""
-        game_map = await self.repo.get_by_name(session, name, entities=entities)
-        if not game_map:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[
-                    errors.ApiExc(code="not_found", msg=f"Map with name {name} not found"),
-                ],
-            )
-        return self.to_read(game_map, entities)
-
     async def get_all(
         self, session: AsyncSession, params: pagination.PaginationSortParams
     ) -> pagination.Paginated[schemas.MapRead]:
