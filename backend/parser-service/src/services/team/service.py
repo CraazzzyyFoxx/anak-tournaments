@@ -1,12 +1,13 @@
 import typing
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.domain.player_sub_roles import normalize_sub_role
 from shared.repository import (
     PlayerRepository,
+    TeamRepository,
+    TournamentRepository,
     UserRepository,
     WorkspaceMemberRepository,
     get_or_create_workspace_member,
@@ -20,9 +21,13 @@ class TeamService:
         self,
         *,
         player_repo: PlayerRepository = PlayerRepository(),
+        team_repo: TeamRepository = TeamRepository(),
+        tournament_repo: TournamentRepository = TournamentRepository(),
         workspace_member_repo: WorkspaceMemberRepository = WorkspaceMemberRepository(),
     ) -> None:
         self.player_repo = player_repo
+        self.team_repo = team_repo
+        self.tournament_repo = tournament_repo
         self.workspace_member_repo = workspace_member_repo
 
     async def _resolve_workspace_member_id(
@@ -38,10 +43,9 @@ class TeamService:
         the member row is created idempotently if one does not already exist for this
         (workspace, player) pair.
         """
-        workspace_id_result = await session.execute(
-            sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
-        )
-        workspace_id = workspace_id_result.scalar_one()
+        workspace_id = await self.tournament_repo.get_workspace_id(session, tournament_id)
+        if workspace_id is None:
+            raise ValueError(f"Tournament {tournament_id} not found")
         member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=player_id)
         return member.id
 
@@ -68,9 +72,7 @@ class TeamService:
     async def get_by_tournament(
         self, session: AsyncSession, tournament_id: int, entities: list[str]
     ) -> typing.Sequence[models.Team]:
-        query = sa.select(models.Team).filter_by(tournament_id=tournament_id).options(*team_entities(entities))
-        result = await session.execute(query)
-        return result.unique().scalars().all()
+        return await self.team_repo.list_by_tournament(session, tournament_id, options=team_entities(entities))
 
     async def get_by_players_by_ids_tournament(
         self,
@@ -79,58 +81,23 @@ class TeamService:
         tournament: models.Tournament,
         entities: list[str],
     ) -> models.Team | None:
-        query = (
-            sa.select(models.Team)
-            .join(models.Player, models.Team.id == models.Player.team_id)
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-            )
-            .options(*team_entities(entities))
-            .where(
-                sa.and_(
-                    models.WorkspaceMember.player_id.in_(players_ids),
-                    models.Team.tournament_id == tournament.id,
-                    models.Player.is_substitution.is_(False),
-                )
-            )
-            .group_by(models.Team.id)
-            .having(sa.func.count(models.Player.id) >= 3)
+        return await self.team_repo.get_by_player_ids(
+            session, players_ids, tournament.id, options=team_entities(entities)
         )
-        result = await session.execute(query)
-        return result.unique().scalars().first()
 
     async def get_player_by_team_and_user(
         self, session: AsyncSession, team_id: int, user_id: int, entities: list[str]
     ) -> models.Player | None:
-        query = (
-            sa.select(models.Player)
-            .options(*player_entities(entities))
-            .where(
-                sa.and_(
-                    models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
-                    models.Player.team_id == team_id,
-                )
-            )
+        return await self.player_repo.get_by_team_and_user(
+            session, team_id=team_id, user_id=user_id, options=player_entities(entities)
         )
-        result = await session.execute(query)
-        return result.unique().scalars().first()
 
     async def get_player_by_user_and_role(
         self, session: AsyncSession, user_id: int, role: enums.HeroClass, entities: list[str]
     ) -> typing.Sequence[models.Player]:
-        query = (
-            sa.select(models.Player)
-            .options(*player_entities(entities))
-            .where(
-                sa.and_(
-                    models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
-                    models.Player.role == role,
-                )
-            )
+        return await self.player_repo.list_by_user_and_role(
+            session, user_id=user_id, role=role, options=player_entities(entities)
         )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
 
     async def create_player(
         self,

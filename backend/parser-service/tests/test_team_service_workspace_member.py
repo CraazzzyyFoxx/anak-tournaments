@@ -37,20 +37,36 @@ enums = importlib.import_module("src.core.enums")
 
 class TeamServiceWorkspaceMemberTests(IsolatedAsyncioTestCase):
     async def test_resolve_workspace_member_id_uses_tournament_workspace(self) -> None:
-        workspace_result = Mock()
-        workspace_result.scalar_one.return_value = 55
-        session = SimpleNamespace(execute=AsyncMock(return_value=workspace_result))
+        session = SimpleNamespace()
         created_member = SimpleNamespace(id=777)
 
-        with patch.object(
-            team_service,
-            "get_or_create_workspace_member",
-            AsyncMock(return_value=created_member),
-        ) as get_or_create:
+        with (
+            patch.object(
+                team_service.team_service.tournament_repo,
+                "get_workspace_id",
+                AsyncMock(return_value=55),
+            ) as get_workspace_id,
+            patch.object(
+                team_service,
+                "get_or_create_workspace_member",
+                AsyncMock(return_value=created_member),
+            ) as get_or_create,
+        ):
             member_id = await team_service._resolve_workspace_member_id(session, tournament_id=88, player_id=7)
 
         self.assertEqual(777, member_id)
+        get_workspace_id.assert_awaited_once_with(session, 88)
         get_or_create.assert_awaited_once_with(session, workspace_id=55, player_id=7)
+
+    async def test_resolve_workspace_member_id_raises_when_tournament_missing(self) -> None:
+        session = SimpleNamespace()
+        with patch.object(
+            team_service.team_service.tournament_repo,
+            "get_workspace_id",
+            AsyncMock(return_value=None),
+        ):
+            with self.assertRaises(ValueError):
+                await team_service._resolve_workspace_member_id(session, tournament_id=404, player_id=7)
 
     async def test_create_player_sets_workspace_member_id(self) -> None:
         session = SimpleNamespace(add=Mock(), flush=AsyncMock(), commit=AsyncMock())

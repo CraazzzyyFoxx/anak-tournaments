@@ -4,9 +4,10 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
+from shared.core.enums import HeroClass
 from shared.repository.base import BaseRepository
 
 
@@ -40,6 +41,30 @@ class TournamentRepository(BaseRepository[models.Tournament]):
         )
         return result.scalars().all()
 
+    async def list_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        is_league: bool | None = None,
+        is_finished: bool | None = None,
+        workspace_id: int | None = None,
+        options: Sequence[_AbstractLoad] | None = None,
+    ) -> Sequence[models.Tournament]:
+        """Unpaginated tournament list with optional equality filters, in id order.
+
+        Skips ``list()``'s COUNT query -- every current caller here only ever
+        wants the rows.
+        """
+        query = self._apply_options(self.select(), options).order_by(models.Tournament.id.asc())
+        if is_league is not None:
+            query = query.where(models.Tournament.is_league.is_(is_league))
+        if is_finished is not None:
+            query = query.where(models.Tournament.is_finished.is_(is_finished))
+        if workspace_id is not None:
+            query = query.where(models.Tournament.workspace_id == workspace_id)
+        result = await session.execute(query)
+        return result.unique().scalars().all()
+
 
 class StageRepository(BaseRepository[models.Stage]):
     def __init__(self) -> None:
@@ -52,6 +77,15 @@ class StageRepository(BaseRepository[models.Stage]):
             .order_by(models.Stage.order.asc(), models.Stage.id.asc())
         )
         return result.scalars().all()
+
+    async def get_next_order(self, session: AsyncSession, tournament_id: int) -> int:
+        """Highest existing stage order in this tournament, plus one (0 if none exist)."""
+        result = await session.execute(
+            sa.select(sa.func.coalesce(sa.func.max(models.Stage.order), -1)).where(
+                models.Stage.tournament_id == tournament_id
+            )
+        )
+        return int(result.scalar_one()) + 1
 
 
 class StageItemRepository(BaseRepository[models.StageItem]):
@@ -84,14 +118,45 @@ class TeamRepository(BaseRepository[models.Team]):
         self,
         session: AsyncSession,
         tournament_id: int,
+        *,
+        options: Sequence[_AbstractLoad] | None = None,
     ) -> Sequence[models.Team]:
-        result = await session.execute(
-            sa.select(models.Team)
-            .options(selectinload(models.Team.players))
-            .where(models.Team.tournament_id == tournament_id)
-            .order_by(models.Team.id.asc())
+        query = self._apply_options(
+            sa.select(models.Team).where(models.Team.tournament_id == tournament_id).order_by(models.Team.id.asc()),
+            options,
         )
+        result = await session.execute(query)
         return result.unique().scalars().all()
+
+    async def get_by_player_ids(
+        self,
+        session: AsyncSession,
+        player_ids: Sequence[int],
+        tournament_id: int,
+        *,
+        min_players: int = 3,
+        options: Sequence[_AbstractLoad] | None = None,
+    ) -> models.Team | None:
+        """The team a roster (``player_ids`` = ``workspace_member.player_id`` values)
+        belongs to in ``tournament_id`` -- matched by majority membership (at least
+        ``min_players`` of them on one non-substitute roster), not exact set
+        equality, since a sub might sit on a different team than the roster
+        being resolved.
+        """
+        query = (
+            self._apply_options(sa.select(models.Team), options)
+            .join(models.Player, models.Team.id == models.Player.team_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id.in_(player_ids),
+                models.Team.tournament_id == tournament_id,
+                models.Player.is_substitution.is_(False),
+            )
+            .group_by(models.Team.id)
+            .having(sa.func.count(models.Player.id) >= min_players)
+        )
+        result = await session.execute(query)
+        return result.unique().scalars().first()
 
 
 class PlayerRepository(BaseRepository[models.Player]):
@@ -112,6 +177,42 @@ class PlayerRepository(BaseRepository[models.Player]):
             sa.select(models.Player).where(models.Player.team_id == team_id).order_by(models.Player.id.asc())
         )
         return result.scalars().all()
+
+    async def get_by_team_and_user(
+        self,
+        session: AsyncSession,
+        *,
+        team_id: int,
+        user_id: int,
+        options: Sequence[_AbstractLoad] | None = None,
+    ) -> models.Player | None:
+        query = self._apply_options(
+            sa.select(models.Player).where(
+                models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
+                models.Player.team_id == team_id,
+            ),
+            options,
+        )
+        result = await session.execute(query)
+        return result.unique().scalars().first()
+
+    async def list_by_user_and_role(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        role: HeroClass,
+        options: Sequence[_AbstractLoad] | None = None,
+    ) -> Sequence[models.Player]:
+        query = self._apply_options(
+            sa.select(models.Player).where(
+                models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
+                models.Player.role == role,
+            ),
+            options,
+        )
+        result = await session.execute(query)
+        return result.unique().scalars().all()
 
 
 class EncounterRepository(BaseRepository[models.Encounter]):

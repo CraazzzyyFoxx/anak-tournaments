@@ -56,13 +56,7 @@ class TournamentService:
         self.tournament_group_repo = tournament_group_repo
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
-        query = (
-            sa.select(models.Tournament)
-            .where(sa.and_(models.Tournament.id == id))
-            .options(*tournament_entities(entities))
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().first()
+        return await self.tournament_repo.get(session, id, options=tournament_entities(entities))
 
     async def get_all(
         self,
@@ -72,38 +66,24 @@ class TournamentService:
         entities: list[str] | None = None,
         workspace_id: int | None = None,
     ) -> typing.Sequence[models.Tournament]:
-        query = (
-            sa.select(models.Tournament)
-            .options(*tournament_entities(entities or []))
-            .order_by(models.Tournament.id.asc())
+        return await self.tournament_repo.list_filtered(
+            session,
+            is_league=is_league,
+            is_finished=is_finished,
+            workspace_id=workspace_id,
+            options=tournament_entities(entities or []),
         )
-
-        if is_league is not None:
-            query = query.where(models.Tournament.is_league.is_(is_league))
-        if is_finished is not None:
-            query = query.where(models.Tournament.is_finished.is_(is_finished))
-        if workspace_id is not None:
-            query = query.where(models.Tournament.workspace_id == workspace_id)
-
-        result = await session.execute(query)
-        return result.unique().scalars().all()
 
     async def get_by_name_and_league(
         self, session: AsyncSession, workspace_id: int, name: str, is_league: bool, entities: list[str]
     ) -> models.Tournament | None:
-        query = (
-            sa.select(models.Tournament)
-            .where(
-                sa.and_(
-                    models.Tournament.workspace_id == workspace_id,
-                    models.Tournament.name == name,
-                    models.Tournament.is_league == is_league,
-                )
-            )
-            .options(*tournament_entities(entities))
+        return await self.tournament_repo.get_by(
+            session,
+            options=tournament_entities(entities),
+            workspace_id=workspace_id,
+            name=name,
+            is_league=is_league,
         )
-        result = await session.execute(query)
-        return result.unique().scalars().first()
 
     async def create(
         self,
@@ -154,12 +134,7 @@ class TournamentService:
             return []
 
         # 1. Determine stage order: highest existing stage order in this tournament + 1
-        max_order_row = await session.execute(
-            sa.select(sa.func.coalesce(sa.func.max(models.Stage.order), -1)).where(
-                models.Stage.tournament_id == tournament.id
-            )
-        )
-        next_order = int(max_order_row.scalar_one()) + 1
+        next_order = await self.stage_repo.get_next_order(session, tournament.id)
 
         stages: list[models.Stage] = []
         for offset, spec in enumerate(specs):
