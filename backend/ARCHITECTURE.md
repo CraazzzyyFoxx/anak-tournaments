@@ -59,6 +59,44 @@ wire carries; `domain` is what the algorithm thinks in. See
 (`DraftSnapshot`/`DraftResult` hold live ORM rows and would force
 `arbitrary_types_allowed`, defeating Pydantic validation, if merged into `schemas`).
 
+`src/clients/*.py` sits beside the stack too, for the same reason schemas do: a wrapper
+around a *shared* external-API client (`shared.clients.ChallongeClient`, a bespoke
+`OverFastCatalogClient`, ...) has no orchestration to inject collaborators into and no pure
+algorithm to test — it isn't a `service` and isn't `domain`. It gets `src/clients/<name>.py`,
+holding exactly one line of substance: construct the instance from this service's settings,
+export it.
+
+```python
+# src/clients/challonge.py
+challonge_client = ChallongeClient.from_settings(config.settings)
+```
+
+Callers import the instance and call its real bound methods directly —
+`challonge_client.fetch_tournament(...)`. **Do not** rebind its methods as module-level names
+(`fetch_tournament = challonge_client.fetch_tournament`, `fetch_participants = ...`, one line
+per method): that was `parser-service`'s original shape for this exact file
+(`services/challonge/service.py`, converted 2026-08-21), and it bought nothing over exposing
+the instance itself — one indirection that reads like a `service.py` (misleading: no
+orchestration lives there) for the price of an `__all__` entry updated by hand every time the
+wrapped client grows a method. Nothing in this document flagged that shape as wrong at the
+time — it matched an identical pre-existing file in `tournament-service`, so it was carried
+forward as "established precedent" during the parser-service conversion instead of being
+questioned; this section exists so the next service conversion does not repeat it.
+
+Two placement traps this avoids:
+
+1. Do not put it under `src/services/<domain>/` when the "domain" is nothing but a client —
+   that misleads a reader into expecting orchestration/session-handling that isn't there
+   (parser-service's `services/challonge/service.py` did this).
+2. Do not put it under `src/rpc/` (e.g. a `rpc/_clients.py` grab-bag of process-global clients)
+   if any `services/` code needs to import it — a service reaching into the transport package
+   inverts the `rpc → services` dependency direction. `app-service`'s original `rpc/_clients.py`
+   moved to `core/clients.py` for exactly this reason (§2.5 of
+   `docs/plans/2026-08-20-app-service-oop-repositories.md`); `parser-service` still has one live
+   instance of the same problem as of this writing —
+   `services/subscription_collection/scheduler.py` imports `src.rpc._clients.realtime_redis` —
+   not yet cleaned up, named here so it doesn't get treated as precedent either.
+
 ## Concrete shape of a layer
 
 **`rpc/<domain>.py`** (`app-service/src/rpc/heroes.py`):

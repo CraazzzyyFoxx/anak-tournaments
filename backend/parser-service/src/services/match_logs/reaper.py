@@ -28,15 +28,15 @@ auto-retrying is a loop on bad data. Operators retry those from the console.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
-import sqlalchemy as sa
 from loguru import logger
 
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
-from shared.models.ingestion.log_processing import LogProcessingRecord, LogProcessingStatus
+from shared.models.ingestion.log_processing import LogProcessingStatus
 from shared.observability import metrics, observe_scheduled_job, publish_message
+from shared.repository.support import LogProcessingRepository, stalled_conditions
 from shared.schemas.events import ProcessMatchLogEvent
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
@@ -49,9 +49,14 @@ from src.core.broker import require_broker
 from src.core.config import settings
 from src.services.match_logs import realtime as logs_realtime
 
+# Re-exported: a test constructs this directly to pin the exact WHERE shape,
+# and the module attribute must stay resolvable as ``reaper.stalled_conditions``.
+__all__ = ("ReaperResult", "reclaim_stalled_logs", "stalled_conditions")
+
 LEADER_LOCK_KEY = "log_processing:reaper:leader"
 
 _scheduler = IntervalScheduler(job_id="match_log_stall_reaper", label="Match-log stall reaper")
+_log_processing_repo = LogProcessingRepository()
 
 
 @dataclass(frozen=True)
@@ -76,33 +81,6 @@ class _Stalled:
     workspace_id: int | None
 
 
-def stalled_conditions(
-    *,
-    now: datetime,
-    pending_after_seconds: int,
-    processing_after_seconds: int,
-) -> sa.ColumnElement[bool]:
-    """WHERE term selecting records no live queue message can still be driving.
-
-    ``updated_at`` is null until a row is first updated, so last-touch falls back
-    to ``created_at``. The pending window must exceed the queue TTL: inside it a
-    message may still be waiting for a busy consumer, and requeueing then would
-    parse the same log twice concurrently.
-    """
-    record = LogProcessingRecord
-    last_touch = sa.func.coalesce(record.updated_at, record.created_at)
-    return sa.or_(
-        sa.and_(
-            record.status == LogProcessingStatus.pending,
-            last_touch < now - timedelta(seconds=pending_after_seconds),
-        ),
-        sa.and_(
-            record.status == LogProcessingStatus.processing,
-            sa.func.coalesce(record.started_at, last_touch) < now - timedelta(seconds=processing_after_seconds),
-        ),
-    )
-
-
 async def _claim_stalled(
     session: Any,
     *,
@@ -118,23 +96,17 @@ async def _claim_stalled(
     ``pending`` (a no-op status assignment would not flush, leaving the row
     eligible again on the very next tick).
     """
-    result = await session.execute(
-        sa.select(LogProcessingRecord)
-        .where(
-            stalled_conditions(
-                now=now,
-                pending_after_seconds=pending_after_seconds,
-                processing_after_seconds=processing_after_seconds,
-            )
-        )
-        .order_by(LogProcessingRecord.created_at)
-        .limit(limit)
-        .with_for_update(skip_locked=True)
+    records = await _log_processing_repo.claim_stalled(
+        session,
+        now=now,
+        pending_after_seconds=pending_after_seconds,
+        processing_after_seconds=processing_after_seconds,
+        limit=limit,
     )
 
     requeue: list[_Stalled] = []
     exhausted: list[int] = []
-    for record in result.scalars().all():
+    for record in records:
         if (record.attempts or 0) >= max_attempts:
             record.status = LogProcessingStatus.failed
             record.finished_at = now

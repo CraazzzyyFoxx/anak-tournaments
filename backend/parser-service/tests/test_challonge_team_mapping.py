@@ -64,7 +64,7 @@ class ChallongeTeamMappingTests(IsolatedAsyncioTestCase):
         self.assertEqual(42, flows._suggest_team_id("Team Alpha#9876", index))
 
     async def test_sync_creates_explicit_mapping_when_names_differ(self) -> None:
-        session = SimpleNamespace(add=Mock(), commit=AsyncMock())
+        session = SimpleNamespace(add=Mock(), flush=AsyncMock(), commit=AsyncMock())
         tournament = SimpleNamespace(id=7, name="Tournament 7", groups=[])
         row = _participant_row(name="Totally Different Challonge Name")
         payload = schemas.ChallongeTeamSyncRequest(

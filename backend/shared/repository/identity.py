@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -19,6 +19,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core.pagination import PaginationSortParams
+from shared.core.utils import join_entity
 from shared.repository.base import BaseRepository
 
 
@@ -76,6 +77,28 @@ class UserRepository(BaseRepository[models.User]):
             .where(models.User.auth_user_id == auth_user_id)
             .values(avatar_url=avatar_url)
         )
+
+    # Legacy entity tokens are still accepted for caller/API compatibility; all
+    # four select the same unified `user.social_accounts` relationship.
+    IDENTITY_ENTITY_TOKENS: ClassVar[tuple[str, ...]] = ("social_accounts", "battle_tag", "discord", "twitch")
+
+    @staticmethod
+    def identity_options(in_entities: Sequence[str], child: _AbstractLoad | None = None) -> list[_AbstractLoad]:
+        """Eager-load option for `.get(..., options=...)` when any identity entity token was requested."""
+        if any(name in in_entities for name in UserRepository.IDENTITY_ENTITY_TOKENS):
+            return [join_entity(child, models.User.social_accounts)]
+        return []
+
+    @staticmethod
+    def visible_social_accounts(user: models.User, in_entities: Sequence[str]) -> list[models.SocialAccount]:
+        """Social accounts to expose for the requested entity tokens, sorted
+        (primary account per provider first, then insertion order) — the
+        shared filter+sort core every service's ``UserRead`` wire-mapping
+        builds on; only the final pydantic shape stays per-service.
+        """
+        if not any(name in in_entities for name in UserRepository.IDENTITY_ENTITY_TOKENS):
+            return []
+        return sorted(user.social_accounts, key=lambda a: (a.provider, not a.is_primary, a.id))
 
 
 class SocialAccountRepository(BaseRepository[models.SocialAccount]):

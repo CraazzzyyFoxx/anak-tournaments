@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from shared.models.achievements.achievement import AchievementGrain
-
-from .conditions import get_registered_types, validate_stat_name
+from src.services.achievement.engine.conditions import get_registered_types, validate_stat_name
 
 # Types accepted inside player sub-condition trees (team_players_match / captain_property).
 SUBCONDITION_ONLY_TYPES = {

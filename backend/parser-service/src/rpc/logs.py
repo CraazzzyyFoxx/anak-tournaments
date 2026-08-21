@@ -45,6 +45,7 @@ from src.services.match_logs.admin_reads import (
     history_scope_conditions,
     history_search_condition,
 )
+from src.services.match_logs.log_records import log_records_service
 from src.services.tournament import flows as tournament_flows
 
 from . import _clients
@@ -213,22 +214,9 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = await auth._get_log_record_workspace_id(session, record_id)
             await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
 
-            result = await session.execute(
-                select(models.LogProcessingRecord).where(models.LogProcessingRecord.id == record_id)
-            )
-            record = result.scalar_one_or_none()
+            record = await log_records_service.retry(session, record_id)
             if record is None:
                 raise HTTPException(status_code=404, detail="Log processing record not found")
-
-            record.status = LogProcessingStatus.pending
-            record.error_message = None
-            record.started_at = None
-            record.finished_at = None
-            # An operator asking for a retry gets a fresh budget, so a record the
-            # stall reaper retired can be driven again.
-            record.attempts = 0
-            await session.commit()
-            await session.refresh(record)
 
             event = ProcessMatchLogEvent(tournament_id=record.tournament_id, filename=record.filename)
             await publish_message(broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)

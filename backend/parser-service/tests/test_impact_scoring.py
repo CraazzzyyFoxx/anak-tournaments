@@ -16,7 +16,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
 from shared.core import enums  # noqa: E402
 from shared.core.impact import IMPACT_WEIGHTS  # noqa: E402
 from src import models  # noqa: E402
-from src.services.match_logs import impact  # noqa: E402
+from src.domain.match_logs import impact  # noqa: E402
 
 TANK = enums.HeroClass.tank
 DAMAGE = enums.HeroClass.damage

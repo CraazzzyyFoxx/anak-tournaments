@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
@@ -297,4 +298,44 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
                 models.CatalogAliasMiss.raw_name == raw_name,
             )
             .values(resolved_at=sa.func.now())
+        )
+
+    async def record_miss(
+        self,
+        session: AsyncSession,
+        entity_type: enums.CatalogEntityType,
+        raw_names: typing.Iterable[str],
+        *,
+        log_record_id: int | None = None,
+        name_max_length: int = 128,
+    ) -> None:
+        """Upsert one occurrence-tracked miss row per cleaned name.
+
+        A name showing up again reopens a dismissed miss (``resolved_at`` reset
+        to ``None`` on conflict) — "hidden, but it keeps coming back" must stay
+        visible instead of being lost.
+        """
+        names = sorted({name.strip() for name in raw_names if name and name.strip()})
+        if not names:
+            return
+        statement = pg_insert(self.model).values(
+            [
+                {
+                    "entity_type": entity_type,
+                    "raw_name": name[:name_max_length],
+                    "last_log_record_id": log_record_id,
+                }
+                for name in names
+            ]
+        )
+        await session.execute(
+            statement.on_conflict_do_update(
+                constraint="uq_catalog_alias_miss_entity_raw",
+                set_={
+                    "occurrences": self.model.occurrences + 1,
+                    "last_seen_at": sa.func.now(),
+                    "last_log_record_id": statement.excluded.last_log_record_id,
+                    "resolved_at": None,
+                },
+            )
         )

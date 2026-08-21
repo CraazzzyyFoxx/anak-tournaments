@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock, patch
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -83,8 +83,103 @@ class ToPydanticPlayerWorkspaceMemberTests(IsolatedAsyncioTestCase):
         player.workspace_member.player = SimpleNamespace(id=77)
 
         fake_user_read = team_flows.schemas.UserRead(id=77, name="Roster Player")
-        with patch.object(team_flows.user_flows, "to_pydantic", AsyncMock(return_value=fake_user_read)):
+        with patch.object(team_flows, "_user_to_pydantic", Mock(return_value=fake_user_read)):
             result = await team_flows.to_pydantic_player(session, player, ["user"])
 
         self.assertEqual(77, result.user_id)
         self.assertEqual(fake_user_read, result.user)
+
+
+class UserToPydanticTests(IsolatedAsyncioTestCase):
+    """Migrated from the now-deleted ``services/user/`` package — ``_user_to_pydantic``
+    is ``team_flows``'s own private helper now (its only consumer)."""
+
+    async def test_includes_requested_identities(self) -> None:
+        user = SimpleNamespace(
+            id=7,
+            name="Captain",
+            avatar_url="https://cdn.example/avatar.png",
+            social_accounts=[
+                SimpleNamespace(
+                    id=10,
+                    user_id=7,
+                    provider="battlenet",
+                    username="Captain#1234",
+                    url=None,
+                    is_verified=True,
+                    is_primary=True,
+                ),
+                SimpleNamespace(
+                    id=12,
+                    user_id=7,
+                    provider="discord",
+                    username="captain",
+                    url=None,
+                    is_verified=False,
+                    is_primary=True,
+                ),
+                SimpleNamespace(
+                    id=14,
+                    user_id=7,
+                    provider="twitch",
+                    username="captaintv",
+                    url=None,
+                    is_verified=False,
+                    is_primary=True,
+                ),
+            ],
+        )
+
+        result = team_flows._user_to_pydantic(user, ["social_accounts"])
+
+        self.assertEqual(7, result.id)
+        self.assertEqual("Captain", result.name)
+        self.assertEqual("https://cdn.example/avatar.png", result.avatar_url)
+        by_provider = {a.provider: a for a in result.social_accounts}
+        self.assertEqual("Captain#1234", by_provider["battlenet"].username)
+        self.assertTrue(by_provider["battlenet"].is_verified)
+        self.assertEqual("captain", by_provider["discord"].username)
+        self.assertEqual("captaintv", by_provider["twitch"].username)
+
+    async def test_team_to_pydantic_can_include_captain(self) -> None:
+        captain = SimpleNamespace(
+            id=7,
+            name="Captain",
+            avatar_url=None,
+            social_accounts=[
+                SimpleNamespace(
+                    id=10,
+                    user_id=7,
+                    provider="battlenet",
+                    username="Captain#1234",
+                    url=None,
+                    is_verified=False,
+                    is_primary=True,
+                ),
+            ],
+        )
+        team = SimpleNamespace(
+            id=20,
+            name="Team",
+            image_url=None,
+            avg_sr=2500.0,
+            total_sr=15000,
+            tournament_id=68,
+            captain_id=7,
+            tournament=None,
+            players=[],
+            captain=captain,
+            standings=[],
+        )
+
+        result = await team_flows.to_pydantic(
+            SimpleNamespace(),
+            team,
+            ["captain", "captain.social_accounts"],
+        )
+
+        self.assertEqual("Captain", result.captain.name)
+        self.assertEqual(
+            ["Captain#1234"],
+            [a.username for a in result.captain.social_accounts if a.provider == "battlenet"],
+        )

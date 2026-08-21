@@ -62,7 +62,7 @@ achievement = importlib.import_module("shared.models.achievements.achievement")
 runner = importlib.import_module("src.services.achievement.engine.runner")
 evaluator = importlib.import_module("src.services.achievement.engine.evaluator")
 eval_context = importlib.import_module("src.services.achievement.engine.context")
-seeder = importlib.import_module("src.services.achievement.engine.seeder")
+achievement_catalog = importlib.import_module("src.domain.achievement_catalog")
 
 
 @compiles(JSONB, "sqlite")
@@ -473,7 +473,9 @@ class ScrimCaptainAchievementTests(_EngineTestCase):
 
     @staticmethod
     def _condition_trees() -> list[dict]:
-        return [rule.condition_tree for rule in seeder._all_default_rules(WORKSPACE_ID) if rule.condition_tree]
+        return [
+            rule.condition_tree for rule in achievement_catalog._all_default_rules(WORKSPACE_ID) if rule.condition_tree
+        ]
 
 
 class ScrimRosterLeakTests(_EngineTestCase):

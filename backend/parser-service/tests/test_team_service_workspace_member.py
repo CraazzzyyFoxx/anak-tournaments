@@ -53,7 +53,7 @@ class TeamServiceWorkspaceMemberTests(IsolatedAsyncioTestCase):
         get_or_create.assert_awaited_once_with(session, workspace_id=55, player_id=7)
 
     async def test_create_player_sets_workspace_member_id(self) -> None:
-        session = SimpleNamespace(add=Mock(), commit=AsyncMock())
+        session = SimpleNamespace(add=Mock(), flush=AsyncMock(), commit=AsyncMock())
         user = SimpleNamespace(id=42)
         tournament = SimpleNamespace(id=88)
         team = SimpleNamespace(id=3)

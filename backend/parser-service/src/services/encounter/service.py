@@ -5,6 +5,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared.repository import MatchRepository
 from src import models
 from src.core import utils
 from src.services.map import service as map_service
@@ -104,107 +105,89 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
     return entities
 
 
+class EncounterService:
+    def __init__(self, *, match_repo: MatchRepository = MatchRepository()) -> None:
+        self.match_repo = match_repo
 
+    async def get_match_by_encounter_and_map(
+        self, session: AsyncSession, encounter_id: int, map_id: int, entities: list[str]
+    ) -> models.Match | None:
+        query = (
+            sa.select(models.Match)
+            .where(sa.and_(models.Match.encounter_id == encounter_id, models.Match.map_id == map_id))
+            .options(*match_entities(entities))
+        )
+        result = await session.execute(query)
+        return result.unique().scalars().first()
 
-
-
-
-
-
-
-
-
-
-
-async def get_match_by_encounter_and_map(
-    session: AsyncSession, encounter_id: int, map_id: int, entities: list[str]
-) -> models.Match | None:
-    query = (
-        sa.select(models.Match)
-        .where(sa.and_(models.Match.encounter_id == encounter_id, models.Match.map_id == map_id))
-        .options(*match_entities(entities))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
-
-
-async def get_by_teams(
-    session: AsyncSession,
-    home_team_id: int,
-    away_team_id: int,
-    entities: list[str],
-    *,
-    has_closeness: bool | None = False,
-) -> models.Encounter | None:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(
-            sa.or_(
-                sa.and_(
-                    models.Encounter.home_team_id == home_team_id,
-                    models.Encounter.away_team_id == away_team_id,
-                ),
-                sa.and_(
-                    models.Encounter.home_team_id == away_team_id,
-                    models.Encounter.away_team_id == home_team_id,
-                ),
+    async def get_by_teams(
+        self,
+        session: AsyncSession,
+        home_team_id: int,
+        away_team_id: int,
+        entities: list[str],
+        *,
+        has_closeness: bool | None = False,
+    ) -> models.Encounter | None:
+        query = (
+            sa.select(models.Encounter)
+            .options(*encounter_entities(entities))
+            .where(
+                sa.or_(
+                    sa.and_(
+                        models.Encounter.home_team_id == home_team_id,
+                        models.Encounter.away_team_id == away_team_id,
+                    ),
+                    sa.and_(
+                        models.Encounter.home_team_id == away_team_id,
+                        models.Encounter.away_team_id == home_team_id,
+                    ),
+                )
             )
         )
-    )
 
-    if isinstance(has_closeness, bool):
-        if has_closeness:
-            query = query.where(models.Encounter.closeness.isnot(None))
-        else:
-            query = query.where(models.Encounter.closeness.is_(None))
+        if isinstance(has_closeness, bool):
+            if has_closeness:
+                query = query.where(models.Encounter.closeness.isnot(None))
+            else:
+                query = query.where(models.Encounter.closeness.is_(None))
 
-    result = await session.execute(query)
-    return result.unique().scalars().first()
+        result = await session.execute(query)
+        return result.unique().scalars().first()
+
+    async def create_match(
+        self,
+        session: AsyncSession,
+        encounter: models.Encounter,
+        *,
+        time: float,
+        log_name: str,
+        map: models.Map,
+        home_team_id: int,
+        away_team_id: int,
+        home_score: int,
+        away_score: int,
+        log_record_id: int | None = None,
+    ) -> models.Match:
+        match = models.Match(
+            time=time,
+            log_name=log_name,
+            log_record_id=log_record_id,
+            home_team_id=home_team_id,
+            away_team_id=away_team_id,
+            home_score=home_score,
+            away_score=away_score,
+            encounter_id=encounter.id,
+            map_id=map.id,
+        )
+        await self.match_repo.create(session, match)
+        logger.info(
+            f"Match created [home_team_id={home_team_id}, away_team_id={away_team_id}] for encounter {encounter.id}"
+        )
+        return match
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-async def create_match(
-    session: AsyncSession,
-    encounter: models.Encounter,
-    *,
-    time: float,
-    log_name: str,
-    map: models.Map,
-    home_team_id: int,
-    away_team_id: int,
-    home_score: int,
-    away_score: int,
-    log_record_id: int | None = None,
-    commit: bool = True,
-) -> models.Match:
-    match = models.Match(
-        time=time,
-        log_name=log_name,
-        log_record_id=log_record_id,
-        home_team_id=home_team_id,
-        away_team_id=away_team_id,
-        home_score=home_score,
-        away_score=away_score,
-        encounter_id=encounter.id,
-        map_id=map.id,
-    )
-    session.add(match)
-    await session.flush()
-    if commit:
-        await session.commit()
-    logger.info(
-        f"Match created [home_team_id={home_team_id}, away_team_id={away_team_id}] for encounter {encounter.id}"
-    )
-    return match
+encounter_service = EncounterService()
+get_match_by_encounter_and_map = encounter_service.get_match_by_encounter_and_map
+get_by_teams = encounter_service.get_by_teams
+create_match = encounter_service.create_match

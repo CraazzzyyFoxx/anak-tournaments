@@ -8,10 +8,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
+from src.domain.achievement_stage_filters import encounter_is_lower_bracket, encounter_is_upper_bracket
 
 from ..context import EvalContext
 from . import ResultSet, register
-from ._stage_filters import encounter_is_lower_bracket, encounter_is_upper_bracket
 
 
 def _encounter_base_query(context: EvalContext) -> sa.Select:

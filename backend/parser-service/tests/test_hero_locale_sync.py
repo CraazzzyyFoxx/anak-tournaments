@@ -6,7 +6,6 @@ import os
 import sys
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase, mock
-from urllib.parse import parse_qs, urlparse
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -23,7 +22,12 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 models = importlib.import_module("src.models")
-hero_flows = importlib.import_module("src.services.hero.flows")
+schemas = importlib.import_module("src.schemas")
+_hero_service_module = importlib.import_module("src.services.hero.service")
+_hero_aliases = importlib.import_module("src.domain.hero_aliases")
+_overfast_client_module = importlib.import_module("src.clients.overfast")
+HeroService = _hero_service_module.HeroService
+merge_aliases = _hero_aliases.merge_aliases
 
 # Two heroes, three of the thirteen locales carrying a distinct name; every
 # other locale falls back to the canonical spelling, exactly like OverFast does
@@ -35,43 +39,25 @@ LOCALIZED_NAMES: dict[str, dict[str, str]] = {
 ROLES = {"ana": "support", "genji": "damage"}
 
 
-class _FakeResponse:
-    def __init__(self, payload: list[dict[str, str]]) -> None:
-        self._payload = payload
+class _FakeOverfastCatalogClient:
+    """Test double for ``OverFastCatalogClient`` — records every requested
+    locale instead of making an HTTP call, per the constructor-injected
+    collaborator pattern every other domain in this refactor uses."""
 
-    def raise_for_status(self) -> None:
-        return None
+    def __init__(self, locales: list[str]) -> None:
+        self._locales = locales
 
-    def json(self) -> list[dict[str, str]]:
-        return self._payload
-
-
-class _RecordingClient:
-    """Stand-in for ``httpx.AsyncClient`` that records every requested URL."""
-
-    def __init__(self, urls: list[str]) -> None:
-        self._urls = urls
-
-    async def __aenter__(self) -> _RecordingClient:
-        return self
-
-    async def __aexit__(self, *_: object) -> bool:
-        return False
-
-    async def get(self, url: str) -> _FakeResponse:
-        self._urls.append(url)
-        locale = parse_qs(urlparse(url).query)["locale"][0]
-        return _FakeResponse(
-            [
-                {
-                    "key": key,
-                    "name": names.get(locale, names["en-us"]),
-                    "portrait": f"https://cdn/{key}.png",
-                    "role": ROLES[key],
-                }
-                for key, names in LOCALIZED_NAMES.items()
-            ]
-        )
+    async def fetch_heroes(self, locale: str) -> list:
+        self._locales.append(locale)
+        return [
+            schemas.OverfastHero(
+                key=key,
+                name=names.get(locale, names["en-us"]),
+                portrait=f"https://cdn/{key}.png",
+                role=ROLES[key],
+            )
+            for key, names in LOCALIZED_NAMES.items()
+        ]
 
 
 class _FakeSession:
@@ -81,6 +67,9 @@ class _FakeSession:
 
     def add_all(self, objects: list[object]) -> None:
         self.added.extend(objects)
+
+    async def flush(self) -> None:
+        return None
 
     async def commit(self) -> None:
         self.commits += 1
@@ -104,61 +93,61 @@ class HeroLocaleSyncTests(IsolatedAsyncioTestCase):
                 "ru-ru",
                 "zh-tw",
             },
-            {hero_flows.CANONICAL_LOCALE, *hero_flows.ALIAS_LOCALES},
+            {_hero_service_module.CANONICAL_LOCALE, *_hero_service_module.ALIAS_LOCALES},
         )
-        self.assertNotIn(hero_flows.CANONICAL_LOCALE, hero_flows.ALIAS_LOCALES)
-        self.assertEqual(12, len(hero_flows.ALIAS_LOCALES), "no duplicate alias locales")
+        self.assertNotIn(_hero_service_module.CANONICAL_LOCALE, _hero_service_module.ALIAS_LOCALES)
+        self.assertEqual(12, len(_hero_service_module.ALIAS_LOCALES), "no duplicate alias locales")
 
     def test_the_request_is_keyed_on_locale_not_role(self) -> None:
         # Scoped to the request line, not the whole body: the surrounding comment
-        # legitimately explains why the `role` filter went away.
+        # legitimately explains why the `role` filter went away. The HTTP request
+        # itself lives on the shared OverFastCatalogClient (also used by
+        # map/gamemode sync), not on HeroService.
         request_line = next(
-            line for line in inspect.getsource(hero_flows.fetch_heroes).splitlines() if "client.get(" in line
+            line
+            for line in inspect.getsource(_overfast_client_module.OverFastCatalogClient.fetch_heroes).splitlines()
+            if "self._http.get(" in line
         )
         self.assertIn("locale={locale}", request_line)
         self.assertNotIn("role=", request_line)
 
     def test_aliases_union_existing_and_exclude_the_canonical_name(self) -> None:
-        merged = hero_flows.merge_aliases(existing=["Ана"], localized={"Ana", "アナ", "Ана"}, canonical="Ana")
+        merged = merge_aliases(existing=["Ана"], localized={"Ana", "アナ", "Ана"}, canonical="Ana")
         self.assertEqual(["Ана", "アナ"], merged)
 
     def test_a_manual_alias_survives_a_sync(self) -> None:
-        merged = hero_flows.merge_aliases(existing=["Анка"], localized={"Ана"}, canonical="Ana")
+        merged = merge_aliases(existing=["Анка"], localized={"Ана"}, canonical="Ana")
         self.assertIn("Анка", merged)
 
     async def test_fetch_heroes_requests_the_locale_endpoint(self) -> None:
-        urls: list[str] = []
-        with mock.patch("httpx.AsyncClient", lambda **_: _RecordingClient(urls)):
-            heroes = await hero_flows.fetch_heroes("ru-ru")
+        locales: list[str] = []
+        service = HeroService(overfast=_FakeOverfastCatalogClient(locales))
 
-        self.assertEqual(1, len(urls))
-        self.assertTrue(urls[0].endswith("/heroes?locale=ru-ru"), urls[0])
+        heroes = await service.fetch_heroes("ru-ru")
+
+        self.assertEqual(["ru-ru"], locales)
         self.assertEqual(["Ана", "Гэндзи"], [hero.name for hero in heroes])
 
     async def test_initial_create_hits_every_locale_exactly_once(self) -> None:
-        urls: list[str] = []
+        locales: list[str] = []
         session = _FakeSession()
-        with (
-            mock.patch("httpx.AsyncClient", lambda **_: _RecordingClient(urls)),
-            mock.patch.object(hero_flows.service, "get_by_slugs", mock.AsyncMock(return_value={})),
-        ):
-            await hero_flows.initial_create(session)  # type: ignore[arg-type]
+        service = HeroService(overfast=_FakeOverfastCatalogClient(locales))
+        with mock.patch.object(service, "get_by_slugs", mock.AsyncMock(return_value={})):
+            await service.initial_create(session)  # type: ignore[arg-type]
 
-        self.assertEqual(13, len(urls), f"one round-trip per Blizzard locale, got {urls}")
+        self.assertEqual(13, len(locales), f"one round-trip per Blizzard locale, got {locales}")
         self.assertEqual(
-            {f"?locale={locale}" for locale in (hero_flows.CANONICAL_LOCALE, *hero_flows.ALIAS_LOCALES)},
-            {url[url.index("?") :] for url in urls},
+            {_hero_service_module.CANONICAL_LOCALE, *_hero_service_module.ALIAS_LOCALES},
+            set(locales),
         )
-        self.assertEqual(hero_flows.CANONICAL_LOCALE, parse_qs(urlparse(urls[0]).query)["locale"][0])
+        self.assertEqual(_hero_service_module.CANONICAL_LOCALE, locales[0])
 
     async def test_initial_create_creates_new_heroes_with_localized_aliases(self) -> None:
-        urls: list[str] = []
+        locales: list[str] = []
         session = _FakeSession()
-        with (
-            mock.patch("httpx.AsyncClient", lambda **_: _RecordingClient(urls)),
-            mock.patch.object(hero_flows.service, "get_by_slugs", mock.AsyncMock(return_value={})),
-        ):
-            await hero_flows.initial_create(session)  # type: ignore[arg-type]
+        service = HeroService(overfast=_FakeOverfastCatalogClient(locales))
+        with mock.patch.object(service, "get_by_slugs", mock.AsyncMock(return_value={})):
+            await service.initial_create(session)  # type: ignore[arg-type]
 
         created = {hero.slug: hero for hero in session.added}
         self.assertEqual({"ana", "genji"}, set(created))
@@ -176,13 +165,11 @@ class HeroLocaleSyncTests(IsolatedAsyncioTestCase):
             type="support",  # type: ignore[arg-type]
             aliases=["Анка"],
         )
-        urls: list[str] = []
+        locales: list[str] = []
         session = _FakeSession()
-        with (
-            mock.patch("httpx.AsyncClient", lambda **_: _RecordingClient(urls)),
-            mock.patch.object(hero_flows.service, "get_by_slugs", mock.AsyncMock(return_value={"ana": existing})),
-        ):
-            await hero_flows.initial_create(session)  # type: ignore[arg-type]
+        service = HeroService(overfast=_FakeOverfastCatalogClient(locales))
+        with mock.patch.object(service, "get_by_slugs", mock.AsyncMock(return_value={"ana": existing})):
+            await service.initial_create(session)  # type: ignore[arg-type]
 
         # Pre-existing row is not re-inserted and keeps its own columns.
         self.assertEqual(["genji"], [hero.slug for hero in session.added])

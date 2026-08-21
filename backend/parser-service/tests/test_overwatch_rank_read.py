@@ -23,7 +23,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("CHALLONGE_USERNAME", "x")
 os.environ.setdefault("CHALLONGE_API_KEY", "x")
 
-read_service = importlib.import_module("src.services.overwatch_rank.read_service")
+read_service = importlib.import_module("src.services.overwatch_rank.queries")
 
 
 def _snap(**kw):

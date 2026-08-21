@@ -222,3 +222,29 @@ class TournamentLinkRepository(BaseRepository[models.TournamentLink]):
         for link in result.scalars().all():
             by_tournament.setdefault(link.tournament_id, []).append(link)
         return by_tournament
+
+
+class TournamentGroupRepository(BaseRepository[models.TournamentGroup]):
+    """``tournament.group`` — legacy group model, still actively written
+    alongside Stage/StageItem during the migration (see the model's own
+    docstring); kept here rather than skipped since ``TournamentService`` still
+    creates rows through it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.TournamentGroup)
+
+    async def get_by_tournament_stage_and_name(
+        self,
+        session: AsyncSession,
+        *,
+        tournament_id: int,
+        stage_id: int | None,
+        name: str,
+    ) -> models.TournamentGroup | None:
+        return await self.get_by(session, tournament_id=tournament_id, stage_id=stage_id, name=name)
+
+
+class StageItemInputRepository(BaseRepository[models.StageItemInput]):
+    def __init__(self) -> None:
+        super().__init__(models.StageItemInput)

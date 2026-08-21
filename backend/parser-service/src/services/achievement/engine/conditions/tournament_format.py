@@ -10,10 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import StageType
 from src import models
+from src.domain.achievement_stage_filters import BRACKET_STAGE_TYPES
 
 from ..context import EvalContext
 from . import ResultSet, register
-from ._stage_filters import BRACKET_STAGE_TYPES
 
 
 def matches_tournament_format(stage_types: Iterable[StageType], fmt: str) -> bool:

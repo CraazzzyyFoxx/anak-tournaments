@@ -1,3 +1,12 @@
+"""Stage/bracket column-expression filters for achievement conditions.
+
+Pure SQLAlchemy column-expression builders (zero ``AsyncSession``/``await``) —
+moved here from ``engine/conditions/_stage_filters.py`` per the parser-service
+OOP refactor. Used by the ``@register`` leaf-condition plugins in
+``src/services/achievement/engine/conditions/*.py`` to identify bracket vs.
+group-stage rows.
+"""
+
 from __future__ import annotations
 
 import sqlalchemy as sa

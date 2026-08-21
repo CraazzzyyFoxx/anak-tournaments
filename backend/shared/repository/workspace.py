@@ -343,6 +343,48 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .scalar_subquery()
         )
 
+    async def bulk_get_or_create(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        player_ids: set[int],
+    ) -> dict[int, int]:
+        """Batch counterpart of ``get_or_create_workspace_member``: resolve (or
+        create) the ``workspace_member`` anchors for a whole roster in two
+        statements.
+
+        Mirrors ``get_or_create_workspace_member``'s insert-or-select
+        idempotency (``INSERT ... ON CONFLICT DO NOTHING`` on
+        ``uq_workspace_member_workspace_player``, then one ``SELECT``), so
+        concurrent imports never raise duplicate-key errors. Returns
+        ``player_id -> member.id``.
+        """
+        if not player_ids:
+            return {}
+
+        insert_stmt = (
+            pg_insert(models.WorkspaceMember)
+            .values(
+                [
+                    {"workspace_id": workspace_id, "player_id": player_id}
+                    # Sorted for a deterministic insert order (avoids deadlocks
+                    # between concurrent bulk imports).
+                    for player_id in sorted(player_ids)
+                ]
+            )
+            .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
+        )
+        await session.execute(insert_stmt)
+
+        result = await session.execute(
+            sa.select(models.WorkspaceMember.player_id, models.WorkspaceMember.id).where(
+                models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.player_id.in_(list(player_ids)),
+            )
+        )
+        return dict(result.all())
+
 
 async def get_or_create_workspace_member(
     session: AsyncSession,

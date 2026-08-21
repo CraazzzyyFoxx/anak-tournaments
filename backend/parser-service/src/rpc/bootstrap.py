@@ -23,8 +23,8 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from src import schemas
 from src.core import auth, db
-from src.services.team import flows as team_flows
-from src.services.tournament import flows as tournament_flows
+from src.services.team.flows import team_flows_service
+from src.services.tournament.flows import tournament_flows_service
 
 from . import _common as c
 
@@ -50,7 +50,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_active(user)
             workspace_id = c.require_query_int(data, "workspace_id")
             ensure_workspace_permission(user, workspace_id, "tournament", "create")
-            tournament = await tournament_flows.create_with_groups(
+            tournament = await tournament_flows_service.create_with_groups(
                 session,
                 workspace_id,
                 c.q1(data, "is_league", c.qbool, False),
@@ -59,7 +59,7 @@ def register(broker: Any, logger: Any) -> None:
                 c.q1(data, "challonge_slug"),
                 division_grid_version_id=c.q1(data, "division_grid_version_id", int),
             )
-            return await tournament_flows.to_pydantic(session, tournament, [])
+            return await tournament_flows_service.to_pydantic(session, tournament, [])
 
         return await c.envelope(logger, "tournament.create_with_groups", op, session_factory=_SF)
 
@@ -89,7 +89,7 @@ def register(broker: Any, logger: Any) -> None:
             else:
                 internal_payload = schemas.InternalBalancerTeamsPayload.model_validate(payload)
                 teams = [team.to_balancer_team() for team in internal_payload.teams]
-            return await team_flows.bulk_create_from_balancer(session, tournament_id, teams)
+            return await team_flows_service.bulk_create_from_balancer(session, tournament_id, teams)
 
         return await c.envelope(logger, "teams.create_balancer", op, session_factory=_SF)
 
@@ -103,7 +103,7 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="challonge", action="read"
             )
-            return await team_flows.preview_challonge_team_sync(session, tournament_id)
+            return await team_flows_service.preview_challonge_team_sync(session, tournament_id)
 
         return await c.envelope(logger, "teams.challonge_preview", op, session_factory=_SF)
 
@@ -118,7 +118,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
             payload = schemas.ChallongeTeamSyncRequest.model_validate(c.payload(data))
-            return await team_flows.sync_challonge_team_mappings(session, tournament_id, payload)
+            return await team_flows_service.sync_challonge_team_mappings(session, tournament_id, payload)
 
         return await c.envelope(logger, "teams.create_challonge", op, session_factory=_SF)
 

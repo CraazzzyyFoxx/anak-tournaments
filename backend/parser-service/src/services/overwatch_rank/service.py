@@ -1,11 +1,14 @@
-"""DB layer for OverFast rank collection: state bookkeeping + snapshot writes.
+"""Orchestration for OverFast rank collection: state bookkeeping + snapshot
+writes. RankStateService talks to the repositories in
+``shared.repository.ranks`` for every raw DB write (see that module for the
+exact SQL shapes preserved from this file's earlier, pre-repository form).
 
-Transaction-neutral — functions mutate/flush the session; the caller commits.
+Transaction-neutral — methods mutate/flush the session via the repositories;
+the caller commits.
 """
 
 from __future__ import annotations
 
-import random
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
@@ -14,11 +17,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import enums
 from shared.core.social import SocialProvider, normalize_social_handle
+from shared.repository.ranks import (
+    BattleTagRankStateRepository,
+    RankFetchLogRepository,
+    RankSnapshotRepository,
+    workspace_account_ids,
+)
+from shared.repository.ranks import jittered_interval as _jittered_interval
 from shared.schemas.settings import RankCollectionConfig
 from src import models
+from src.domain.overwatch_rank import RankFetchResult, battle_tag_to_slug
 
 from . import mapping
-from .schemas import RankFetchResult
 
 # Multipliers applied to the base interval for non-error terminal states so we
 # poll quiet accounts less often.
@@ -38,662 +48,576 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def workspace_account_ids(workspace_id: int) -> sa.Select:
-    """Battle-tag ``social_account`` ids owned by players of ``workspace_id``.
-
-    Rank rows key on ``players.social_account``, which has no workspace column —
-    a battle tag belongs to a player, and a player reaches a workspace through
-    ``workspace_member``. This subquery is that hop, and it is what lets a
-    workspace-scoped admin see the collection health of their own roster without
-    seeing every other tenant's accounts.
+class RankStateService:
+    """Write/orchestration half of OverFast rank collection: get-or-create +
+    priority bumps, tier seeding/promotion/demotion, due-tag claiming, fetch
+    result/failure recording, and admin recovery (reenable/defer).
     """
-    return (
-        sa.select(models.SocialAccount.id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.player_id == models.SocialAccount.user_id)
-        .where(
-            models.WorkspaceMember.workspace_id == workspace_id,
-            models.SocialAccount.provider == SocialProvider.BATTLENET,
+
+    def __init__(
+        self,
+        *,
+        repo: BattleTagRankStateRepository = BattleTagRankStateRepository(),
+        snapshot_repo: RankSnapshotRepository = RankSnapshotRepository(),
+        log_repo: RankFetchLogRepository = RankFetchLogRepository(),
+    ) -> None:
+        self.repo = repo
+        self.snapshot_repo = snapshot_repo
+        self.log_repo = log_repo
+
+    async def log_fetch(
+        self,
+        session: AsyncSession,
+        *,
+        social_account_id: int | None,
+        battle_tag: str,
+        status: str,
+        source: str,
+        error: str | None = None,
+        snapshots_written: int = 0,
+    ) -> None:
+        """Append a worker fetch attempt to the task-history log (caller commits)."""
+        await self.log_repo.create(
+            session,
+            models.RankFetchLog(
+                social_account_id=social_account_id,
+                battle_tag=battle_tag,
+                status=str(status),
+                source=source,
+                error=error[:2000] if error else None,
+                snapshots_written=snapshots_written,
+            ),
         )
-    )
 
-
-def _jittered_interval(base_seconds: float, jitter_fraction: float) -> float:
-    """Spread a reschedule delay over ``[base, base*(1+fraction)]``.
-
-    Keeps tags that were processed in the same tick from recurring at the same
-    instant (standing waves). ``jitter_fraction <= 0`` returns ``base`` unchanged.
-    """
-    if jitter_fraction <= 0:
-        return float(base_seconds)
-    return base_seconds + random.random() * base_seconds * jitter_fraction
-
-
-def _seed_next_eligible(interval_seconds: int) -> sa.ColumnElement[datetime]:
-    """SQL expression spreading a fresh seed across ``[now, now+interval]``.
-
-    Seeding with ``next_eligible_at = NULL`` makes the whole population due at
-    once (thundering herd on first enable); a per-row random offset distributes
-    the initial cycle evenly instead.
-    """
-    return sa.func.now() + sa.func.make_interval(0, 0, 0, 0, 0, 0, sa.func.random() * interval_seconds)
-
-
-async def log_fetch(
-    session: AsyncSession,
-    *,
-    social_account_id: int | None,
-    battle_tag: str,
-    status: str,
-    source: str,
-    error: str | None = None,
-    snapshots_written: int = 0,
-) -> None:
-    """Append a worker fetch attempt to the task-history log (caller commits)."""
-    session.add(
-        models.RankFetchLog(
-            social_account_id=social_account_id,
-            battle_tag=battle_tag,
-            status=str(status),
-            source=source,
-            error=error[:2000] if error else None,
-            snapshots_written=snapshots_written,
-        )
-    )
-
-
-def battle_tag_to_slug(battle_tag: str) -> str:
-    return battle_tag.replace("#", "-")
-
-
-async def ensure_state(
-    session: AsyncSession,
-    social_account_id: int,
-    battle_tag: str,
-    *,
-    priority_tier: int = 0,
-) -> models.BattleTagRankState:
-    """Get-or-create the collection state for a battle tag, bumping priority."""
-    state = await session.scalar(
-        sa.select(models.BattleTagRankState).where(models.BattleTagRankState.social_account_id == social_account_id)
-    )
-    if state is None:
-        state = models.BattleTagRankState(
-            social_account_id=social_account_id,
-            battle_tag=battle_tag,
-            player_id_slug=battle_tag_to_slug(battle_tag),
-            priority_tier=priority_tier,
-        )
-        session.add(state)
-        await session.flush()
-        return state
-
-    if priority_tier > state.priority_tier:
-        state.priority_tier = priority_tier
-        await session.flush()
-    return state
-
-
-async def resolve_user_registration_targets(
-    session: AsyncSession,
-    user_id: int,
-    registered_normalized: set[str],
-    extra_accounts: int,
-) -> list[tuple[int, str]]:
-    """A user's collection pool: their registered tags + up to N extra accounts.
-
-    ``registered_normalized`` is the set of normalized battlenet handles the
-    player entered (main + smurfs). Every matching ``social_account`` is
-    included; then up to ``extra_accounts`` of their *other* battlenet accounts
-    (lowest id first, deterministic).
-    """
-    rows = (
-        await session.execute(
-            sa.select(
-                models.SocialAccount.id,
-                models.SocialAccount.username,
-                models.SocialAccount.username_normalized,
+    async def ensure_state(
+        self,
+        session: AsyncSession,
+        social_account_id: int,
+        battle_tag: str,
+        *,
+        priority_tier: int = 0,
+    ) -> models.BattleTagRankState:
+        """Get-or-create the collection state for a battle tag, bumping priority."""
+        state = await self.repo.get_by_social_account_id(session, social_account_id)
+        if state is None:
+            return await self.repo.create_for_tag(
+                session,
+                social_account_id=social_account_id,
+                battle_tag=battle_tag,
+                player_id_slug=battle_tag_to_slug(battle_tag),
+                priority_tier=priority_tier,
             )
-            .where(
-                models.SocialAccount.user_id == user_id,
-                models.SocialAccount.provider == SocialProvider.BATTLENET,
-            )
-            .order_by(models.SocialAccount.id.asc())
-        )
-    ).all()
-    targets: list[tuple[int, str]] = []
-    extras = 0
-    for account_id, username, normalized in rows:
-        if normalized and normalized in registered_normalized:
-            targets.append((account_id, username))
-        elif extras < extra_accounts:
-            targets.append((account_id, username))
-            extras += 1
-    return targets
+        return await self.repo.bump_priority(session, state, priority_tier)
 
+    async def resolve_user_registration_targets(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        registered_normalized: set[str],
+        extra_accounts: int,
+    ) -> list[tuple[int, str]]:
+        """A user's collection pool: their registered tags + up to N extra accounts.
 
-async def resolve_registration_targets(
-    session: AsyncSession,
-    *,
-    registration_id: int | None,
-    fallback_battle_tag: str | None,
-    user_id: int,
-    extra_accounts: int,
-) -> list[tuple[int, str]]:
-    """Collection pool for one approved registration (registered tags + N extra)."""
-    registered_normalized: set[str] = set()
-    registration = (
-        await session.get(models.BalancerRegistration, registration_id) if registration_id is not None else None
-    )
-    if registration is not None:
-        if registration.battle_tag:
-            registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, registration.battle_tag))
-        for smurf in registration.smurf_tags_json or []:
-            if smurf:
-                registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, str(smurf)))
-    elif fallback_battle_tag:
-        registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, fallback_battle_tag))
-
-    return await resolve_user_registration_targets(session, user_id, registered_normalized, extra_accounts)
-
-
-async def seed_states_for_all_battle_tags(session: AsyncSession, *, interval_seconds: int) -> int:
-    """Insert a (tier 0) state row for every battle tag that lacks one.
-
-    New rows are seeded with a jittered ``next_eligible_at`` spread across
-    ``[now, now+interval_seconds]`` so the first collection cycle is even rather
-    than a thundering herd.
-    """
-    acc = models.SocialAccount
-    state = models.BattleTagRankState
-    missing = sa.select(
-        acc.id.label("social_account_id"),
-        acc.username.label("battle_tag"),
-        sa.func.replace(acc.username, "#", "-").label("player_id_slug"),
-        _seed_next_eligible(interval_seconds).label("next_eligible_at"),
-    ).where(
-        acc.provider == SocialProvider.BATTLENET,
-        acc.username.like("%#%"),
-        ~sa.exists().where(state.social_account_id == acc.id),
-    )
-    result = await session.execute(
-        sa.insert(state).from_select(
-            ["social_account_id", "battle_tag", "player_id_slug", "next_eligible_at"],
-            missing,
-        )
-    )
-    return result.rowcount or 0
-
-
-async def _registration_collection_targets(session: AsyncSession, extra_accounts: int) -> set[int]:
-    """``social_account_id`` set to collect under ``registrations_only``.
-
-    For active-tournament registrations: the tags the player *entered* (main +
-    smurfs), matched to battlenet ``social_account`` rows, plus up to
-    ``extra_accounts`` of each registrant's *other* battle.net accounts.
-    Tournaments that are ``completed``/``archived`` are excluded.
-    """
-    reg = models.BalancerRegistration
-    tournament = models.Tournament
-    acc = models.SocialAccount
-
-    # Registrations are anchored on workspace_member (dbarch02 dropped
-    # user_id); LEFT JOIN so member-less rows still contribute their entered
-    # battle tags (their player_id resolves to None, exactly like the old
-    # NULL user_id).
-    member = models.WorkspaceMember
-    rows = (
-        await session.execute(
-            sa.select(member.player_id, reg.battle_tag, reg.smurf_tags_json)
-            .select_from(reg)
-            .join(tournament, tournament.id == reg.tournament_id)
-            .outerjoin(member, member.id == reg.workspace_member_id)
-            .where(
-                reg.deleted_at.is_(None),
-                tournament.status.notin_(INACTIVE_TOURNAMENT_STATUSES),
-            )
-        )
-    ).all()
-
-    registered_normalized: set[str] = set()
-    user_ids: set[int] = set()
-    for user_id, battle_tag, smurfs in rows:
-        if user_id is not None:
-            user_ids.add(user_id)
-        if battle_tag:
-            registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, battle_tag))
-        for smurf in smurfs or []:
-            if smurf:
-                registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, str(smurf)))
-
-    target_ids: set[int] = set()
-
-    # Tags explicitly registered (matches by normalized handle; covers regs without a user).
-    if registered_normalized:
-        ids = (
-            await session.scalars(
-                sa.select(acc.id).where(
-                    acc.provider == SocialProvider.BATTLENET,
-                    acc.username_normalized.in_(registered_normalized),
-                )
-            )
-        ).all()
-        target_ids.update(ids)
-
-    # Per registrant user: registered accounts + up to N extra accounts (lowest id first).
-    if user_ids:
-        user_rows = (
+        ``registered_normalized`` is the set of normalized battlenet handles the
+        player entered (main + smurfs). Every matching ``social_account`` is
+        included; then up to ``extra_accounts`` of their *other* battlenet
+        accounts (lowest id first, deterministic).
+        """
+        rows = (
             await session.execute(
-                sa.select(acc.user_id, acc.id, acc.username_normalized)
+                sa.select(
+                    models.SocialAccount.id,
+                    models.SocialAccount.username,
+                    models.SocialAccount.username_normalized,
+                )
                 .where(
-                    acc.user_id.in_(user_ids),
-                    acc.provider == SocialProvider.BATTLENET,
+                    models.SocialAccount.user_id == user_id,
+                    models.SocialAccount.provider == SocialProvider.BATTLENET,
                 )
-                .order_by(acc.user_id.asc(), acc.id.asc())
+                .order_by(models.SocialAccount.id.asc())
             )
         ).all()
-        extras_per_user: dict[int, int] = {}
-        for uid, account_id, normalized in user_rows:
+        targets: list[tuple[int, str]] = []
+        extras = 0
+        for account_id, username, normalized in rows:
             if normalized and normalized in registered_normalized:
-                target_ids.add(account_id)
-            elif extras_per_user.get(uid, 0) < extra_accounts:
-                target_ids.add(account_id)
-                extras_per_user[uid] = extras_per_user.get(uid, 0) + 1
+                targets.append((account_id, username))
+            elif extras < extra_accounts:
+                targets.append((account_id, username))
+                extras += 1
+        return targets
 
-    return target_ids
-
-
-async def seed_states_from_registrations(
-    session: AsyncSession, *, interval_seconds: int, extra_accounts: int = 0
-) -> int:
-    """Sync tier-1 state to the registration collection pool (registrations_only).
-
-    Keeps ``priority_tier == 1`` equal to the registered tags (main + smurfs) of
-    active-tournament registrations plus up to ``extra_accounts`` other accounts
-    per registrant:
-
-    - inserts a tier-1 state row for newly-targeted tags,
-    - promotes an existing tier-0 row back to tier 1 when its tag enters the pool,
-    - demotes tier-1 rows that leave the pool (e.g. tournament completed) to tier 0.
-
-    Tier 2 (manual triggers / approval hook) is never touched. Returns the number
-    of new state rows inserted.
-    """
-    acc = models.SocialAccount
-    state = models.BattleTagRankState
-
-    target_ids = await _registration_collection_targets(session, extra_accounts)
-
-    # Demote tier-1 rows that are no longer in the registration pool.
-    demote = sa.update(state).where(state.priority_tier == 1)
-    if target_ids:
-        demote = demote.where(state.social_account_id.notin_(target_ids))
-    await session.execute(demote.values(priority_tier=0))
-
-    if not target_ids:
-        return 0
-
-    # Promote existing tier-0 rows that are now in the pool.
-    await session.execute(
-        sa.update(state)
-        .where(state.priority_tier == 0, state.social_account_id.in_(target_ids))
-        .values(priority_tier=1)
-    )
-
-    # Insert tier-1 rows for pool accounts that have no state row yet, spread
-    # across the interval (see ``seed_states_for_all_battle_tags``).
-    missing = sa.select(
-        acc.id.label("social_account_id"),
-        acc.username.label("battle_tag"),
-        sa.func.replace(acc.username, "#", "-").label("player_id_slug"),
-        sa.literal(1).label("priority_tier"),
-        _seed_next_eligible(interval_seconds).label("next_eligible_at"),
-    ).where(
-        acc.id.in_(target_ids),
-        ~sa.exists().where(state.social_account_id == acc.id),
-    )
-    result = await session.execute(
-        sa.insert(state).from_select(
-            [
-                "social_account_id",
-                "battle_tag",
-                "player_id_slug",
-                "priority_tier",
-                "next_eligible_at",
-            ],
-            missing,
-        )
-    )
-    return result.rowcount or 0
-
-
-async def count_in_scope(session: AsyncSession, *, scope: str) -> int:
-    """Count non-disabled tags eligible for collection under ``scope``.
-
-    Sizes the self-pacing batch off the *whole* in-scope population (not the
-    currently-due subset, which would self-amplify into bursts during a backlog).
-    """
-    state = models.BattleTagRankState
-    query = (
-        sa.select(sa.func.count()).select_from(state).where(state.status != enums.RankCollectionStatus.disabled.value)
-    )
-    if scope == "registrations_only":
-        query = query.where(state.priority_tier > 0)
-    return int(await session.scalar(query) or 0)
-
-
-async def collection_stats(session: AsyncSession, *, workspace_id: int | None = None) -> dict:
-    """Aggregate collection health (DB layer only; caller adds config).
-
-    Mirrors the manual incident-diagnostic queries: state status/tier mix, whole
-    population size, distinct-account snapshot coverage over 24h/7d, the global
-    last successful capture, and the last-24h ``fetch_log`` outcome mix.
-
-    ``workspace_id`` narrows every aggregate to the battle tags of that
-    workspace's players (the caller's authorization scope — see ``rpc/rank.py``).
-    """
-    state = models.BattleTagRankState
-    snap = models.UserRankSnapshot
-    log = models.RankFetchLog
-    now = _now()
-    accounts = workspace_account_ids(workspace_id) if workspace_id is not None else None
-
-    def _scoped(stmt: sa.Select, column: sa.ColumnElement) -> sa.Select:
-        return stmt if accounts is None else stmt.where(column.in_(accounts))
-
-    by_status = {
-        str(status): int(count)
-        for status, count in (
-            await session.execute(
-                _scoped(sa.select(state.status, sa.func.count()), state.social_account_id).group_by(state.status)
+    async def resolve_registration_targets(
+        self,
+        session: AsyncSession,
+        *,
+        registration_id: int | None,
+        fallback_battle_tag: str | None,
+        user_id: int,
+        extra_accounts: int,
+    ) -> list[tuple[int, str]]:
+        """Collection pool for one approved registration (registered tags + N extra)."""
+        registered_normalized: set[str] = set()
+        registration = (
+            await session.scalar(
+                sa.select(models.BalancerRegistration).where(models.BalancerRegistration.id == registration_id)
             )
-        ).all()
-    }
-    by_tier = {
-        int(tier): int(count)
-        for tier, count in (
+            if registration_id is not None
+            else None
+        )
+        if registration is not None:
+            if registration.battle_tag:
+                registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, registration.battle_tag))
+            for smurf in registration.smurf_tags_json or []:
+                if smurf:
+                    registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, str(smurf)))
+        elif fallback_battle_tag:
+            registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, fallback_battle_tag))
+
+        return await self.resolve_user_registration_targets(session, user_id, registered_normalized, extra_accounts)
+
+    async def seed_states_for_all_battle_tags(self, session: AsyncSession, *, interval_seconds: int) -> int:
+        """Insert a (tier 0) state row for every battle tag that lacks one.
+
+        New rows are seeded with a jittered ``next_eligible_at`` spread across
+        ``[now, now+interval_seconds]`` so the first collection cycle is even
+        rather than a thundering herd.
+        """
+        return await self.repo.bulk_seed_missing(session, interval_seconds=interval_seconds)
+
+    async def _registration_collection_targets(self, session: AsyncSession, extra_accounts: int) -> set[int]:
+        """``social_account_id`` set to collect under ``registrations_only``.
+
+        For active-tournament registrations: the tags the player *entered* (main
+        + smurfs), matched to battlenet ``social_account`` rows, plus up to
+        ``extra_accounts`` of each registrant's *other* battle.net accounts.
+        Tournaments that are ``completed``/``archived`` are excluded.
+        """
+        reg = models.BalancerRegistration
+        tournament = models.Tournament
+        acc = models.SocialAccount
+
+        # Registrations are anchored on workspace_member (dbarch02 dropped
+        # user_id); LEFT JOIN so member-less rows still contribute their entered
+        # battle tags (their player_id resolves to None, exactly like the old
+        # NULL user_id).
+        member = models.WorkspaceMember
+        rows = (
             await session.execute(
-                _scoped(sa.select(state.priority_tier, sa.func.count()), state.social_account_id).group_by(
-                    state.priority_tier
+                sa.select(member.player_id, reg.battle_tag, reg.smurf_tags_json)
+                .select_from(reg)
+                .join(tournament, tournament.id == reg.tournament_id)
+                .outerjoin(member, member.id == reg.workspace_member_id)
+                .where(
+                    reg.deleted_at.is_(None),
+                    tournament.status.notin_(INACTIVE_TOURNAMENT_STATUSES),
                 )
             )
         ).all()
-    }
-    total = int(
-        await session.scalar(_scoped(sa.select(sa.func.count()).select_from(state), state.social_account_id)) or 0
-    )
-    never_checked = int(
-        await session.scalar(
-            _scoped(sa.select(sa.func.count()).select_from(state), state.social_account_id).where(
-                state.last_checked_at.is_(None)
-            )
-        )
-        or 0
-    )
-    last_success_at = await session.scalar(
-        _scoped(sa.select(sa.func.max(state.last_success_at)), state.social_account_id)
-    )
 
-    async def _coverage(delta: timedelta) -> int:
-        return int(
+        registered_normalized: set[str] = set()
+        user_ids: set[int] = set()
+        for user_id, battle_tag, smurfs in rows:
+            if user_id is not None:
+                user_ids.add(user_id)
+            if battle_tag:
+                registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, battle_tag))
+            for smurf in smurfs or []:
+                if smurf:
+                    registered_normalized.add(normalize_social_handle(SocialProvider.BATTLENET, str(smurf)))
+
+        target_ids: set[int] = set()
+
+        # Tags explicitly registered (matches by normalized handle; covers regs without a user).
+        if registered_normalized:
+            ids = (
+                await session.scalars(
+                    sa.select(acc.id).where(
+                        acc.provider == SocialProvider.BATTLENET,
+                        acc.username_normalized.in_(registered_normalized),
+                    )
+                )
+            ).all()
+            target_ids.update(ids)
+
+        # Per registrant user: registered accounts + up to N extra accounts (lowest id first).
+        if user_ids:
+            user_rows = (
+                await session.execute(
+                    sa.select(acc.user_id, acc.id, acc.username_normalized)
+                    .where(
+                        acc.user_id.in_(user_ids),
+                        acc.provider == SocialProvider.BATTLENET,
+                    )
+                    .order_by(acc.user_id.asc(), acc.id.asc())
+                )
+            ).all()
+            extras_per_user: dict[int, int] = {}
+            for uid, account_id, normalized in user_rows:
+                if normalized and normalized in registered_normalized:
+                    target_ids.add(account_id)
+                elif extras_per_user.get(uid, 0) < extra_accounts:
+                    target_ids.add(account_id)
+                    extras_per_user[uid] = extras_per_user.get(uid, 0) + 1
+
+        return target_ids
+
+    async def seed_states_from_registrations(
+        self, session: AsyncSession, *, interval_seconds: int, extra_accounts: int = 0
+    ) -> int:
+        """Sync tier-1 state to the registration collection pool (registrations_only).
+
+        Keeps ``priority_tier == 1`` equal to the registered tags (main + smurfs)
+        of active-tournament registrations plus up to ``extra_accounts`` other
+        accounts per registrant:
+
+        - inserts a tier-1 state row for newly-targeted tags,
+        - promotes an existing tier-0 row back to tier 1 when its tag enters the pool,
+        - demotes tier-1 rows that leave the pool (e.g. tournament completed) to tier 0.
+
+        Tier 2 (manual triggers / approval hook) is never touched. Returns the
+        number of new state rows inserted.
+        """
+        target_ids = await self._registration_collection_targets(session, extra_accounts)
+
+        # Demote tier-1 rows that are no longer in the registration pool.
+        await self.repo.demote_tier1_not_in(session, target_ids)
+
+        if not target_ids:
+            return 0
+
+        # Promote existing tier-0 rows that are now in the pool.
+        await self.repo.promote_tier0_in(session, target_ids)
+
+        # Insert tier-1 rows for pool accounts that have no state row yet, spread
+        # across the interval (see ``seed_states_for_all_battle_tags``).
+        return await self.repo.bulk_seed_missing(
+            session, interval_seconds=interval_seconds, target_ids=target_ids, priority_tier=1
+        )
+
+    async def count_in_scope(self, session: AsyncSession, *, scope: str) -> int:
+        """Count non-disabled tags eligible for collection under ``scope``.
+
+        Sizes the self-pacing batch off the *whole* in-scope population (not the
+        currently-due subset, which would self-amplify into bursts during a backlog).
+        """
+        state = models.BattleTagRankState
+        query = (
+            sa.select(sa.func.count()).select_from(state).where(state.status != enums.RankCollectionStatus.disabled.value)
+        )
+        if scope == "registrations_only":
+            query = query.where(state.priority_tier > 0)
+        return int(await session.scalar(query) or 0)
+
+    async def collection_stats(self, session: AsyncSession, *, workspace_id: int | None = None) -> dict:
+        """Aggregate collection health (DB layer only; caller adds config).
+
+        Mirrors the manual incident-diagnostic queries: state status/tier mix,
+        whole population size, distinct-account snapshot coverage over
+        24h/7d, the global last successful capture, and the last-24h
+        ``fetch_log`` outcome mix.
+
+        ``workspace_id`` narrows every aggregate to the battle tags of that
+        workspace's players (the caller's authorization scope — see ``rpc/rank.py``).
+        """
+        state = models.BattleTagRankState
+        snap = models.UserRankSnapshot
+        log = models.RankFetchLog
+        now = _now()
+        accounts = workspace_account_ids(workspace_id) if workspace_id is not None else None
+
+        def _scoped(stmt: sa.Select, column: sa.ColumnElement) -> sa.Select:
+            return stmt if accounts is None else stmt.where(column.in_(accounts))
+
+        by_status = {
+            str(status): int(count)
+            for status, count in (
+                await session.execute(
+                    _scoped(sa.select(state.status, sa.func.count()), state.social_account_id).group_by(state.status)
+                )
+            ).all()
+        }
+        by_tier = {
+            int(tier): int(count)
+            for tier, count in (
+                await session.execute(
+                    _scoped(sa.select(state.priority_tier, sa.func.count()), state.social_account_id).group_by(
+                        state.priority_tier
+                    )
+                )
+            ).all()
+        }
+        total = int(
+            await session.scalar(_scoped(sa.select(sa.func.count()).select_from(state), state.social_account_id)) or 0
+        )
+        never_checked = int(
             await session.scalar(
-                _scoped(sa.select(sa.func.count(sa.distinct(snap.social_account_id))), snap.social_account_id).where(
-                    snap.captured_at > now - delta
+                _scoped(sa.select(sa.func.count()).select_from(state), state.social_account_id).where(
+                    state.last_checked_at.is_(None)
                 )
             )
             or 0
         )
+        last_success_at = await session.scalar(
+            _scoped(sa.select(sa.func.max(state.last_success_at)), state.social_account_id)
+        )
 
-    fetch_24h = {
-        str(status): int(count)
-        for status, count in (
-            await session.execute(
-                _scoped(sa.select(log.status, sa.func.count()), log.social_account_id)
-                .where(log.created_at > now - timedelta(hours=24))
-                .group_by(log.status)
-            )
-        ).all()
-    }
-
-    return {
-        "total": total,
-        "never_checked": never_checked,
-        "by_status": by_status,
-        "by_tier": by_tier,
-        "last_success_at": last_success_at,
-        "coverage_24h": await _coverage(timedelta(hours=24)),
-        "coverage_7d": await _coverage(timedelta(days=7)),
-        "fetch_24h": fetch_24h,
-    }
-
-
-async def select_and_claim_due(
-    session: AsyncSession,
-    *,
-    limit: int,
-    scope: str,
-    interval_seconds: int,
-    jitter_fraction: float = 0.0,
-    now: datetime | None = None,
-) -> Sequence[models.BattleTagRankState]:
-    """Pick the most-due tags, claim them (push out ``next_eligible_at``), return them.
-
-    Ordering: highest ``priority_tier`` first, then least-recently-checked. The
-    claim prevents the next scheduler tick from re-selecting a tag before its
-    fetch has been processed (Redis dedup is the second line of defense). The
-    claim is the reschedule path for events a worker never processes (lost
-    message / worker down), so it is jittered too — otherwise that recovery path
-    would re-cluster the batch.
-    """
-    now = now or _now()
-    state = models.BattleTagRankState
-    query = sa.select(state).where(
-        state.status != enums.RankCollectionStatus.disabled.value,
-        sa.or_(state.next_eligible_at.is_(None), state.next_eligible_at <= now),
-    )
-    if scope == "registrations_only":
-        query = query.where(state.priority_tier > 0)
-    query = query.order_by(
-        state.priority_tier.desc(),
-        state.last_checked_at.asc().nulls_first(),
-    ).limit(limit)
-
-    rows = (await session.scalars(query)).all()
-    for row in rows:
-        row.next_eligible_at = now + timedelta(seconds=_jittered_interval(interval_seconds, jitter_fraction))
-    return rows
-
-
-async def _user_id_for_tag(session: AsyncSession, social_account_id: int) -> int | None:
-    return await session.scalar(
-        sa.select(models.SocialAccount.user_id).where(models.SocialAccount.id == social_account_id)
-    )
-
-
-async def record_result(
-    session: AsyncSession,
-    *,
-    social_account_id: int,
-    battle_tag: str,
-    source: str,
-    result: RankFetchResult,
-    lookup: mapping.RankLookup,
-    mapping_version: str,
-    config: RankCollectionConfig,
-    now: datetime | None = None,
-) -> int:
-    """Persist a fetch outcome: snapshot rows (on success) + state update.
-
-    Returns the number of snapshot rows written.
-    """
-    now = now or _now()
-    state = await ensure_state(session, social_account_id, battle_tag)
-    state.last_checked_at = now
-    state.last_error = None
-
-    status = result.status
-    written = 0
-
-    if status == enums.RankCollectionStatus.ok:
-        user_id = await _user_id_for_tag(session, social_account_id)
-        last_snapshot: models.UserRankSnapshot | None = None
-        if user_id is not None:
-            for parsed in result.ranks:
-                rank_value = mapping.map_division_tier_to_rank_value(parsed.division, parsed.tier, lookup)
-                snapshot = models.UserRankSnapshot(
-                    user_id=user_id,
-                    social_account_id=social_account_id,
-                    battle_tag=battle_tag,
-                    platform=parsed.platform,
-                    role=parsed.role,
-                    division=parsed.division,
-                    tier=parsed.tier,
-                    season=parsed.season,
-                    rank_value=rank_value,
-                    mapping_version=mapping_version,
-                    is_ranked=parsed.is_ranked,
-                    raw_payload=parsed.raw,
-                    captured_at=now,
-                    source=source,
+        async def _coverage(delta: timedelta) -> int:
+            return int(
+                await session.scalar(
+                    _scoped(sa.select(sa.func.count(sa.distinct(snap.social_account_id))), snap.social_account_id).where(
+                        snap.captured_at > now - delta
+                    )
                 )
-                session.add(snapshot)
-                last_snapshot = snapshot
-                written += 1
-            await session.flush()
-        state.status = enums.RankCollectionStatus.ok.value
-        state.last_success_at = now
-        state.consecutive_failures = 0
-        if last_snapshot is not None:
-            state.last_snapshot_id = last_snapshot.id
-        state.next_eligible_at = now + timedelta(
-            seconds=_jittered_interval(config.interval_seconds, config.jitter_fraction)
-        )
-    elif status == enums.RankCollectionStatus.private:
-        state.status = enums.RankCollectionStatus.private.value
-        state.consecutive_failures = 0
-        state.next_eligible_at = now + timedelta(
-            seconds=_jittered_interval(
-                config.interval_seconds * PRIVATE_INTERVAL_FACTOR,
-                config.jitter_fraction,
+                or 0
             )
-        )
-    elif status == enums.RankCollectionStatus.not_found:
-        state.status = enums.RankCollectionStatus.not_found.value
-        state.consecutive_failures = 0
-        state.next_eligible_at = now + timedelta(
-            seconds=_jittered_interval(
-                config.interval_seconds * NOT_FOUND_INTERVAL_FACTOR,
-                config.jitter_fraction,
-            )
-        )
-    else:  # error
-        return await record_failure(
+
+        fetch_24h = {
+            str(status): int(count)
+            for status, count in (
+                await session.execute(
+                    _scoped(sa.select(log.status, sa.func.count()), log.social_account_id)
+                    .where(log.created_at > now - timedelta(hours=24))
+                    .group_by(log.status)
+                )
+            ).all()
+        }
+
+        return {
+            "total": total,
+            "never_checked": never_checked,
+            "by_status": by_status,
+            "by_tier": by_tier,
+            "last_success_at": last_success_at,
+            "coverage_24h": await _coverage(timedelta(hours=24)),
+            "coverage_7d": await _coverage(timedelta(days=7)),
+            "fetch_24h": fetch_24h,
+        }
+
+    async def select_and_claim_due(
+        self,
+        session: AsyncSession,
+        *,
+        limit: int,
+        scope: str,
+        interval_seconds: int,
+        jitter_fraction: float = 0.0,
+        now: datetime | None = None,
+    ) -> Sequence[models.BattleTagRankState]:
+        """Pick the most-due tags, claim them (push out ``next_eligible_at``), return them.
+
+        See ``BattleTagRankStateRepository.claim_due`` for the exact
+        ordering/claim shape; this just resolves the default ``now``.
+        """
+        now = now or _now()
+        return await self.repo.claim_due(
             session,
-            social_account_id=social_account_id,
-            battle_tag=battle_tag,
-            status=enums.RankCollectionStatus.error,
-            error=result.error,
-            config=config,
+            limit=limit,
+            scope=scope,
+            interval_seconds=interval_seconds,
+            jitter_fraction=jitter_fraction,
             now=now,
         )
 
-    await session.flush()
-    return written
-
-
-async def record_failure(
-    session: AsyncSession,
-    *,
-    social_account_id: int,
-    battle_tag: str,
-    status: enums.RankCollectionStatus,
-    error: str | None,
-    config: RankCollectionConfig,
-    transient: bool = False,
-    now: datetime | None = None,
-) -> int:
-    """Apply exponential backoff for a failure; auto-disable only *permanent* ones.
-
-    ``transient=True`` (OverFast 5xx / timeout / 429 — the upstream is at fault,
-    not the tag) NEVER auto-disables: it only backs off (capped at
-    ``MAX_BACKOFF_SECONDS``) so the tag keeps retrying and recovers on its own
-    once OverFast is healthy again. Without this, an upstream outage that trips
-    ``max_consecutive_failures`` in a row would permanently disable healthy
-    accounts with no recovery path (``select_and_claim_due`` skips ``disabled``
-    and nothing re-enables them). Only permanent failures (an invalid battle tag
-    that will never resolve) count toward auto-disable.
-    """
-    now = now or _now()
-    state = await ensure_state(session, social_account_id, battle_tag)
-    state.last_checked_at = now
-    state.last_error = (error or "")[:2000] or None
-    state.consecutive_failures = (state.consecutive_failures or 0) + 1
-
-    if not transient and state.consecutive_failures >= config.max_consecutive_failures:
-        state.status = enums.RankCollectionStatus.disabled.value
-        state.next_eligible_at = None
-    else:
-        # Cap the exponent: a transient outage can drive consecutive_failures
-        # arbitrarily high (it no longer disables), and 2**big is wasteful — the
-        # backoff is clamped to MAX_BACKOFF_SECONDS long before then anyway.
-        backoff = min(
-            config.backoff_base_seconds * (2 ** min(state.consecutive_failures - 1, 16)),
-            MAX_BACKOFF_SECONDS,
+    async def _user_id_for_tag(self, session: AsyncSession, social_account_id: int) -> int | None:
+        return await session.scalar(
+            sa.select(models.SocialAccount.user_id).where(models.SocialAccount.id == social_account_id)
         )
-        state.status = status.value
-        state.next_eligible_at = now + timedelta(seconds=backoff)
-    await session.flush()
-    return 0
 
+    async def record_result(
+        self,
+        session: AsyncSession,
+        *,
+        social_account_id: int,
+        battle_tag: str,
+        source: str,
+        result: RankFetchResult,
+        lookup: mapping.RankLookup,
+        mapping_version: str,
+        config: RankCollectionConfig,
+        now: datetime | None = None,
+    ) -> int:
+        """Persist a fetch outcome: snapshot rows (on success) + state update.
 
-async def reenable_disabled(
-    session: AsyncSession,
-    *,
-    interval_seconds: int,
-    only_previously_succeeded: bool = False,
-    workspace_id: int | None = None,
-    now: datetime | None = None,
-) -> int:
-    """Requeue auto-disabled tags: ``disabled`` -> ``pending``, reset failures.
+        Returns the number of snapshot rows written.
+        """
+        now = now or _now()
+        state = await self.ensure_state(session, social_account_id, battle_tag)
+        state.last_checked_at = now
+        state.last_error = None
 
-    Recovery path for accounts wrongly disabled by a transient upstream outage
-    (see ``record_failure``). ``next_eligible_at`` is spread across
-    ``[now, now+interval_seconds]`` (like the seeders) so re-enabling the whole
-    backlog doesn't stampede OverFast. ``only_previously_succeeded`` limits it to
-    tags that ever produced a snapshot (skip genuinely-dead handles). Returns the
-    number of rows re-enabled; caller commits.
+        status = result.status
+        written = 0
 
-    ``workspace_id`` limits the recovery to the battle tags of that workspace's
-    players, so a workspace-scoped admin cannot requeue another tenant's backlog.
-    """
-    now = now or _now()
-    state = models.BattleTagRankState
-    query = sa.update(state).where(state.status == enums.RankCollectionStatus.disabled.value)
-    if only_previously_succeeded:
-        query = query.where(state.last_success_at.isnot(None))
-    if workspace_id is not None:
-        query = query.where(state.social_account_id.in_(workspace_account_ids(workspace_id)))
-    result = await session.execute(
-        query.values(
-            status=enums.RankCollectionStatus.pending.value,
-            consecutive_failures=0,
-            last_error=None,
-            next_eligible_at=_seed_next_eligible(interval_seconds),
+        if status == enums.RankCollectionStatus.ok:
+            user_id = await self._user_id_for_tag(session, social_account_id)
+            last_snapshot: models.UserRankSnapshot | None = None
+            if user_id is not None:
+                snapshots = [
+                    models.UserRankSnapshot(
+                        user_id=user_id,
+                        social_account_id=social_account_id,
+                        battle_tag=battle_tag,
+                        platform=parsed.platform,
+                        role=parsed.role,
+                        division=parsed.division,
+                        tier=parsed.tier,
+                        season=parsed.season,
+                        rank_value=mapping.map_division_tier_to_rank_value(parsed.division, parsed.tier, lookup),
+                        mapping_version=mapping_version,
+                        is_ranked=parsed.is_ranked,
+                        raw_payload=parsed.raw,
+                        captured_at=now,
+                        source=source,
+                    )
+                    for parsed in result.ranks
+                ]
+                await self.snapshot_repo.create_many(session, snapshots)
+                written = len(snapshots)
+                last_snapshot = snapshots[-1] if snapshots else None
+            state.status = enums.RankCollectionStatus.ok.value
+            state.last_success_at = now
+            state.consecutive_failures = 0
+            if last_snapshot is not None:
+                state.last_snapshot_id = last_snapshot.id
+            state.next_eligible_at = now + timedelta(
+                seconds=_jittered_interval(config.interval_seconds, config.jitter_fraction)
+            )
+        elif status == enums.RankCollectionStatus.private:
+            state.status = enums.RankCollectionStatus.private.value
+            state.consecutive_failures = 0
+            state.next_eligible_at = now + timedelta(
+                seconds=_jittered_interval(
+                    config.interval_seconds * PRIVATE_INTERVAL_FACTOR,
+                    config.jitter_fraction,
+                )
+            )
+        elif status == enums.RankCollectionStatus.not_found:
+            state.status = enums.RankCollectionStatus.not_found.value
+            state.consecutive_failures = 0
+            state.next_eligible_at = now + timedelta(
+                seconds=_jittered_interval(
+                    config.interval_seconds * NOT_FOUND_INTERVAL_FACTOR,
+                    config.jitter_fraction,
+                )
+            )
+        else:  # error
+            return await self.record_failure(
+                session,
+                social_account_id=social_account_id,
+                battle_tag=battle_tag,
+                status=enums.RankCollectionStatus.error,
+                error=result.error,
+                config=config,
+                now=now,
+            )
+
+        await session.flush()
+        return written
+
+    async def record_failure(
+        self,
+        session: AsyncSession,
+        *,
+        social_account_id: int,
+        battle_tag: str,
+        status: enums.RankCollectionStatus,
+        error: str | None,
+        config: RankCollectionConfig,
+        transient: bool = False,
+        now: datetime | None = None,
+    ) -> int:
+        """Apply exponential backoff for a failure; auto-disable only *permanent* ones.
+
+        ``transient=True`` (OverFast 5xx / timeout / 429 — the upstream is at
+        fault, not the tag) NEVER auto-disables: it only backs off (capped at
+        ``MAX_BACKOFF_SECONDS``) so the tag keeps retrying and recovers on its
+        own once OverFast is healthy again. Without this, an upstream outage
+        that trips ``max_consecutive_failures`` in a row would permanently
+        disable healthy accounts with no recovery path (``select_and_claim_due``
+        skips ``disabled`` and nothing re-enables them). Only permanent failures
+        (an invalid battle tag that will never resolve) count toward
+        auto-disable.
+        """
+        now = now or _now()
+        state = await self.ensure_state(session, social_account_id, battle_tag)
+        state.last_checked_at = now
+        state.last_error = (error or "")[:2000] or None
+        state.consecutive_failures = (state.consecutive_failures or 0) + 1
+
+        if not transient and state.consecutive_failures >= config.max_consecutive_failures:
+            state.status = enums.RankCollectionStatus.disabled.value
+            state.next_eligible_at = None
+        else:
+            # Cap the exponent: a transient outage can drive consecutive_failures
+            # arbitrarily high (it no longer disables), and 2**big is wasteful — the
+            # backoff is clamped to MAX_BACKOFF_SECONDS long before then anyway.
+            backoff = min(
+                config.backoff_base_seconds * (2 ** min(state.consecutive_failures - 1, 16)),
+                MAX_BACKOFF_SECONDS,
+            )
+            state.status = status.value
+            state.next_eligible_at = now + timedelta(seconds=backoff)
+        await session.flush()
+        return 0
+
+    async def reenable_disabled(
+        self,
+        session: AsyncSession,
+        *,
+        interval_seconds: int,
+        only_previously_succeeded: bool = False,
+        workspace_id: int | None = None,
+    ) -> int:
+        """Requeue auto-disabled tags: ``disabled`` -> ``pending``, reset failures.
+
+        Recovery path for accounts wrongly disabled by a transient upstream
+        outage (see ``record_failure``). ``only_previously_succeeded`` limits it
+        to tags that ever produced a snapshot (skip genuinely-dead handles).
+        Returns the number of rows re-enabled; caller commits. ``workspace_id``
+        limits the recovery to the battle tags of that workspace's players, so a
+        workspace-scoped admin cannot requeue another tenant's backlog.
+        """
+        return await self.repo.reenable_disabled(
+            session,
+            interval_seconds=interval_seconds,
+            only_previously_succeeded=only_previously_succeeded,
+            workspace_id=workspace_id,
         )
-    )
-    return result.rowcount or 0
+
+    async def defer_tag(
+        self,
+        session: AsyncSession,
+        *,
+        social_account_id: int,
+        delay_seconds: int,
+        now: datetime | None = None,
+    ) -> None:
+        """Push a tag's next eligibility out (used when a global cooldown is active)."""
+        now = now or _now()
+        await self.repo.defer(session, social_account_id=social_account_id, delay_seconds=delay_seconds, now=now)
 
 
-async def defer_tag(
-    session: AsyncSession,
-    *,
-    social_account_id: int,
-    delay_seconds: int,
-    now: datetime | None = None,
-) -> None:
-    """Push a tag's next eligibility out (used when a global cooldown is active)."""
-    now = now or _now()
-    await session.execute(
-        sa.update(models.BattleTagRankState)
-        .where(models.BattleTagRankState.social_account_id == social_account_id)
-        .values(next_eligible_at=now + timedelta(seconds=delay_seconds))
-    )
+rank_state_service = RankStateService()
+
+# Module-attribute compatibility seam: admin.py/scheduler.py/tasks.py call these
+# as bare ``service.<name>(...)`` (never ``rank_state_service.<name>``), and
+# several tests patch/call them the same way
+# (``patch.object(tasks.service, "record_result", ...)``,
+# ``service.select_and_claim_due(...)``, ``service.workspace_account_ids(...)``)
+# — per the ``differ.py``/balancer-service precedent, test coupling patches the
+# *module's* namespace, not ``self.``, so every name below must stay resolvable
+# as a plain module attribute bound to the singleton's method.
+log_fetch = rank_state_service.log_fetch
+ensure_state = rank_state_service.ensure_state
+resolve_user_registration_targets = rank_state_service.resolve_user_registration_targets
+resolve_registration_targets = rank_state_service.resolve_registration_targets
+seed_states_for_all_battle_tags = rank_state_service.seed_states_for_all_battle_tags
+seed_states_from_registrations = rank_state_service.seed_states_from_registrations
+count_in_scope = rank_state_service.count_in_scope
+collection_stats = rank_state_service.collection_stats
+select_and_claim_due = rank_state_service.select_and_claim_due
+record_result = rank_state_service.record_result
+record_failure = rank_state_service.record_failure
+reenable_disabled = rank_state_service.reenable_disabled
+defer_tag = rank_state_service.defer_tag

@@ -32,7 +32,7 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
     async def test_create_with_groups_uses_workspace_default_division_grid_when_missing(self) -> None:
         from unittest.mock import Mock
 
-        session = SimpleNamespace(commit=AsyncMock(), add=Mock())
+        session = SimpleNamespace(commit=AsyncMock(), add=Mock(), flush=AsyncMock())
         created_tournament = SimpleNamespace(id=123)
         loaded_tournament = SimpleNamespace(id=123)
         challonge_tournament = SimpleNamespace(
@@ -51,7 +51,7 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=77),
             ) as get_default_version,
             patch.object(
-                tournament_flows.challonge_service,
+                tournament_flows.challonge_client,
                 "fetch_tournament",
                 AsyncMock(return_value=challonge_tournament),
             ),
@@ -105,7 +105,7 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
     async def test_create_with_groups_uses_explicit_division_grid_when_provided(self) -> None:
         from unittest.mock import Mock
 
-        session = SimpleNamespace(commit=AsyncMock(), add=Mock())
+        session = SimpleNamespace(commit=AsyncMock(), add=Mock(), flush=AsyncMock())
         created_tournament = SimpleNamespace(id=123)
         loaded_tournament = SimpleNamespace(id=123)
         challonge_tournament = SimpleNamespace(
@@ -124,7 +124,7 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
                 AsyncMock(),
             ) as get_default_version,
             patch.object(
-                tournament_flows.challonge_service,
+                tournament_flows.challonge_client,
                 "fetch_tournament",
                 AsyncMock(return_value=challonge_tournament),
             ),

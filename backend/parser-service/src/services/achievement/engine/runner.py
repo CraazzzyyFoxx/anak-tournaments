@@ -17,6 +17,8 @@ from shared.models.achievements.achievement import (
     EvaluationRunStatus,
     EvaluationRunTrigger,
 )
+from shared.repository.support import EvaluationRunRepository
+from shared.repository.tournament import TournamentRepository
 from shared.services.division_grid_access import (
     build_workspace_division_grid_normalizer,
     get_effective_division_grid,
@@ -26,164 +28,179 @@ from shared.services.division_grid_normalization import (
     DivisionGridNormalizer,
 )
 from src import models
+from src.domain.achievement_eval_context import EvalContext
 
-from .context import EvalContext
 from .differ import EvaluationSlice, diff_and_apply
 from .evaluator import evaluate
 
 
-async def run_evaluation(
-    session: AsyncSession,
-    workspace_id: int,
-    trigger: EvaluationRunTrigger,
-    tournament_id: int | None = None,
-    match_id: int | None = None,
-    changed_tables: list[str] | None = None,
-    rule_ids: list[int] | None = None,
-) -> EvaluationRun:
-    """Execute an achievement evaluation run.
+class AchievementEvaluationRunnerService:
+    def __init__(
+        self,
+        *,
+        runs_repo: EvaluationRunRepository = EvaluationRunRepository(),
+        tournaments_repo: TournamentRepository = TournamentRepository(),
+    ) -> None:
+        self.runs_repo = runs_repo
+        self.tournaments_repo = tournaments_repo
 
-    Args:
-        session: Database session.
-        workspace_id: Workspace to evaluate.
-        trigger: What triggered this run.
-        tournament_id: If set, only evaluate for this tournament.
-        match_id: If set, only evaluate for this match.
-        changed_tables: If set, only evaluate rules that depend on these tables.
-        rule_ids: If set, only evaluate these specific rules.
-    """
-    run_id = str(uuid.uuid4())
-    run = EvaluationRun(
-        id=run_id,
-        workspace_id=workspace_id,
-        trigger=trigger,
-        tournament_id=tournament_id,
-        status=EvaluationRunStatus.running,
-        started_at=datetime.now(UTC),
-    )
-    session.add(run)
-    await session.flush()
+    async def run_evaluation(
+        self,
+        session: AsyncSession,
+        workspace_id: int,
+        trigger: EvaluationRunTrigger,
+        tournament_id: int | None = None,
+        match_id: int | None = None,
+        changed_tables: list[str] | None = None,
+        rule_ids: list[int] | None = None,
+    ) -> EvaluationRun:
+        """Execute an achievement evaluation run.
 
-    try:
-        rules = await _get_rules(session, workspace_id, rule_ids)
+        Args:
+            session: Database session.
+            workspace_id: Workspace to evaluate.
+            trigger: What triggered this run.
+            tournament_id: If set, only evaluate for this tournament.
+            match_id: If set, only evaluate for this match.
+            changed_tables: If set, only evaluate rules that depend on these tables.
+            rule_ids: If set, only evaluate these specific rules.
+        """
+        run_id = str(uuid.uuid4())
+        run = EvaluationRun(
+            id=run_id,
+            workspace_id=workspace_id,
+            trigger=trigger,
+            tournament_id=tournament_id,
+            status=EvaluationRunStatus.running,
+            started_at=datetime.now(UTC),
+        )
+        await self.runs_repo.create(session, run)
 
-        if changed_tables:
-            rules = _filter_by_depends_on(rules, set(changed_tables))
+        try:
+            rules = await _get_rules(session, workspace_id, rule_ids)
 
-        tournament = None
-        if tournament_id:
-            tournament = await session.get(models.Tournament, tournament_id)
-        evaluation_slice = EvaluationSlice(tournament_id=tournament_id, match_id=match_id)
-        has_slice = tournament_id is not None or match_id is not None
+            if changed_tables:
+                rules = _filter_by_depends_on(rules, set(changed_tables))
 
-        total_created = 0
-        total_removed = 0
-        normalizer: DivisionGridNormalizer | None = None
+            tournament = None
+            if tournament_id:
+                tournament = await self.tournaments_repo.get(session, tournament_id)
+            evaluation_slice = EvaluationSlice(tournament_id=tournament_id, match_id=match_id)
+            has_slice = tournament_id is not None or match_id is not None
 
-        for rule in rules:
-            if not rule.enabled or not rule.condition_tree:
-                # Disabled or empty rule — remove all existing results
-                diff = await diff_and_apply(
-                    session,
-                    rule,
-                    set(),
-                    run_id,
-                    evaluation_slice=evaluation_slice if has_slice else None,
-                )
-                total_removed += len(diff.to_delete)
-                if diff.to_delete:
-                    logger.info(f"Rule '{rule.slug}' disabled/empty: removed {len(diff.to_delete)} results")
-                continue
+            total_created = 0
+            total_removed = 0
+            normalizer: DivisionGridNormalizer | None = None
 
-            if rule.min_tournament_id and tournament and tournament.id < rule.min_tournament_id:
-                diff = await diff_and_apply(
-                    session,
-                    rule,
-                    set(),
-                    run_id,
-                    evaluation_slice=evaluation_slice if has_slice else None,
-                )
-                total_removed += len(diff.to_delete)
-                continue
-
-            rule_needs_normalized_divisions = tournament is None and _rule_requires_normalized_divisions(
-                rule.condition_tree
-            )
-            if rule_needs_normalized_divisions and normalizer is None:
-                try:
-                    normalizer = await build_workspace_division_grid_normalizer(
-                        session,
-                        workspace_id,
-                    )
-                except DivisionGridNormalizationError as exc:
-                    raise errors.ApiHTTPException(
-                        status_code=409,
-                        detail=[
-                            errors.ApiExc(
-                                code="division_grid_mapping_required",
-                                msg=str(exc),
-                            )
-                        ],
-                    ) from exc
-
-            try:
-                async with session.begin_nested():
-                    grid = await _resolve_grid(session, workspace_id, tournament)
-                    context = EvalContext(
-                        workspace_id=workspace_id,
-                        tournament=tournament,
-                        grid=grid,
-                        normalizer=normalizer if rule_needs_normalized_divisions else None,
-                    )
-
-                    logger.info(f"Evaluating rule '{rule.slug}' (id={rule.id})")
-
-                    results = await evaluate(session, rule.condition_tree, context)
+            for rule in rules:
+                if not rule.enabled or not rule.condition_tree:
+                    # Disabled or empty rule — remove all existing results
                     diff = await diff_and_apply(
                         session,
                         rule,
-                        results,
+                        set(),
                         run_id,
                         evaluation_slice=evaluation_slice if has_slice else None,
                     )
-                    total_created += len(diff.to_insert)
                     total_removed += len(diff.to_delete)
+                    if diff.to_delete:
+                        logger.info(f"Rule '{rule.slug}' disabled/empty: removed {len(diff.to_delete)} results")
+                    continue
 
-                    logger.info(f"Rule '{rule.slug}': +{len(diff.to_insert)} -{len(diff.to_delete)}")
-            except Exception as exc:
-                if _is_connection_lost(exc):
-                    # The session (or its connection) is dead: Postgres restarted,
-                    # the pooler dropped us, or the outer transaction is stuck in a
-                    # pending rollback. Every remaining rule would fail the same
-                    # way, each one logging its own Sentry event — that is how a
-                    # single dead connection turned into thousands of duplicate
-                    # InterfaceError/ProgrammingError events. Abort the run and let
-                    # the message go to the DLQ instead.
-                    logger.error(
-                        f"Aborting evaluation run {run_id}: lost the database connection "
-                        f"while evaluating rule '{rule.slug}'"
+                if rule.min_tournament_id and tournament and tournament.id < rule.min_tournament_id:
+                    diff = await diff_and_apply(
+                        session,
+                        rule,
+                        set(),
+                        run_id,
+                        evaluation_slice=evaluation_slice if has_slice else None,
                     )
-                    raise
-                logger.exception(f"Failed to evaluate rule '{rule.slug}'")
-                continue
+                    total_removed += len(diff.to_delete)
+                    continue
 
-        run.rules_evaluated = len(rules)
-        run.results_created = total_created
-        run.results_removed = total_removed
-        run.status = EvaluationRunStatus.done
-        run.finished_at = datetime.now(UTC)
+                rule_needs_normalized_divisions = tournament is None and _rule_requires_normalized_divisions(
+                    rule.condition_tree
+                )
+                if rule_needs_normalized_divisions and normalizer is None:
+                    try:
+                        normalizer = await build_workspace_division_grid_normalizer(
+                            session,
+                            workspace_id,
+                        )
+                    except DivisionGridNormalizationError as exc:
+                        raise errors.ApiHTTPException(
+                            status_code=409,
+                            detail=[
+                                errors.ApiExc(
+                                    code="division_grid_mapping_required",
+                                    msg=str(exc),
+                                )
+                            ],
+                        ) from exc
 
-        await session.commit()
+                try:
+                    async with session.begin_nested():
+                        grid = await _resolve_grid(session, workspace_id, tournament)
+                        context = EvalContext(
+                            workspace_id=workspace_id,
+                            tournament=tournament,
+                            grid=grid,
+                            normalizer=normalizer if rule_needs_normalized_divisions else None,
+                        )
 
-    except Exception as exc:
-        await _mark_run_failed(session, run, exc)
-        logger.exception(f"Evaluation run {run_id} failed")
-        raise
+                        logger.info(f"Evaluating rule '{rule.slug}' (id={rule.id})")
 
-    logger.info(
-        f"Evaluation run {run_id} done: {run.rules_evaluated} rules, +{run.results_created} -{run.results_removed}"
-    )
-    return run
+                        results = await evaluate(session, rule.condition_tree, context)
+                        diff = await diff_and_apply(
+                            session,
+                            rule,
+                            results,
+                            run_id,
+                            evaluation_slice=evaluation_slice if has_slice else None,
+                        )
+                        total_created += len(diff.to_insert)
+                        total_removed += len(diff.to_delete)
+
+                        logger.info(f"Rule '{rule.slug}': +{len(diff.to_insert)} -{len(diff.to_delete)}")
+                except Exception as exc:
+                    if _is_connection_lost(exc):
+                        # The session (or its connection) is dead: Postgres restarted,
+                        # the pooler dropped us, or the outer transaction is stuck in a
+                        # pending rollback. Every remaining rule would fail the same
+                        # way, each one logging its own Sentry event — that is how a
+                        # single dead connection turned into thousands of duplicate
+                        # InterfaceError/ProgrammingError events. Abort the run and let
+                        # the message go to the DLQ instead.
+                        logger.error(
+                            f"Aborting evaluation run {run_id}: lost the database connection "
+                            f"while evaluating rule '{rule.slug}'"
+                        )
+                        raise
+                    logger.exception(f"Failed to evaluate rule '{rule.slug}'")
+                    continue
+
+            run.rules_evaluated = len(rules)
+            run.results_created = total_created
+            run.results_removed = total_removed
+            run.status = EvaluationRunStatus.done
+            run.finished_at = datetime.now(UTC)
+
+            await session.commit()
+
+        except Exception as exc:
+            await _mark_run_failed(session, run, exc)
+            logger.exception(f"Evaluation run {run_id} failed")
+            raise
+
+        logger.info(
+            f"Evaluation run {run_id} done: {run.rules_evaluated} rules, "
+            f"+{run.results_created} -{run.results_removed}"
+        )
+        return run
+
+
+achievement_evaluation_runner_service = AchievementEvaluationRunnerService()
+run_evaluation = achievement_evaluation_runner_service.run_evaluation
 
 
 def _is_connection_lost(exc: BaseException) -> bool:

@@ -136,6 +136,28 @@ class BaseRepository[ModelType: Base]:
     ) -> Sequence[ModelType]:
         return await self.bulk_get(session, ids, options=options)
 
+    async def get_many_by(
+        self,
+        session: AsyncSession,
+        field: Any,
+        values: Sequence[Any],
+        *,
+        options: Sequence[_AbstractLoad] | None = None,
+    ) -> dict[Any, ModelType]:
+        """Batch existence lookup keyed by an arbitrary column's value.
+
+        One query instead of a get-then-create/update probe per item — the
+        "does this already exist" half of every external-catalog sync
+        (OverFast heroes/maps/gamemodes, ...): ``field`` is the mapped column
+        to match on (``models.Hero.slug``, ``models.Map.name``, ...),
+        deduplicated internally since a caller's list commonly isn't.
+        """
+        if not values:
+            return {}
+        query = self._apply_options(self.select().where(field.in_(set(values))), options)
+        result = await session.execute(query)
+        return {getattr(row, field.key): row for row in result.unique().scalars().all()}
+
     async def count(
         self,
         session: AsyncSession,

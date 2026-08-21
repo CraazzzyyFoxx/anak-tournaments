@@ -7,6 +7,7 @@ from .balance import (
     WorkspaceBalancerConfigRepository,
 )
 from .base import BaseRepository
+from .baselines import StatBaselineRepository
 from .catalog import CatalogAliasMissRepository, GamemodeRepository, HeroRepository, MapRepository
 from .draft import (
     DraftAuditEventRepository,
@@ -26,6 +27,11 @@ from .identity import (
     UserPermissionDenyRepository,
     UserRepository,
     UserRoleRepository,
+)
+from .match_logs import (
+    MatchEventRepository,
+    MatchKillFeedRepository,
+    MatchStatisticsRepository,
 )
 from .preferences import FavoritePlayerRepository
 from .registration import (
@@ -56,10 +62,12 @@ from .tournament import (
     EncounterRepository,
     MatchRepository,
     PlayerRepository,
+    StageItemInputRepository,
     StageItemRepository,
     StageRepository,
     StandingRepository,
     TeamRepository,
+    TournamentGroupRepository,
     TournamentLinkRepository,
     TournamentRepository,
 )
@@ -101,7 +109,10 @@ __all__ = (
     "HeroRepository",
     "LogProcessingRepository",
     "MapRepository",
+    "MatchEventRepository",
+    "MatchKillFeedRepository",
     "MatchRepository",
+    "MatchStatisticsRepository",
     "OAuthConnectionRepository",
     "PermissionRepository",
     "PlayerRepository",
@@ -113,12 +124,15 @@ __all__ = (
     "SettingsRepository",
     "SocialAccountRepository",
     "SocialAccountVisibilityRepository",
+    "StageItemInputRepository",
     "StageItemRepository",
     "StageRepository",
     "StandingRepository",
+    "StatBaselineRepository",
     "StreamRosterRow",
     "StreamTargetRepository",
     "TeamRepository",
+    "TournamentGroupRepository",
     "TournamentLinkRepository",
     "TournamentPollTarget",
     "TournamentRepository",

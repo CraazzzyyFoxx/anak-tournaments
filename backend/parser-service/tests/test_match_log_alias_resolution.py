@@ -34,6 +34,8 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 
 flows = importlib.import_module("src.services.match_logs.flows")
 map_flows = importlib.import_module("src.services.map.flows")
+map_service_module = importlib.import_module("src.services.map.service")
+map_service = map_service_module.map_service
 shared_enums = importlib.import_module("shared.core.enums")
 errors = flows.errors
 
@@ -103,8 +105,8 @@ class MapAliasResolutionTests(IsolatedAsyncioTestCase):
         record_misses = AsyncMock()
 
         with (
-            patch.object(map_flows.service, "get_by_name_or_alias_and_gamemode", AsyncMock(return_value=resolved)),
-            patch.object(map_flows.catalog_aliases, "record_misses", record_misses),
+            patch.object(map_service, "get_by_name_or_alias_and_gamemode", AsyncMock(return_value=resolved)),
+            patch.object(map_service_module.catalog_aliases, "record_misses", record_misses),
         ):
             found = await map_flows.get_by_name_or_alias_and_gamemode(Mock(), "Илиос", "Контроль", log_record_id=11)
 
@@ -118,8 +120,8 @@ class MapAliasResolutionTests(IsolatedAsyncioTestCase):
             recorded.append((entity_type, sorted(names), log_record_id))
 
         with (
-            patch.object(map_flows.service, "get_by_name_or_alias_and_gamemode", AsyncMock(return_value=None)),
-            patch.object(map_flows.catalog_aliases, "record_misses", fake_record),
+            patch.object(map_service, "get_by_name_or_alias_and_gamemode", AsyncMock(return_value=None)),
+            patch.object(map_service_module.catalog_aliases, "record_misses", fake_record),
             self.assertRaises(errors.ApiHTTPException),
         ):
             await map_flows.get_by_name_or_alias_and_gamemode(Mock(), "Хогвартс", "Контроль", log_record_id=11)
