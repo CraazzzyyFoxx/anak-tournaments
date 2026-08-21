@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from src.schemas import BaseRead
+from shared.schemas import catalog
 
 __all__ = (
     "OverfastGamemode",
@@ -16,9 +16,5 @@ class OverfastGamemode(BaseModel):
     screenshot: str
 
 
-class GamemodeRead(BaseRead):
-    slug: str
-    name: str
-    image_path: str
-    description: str | None
+class GamemodeRead(catalog.GamemodeRead):
     aliases: list[str] = []
