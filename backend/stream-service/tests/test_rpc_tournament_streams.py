@@ -150,7 +150,7 @@ class HiddenTournamentGateTests(IsolatedAsyncioTestCase):
         redis = _FakeRedis({"twitch:caster": _snapshot("caster", source="official")})
         links = AsyncMock(return_value=[_link("https://twitch.tv/caster")])
 
-        with patch.object(reads.targets, "official_stream_links", links):
+        with patch.object(reads._reader._targets, "official_stream_links", links):
             with self.assertRaises(HTTPException) as ctx:
                 await reads.tournament_streams(session, redis, {"tournament_id": "1"})
 
@@ -167,7 +167,7 @@ class HiddenTournamentGateTests(IsolatedAsyncioTestCase):
         session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False))
         redis = _FakeRedis({})
 
-        with patch.object(reads.targets, "official_stream_links", AsyncMock(return_value=[])):
+        with patch.object(reads._reader._targets, "official_stream_links", AsyncMock(return_value=[])):
             result = await reads.tournament_streams(session, redis, {"tournament_id": "1"})
 
         self.assertEqual(result.official, [])
@@ -202,11 +202,8 @@ class ParticipantsTests(IsolatedAsyncioTestCase):
         self.redis = _FakeRedis(self.snapshots)
 
     async def _run(self) -> Any:
-        with patch.object(
-            reads.targets,
-            "official_stream_links",
-            AsyncMock(return_value=[_link("https://twitch.tv/caster")]),
-        ):
+        with patch.object(reads._reader._targets, "official_stream_links",
+        AsyncMock(return_value=[_link("https://twitch.tv/caster")]),):
             return await reads.tournament_streams(self.session, self.redis, {"tournament_id": "1"})
 
     async def test_participants_are_the_live_player_channels_only(self) -> None:
@@ -249,7 +246,7 @@ class OfficialLinkLivenessTests(IsolatedAsyncioTestCase):
 
     async def _official(self, links: list[TournamentLink], snapshots: dict[str, dict[str, Any]]) -> Any:
         session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False))
-        with patch.object(reads.targets, "official_stream_links", AsyncMock(return_value=links)):
+        with patch.object(reads._reader._targets, "official_stream_links", AsyncMock(return_value=links)):
             result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
         return result.official
 
@@ -309,11 +306,8 @@ class NonTwitchPlatformStampTests(IsolatedAsyncioTestCase):
 
     async def test_unknown_host_is_other_and_unknown(self) -> None:
         session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False))
-        with patch.object(
-            reads.targets,
-            "official_stream_links",
-            AsyncMock(return_value=[_link("https://kick.com/aqt", label="Kick")]),
-        ):
+        with patch.object(reads._reader._targets, "official_stream_links",
+        AsyncMock(return_value=[_link("https://kick.com/aqt", label="Kick")]),):
             result = await reads.tournament_streams(session, _FakeRedis({}), {"tournament_id": "1"})
 
         self.assertEqual(result.official[0].platform, "other")
@@ -322,11 +316,8 @@ class NonTwitchPlatformStampTests(IsolatedAsyncioTestCase):
 
     async def test_unlabelled_link_falls_back_to_the_host(self) -> None:
         session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False))
-        with patch.object(
-            reads.targets,
-            "official_stream_links",
-            AsyncMock(return_value=[_link("https://www.youtube.com/@aqt")]),
-        ):
+        with patch.object(reads._reader._targets, "official_stream_links",
+        AsyncMock(return_value=[_link("https://www.youtube.com/@aqt")]),):
             result = await reads.tournament_streams(session, _FakeRedis({}), {"tournament_id": "1"})
 
         self.assertEqual(result.official[0].channel, "youtube.com")
@@ -352,7 +343,7 @@ class ParticipantTeamTests(IsolatedAsyncioTestCase):
             for channel, player_id in channels.items()
         }
         session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False), rows)
-        with patch.object(reads.targets, "official_stream_links", AsyncMock(return_value=[])):
+        with patch.object(reads._reader._targets, "official_stream_links", AsyncMock(return_value=[])):
             result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
         return result, session
 
@@ -414,11 +405,8 @@ class ParticipantTeamTests(IsolatedAsyncioTestCase):
         )
         snapshots = {"twitch:caster": _snapshot("caster", source="official", player_id=11)}
 
-        with patch.object(
-            reads.targets,
-            "official_stream_links",
-            AsyncMock(return_value=[_link("https://twitch.tv/caster")]),
-        ):
+        with patch.object(reads._reader._targets, "official_stream_links",
+        AsyncMock(return_value=[_link("https://twitch.tv/caster")]),):
             result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
 
         self.assertIsNone(result.official[0].player)
@@ -463,7 +451,7 @@ class StreamVetoDisplayGateTests(IsolatedAsyncioTestCase):
             for channel, (player_id, source) in channels.items()
         }
         session = _FakeSession(Tournament(id=1, workspace_id=5, is_hidden=False), rows)
-        with patch.object(reads.targets, "official_stream_links", AsyncMock(return_value=links or [])):
+        with patch.object(reads._reader._targets, "official_stream_links", AsyncMock(return_value=links or [])):
             result = await reads.tournament_streams(session, _FakeRedis(snapshots), {"tournament_id": "1"})
         return result, session
 

@@ -17,6 +17,17 @@ class TournamentRepository(BaseRepository[models.Tournament]):
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Tournament | None:
         return await self.get_by(session, name=name)
 
+    async def get_workspace_id(self, session: AsyncSession, tournament_id: int) -> int | None:
+        """The owning workspace, without loading the rest of the row.
+
+        A cheap scalar lookup for the common "does this tournament belong to
+        that workspace" check (e.g. the stream-svc repoll ownership guard),
+        which never needs anything but this one column.
+        """
+        return await session.scalar(
+            sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+        )
+
     async def list_by_workspace(
         self,
         session: AsyncSession,
@@ -153,3 +164,61 @@ class StandingRepository(BaseRepository[models.Standing]):
             .order_by(models.Standing.position.asc(), models.Standing.id.asc())
         )
         return result.scalars().all()
+
+
+class TournamentLinkRepository(BaseRepository[models.TournamentLink]):
+    """``tournament.tournament_link`` — typed external links (Discord, stream, VOD, ...).
+
+    Read-heavy by every current caller (app-service renders them, stream-svc polls
+    the ``kind='stream'`` ones), so both methods below are read paths; nothing here
+    writes.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.TournamentLink)
+
+    async def list_active_by_kind(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        kind: str,
+    ) -> Sequence[models.TournamentLink]:
+        """Active links of ``kind``, in organizer order."""
+        result = await session.execute(
+            sa.select(models.TournamentLink)
+            .where(
+                models.TournamentLink.tournament_id == tournament_id,
+                models.TournamentLink.kind == kind,
+                models.TournamentLink.is_active.is_(True),
+            )
+            .order_by(models.TournamentLink.sort_order.asc(), models.TournamentLink.id.asc())
+        )
+        return result.scalars().all()
+
+    async def list_active_by_kind_bulk(
+        self,
+        session: AsyncSession,
+        tournament_ids: Sequence[int],
+        kind: str,
+    ) -> dict[int, list[models.TournamentLink]]:
+        """``list_active_by_kind`` for every id in ``tournament_ids`` in ONE query.
+
+        A caller that needs this for many tournaments in the same pass (the
+        stream-svc poll tick, one per active tournament) would otherwise pay one
+        round-trip per tournament for the exact same statement shape.
+        """
+        by_tournament: dict[int, list[models.TournamentLink]] = {tid: [] for tid in tournament_ids}
+        if not tournament_ids:
+            return by_tournament
+        result = await session.execute(
+            sa.select(models.TournamentLink)
+            .where(
+                models.TournamentLink.tournament_id.in_(tournament_ids),
+                models.TournamentLink.kind == kind,
+                models.TournamentLink.is_active.is_(True),
+            )
+            .order_by(models.TournamentLink.sort_order.asc(), models.TournamentLink.id.asc())
+        )
+        for link in result.scalars().all():
+            by_tournament.setdefault(link.tournament_id, []).append(link)
+        return by_tournament

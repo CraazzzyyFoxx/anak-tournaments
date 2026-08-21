@@ -1,5 +1,20 @@
+from .balance import (
+    BalancerBalanceRepository,
+    BalancerBalanceVariantRepository,
+    BalancerTeamRepository,
+    BalancerTeamSlotRepository,
+    BalancerTournamentConfigRepository,
+    WorkspaceBalancerConfigRepository,
+)
 from .base import BaseRepository
 from .catalog import CatalogAliasMissRepository, GamemodeRepository, HeroRepository, MapRepository
+from .draft import (
+    DraftAuditEventRepository,
+    DraftPickRepository,
+    DraftPlayerRepository,
+    DraftSessionRepository,
+    DraftTeamRepository,
+)
 from .identity import (
     ApiKeyRepository,
     AuthUserRepository,
@@ -15,11 +30,19 @@ from .identity import (
 from .preferences import FavoritePlayerRepository
 from .registration import (
     BalancerRegistrationRepository,
+    BalancerRegistrationTeamRepository,
     GoogleSheetFeedRepository,
     RegistrationFormRepository,
     RegistrationStatusRepository,
 )
 from .settings import SettingsRepository
+from .stream import (
+    SelfDeclaredChannelRow,
+    StreamRosterRow,
+    StreamTargetRepository,
+    TournamentPollTarget,
+    VerifiedChannelRow,
+)
 from .support import (
     AchievementOverrideRepository,
     AchievementRuleRepository,
@@ -37,6 +60,7 @@ from .tournament import (
     StageRepository,
     StandingRepository,
     TeamRepository,
+    TournamentLinkRepository,
     TournamentRepository,
 )
 from .workspace import (
@@ -53,12 +77,23 @@ __all__ = (
     "AnalyticsStateRepository",
     "ApiKeyRepository",
     "AuthUserRepository",
+    "BalancerBalanceRepository",
+    "BalancerBalanceVariantRepository",
     "BalancerRegistrationRepository",
+    "BalancerRegistrationTeamRepository",
+    "BalancerTeamRepository",
+    "BalancerTeamSlotRepository",
+    "BalancerTournamentConfigRepository",
     "BaseRepository",
     "CatalogAliasMissRepository",
     "ChallongeMappingRepository",
     "DiscordChannelRepository",
     "DivisionGridRepository",
+    "DraftAuditEventRepository",
+    "DraftPickRepository",
+    "DraftPlayerRepository",
+    "DraftSessionRepository",
+    "DraftTeamRepository",
     "EncounterRepository",
     "FavoritePlayerRepository",
     "GamemodeRepository",
@@ -74,18 +109,25 @@ __all__ = (
     "RegistrationFormRepository",
     "RegistrationStatusRepository",
     "RoleRepository",
+    "SelfDeclaredChannelRow",
     "SettingsRepository",
     "SocialAccountRepository",
     "SocialAccountVisibilityRepository",
     "StageItemRepository",
     "StageRepository",
     "StandingRepository",
+    "StreamRosterRow",
+    "StreamTargetRepository",
     "TeamRepository",
+    "TournamentLinkRepository",
+    "TournamentPollTarget",
     "TournamentRepository",
     "UserMergeAuditRepository",
     "UserPermissionDenyRepository",
     "UserRepository",
     "UserRoleRepository",
+    "VerifiedChannelRow",
+    "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
     "WorkspaceRepository",
     "get_or_create_workspace_member",

@@ -19,7 +19,6 @@ import os
 from dataclasses import dataclass
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import patch
 
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("POSTGRES_USER", "postgres")
@@ -29,13 +28,22 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.schemas.settings import StreamCollectionConfig  # noqa: E402
-from src.services import helix, poller, state, targets  # noqa: E402
+from src.services import helix, poller  # noqa: E402
+from src.services.state import StreamStateStore  # noqa: E402
+from src.services.targets import ParticipantChannel  # noqa: E402
 
 
 @dataclass(frozen=True)
 class _Link:
     url: str
     label: str | None = None
+
+
+@dataclass(frozen=True)
+class _Tournament:
+    tournament_id: int
+    workspace_id: int
+    is_hidden: bool
 
 
 class _FakePipeline:
@@ -111,19 +119,38 @@ def _snapshot(login: str, user_id: str | None = None) -> helix.StreamSnapshot:
 
 
 class _Fetcher:
-    """Stands in for ``helix.fetch_live_streams``; records how it was called."""
+    """Stands in for ``HelixClient.fetch_live_streams``; records how it was called."""
 
     def __init__(self, result: helix.HelixBatchResult | None = None, error: Exception | None = None) -> None:
         self._result = result
         self._error = error
         self.calls: list[dict[str, Any]] = []
 
-    async def __call__(self, redis: Any, **kwargs: Any) -> helix.HelixBatchResult:
+    async def __call__(self, **kwargs: Any) -> helix.HelixBatchResult:
         self.calls.append(kwargs)
         if self._error is not None:
             raise self._error
         assert self._result is not None
         return self._result
+
+
+class _FakeTargetsService:
+    """Stands in for ``StreamTargetsService``; wires the poll tick to plain
+    in-memory data instead of the shared repositories."""
+
+    def __init__(self) -> None:
+        self.tournaments: list[_Tournament] = []
+        self.participants: dict[int, list[ParticipantChannel]] = {}
+        self.links: dict[int, list[_Link]] = {}
+
+    async def active_tournaments(self, session: Any) -> list[_Tournament]:
+        return self.tournaments
+
+    async def participant_channels_bulk(self, session: Any, tournament_ids: list[int]) -> dict[int, list[Any]]:
+        return {tid: self.participants.get(tid, []) for tid in tournament_ids}
+
+    async def official_stream_links_bulk(self, session: Any, tournament_ids: list[int]) -> dict[int, list[Any]]:
+        return {tid: self.links.get(tid, []) for tid in tournament_ids}
 
 
 class _TickCase(IsolatedAsyncioTestCase):
@@ -132,36 +159,16 @@ class _TickCase(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.redis = _FakeRedis()
         self.cfg = StreamCollectionConfig(enabled=True, interval_seconds=60, batch_size=100)
-        self.tournaments: list[targets.ActiveTournament] = []
-        self.participants: dict[int, list[targets.ParticipantChannel]] = {}
-        self.links: dict[int, list[_Link]] = {}
-
-        async def _active(session: Any) -> list[targets.ActiveTournament]:
-            return self.tournaments
-
-        async def _participants(session: Any, tournament_id: int) -> list[targets.ParticipantChannel]:
-            return self.participants.get(tournament_id, [])
-
-        async def _links(session: Any, tournament_id: int) -> list[Any]:
-            return self.links.get(tournament_id, [])
-
-        for name, stub in (
-            ("active_tournament_ids", _active),
-            ("participant_channels", _participants),
-            ("official_stream_links", _links),
-        ):
-            patcher = patch.object(poller.targets, name, stub)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        self.targets = _FakeTargetsService()
 
     def _tournament(self, tournament_id: int, *, hidden: bool = False) -> None:
-        self.tournaments.append(targets.ActiveTournament(tournament_id=tournament_id, workspace_id=1, is_hidden=hidden))
+        self.targets.tournaments.append(_Tournament(tournament_id=tournament_id, workspace_id=1, is_hidden=hidden))
 
     def _participant(
         self, tournament_id: int, login: str, *, player_id: int = 5, source: str = "self_declared"
     ) -> None:
-        self.participants.setdefault(tournament_id, []).append(
-            targets.ParticipantChannel(
+        self.targets.participants.setdefault(tournament_id, []).append(
+            ParticipantChannel(
                 player_id=player_id,
                 login=login,
                 provider_user_id=f"id-{login}" if source == "verified" else None,
@@ -171,8 +178,12 @@ class _TickCase(IsolatedAsyncioTestCase):
 
     def _live(self, tournament_id: int) -> dict[str, dict[str, Any]]:
         return {
-            field: json.loads(body) for field, body in self.redis.hashes.get(state.live_key(tournament_id), {}).items()
+            field: json.loads(body)
+            for field, body in self.redis.hashes.get(StreamStateStore.live_key(tournament_id), {}).items()
         }
+
+    async def _run(self, fetch: _Fetcher, *, cfg: StreamCollectionConfig | None = None) -> int:
+        return await poller.run_poll_tick(object(), self.redis, cfg or self.cfg, fetch=fetch, targets=self.targets)
 
 
 class GateTests(_TickCase):
@@ -181,46 +192,38 @@ class GateTests(_TickCase):
         self._participant(7, "caster")
         fetcher = _Fetcher(helix.HelixBatchResult(snapshots=[]))
 
-        processed = await poller.run_poll_tick(
-            object(), self.redis, StreamCollectionConfig(enabled=False), fetch=fetcher
-        )
+        processed = await self._run(fetcher, cfg=StreamCollectionConfig(enabled=False))
 
         self.assertEqual(processed, 0)
         self.assertEqual(fetcher.calls, [])
         # Not even the cursor moves: a disabled poller has not "run".
-        self.assertNotIn(state.LAST_RUN_KEY, self.redis.strings)
+        self.assertNotIn("stream:poll:last_run", self.redis.strings)
 
     async def test_successful_tick_records_the_cursor(self) -> None:
         self._tournament(7)
         self._participant(7, "caster")
 
-        await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(_batch(["caster"], logins=["caster"]))
-        )
+        await self._run(_Fetcher(_batch(["caster"], logins=["caster"])))
 
-        self.assertIn(state.LAST_RUN_KEY, self.redis.strings)
+        self.assertIn("stream:poll:last_run", self.redis.strings)
 
     async def test_helix_outage_still_records_the_cursor(self) -> None:
         """Otherwise a Twitch outage turns the 30s heartbeat into a retry storm."""
         self._tournament(7)
         self._participant(7, "caster")
 
-        processed = await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(error=helix.HelixUnavailable("boom"))
-        )
+        processed = await self._run(_Fetcher(error=helix.HelixUnavailable("boom")))
 
         self.assertEqual(processed, 0)
-        self.assertIn(state.LAST_RUN_KEY, self.redis.strings)
+        self.assertIn("stream:poll:last_run", self.redis.strings)
         self.assertEqual(self.redis.published, [])
 
     async def test_missing_credentials_write_nothing(self) -> None:
         self._tournament(7)
         self._participant(7, "caster")
-        self.redis.hashes[state.live_key(7)] = {"twitch:caster": json.dumps({"channel": "caster"})}
+        self.redis.hashes[StreamStateStore.live_key(7)] = {"twitch:caster": json.dumps({"channel": "caster"})}
 
-        processed = await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(error=helix.HelixNotConfigured("no creds"))
-        )
+        processed = await self._run(_Fetcher(error=helix.HelixNotConfigured("no creds")))
 
         self.assertEqual(processed, 0)
         # An unanswered request is not "everybody went offline".
@@ -233,12 +236,7 @@ class PublishTests(_TickCase):
         self._participant(7, "castera")
         self._participant(7, "casterb")
 
-        await poller.run_poll_tick(
-            object(),
-            self.redis,
-            self.cfg,
-            fetch=_Fetcher(_batch(["castera", "casterb"], logins=["castera", "casterb"])),
-        )
+        await self._run(_Fetcher(_batch(["castera", "casterb"], logins=["castera", "casterb"])))
 
         self.assertEqual(len(self.redis.published), 1)
         channel, frame = self.redis.published[0]
@@ -251,23 +249,21 @@ class PublishTests(_TickCase):
     async def test_unchanged_live_set_does_not_publish(self) -> None:
         self._tournament(7)
         self._participant(7, "caster")
-        self.redis.hashes[state.live_key(7)] = {"twitch:caster": json.dumps({"channel": "caster"})}
+        self.redis.hashes[StreamStateStore.live_key(7)] = {"twitch:caster": json.dumps({"channel": "caster"})}
 
-        await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(_batch(["caster"], logins=["caster"]))
-        )
+        await self._run(_Fetcher(_batch(["caster"], logins=["caster"])))
 
         self.assertEqual(self.redis.published, [])
         # Still rewritten: viewer count, title and the TTL all go stale otherwise.
-        self.assertEqual(self.redis.ttls[state.live_key(7)], 3 * self.cfg.interval_seconds)
+        self.assertEqual(self.redis.ttls[StreamStateStore.live_key(7)], 3 * self.cfg.interval_seconds)
         self.assertEqual(self._live(7)["twitch:caster"]["viewer_count"], 12)
 
     async def test_channel_going_offline_publishes_and_clears(self) -> None:
         self._tournament(7)
         self._participant(7, "caster")
-        self.redis.hashes[state.live_key(7)] = {"twitch:caster": json.dumps({"channel": "caster"})}
+        self.redis.hashes[StreamStateStore.live_key(7)] = {"twitch:caster": json.dumps({"channel": "caster"})}
 
-        await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=_Fetcher(_batch([], logins=["caster"])))
+        await self._run(_Fetcher(_batch([], logins=["caster"])))
 
         self.assertEqual(len(self.redis.published), 1)
         self.assertEqual(self.redis.published[0][1]["event"]["data"]["live_count"], 0)
@@ -277,9 +273,7 @@ class PublishTests(_TickCase):
         self._tournament(7, hidden=True)
         self._participant(7, "caster")
 
-        await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(_batch(["caster"], logins=["caster"]))
-        )
+        await self._run(_Fetcher(_batch(["caster"], logins=["caster"])))
 
         self.assertEqual(list(self._live(7)), ["twitch:caster"])
         self.assertEqual(self.redis.published, [])
@@ -293,7 +287,7 @@ class FanOutTests(_TickCase):
         self._participant(8, "caster")
 
         fetcher = _Fetcher(_batch(["caster"], logins=["caster"]))
-        processed = await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=fetcher)
+        processed = await self._run(fetcher)
 
         self.assertEqual(processed, 2)
         self.assertEqual(fetcher.calls[0]["logins"], ["caster"])
@@ -306,17 +300,17 @@ class FanOutTests(_TickCase):
         self._participant(7, "caster", source="verified")
 
         fetcher = _Fetcher(_batch(["caster"], user_ids=["id-caster"]))
-        await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=fetcher)
+        await self._run(fetcher)
 
         self.assertEqual(fetcher.calls[0]["user_ids"], ["id-caster"])
         self.assertEqual(fetcher.calls[0]["logins"], [])
 
     async def test_official_link_is_polled_and_attributed_to_the_official_source(self) -> None:
         self._tournament(7)
-        self.links[7] = [_Link(url="https://twitch.tv/OWTMain"), _Link(url="https://youtube.com/@owt")]
+        self.targets.links[7] = [_Link(url="https://twitch.tv/OWTMain"), _Link(url="https://youtube.com/@owt")]
 
         fetcher = _Fetcher(_batch(["owtmain"], logins=["owtmain"]))
-        await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=fetcher)
+        await self._run(fetcher)
 
         # The YouTube link has no live detection and must not be asked about.
         self.assertEqual(fetcher.calls[0]["logins"], ["owtmain"])
@@ -328,9 +322,7 @@ class FanOutTests(_TickCase):
         self._tournament(7)
         self._participant(7, "caster", player_id=99, source="verified")
 
-        await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(_batch(["caster"], user_ids=["id-caster"]))
-        )
+        await self._run(_Fetcher(_batch(["caster"], user_ids=["id-caster"])))
 
         entry = self._live(7)["twitch:caster"]
         self.assertEqual(entry["player_id"], 99)
@@ -345,7 +337,7 @@ class RateLimitGateTests(_TickCase):
         self._tournament(8)
         self._participant(7, "castera")
         self._participant(8, "casterb")
-        self.redis.hashes[state.live_key(8)] = {"twitch:casterb": json.dumps({"channel": "casterb"})}
+        self.redis.hashes[StreamStateStore.live_key(8)] = {"twitch:casterb": json.dumps({"channel": "casterb"})}
 
         # The gate stopped after the batch covering tournament 7 only.
         result = helix.HelixBatchResult(
@@ -354,7 +346,7 @@ class RateLimitGateTests(_TickCase):
             polled_logins=frozenset({"castera"}),
             truncated=True,
         )
-        processed = await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=_Fetcher(result))
+        processed = await self._run(_Fetcher(result))
 
         self.assertEqual(processed, 1)
         self.assertEqual(list(self._live(7)), ["twitch:castera"])
@@ -373,7 +365,7 @@ class PollStatusTests(_TickCase):
     """
 
     async def _status(self) -> dict[str, Any]:
-        recorded = await state.read_poll_status(self.redis)
+        recorded = await StreamStateStore(self.redis).read_poll_status()
         assert recorded is not None, "the tick recorded no status at all"
         return recorded
 
@@ -382,9 +374,7 @@ class PollStatusTests(_TickCase):
         self._participant(7, "castera")
         self._participant(7, "casterb")
 
-        await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(_batch(["castera"], logins=["castera", "casterb"]))
-        )
+        await self._run(_Fetcher(_batch(["castera"], logins=["castera", "casterb"])))
 
         recorded = await self._status()
         self.assertEqual(recorded["status"], "ok")
@@ -400,9 +390,7 @@ class PollStatusTests(_TickCase):
         self._tournament(7)
         self._participant(7, "caster")
 
-        await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(error=helix.HelixUnauthorized("nope"))
-        )
+        await self._run(_Fetcher(error=helix.HelixUnauthorized("nope")))
 
         self.assertEqual((await self._status())["status"], "unauthorized")
 
@@ -410,14 +398,12 @@ class PollStatusTests(_TickCase):
         self._tournament(7)
         self._participant(7, "caster")
 
-        await poller.run_poll_tick(
-            object(), self.redis, self.cfg, fetch=_Fetcher(error=helix.HelixNotConfigured("no creds"))
-        )
+        await self._run(_Fetcher(error=helix.HelixNotConfigured("no creds")))
 
         self.assertEqual((await self._status())["status"], "not_configured")
 
     async def test_no_active_tournaments_is_empty_not_a_failure(self) -> None:
-        await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=_Fetcher(_batch([])))
+        await self._run(_Fetcher(_batch([])))
 
         recorded = await self._status()
         self.assertEqual(recorded["status"], "empty")
@@ -433,7 +419,7 @@ class PollStatusTests(_TickCase):
             truncated=True,
         )
 
-        await poller.run_poll_tick(object(), self.redis, self.cfg, fetch=_Fetcher(result))
+        await self._run(_Fetcher(result))
 
         recorded = await self._status()
         self.assertEqual(recorded["status"], "truncated")
@@ -445,11 +431,9 @@ class PollStatusTests(_TickCase):
         self._tournament(7)
         self._participant(7, "caster")
 
-        await poller.run_poll_tick(
-            object(), self.redis, StreamCollectionConfig(enabled=False), fetch=_Fetcher(_batch([]))
-        )
+        await self._run(_Fetcher(_batch([])), cfg=StreamCollectionConfig(enabled=False))
 
-        self.assertIsNone(await state.read_poll_status(self.redis))
+        self.assertIsNone(await StreamStateStore(self.redis).read_poll_status())
 
 
 def _batch(

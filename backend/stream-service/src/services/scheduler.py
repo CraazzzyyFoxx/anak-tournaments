@@ -31,7 +31,8 @@ from shared.services.distributed_lock import (
 from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.rpc._clients import realtime_redis
-from src.services import poller, state
+from src.services import poller
+from src.services.state import StreamStateStore
 
 SCHEDULER_TICK_SECONDS = 30
 LEADER_LOCK_KEY = "stream_poll:scheduler:leader"
@@ -61,7 +62,7 @@ async def run_stream_poll_tick(
             async with session_factory() as session:
                 cfg = await settings_provider.get_stream_collection_config(session)
 
-                last_run = await state.get_last_run(redis_client)
+                last_run = await StreamStateStore(redis_client).get_last_run()
                 if last_run is not None:
                     due_at = last_run + cfg.interval_seconds
                     if time.time() < due_at:

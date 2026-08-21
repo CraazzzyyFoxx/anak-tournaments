@@ -30,6 +30,12 @@ HTTP is injected as a callable (``request=``), exactly as that module injects
 ``check_subscription``, so batching, the repeated-parameter encoding, the
 401 -> refresh -> retry path and the rate-limit gate are all testable without a
 network or a live Twitch application.
+
+Wrapped in a class (``HelixClient``) rather than free functions threading
+``client_id``/``client_secret``/``helix_url``/``token_url``/``proxy`` through
+every call: those five values are fixed for the life of one poll tick, and
+binding them once at construction is what let the tick's fetcher shrink to
+``logins``/``user_ids``/``batch_size`` (see ``services/poller.py``).
 """
 
 from __future__ import annotations
@@ -42,7 +48,7 @@ from typing import Any, Final
 import httpx
 from redis.asyncio import Redis
 
-from src.services import state
+from src.services.state import TOKEN_KEY
 
 __all__ = (
     "HELIX_MAX_PARAMS_PER_REQUEST",
@@ -50,15 +56,13 @@ __all__ = (
     "THUMBNAIL_HEIGHT",
     "THUMBNAIL_WIDTH",
     "HelixBatchResult",
+    "HelixClient",
     "HelixError",
     "HelixNotConfigured",
     "HelixRateLimited",
     "HelixUnauthorized",
     "HelixUnavailable",
     "StreamSnapshot",
-    "fetch_live_streams",
-    "get_app_token",
-    "get_live_streams",
 )
 
 #: Hard Helix cap on how many ``user_login``/``user_id`` values one request takes.
@@ -172,20 +176,6 @@ class HelixBatchResult:
     truncated: bool = False
 
 
-@asynccontextmanager
-async def _requester(request: HelixRequest | None, proxy: str | None) -> AsyncIterator[HelixRequest]:
-    """Yield the injected callable, or one client shared by the whole batch loop.
-
-    One client per loop, not per request: egress goes through the SOCKS proxy and
-    a fresh connection per batch would pay the handshake ten times over.
-    """
-    if request is not None:
-        yield request
-        return
-    async with httpx.AsyncClient(proxy=proxy, timeout=_TIMEOUT) as client:
-        yield client.request
-
-
 def _ratelimit_remaining(response: httpx.Response) -> int | None:
     raw = response.headers.get("Ratelimit-Remaining")
     try:
@@ -253,192 +243,197 @@ def _chunks(params: Sequence[tuple[str, str]], size: int) -> Iterator[list[tuple
         yield list(params[start : start + size])
 
 
-async def get_app_token(
-    redis: Redis,
-    *,
-    client_id: str | None,
-    client_secret: str | None,
-    token_url: str,
-    proxy: str | None = None,
-    request: HelixRequest | None = None,
-) -> str:
-    """Cached app access token (``grant_type=client_credentials``).
+class HelixClient:
+    """Twitch Helix app-token client, bound to one set of credentials/endpoints.
 
-    Cached in Redis rather than in the process: every replica shares one token, so
-    a rolling restart does not mint a new one per pod. TTL is
-    ``expires_in - TOKEN_RENEWAL_MARGIN_SECONDS`` — the token itself is what
-    expires; the key just stops being offered slightly earlier.
+    ``request`` is the injection seam: pass a fake to exercise batching, the
+    repeated-parameter encoding, and the 401 -> refresh -> retry path without a
+    network or a live Twitch application.
     """
-    if not client_id or not client_secret:
-        raise HelixNotConfigured("twitch client id/secret are not configured")
 
-    cached = await redis.get(state.TOKEN_KEY)
-    if cached:
-        return str(cached)
+    def __init__(
+        self,
+        redis: Redis,
+        *,
+        client_id: str | None,
+        client_secret: str | None,
+        helix_url: str,
+        token_url: str,
+        proxy: str | None = None,
+        request: HelixRequest | None = None,
+    ) -> None:
+        self._redis = redis
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._helix_url = helix_url
+        self._token_url = token_url
+        self._proxy = proxy
+        self._request = request
 
-    async with _requester(request, proxy) as send:
-        try:
-            response = await send(
-                "POST",
-                token_url,
-                data={
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "grant_type": "client_credentials",
-                },
-            )
-        except httpx.HTTPError as exc:
-            raise HelixUnavailable(str(exc)) from exc
+    @asynccontextmanager
+    async def _requester(self) -> AsyncIterator[HelixRequest]:
+        """Yield the injected callable, or one client shared by the whole batch loop.
 
-    if response.status_code in (400, 401, 403):
-        # The token endpoint answers 400 for a bad client_secret, not 401. Both
-        # mean the same operator action, so both land on HelixUnauthorized rather
-        # than being retried forever as a transient outage.
-        raise HelixUnauthorized(f"token endpoint refused credentials (status {response.status_code})")
-    _raise_for_status(response)
+        One client per loop, not per request: egress goes through the SOCKS proxy
+        and a fresh connection per batch would pay the handshake ten times over.
+        """
+        if self._request is not None:
+            yield self._request
+            return
+        async with httpx.AsyncClient(proxy=self._proxy, timeout=_TIMEOUT) as client:
+            yield client.request
 
-    payload: dict[str, Any] = response.json()
-    token = str(payload.get("access_token") or "")
-    if not token:
-        raise HelixUnavailable("token endpoint returned no access_token")
+    async def get_app_token(self) -> str:
+        """Cached app access token (``grant_type=client_credentials``).
 
-    expires_in = _as_int(payload.get("expires_in")) or 0
-    ttl = max(expires_in - TOKEN_RENEWAL_MARGIN_SECONDS, TOKEN_RENEWAL_MARGIN_SECONDS)
-    await redis.set(state.TOKEN_KEY, token, ex=ttl)
-    return token
+        Cached in Redis rather than in the process: every replica shares one
+        token, so a rolling restart does not mint a new one per pod. TTL is
+        ``expires_in - TOKEN_RENEWAL_MARGIN_SECONDS`` — the token itself is what
+        expires; the key just stops being offered slightly earlier.
+        """
+        if not self._client_id or not self._client_secret:
+            raise HelixNotConfigured("twitch client id/secret are not configured")
 
+        cached = await self._redis.get(TOKEN_KEY)
+        if cached:
+            return str(cached)
 
-async def get_live_streams(
-    *,
-    logins: Sequence[str] = (),
-    user_ids: Sequence[str] = (),
-    token: str,
-    client_id: str,
-    helix_url: str,
-    proxy: str | None = None,
-    batch_size: int = HELIX_MAX_PARAMS_PER_REQUEST,
-    ratelimit_floor: int = RATELIMIT_FLOOR,
-    request: HelixRequest | None = None,
-) -> HelixBatchResult:
-    """Which of ``logins``/``user_ids`` are live, in batches of ``batch_size``.
-
-    Prefer ``user_ids`` where available: a Twitch login changes when the streamer
-    renames the channel, and a stale login silently reports offline forever
-    (Risks, "user_login for self-declared nicks").
-
-    Raises rather than returning partial garbage on 401/429/5xx. The one partial
-    outcome that IS returned is the rate-limit gate: ``truncated=True`` with the
-    identifiers that were actually polled.
-    """
-    size = max(1, min(int(batch_size), HELIX_MAX_PARAMS_PER_REQUEST))
-    wanted: list[tuple[str, str]] = [("user_id", str(v)) for v in user_ids if str(v).strip()]
-    wanted += [("user_login", str(v).strip().casefold()) for v in logins if str(v).strip()]
-    if not wanted:
-        return HelixBatchResult(snapshots=[])
-
-    headers = {"Authorization": f"Bearer {token}", "Client-Id": client_id}
-    url = f"{helix_url.rstrip('/')}/streams"
-
-    snapshots: list[StreamSnapshot] = []
-    polled_logins: set[str] = set()
-    polled_user_ids: set[str] = set()
-    remaining: int | None = None
-    truncated = False
-
-    async with _requester(request, proxy) as send:
-        for chunk in _chunks(wanted, size):
-            if remaining is not None and remaining < ratelimit_floor:
-                truncated = True
-                break
-            # A list of pairs, NOT a dict: httpx encodes repeated keys as
-            # `user_login=a&user_login=b`, which is the only form Helix reads.
-            # Also pin `first` — the endpoint defaults to 20 and would silently
-            # drop the tail of a 100-channel batch.
-            params: list[tuple[str, str]] = [*chunk, ("first", str(len(chunk)))]
+        async with self._requester() as send:
             try:
-                response = await send("GET", url, params=params, headers=headers)
+                response = await send(
+                    "POST",
+                    self._token_url,
+                    data={
+                        "client_id": self._client_id,
+                        "client_secret": self._client_secret,
+                        "grant_type": "client_credentials",
+                    },
+                )
             except httpx.HTTPError as exc:
                 raise HelixUnavailable(str(exc)) from exc
 
-            _raise_for_status(response)
-            remaining = _ratelimit_remaining(response)
+        if response.status_code in (400, 401, 403):
+            # The token endpoint answers 400 for a bad client_secret, not 401.
+            # Both mean the same operator action, so both land on
+            # HelixUnauthorized rather than being retried forever as a transient
+            # outage.
+            raise HelixUnauthorized(f"token endpoint refused credentials (status {response.status_code})")
+        _raise_for_status(response)
 
-            for name, value in chunk:
-                (polled_user_ids if name == "user_id" else polled_logins).add(value)
+        payload: dict[str, Any] = response.json()
+        token = str(payload.get("access_token") or "")
+        if not token:
+            raise HelixUnavailable("token endpoint returned no access_token")
 
-            payload: dict[str, Any] = response.json() or {}
-            for row in payload.get("data") or []:
-                if not isinstance(row, dict):
-                    continue
-                snapshot = _snapshot(row)
-                if snapshot is not None:
-                    snapshots.append(snapshot)
+        expires_in = _as_int(payload.get("expires_in")) or 0
+        ttl = max(expires_in - TOKEN_RENEWAL_MARGIN_SECONDS, TOKEN_RENEWAL_MARGIN_SECONDS)
+        await self._redis.set(TOKEN_KEY, token, ex=ttl)
+        return token
 
-    return HelixBatchResult(
-        snapshots=snapshots,
-        ratelimit_remaining=remaining,
-        polled_logins=frozenset(polled_logins),
-        polled_user_ids=frozenset(polled_user_ids),
-        truncated=truncated,
-    )
+    async def get_live_streams(
+        self,
+        *,
+        logins: Sequence[str] = (),
+        user_ids: Sequence[str] = (),
+        token: str,
+        batch_size: int = HELIX_MAX_PARAMS_PER_REQUEST,
+        ratelimit_floor: int = RATELIMIT_FLOOR,
+    ) -> HelixBatchResult:
+        """Which of ``logins``/``user_ids`` are live, in batches of ``batch_size``.
 
+        Prefer ``user_ids`` where available: a Twitch login changes when the
+        streamer renames the channel, and a stale login silently reports offline
+        forever (Risks, "user_login for self-declared nicks").
 
-async def fetch_live_streams(
-    redis: Redis,
-    *,
-    logins: Sequence[str] = (),
-    user_ids: Sequence[str] = (),
-    client_id: str | None,
-    client_secret: str | None,
-    helix_url: str,
-    token_url: str,
-    proxy: str | None = None,
-    batch_size: int = HELIX_MAX_PARAMS_PER_REQUEST,
-    ratelimit_floor: int = RATELIMIT_FLOOR,
-    request: HelixRequest | None = None,
-) -> HelixBatchResult:
-    """``get_live_streams`` with the token lifecycle attached.
+        Raises rather than returning partial garbage on 401/429/5xx. The one
+        partial outcome that IS returned is the rate-limit gate:
+        ``truncated=True`` with the identifiers that were actually polled.
+        """
+        size = max(1, min(int(batch_size), HELIX_MAX_PARAMS_PER_REQUEST))
+        wanted: list[tuple[str, str]] = [("user_id", str(v)) for v in user_ids if str(v).strip()]
+        wanted += [("user_login", str(v).strip().casefold()) for v in logins if str(v).strip()]
+        if not wanted:
+            return HelixBatchResult(snapshots=[])
 
-    The 401 -> drop the cached token -> retry once path lives here rather than in
-    ``get_live_streams`` because it needs the credentials and the Redis cache, and
-    ``get_live_streams`` deliberately takes neither: a function handed a bare token
-    stays trivially testable. A second 401 is not a stale token, it is wrong
-    credentials, so it surfaces as ``HelixUnauthorized``.
-    """
-    token = await get_app_token(
-        redis,
-        client_id=client_id,
-        client_secret=client_secret,
-        token_url=token_url,
-        proxy=proxy,
-        request=request,
-    )
-    assert client_id is not None  # get_app_token raises HelixNotConfigured otherwise
+        assert self._client_id is not None  # get_app_token raises HelixNotConfigured otherwise
+        headers = {"Authorization": f"Bearer {token}", "Client-Id": self._client_id}
+        url = f"{self._helix_url.rstrip('/')}/streams"
 
-    for attempt in (1, 2):
-        try:
-            return await get_live_streams(
-                logins=logins,
-                user_ids=user_ids,
-                token=token,
-                client_id=client_id,
-                helix_url=helix_url,
-                proxy=proxy,
-                batch_size=batch_size,
-                ratelimit_floor=ratelimit_floor,
-                request=request,
-            )
-        except HelixUnauthorized:
-            if attempt == 2:
-                raise
-            await redis.delete(state.TOKEN_KEY)
-            token = await get_app_token(
-                redis,
-                client_id=client_id,
-                client_secret=client_secret,
-                token_url=token_url,
-                proxy=proxy,
-                request=request,
-            )
+        snapshots: list[StreamSnapshot] = []
+        polled_logins: set[str] = set()
+        polled_user_ids: set[str] = set()
+        remaining: int | None = None
+        truncated = False
 
-    raise AssertionError("unreachable")  # pragma: no cover
+        async with self._requester() as send:
+            for chunk in _chunks(wanted, size):
+                if remaining is not None and remaining < ratelimit_floor:
+                    truncated = True
+                    break
+                # A list of pairs, NOT a dict: httpx encodes repeated keys as
+                # `user_login=a&user_login=b`, which is the only form Helix reads.
+                # Also pin `first` — the endpoint defaults to 20 and would
+                # silently drop the tail of a 100-channel batch.
+                params: list[tuple[str, str]] = [*chunk, ("first", str(len(chunk)))]
+                try:
+                    response = await send("GET", url, params=params, headers=headers)
+                except httpx.HTTPError as exc:
+                    raise HelixUnavailable(str(exc)) from exc
+
+                _raise_for_status(response)
+                remaining = _ratelimit_remaining(response)
+
+                for name, value in chunk:
+                    (polled_user_ids if name == "user_id" else polled_logins).add(value)
+
+                payload: dict[str, Any] = response.json() or {}
+                for row in payload.get("data") or []:
+                    if not isinstance(row, dict):
+                        continue
+                    snapshot = _snapshot(row)
+                    if snapshot is not None:
+                        snapshots.append(snapshot)
+
+        return HelixBatchResult(
+            snapshots=snapshots,
+            ratelimit_remaining=remaining,
+            polled_logins=frozenset(polled_logins),
+            polled_user_ids=frozenset(polled_user_ids),
+            truncated=truncated,
+        )
+
+    async def fetch_live_streams(
+        self,
+        *,
+        logins: Sequence[str] = (),
+        user_ids: Sequence[str] = (),
+        batch_size: int = HELIX_MAX_PARAMS_PER_REQUEST,
+        ratelimit_floor: int = RATELIMIT_FLOOR,
+    ) -> HelixBatchResult:
+        """``get_live_streams`` with the token lifecycle attached.
+
+        The 401 -> drop the cached token -> retry once path lives here rather
+        than in ``get_live_streams`` because it needs the credentials and the
+        Redis cache, and ``get_live_streams`` deliberately takes neither: a
+        method handed a bare token stays trivially testable. A second 401 is not
+        a stale token, it is wrong credentials, so it surfaces as
+        ``HelixUnauthorized``.
+        """
+        token = await self.get_app_token()
+
+        for attempt in (1, 2):
+            try:
+                return await self.get_live_streams(
+                    logins=logins,
+                    user_ids=user_ids,
+                    token=token,
+                    batch_size=batch_size,
+                    ratelimit_floor=ratelimit_floor,
+                )
+            except HelixUnauthorized:
+                if attempt == 2:
+                    raise
+                await self._redis.delete(TOKEN_KEY)
+                token = await self.get_app_token()
+
+        raise AssertionError("unreachable")  # pragma: no cover
