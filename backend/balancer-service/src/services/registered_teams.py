@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,20 +30,13 @@ from shared.domain.roster_shape import resolve_roster_shape
 from shared.repository import BalancerRegistrationTeamRepository, TournamentRepository
 from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
 from shared.services.team_export import ExportPlan, team_materialization
-from shared.services.team_export.registered import SkippedTeam, build_registered_export
+from shared.services.team_export.registered import build_registered_export
 from src import models
+from src.domain.registered_teams import RegisteredExportResult
 
 __all__ = ("RegisteredExportResult", "RegisteredTeamsService", "registered_teams_service")
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class RegisteredExportResult:
-    removed_teams: int = 0
-    imported_teams: int = 0
-    created_players: int = 0
-    skipped: list[SkippedTeam] = field(default_factory=list)
 
 
 def _err(code: str, msg: str, status_code: int = 400) -> ApiHTTPException:

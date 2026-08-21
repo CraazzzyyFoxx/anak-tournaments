@@ -5,15 +5,15 @@ import typing
 
 from loguru import logger
 
-from src.services.balancer.algorithm.captain_assignment_service import assign_captains
-from src.services.balancer.algorithm.determinism import build_balancer_seed, derive_balancer_seed
-from src.services.balancer.algorithm.feasibility_analyzer import analyze_feasibility
-from src.services.balancer.algorithm.moo_backend import run_moo_optimizer
-from src.services.balancer.algorithm.player_loader import load_players_from_dict
-from src.services.balancer.algorithm.progress import ProgressCallback, emit_progress
-from src.services.balancer.algorithm.rating_normalizer import RatingNormalizer
-from src.services.balancer.algorithm.result_serializer import _build_response_payload
-from src.services.balancer.algorithm.role_assignment_service import find_feasible_role_assignment
+from src.domain.balancer.captain_assignment_service import assign_captains
+from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
+from src.domain.balancer.feasibility_analyzer import analyze_feasibility
+from src.domain.balancer.moo_backend import run_moo_optimizer
+from src.domain.balancer.player_loader import load_players_from_dict
+from src.domain.balancer.progress import ProgressCallback, emit_progress
+from src.domain.balancer.rating_normalizer import RatingNormalizer
+from src.domain.balancer.result_serializer import _build_response_payload
+from src.domain.balancer.role_assignment_service import find_feasible_role_assignment
 from src.services.balancer.config.defaults import AlgorithmConfig
 from src.services.balancer.config.provider import normalize_config_overrides
 

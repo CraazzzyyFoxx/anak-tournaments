@@ -44,6 +44,7 @@ from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from src import models  # noqa: E402
+from src.domain.draft.entities import CaptainSeed, PlayerSeed  # noqa: E402
 from src.services.draft import board as draft_board  # noqa: E402
 from src.services.draft import clock as draft_clock  # noqa: E402
 from src.services.draft import export as draft_export  # noqa: E402
@@ -147,18 +148,18 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
         await self.engine.dispose()
 
-    def _captains(self) -> list[lifecycle.CaptainSeed]:
+    def _captains(self) -> list[CaptainSeed]:
         return [
-            lifecycle.CaptainSeed(name=f"Cap{i}", draft_position=i + 1, user_id=uid)
+            CaptainSeed(name=f"Cap{i}", draft_position=i + 1, user_id=uid)
             for i, uid in enumerate(self.captain_user_ids)
         ]
 
-    def _players(self) -> list[lifecycle.PlayerSeed]:
+    def _players(self) -> list[PlayerSeed]:
         # Captains default to TANK in this fixture. A 3-player roster therefore
         # needs two DPS picks per team; keep enough DPS players for start preflight.
         roles = [HeroClass.damage] * 6 + [HeroClass.tank, HeroClass.support, HeroClass.support]
         return [
-            lifecycle.PlayerSeed(primary_role=role, rank_value=3000 + i * 50, battle_tag=f"P{i}#1")
+            PlayerSeed(primary_role=role, rank_value=3000 + i * 50, battle_tag=f"P{i}#1")
             for i, role in enumerate(roles)
         ]
 
@@ -288,7 +289,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 shape=_SHAPE,
             )
             # Primary TANK@3000 who can flex DPS@2500.
-            special = lifecycle.PlayerSeed(
+            special = PlayerSeed(
                 primary_role=HeroClass.tank,
                 battle_tag="Flex#1",
                 secondary_roles=[HeroClass.damage],
@@ -338,7 +339,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 shape=_SHAPE,
             )
             captains = [
-                lifecycle.CaptainSeed(
+                CaptainSeed(
                     name=f"AuthCap{i}",
                     draft_position=i + 1,
                     auth_user_id=auth_user_id,

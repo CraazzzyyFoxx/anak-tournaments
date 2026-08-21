@@ -48,7 +48,7 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS  # noqa: E402
-from src.services.balancer.algorithm.moo_backend import _serialize_native_request  # noqa: E402
+from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
 from src.services.balancer.config.presets import ConfigPresets  # noqa: E402
 from src.services.balancer.config.provider import (  # noqa: E402

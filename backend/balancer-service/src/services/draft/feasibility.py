@@ -1,10 +1,10 @@
 """Session-scoped draft feasibility: DB-backed reads plus CPU-offloaded analysis.
 
-Pure value types live in ``entities.py``; the pure bipartite-matching rules
-live in ``feasibility_algorithm.py``. This module is the only one of the
-three that touches a database session or the event loop — it loads rows,
-translates them into the algorithm's input, and runs the CPU-bound matching
-via ``asyncio.to_thread``.
+Pure value types live in ``src.domain.draft.entities``; the pure bipartite-
+matching rules live in ``src.domain.draft.feasibility``. This module is the
+only one of the three that touches a database session or the event loop — it
+loads rows, translates them into the algorithm's input, and runs the
+CPU-bound matching via ``asyncio.to_thread``.
 """
 
 from __future__ import annotations
@@ -17,19 +17,19 @@ from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftSession
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
 from shared.services.roster_shape_access import get_effective_roster_shape
-from src.services.draft import loaders
-from src.services.draft.entities import (
+from src.domain.draft.entities import (
     DraftAssignment,
     DraftFeasibilityReport,
     DraftFeasibilityState,
     DraftPickOption,
     DraftSnapshot,
 )
-from src.services.draft.feasibility_algorithm import (
+from src.domain.draft.feasibility import (
     analyze_draft_feasibility,
     build_feasibility_state,
     evaluate_pick_options,
 )
+from src.services.draft import loaders
 
 __all__ = ("DraftFeasibilityService", "feasibility_service")
 

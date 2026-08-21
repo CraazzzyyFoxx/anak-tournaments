@@ -35,6 +35,7 @@ from shared.core.enums import (  # noqa: E402
 from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession  # noqa: E402
 from src import openapi_docs, openapi_schemas  # noqa: E402
+from src.domain.draft import rules  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.schemas import draft as schemas  # noqa: E402
 from src.services.draft import board, lifecycle  # noqa: E402
@@ -292,18 +293,18 @@ def test_delete_session_refuses_an_in_flight_draft(status: DraftStatus) -> None:
     [DraftStatus.SETUP, DraftStatus.READY, DraftStatus.COMPLETED, DraftStatus.CANCELLED],
 )
 def test_delete_session_accepts_every_status_that_is_not_in_flight(status: DraftStatus) -> None:
-    assert status.value in lifecycle._DELETABLE_STATUSES
+    assert status.value in rules.DELETABLE_STATUSES
 
 
 def test_seed_version_guard_rejects_stale_preview_and_bumps_on_materialization() -> None:
     draft = DraftSession(id=1, tournament_id=2, workspace_id=3, version=7)
 
-    lifecycle.validate_seed_version(draft, expected_version=7)
-    lifecycle.bump_seed_version(draft)
+    rules.validate_seed_version(draft, expected_version=7)
+    rules.bump_seed_version(draft)
 
     assert draft.version == 8
     with pytest.raises(Exception) as exc_info:
-        lifecycle.validate_seed_version(draft, expected_version=7)
+        rules.validate_seed_version(draft, expected_version=7)
     assert exc_info.value.detail[0]["code"] == "draft_session_stale"
 
 
@@ -346,7 +347,7 @@ class _FormSession:
 
 
 def test_seeded_metadata_keeps_registration_answers_out_of_the_public_snapshot() -> None:
-    info = lifecycle._registration_additional_info(
+    info = rules.registration_additional_info(
         _FakeRegistration(notes="plays support", custom_fields_json={"vk": "vk.com/p", "age": 21})
     )
 

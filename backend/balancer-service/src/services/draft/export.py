@@ -21,8 +21,9 @@ from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, D
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
 from shared.services.team_export import ExportPlan, team_materialization
 from src import models
+from src.domain.draft import ranks
 from src.schemas.team import BalancerTeam, BalancerTeamMember
-from src.services.draft import loaders, ranks
+from src.services.draft import loaders
 from src.services.draft._errors import err as _err
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.team import to_materialization_teams

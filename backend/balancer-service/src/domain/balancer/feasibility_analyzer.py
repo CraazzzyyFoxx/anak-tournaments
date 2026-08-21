@@ -23,8 +23,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from src.services.balancer.algorithm.entities import Player
-from src.services.role_matching import maximum_bipartite_matching
+from src.domain.balancer.entities import Player
+from src.domain.matching import maximum_bipartite_matching
 
 
 @dataclass(frozen=True)

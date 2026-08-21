@@ -20,7 +20,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.core.enums import DraftAutopickStrategy, HeroClass  # noqa: E402
-from src.services.draft import suggestions as sug  # noqa: E402
+from src.domain.draft import fit as sug  # noqa: E402
 
 T, D, SUP = HeroClass.tank, HeroClass.damage, HeroClass.support
 

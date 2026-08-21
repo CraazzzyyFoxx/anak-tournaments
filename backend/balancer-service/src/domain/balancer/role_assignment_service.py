@@ -4,7 +4,7 @@ import random
 
 from loguru import logger
 
-from src.services.balancer.algorithm.entities import Player
+from src.domain.balancer.entities import Player
 
 
 def find_feasible_role_assignment(

@@ -4,8 +4,8 @@ import statistics
 import typing
 from collections import Counter
 
-from src.services.balancer.algorithm.entities import Player, Team
-from src.services.balancer.algorithm.feasibility_analyzer import FeasibilityReport
+from src.domain.balancer.entities import Player, Team
+from src.domain.balancer.feasibility_analyzer import FeasibilityReport
 from src.services.balancer.config.defaults import AlgorithmConfig
 from src.services.balancer.config.public_contract import serialize_algorithm_config
 

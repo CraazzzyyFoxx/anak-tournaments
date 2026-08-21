@@ -24,8 +24,8 @@ from shared.models.platform.outbox import EventOutbox
 from shared.repository import BalancerRegistrationRepository
 from shared.schemas.events import BalanceExportedEvent, BalancePlayerSnapshotData
 from src import models
+from src.domain.balancer.role_entries import resolve_division_from_rank
 from src.schemas.team import InternalBalancerTeamsPayload
-from src.services.balancer.algorithm.role_entries import resolve_division_from_rank
 from src.services.balancer.role_naming import role_slot_code
 
 __all__ = ("BalanceAnalyticsService", "balance_analytics_service")

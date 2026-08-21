@@ -1,16 +1,16 @@
 """Draft-domain value types: no I/O, no algorithm, no orchestration.
 
-Every dataclass the draft package passes between its services lives here —
-mirrors ``services/balancer/algorithm/entities.py``'s role for the balancing
+Every dataclass the draft domain passes between its rules/services lives
+here — mirrors ``domain/balancer/entities.py``'s role for the balancing
 engine. Kept out of ``src/schemas/`` deliberately: those are pydantic wire
-contracts for the RPC boundary and are ORM-free by design (no schema module
-imports ``shared.models``); several types below (``DraftSnapshot``,
-``DraftResult``) hold live ORM rows and would break that invariant.
+contracts for the RPC boundary; several types below (``DraftSnapshot``,
+``DraftResult``) hold live ORM rows and would force pydantic's
+``arbitrary_types_allowed`` (defeating validation) or premature ORM->dict
+flattening before a caller decided which fields the wire response needs.
 
-Producing modules re-import the names they use (``lifecycle.py`` imports
-``CaptainSeed``/``PlayerSeed``, ``selection.py`` imports ``DraftResult``/
-``SlotDecision``, etc.) so every existing ``<module>.<Type>`` access — from
-other draft files, ``rpc/draft.py``, and tests — keeps resolving unchanged.
+Producing modules re-import the names they use so every existing
+``<module>.<Type>`` access — from other draft files, ``rpc/draft.py``, and
+tests — keeps resolving unchanged.
 """
 
 from __future__ import annotations
@@ -36,14 +36,24 @@ __all__ = (
     "FitPlayer",
     "FitResult",
     "PlayerSeed",
+    "REGISTRATION_CUSTOM_FIELDS_KEY",
     "RoleEditPreview",
     "RoleEditResult",
     "SlotDecision",
     "SlotDeficit",
 )
 
+# Where seeding parks a registration's custom-field ANSWERS
+# (``rules._registration_additional_info``). Private: which answers a
+# spectator may read is chosen per field by the organizer and projected into
+# ``custom_fields`` on the board read side, so the raw bag is stripped from
+# every public snapshot (``services/draft/board.py::public_additional_info``).
+# Shared between the seeding rule (writer) and the board service (redactor),
+# hence a domain constant rather than living in either one.
+REGISTRATION_CUSTOM_FIELDS_KEY = "registration_custom_fields"
 
-# --- feasibility (services/draft/feasibility{,_algorithm}.py) --------------
+
+# --- feasibility (domain/draft/feasibility.py) ------------------------------
 
 
 @dataclass(frozen=True)
@@ -57,8 +67,8 @@ class DraftAssignment:
     player_id: int
     team_id: int
     # A roster slot code, so ``flex`` is expressible; see
-    # ``feasibility_algorithm._remaining_capacity`` for how a role code that no
-    # longer has room falls back to a free flex slot.
+    # ``feasibility._remaining_capacity`` for how a role code that no longer
+    # has room falls back to a free flex slot.
     slot_code: str
 
 
@@ -119,7 +129,7 @@ class DraftSnapshot:
     picks: tuple[DraftPick, ...]
 
 
-# --- seeding (services/draft/lifecycle.py) ----------------------------------
+# --- seeding (domain/draft/rules.py) -----------------------------------------
 
 
 @dataclass(frozen=True)
@@ -155,7 +165,7 @@ class PlayerSeed:
     additional_info: dict = field(default_factory=dict)
 
 
-# --- pick selection (services/draft/selection.py) ---------------------------
+# --- pick selection (domain/draft/rules.py) ----------------------------------
 
 
 @dataclass(frozen=True)
@@ -179,7 +189,7 @@ class SlotDecision:
     recorded_role: str | None
 
 
-# --- role edits (services/draft/role_edit.py) -------------------------------
+# --- role edits (domain/draft/rules.py) --------------------------------------
 
 
 @dataclass(frozen=True)
@@ -197,7 +207,7 @@ class RoleEditResult:
     preview: RoleEditPreview
 
 
-# --- autopick fit scoring (services/draft/suggestions.py) -------------------
+# --- autopick fit scoring (domain/draft/fit.py) ------------------------------
 
 # Role-impact weights — mirror moo_core/src/lib.rs (tank 1.4 / dps 1.0 / support 1.1).
 DEFAULT_ROLE_IMPACT: dict[HeroClass, float] = {
@@ -238,4 +248,3 @@ class FitResult:
     role: HeroClass
     fit_score: float
     breakdown: dict[str, float]
-

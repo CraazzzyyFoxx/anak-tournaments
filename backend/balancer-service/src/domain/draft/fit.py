@@ -1,7 +1,7 @@
 """Per-player FIT scoring for draft autopick and suggestions.
 
 A lightweight, pure-Python replica of the balancer's per-player discomfort
-heuristic (``src/domain/balancer/entities.py``) and role-impact weights
+heuristic (``domain/balancer/entities.py``) and role-impact weights
 (Rust ``moo_core`` ``lib.rs``). It scores a *single* candidate against a team's
 open role capacity — it is NOT the full multi-objective genetic solver — so
 autopick and ``/suggestions`` stay synchronous and deterministic.
@@ -12,7 +12,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from shared.core.enums import DraftAutopickStrategy, HeroClass
-from src.services.draft.entities import FitConfig, FitPlayer, FitResult
+from src.domain.draft.entities import FitConfig, FitPlayer, FitResult
+
+__all__ = ("best_fit", "player_fit", "rank_suggestions", "role_discomfort")
 
 
 def role_discomfort(player: FitPlayer, role: HeroClass) -> int:

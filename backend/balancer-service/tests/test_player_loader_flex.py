@@ -6,7 +6,7 @@ A roster shape may contain ``flex`` slots, up to and including the role-less
 what rating does a player bring to a slot that has no role?
 
 Answer: the best rating he actually has. It is the same "ready to play
-anything" policy the draft already applies (``lifecycle._map_registration``,
+anything" policy the draft already applies (``rules.map_registration``,
 pinned by ``test_forced_flex_parity.py`` against
 ``docs/superpowers/fixtures/forced-flex-eff-rank.json``), so both halves of the
 product agree on what a flex player is worth.
@@ -51,14 +51,14 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, FLEX_SLOT_CODE, parse_roster_slots  # noqa: E402
-from src.services.balancer.algorithm.entities import Team  # noqa: E402
-from src.services.balancer.algorithm.moo_backend import _serialize_native_request  # noqa: E402
-from src.services.balancer.algorithm.player_loader import (  # noqa: E402
+from src.domain.balancer.entities import Team  # noqa: E402
+from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
+from src.domain.balancer.player_loader import (  # noqa: E402
     load_players_from_dict,
     parse_player_node,
 )
-from src.services.balancer.algorithm.result_serializer import teams_to_json  # noqa: E402
-from src.services.balancer.algorithm.runtime import _prepare_balance_context  # noqa: E402
+from src.domain.balancer.result_serializer import teams_to_json  # noqa: E402
+from src.domain.balancer.runtime import _prepare_balance_context  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
 from src.services.balancer.config.presets import ConfigPresets  # noqa: E402
 from src.services.balancer.config.provider import EDITABLE_CONFIG_FIELD_KEYS  # noqa: E402

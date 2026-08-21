@@ -26,6 +26,7 @@ from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
 from src import models
+from src.domain.draft.entities import CaptainSeed, PlayerSeed
 from src.services.draft import lifecycle, selection
 
 # The 5-slot roster these tests draft for, replacing `rounds=4, team_size=5`:
@@ -107,10 +108,10 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             await s.commit()
         await self.engine.dispose()
 
-    def _captains(self) -> list[lifecycle.CaptainSeed]:
+    def _captains(self) -> list[CaptainSeed]:
         roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
         return [
-            lifecycle.CaptainSeed(
+            CaptainSeed(
                 name=f"Cap{i}",
                 draft_position=i + 1,
                 user_id=uid,
@@ -120,10 +121,10 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             for i, uid in enumerate(self.captain_user_ids)
         ]
 
-    def _players(self) -> list[lifecycle.PlayerSeed]:
+    def _players(self) -> list[PlayerSeed]:
         roles = [HeroClass.tank, HeroClass.damage, HeroClass.support]
         return [
-            lifecycle.PlayerSeed(primary_role=roles[i % 3], rank_value=2800 + i * 10, battle_tag=f"P{i}#1")
+            PlayerSeed(primary_role=roles[i % 3], rank_value=2800 + i * 10, battle_tag=f"P{i}#1")
             for i in range(15)
         ]
 

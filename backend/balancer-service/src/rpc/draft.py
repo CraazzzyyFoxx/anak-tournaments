@@ -42,6 +42,9 @@ from src.core.auth import (
     _get_tournament_workspace_id,
 )
 from src.core.config import config
+from src.domain.draft import fit as sug
+from src.domain.draft import rules
+from src.domain.draft.entities import CaptainSeed, DraftResult, PlayerSeed
 from src.rpc import _common as c
 from src.schemas.draft import (
     DraftFeasibilityResponse,
@@ -62,9 +65,8 @@ from src.schemas.draft import (
     DraftSuggestionsResponse,
 )
 from src.services.draft import clock as clock_svc
-from src.services.draft import lifecycle, loaders, selection
+from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
-from src.services.draft import suggestions as sug
 from src.services.draft.board import board_service
 from src.services.draft.export import export_service
 from src.services.draft.feasibility import feasibility_service
@@ -206,7 +208,7 @@ async def _publish_result(
     session: AsyncSession,
     redis: Redis | None,
     draft: DraftSession,
-    result: selection.DraftResult,
+    result: DraftResult,
     *,
     made_event: str,
     actor_user_id: int | None,
@@ -352,7 +354,7 @@ def register(broker: Any, logger: Any) -> None:
                 options=loaders.team_options(),
                 populate_existing=True,
             )
-            if not user.is_workspace_admin(draft.workspace_id) and not selection._is_on_clock_captain(
+            if not user.is_workspace_admin(draft.workspace_id) and not rules.is_on_clock_captain(
                 team,
                 actor_auth_user_id=user.id,
                 actor_player_ids=public_user_ids,
@@ -438,8 +440,8 @@ def register(broker: Any, logger: Any) -> None:
             # lazy-load.
             available = [p for p in snapshot.players if p.status == "available"]
             shape = await feasibility_service.resolve_shape(session, draft)
-            counts = selection._team_slot_counts(snapshot.players, snapshot.picks, current.draft_team_id, shape)
-            capacity = selection._role_openings(shape, counts)
+            counts = rules.team_slot_counts(snapshot.players, snapshot.picks, current.draft_team_id, shape)
+            capacity = rules.role_openings(shape, counts)
             fit_players = [
                 sug.FitPlayer(
                     player_id=p.id,
@@ -532,7 +534,7 @@ def register(broker: Any, logger: Any) -> None:
             draft = await _sessions_repo.get_for_update(session, session_id)
             if draft is None:
                 raise HTTPException(status_code=404, detail="Draft session not found")
-            lifecycle.validate_seed_version(draft, expected_version=payload.expected_version)
+            rules.validate_seed_version(draft, expected_version=payload.expected_version)
             before = await lifecycle_service.seed_row_counts(session, draft.id)
             version_before = draft.version
             savepoint = await session.begin_nested() if payload.preview_only else None
@@ -548,7 +550,7 @@ def register(broker: Any, logger: Any) -> None:
                     )
                 elif payload.captains:
                     captains = [
-                        lifecycle.CaptainSeed(
+                        CaptainSeed(
                             name=cap.name,
                             draft_position=cap.draft_position,
                             user_id=cap.user_id,
@@ -557,7 +559,7 @@ def register(broker: Any, logger: Any) -> None:
                         for cap in payload.captains
                     ]
                     players = [
-                        lifecycle.PlayerSeed(
+                        PlayerSeed(
                             primary_role=p.primary_role,
                             user_id=p.user_id,
                             battle_tag=p.battle_tag,
@@ -630,7 +632,7 @@ def register(broker: Any, logger: Any) -> None:
             if payload.rounds is not None:
                 # Kept only so a stale client cannot silently desync the board:
                 # the sole accepted value is the one the shape already implies.
-                lifecycle.validate_draft_rounds(
+                rules.validate_draft_rounds(
                     rounds=payload.rounds, shape=await feasibility_service.resolve_shape(session, draft)
                 )
                 draft.rounds = payload.rounds

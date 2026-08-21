@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.services.balancer.algorithm.entities import Player
+from src.domain.balancer.entities import Player
 
 
 def assign_captains(players: list[Player], count: int, mask: dict[str, int] | None = None) -> None:

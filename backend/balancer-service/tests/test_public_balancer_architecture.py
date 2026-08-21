@@ -31,12 +31,12 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from src.core.job_store import BalancerJobStore  # noqa: E402
-from src.services.balancer.algorithm.captain_assignment_service import assign_captains  # noqa: E402
-from src.services.balancer.algorithm.entities import Player  # noqa: E402
-from src.services.balancer.algorithm.moo_backend import _serialize_native_request, run_moo_optimizer  # noqa: E402
-from src.services.balancer.algorithm.player_loader import load_players_from_dict  # noqa: E402
-from src.services.balancer.algorithm.role_assignment_service import find_feasible_role_assignment  # noqa: E402
-from src.services.balancer.algorithm.runtime import balance_teams_moo  # noqa: E402
+from src.domain.balancer.captain_assignment_service import assign_captains  # noqa: E402
+from src.domain.balancer.entities import Player  # noqa: E402
+from src.domain.balancer.moo_backend import _serialize_native_request, run_moo_optimizer  # noqa: E402
+from src.domain.balancer.player_loader import load_players_from_dict  # noqa: E402
+from src.domain.balancer.role_assignment_service import find_feasible_role_assignment  # noqa: E402
+from src.domain.balancer.runtime import balance_teams_moo  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
 from src.services.balancer.request_parser import BalancerRequestParser  # noqa: E402
 
@@ -106,8 +106,8 @@ class MooBackendRuntimeTests(TestCase):
 
     def test_requires_native_module_even_when_legacy_python_backend_is_requested(self) -> None:
         with patch.dict(os.environ, {"BALANCER_MOO_BACKEND": "python"}, clear=False):
-            with patch("src.services.balancer.algorithm.moo_backend.platform.system", return_value="Linux"):
-                with patch("src.services.balancer.algorithm.moo_backend._load_native_module", return_value=None):
+            with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+                with patch("src.domain.balancer.moo_backend._load_native_module", return_value=None):
                     with self.assertRaisesRegex(RuntimeError, "moo_core"):
                         run_moo_optimizer(
                             [self.player],
@@ -123,8 +123,8 @@ class MooBackendRuntimeTests(TestCase):
             run_moo_optimizer=lambda _: (_ for _ in ()).throw(ValueError("native exploded"))
         )
 
-        with patch("src.services.balancer.algorithm.moo_backend.platform.system", return_value="Linux"):
-            with patch("src.services.balancer.algorithm.moo_backend._load_native_module", return_value=broken_native):
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=broken_native):
                 with self.assertRaisesRegex(ValueError, "native exploded"):
                     run_moo_optimizer(
                         [self.player],
@@ -169,8 +169,8 @@ class MooBackendRuntimeTests(TestCase):
 
         native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
 
-        with patch("src.services.balancer.algorithm.moo_backend.platform.system", return_value="Linux"):
-            with patch("src.services.balancer.algorithm.moo_backend._load_native_module", return_value=native_module):
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
                 result = run_moo_optimizer(
                     [self.player],
                     1,
@@ -552,8 +552,8 @@ class MooDeterminismTests(TestCase):
 
         native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
 
-        with patch("src.services.balancer.algorithm.moo_backend.platform.system", return_value="Linux"):
-            with patch("src.services.balancer.algorithm.moo_backend._load_native_module", return_value=native_module):
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
                 runs = [balance_teams_moo(input_data, config_overrides, None, role_mask)[0]["teams"] for _ in range(3)]
 
         self.assertEqual(runs[0], runs[1])
@@ -611,8 +611,8 @@ class MooDeterminismTests(TestCase):
 
         native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
 
-        with patch("src.services.balancer.algorithm.moo_backend.platform.system", return_value="Linux"):
-            with patch("src.services.balancer.algorithm.moo_backend._load_native_module", return_value=native_module):
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
                 ordered_run = balance_teams_moo(make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask)[0][
                     "teams"
                 ]

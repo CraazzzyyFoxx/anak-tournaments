@@ -7,8 +7,8 @@ from typing import Any
 import orjson
 from loguru import logger
 
-from src.services.balancer.algorithm.determinism import build_balancer_seed, derive_balancer_seed
-from src.services.balancer.algorithm.entities import Player, Team
+from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
+from src.domain.balancer.entities import Player, Team
 from src.services.balancer.config.defaults import AlgorithmConfig
 
 

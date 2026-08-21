@@ -33,8 +33,10 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftPlayerRole  # noqa: E402
-from src.services.draft import feasibility_algorithm as feasibility  # noqa: E402
-from src.services.draft import selection  # noqa: E402
+from src.domain.draft import (
+    feasibility,  # noqa: E402
+    rules,  # noqa: E402
+)
 
 
 def _shape(slots: dict[str, int]):
@@ -96,7 +98,7 @@ def test_a_second_tank_is_legal_while_a_flex_slot_is_open() -> None:
         status=DraftPlayerStatus.PICKED,
         team_id=10,
     )
-    counts = selection._team_slot_counts(
+    counts = rules.team_slot_counts(
         (picked_tank,),
         (_pick(1, player_id=1, team_id=10, target_role=HeroClass.tank),),
         10,
@@ -105,9 +107,9 @@ def test_a_second_tank_is_legal_while_a_flex_slot_is_open() -> None:
 
     assert counts["tank"] == 1
     # The role slot is full, but five flex slots still accept a tank.
-    assert selection._role_openings(shape, counts)[HeroClass.tank] == 5
+    assert rules.role_openings(shape, counts)[HeroClass.tank] == 5
 
-    decision = selection.resolve_pick_slot(shape, counts, _player(2, HeroClass.tank), HeroClass.tank)
+    decision = rules.resolve_pick_slot(shape, counts, _player(2, HeroClass.tank), HeroClass.tank)
 
     assert decision.role is HeroClass.tank
     assert decision.recorded_role == "tank"
@@ -124,19 +126,19 @@ def test_slot_filled_needs_both_the_role_and_the_flex_capacity_gone() -> None:
         _pick(index + 1, player_id=player.id, team_id=10, target_role=HeroClass.from_slot_code(player.primary_role))
         for index, player in enumerate(picked)
     )
-    counts = selection._team_slot_counts(picked, picks, 10, shape)
+    counts = rules.team_slot_counts(picked, picks, 10, shape)
 
     # Tank and DPS role slots are exhausted, the single flex slot is not.
     assert counts == {"tank": 1, "dps": 2, "flex": 0}
-    assert selection._role_openings(shape, counts)[HeroClass.tank] == 1
-    decision = selection.resolve_pick_slot(shape, counts, _player(4, HeroClass.tank), HeroClass.tank)
+    assert rules.role_openings(shape, counts)[HeroClass.tank] == 1
+    decision = rules.resolve_pick_slot(shape, counts, _player(4, HeroClass.tank), HeroClass.tank)
     assert decision.role is HeroClass.tank
 
     # Spend the flex slot too: now nothing is left for a fourth tank.
     counts_with_flex_used = dict(counts, flex=1)
-    assert selection._role_openings(shape, counts_with_flex_used)[HeroClass.tank] == 0
+    assert rules.role_openings(shape, counts_with_flex_used)[HeroClass.tank] == 0
     with pytest.raises(Exception) as exc_info:
-        selection.resolve_pick_slot(shape, counts_with_flex_used, _player(5, HeroClass.tank), HeroClass.tank)
+        rules.resolve_pick_slot(shape, counts_with_flex_used, _player(5, HeroClass.tank), HeroClass.tank)
 
     assert _code(exc_info.value) == "slot_filled"
 
@@ -168,11 +170,11 @@ def test_pick_options_report_slot_filled_only_without_any_remaining_capacity() -
 
 def test_a_role_less_roster_ignores_the_requested_target_role() -> None:
     shape = _shape({"flex": 6})
-    counts = selection._team_slot_counts((), (), 10, shape)
+    counts = rules.team_slot_counts((), (), 10, shape)
 
     # The player cannot play tank at all, yet the request must not be rejected:
     # a flex-only roster has no role to validate against.
-    decision = selection.resolve_pick_slot(shape, counts, _player(1, HeroClass.damage), HeroClass.tank)
+    decision = rules.resolve_pick_slot(shape, counts, _player(1, HeroClass.damage), HeroClass.tank)
 
     assert shape.has_role_slots is False
     assert decision.role is HeroClass.damage
@@ -181,18 +183,18 @@ def test_a_role_less_roster_ignores_the_requested_target_role() -> None:
 
 def test_a_role_slot_roster_keeps_the_existing_target_role_rules() -> None:
     shape = _shape({"tank": 1, "dps": 2, "support": 2})
-    counts = selection._team_slot_counts((), (), 10, shape)
+    counts = rules.team_slot_counts((), (), 10, shape)
 
-    decision = selection.resolve_pick_slot(shape, counts, _player(1, HeroClass.damage, HeroClass.tank), HeroClass.tank)
+    decision = rules.resolve_pick_slot(shape, counts, _player(1, HeroClass.damage, HeroClass.tank), HeroClass.tank)
     assert decision.role is HeroClass.tank
     assert decision.recorded_role == "tank"
 
     with pytest.raises(Exception) as illegal:
-        selection.resolve_pick_slot(shape, counts, _player(2, HeroClass.damage), HeroClass.tank)
+        rules.resolve_pick_slot(shape, counts, _player(2, HeroClass.damage), HeroClass.tank)
     assert _code(illegal.value) == "illegal_role"
 
     with pytest.raises(Exception) as filled:
-        selection.resolve_pick_slot(shape, dict(counts, tank=1), _player(3, HeroClass.tank), HeroClass.tank)
+        rules.resolve_pick_slot(shape, dict(counts, tank=1), _player(3, HeroClass.tank), HeroClass.tank)
     assert _code(filled.value) == "slot_filled"
 
 
@@ -211,12 +213,12 @@ def test_team_slot_counts_fill_role_slots_first_and_flex_with_the_remainder() ->
     )
     players = (captain, off_role, tank, other_team, available)
 
-    counts = selection._team_slot_counts(players, picks, 10, shape)
+    counts = rules.team_slot_counts(players, picks, 10, shape)
 
     # Three picked players on team 10: tank and dps role slots take one each, and
     # the support captain has no role slot to land in, so flex absorbs them.
     assert counts == {"tank": 1, "dps": 1, "flex": 1}
-    assert selection._role_openings(shape, counts) == {
+    assert rules.role_openings(shape, counts) == {
         HeroClass.tank: 1,
         HeroClass.damage: 1,
         HeroClass.support: 1,
@@ -228,7 +230,7 @@ def test_an_overfilled_role_spills_into_flex_instead_of_inflating_the_role_count
     picked = tuple(_player(index, HeroClass.tank, status=DraftPlayerStatus.PICKED, team_id=10) for index in (1, 2, 3))
     picks = tuple(_pick(player.id, player_id=player.id, team_id=10, target_role=HeroClass.tank) for player in picked)
 
-    counts = selection._team_slot_counts(picked, picks, 10, shape)
+    counts = rules.team_slot_counts(picked, picks, 10, shape)
 
     assert counts == {"tank": 1, "flex": 2}
-    assert selection._role_openings(shape, counts) == dict.fromkeys(HERO_TYPE_CLASSES, 0)
+    assert rules.role_openings(shape, counts) == dict.fromkeys(HERO_TYPE_CLASSES, 0)

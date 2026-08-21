@@ -7,8 +7,8 @@ pick removes both the chosen slot and player before matching, which prevents a
 locally legal pick from starving another team's future roster slot.
 
 No database access, no event loop — every function here is synchronous and
-deterministic over ``entities``. ``feasibility.py`` is the only file that
-loads rows and offloads these functions to a thread.
+deterministic over ``entities``. ``services/draft/feasibility.py`` is the only
+file that loads rows and offloads these functions to a thread.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any
 from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass
 from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
-from src.services.draft.entities import (
+from src.domain.draft.entities import (
     DraftAssignment,
     DraftFeasibilityReport,
     DraftFeasibilityState,
@@ -29,7 +29,7 @@ from src.services.draft.entities import (
     EligiblePlayer,
     SlotDeficit,
 )
-from src.services.role_matching import maximum_bipartite_matching
+from src.domain.matching import maximum_bipartite_matching
 
 __all__ = (
     # re-exported types — every function below takes or returns these, so a

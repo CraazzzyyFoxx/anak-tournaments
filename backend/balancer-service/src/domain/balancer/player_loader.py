@@ -5,8 +5,8 @@ import typing
 from loguru import logger
 
 from shared.domain.roster_shape import FLEX_SLOT_CODE
-from src.services.balancer.algorithm.entities import Player
-from src.services.balancer.algorithm.input_roles import resolve_input_role_name
+from src.domain.balancer.entities import Player
+from src.domain.balancer.input_roles import resolve_input_role_name
 
 
 def parse_player_node(

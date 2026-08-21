@@ -26,8 +26,8 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
-from src.services.balancer.algorithm.entities import Player, Team  # noqa: E402
-from src.services.balancer.algorithm.result_serializer import teams_to_json  # noqa: E402
+from src.domain.balancer.entities import Player, Team  # noqa: E402
+from src.domain.balancer.result_serializer import teams_to_json  # noqa: E402
 
 MASK = {"Tank": 1, "Damage": 2, "Support": 2}
 

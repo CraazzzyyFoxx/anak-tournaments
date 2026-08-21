@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.services.balancer.algorithm.statistics import _sample_stdev_from_sums
+from src.domain.balancer.statistics import _sample_stdev_from_sums
 
 
 class Player:

@@ -300,3 +300,96 @@ touched by this refactor) has the same dataclasses-mixed-with-algorithm shape `f
 flagged for a future pass, out of scope here since that file is stable and unrelated to this ticket.
 
 Gates unchanged after the split: 346 passed / 5 skipped / 0 failed, ruff clean, boot smoke green.
+
+## 7. Follow-up: `src/domain/` package — the architecture-layers standard (same day)
+
+§6 put every draft dataclass and the pure matching algorithm in `services/draft/{entities,
+feasibility_algorithm}.py` — still inside `services/`, still importable by anything. This pass moves
+every zero-I/O, zero-`AsyncSession`, zero-`asyncio` module into a dedicated `src/domain/` package and
+establishes the layer boundary as a *standard for this service*, not just a one-off tidy-up:
+
+```
+src/domain/                     pure: no ORM I/O, no AsyncSession, no asyncio.to_thread
+    matching.py                 BipartiteMatching + maximum_bipartite_matching
+                                 (moved verbatim from services/role_matching.py — generic, knows
+                                  nothing about players/roles; both the offline genetic balancer and
+                                  the live draft import it)
+    registered_teams.py         RegisteredExportResult (moved from services/registered_teams.py)
+    balancer/                   the offline genetic-algorithm engine (moved from
+                                 services/balancer/algorithm/*, 14 files: entities, statistics,
+                                 feasibility_analyzer, role_assignment_service, rating_normalizer,
+                                 player_loader, moo_backend, determinism, progress, runtime,
+                                 captain_assignment_service, result_serializer, input_roles,
+                                 role_entries) — was already 100% pure; the move is a pure rename,
+                                 zero logic changes, importlinter-equivalent to draft/ below
+    draft/
+        entities.py              every draft-domain dataclass (moved from services/draft/entities.py)
+        feasibility.py           the bipartite-matching rules (moved from
+                                  services/draft/feasibility_algorithm.py)
+        ranks.py                 role_rank/max_role_rank/slot_rank (moved from services/draft/ranks.py)
+        fit.py                   per-player FIT scoring (moved from services/draft/suggestions.py)
+        rules.py                 NEW — every pure helper that used to live at module level inside
+                                  lifecycle.py/selection.py/role_edit.py (seat ordering, registration
+                                  mapping, slot-vocabulary rules, role-edit validation, the
+                                  before/after feasibility preview). Consolidates ~28 functions that
+                                  were split across three service files for no reason other than
+                                  "that's the file that happened to need them first."
+
+src/services/draft/
+    lifecycle.py, selection.py, role_edit.py   now class-only: every pure helper deleted from these
+        files and re-imported from src.domain.draft.rules / .entities / .fit / .ranks. Each file's
+        docstring says so explicitly.
+    board.py, export.py         one-line import change (services.draft.ranks -> domain.draft.ranks)
+    feasibility.py               DB-backed service unchanged in shape; its algorithm import repointed
+                                  to domain.draft.feasibility
+
+src/rpc/draft.py                 repointed: domain.draft.rules for the module-function calls that used
+                                  to hang off `lifecycle.*`/`selection.*`; domain.draft.entities for
+                                  CaptainSeed/PlayerSeed/DraftResult; domain.draft.fit (as `sug`) for
+                                  suggestions scoring
+```
+
+### The standard, stated plainly
+
+A function or dataclass belongs in `src/domain/` iff it never touches `AsyncSession`, never awaits,
+and never runs on the event loop — i.e. it is safe to call from a sync test with no DB fixture and no
+`asyncio.run`. Everything else — anything that loads rows, flushes, or offloads CPU work via
+`asyncio.to_thread` — stays a method on a `src/services/<domain>/*.py` class. This is the same rule
+§3's rule 3 already stated locally for the draft package ("pure/algorithmic helpers stay module-level");
+this pass gives it a physical location so the rule is enforceable by directory, not just by convention.
+
+`src/schemas/` remains the separate, ORM-free pydantic wire-contract layer for the RPC boundary (§6's
+reasoning stands unchanged: `DraftSnapshot`/`DraftResult` hold live ORM rows and would force
+`arbitrary_types_allowed` or premature flattening). `src/domain/` and `src/schemas/` serve different
+masters — `domain` is the internal vocabulary the balancing/draft algorithms think in; `schemas` is
+what the RPC wire actually carries — and a handful of names (`DraftFeasibilityReport`,
+`DraftPickOption`) legitimately exist in both, converted at the RPC boundary via
+`DraftFeasibilityResponse.model_validate(report)`, never passed through directly.
+
+No `.importlinter` contract added, same reasoning as §5: the draft/balancer packages are flat, mutually
+non-importing domains, and `src/domain/` importing nothing from `src/services/` (verified by grep, zero
+hits) is the one directional rule that matters — it is self-evident from the package's own zero
+`AsyncSession`/`asyncio` imports rather than needing static enforcement.
+
+### Verification (executed 2026-08-21)
+
+Every moved function was diff-checked against its pre-move committed source (AST-extracted
+function/method bodies, normalized for the expected renames) rather than trusted on sight, after one
+such rewrite (`domain/draft/fit.py::player_fit`) was found to have silently dropped the `ROLE_NEED`
+autopick strategy branch and flipped the `BEST_AVAILABLE` score sign during transcription. Caught by
+this diff pass before it reached tests; fixed by copying the committed function body verbatim instead
+of reconstructing it from memory. A second defect (`domain/draft/rules.py::arm_clock` setting
+`clock_expires_at = now` instead of `now + timedelta(seconds=pick_time_seconds)` — every armed pick
+clock would have expired instantly) was found the same way and fixed alongside it.
+
+| Gate | Result |
+|---|---|
+| Every moved pure function/method, AST-diffed against git `a582420e` after normalizing expected renames | identical (2 real defects found and fixed; remainder cosmetic docstring rewording only) |
+| `ruff check` (whole `balancer-service`) | pass |
+| `python -c "import serve"` (worker boot) | pass |
+| `pytest tests` (excl. `test_moo_native_gil.py`/`test_config_consistency.py`, real Postgres running + migrated) | **386 passed, 0 failed** |
+| Repo-wide grep for stale `services.draft.{entities,feasibility_algorithm,ranks,suggestions}`, `services.role_matching`, `services.balancer.algorithm`, and every renamed private (`lifecycle._map_registration` etc.) import path | 0 hits |
+
+`services/draft/{entities,feasibility_algorithm,ranks,suggestions}.py` and `services/role_matching.py`
+deleted (superseded, zero remaining importers). `services/balancer/algorithm/` directory removed (fully
+relocated to `domain/balancer/`).

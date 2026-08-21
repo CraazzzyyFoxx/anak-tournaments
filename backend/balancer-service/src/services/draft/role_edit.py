@@ -1,4 +1,9 @@
-"""Admin-only emergency role additions for a live-draft player snapshot."""
+"""Admin-only emergency role additions for a live-draft player snapshot.
+
+Validation and the before/after feasibility preview are pure and live in
+``src.domain.draft.rules``; this file holds only the orchestration that needs
+a database session.
+"""
 
 from __future__ import annotations
 
@@ -6,99 +11,16 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import DraftPlayerStatus, DraftStatus, HeroClass
-from shared.models.balancer.draft import (
-    DraftAuditEvent,
-    DraftPlayer,
-    DraftPlayerRole,
-    DraftSession,
-)
+from shared.core.enums import HeroClass
+from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftPlayerRole, DraftSession
 from shared.repository.draft import DraftAuditEventRepository, DraftPlayerRepository
+from src.domain.draft import rules
+from src.domain.draft.entities import DraftFeasibilityReport, RoleEditPreview, RoleEditResult
 from src.services.draft import loaders
 from src.services.draft._errors import err as _err
-from src.services.draft.entities import (
-    DraftFeasibilityReport,
-    DraftFeasibilityState,
-    EligiblePlayer,
-    RoleEditPreview,
-    RoleEditResult,
-)
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
-from src.services.draft.feasibility_algorithm import analyze_draft_feasibility
 
-_EDITABLE_STATUSES = {
-    DraftStatus.SETUP.value,
-    DraftStatus.READY.value,
-    DraftStatus.PAUSED.value,
-}
-
-def validate_role_edit_request(
-    draft_session: DraftSession,
-    player: DraftPlayer,
-    *,
-    role: HeroClass,
-    rank_value: int | None,
-    rank_absence_confirmed: bool,
-    reason: str,
-    expected_version: int,
-) -> str:
-    """Validate both preview and commit; return the normalized private reason."""
-
-    if draft_session.status not in _EDITABLE_STATUSES:
-        raise _err("role_edit_requires_pause", "Pause the draft before editing a player role", status_code=409)
-    if player.session_id != draft_session.id:
-        raise _err("player_not_found", "Player is not in this draft session", status_code=404)
-    if player.status != DraftPlayerStatus.AVAILABLE.value:
-        raise _err("player_not_available", "Only a remaining available player can receive an emergency role")
-    if player.version != expected_version:
-        raise _err("draft_player_stale", "Player snapshot changed; reload the role-edit preview", status_code=409)
-    if any(entry.role == role.slot_code for entry in player.roles):
-        raise _err("role_already_exists", f"Player already has the {role.slot_code} role", status_code=409)
-    normalized_reason = reason.strip()
-    if not normalized_reason:
-        raise _err("role_edit_reason_required", "A private audit reason is required")
-    if rank_value is None and not rank_absence_confirmed:
-        raise _err(
-            "role_rank_confirmation_required",
-            "Provide a role rank or explicitly confirm that it is unavailable",
-        )
-    return normalized_reason
-
-
-def preview_role_addition(
-    state: DraftFeasibilityState,
-    *,
-    player_id: int,
-    role: HeroClass,
-) -> RoleEditPreview:
-    before = analyze_draft_feasibility(
-        team_ids=state.team_ids,
-        slot_targets=state.slot_targets,
-        players=state.players,
-        assignments=state.assignments,
-    )
-    found = False
-    updated_players: list[EligiblePlayer] = []
-    for player in state.players:
-        if player.player_id == player_id:
-            found = True
-            updated_players.append(
-                EligiblePlayer(
-                    player_id=player.player_id,
-                    playable_roles=player.playable_roles | {role},
-                )
-            )
-        else:
-            updated_players.append(player)
-    if not found:
-        raise _err("player_not_available", "Player is not available in the remaining draft pool", status_code=404)
-    after = analyze_draft_feasibility(
-        team_ids=state.team_ids,
-        slot_targets=state.slot_targets,
-        players=tuple(updated_players),
-        assignments=state.assignments,
-    )
-    return RoleEditPreview(before=before, after=after)
+__all__ = ("DraftRoleEditService", "role_edit_service")
 
 
 class DraftRoleEditService:
@@ -210,7 +132,7 @@ class DraftRoleEditService:
         )
         if player is None:
             raise _err("player_not_found", "Player is not in this draft session", status_code=404)
-        normalized_reason = validate_role_edit_request(
+        normalized_reason = rules.validate_role_edit_request(
             draft_session,
             player,
             role=role,
@@ -221,7 +143,7 @@ class DraftRoleEditService:
         )
         state = await self.feasibility.load_feasibility_state(session, draft_session)
         # Two bipartite matchings (before/after) — pure CPU, run off the event loop.
-        preview = await asyncio.to_thread(preview_role_addition, state, player_id=player.id, role=role)
+        preview = await asyncio.to_thread(rules.preview_role_addition, state, player_id=player.id, role=role)
         if preview_only:
             return RoleEditResult(
                 player_id=player.id,
@@ -251,12 +173,3 @@ class DraftRoleEditService:
 
 
 role_edit_service = DraftRoleEditService()
-
-__all__ = (
-    "DraftRoleEditService",
-    "RoleEditPreview",
-    "RoleEditResult",
-    "preview_role_addition",
-    "role_edit_service",
-    "validate_role_edit_request",
-)

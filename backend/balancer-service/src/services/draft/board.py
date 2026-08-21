@@ -19,6 +19,7 @@ from shared.repository.draft import (
     DraftTeamRepository,
 )
 from shared.services import realtime_topics
+from src.domain.draft import ranks
 from src.schemas.draft import (
     DraftBoardSnapshot,
     DraftPickRead,
@@ -27,7 +28,7 @@ from src.schemas.draft import (
     DraftSessionRead,
     DraftTeamRead,
 )
-from src.services.draft import loaders, ranks
+from src.services.draft import loaders
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 
 # Where seeding parks the registration's custom-field ANSWERS (lifecycle.
@@ -208,7 +209,7 @@ class DraftBoardService:
                         "custom_fields": player_custom_fields(p.additional_info, custom_field_defs),
                         # Shape-aware, so it cannot be an ORM property: a role-less
                         # roster makes the player's best role rank the one that
-                        # represents them. See services.draft.ranks.slot_rank.
+                        # represents them. See domain.draft.ranks.slot_rank.
                         "effective_rank": ranks.slot_rank(p, None, shape),
                     }
                 )

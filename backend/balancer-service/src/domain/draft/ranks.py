@@ -18,6 +18,8 @@ from shared.core.enums import HeroClass
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPlayer
 
+__all__ = ("max_role_rank", "role_rank", "slot_rank")
+
 
 def role_rank(player: DraftPlayer, role: HeroClass | str | None) -> int | None:
     """Return the player's rank for ``role``, falling back to ``rank_value``."""

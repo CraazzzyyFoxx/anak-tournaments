@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from src.services.balancer.algorithm.entities import Player, Team
+from src.domain.balancer.entities import Player, Team
 
 _SCALE_EPSILON = 1e-9
 

@@ -1,8 +1,14 @@
 """Small deterministic bipartite matcher shared by balancer and live draft.
 
-The matcher intentionally knows nothing about players or roles.  Callers map
+The matcher intentionally knows nothing about players or roles. Callers map
 their domain objects to unique candidate/slot identifiers and provide the
-eligible edges.  An augmenting-path pass then finds a maximum matching.
+eligible edges. An augmenting-path pass then finds a maximum matching.
+
+Pure domain algorithm: no I/O, no async, no ORM. Used by both
+``domain/draft/feasibility.py`` (live-draft feasibility) and
+``domain/balancer/feasibility_analyzer.py`` (offline genetic-algorithm
+structural-minimum check) — the one thing those two otherwise-unrelated
+subsystems share.
 """
 
 from __future__ import annotations
@@ -13,6 +19,8 @@ from typing import Generic, TypeVar
 
 CandidateT = TypeVar("CandidateT", bound=Hashable)
 SlotT = TypeVar("SlotT", bound=Hashable)
+
+__all__ = ("BipartiteMatching", "maximum_bipartite_matching")
 
 
 @dataclass(frozen=True)
@@ -74,6 +82,3 @@ def maximum_bipartite_matching(
         unmatched_slots=tuple(slot for slot in slot_order if slot not in slot_to_candidate),
         unmatched_candidates=tuple(candidate for candidate in candidate_order if candidate not in candidate_to_slot),
     )
-
-
-__all__ = ("BipartiteMatching", "maximum_bipartite_matching")
