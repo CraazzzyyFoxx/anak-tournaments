@@ -1,12 +1,13 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Crown, LogOut, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { notify } from "@/lib/notify";
@@ -54,8 +55,20 @@ export default function MyTeamPanel({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteSlot, setInviteSlot] = useState<RosterSlotCode | null>(null);
   const [inviteSubstitute, setInviteSubstitute] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+  /** A REGISTRATION id, not an account id — the server resolves the account behind
+   *  it. `null` means the submit mints a shareable link instead. */
+  const [targetRegistrationId, setTargetRegistrationId] = useState<number | null>(null);
   /** Shown once, never refetchable: only the hash is stored server-side. */
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+
+  /** Fetched only while the dialog is open: nobody else needs this list, and it
+   *  goes stale the moment another captain recruits one of them. */
+  const freeAgentsQuery = useQuery({
+    queryKey: tournamentQueryKeys.registrationFreeAgents(workspaceId, tournamentId),
+    queryFn: () => registrationTeamService.listFreeAgents(tournamentId),
+    enabled: inviteOpen,
+  });
 
   const invalidate = () =>
     queryClient.invalidateQueries({
@@ -72,12 +85,18 @@ export default function MyTeamPanel({
       return registrationTeamService.invite(team.id, {
         slot_code: inviteSlot,
         is_substitute: inviteSubstitute,
+        // Omitted rather than nulled for a link invite: the key's presence is what
+        // selects the addressed mode server-side.
+        ...(targetRegistrationId != null
+          ? { target_registration_id: targetRegistrationId }
+          : {}),
       });
     },
     onSuccess: async (invite) => {
       notify.success(t("invite.success"));
       // A link invite hands back the raw token exactly once. Keep it on screen
       // instead of closing, or the captain loses it with no way to recover it.
+      // A targeted invite carries no token, so there is nothing to keep: close.
       setIssuedToken(invite.token ?? null);
       if (!invite.token) setInviteOpen(false);
       await invalidate();
@@ -168,6 +187,15 @@ export default function MyTeamPanel({
   const offerableSlots = ROSTER_SLOT_CODES.filter((code) => (team.open_slots[code] ?? 0) > 0);
   const pendingInvites = team.invites.filter((invite) => invite.state === "pending");
   const benchOpen = team.max_substitutes - team.substitutes_used > 0;
+  /** Filtered in memory: this is tens of rows at most, and a round-trip per
+   *  keystroke would out-cost the whole list. */
+  const freeAgents = freeAgentsQuery.data?.items ?? [];
+  const pickerNeedle = pickerSearch.trim().toLowerCase();
+  const matchingAgents = pickerNeedle
+    ? freeAgents.filter((agent) => agent.battle_tag.toLowerCase().includes(pickerNeedle))
+    : freeAgents;
+  const targetAgent =
+    freeAgents.find((agent) => agent.registration_id === targetRegistrationId) ?? null;
   /** The crest is only writable while the roster still is: the server refuses a
    *  terminal or already-exported team with `team_not_forming` /
    *  `team_already_exported`, so offering the control would be a dead end. */
@@ -293,6 +321,11 @@ export default function MyTeamPanel({
                   className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-3 py-2 text-sm"
                 >
                   <span>{slotLabel(invite.slot_code)}</span>
+                  <span className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {invite.target_battle_tag
+                      ? t("invite.targetLabel", { name: invite.target_battle_tag })
+                      : t("invite.linkLabel")}
+                  </span>
                   {invite.is_substitute && (
                     <span className="text-xs text-[color:var(--aqt-fg-muted)]">
                       {t("member.substitute")}
@@ -335,6 +368,8 @@ export default function MyTeamPanel({
               setInviteSlot(offerableSlots[0] ?? null);
               setInviteSubstitute(offerableSlots.length === 0);
               setIssuedToken(null);
+              setPickerSearch("");
+              setTargetRegistrationId(null);
               setInviteOpen(true);
             }}
           >
@@ -432,6 +467,74 @@ export default function MyTeamPanel({
                   {t("invite.substituteLabel")}
                 </Label>
               )}
+
+              <div className="grid gap-1.5">
+                <span className="text-sm font-medium">{t("picker.label")}</span>
+                <Input
+                  value={pickerSearch}
+                  onChange={(event) => setPickerSearch(event.target.value)}
+                  placeholder={t("picker.search")}
+                  aria-label={t("picker.search")}
+                />
+                {targetAgent && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span>{t("picker.selected", { name: targetAgent.battle_tag })}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTargetRegistrationId(null)}
+                    >
+                      {t("picker.clear")}
+                    </Button>
+                  </div>
+                )}
+                {/* An empty roster of free agents and an empty search result are
+                    different dead ends: one waits for registrations, the other
+                    only needs a different query. */}
+                {!freeAgentsQuery.isLoading && freeAgents.length === 0 && (
+                  <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("picker.empty")}</p>
+                )}
+                {freeAgents.length > 0 && matchingAgents.length === 0 && (
+                  <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("picker.noMatch")}</p>
+                )}
+                {matchingAgents.length > 0 && (
+                  <ul className="grid max-h-48 gap-1 overflow-y-auto">
+                    {matchingAgents.map((agent) => (
+                      <li key={agent.registration_id}>
+                        <button
+                          type="button"
+                          aria-pressed={targetRegistrationId === agent.registration_id}
+                          onClick={() => setTargetRegistrationId(agent.registration_id)}
+                          className={cn(
+                            "flex w-full flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors",
+                            targetRegistrationId === agent.registration_id
+                              ? "border-[color:var(--aqt-accent)] bg-[color:color-mix(in_srgb,var(--aqt-accent)_12%,transparent)]"
+                              : "border-[color:var(--aqt-border)] hover:bg-muted/40",
+                          )}
+                        >
+                          <span className="truncate">{agent.battle_tag}</span>
+                          {/* Roles on the row: the captain is filling one specific
+                              slot and should spot a tank without opening a profile. */}
+                          {agent.roles.map((role) => (
+                            <span
+                              key={role}
+                              className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-muted)]"
+                            >
+                              {slotLabel(role)}
+                            </span>
+                          ))}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {targetRegistrationId == null && (
+                  <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {t("picker.linkInstead")}
+                  </p>
+                )}
+              </div>
 
               <Button
                 type="button"

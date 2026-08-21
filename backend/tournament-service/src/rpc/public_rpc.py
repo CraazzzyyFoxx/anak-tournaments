@@ -80,9 +80,11 @@ from src.schemas.registration_build import (
     _resolve_tournament_workspace,
 )
 from src.schemas.registration_team import (
+    RegistrationFreeAgentListResponse,
     RegistrationTeamAcceptRequest,
     RegistrationTeamCreateRequest,
     RegistrationTeamInviteCreateRequest,
+    RegistrationTeamInviteOfferListResponse,
     RegistrationTeamListResponse,
     serialize_invite,
 )
@@ -866,7 +868,7 @@ def register(broker: Any, logger: Any) -> None:
                 auth_user=user,
                 slot_code=body.slot_code,
                 is_substitute=body.is_substitute,
-                target_auth_user_id=body.target_auth_user_id,
+                target_registration_id=body.target_registration_id,
                 ttl=ttl,
             )
             # The raw token is returned exactly once, here, and never stored or
@@ -885,6 +887,41 @@ def register(broker: Any, logger: Any) -> None:
                 auth_user=user,
             )
             return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_free_agents")
+    async def _regteam_free_agents(data: dict, msg: RabbitMessage) -> dict:
+        """Who a captain may invite: registrants of this tournament on no team.
+
+        Authenticated but not captain-gated. Everything returned is already on the
+        public participants list, so a gate here would be theatre; the account
+        requirement exists because the only use of this list is to act on it.
+        """
+
+        async def op(session: Any) -> Any:
+            _identity(data)
+            tournament_id = _path_int(data, "tournament_id")
+            items = await team_service.list_free_agents(session, tournament_id)
+            return _dump(RegistrationFreeAgentListResponse(items=items, total=len(items)))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_my_invites")
+    async def _regteam_my_invites(data: dict, msg: RabbitMessage) -> dict:
+        """Targeted invites addressed to the caller.
+
+        Scoped to the caller server-side from their token — there is no id in the
+        path to tamper with, because "whose invites" is never the client's answer.
+        """
+
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _path_int(data, "tournament_id")
+            items = await team_service.list_my_invites(
+                session, tournament_id=tournament_id, auth_user=user
+            )
+            return _dump(RegistrationTeamInviteOfferListResponse(items=items))
 
         return await _run(logger, op)
 

@@ -83,7 +83,9 @@ export default function InviteAcceptWizard({
     ]);
 
   const acceptMutation = useMutation({
-    mutationFn: (registration: RegistrationCreateInput) =>
+    // `undefined` is the honest value on the attach path, not an empty object cast
+    // to a form payload: the server has nothing to read there.
+    mutationFn: (registration?: RegistrationCreateInput) =>
       registrationTeamService.accept({ ...reference, registration }),
     onSuccess: async () => {
       notify.success(t("accept.success", { team: teamName }));
@@ -152,8 +154,7 @@ export default function InviteAcceptWizard({
           disabled={acceptMutation.isPending || declineMutation.isPending}
           onClick={() => {
             setError(null);
-            // The body is required by the type but unused on the attach path.
-            acceptMutation.mutate({} as RegistrationCreateInput);
+            acceptMutation.mutate(undefined);
           }}
         >
           {t("accept.submit")}

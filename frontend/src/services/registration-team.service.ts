@@ -1,10 +1,12 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type {
+  RegistrationFreeAgentListResponse,
   RegistrationTeam,
   RegistrationTeamAcceptInput,
   RegistrationTeamCreateInput,
   RegistrationTeamInviteCreated,
   RegistrationTeamInviteInput,
+  RegistrationTeamInviteOfferListResponse,
   RegistrationTeamInvitePreview,
   RegistrationTeamListResponse,
 } from "@/types/registration-team.types";
@@ -151,6 +153,27 @@ const registrationTeamService = {
     const response = await apiFetch(
       `/api/balancer/tournaments/${tournamentId}/registered-teams/export`,
       { method: "POST", body: teamIds?.length ? { team_ids: teamIds } : {} },
+    );
+    return response.json();
+  },
+
+  /** Who the captain may invite: this tournament's registrants on no team. */
+  async listFreeAgents(tournamentId: number): Promise<RegistrationFreeAgentListResponse> {
+    const response = await apiFetch(
+      `/api/v1/tournaments/${tournamentId}/registration-teams/free-agents`,
+    );
+    return response.json();
+  },
+
+  /**
+   * Invites addressed to the current user.
+   *
+   * Scoped server-side from the caller's token — there is no id to pass, because
+   * "whose invites" is never the client's answer.
+   */
+  async listMyInvites(tournamentId: number): Promise<RegistrationTeamInviteOfferListResponse> {
+    const response = await apiFetch(
+      `/api/v1/tournaments/${tournamentId}/registration-teams/my-invites`,
     );
     return response.json();
   },

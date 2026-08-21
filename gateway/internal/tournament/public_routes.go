@@ -61,6 +61,13 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// was asked and declined.
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_list_public", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
 
+	// Who a captain may invite, and what a player has been invited to. Both are
+	// AuthRequired reads: the first returns strictly a subset of the public
+	// participants list but exists only to act on, and the second is scoped to the
+	// caller's own token — "whose invites" is never a path parameter.
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams/free-agents", Queue: "rpc.tournament.regteam_free_agents", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams/my-invites", Queue: "rpc.tournament.regteam_my_invites", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+
 	// registration.py — public TEAM registration (captain + invitee flows).
 	// See docs/plans/2026-08-20-team-registration.md §4. Every WRITE is
 	// AuthRequired: even the link-invite path writes a registration bound to the

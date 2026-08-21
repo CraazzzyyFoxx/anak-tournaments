@@ -86,7 +86,7 @@ const TEAM: RegistrationTeam = {
       slot_code: "support",
       is_substitute: false,
       state: "pending",
-      target_auth_user_id: null,
+      target_battle_tag: null,
       is_link: true,
       expires_at: "2026-09-01T10:00:00Z",
       invited_at: "2026-08-20T10:00:00Z",

@@ -17,6 +17,7 @@ the right way round.
 
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 from dataclasses import dataclass, field
@@ -35,14 +36,21 @@ os.environ.setdefault("PROJECT_URL", "http://localhost")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 import sqlalchemy as sa  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
 from sqlalchemy.dialects import postgresql  # noqa: E402
 
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.domain.team_roster import RosterMember, RosterOccupancy  # noqa: E402
 from src import models  # noqa: E402
-from src.schemas.registration_team import RegistrationTeamInvitePreview  # noqa: E402
+from src.schemas.registration_team import (  # noqa: E402
+    RegistrationTeamAcceptRequest,
+    RegistrationTeamInviteCreateRequest,
+    RegistrationTeamInvitePreview,
+    RegistrationTeamInviteRead,
+)
 from src.services.registration import teams  # noqa: E402
+from src.services.registration.service import submit_public_registration  # noqa: E402
 
 FIVE_STACK = parse_roster_slots({"tank": 1, "dps": 2, "support": 2})
 
@@ -404,12 +412,12 @@ class FreeAgentAttachTests(TestCase):
         )
 
 
-class UnassignedPlayerCountTests(TestCase):
-    """The free-agent count an organizer sees before pressing export.
+class FreeAgentPredicateTests(TestCase):
+    """The one definition of "free agent", shared by the count and the picker.
 
-    Its whole value is the predicate: a wrong filter here reports zero on a
-    tournament that has stranded players, which is exactly the silence the count
-    exists to break.
+    Its whole value is the predicate: a wrong filter reports zero on a tournament
+    that has stranded players — the exact silence the count exists to break — or
+    offers a captain someone who already has a team.
     """
 
     def _sql(self) -> str:
@@ -417,14 +425,10 @@ class UnassignedPlayerCountTests(TestCase):
 
         from shared.models.registration.registration import BalancerRegistration
 
-        # Mirrors the service query; compiled rather than executed so this needs no
-        # database. The service is the source of truth and is asserted separately.
-        statement = sa.select(sa.func.count(BalancerRegistration.id)).where(
-            BalancerRegistration.tournament_id == 1,
-            BalancerRegistration.registration_team_id.is_(None),
-            BalancerRegistration.deleted_at.is_(None),
-            BalancerRegistration.status.notin_(sorted(teams._SLOT_RELEASING_STATUSES)),
-        )
+        # Compiles the SERVICE'S OWN clause rather than a hand-written copy of it.
+        # A copy is what this test used to do, and it would have kept passing while
+        # the service's filter drifted underneath it.
+        statement = sa.select(sa.func.count(BalancerRegistration.id)).where(*teams._free_agent_clause(1))
         return str(statement.compile(compile_kwargs={"literal_binds": True}))
 
     def test_it_counts_only_registrations_with_no_team(self) -> None:
@@ -435,20 +439,25 @@ class UnassignedPlayerCountTests(TestCase):
 
     def test_it_ignores_players_who_released_their_slot(self) -> None:
         """A withdrawn or rejected registration is not waiting to be recruited, so
-        counting it would inflate the warning and train organizers to ignore it."""
+        counting it would inflate the warning and train organizers to ignore it —
+        and offering it in the picker would produce an invite the server refuses."""
         sql = self._sql()
         self.assertIn("withdrawn", sql)
         self.assertIn("rejected", sql)
         self.assertIn("NOT IN", sql.upper())
 
-    def test_the_service_uses_the_same_release_rule_as_the_roster_reader(self) -> None:
-        """Both must key on one set: if the count and the roster disagree, a player
-        can be absent from every team AND absent from the warning."""
-        import inspect
+    def test_the_count_and_the_picker_cannot_disagree(self) -> None:
+        """Both must route through one clause. Two copies fail silently and
+        specifically: an organizer reading "3 players without a team" above a picker
+        offering two of them cannot tell which number is lying."""
+        for fn in (teams.count_unassigned_players, teams.list_free_agents):
+            with self.subTest(fn=fn.__name__):
+                self.assertIn("_free_agent_clause", inspect.getsource(fn))
 
-        source = inspect.getsource(teams.count_unassigned_players)
-        self.assertIn("_SLOT_RELEASING_STATUSES", source)
-        self.assertIn("registration_team_id.is_(None)", source)
+    def test_the_clause_uses_the_roster_readers_release_rule(self) -> None:
+        """The third consumer of that set is the roster reader. If it and the clause
+        disagree, a player can be absent from every team AND absent from the count."""
+        self.assertIn("_SLOT_RELEASING_STATUSES", inspect.getsource(teams._free_agent_clause))
         self.assertEqual({"withdrawn", "rejected"}, set(teams._SLOT_RELEASING_STATUSES))
 
 
@@ -545,3 +554,188 @@ class InvitePreviewTests(IsolatedAsyncioTestCase):
         fields = set(RegistrationTeamInvitePreview.model_fields)
 
         self.assertEqual(set(), fields & {"members", "invites", "open_slots", "captain"})
+
+
+@dataclass
+class _TargetMember:
+    player_id: int | None = 55
+
+
+@dataclass
+class _TargetRegistration:
+    id: int = 900
+    tournament_id: int = 3
+    registration_team_id: int | None = None
+    status: str = "approved"
+    workspace_member: Any = field(default_factory=_TargetMember)
+
+
+class _TargetSession:
+    """Returns the registration for the ORM select and the account id for the
+    scalar lookup that follows it, in that order."""
+
+    def __init__(self, registration: Any, auth_user_id: int | None) -> None:
+        self._registration = registration
+        self._auth_user_id = auth_user_id
+        self.calls = 0
+
+    async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
+        self.calls += 1
+        return self._registration if self.calls == 1 else self._auth_user_id
+
+
+class TargetedInviteResolutionTests(IsolatedAsyncioTestCase):
+    """A targeted invite names a REGISTRATION and stores an ACCOUNT.
+
+    That indirection is the feature: the captain picks from this tournament's own
+    free agents, so no global account search is opened, and the client never sees
+    an ``auth_user_id``. Every rejection below has a different recourse, which is
+    why each carries its own code.
+    """
+
+    async def _resolve(self, registration: Any, auth_user_id: int | None = 77) -> int:
+        return await teams._resolve_invite_target(
+            _TargetSession(registration, auth_user_id), tournament_id=3, registration_id=900
+        )
+
+    async def test_a_free_agent_resolves_to_their_account(self) -> None:
+        self.assertEqual(77, await self._resolve(_TargetRegistration()))
+
+    async def test_a_registration_from_another_tournament_is_a_404(self) -> None:
+        """404 rather than 403 deliberately: confirming that a registration exists
+        elsewhere would answer a question the caller has no business asking."""
+        with self.assertRaises(ApiHTTPException) as caught:
+            await self._resolve(_TargetRegistration(tournament_id=999))
+
+        self.assertEqual(404, caught.exception.status_code)
+        self.assertEqual("registration_not_found", _code(caught.exception))
+
+    async def test_someone_recruited_while_the_dialog_was_open_is_refused(self) -> None:
+        """The free-agent list is a snapshot. Without this check the invite would
+        reserve a second slot for a player who already holds one."""
+        with self.assertRaises(ApiHTTPException) as caught:
+            await self._resolve(_TargetRegistration(registration_team_id=12))
+
+        self.assertEqual(409, caught.exception.status_code)
+        self.assertEqual("player_not_free", _code(caught.exception))
+
+    async def test_a_released_registration_is_refused(self) -> None:
+        for status in sorted(teams._SLOT_RELEASING_STATUSES):
+            with self.subTest(status=status):
+                with self.assertRaises(ApiHTTPException) as caught:
+                    await self._resolve(_TargetRegistration(status=status))
+                self.assertEqual("player_not_free", _code(caught.exception))
+
+    async def test_a_player_with_no_site_account_is_refused_with_the_way_out(self) -> None:
+        """An imported player who never signed in cannot be addressed — there is no
+        identity to bind the invite to. The code names the alternative, because a
+        link invite CAN reach them."""
+        with self.assertRaises(ApiHTTPException) as caught:
+            await self._resolve(_TargetRegistration(), auth_user_id=None)
+
+        self.assertEqual(409, caught.exception.status_code)
+        self.assertEqual("player_has_no_account", _code(caught.exception))
+
+
+class TargetedInviteShapeTests(TestCase):
+    """Where the two addressing modes must stay different, and where they must not."""
+
+    def test_a_targeted_invite_mints_no_token(self) -> None:
+        """The point of the mode: nothing to paste, nothing to leak, nothing to
+        forward to the wrong person. A token here would reintroduce every risk the
+        link mode carries, for a recipient who never needed one."""
+        source = inspect.getsource(teams.invite_member)
+        generate = source.index("generate_invite_token()")
+        guard = source.index("if target_registration_id is None:")
+
+        self.assertLess(guard, generate, "the token must be minted only in the link branch")
+        self.assertIn("target_auth_user_id = await _resolve_invite_target", source)
+
+    def test_the_resolution_happens_under_the_team_lock(self) -> None:
+        """ "This slot is open" and "this player is unattached" must be decided under
+        the same lock the insert commits under, or a concurrent acceptance can
+        invalidate one of them between the check and the write."""
+        source = inspect.getsource(teams.invite_member)
+
+        self.assertLess(source.index("_lock_team("), source.index("_resolve_invite_target"))
+        self.assertLess(source.index("_check_slot("), source.index("_resolve_invite_target"))
+
+    def test_the_invite_read_no_longer_leaks_an_account_id(self) -> None:
+        """It carried ``target_auth_user_id``, which no client could use and which is
+        an internal identity travelling outward. A captain needs a name."""
+        fields = set(RegistrationTeamInviteRead.model_fields)
+
+        self.assertIn("target_battle_tag", fields)
+        self.assertNotIn("target_auth_user_id", fields)
+
+    def test_the_invite_input_takes_a_registration_not_an_account(self) -> None:
+        fields = set(RegistrationTeamInviteCreateRequest.model_fields)
+
+        self.assertIn("target_registration_id", fields)
+        self.assertNotIn("target_auth_user_id", fields)
+
+
+class MyInvitesQueryTests(TestCase):
+    """The only way a targeted invite's recipient can learn it exists."""
+
+    def _source(self) -> str:
+        return inspect.getsource(teams.list_my_invites)
+
+    def test_it_is_scoped_to_the_caller_and_never_to_a_parameter(self) -> None:
+        """ "Whose invites" is never the client's answer, so the filter reads the
+        authenticated identity rather than anything from the request."""
+        self.assertIn("target_auth_user_id == auth_user.id", self._source())
+
+    def test_link_invites_are_excluded(self) -> None:
+        """A bearer credential is not "yours" until you hold it. Listing link
+        invites here would hand every outstanding one to whoever asked — the
+        equality filter above excludes them, since their target is NULL."""
+        source = self._source()
+
+        self.assertNotIn("token_sha256", source)
+        self.assertIn("target_auth_user_id == auth_user.id", source)
+
+    def test_expired_and_answered_offers_are_filtered_not_greyed_out(self) -> None:
+        """An offer the accept guard would refuse is not an offer, and its recipient
+        has no action for it."""
+        source = self._source()
+
+        self.assertIn("state == INVITE_PENDING", source)
+        self.assertIn("expires_at > datetime.now(UTC)", source)
+
+    def test_invites_from_dead_teams_are_excluded(self) -> None:
+        """A disbanded or exported team cannot take anyone, so its pending rows are
+        not offers — they are debris the recipient would waste a click on."""
+        source = self._source()
+
+        self.assertIn("status == TEAM_FORMING", source)
+        self.assertIn("deleted_at.is_(None)", source)
+
+
+class AcceptPayloadTests(TestCase):
+    """Who has to answer a form to accept an invite, and who does not."""
+
+    def test_an_attaching_free_agent_need_not_resend_a_form(self) -> None:
+        """It used to be required-but-ignored, and the client expressed that by
+        casting an empty object — a lie the type system could not catch. An invitee
+        who already registered has nothing left to answer."""
+        request = RegistrationTeamAcceptRequest.model_validate({"invite_id": 1})
+
+        self.assertIsNotNone(request.registration)
+        self.assertIsNone(request.registration.battle_tag)
+
+    def test_the_default_cannot_smuggle_a_blank_registration_through(self) -> None:
+        """The permissive default is only safe because the registration form's own
+        validation runs downstream. If that ever stopped gating, a new invitee could
+        accept into a row with no battle tag."""
+        source = inspect.getsource(submit_public_registration)
+
+        self.assertIn("validate_registration_input(", source)
+
+    def test_exactly_one_reference_is_still_required(self) -> None:
+        """A bearer token and a targeted id together leave which one authorized the
+        acceptance ambiguous — a privilege question, not a cosmetic one."""
+        for payload in ({}, {"invite_id": 1, "token": "t"}):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValidationError):
+                    RegistrationTeamAcceptRequest.model_validate(payload)

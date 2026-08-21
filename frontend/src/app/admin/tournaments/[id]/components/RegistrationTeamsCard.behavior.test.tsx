@@ -70,7 +70,7 @@ function team(overrides: Partial<RegistrationTeam> = {}): RegistrationTeam {
         slot_code: "dps",
         is_substitute: false,
         state: "pending",
-        target_auth_user_id: null,
+        target_battle_tag: null,
         is_link: true,
         expires_at: "2026-09-01T12:00:00Z",
         invited_at: "2026-08-20T12:00:00Z"
@@ -211,6 +211,46 @@ describe("RegistrationTeamsCard", () => {
     const scope = await mount();
 
     expect(scope.textContent).not.toContain("on no team");
+  });
+
+  it("names who each pending invite was sent to", async () => {
+    // Without this the two addressing modes are indistinguishable on screen, and an
+    // organizer looking at two pending chips cannot revoke one on purpose. The field
+    // it reads replaced an account id no client could render.
+    listAdmin.mockReset().mockResolvedValue({
+      items: [
+        team({
+          invites: [
+            {
+              id: 5,
+              slot_code: "dps",
+              is_substitute: false,
+              state: "pending",
+              target_battle_tag: null,
+              is_link: true,
+              expires_at: null,
+              invited_at: "2026-08-20T12:00:00Z"
+            },
+            {
+              id: 6,
+              slot_code: "support",
+              is_substitute: false,
+              state: "pending",
+              target_battle_tag: "Ana#2100",
+              is_link: false,
+              expires_at: null,
+              invited_at: "2026-08-20T12:05:00Z"
+            }
+          ]
+        })
+      ],
+      total: 1
+    });
+
+    const scope = await mount();
+
+    expect(scope.textContent).toContain("Ana#2100");
+    expect(scope.textContent).toContain("Shareable link");
   });
 
   it("shows the organizer the invites the public roster hides", async () => {

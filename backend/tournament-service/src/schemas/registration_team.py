@@ -58,31 +58,47 @@ class RegistrationTeamCreateRequest(BaseModel):
 class RegistrationTeamInviteCreateRequest(BaseModel):
     """Offer one roster slot.
 
-    ``target_auth_user_id`` addresses a known account; omitting it produces a
-    shareable link for someone with no account yet (decision 3). Both modes are one
-    entity, so the slot accounting cannot diverge between them.
+    ``target_registration_id`` addresses a free agent already registered for this
+    tournament; omitting it produces a shareable link for someone with no account
+    yet (decision 3). Both modes are one entity, so the slot accounting cannot
+    diverge between them.
+
+    A REGISTRATION id, not an account id: the captain picks from this tournament's
+    own free agents, so no global account search — and no new identity surface —
+    is needed. The server resolves the account behind it and stores that, because
+    identity is what an invite is bound to; a registration can be withdrawn and
+    resubmitted underneath it.
     """
 
     slot_code: RosterSlotCode
     is_substitute: bool = False
-    target_auth_user_id: int | None = None
+    target_registration_id: int | None = None
     #: ``None`` means "no expiry"; the service's default is applied when the field
     #: is omitted entirely, which is why this is not simply ``int = 7``.
     ttl_days: int | None = Field(default=None, ge=1, le=90)
 
 
 class RegistrationTeamAcceptRequest(BaseModel):
-    """Redeem an invite by token or by id, supplying the invitee's own
-    registration.
+    """Redeem an invite by token or by id.
 
     Exactly one reference must be given. Accepting both would leave which one
     authorizes the acceptance ambiguous — and since a link invite is bearer while a
     targeted one is not, the ambiguity is a privilege question, not a cosmetic one.
+
+    ``registration`` is OPTIONAL because an invitee who already has a live
+    registration is a free agent *attaching*: the service reuses their existing row
+    and ignores anything sent here, so demanding a payload would make them re-answer
+    a form they already filled. Required-but-ignored is what it used to be, and the
+    client expressed that by casting an empty object — a lie the type system had no
+    way to catch.
+
+    A genuinely new invitee who sends nothing is still rejected, by the registration
+    form's own validation downstream. This default cannot create a blank row.
     """
 
     token: str | None = None
     invite_id: int | None = None
-    registration: RegistrationCreate
+    registration: RegistrationCreate = Field(default_factory=RegistrationCreate)
 
     @model_validator(mode="after")
     def _exactly_one_reference(self) -> RegistrationTeamAcceptRequest:
@@ -110,7 +126,12 @@ class RegistrationTeamInviteRead(BaseModel):
     slot_code: str
     is_substitute: bool
     state: str
-    target_auth_user_id: int | None = None
+    #: Who a targeted invite was addressed to, as the captain knows them. The
+    #: account id it replaced was useless to any client and was an internal
+    #: identity leaking outward; a captain managing pending offers needs a name,
+    #: otherwise two chips are indistinguishable and neither can be revoked on
+    #: purpose. ``None`` on a link invite, which has no addressee.
+    target_battle_tag: str | None = None
     #: True when the invite is a shareable link. The token itself is never
     #: serialized — it is returned once, by the create call.
     is_link: bool = False
@@ -183,6 +204,49 @@ class RegistrationTeamInvitePreview(BaseModel):
     is_redeemable: bool = False
 
 
+class RegistrationFreeAgentRead(BaseModel):
+    """A registrant on no team, as a captain sees them in the invite picker.
+
+    Carries the registration id rather than an account id: the client never learns
+    an ``auth_user_id``, and the server resolves the identity itself. Everything
+    here is already on the public participants list, so the picker opens no new
+    privacy surface — which is what makes targeted invites possible without a
+    global account search.
+    """
+
+    registration_id: int
+    battle_tag: str
+    #: Role codes, primary first. The captain is filling one slot; a list of bare
+    #: names would make them open every profile to find a tank.
+    roles: list[str] = Field(default_factory=list)
+
+
+class RegistrationFreeAgentListResponse(BaseModel):
+    items: list[RegistrationFreeAgentRead] = Field(default_factory=list)
+    total: int = 0
+
+
+class RegistrationTeamInviteOffer(BaseModel):
+    """An invite addressed to the caller, as their own registration card shows it.
+
+    Distinct from :class:`RegistrationTeamInvitePreview`, which answers the same
+    question for a LINK held by a stranger. This one is for a targeted invite,
+    which has no token at all — so this read is the only way its recipient can
+    ever learn it exists.
+    """
+
+    invite_id: int
+    team_id: int
+    team_name: str
+    slot_code: str
+    is_substitute: bool
+    expires_at: datetime | None = None
+
+
+class RegistrationTeamInviteOfferListResponse(BaseModel):
+    items: list[RegistrationTeamInviteOffer] = Field(default_factory=list)
+
+
 def serialize_registration_team(
     team: models.BalancerRegistrationTeam,
     occupancy: RosterOccupancy,
@@ -213,19 +277,28 @@ def serialize_registration_team(
     )
 
 
-def serialize_invite(invite: models.BalancerRegistrationTeamInvite) -> RegistrationTeamInviteRead:
+def serialize_invite(
+    invite: models.BalancerRegistrationTeamInvite,
+    *,
+    target_battle_tag: str | None = None,
+) -> RegistrationTeamInviteRead:
     """Serialize an outstanding offer.
 
     ``token_sha256`` is reduced to the boolean ``is_link``: the hash is not secret,
     but serving it would let a caller confirm a guessed token offline, and nothing
     downstream needs it.
+
+    ``target_battle_tag`` is passed IN rather than resolved here: the addressee
+    lives two joins away (member -> player -> account), and a lookup inside a
+    per-invite serializer would be an N+1 across every team on the organizer's
+    page. The caller batches it.
     """
     return RegistrationTeamInviteRead(
         id=invite.id,
         slot_code=invite.slot_code,
         is_substitute=bool(invite.is_substitute),
         state=invite.state,
-        target_auth_user_id=invite.target_auth_user_id,
+        target_battle_tag=target_battle_tag,
         is_link=invite.token_sha256 is not None,
         expires_at=invite.expires_at,
         invited_at=invite.invited_at,

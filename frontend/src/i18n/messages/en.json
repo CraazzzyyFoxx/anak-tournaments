@@ -452,7 +452,9 @@
       "revoke": "Revoke",
       "revokeSuccess": "Invite revoked.",
       "pendingEmpty": "No open invites.",
-      "expiresAt": "Expires {date}"
+      "expiresAt": "Expires {date}",
+      "targetLabel": "Invited {name}",
+      "linkLabel": "Shareable link"
     },
     "accept": {
       "title": "Join {team}",
@@ -538,7 +540,10 @@
       "invite_rate_limited": "Too many invites. Wait a little before sending more.",
       "accept_rate_limited": "Too many attempts. Wait a little and try again.",
       "rate_limit_unavailable": "Invites are temporarily unavailable. Try again shortly.",
-      "registration_terminal": "Your registration for this tournament is no longer active, so you cannot take a team slot."
+      "registration_terminal": "Your registration for this tournament is no longer active, so you cannot take a team slot.",
+      "registration_not_found": "That registration is not in this tournament.",
+      "player_not_free": "That player already joined a team. Pick someone else.",
+      "player_has_no_account": "That player has no site account. Send them a link instead."
     },
     "landing": {
       "title": "Team invite",
@@ -555,6 +560,25 @@
         "revoked": "This invite was withdrawn by the captain.",
         "unavailable": "This slot is no longer available."
       }
+    },
+    "offers": {
+      "title": "Team invites",
+      "sentence": "{team} invited you to play {slot}.",
+      "sentenceSubstitute": "{team} invited you as a substitute ({slot}).",
+      "expires": "Expires {date}",
+      "accept": "Join team",
+      "decline": "Decline",
+      "accepted": "You joined {team}.",
+      "declined": "Invite declined."
+    },
+    "picker": {
+      "label": "Invite a registered player",
+      "search": "Search by battle tag",
+      "linkInstead": "Or create a shareable link",
+      "empty": "Nobody is registered without a team right now.",
+      "noMatch": "No free agent matches that.",
+      "selected": "Inviting {name}",
+      "clear": "Clear"
     }
   },
   "accountSettings": {

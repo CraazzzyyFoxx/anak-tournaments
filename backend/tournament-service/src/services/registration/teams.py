@@ -42,7 +42,10 @@ from shared.services.roster_shape_access import get_tournament_roster_slots, get
 from src import models
 from src.schemas.registration import RegistrationCreate, RegistrationRead
 from src.schemas.registration_team import (
+    RegistrationFreeAgentRead,
+    RegistrationTeamInviteOffer,
     RegistrationTeamInvitePreview,
+    RegistrationTeamInviteRead,
     RegistrationTeamMemberRead,
     RegistrationTeamRead,
     serialize_invite,
@@ -73,6 +76,8 @@ __all__ = (
     "invite_member",
     "kick_member",
     "leave_team",
+    "list_free_agents",
+    "list_my_invites",
     "list_teams",
     "preview_invite",
     "reject_team",
@@ -439,6 +444,53 @@ async def assert_may_edit_team(
     _assert_mutable(team)
 
 
+async def _resolve_invite_target(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    registration_id: int,
+) -> int:
+    """The account behind a targeted invite's registration.
+
+    An invite binds to an IDENTITY, not to a registration row: the invitee may
+    withdraw and resubmit before answering, and `accept_invite` attaches whatever
+    live registration they have at that moment. Binding to the row would strand the
+    offer on a dead one.
+
+    Every rejection here is a distinct code because each has a different recourse:
+    picked someone from another tournament (impossible from the UI, so a real bug),
+    picked someone who joined a team while the dialog was open (pick again), or
+    picked a row with no account behind it (an imported player who never signed in —
+    only a link invite can reach them).
+    """
+    registration = await session.scalar(
+        sa.select(models.BalancerRegistration)
+        .where(
+            models.BalancerRegistration.id == registration_id,
+            models.BalancerRegistration.deleted_at.is_(None),
+        )
+        .options(selectinload(models.BalancerRegistration.workspace_member))
+    )
+    if registration is None or registration.tournament_id != tournament_id:
+        # Deliberately 404 rather than 403: confirming that a registration exists
+        # elsewhere would answer a question the caller has no business asking.
+        raise _fail(404, "registration_not_found", "That registration is not in this tournament")
+    if registration.registration_team_id is not None or registration.status in _SLOT_RELEASING_STATUSES:
+        # The free-agent list is a snapshot; someone can be recruited between the
+        # captain opening the picker and pressing invite.
+        raise _fail(409, "player_not_free", "That player is no longer available")
+
+    member = registration.workspace_member
+    auth_user_id = (
+        await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == member.player_id))
+        if member is not None
+        else None
+    )
+    if auth_user_id is None:
+        raise _fail(409, "player_has_no_account", "That player has no site account; send them a link instead")
+    return auth_user_id
+
+
 async def invite_member(
     session: AsyncSession,
     *,
@@ -446,15 +498,20 @@ async def invite_member(
     auth_user: models.AuthUser,
     slot_code: str,
     is_substitute: bool = False,
-    target_auth_user_id: int | None = None,
+    target_registration_id: int | None = None,
     ttl: timedelta | None = DEFAULT_INVITE_TTL,
 ) -> tuple[models.BalancerRegistrationTeamInvite, str | None]:
     """Offer one roster slot. Returns the invite and, for a link invite, the raw
     token — which is shown exactly once and never stored.
 
-    Decision 3: two addressing modes on one entity. ``target_auth_user_id`` is an
-    in-app offer to a known account; without it the invite is a shareable link for
-    someone who has no account yet.
+    Decision 3: two addressing modes on one entity. ``target_registration_id`` is
+    an in-app offer to a free agent already in this tournament; without it the
+    invite is a shareable link for someone who has no account yet.
+
+    A targeted invite gets NO token. That is the point: nothing to paste, nothing
+    to leak, nothing to forward to the wrong person. Its recipient learns of it from
+    their own registration card, which is why that read had to exist before this
+    mode was reachable at all.
     """
     # Metered BEFORE the row lock: a limiter behind the lock would let a flood
     # serialize on the team row and hold it, turning the throttle into a
@@ -499,8 +556,17 @@ async def invite_member(
 
     raw_token: str | None = None
     token_hash: str | None = None
-    if target_auth_user_id is None:
+    target_auth_user_id: int | None = None
+    if target_registration_id is None:
         raw_token, token_hash = generate_invite_token()
+    else:
+        # Resolved INSIDE the lock, after the slot check: the freshness of "this
+        # player is unattached" and "this slot is open" must be decided under the
+        # same lock that the write commits under, or a concurrent acceptance can
+        # invalidate one of them between check and insert.
+        target_auth_user_id = await _resolve_invite_target(
+            session, tournament_id=team.tournament_id, registration_id=target_registration_id
+        )
 
     invite = models.BalancerRegistrationTeamInvite(
         team_id=team.id,
@@ -623,9 +689,7 @@ async def preview_invite(session: AsyncSession, *, token: str) -> RegistrationTe
     # Expiry is computed here rather than client-side: the clock this compares
     # against is the one the guarded UPDATE in `accept_invite` uses, not the
     # visitor's. A link that looks live but rejects on submit is the worse bug.
-    live = invite.state == INVITE_PENDING and (
-        invite.expires_at is None or invite.expires_at > datetime.now(UTC)
-    )
+    live = invite.state == INVITE_PENDING and (invite.expires_at is None or invite.expires_at > datetime.now(UTC))
     return RegistrationTeamInvitePreview(
         tournament_id=team.tournament_id,
         tournament_name=team.tournament.name,
@@ -931,28 +995,68 @@ async def disband_team(
 # ── organizer flows ──────────────────────────────────────────────────────────
 
 
+def _free_agent_clause(tournament_id: int) -> list[sa.ColumnElement[bool]]:
+    """The one definition of "free agent": a live registration on no team.
+
+    Shared by the count and the list on purpose. Two copies would drift, and the
+    failure is silent and specific — an organizer reading "3 players without a
+    team" above a picker offering two of them cannot tell which number is lying.
+
+    Withdrawn and rejected rows are excluded on the same rule the roster reader
+    uses: they released their slot and are not waiting for anything.
+    """
+    return [
+        models.BalancerRegistration.tournament_id == tournament_id,
+        models.BalancerRegistration.registration_team_id.is_(None),
+        models.BalancerRegistration.deleted_at.is_(None),
+        models.BalancerRegistration.status.notin_(_SLOT_RELEASING_STATUSES),
+    ]
+
+
 async def count_unassigned_players(session: AsyncSession, tournament_id: int) -> int:
-    """Live registrations belonging to no team — the free agents.
+    """How many free agents there are.
 
     These are invisible to the export: it materializes registered teams, and on a
     team-registration tournament neither the balancer nor the draft runs. So an
     approved player nobody invited silently never becomes a ``tournament.player``.
     Surfacing the count is what lets an organizer notice them BEFORE pressing
     export, which is the only moment it is still cheap to fix.
-
-    Withdrawn and rejected rows are excluded on the same rule the roster reader
-    uses: they released their slot and are not waiting for anything.
     """
     return (
         await session.scalar(
-            sa.select(sa.func.count(models.BalancerRegistration.id)).where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.registration_team_id.is_(None),
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status.notin_(_SLOT_RELEASING_STATUSES),
-            )
+            sa.select(sa.func.count(models.BalancerRegistration.id)).where(*_free_agent_clause(tournament_id))
         )
     ) or 0
+
+
+async def list_free_agents(session: AsyncSession, tournament_id: int) -> list[RegistrationFreeAgentRead]:
+    """The free agents a captain may invite, newest registration last.
+
+    This is what makes a targeted invite possible without a global account search:
+    the captain picks from people who already registered for THIS tournament, so no
+    new identity surface is opened. Everything returned here is already on the
+    public participants list — the account requirement on the route exists because
+    the only use of this list is to act on it.
+
+    Roles ride along because the captain is filling a specific slot; a list of bare
+    names would make them open every profile to find a tank.
+    """
+    rows = await session.scalars(
+        sa.select(models.BalancerRegistration)
+        .where(*_free_agent_clause(tournament_id))
+        .options(selectinload(models.BalancerRegistration.roles))
+        .order_by(models.BalancerRegistration.submitted_at.asc())
+    )
+    return [
+        RegistrationFreeAgentRead(
+            registration_id=row.id,
+            battle_tag=row.battle_tag,
+            # Primary first: it is the role they actually want, and the captain
+            # scanning for one reads the first chip.
+            roles=[entry.role for entry in sorted(row.roles, key=lambda r: not r.is_primary)],
+        )
+        for row in list(rows)
+    ]
 
 
 async def list_teams(
@@ -1078,7 +1182,101 @@ async def describe_team(
         )
         for registration in await _roster_members(session, team.id)
     ]
-    invites = (
-        [serialize_invite(invite) for invite in await _pending_invites(session, team.id)] if include_invites else []
-    )
+    invites: list[RegistrationTeamInviteRead] = []
+    if include_invites:
+        pending = await _pending_invites(session, team.id)
+        tags = await _battle_tags_by_account(
+            session,
+            tournament_id=team.tournament_id,
+            auth_user_ids={i.target_auth_user_id for i in pending if i.target_auth_user_id is not None},
+        )
+        invites = [
+            serialize_invite(invite, target_battle_tag=tags.get(invite.target_auth_user_id)) for invite in pending
+        ]
     return serialize_registration_team(team, occupancy, members=members, invites=invites)
+
+
+async def _battle_tags_by_account(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    auth_user_ids: set[int],
+) -> dict[int, str]:
+    """Battle tags for the accounts a team's pending invites address.
+
+    One query for every invite on the team rather than one per invite: the
+    organizer's page describes every team at once, so a per-invite lookup would be
+    an N+1 that grows with the field.
+
+    Read from the addressee's registration in THIS tournament, not from their
+    profile: the battle tag they entered on the form is the one the captain picked
+    them by, and a profile rename must not make a pending offer unrecognisable.
+    """
+    if not auth_user_ids:
+        return {}
+    rows = await session.execute(
+        sa.select(models.User.auth_user_id, models.BalancerRegistration.battle_tag)
+        .join(
+            models.WorkspaceMember,
+            models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+        )
+        .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+        .where(
+            models.BalancerRegistration.tournament_id == tournament_id,
+            models.BalancerRegistration.deleted_at.is_(None),
+            models.User.auth_user_id.in_(sorted(auth_user_ids)),
+        )
+    )
+    return dict(rows.all())
+
+
+async def list_my_invites(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    auth_user: models.AuthUser,
+) -> list[RegistrationTeamInviteOffer]:
+    """Targeted invites addressed to the caller in this tournament.
+
+    The whole reason targeted invites are reachable: they carry no token, so this
+    read is the ONLY way their recipient can learn one exists. Without it the mode
+    was strictly worse than a link — nothing to copy and nowhere to see it.
+
+    Link invites are excluded because they have no addressee; a bearer credential
+    is not "yours" until you hold it, and listing them here would hand every
+    outstanding link to whoever asked.
+
+    Expired rows are filtered rather than shown greyed out: an offer the accept
+    guard would refuse is not an offer, and the recipient has no action for it.
+    """
+    rows = await session.scalars(
+        sa.select(models.BalancerRegistrationTeamInvite)
+        .join(
+            models.BalancerRegistrationTeam,
+            models.BalancerRegistrationTeam.id == models.BalancerRegistrationTeamInvite.team_id,
+        )
+        .where(
+            models.BalancerRegistrationTeam.tournament_id == tournament_id,
+            models.BalancerRegistrationTeam.deleted_at.is_(None),
+            models.BalancerRegistrationTeam.status == TEAM_FORMING,
+            models.BalancerRegistrationTeamInvite.target_auth_user_id == auth_user.id,
+            models.BalancerRegistrationTeamInvite.state == INVITE_PENDING,
+            sa.or_(
+                models.BalancerRegistrationTeamInvite.expires_at.is_(None),
+                models.BalancerRegistrationTeamInvite.expires_at > datetime.now(UTC),
+            ),
+        )
+        .options(selectinload(models.BalancerRegistrationTeamInvite.team))
+        .order_by(models.BalancerRegistrationTeamInvite.invited_at.asc())
+    )
+    return [
+        RegistrationTeamInviteOffer(
+            invite_id=invite.id,
+            team_id=invite.team_id,
+            team_name=invite.team.name,
+            slot_code=invite.slot_code,
+            is_substitute=bool(invite.is_substitute),
+            expires_at=invite.expires_at,
+        )
+        for invite in list(rows)
+    ]

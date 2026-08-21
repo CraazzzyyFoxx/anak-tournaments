@@ -311,6 +311,11 @@ export function RegistrationTeamsCard({
                           {t(`inviteState.${invite.state}`)}
                         </Badge>
                         <span className="text-muted-foreground">{slotLabel(invite.slot_code)}</span>
+                        <span className="text-muted-foreground">
+                          {invite.target_battle_tag
+                            ? t("invite.targetLabel", { name: invite.target_battle_tag })
+                            : t("invite.linkLabel")}
+                        </span>
                         {invite.is_substitute && (
                           <span className="text-muted-foreground">{t("member.substitute")}</span>
                         )}

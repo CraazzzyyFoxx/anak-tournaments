@@ -79,6 +79,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import MyTeamSection from "@/components/registration/MyTeamSection";
+import MyInviteOffers from "@/components/registration/MyInviteOffers";
 import RegistrationTeamsList from "@/components/registration/RegistrationTeamsList";
 import { getStatusIcon } from "@/lib/status-icons";
 import { formatSubroleSlug } from "@/lib/roles";
@@ -1209,6 +1210,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           say, so a solo tournament pays no vertical space. */}
       {tournament.team_formation === "registration" && (
         <>
+          <MyInviteOffers tournament={tournament} />
           <MyTeamSection tournament={tournament} />
           <RegistrationTeamsList tournament={tournament} />
         </>

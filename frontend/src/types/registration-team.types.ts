@@ -32,7 +32,13 @@ export interface RegistrationTeamInvite {
   slot_code: string;
   is_substitute: boolean;
   state: RegistrationTeamInviteState;
-  target_auth_user_id: number | null;
+  /**
+   * Who a targeted invite was addressed to, as the captain knows them. `null` on a
+   * link invite, which has no addressee. This replaced an account id that no
+   * client could use: a captain managing two pending offers needs a name, or
+   * neither chip can be revoked on purpose.
+   */
+  target_battle_tag: string | null;
   /** True when the invite is a shareable link. The token itself is never served
    *  again — it is returned exactly once, by the create call. */
   is_link: boolean;
@@ -89,8 +95,15 @@ export interface RegistrationTeamCreateInput {
 export interface RegistrationTeamInviteInput {
   slot_code: RosterSlotCode;
   is_substitute?: boolean;
-  /** Omit for a shareable link invite; set to address a known account in-app. */
-  target_auth_user_id?: number | null;
+  /**
+   * Omit for a shareable link invite; set to address a free agent already
+   * registered for this tournament.
+   *
+   * A REGISTRATION id, not an account id. The captain picks from this tournament's
+   * own free agents, so the picker opens no new identity surface, and the server
+   * resolves the account behind it.
+   */
+  target_registration_id?: number | null;
   ttl_days?: number | null;
 }
 
@@ -98,7 +111,13 @@ export interface RegistrationTeamAcceptInput {
   /** Exactly one of `token` / `invite_id` — the backend rejects both or neither. */
   token?: string;
   invite_id?: number;
-  registration: RegistrationCreateInput;
+  /**
+   * Omit when the invitee already has a live registration: the backend attaches
+   * that row and ignores anything sent here, so there is no form left to answer.
+   * It used to be required-but-ignored, which forced callers to cast an empty
+   * object — a lie the type system could not catch.
+   */
+  registration?: RegistrationCreateInput;
 }
 
 /**
@@ -121,4 +140,43 @@ export interface RegistrationTeamInvitePreview {
   expires_at: string | null;
   /** Server-computed: the client's clock is not the one the accept guard uses. */
   is_redeemable: boolean;
+}
+
+/**
+ * A registrant on no team, as the captain's invite picker lists them.
+ *
+ * Everything here is already on the public participants list — the account
+ * requirement on the endpoint exists because the only use of this list is to act
+ * on it, not because the data is sensitive.
+ */
+export interface RegistrationFreeAgent {
+  registration_id: number;
+  battle_tag: string;
+  /** Role codes, primary first: the captain is filling one specific slot. */
+  roles: string[];
+}
+
+export interface RegistrationFreeAgentListResponse {
+  items: RegistrationFreeAgent[];
+  total: number;
+}
+
+/**
+ * An invite addressed to the current user.
+ *
+ * Distinct from `RegistrationTeamInvitePreview`, which answers the same question
+ * for a LINK held by a stranger. A targeted invite carries no token at all, so
+ * this read is the only way its recipient can learn it exists.
+ */
+export interface RegistrationTeamInviteOffer {
+  invite_id: number;
+  team_id: number;
+  team_name: string;
+  slot_code: string;
+  is_substitute: boolean;
+  expires_at: string | null;
+}
+
+export interface RegistrationTeamInviteOfferListResponse {
+  items: RegistrationTeamInviteOffer[];
 }

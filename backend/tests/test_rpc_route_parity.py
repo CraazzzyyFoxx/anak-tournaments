@@ -147,8 +147,9 @@ class TeamRouteShapeTests(TestCase):
         return lines
 
     def test_all_team_routes_are_present(self) -> None:
-        """Fourteen: twelve flows, the public read, and the admin read."""
-        self.assertEqual(14, len(self._team_route_lines()))
+        """Sixteen: twelve flows and four reads — the public roster, the admin
+        roster, the captain's free-agent picker and a player's own invites."""
+        self.assertEqual(16, len(self._team_route_lines()))
 
     def test_no_team_WRITE_route_is_anonymous(self) -> None:
         """Even redeeming a link invite writes a registration bound to an account:

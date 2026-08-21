@@ -104,6 +104,13 @@ export default defineConfig({
       "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx",
       "src/components/registration/DetailsStep.behavior.test.tsx",
       "src/components/registration/MyTeamPanel.i18n.test.tsx",
+      // The only surface an addressed invite exists on. File-level for the same
+      // mixed-runner reason as its neighbours; unrun, it would report green while
+      // the whole targeted-invite mode was invisible.
+      "src/components/registration/MyInviteOffers.behavior.test.tsx",
+      // The captain's half of the same mode. Separate from the i18n mount test
+      // above because it drives the dialog rather than only rendering it.
+      "src/components/registration/MyTeamPanel.picker.test.tsx",
       // File-level for the same mixed-runner reason as its neighbours above.
       // The landing page for a shared invite link: an unrun mount test here
       // would report green while the whole invitee flow was unreachable, which

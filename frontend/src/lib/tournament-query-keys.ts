@@ -54,6 +54,15 @@ export const tournamentQueryKeys = {
     tournamentId: number,
     includeTerminal: boolean,
   ) => ["registration-teams-admin", workspaceId, tournamentId, includeTerminal] as const,
+  /** The captain's invite picker: registrants on no team. */
+  registrationFreeAgents: (workspaceId: number, tournamentId: number) =>
+    ["registration-free-agents", workspaceId, tournamentId] as const,
+  /** Invites addressed to the CURRENT user. No user id in the key: the server
+   *  scopes it from the token, and a per-user key would imply the cache could
+   *  legitimately hold another account's offers. Cleared on sign-out with the
+   *  rest of the authenticated cache. */
+  registrationMyInvites: (workspaceId: number, tournamentId: number) =>
+    ["registration-my-invites", workspaceId, tournamentId] as const,
   subscriptionStatus: (tournamentId: number) =>
     ["subscription-status", tournamentId] as const,
   draftBoard: (tournamentId: number) => ["draft", tournamentId, "board"] as const,

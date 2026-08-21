@@ -61,6 +61,13 @@ export const REGISTRATION_TEAM_ERROR_CODES = [
   "invite_declined",
   "invite_already_accepted",
   "invite_cap_reached",
+  // targeted invites — a captain picks a free agent, and the snapshot they picked
+  // from can be stale by the time they press invite. `player_not_free` is
+  // therefore an ordinary outcome, not an edge case, and untranslated it would
+  // read as an English server message on a Russian-first surface.
+  "registration_not_found",
+  "player_not_free",
+  "player_has_no_account",
   // throttling
   "invite_rate_limited",
   "accept_rate_limited",
