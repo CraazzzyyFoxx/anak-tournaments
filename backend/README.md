@@ -7,7 +7,9 @@ the Go [`gateway/`](../gateway/README.md), which terminates HTTP, validates JWTs
 routes into typed request/reply RPC over RabbitMQ (`rpc.<service>.<method>`) to these workers.
 
 For the end-to-end request flow, edge topology, and data model see the system overview in
-[`../docs/architecture.md`](../docs/architecture.md).
+[`../docs/architecture.md`](../docs/architecture.md). For what goes where **inside** one
+service's `src/` — the rpc/services/domain/repository/models layers and the rules for each —
+see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 Dependencies are managed as a single [uv](https://docs.astral.sh/uv/) workspace rooted at this
 directory; each service still keeps its own `pyproject.toml` as a workspace member.
