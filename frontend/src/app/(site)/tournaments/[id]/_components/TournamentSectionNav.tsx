@@ -16,8 +16,7 @@ import {
   Map,
   Radio,
   Trophy,
-  Users,
-  UsersRound
+  Users
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -36,7 +35,6 @@ const icons: Record<TournamentSectionId, React.ComponentType<{ className?: strin
   bracket: LayoutGrid,
   stream: Radio,
   teams: Users,
-  "registration-teams": UsersRound,
   participants: ClipboardList,
   schedule: CalendarClock,
   matches: Calendar,

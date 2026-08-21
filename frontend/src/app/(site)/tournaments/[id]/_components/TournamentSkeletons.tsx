@@ -19,7 +19,7 @@ function SkeletonRegion({
   message,
   children
 }: Readonly<{
-  variant: "shell" | "bracket" | "teams" | "registration-teams" | "participants" | "schedule" | "matches" | "heroes" | "standings" | "maps" | "stream";
+  variant: "shell" | "bracket" | "teams" | "participants" | "schedule" | "matches" | "heroes" | "standings" | "maps" | "stream";
   message: string;
   children: React.ReactNode;
 }>) {
@@ -201,33 +201,6 @@ export function TournamentTeamsSkeleton() {
  * announced message is the shared "loading teams" copy: the roster is what a
  * registration tournament calls its teams.
  */
-export function TournamentRegistrationTeamsSkeleton() {
-  const t = useTranslations();
-
-  return (
-    <SkeletonRegion
-      variant="registration-teams"
-      message={t("tournamentDetail.loading.pages.teams")}
-    >
-      <TournamentPageSkeletonLayout>
-        <SkeletonBlock style={{ width: "12rem", height: "1.3rem" }} />
-        <div className={styles.teamsSkeletonGrid}>
-          {Array.from({ length: 6 }, (_, card) => (
-            <div className={styles.skeletonCard} key={card}>
-              <SkeletonBlock style={{ width: "64%", height: "1.15rem" }} />
-              <SkeletonBlock style={{ width: "34%", height: "0.9rem" }} />
-              <SkeletonBlock style={{ width: "100%", height: "1px" }} />
-              <SkeletonBlock style={{ width: "82%", height: "0.75rem" }} />
-              <SkeletonBlock style={{ width: "76%", height: "0.75rem" }} />
-              <SkeletonBlock style={{ width: "80%", height: "0.75rem" }} />
-            </div>
-          ))}
-        </div>
-      </TournamentPageSkeletonLayout>
-    </SkeletonRegion>
-  );
-}
-
 export function TournamentParticipantsSkeleton() {
   const t = useTranslations();
 

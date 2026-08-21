@@ -190,29 +190,26 @@ describe("buildTournamentSectionNav", () => {
     });
   });
 
-  it("carries Registered teams only for a registration tournament", () => {
-    const registered = (teamFormation: string) =>
-      buildTournamentSectionNav({
+  it("never carries a registered-teams section, on any formation", () => {
+    // Registered teams render on the Participants page, not behind their own tab.
+    // A dedicated tab put three sections in one conceptual space (`Teams`,
+    // `Participants`, `Registered teams`) and duplicated the `Teams` tab outright
+    // once the organizer exported: both then listed the same teams. This pins the
+    // removal, since re-adding a section id is a one-line change.
+    for (const teamFormation of ["balancer", "draft", "registration"]) {
+      const nav = buildTournamentSectionNav({
         tournamentId,
         status: "registration",
         stages: [stage()],
         teamFormation,
         hasSchedule: true,
         hasTeams: true,
-        pathname: `/tournaments/${tournamentId}/registration-teams`
-      }).find((item) => item.id === "registration-teams");
-
-    // Present-or-absent like `draft`: a balancer or draft tournament never
-    // grows a registered-team roster, so a lock would promise it forever.
-    expect(registered("balancer")).toBeUndefined();
-    expect(registered("draft")).toBeUndefined();
-    expect(registered("registration")).toMatchObject({
-      href: `/tournaments/${tournamentId}/registration-teams`,
-      labelKey: "registrationTeams.tab.label",
-      active: true,
-      available: true,
-      reasonKey: null
-    });
+        pathname: `/tournaments/${tournamentId}/participants`
+      });
+      expect(nav.filter((item) => item.id.includes("registration"))).toEqual([]);
+      // ...and exactly one section is about teams.
+      expect(nav.filter((item) => item.labelKey === "common.teams")).toHaveLength(1);
+    }
   });
 
   it("marks exactly the canonical nested route active", () => {

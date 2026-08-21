@@ -401,10 +401,6 @@
       "declined": "Declined",
       "revoked": "Revoked"
     },
-    "tab": {
-      "label": "Registered teams",
-      "locked": "Team registration is not enabled for this tournament."
-    },
     "list": {
       "title": "Registered teams",
       "empty": "No teams have registered yet.",

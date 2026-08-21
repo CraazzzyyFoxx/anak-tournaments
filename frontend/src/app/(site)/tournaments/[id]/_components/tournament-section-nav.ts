@@ -1,7 +1,7 @@
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
 export type TournamentSectionId =
-  | "bracket" | "stream" | "teams" | "registration-teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
+  | "bracket" | "stream" | "teams" | "participants" | "schedule" | "matches" | "maps" | "heroes" | "standings" | "draft";
 
 type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.competitionNotStarted"
@@ -9,14 +9,8 @@ type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.noSchedule"
   | "tournamentDetail.nav.reasons.noTeams";
 
-/**
- * Every section labels itself from `common.<id>`, except `registration-teams`:
- * its copy lives in the team-registration namespace with the rest of the
- * feature's strings, and `common` deliberately has no entry to shadow it.
- */
-export type TournamentSectionLabelKey =
-  | `common.${Exclude<TournamentSectionId, "registration-teams">}`
-  | "registrationTeams.tab.label";
+/** Every section labels itself from `common.<id>`. */
+export type TournamentSectionLabelKey = `common.${TournamentSectionId}`;
 
 export type TournamentSectionNavItem = {
   id: TournamentSectionId;
@@ -77,7 +71,6 @@ const tournamentSections: Exclude<TournamentSectionId, "draft">[] = [
   // Sits with `participants`, not next to `teams`: both read registration-phase
   // data, and the post-balancer `teams` tab carries the same visible label, so
   // neighbouring them would read as a duplicate rather than two views.
-  "registration-teams",
   "schedule",
   "matches",
   "maps",
@@ -140,17 +133,14 @@ export function buildTournamentSectionNav({
 }: BuildTournamentSectionNavInput): TournamentSectionNavItem[] {
   const competitionStarted = competitionStatuses.has(status);
   const currentPath = normalizePathname(pathname);
-  // Three sections are present-or-absent rather than open-or-locked, because a
+  // Two sections are present-or-absent rather than open-or-locked, because a
   // locked tab claims the content exists somewhere: `draft`, which only a draft
-  // tournament has at all, `registration-teams`, which only a registration
   // tournament has at all, and `stream`, which needs a broadcast link or a live
-  // participant. `stream` and `registration-teams` are filtered from their
-  // display positions instead of appended like `draft`, so the rail keeps one
-  // order in every case.
+  // participant. `stream` is filtered from its display position instead of
+  // appended like `draft`, so the rail keeps one order in every case.
   const sections: TournamentSectionId[] = [
     ...tournamentSections.filter((id) => {
       if (id === "stream") return hasStreams;
-      if (id === "registration-teams") return teamFormation === "registration";
       return true;
     }),
     ...(teamFormation === "draft" ? (["draft"] as const) : [])
@@ -177,7 +167,7 @@ export function buildTournamentSectionNav({
 
     return {
       id,
-      labelKey: id === "registration-teams" ? "registrationTeams.tab.label" : `common.${id}`,
+      labelKey: `common.${id}`,
       href,
       active: currentPath === canonicalPath,
       available: reasonKey === null,

@@ -39,12 +39,9 @@ describe("interpolated message keys", () => {
     }
   });
 
-  it("the two team-related nav tabs are not called the same thing", () => {
-    // A registration tournament shows BOTH: `teams` (post-balancer, materialized)
-    // and `registration-teams` (pre-formation entries). They shipped both labelled
-    // "Teams"/"Команды", which read as one duplicated tab in the rail.
-    for (const dict of [en, ru]) {
-      expect(dict.registrationTeams.tab.label).not.toBe(dict.common.teams);
-    }
-  });
+  // A "two team tabs must not share a label" assertion lived here. It is gone
+  // with the tab itself: registered teams render on the Participants page, so
+  // `common.teams` is the only team-labelled section and `registrationTeams.tab`
+  // no longer exists. `tournament-section-nav.test.ts` now pins that there is
+  // exactly one such section, which is the stronger claim.
 });

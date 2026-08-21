@@ -77,6 +77,8 @@ import VirtualParticipantsList from "./_components/VirtualParticipantsList";
 import { useTranslations, useLocale } from "next-intl";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import MyTeamSection from "@/components/registration/MyTeamSection";
+import RegistrationTeamsList from "@/components/registration/RegistrationTeamsList";
 import { getStatusIcon } from "@/lib/status-icons";
 import { formatSubroleSlug } from "@/lib/roles";
 import { TournamentParticipantsSkeleton } from "../_components/TournamentSkeletons";
@@ -1191,6 +1193,20 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           requireOpenProfile={formQuery.data?.require_open_profile ?? false}
           requireSubscription={formQuery.data?.require_subscription ?? false}
         />
+      )}
+
+      {/* Team registration lives here rather than behind its own tab. A dedicated
+          tab put three sections in one conceptual space (`Teams`, `Participants`,
+          `Registered teams`) and duplicated the `Teams` tab outright once the
+          organizer exported — both then listed the same teams.
+
+          Both components self-gate and render nothing when they have nothing to
+          say, so a solo tournament pays no vertical space. */}
+      {tournament.team_formation === "registration" && (
+        <>
+          <MyTeamSection tournament={tournament} />
+          <RegistrationTeamsList tournament={tournament} />
+        </>
       )}
 
       <AlertDialog

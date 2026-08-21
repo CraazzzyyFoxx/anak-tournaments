@@ -1,12 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
 import { Crown, LifeBuoy } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import MyTeamSection from "@/components/registration/MyTeamSection";
 import { Badge } from "@/components/ui/badge";
 import { normalizePlayerRole } from "@/lib/player-role";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
@@ -18,13 +16,7 @@ import type {
   RegistrationTeamMember,
   RegistrationTeamStatus
 } from "@/types/registration-team.types";
-import { Tournament } from "@/types/tournament.types";
-
-import { TournamentPageState } from "../_components/TournamentPageState";
-import { TournamentRegistrationTeamsSkeleton } from "../_components/TournamentSkeletons";
-import { UpdatingBadge } from "../_components/UpdatingBadge";
-import { useTournamentQuery } from "../_hooks/useTournamentClientData";
-import { getPublicPageQueryPresentation } from "./publicPageQueryPresentation";
+import type { Tournament } from "@/types/tournament.types";
 
 /**
  * One tint recipe per lifecycle state, written out literally because Tailwind
@@ -130,94 +122,48 @@ function RegistrationTeamCard({ team }: Readonly<{ team: RegistrationTeam }>) {
   );
 }
 
-const TournamentRegistrationTeamsView = ({ tournament }: { tournament: Tournament }) => {
+/**
+ * The registered teams of a tournament, as cards.
+ *
+ * Lives on the Participants page rather than behind its own tab. A dedicated tab
+ * put three sections in one conceptual space (`Teams`, `Participants`,
+ * `Registered teams`) and, worse, duplicated the `Teams` tab outright once the
+ * organizer exported: both then listed the same teams. Participants is where you
+ * already go to see who entered, so the team view belongs above that list.
+ *
+ * Renders nothing at all when there are no registered teams, so a solo tournament
+ * — and a team tournament before anyone registers — pays no vertical space. The
+ * page's own empty/error states cover the participant list; a second empty card
+ * here would just be noise.
+ */
+export default function RegistrationTeamsList({
+  tournament
+}: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations();
   const teamsQuery = useQuery({
     queryKey: tournamentQueryKeys.registrationTeams(tournament.workspace_id, tournament.id),
     queryFn: () => registrationTeamService.listPublic(tournament.id)
   });
 
-  const teams = useMemo(() => teamsQuery.data?.items ?? [], [teamsQuery.data]);
+  const teams = teamsQuery.data?.items ?? [];
+  if (teams.length === 0) return null;
 
-  const presentation = getPublicPageQueryPresentation({
-    data: teamsQuery.data,
-    itemCount: teams.length,
-    isPending: teamsQuery.isPending,
-    isError: teamsQuery.isError,
-    isFetching: teamsQuery.isFetching
-  });
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="font-onest text-lg font-semibold text-[color:var(--aqt-fg)]">
+          {t("registrationTeams.list.title")}
+        </h2>
+        <span className="text-sm text-[color:var(--aqt-fg-muted)]">
+          {t("registrationTeams.list.count", { count: teams.length })}
+        </span>
+      </div>
 
-  if (presentation.initialState === "error") {
-    return <TournamentPageState state="initial-error" onRetry={() => void teamsQuery.refetch()} />;
-  }
-
-  if (presentation.initialState === "skeleton" || presentation.contentState === null) {
-    return <TournamentRegistrationTeamsSkeleton />;
-  }
-
-  const content = (
-    <div className="space-y-4">
-      {/* The viewer's own position: create a team, or manage the one they are on.
-          Self-contained and returns null for anonymous visitors. */}
-      <MyTeamSection tournament={tournament} />
-      {presentation.showUpdating ? <UpdatingBadge /> : null}
-      {presentation.contentState === "empty" ? (
-        <TournamentPageState state="empty" description={t("registrationTeams.list.empty")} />
-      ) : (
-        <>
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="font-onest text-lg font-semibold text-[color:var(--aqt-fg)]">
-              {t("registrationTeams.list.title")}
-            </h2>
-            <span className="text-sm text-[color:var(--aqt-fg-muted)]">
-              {t("registrationTeams.list.count", { count: teams.length })}
-            </span>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {teams.map((team) => (
-              <RegistrationTeamCard key={team.id} team={team} />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {teams.map((team) => (
+          <RegistrationTeamCard key={team.id} team={team} />
+        ))}
+      </div>
+    </section>
   );
-
-  if (presentation.showRefreshError) {
-    return (
-      <TournamentPageState
-        state="refresh-error"
-        onRetry={() => void teamsQuery.refetch()}
-        isUpdating={teamsQuery.isFetching}
-      >
-        {content}
-      </TournamentPageState>
-    );
-  }
-
-  return content;
-};
-
-/**
- * Resolves the shared tournament overview so the route file stays a one-line
- * delegation, matching every other tournament sub-route. The overview is
- * already primed by the layout, so this is a cache read in practice — the
- * guards below only fire if that layout contract ever changes.
- */
-const TournamentRegistrationTeamsPage = ({ tournamentId }: { tournamentId: number }) => {
-  const tournamentQuery = useTournamentQuery(tournamentId);
-
-  if (!tournamentQuery.data) {
-    if (tournamentQuery.isError) {
-      return (
-        <TournamentPageState state="initial-error" onRetry={() => void tournamentQuery.refetch()} />
-      );
-    }
-    return <TournamentRegistrationTeamsSkeleton />;
-  }
-
-  return <TournamentRegistrationTeamsView tournament={tournamentQuery.data} />;
-};
-
-export default TournamentRegistrationTeamsPage;
+}

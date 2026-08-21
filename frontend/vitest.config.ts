@@ -73,7 +73,6 @@ export default defineConfig({
       "src/app/(site)/tournaments/[id]/_views/TournamentMapsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_views/TournamentParticipantsPage.behavior.test.tsx",
       "src/app/(site)/tournaments/[id]/_views/TournamentSchedulePage.behavior.test.tsx",
-      "src/app/(site)/tournaments/[id]/_views/TournamentRegistrationTeamsPage.behavior.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       "src/components/pick-ban/**/*.test.ts",
       "src/components/pick-ban/**/*.test.tsx",
