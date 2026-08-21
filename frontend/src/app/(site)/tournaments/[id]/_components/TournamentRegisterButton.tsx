@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, LogIn, UserPlus, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, LogIn, UserPlus, UsersRound, XCircle } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -130,15 +130,32 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
-      >
-        <UserPlus className="size-4" aria-hidden />
-        {t("registration.button.register")}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+        >
+          <UserPlus className="size-4" aria-hidden />
+          {t("registration.button.register")}
+        </button>
 
+        {/* On a team-registration tournament both choices belong HERE, together.
+            The team entry used to live only inside the Teams tab, which meant a
+            player found the solo button first, registered, and was then locked
+            out of founding a team (the server answers `already_registered`, and
+            a withdrawn registration cannot be resubmitted). Presenting the fork
+            before either action is taken is the whole fix. */}
+        {tournament.team_formation === "registration" && (
+          <Link
+            href={`/tournaments/${tournamentId}/registration-teams`}
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
+          >
+            <UsersRound className="size-4" aria-hidden />
+            {t("registrationTeams.create.action")}
+          </Link>
+        )}
+      </div>
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-2xl lg:max-w-3xl">
           <DialogTitle className="sr-only">

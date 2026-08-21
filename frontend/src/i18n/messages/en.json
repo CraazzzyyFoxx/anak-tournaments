@@ -266,7 +266,8 @@
     "favorite": {
       "add": "Add to favorites",
       "remove": "Remove from favorites"
-    }
+    },
+    "registration": "Team registration"
   },
   "registration": {
     "wizard": {
@@ -401,7 +402,7 @@
       "revoked": "Revoked"
     },
     "tab": {
-      "label": "Teams",
+      "label": "Registered teams",
       "locked": "Team registration is not enabled for this tournament."
     },
     "list": {
@@ -421,7 +422,8 @@
       "slotLabel": "Your slot",
       "slotHint": "You are a member of the team like anyone else — pick the slot you will play.",
       "submit": "Create team",
-      "success": "Team created. Invite your players next."
+      "success": "Team created. Invite your players next.",
+      "blockedBySolo": "You are already registered as an individual player, so you cannot create a team for this tournament. Ask a captain to invite you instead."
     },
     "invite": {
       "action": "Invite a player",

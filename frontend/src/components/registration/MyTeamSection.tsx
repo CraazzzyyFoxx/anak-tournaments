@@ -75,10 +75,21 @@ export default function MyTeamSection({ tournament }: Readonly<{ tournament: Tou
     );
   }
 
-  // Already registered solo, or registration closed: nothing to offer. A player
-  // holding a live solo registration cannot found a team — the server answers
-  // `already_registered`, so showing the button would be a dead end.
-  if (!open || myRegistration || !formQuery.data) return null;
+  // Registration closed, or the form is not loaded yet: nothing to say.
+  if (!open || !formQuery.data) return null;
+
+  // A live solo registration blocks founding a team — the server answers
+  // `already_registered`, and a withdrawn registration cannot be resubmitted, so
+  // this is a genuine dead end. Say so. Returning null here (the first version)
+  // left the user staring at "TEAMS 0 registered" with no explanation and no
+  // action, which is the same §12.5 failure this feature exists to avoid.
+  if (myRegistration) {
+    return (
+      <p className="rounded-lg border border-[color:var(--aqt-border)] bg-muted/20 px-3 py-2 text-sm text-[color:var(--aqt-fg-muted)]">
+        {t("create.blockedBySolo")}
+      </p>
+    );
+  }
 
   /**
    * Slots the captain may occupy. Derived from the tournament's roster override
