@@ -925,6 +925,27 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
+    @broker.subscriber("rpc.tournament.regteam_invite_history_public")
+    async def _regteam_invite_history_public(data: dict, msg: RabbitMessage) -> dict:
+        """A captain reads their own team's full invite history.
+
+        Authorized by captaincy, not by workspace permission — the organizer reads
+        the same data through the admin handler. Nothing here is new to a captain:
+        they issued every row in it.
+
+        Gated by :func:`assert_captain_of_team`, which deliberately does NOT require
+        the team to still be mutable: a rejected or exported team's history is
+        exactly what someone opens this to understand.
+        """
+
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            team_id = _path_int(data, "team_id")
+            await team_service.assert_captain_of_team(session, team_id=team_id, auth_user=user)
+            return _dump(await team_service.list_invite_history(session, team_id=team_id))
+
+        return await _run(logger, op)
+
     @broker.subscriber("rpc.tournament.regteam_accept")
     async def _regteam_accept(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

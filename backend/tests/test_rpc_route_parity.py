@@ -147,9 +147,10 @@ class TeamRouteShapeTests(TestCase):
         return lines
 
     def test_all_team_routes_are_present(self) -> None:
-        """Sixteen: twelve flows and four reads — the public roster, the admin
-        roster, the captain's free-agent picker and a player's own invites."""
-        self.assertEqual(16, len(self._team_route_lines()))
+        """Twenty: fourteen flows and six reads — the public roster, the admin
+        roster, the free-agent picker, a player's own invites, and the invite
+        history from each side."""
+        self.assertEqual(20, len(self._team_route_lines()))
 
     def test_no_team_WRITE_route_is_anonymous(self) -> None:
         """Even redeeming a link invite writes a registration bound to an account:
@@ -171,13 +172,31 @@ class TeamRouteShapeTests(TestCase):
 
         self.assertEqual(1, len(preview))
         self.assertIn("edge.AuthOptional", preview[0])
-        # Eleven mutating writes; the other two team routes are the admin and
-        # public list GETs.
-        self.assertEqual(11, len(mutating))
+        # Thirteen mutating writes; the rest of the team routes are reads.
+        self.assertEqual(13, len(mutating))
         for line in mutating:
             with self.subTest(route=line.strip()[:80]):
                 self.assertIn("edge.AuthRequired", line)
                 self.assertNotIn("edge.AuthOptional", line)
+
+    def test_organizer_invite_writes_authorize_against_the_tournament(self) -> None:
+        """The two organizer powers over someone else's roster are authorized by
+        ``_tournament_ctx``, which reads ``IDParam``. If that ever named the invite
+        or team instead, the permission check would resolve the wrong workspace and
+        an organizer of one event could act on another's teams — the service's own
+        scope check is the second lock, not the first.
+        """
+        organizer_writes = [
+            line
+            for line in self._team_route_lines()
+            if "regteam_invite_revoke_admin" in line or "regteam_invite_cap_reset" in line
+        ]
+
+        self.assertEqual(2, len(organizer_writes))
+        for line in organizer_writes:
+            with self.subTest(route=line.strip()[:80]):
+                self.assertIn('IDParam: "tournament_id"', line)
+                self.assertIn("/admin/balancer/tournaments/", line)
 
     def test_the_anonymous_invite_preview_only_reads(self) -> None:
         """The one anonymous team route is a POST, so nothing about its method stops

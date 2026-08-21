@@ -17,9 +17,11 @@ the right way round.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import os
 import sys
+import textwrap
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -53,6 +55,23 @@ from src.services.registration import teams  # noqa: E402
 from src.services.registration.service import submit_public_registration  # noqa: E402
 
 FIVE_STACK = parse_roster_slots({"tank": 1, "dps": 2, "support": 2})
+
+
+def _code_of(fn: Any) -> str:
+    """A function's source with its docstring removed.
+
+    Every source-inspecting test in this file needs this. Reading raw
+    ``inspect.getsource`` makes a docstring that *explains why a check is absent*
+    read as the check being present — which is precisely backwards, and cost two
+    false passes before this existed.
+    """
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    node = tree.body[0]
+    assert isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
+    body = node.body
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        body = body[1:]
+    return "\n".join(ast.unparse(statement) for statement in body)
 
 
 @dataclass
@@ -131,9 +150,8 @@ class GuardedUpdateTests(TestCase):
     def test_the_source_consumes_the_invite_with_a_guarded_update(self) -> None:
         """A read-then-write would let two redemptions of one link both succeed.
         Asserted on the source because the race itself is not unit-testable."""
-        import inspect
 
-        source = inspect.getsource(teams.accept_invite)
+        source = _code_of(teams.accept_invite)
         self.assertIn("sa.update(models.BalancerRegistrationTeamInvite)", source)
         self.assertIn("_diagnose_dead_invite", source)
 
@@ -452,12 +470,12 @@ class FreeAgentPredicateTests(TestCase):
         offering two of them cannot tell which number is lying."""
         for fn in (teams.count_unassigned_players, teams.list_free_agents):
             with self.subTest(fn=fn.__name__):
-                self.assertIn("_free_agent_clause", inspect.getsource(fn))
+                self.assertIn("_free_agent_clause", _code_of(fn))
 
     def test_the_clause_uses_the_roster_readers_release_rule(self) -> None:
         """The third consumer of that set is the roster reader. If it and the clause
         disagree, a player can be absent from every team AND absent from the count."""
-        self.assertIn("_SLOT_RELEASING_STATUSES", inspect.getsource(teams._free_agent_clause))
+        self.assertIn("_SLOT_RELEASING_STATUSES", _code_of(teams._free_agent_clause))
         self.assertEqual({"withdrawn", "rejected"}, set(teams._SLOT_RELEASING_STATUSES))
 
 
@@ -644,7 +662,7 @@ class TargetedInviteShapeTests(TestCase):
         """The point of the mode: nothing to paste, nothing to leak, nothing to
         forward to the wrong person. A token here would reintroduce every risk the
         link mode carries, for a recipient who never needed one."""
-        source = inspect.getsource(teams.invite_member)
+        source = _code_of(teams.invite_member)
         generate = source.index("generate_invite_token()")
         guard = source.index("if target_registration_id is None:")
 
@@ -655,7 +673,7 @@ class TargetedInviteShapeTests(TestCase):
         """ "This slot is open" and "this player is unattached" must be decided under
         the same lock the insert commits under, or a concurrent acceptance can
         invalidate one of them between the check and the write."""
-        source = inspect.getsource(teams.invite_member)
+        source = _code_of(teams.invite_member)
 
         self.assertLess(source.index("_lock_team("), source.index("_resolve_invite_target"))
         self.assertLess(source.index("_check_slot("), source.index("_resolve_invite_target"))
@@ -728,7 +746,7 @@ class AcceptPayloadTests(TestCase):
         """The permissive default is only safe because the registration form's own
         validation runs downstream. If that ever stopped gating, a new invitee could
         accept into a row with no battle tag."""
-        source = inspect.getsource(submit_public_registration)
+        source = _code_of(submit_public_registration)
 
         self.assertIn("validate_registration_input(", source)
 
@@ -739,3 +757,168 @@ class AcceptPayloadTests(TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaises(ValidationError):
                     RegistrationTeamAcceptRequest.model_validate(payload)
+
+
+@dataclass
+class _CapTeam:
+    id: int = 7
+    tournament_id: int = 3
+    invite_cap_reset_at: Any = None
+
+
+class InviteCapCounterTests(TestCase):
+    """The number that refuses an invite and the number the UI shows.
+
+    They must be the same query. The worst version of this feature is a captain
+    told "12 of 60 used" and refused in the same breath, with no way to know which
+    of the two is lying.
+    """
+
+    def _sql(self, team: Any) -> str:
+        import sqlalchemy as sa
+
+        conditions = [models.BalancerRegistrationTeamInvite.team_id == team.id]
+        if team.invite_cap_reset_at is not None:
+            conditions.append(models.BalancerRegistrationTeamInvite.invited_at > team.invite_cap_reset_at)
+        statement = sa.select(sa.func.count(models.BalancerRegistrationTeamInvite.id)).where(*conditions)
+        return str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+    def test_the_check_and_the_display_share_one_counter(self) -> None:
+        """`invite_member` must not compute its own count. A second copy is how the
+        refusal and the counter drift apart."""
+        source = _code_of(teams.invite_member)
+
+        self.assertIn("count_invites_against_cap(session, team)", source)
+        self.assertNotIn("func.count", source)
+
+    def test_every_invite_ever_created_counts(self) -> None:
+        """A cumulative ceiling is the only thing an invite -> revoke -> invite loop
+        cannot walk around: each cycle satisfies every slot rule."""
+        source = _code_of(teams.count_invites_against_cap)
+
+        self.assertNotIn("INVITE_PENDING", source)
+        self.assertNotIn("state ==", source)
+
+    def test_a_reset_moves_the_floor_instead_of_zeroing_it(self) -> None:
+        """Deleting the rows is the other way to clear a cap and is worse: the
+        history is now a read, so it would erase the evidence of whatever abuse
+        prompted the reset."""
+        reset = self._sql(_CapTeam(invite_cap_reset_at=datetime(2026, 8, 1, tzinfo=UTC)))
+
+        self.assertIn("invited_at >", reset)
+        self.assertNotIn("invited_at >", self._sql(_CapTeam()))
+
+    def test_the_reset_records_who_forgave_it(self) -> None:
+        source = _code_of(teams.reset_invite_cap)
+
+        self.assertIn("invite_cap_reset_by = auth_user.id", source)
+        self.assertIn("invite_cap_reset_at", source)
+
+
+class OrganizerRevokeTests(TestCase):
+    """A new power over someone else's roster. Three properties make it safe."""
+
+    def test_it_is_scoped_to_the_tournament_it_was_authorized_for(self) -> None:
+        """The single most important check here. An invite id is global while the
+        organizer's permission is not, so without this an organizer of any
+        tournament could pass any id and act on another event's roster."""
+        source = _code_of(teams.revoke_invite_as_organizer)
+
+        self.assertIn("team.tournament_id != tournament_id", source)
+        # 404, not 403: confirming the invite exists elsewhere answers a question
+        # this caller has no permission to ask. Quote-agnostic because `_code_of`
+        # round-trips through `ast.unparse`, which normalizes string quoting.
+        self.assertIn("_fail(404, ", source)
+        self.assertIn("invite_not_found", source)
+        self.assertNotIn("403", source)
+
+    def test_it_never_takes_the_captain_gate(self) -> None:
+        """An organizer is by definition not the captain. Leaving `_assert_captain`
+        in would make the whole power unreachable — and reachable only by the one
+        person who never needs it."""
+        source = _code_of(teams.revoke_invite_as_organizer)
+
+        self.assertNotIn("_assert_captain", source)
+        # It also must not require a mutable team: the reason to reach in is
+        # usually that something is stuck.
+        self.assertNotIn("_assert_mutable", source)
+
+    def test_both_paths_share_one_transition_but_not_one_gate(self) -> None:
+        """A single function with an `as_organizer` flag is how a privilege check
+        gets skipped by a caller passing the wrong default."""
+        captain = _code_of(teams.revoke_invite)
+        organizer = _code_of(teams.revoke_invite_as_organizer)
+
+        self.assertIn("_assert_captain", captain)
+        self.assertIn("_withdraw_invite(invite, by=auth_user, by_organizer=False)", captain)
+        self.assertIn("_withdraw_invite(invite, by=auth_user, by_organizer=True)", organizer)
+
+    def test_provenance_is_written_not_inferred(self) -> None:
+        """Comparing the revoker against "the captain" at read time would be a lie:
+        captaincy transfers, so the captain now is not the captain then."""
+        source = _code_of(teams._withdraw_invite)
+
+        self.assertIn("invite.revoked_by = by.id", source)
+        self.assertIn("invite.revoked_by_organizer = by_organizer", source)
+
+
+class InviteHistoryTests(TestCase):
+    """The read that makes the cap explicable."""
+
+    def _source(self) -> str:
+        return _code_of(teams.list_invite_history)
+
+    def test_it_is_separate_from_the_live_invite_list(self) -> None:
+        """`describe_team` returns only pending invites because occupancy depends on
+        them reserving slots. A terminal row in that list would hold a place open
+        for someone who already declined."""
+        self.assertIn("state == INVITE_PENDING", _code_of(teams._pending_invites))
+        # The history filters on team only. `INVITE_PENDING` still appears in its
+        # body -- in the expiry computation -- so the claim is about the WHERE, not
+        # about the token being absent.
+        self.assertNotIn("INVITE_PENDING", _code_of(teams.list_invite_history).split("now =")[0])
+
+    def test_it_returns_terminal_rows_too(self) -> None:
+        """The gap it closes: a declined offer used to vanish, so the captain saw
+        the slot reopen without knowing whether they were refused or the link
+        merely lapsed. Different situations, different next moves."""
+        source = self._source()
+
+        self.assertNotIn(".where(models.BalancerRegistrationTeamInvite.state", source)
+        self.assertIn("invited_at.desc()", source)
+
+    def test_expiry_is_computed_because_it_is_not_a_stored_state(self) -> None:
+        source = self._source()
+
+        self.assertIn("expired", source)
+        self.assertIn("row.expires_at <= now", source)
+        # It is derived, never selected: no column holds it.
+        self.assertNotIn("state == 'expired'", source)
+
+    def test_it_ships_the_cap_standing_alongside(self) -> None:
+        """Apart they are a riddle: the cap counts every invite ever issued while
+        only pending ones were visible."""
+        source = self._source()
+
+        self.assertIn("count_invites_against_cap", source)
+        self.assertIn("cap_limit=TEAM_INVITE_TOTAL_CAP", source)
+
+
+class CaptainReadGateTests(TestCase):
+    """Reading is not editing."""
+
+    def test_the_read_gate_does_not_require_a_mutable_team(self) -> None:
+        """A captain must be able to read the history of a team that was rejected or
+        already exported — those are exactly the cases someone opens it to
+        understand."""
+        read_gate = _code_of(teams.assert_captain_of_team)
+
+        self.assertIn("_assert_captain", read_gate)
+        self.assertNotIn("_assert_mutable", read_gate)
+
+    def test_the_edit_gate_still_requires_one(self) -> None:
+        """The mutability rule did not disappear; it stayed where it belongs."""
+        edit_gate = _code_of(teams.assert_may_edit_team)
+
+        self.assertIn("assert_captain_of_team", edit_gate)
+        self.assertIn("_assert_mutable(team)", edit_gate)

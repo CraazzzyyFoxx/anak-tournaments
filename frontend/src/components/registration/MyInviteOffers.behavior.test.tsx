@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import ru from "@/i18n/messages/ru.json";
+import { ApiError } from "@/lib/api-error";
 import type { Tournament } from "@/types/tournament.types";
 
 import MyInviteOffers from "./MyInviteOffers";
@@ -39,18 +40,18 @@ vi.mock("@/lib/notify", () => ({
   notify: {
     success: (...args: unknown[]) => notifySuccess(...args),
     error: (...args: unknown[]) => notifyError(...args),
-    apiError: vi.fn(),
-  },
+    apiError: vi.fn()
+  }
 }));
 vi.mock("@/hooks/useAuthProfile", () => ({
-  useAuthProfile: () => ({ status: authStatus, user: authUser }),
+  useAuthProfile: () => ({ status: authStatus, user: authUser })
 }));
 vi.mock("@/services/registration-team.service", () => ({
   default: {
     listMyInvites: (...args: unknown[]) => listMyInvites(...args),
     accept: (...args: unknown[]) => accept(...args),
-    decline: (...args: unknown[]) => decline(...args),
-  },
+    decline: (...args: unknown[]) => decline(...args)
+  }
 }));
 
 const MESSAGES = { en, ru } as const;
@@ -63,7 +64,7 @@ const OFFER = {
   team_name: "Alpha",
   slot_code: "dps",
   is_substitute: false,
-  expires_at: null,
+  expires_at: null
 };
 
 async function mount(locale: "en" | "ru" = "en"): Promise<HTMLElement> {
@@ -77,7 +78,7 @@ async function mount(locale: "en" | "ru" = "en"): Promise<HTMLElement> {
         <QueryClientProvider client={client}>
           <MyInviteOffers tournament={TOURNAMENT} />
         </QueryClientProvider>
-      </NextIntlClientProvider>,
+      </NextIntlClientProvider>
     );
   });
   await act(async () => {
@@ -141,10 +142,13 @@ describe("my invite offers", () => {
     // Expected in normal use: another captain can recruit the viewer between this
     // list loading and them pressing Join. Untranslated it would render the
     // server's English msg on a Russian-first surface.
-    accept.mockRejectedValue({
-      name: "ApiError",
-      details: [{ code: "player_not_free", msg: "That player already joined a team" }],
-    });
+    //
+    // A real `ApiError`, not a look-alike literal: the translator narrows on
+    // `instanceof`, so a literal takes the generic fallback — and asserting only
+    // that SOMETHING was reported would then pass with the English message.
+    accept.mockRejectedValue(
+      new ApiError(409, [{ code: "player_not_free", msg: "That player already joined a team" }])
+    );
 
     const container = await mount("ru");
     const buttons = [...container.querySelectorAll("button")];
@@ -153,7 +157,8 @@ describe("my invite offers", () => {
       buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(notifyError).toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith(ru.registrationTeams.errors.player_not_free);
+    expect(notifyError).not.toHaveBeenCalledWith("That player already joined a team");
   });
 
   it("renders nothing at all when there is nothing to answer", async () => {
@@ -179,7 +184,7 @@ describe("my invite offers", () => {
     // Same team, same slot, materially different offer: a bench seat is not the
     // slot the recipient would assume from the starting sentence.
     listMyInvites.mockResolvedValue({
-      items: [{ ...OFFER, is_substitute: true, slot_code: "support" }],
+      items: [{ ...OFFER, is_substitute: true, slot_code: "support" }]
     });
 
     const container = await mount();

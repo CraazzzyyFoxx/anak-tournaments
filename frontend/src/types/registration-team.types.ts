@@ -180,3 +180,41 @@ export interface RegistrationTeamInviteOffer {
 export interface RegistrationTeamInviteOfferListResponse {
   items: RegistrationTeamInviteOffer[];
 }
+
+/**
+ * One invite a team ever issued, live or finished.
+ *
+ * Distinct from `RegistrationTeamInvite`, which is the LIVE list whose rows
+ * reserve roster slots. A terminal row must never appear there — a declined
+ * offer holding a place open is the bug that separation prevents.
+ */
+export interface RegistrationTeamInviteHistoryEntry {
+  id: number;
+  slot_code: string;
+  is_substitute: boolean;
+  /** Includes `expired`, which is derived from a pending row past its clock. */
+  state: string;
+  target_battle_tag: string | null;
+  is_link: boolean;
+  invited_at: string | null;
+  expires_at: string | null;
+  /** When it stopped being open, if anything closed it. */
+  answered_at: string | null;
+  /** Staff withdrew it rather than the captain. Same state, different event. */
+  revoked_by_organizer: boolean;
+}
+
+/**
+ * The history and the cap standing it explains.
+ *
+ * They ship together because apart they are a riddle: the cap counts every
+ * invite ever issued while only pending ones were ever visible, so a captain
+ * refused at the ceiling had no way to see where it went.
+ */
+export interface RegistrationTeamInviteHistoryResponse {
+  items: RegistrationTeamInviteHistoryEntry[];
+  cap_used: number;
+  cap_limit: number;
+  /** Set when an organizer forgave the count; the rows before it remain listed. */
+  cap_reset_at: string | null;
+}

@@ -318,6 +318,66 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
+    @broker.subscriber("rpc.tournament.regteam_invite_revoke_admin")
+    async def _regteam_invite_revoke_admin(data: dict, msg: RabbitMessage) -> dict:
+        """An organizer withdraws an offer from a team they do not captain.
+
+        A genuinely new privilege over someone else's roster, so the write records
+        who did it. ``"update"`` rather than a bespoke action: it is the same power
+        as rejecting a team, one rung smaller.
+
+        The service re-checks that the invite belongs to THIS tournament. An invite
+        id is global while this permission is not, so without that an organizer of
+        any tournament could pass any id.
+        """
+
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "update")
+            await team_service.revoke_invite_as_organizer(
+                session,
+                invite_id=_path_int(data, "invite_id"),
+                tournament_id=ctx.id,
+                auth_user=ctx.user,
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_invite_cap_reset")
+    async def _regteam_invite_cap_reset(data: dict, msg: RabbitMessage) -> dict:
+        """Forgive a team's cumulative invite count.
+
+        The recourse the cap's own error message names. Before this it named an
+        intervention no endpoint provided, so a captain at the ceiling was simply
+        stuck and the organizer they were sent to was powerless.
+        """
+
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "update")
+            await team_service.reset_invite_cap(
+                session,
+                team_id=_path_int(data, "team_id"),
+                tournament_id=ctx.id,
+                auth_user=ctx.user,
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_invite_history")
+    async def _regteam_invite_history(data: dict, msg: RabbitMessage) -> dict:
+        """Every invite a team ever issued, with its cap standing.
+
+        Read-scoped to organizers here; the captain reads the same history through
+        the public handler, which authorizes by captaincy instead.
+        """
+
+        async def op(session: Any) -> Any:
+            await _tournament_ctx(session, data, "read")
+            return _dump(await team_service.list_invite_history(session, team_id=_path_int(data, "team_id")))
+
+        return await _run(logger, op)
+
     # GET /balancer/tournaments/{tournament_id}/registrations
     #   dep: require_tournament_permission("team", "read")
     #   FAT handler: list + status-meta map + per-registration OW-rank snapshot join.

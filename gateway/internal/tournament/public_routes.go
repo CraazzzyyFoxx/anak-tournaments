@@ -67,6 +67,11 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// caller's own token — "whose invites" is never a path parameter.
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams/free-agents", Queue: "rpc.tournament.regteam_free_agents", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams/my-invites", Queue: "rpc.tournament.regteam_my_invites", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	// A captain's own invite history. Captaincy-gated in the worker, not by
+	// workspace permission — the organizer reads the same rows through the admin
+	// route. `{team_id}` and not the caller's identity, because a captain may hold
+	// more than one team across tournaments.
+	{Method: "GET", Pattern: "/api/v1/registration-teams/{team_id}/invite-history", Queue: "rpc.tournament.regteam_invite_history_public", Path: []string{"team_id"}, Auth: edge.AuthRequired},
 
 	// registration.py — public TEAM registration (captain + invitee flows).
 	// See docs/plans/2026-08-20-team-registration.md §4. Every WRITE is

@@ -414,6 +414,17 @@ class BalancerRegistrationTeam(db.TimeStampIntegerMixin):
     export_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
     deleted_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
+    #: Watermark for the cumulative invite cap, not a counter.
+    #:
+    #: The cap is a COUNT over every invite the team ever created, so "reset" can
+    #: only mean "stop counting the ones before this moment". Deleting the old rows
+    #: would be the other way to do it and is worse: the invite history is now a
+    #: read, and an organizer clearing a cap would silently erase the evidence of
+    #: whatever abuse made them clear it.
+    invite_cap_reset_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invite_cap_reset_by: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True
+    )
 
     tournament: Mapped[Tournament] = relationship()
     workspace: Mapped[Workspace] = relationship()
@@ -471,6 +482,18 @@ class BalancerRegistrationTeamInvite(db.TimeStampIntegerMixin):
     state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", default="pending")
     invited_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
     invited_at: Mapped[db.DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    #: Who withdrew the offer, and when. A captain and an ORGANIZER can both
+    #: revoke, and those are materially different events: a captain changing their
+    #: mind needs no explanation, an organizer reaching into someone else's roster
+    #: does. Without this the two are indistinguishable after the fact, which makes
+    #: the organizer power unauditable.
+    revoked_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
+    revoked_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Whether staff took the offer away, recorded by the entry point that knows
+    #: rather than inferred at read time. Comparing the revoker against "the
+    #: captain" would be a lie: captaincy transfers, so the captain now is not
+    #: necessarily the captain then.
+    revoked_by_organizer: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     accepted_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     accepted_registration_id: Mapped[int | None] = mapped_column(
         ForeignKey("balancer.registration.id", ondelete="SET NULL"), nullable=True
@@ -479,3 +502,4 @@ class BalancerRegistrationTeamInvite(db.TimeStampIntegerMixin):
     team: Mapped[BalancerRegistrationTeam] = relationship(back_populates="invites")
     target_auth_user: Mapped[AuthUser | None] = relationship(foreign_keys=[target_auth_user_id])
     invited_by_user: Mapped[AuthUser | None] = relationship(foreign_keys=[invited_by])
+    revoked_by_user: Mapped[AuthUser | None] = relationship(foreign_keys=[revoked_by])

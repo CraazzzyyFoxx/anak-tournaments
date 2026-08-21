@@ -19,6 +19,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const listAdmin = vi.fn();
 const reject = vi.fn();
 const exportRegistered = vi.fn();
+const revokeInviteAdmin = vi.fn();
+const resetInviteCap = vi.fn();
+const listInviteHistoryAdmin = vi.fn();
 const notifySuccess = vi.fn();
 const notifyInfo = vi.fn();
 const notifyError = vi.fn();
@@ -27,7 +30,10 @@ vi.mock("@/services/registration-team.service", () => ({
   default: {
     listAdmin: (...args: unknown[]) => listAdmin(...args),
     reject: (...args: unknown[]) => reject(...args),
-    exportRegistered: (...args: unknown[]) => exportRegistered(...args)
+    exportRegistered: (...args: unknown[]) => exportRegistered(...args),
+    revokeInviteAdmin: (...args: unknown[]) => revokeInviteAdmin(...args),
+    resetInviteCap: (...args: unknown[]) => resetInviteCap(...args),
+    listInviteHistoryAdmin: (...args: unknown[]) => listInviteHistoryAdmin(...args)
   }
 }));
 vi.mock("@/hooks/usePermissions", () => ({
@@ -137,9 +143,8 @@ async function click(node: Element | null | undefined) {
 }
 
 function buttonWithText(scope: ParentNode, text: string): HTMLButtonElement | undefined {
-  return [...scope.querySelectorAll("button")].find((node) =>
-    node.textContent?.includes(text)
-  ) as HTMLButtonElement | undefined;
+  return [...scope.querySelectorAll("button")].find((node) => node.textContent?.includes(text)) as
+    HTMLButtonElement | undefined;
 }
 
 /** Radix portals the confirmation outside the render container. */
@@ -156,6 +161,12 @@ beforeEach(() => {
     created_players: 5,
     skipped: []
   });
+  revokeInviteAdmin.mockReset().mockResolvedValue(undefined);
+  resetInviteCap.mockReset().mockResolvedValue(undefined);
+  // The ledger is collapsed at mount, so this resolves only once a block is opened.
+  listInviteHistoryAdmin
+    .mockReset()
+    .mockResolvedValue({ items: [], cap_used: 0, cap_limit: 60, cap_reset_at: null });
   notifySuccess.mockReset();
   notifyInfo.mockReset();
   notifyError.mockReset();
@@ -253,6 +264,51 @@ describe("RegistrationTeamsCard", () => {
     expect(scope.textContent).toContain("Shareable link");
   });
 
+  it("withdraws an invite against the tournament it was authorized for", async () => {
+    // The id in the path is the TOURNAMENT, not just the invite: an invite id is
+    // global while the organizer's permission is not, so passing the wrong one is
+    // a permission bug, not a typo.
+    const scope = await mount();
+
+    await click(
+      [...scope.querySelectorAll("button")].find((button) =>
+        (button.textContent ?? "").includes("Withdraw invite")
+      )
+    );
+
+    expect(revokeInviteAdmin).toHaveBeenCalledWith(TOURNAMENT_ID, 5);
+  });
+
+  it("resets a team's invite count only after a confirmation", async () => {
+    // The cap counts every invite ever issued, so a team that cycled offers is
+    // stuck; until this existed the refusal named an intervention no endpoint
+    // provided. It is still someone else's roster, hence the confirm.
+    const scope = await mount();
+
+    await click(
+      [...scope.querySelectorAll("button")].find((button) =>
+        (button.textContent ?? "").includes("Reset invite count")
+      )
+    );
+    expect(resetInviteCap).not.toHaveBeenCalled();
+
+    await click(
+      [...document.querySelectorAll("button")].findLast((button) =>
+        (button.textContent ?? "").includes("Reset invite count")
+      )
+    );
+
+    expect(resetInviteCap).toHaveBeenCalledWith(TOURNAMENT_ID, 1);
+  });
+
+  it("does not read a team's ledger until it is opened", async () => {
+    // One request per team on every card render would tax the organizer for a
+    // history they rarely open.
+    await mount();
+
+    expect(listInviteHistoryAdmin).not.toHaveBeenCalled();
+  });
+
   it("shows the organizer the invites the public roster hides", async () => {
     const scope = await mount();
 
@@ -333,9 +389,7 @@ describe("RegistrationTeamsCard", () => {
 
   it("translates a rejection code instead of rendering the server's English", async () => {
     reject.mockRejectedValue(
-      new ApiError(409, [
-        { msg: "Team was already exported", code: "team_already_exported" }
-      ])
+      new ApiError(409, [{ msg: "Team was already exported", code: "team_already_exported" }])
     );
 
     const scope = await mount();

@@ -43,6 +43,8 @@ from src import models
 from src.schemas.registration import RegistrationCreate, RegistrationRead
 from src.schemas.registration_team import (
     RegistrationFreeAgentRead,
+    RegistrationTeamInviteHistoryEntry,
+    RegistrationTeamInviteHistoryResponse,
     RegistrationTeamInviteOffer,
     RegistrationTeamInvitePreview,
     RegistrationTeamInviteRead,
@@ -68,7 +70,9 @@ __all__ = (
     "DEFAULT_INVITE_TTL",
     "TEAM_STATUSES",
     "accept_invite",
+    "assert_captain_of_team",
     "assert_may_edit_team",
+    "count_invites_against_cap",
     "count_unassigned_players",
     "create_team",
     "decline_invite",
@@ -77,11 +81,14 @@ __all__ = (
     "kick_member",
     "leave_team",
     "list_free_agents",
+    "list_invite_history",
     "list_my_invites",
     "list_teams",
     "preview_invite",
     "reject_team",
+    "reset_invite_cap",
     "revoke_invite",
+    "revoke_invite_as_organizer",
     "set_team_image",
     "transfer_captaincy",
 )
@@ -414,6 +421,31 @@ async def set_team_image(
     return team
 
 
+async def assert_captain_of_team(
+    session: AsyncSession,
+    *,
+    team_id: int,
+    auth_user: models.AuthUser,
+) -> models.BalancerRegistrationTeam:
+    """Captaincy alone, with no mutability rule and no row lock.
+
+    Separate from :func:`assert_may_edit_team` because reading is not editing: a
+    captain must still be able to read the history of a team that was rejected or
+    already exported, and folding ``_assert_mutable`` in would refuse exactly the
+    cases someone opens the history to understand.
+    """
+    team = await session.scalar(
+        sa.select(models.BalancerRegistrationTeam).where(
+            models.BalancerRegistrationTeam.id == team_id,
+            models.BalancerRegistrationTeam.deleted_at.is_(None),
+        )
+    )
+    if team is None:
+        raise _fail(404, "team_not_found", "Team not found")
+    await _assert_captain(session, team, auth_user)
+    return team
+
+
 async def assert_may_edit_team(
     session: AsyncSession,
     *,
@@ -432,15 +464,7 @@ async def assert_may_edit_team(
     Advisory only: :func:`set_team_image` re-runs both checks under the lock, and
     that is the authoritative decision.
     """
-    team = await session.scalar(
-        sa.select(models.BalancerRegistrationTeam).where(
-            models.BalancerRegistrationTeam.id == team_id,
-            models.BalancerRegistrationTeam.deleted_at.is_(None),
-        )
-    )
-    if team is None:
-        raise _fail(404, "team_not_found", "Team not found")
-    await _assert_captain(session, team, auth_user)
+    team = await assert_captain_of_team(session, team_id=team_id, auth_user=auth_user)
     _assert_mutable(team)
 
 
@@ -534,16 +558,12 @@ async def invite_member(
     # §7 control 2: the slot reservation caps *concurrent* pending invites, but an
     # invite -> revoke -> invite loop stays inside every slot rule. This cumulative
     # ceiling counts every invite ever created for the team, so the loop ends.
-    issued = await session.scalar(
-        sa.select(sa.func.count(models.BalancerRegistrationTeamInvite.id)).where(
-            models.BalancerRegistrationTeamInvite.team_id == team.id
-        )
-    )
-    if (issued or 0) >= TEAM_INVITE_TOTAL_CAP:
+    issued = await count_invites_against_cap(session, team)
+    if issued >= TEAM_INVITE_TOTAL_CAP:
         raise _fail(
             409,
             "invite_cap_reached",
-            "This team has issued too many invites; an organizer must intervene",
+            "This team has issued too many invites; revoke an outstanding one or ask an organizer to reset the cap",
         )
 
     shape = await _resolve_shape(session, tournament)
@@ -583,21 +603,184 @@ async def invite_member(
     return invite, raw_token
 
 
+async def count_invites_against_cap(
+    session: AsyncSession,
+    team: models.BalancerRegistrationTeam,
+) -> int:
+    """How many invites count toward this team's cumulative ceiling.
+
+    One definition, shared by the check that refuses an invite and the number the
+    UI shows. Two copies would produce the worst version of this feature: a captain
+    told "12 of 60 used" and refused at the same moment, with no way to tell which
+    is wrong.
+
+    Every invite ever created counts, not just live ones — that is the whole point
+    of a cumulative cap, since an invite -> revoke -> invite loop stays inside every
+    slot rule. ``invite_cap_reset_at`` moves the floor rather than zeroing a
+    counter, so the rows behind a forgiven cap remain readable.
+    """
+    conditions = [models.BalancerRegistrationTeamInvite.team_id == team.id]
+    if team.invite_cap_reset_at is not None:
+        conditions.append(models.BalancerRegistrationTeamInvite.invited_at > team.invite_cap_reset_at)
+    return (
+        await session.scalar(sa.select(sa.func.count(models.BalancerRegistrationTeamInvite.id)).where(*conditions))
+    ) or 0
+
+
+def _withdraw_invite(
+    invite: models.BalancerRegistrationTeamInvite,
+    *,
+    by: models.AuthUser,
+    by_organizer: bool,
+) -> None:
+    """The state transition both revoke paths share.
+
+    Extracted rather than parameterised with an ``as_organizer`` AUTHORIZATION
+    flag: flag-driven authorization is how a privilege check gets skipped by a
+    caller who passes the wrong default. The two gates stay in the two named entry
+    points; ``by_organizer`` here is provenance, recorded by the caller that knows
+    it, because inferring it later is impossible once captaincy has moved.
+    """
+    if invite.state != INVITE_PENDING:
+        raise _diagnose_dead_invite(invite)
+    invite.state = INVITE_REVOKED
+    invite.revoked_by = by.id
+    invite.revoked_at = datetime.now(UTC)
+    invite.revoked_by_organizer = by_organizer
+
+
 async def revoke_invite(
     session: AsyncSession,
     *,
     invite_id: int,
     auth_user: models.AuthUser,
 ) -> None:
-    """Withdraw an outstanding offer, releasing its reserved slot."""
+    """A captain withdraws their own outstanding offer, releasing its slot."""
     invite = await session.get(models.BalancerRegistrationTeamInvite, invite_id)
     if invite is None:
         raise _fail(404, "invite_not_found", "Invite not found")
     team = await _lock_team(session, invite.team_id)
     await _assert_captain(session, team, auth_user)
-    if invite.state != INVITE_PENDING:
-        raise _diagnose_dead_invite(invite)
-    invite.state = INVITE_REVOKED
+    _withdraw_invite(invite, by=auth_user, by_organizer=False)
+    await session.commit()
+
+
+async def revoke_invite_as_organizer(
+    session: AsyncSession,
+    *,
+    invite_id: int,
+    tournament_id: int,
+    auth_user: models.AuthUser,
+) -> None:
+    """An organizer withdraws an offer from a team they do not captain.
+
+    The caller owns the workspace-permission check; what this owns is the scope
+    one: the invite must belong to a team in ``tournament_id``. Without that an
+    organizer of any tournament could pass any invite id and act on another
+    tournament's roster, because an invite id is global while their permission is
+    not.
+
+    Unlike the captain path this does NOT require the team to be mutable. A
+    forming-only rule would make the power useless exactly when it is needed — the
+    reason to reach in is usually that something is stuck.
+    """
+    invite = await session.get(models.BalancerRegistrationTeamInvite, invite_id)
+    if invite is None:
+        raise _fail(404, "invite_not_found", "Invite not found")
+    team = await _lock_team(session, invite.team_id)
+    if team.tournament_id != tournament_id:
+        # 404, not 403: confirming the invite exists elsewhere would answer a
+        # question this organizer has no permission to ask.
+        raise _fail(404, "invite_not_found", "Invite not found")
+    _withdraw_invite(invite, by=auth_user, by_organizer=True)
+    await session.commit()
+
+
+async def list_invite_history(
+    session: AsyncSession,
+    *,
+    team_id: int,
+) -> RegistrationTeamInviteHistoryResponse:
+    """Every invite the team ever issued, newest first, plus its cap standing.
+
+    A separate read from ``describe_team`` on purpose. That one returns only LIVE
+    pending invites because occupancy depends on them reserving slots; mixing
+    terminal rows in would make a declined offer hold a place. This is also why the
+    section is collapsed in the UI: nothing pays for it until someone asks.
+
+    The gap this closes: the cap counts every invite ever created, but only pending
+    ones were visible. A captain cycling invite -> revoke -> invite burned the
+    ceiling invisibly and hit a refusal whose cause was nowhere on screen. Worse, a
+    DECLINED offer simply vanished — the slot reopened and the captain could not
+    tell whether they were refused or the link merely lapsed, which are different
+    situations with different next moves.
+    """
+    team = await session.get(models.BalancerRegistrationTeam, team_id)
+    if team is None:
+        raise _fail(404, "team_not_found", "Team not found")
+
+    rows = list(
+        await session.scalars(
+            sa.select(models.BalancerRegistrationTeamInvite)
+            .where(models.BalancerRegistrationTeamInvite.team_id == team_id)
+            .order_by(models.BalancerRegistrationTeamInvite.invited_at.desc())
+        )
+    )
+    tags = await _battle_tags_by_account(
+        session,
+        tournament_id=team.tournament_id,
+        auth_user_ids={r.target_auth_user_id for r in rows if r.target_auth_user_id is not None},
+    )
+    now = datetime.now(UTC)
+    return RegistrationTeamInviteHistoryResponse(
+        items=[
+            RegistrationTeamInviteHistoryEntry(
+                id=row.id,
+                slot_code=row.slot_code,
+                is_substitute=bool(row.is_substitute),
+                # `expired` is not a stored state: it is a pending row past its
+                # clock. Computed here for the same reason the link preview computes
+                # it — a lapsed offer and a live one are not the same entry, and the
+                # column cannot tell them apart.
+                state="expired"
+                if row.state == INVITE_PENDING and row.expires_at is not None and row.expires_at <= now
+                else row.state,
+                target_battle_tag=tags.get(row.target_auth_user_id),
+                is_link=row.token_sha256 is not None,
+                invited_at=row.invited_at,
+                expires_at=row.expires_at,
+                answered_at=row.accepted_at or row.revoked_at,
+                # Who ended it, when anyone did. A captain revoking their own offer
+                # and an organizer reaching into the roster are the same state and
+                # very different events.
+                revoked_by_organizer=bool(row.revoked_by_organizer),
+            )
+            for row in rows
+        ],
+        cap_used=await count_invites_against_cap(session, team),
+        cap_limit=TEAM_INVITE_TOTAL_CAP,
+        cap_reset_at=team.invite_cap_reset_at,
+    )
+
+
+async def reset_invite_cap(
+    session: AsyncSession,
+    *,
+    team_id: int,
+    tournament_id: int,
+    auth_user: models.AuthUser,
+) -> None:
+    """Forgive a team's cumulative invite count so its captain can invite again.
+
+    A watermark, not a counter reset: the cap is a COUNT over every invite ever
+    created, and clearing it by deleting rows would erase the history that explains
+    why the cap was hit. The rows stay; the count starts here.
+    """
+    team = await _lock_team(session, team_id)
+    if team.tournament_id != tournament_id:
+        raise _fail(404, "team_not_found", "Team not found")
+    team.invite_cap_reset_at = datetime.now(UTC)
+    team.invite_cap_reset_by = auth_user.id
     await session.commit()
 
 

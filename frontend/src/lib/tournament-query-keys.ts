@@ -63,6 +63,11 @@ export const tournamentQueryKeys = {
    *  rest of the authenticated cache. */
   registrationMyInvites: (workspaceId: number, tournamentId: number) =>
     ["registration-my-invites", workspaceId, tournamentId] as const,
+  /** A team's full invite history. Keyed by TEAM, not tournament: it is fetched
+   *  only when a captain or organizer expands one team's section, and keying it
+   *  by tournament would make every team share — and invalidate — one entry. */
+  registrationInviteHistory: (workspaceId: number, teamId: number) =>
+    ["registration-invite-history", workspaceId, teamId] as const,
   subscriptionStatus: (tournamentId: number) =>
     ["subscription-status", tournamentId] as const,
   draftBoard: (tournamentId: number) => ["draft", tournamentId, "board"] as const,

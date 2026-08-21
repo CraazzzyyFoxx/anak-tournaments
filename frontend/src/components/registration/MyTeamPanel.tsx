@@ -10,10 +10,14 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
+import InviteHistorySection from "@/components/registration/InviteHistorySection";
 import { notify } from "@/lib/notify";
 import { MAX_AVATAR_BYTES } from "@/lib/avatar";
 import { buildInviteLink } from "@/lib/invite-link";
-import { translateRegistrationTeamError } from "@/lib/registration-team-errors";
+import {
+  registrationTeamErrorCode,
+  translateRegistrationTeamError,
+} from "@/lib/registration-team-errors";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -61,6 +65,9 @@ export default function MyTeamPanel({
   const [targetRegistrationId, setTargetRegistrationId] = useState<number | null>(null);
   /** Shown once, never refetchable: only the hash is stored server-side. */
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  /** Owned here, not by the section, because a refusal at the invite cap has to
+   *  force it open — the answer to "where did 60 invites go" is in there. */
+  const [historyExpanded, setHistoryExpanded] = useState(false);
 
   /** Fetched only while the dialog is open: nobody else needs this list, and it
    *  goes stale the moment another captain recruits one of them. */
@@ -70,10 +77,17 @@ export default function MyTeamPanel({
     enabled: inviteOpen,
   });
 
+  /** Both keys: issuing or revoking an invite moves `cap_used`, and a history
+   *  left cached would under-report the ceiling the next time it is opened. */
   const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: tournamentQueryKeys.registrationTeams(workspaceId, tournamentId),
-    });
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: tournamentQueryKeys.registrationTeams(workspaceId, tournamentId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: tournamentQueryKeys.registrationInviteHistory(workspaceId, team.id),
+      }),
+    ]);
 
   /** Every mutation here reports failure through the code→i18n map: the server's
    *  `msg` is English and this is a public, Russian-first surface. */
@@ -101,7 +115,13 @@ export default function MyTeamPanel({
       if (!invite.token) setInviteOpen(false);
       await invalidate();
     },
-    onError: failure,
+    onError: (err) => {
+      failure(err);
+      // The cap counts every invite ever issued, including ones long since
+      // revoked, so this refusal is otherwise a dead end: nothing on screen
+      // accounts for the ceiling. Open the ledger that does.
+      if (registrationTeamErrorCode(err) === "invite_cap_reached") setHistoryExpanded(true);
+    },
   });
 
   const revokeMutation = useMutation({
@@ -356,6 +376,15 @@ export default function MyTeamPanel({
             </ul>
           )}
         </div>
+      )}
+
+      {isCaptain && (
+        <InviteHistorySection
+          workspaceId={workspaceId}
+          teamId={team.id}
+          expanded={historyExpanded}
+          onToggle={() => setHistoryExpanded((open) => !open)}
+        />
       )}
 
       <footer className="flex flex-wrap gap-2">

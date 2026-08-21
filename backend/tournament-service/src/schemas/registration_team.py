@@ -247,6 +247,48 @@ class RegistrationTeamInviteOfferListResponse(BaseModel):
     items: list[RegistrationTeamInviteOffer] = Field(default_factory=list)
 
 
+class RegistrationTeamInviteHistoryEntry(BaseModel):
+    """One invite the team ever issued, live or finished.
+
+    Distinct from :class:`RegistrationTeamInviteRead`, which is the LIVE list that
+    reserves roster slots. Terminal rows must never appear there — a declined offer
+    holding a place is the bug that separation prevents.
+    """
+
+    id: int
+    slot_code: str
+    is_substitute: bool
+    #: Includes ``expired``, which is not a stored state but a pending row past its
+    #: clock. A lapsed offer and a live one are not the same entry to a reader.
+    state: str
+    target_battle_tag: str | None = None
+    is_link: bool = False
+    invited_at: datetime | None = None
+    expires_at: datetime | None = None
+    #: When it stopped being open, if anything closed it.
+    answered_at: datetime | None = None
+    #: True when staff withdrew it rather than the captain. Same state, very
+    #: different event — and the reason the write path records provenance instead
+    #: of the reader guessing from who happens to captain the team now.
+    revoked_by_organizer: bool = False
+
+
+class RegistrationTeamInviteHistoryResponse(BaseModel):
+    """The history plus the cap standing it explains.
+
+    They ship together because apart they are a riddle: the cap counts every invite
+    ever issued while only pending ones were ever visible, so a captain refused at
+    the ceiling had no way to see where it went.
+    """
+
+    items: list[RegistrationTeamInviteHistoryEntry] = Field(default_factory=list)
+    cap_used: int = 0
+    cap_limit: int = 0
+    #: Set when an organizer forgave the count. The rows before it remain in
+    #: ``items``; only the counter's floor moved.
+    cap_reset_at: datetime | None = None
+
+
 def serialize_registration_team(
     team: models.BalancerRegistrationTeam,
     occupancy: RosterOccupancy,

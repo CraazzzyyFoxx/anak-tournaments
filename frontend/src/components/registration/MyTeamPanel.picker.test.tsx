@@ -15,6 +15,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import { ApiError } from "@/lib/api-error";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import MyTeamPanel from "./MyTeamPanel";
@@ -26,22 +27,24 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const invite = vi.fn();
 const listFreeAgents = vi.fn();
+const listInviteHistory = vi.fn();
 
 vi.mock("@/lib/notify", () => ({
-  notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() },
+  notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 vi.mock("@/services/registration-team.service", () => ({
   default: {
     invite: (...args: unknown[]) => invite(...args),
     listFreeAgents: (...args: unknown[]) => listFreeAgents(...args),
+    listInviteHistory: (...args: unknown[]) => listInviteHistory(...args),
     revokeInvite: vi.fn(),
     kick: vi.fn(),
     leave: vi.fn(),
     transferCaptaincy: vi.fn(),
     disband: vi.fn(),
     setImage: vi.fn(),
-    clearImage: vi.fn(),
-  },
+    clearImage: vi.fn()
+  }
 }));
 
 /** One open `dps` slot so the invite dialog has something to offer. */
@@ -61,19 +64,19 @@ const TEAM: RegistrationTeam = {
       slot_code: "tank",
       is_substitute: false,
       is_captain: true,
-      status: "approved",
-    },
+      status: "approved"
+    }
   ],
   invites: [],
   open_slots: { dps: 1 },
   shortfall: "1x dps",
   substitutes_used: 0,
-  max_substitutes: 2,
+  max_substitutes: 2
 } as unknown as RegistrationTeam;
 
 const AGENTS = [
   { registration_id: 900, battle_tag: "Ana#1111", roles: ["support"] },
-  { registration_id: 901, battle_tag: "Zen#2222", roles: ["dps", "tank"] },
+  { registration_id: 901, battle_tag: "Zen#2222", roles: ["dps", "tank"] }
 ];
 
 async function openDialog(): Promise<HTMLElement> {
@@ -87,12 +90,12 @@ async function openDialog(): Promise<HTMLElement> {
         <QueryClientProvider client={client}>
           <MyTeamPanel workspaceId={1} tournamentId={1} team={TEAM} isCaptain />
         </QueryClientProvider>
-      </NextIntlClientProvider>,
+      </NextIntlClientProvider>
     );
   });
 
   const trigger = [...container.querySelectorAll("button")].find((button) =>
-    (button.textContent ?? "").includes(en.registrationTeams.invite.action),
+    (button.textContent ?? "").includes(en.registrationTeams.invite.action)
   );
   if (!trigger) throw new Error("invite trigger not rendered");
 
@@ -109,7 +112,7 @@ async function openDialog(): Promise<HTMLElement> {
 
 function findButton(text: string): HTMLButtonElement {
   const match = [...document.querySelectorAll("button")].find((button) =>
-    (button.textContent ?? "").includes(text),
+    (button.textContent ?? "").includes(text)
   );
   if (!match) throw new Error(`no button matching ${text}`);
   return match as HTMLButtonElement;
@@ -118,6 +121,9 @@ function findButton(text: string): HTMLButtonElement {
 beforeEach(() => {
   invite.mockReset().mockResolvedValue({ id: 5, token: null });
   listFreeAgents.mockReset().mockResolvedValue({ items: AGENTS, total: AGENTS.length });
+  listInviteHistory
+    .mockReset()
+    .mockResolvedValue({ items: [], cap_used: 60, cap_limit: 60, cap_reset_at: null });
   document.body.innerHTML = "";
 });
 
@@ -153,7 +159,7 @@ describe("captain's free-agent picker", () => {
     });
     await act(async () => {
       findButton(en.registrationTeams.invite.submit).dispatchEvent(
-        new MouseEvent("click", { bubbles: true }),
+        new MouseEvent("click", { bubbles: true })
       );
     });
 
@@ -168,7 +174,7 @@ describe("captain's free-agent picker", () => {
 
     await act(async () => {
       findButton(en.registrationTeams.invite.submit).dispatchEvent(
-        new MouseEvent("click", { bubbles: true }),
+        new MouseEvent("click", { bubbles: true })
       );
     });
 
@@ -186,7 +192,7 @@ describe("captain's free-agent picker", () => {
     });
     await act(async () => {
       findButton(en.registrationTeams.invite.submit).dispatchEvent(
-        new MouseEvent("click", { bubbles: true }),
+        new MouseEvent("click", { bubbles: true })
       );
     });
     await act(async () => {
@@ -209,5 +215,53 @@ describe("captain's free-agent picker", () => {
 
     expect(document.body.textContent).toContain(en.registrationTeams.picker.empty);
     expect(document.body.textContent).not.toContain(en.registrationTeams.picker.noMatch);
+  });
+
+  it("opens the invite history when the cap refuses an invite", async () => {
+    // The whole point of the ledger: the cap counts every invite ever created, so
+    // a refusal at the ceiling used to be a dead end with its cause nowhere on
+    // screen. The error itself is the trigger — cheaper than counting on every
+    // render, and it fires exactly when the number changes a decision.
+    // A real instance, not a look-alike literal: the code reader narrows on
+    // `instanceof ApiError`, so an object literal silently takes the generic
+    // fallback and this test would pass while the feature did nothing.
+    invite.mockRejectedValue(
+      new ApiError(409, [{ code: "invite_cap_reached", msg: "too many invites" }])
+    );
+
+    await openDialog();
+    expect(listInviteHistory).not.toHaveBeenCalled();
+
+    await act(async () => {
+      findButton(en.registrationTeams.invite.submit).dispatchEvent(
+        new MouseEvent("click", { bubbles: true })
+      );
+    });
+    // The chain is longer than one turn: reject -> onError -> setState ->
+    // re-render -> the section's query becomes enabled -> fetch.
+    for (let turn = 0; turn < 3; turn += 1) {
+      await act(async () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 0);
+        await promise;
+      });
+    }
+
+    expect(listInviteHistory).toHaveBeenCalledWith(7);
+  });
+
+  it("leaves the history closed for any other failure", async () => {
+    // A slot collision is not a ceiling problem; opening a ledger would be noise
+    // and would tax a read nobody needed.
+    invite.mockRejectedValue(new ApiError(409, [{ code: "slot_taken", msg: "slot taken" }]));
+
+    await openDialog();
+    await act(async () => {
+      findButton(en.registrationTeams.invite.submit).dispatchEvent(
+        new MouseEvent("click", { bubbles: true })
+      );
+    });
+
+    expect(listInviteHistory).not.toHaveBeenCalled();
   });
 });

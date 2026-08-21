@@ -111,6 +111,9 @@ export default defineConfig({
       // The captain's half of the same mode. Separate from the i18n mount test
       // above because it drives the dialog rather than only rendering it.
       "src/components/registration/MyTeamPanel.picker.test.tsx",
+      // The invite ledger. Unrun, a green suite would coexist with a section that
+      // fetches on every mount or renders raw i18n key paths.
+      "src/components/registration/InviteHistorySection.behavior.test.tsx",
       // File-level for the same mixed-runner reason as its neighbours above.
       // The landing page for a shared invite link: an unrun mount test here
       // would report green while the whole invitee flow was unreachable, which

@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, FolderInput, Loader2 } from "lucide-react";
+import { Ban, ChevronDown, FolderInput, Loader2, RotateCcw } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -29,6 +30,7 @@ import { translateRegistrationTeamError } from "@/lib/registration-team-errors";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { ROSTER_SLOT_CODES } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
+import { cn } from "@/lib/utils";
 import registrationTeamService from "@/services/registration-team.service";
 import type {
   RegistrationTeam,
@@ -67,8 +69,137 @@ const EXPIRY_STAMP = {
   minute: "2-digit"
 } as const;
 
+/** The states the ledger names. Anything outside it renders raw: the server
+ *  derives `expired` from a pending row past its clock and may add more, and an
+ *  untranslated word beats a missing message path on screen. */
+const HISTORY_STATES = ["pending", "accepted", "declined", "revoked", "expired"] as const;
+
 function memberName(member: RegistrationTeamMember): string {
   return member.display_name ?? member.battle_tag ?? `#${member.registration_id}`;
+}
+
+/**
+ * One team's whole invite ledger, organizer side.
+ *
+ * Collapsed and unfetched until asked for: the chips above already answer the
+ * usual question, and this read exists for the rarer one — was that slot
+ * refused, or did the link merely lapse. The chips cannot answer it because the
+ * team read returns only LIVE invites (a terminal row there would hold a roster
+ * slot open).
+ *
+ * Its own component because a hook cannot run inside the team loop, and
+ * deliberately local to this file: the captain's side has a separate one, and
+ * sharing would couple two surfaces that ship independently.
+ */
+function TeamInviteHistory({
+  tournamentId,
+  workspaceId,
+  teamId,
+  slotLabel
+}: Readonly<{
+  tournamentId: number;
+  workspaceId: number;
+  teamId: number;
+  slotLabel: (code: string | null) => string;
+}>) {
+  const t = useTranslations("registrationTeams");
+  const format = useFormatter();
+  const [open, setOpen] = useState(false);
+
+  const historyQuery = useQuery({
+    queryKey: tournamentQueryKeys.registrationInviteHistory(workspaceId, teamId),
+    queryFn: () => registrationTeamService.listInviteHistoryAdmin(tournamentId, teamId),
+    // Nothing pays for the ledger until someone opens it.
+    enabled: open
+  });
+
+  const history = historyQuery.data;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="flex h-auto w-full justify-between px-2 py-1.5 text-xs"
+        >
+          <span>{t("history.toggle")}</span>
+          <ChevronDown
+            aria-hidden
+            className={cn("size-4 transition-transform", open && "rotate-180")}
+          />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-1 pt-2">
+        {historyQuery.isLoading ? (
+          <Skeleton className="h-12 w-full rounded-md" />
+        ) : (
+          <>
+            {history && (
+              <p className="text-xs text-muted-foreground">
+                {t("history.cap", { used: history.cap_used, limit: history.cap_limit })}
+                {/* Without the reset date "12 of 60" reads as the team's whole
+                    lifetime, which is exactly what it stops being once an
+                    organizer forgives the count. */}
+                {history.cap_reset_at && (
+                  <span className="ml-2">
+                    {t("history.capReset", {
+                      date: format.dateTime(new Date(history.cap_reset_at), EXPIRY_STAMP)
+                    })}
+                  </span>
+                )}
+              </p>
+            )}
+            {history?.items.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t("history.empty")}</p>
+            ) : (
+              <ul className="space-y-1">
+                {history?.items.map((entry) => {
+                  const known = HISTORY_STATES.find((candidate) => candidate === entry.state);
+                  return (
+                    <li key={entry.id} className="flex flex-wrap items-center gap-2 text-xs">
+                      <Badge variant={entry.state === "accepted" ? "secondary" : "outline"}>
+                        {known ? t(`history.state.${known}`) : entry.state}
+                      </Badge>
+                      <span className="text-muted-foreground">{slotLabel(entry.slot_code)}</span>
+                      <span className="text-muted-foreground">
+                        {entry.target_battle_tag
+                          ? t("invite.targetLabel", { name: entry.target_battle_tag })
+                          : t("invite.linkLabel")}
+                      </span>
+                      {entry.is_substitute && (
+                        <span className="text-muted-foreground">{t("member.substitute")}</span>
+                      )}
+                      {entry.invited_at && (
+                        <span className="text-muted-foreground">
+                          {t("history.issued", {
+                            date: format.dateTime(new Date(entry.invited_at), EXPIRY_STAMP)
+                          })}
+                        </span>
+                      )}
+                      {entry.answered_at && (
+                        <span className="text-muted-foreground">
+                          {t("history.answered", {
+                            date: format.dateTime(new Date(entry.answered_at), EXPIRY_STAMP)
+                          })}
+                        </span>
+                      )}
+                      {/* Same `revoked` state, materially different event: staff
+                          pulled the offer, the captain did not. */}
+                      {entry.revoked_by_organizer && (
+                        <span className="text-muted-foreground">{t("history.byOrganizer")}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 export function RegistrationTeamsCard({
@@ -92,12 +223,13 @@ export function RegistrationTeamsCard({
   const withdrawCheckboxId = useId();
   const [includeTerminal, setIncludeTerminal] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<RegistrationTeam | null>(null);
+  const [resetTarget, setResetTarget] = useState<RegistrationTeam | null>(null);
   const [withdrawMembers, setWithdrawMembers] = useState(true);
   // Kept after the toast expires: an organizer who looks away must still be able
   // to see which teams did not make it into the tournament (§12.5).
   const [skippedNames, setSkippedNames] = useState<string | null>(null);
 
-  const canReject = canAccessPermission("team.update", workspaceId);
+  const canManageTeams = canAccessPermission("team.update", workspaceId);
   const canExport = canAccessPermission("team.create", workspaceId);
 
   const teamsQuery = useQuery({
@@ -153,6 +285,42 @@ export function RegistrationTeamsCard({
         return;
       }
       notify.success(t("admin.exportSuccess", { count: result.imported_teams }), { description });
+    },
+    onError: (error) => notify.error(translateRegistrationTeamError(tErr, error))
+  });
+
+  /** A withdrawn invite leaves the live chips AND lands in the ledger as
+   *  `revoked_by_organizer`; a cap reset moves the ledger's floor. Both reads go. */
+  const invalidateTeamInvites = (teamId: number) => {
+    invalidateTeams();
+    void queryClient.invalidateQueries({
+      queryKey: tournamentQueryKeys.registrationInviteHistory(workspaceId, teamId)
+    });
+  };
+
+  const revokeInviteMutation = useMutation({
+    mutationFn: (input: { teamId: number; inviteId: number }) =>
+      registrationTeamService.revokeInviteAdmin(tournamentId, input.inviteId),
+    onSuccess: (_result, input) => {
+      invalidateTeamInvites(input.teamId);
+      notify.success(t("admin.revokeInviteSuccess"));
+    },
+    onError: (error) => notify.error(translateRegistrationTeamError(tErr, error))
+  });
+
+  /**
+   * The escape hatch for the total invite cap, which counts every invite the
+   * team ever created — so an invite/revoke cycle burns the ceiling on invites
+   * nobody can see any more, and the refusal it produces used to name an
+   * organizer intervention that no endpoint provided. This is that intervention.
+   */
+  const resetCapMutation = useMutation({
+    mutationFn: (team: RegistrationTeam) =>
+      registrationTeamService.resetInviteCap(tournamentId, team.id),
+    onSuccess: (_result, team) => {
+      invalidateTeamInvites(team.id);
+      setResetTarget(null);
+      notify.success(t("admin.resetCapSuccess", { team: team.name }));
     },
     onError: (error) => notify.error(translateRegistrationTeamError(tErr, error))
   });
@@ -245,22 +413,36 @@ export function RegistrationTeamsCard({
                       <Badge variant="outline">{tCommon("rostered")}</Badge>
                     )}
                   </div>
-                  {canReject &&
-                    team.exported_team_id == null &&
-                    (team.status === "forming" || team.status === "complete") && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {canManageTeams && team.exported_team_id == null && (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setWithdrawMembers(true);
-                          setRejectTarget(team);
-                        }}
+                        disabled={resetCapMutation.isPending}
+                        onClick={() => setResetTarget(team)}
                       >
-                        <Ban className="mr-2 h-4 w-4" aria-hidden />
-                        {t("admin.reject")}
+                        <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
+                        {t("admin.resetCap")}
                       </Button>
                     )}
+                    {canManageTeams &&
+                      team.exported_team_id == null &&
+                      (team.status === "forming" || team.status === "complete") && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setWithdrawMembers(true);
+                            setRejectTarget(team);
+                          }}
+                        >
+                          <Ban className="mr-2 h-4 w-4" aria-hidden />
+                          {t("admin.reject")}
+                        </Button>
+                      )}
+                  </div>
                 </div>
 
                 {/* The whole point of the card: what is still missing. */}
@@ -326,10 +508,36 @@ export function RegistrationTeamsCard({
                             })}
                           </span>
                         )}
+                        {/* An organizer reaching into someone else's roster. Its
+                            own label and a destructive variant keep it from
+                            reading like the captain's own "Revoke" — the two are
+                            the same effect but not the same act, and the ledger
+                            records which one happened. */}
+                        {canManageTeams && invite.state === "pending" && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            disabled={revokeInviteMutation.isPending}
+                            onClick={() =>
+                              revokeInviteMutation.mutate({ teamId: team.id, inviteId: invite.id })
+                            }
+                          >
+                            {t("admin.revokeInvite")}
+                          </Button>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
+
+                <TeamInviteHistory
+                  tournamentId={tournamentId}
+                  workspaceId={workspaceId}
+                  teamId={team.id}
+                  slotLabel={slotLabel}
+                />
               </div>
             ))
           )}
@@ -374,6 +582,33 @@ export function RegistrationTeamsCard({
               }}
             >
               {t("admin.reject")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* The admin area's existing confirmation primitive, same as the reject
+          above: a forgiven count cannot be un-forgiven. */}
+      <AlertDialog open={resetTarget != null} onOpenChange={(open) => !open && setResetTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("admin.resetCapConfirm", { team: resetTarget?.name ?? "" })}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetCapMutation.isPending}>
+              {tCommon("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={resetCapMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!resetTarget) return;
+                resetCapMutation.mutate(resetTarget);
+              }}
+            >
+              {t("admin.resetCap")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

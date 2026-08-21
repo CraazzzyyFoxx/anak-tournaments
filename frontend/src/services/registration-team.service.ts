@@ -5,6 +5,7 @@ import type {
   RegistrationTeamAcceptInput,
   RegistrationTeamCreateInput,
   RegistrationTeamInviteCreated,
+  RegistrationTeamInviteHistoryResponse,
   RegistrationTeamInviteInput,
   RegistrationTeamInviteOfferListResponse,
   RegistrationTeamInvitePreview,
@@ -176,6 +177,55 @@ const registrationTeamService = {
       `/api/v1/tournaments/${tournamentId}/registration-teams/my-invites`,
     );
     return response.json();
+  },
+
+  /**
+   * A captain's own team's full invite history, plus its cap standing.
+   *
+   * Captaincy-gated in the worker; the organizer reads the same rows through
+   * `listInviteHistoryAdmin`. Deliberately NOT folded into the team read: that one
+   * returns only live invites because occupancy depends on them reserving slots.
+   */
+  async listInviteHistory(teamId: number): Promise<RegistrationTeamInviteHistoryResponse> {
+    const response = await apiFetch(`/api/v1/registration-teams/${teamId}/invite-history`);
+    return response.json();
+  },
+
+  /** The same history for an organizer, authorized against the tournament. */
+  async listInviteHistoryAdmin(
+    tournamentId: number,
+    teamId: number,
+  ): Promise<RegistrationTeamInviteHistoryResponse> {
+    const response = await apiFetch(
+      `/api/balancer/tournaments/${tournamentId}/registration-teams/${teamId}/invite-history`,
+    );
+    return response.json();
+  },
+
+  /**
+   * An organizer withdraws an offer from a team they do not captain.
+   *
+   * The tournament is in the path because that is what the permission is checked
+   * against — an invite id is global while the permission is not.
+   */
+  async revokeInviteAdmin(tournamentId: number, inviteId: number): Promise<void> {
+    await apiFetch(
+      `/api/balancer/tournaments/${tournamentId}/registration-teams/invites/${inviteId}`,
+      { method: "DELETE" },
+    );
+  },
+
+  /**
+   * Forgive a team's cumulative invite count.
+   *
+   * The recourse the cap's own error message names. Before this existed it named
+   * an intervention no endpoint provided.
+   */
+  async resetInviteCap(tournamentId: number, teamId: number): Promise<void> {
+    await apiFetch(
+      `/api/balancer/tournaments/${tournamentId}/registration-teams/${teamId}/invite-cap/reset`,
+      { method: "POST" },
+    );
   },
 
   /**
