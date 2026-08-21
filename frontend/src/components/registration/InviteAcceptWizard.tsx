@@ -12,6 +12,7 @@ import { ROLES, type RoleCode } from "@/lib/roles";
 import { isRoleSlotCode } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import meService from "@/services/me.service";
+import registrationService from "@/services/registration.service";
 import registrationTeamService from "@/services/registration-team.service";
 import type { RegistrationCreateInput, RegistrationForm } from "@/types/registration.types";
 
@@ -107,6 +108,19 @@ export default function InviteAcceptWizard({
   const lockedRole: RoleCode | null = isRoleSlotCode(slotCode) ? slotCode : null;
   const slotLabel = ROLES.find((role) => role.code === lockedRole)?.display ?? slotCode;
 
+  // A live registration means the backend will ATTACH it rather than create a new
+  // one, so the form has nothing left to ask. Terminal rows (withdrawn/rejected)
+  // are excluded: the server refuses those with `registration_terminal`.
+  const myRegQuery = useQuery({
+    queryKey: tournamentQueryKeys.registration(workspaceId, tournamentId),
+    queryFn: () => registrationService.getMyRegistration(tournamentId),
+    enabled: !!authUser,
+  });
+  const alreadyRegistered =
+    myRegQuery.data != null &&
+    myRegQuery.data.status !== "withdrawn" &&
+    myRegQuery.data.status !== "rejected";
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-muted/20 p-3">
@@ -128,21 +142,39 @@ export default function InviteAcceptWizard({
         </div>
       )}
 
-      <UnifiedRegistrationForm
-        mode="public"
-        tournamentId={tournamentId}
-        workspaceId={workspaceId}
-        formConfig={form}
-        tournamentName={tournamentName}
-        userProfile={userQuery.data}
-        lockedRole={lockedRole}
-        onSubmit={async (payload) => {
-          setError(null);
-          await acceptMutation.mutateAsync(payload);
-        }}
-        onCancel={onClose}
-        submitPending={acceptMutation.isPending}
-      />
+      {/* An already-registered player is a free agent joining a roster, not a new
+          entrant: the backend attaches their existing registration and ignores any
+          submitted body, so making them refill a form they already filled would be
+          theatre. One button. */}
+      {alreadyRegistered ? (
+        <Button
+          type="button"
+          disabled={acceptMutation.isPending || declineMutation.isPending}
+          onClick={() => {
+            setError(null);
+            // The body is required by the type but unused on the attach path.
+            acceptMutation.mutate({} as RegistrationCreateInput);
+          }}
+        >
+          {t("accept.submit")}
+        </Button>
+      ) : (
+        <UnifiedRegistrationForm
+          mode="public"
+          tournamentId={tournamentId}
+          workspaceId={workspaceId}
+          formConfig={form}
+          tournamentName={tournamentName}
+          userProfile={userQuery.data}
+          lockedRole={lockedRole}
+          onSubmit={async (payload) => {
+            setError(null);
+            await acceptMutation.mutateAsync(payload);
+          }}
+          onCancel={onClose}
+          submitPending={acceptMutation.isPending}
+        />
+      )}
 
       <div className="flex justify-end">
         <Button

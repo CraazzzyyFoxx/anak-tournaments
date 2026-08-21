@@ -31,6 +31,7 @@ export const REGISTRATION_TEAM_ERROR_CODES = [
   "team_name_invalid",
   "team_name_taken",
   "already_registered",
+  "registration_terminal",
   "registration_closed",
   // lookup / lifecycle
   "team_not_found",

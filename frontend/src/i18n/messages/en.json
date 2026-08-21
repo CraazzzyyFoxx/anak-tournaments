@@ -423,7 +423,7 @@
       "slotHint": "You are a member of the team like anyone else — pick the slot you will play.",
       "submit": "Create team",
       "success": "Team created. Invite your players next.",
-      "blockedBySolo": "You are already registered as an individual player, so you cannot create a team for this tournament. Ask a captain to invite you instead."
+      "blockedBySolo": "You already have an individual registration for this tournament, so you cannot create or join a team. Withdrawing is final and cannot be undone, so contact an organizer."
     },
     "invite": {
       "action": "Invite a player",
@@ -526,7 +526,8 @@
       "invite_cap_reached": "This team has issued too many invites — contact an organizer.",
       "invite_rate_limited": "Too many invites. Wait a little before sending more.",
       "accept_rate_limited": "Too many attempts. Wait a little and try again.",
-      "rate_limit_unavailable": "Invites are temporarily unavailable. Try again shortly."
+      "rate_limit_unavailable": "Invites are temporarily unavailable. Try again shortly.",
+      "registration_terminal": "Your registration for this tournament is no longer active, so you cannot take a team slot."
     }
   },
   "accountSettings": {

@@ -46,7 +46,11 @@ from src.schemas.registration_team import (
     serialize_invite,
     serialize_registration_team,
 )
-from src.services.registration.service import TeamPlacement, submit_public_registration
+from src.services.registration.service import (
+    TeamPlacement,
+    get_registration,
+    submit_public_registration,
+)
 from src.services.registration.team_rate_limits import (
     TEAM_INVITE_TOTAL_CAP,
     assert_accept_attempt_allowed,
@@ -524,13 +528,18 @@ async def accept_invite(
     body: RegistrationCreate,
     token: str | None = None,
     invite_id: int | None = None,
-) -> tuple[models.BalancerRegistrationTeam, RegistrationRead]:
-    """Redeem an invite: register, and take the offered slot.
+) -> tuple[models.BalancerRegistrationTeam, int]:
+    """Redeem an invite: take the offered slot, registering if necessary.
+
+    Returns the team and the id of the registration now holding the slot.
 
     Everything below happens in one transaction while holding the team's row lock,
     which is what makes the slot check binding. Ordering matters: every rejection
     that can be known up front is raised *before* the invite is consumed, so a
     failed acceptance never burns the invite.
+
+    ``body`` is used ONLY when the redeemer has no registration yet. An existing
+    one is attached to the team instead — see the comment at the write below.
     """
     # Metered before the token lookup, so a guessing flood is throttled without
     # even reaching the index. Fails OPEN: 256 bits of entropy already make
@@ -567,19 +576,50 @@ async def accept_invite(
         await session.refresh(invite)
         raise _diagnose_dead_invite(invite)
 
-    read = await submit_public_registration(
-        session,
-        tournament_id=team.tournament_id,
-        auth_user=auth_user,
-        body=body,
-        team_placement=TeamPlacement(
-            registration_team_id=team.id,
-            slot_code=invite.slot_code,
-            is_substitute=bool(invite.is_substitute),
-        ),
-        commit=False,
-    )
-    invite.accepted_registration_id = read.id
+    # A player who already registered solo is a FREE AGENT, not a duplicate.
+    #
+    # There is exactly one registration row per player per tournament (the partial
+    # unique index guarantees it), so "solo registration" and "team registration"
+    # are the same row in two states. Accepting an invite therefore *attaches* the
+    # existing row to the team rather than creating a second one — which the index
+    # would reject anyway, and which `submit_public_registration` used to turn into
+    # an `already_registered` 409. That 409 left a solo registrant permanently
+    # unable to join any team: withdrawal is final, so there was no way out.
+    #
+    # The submitted ``body`` is deliberately IGNORED on this path: the player
+    # already answered the form, and the only thing the invite decides is which
+    # slot they occupy. Their recorded roles and ranks stand.
+    existing = await get_registration(session, team.tournament_id, auth_user.id)
+    if existing is not None:
+        if existing.status in _SLOT_RELEASING_STATUSES:
+            # Withdrawn or rejected. Reviving it here would smuggle a re-entry past
+            # the rule that withdrawal is final, which exists because a withdrawal
+            # after check-in invalidates a composed roster.
+            raise _fail(
+                409,
+                "registration_terminal",
+                "Your registration for this tournament is no longer active",
+            )
+        existing.registration_team_id = team.id
+        existing.team_slot_code = invite.slot_code
+        existing.is_substitute = bool(invite.is_substitute)
+        await session.flush()
+        registration_id = existing.id
+    else:
+        read = await submit_public_registration(
+            session,
+            tournament_id=team.tournament_id,
+            auth_user=auth_user,
+            body=body,
+            team_placement=TeamPlacement(
+                registration_team_id=team.id,
+                slot_code=invite.slot_code,
+                is_substitute=bool(invite.is_substitute),
+            ),
+            commit=False,
+        )
+        registration_id = read.id
+    invite.accepted_registration_id = registration_id
     # Projected, not re-read: the new member's row is already flushed, but
     # computing the post-write status here keeps it inside the lock.
     team.status = _status_for(
@@ -590,7 +630,7 @@ async def accept_invite(
         await session.commit()
     except IntegrityError as exc:
         raise _fail(409, "already_registered", "You are already registered for this tournament") from exc
-    return team, read
+    return team, registration_id
 
 
 async def decline_invite(
