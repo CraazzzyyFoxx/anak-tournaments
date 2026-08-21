@@ -17,6 +17,7 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Crown,
   Loader2,
   Search,
   ShieldBan,
@@ -684,8 +685,12 @@ function MyRegistrationCard({
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   <span className="font-semibold text-[color:var(--aqt-fg)]">{teamBrief.name}</span>
                   {teamBrief.is_captain && (
-                    <span className="rounded border border-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_10%,transparent)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--aqt-amber)]">
-                      {t("registrationTeams.member.captain")}
+                    <span
+                      className="inline-flex items-center text-[color:var(--aqt-amber)]"
+                      title={t("registrationTeams.member.captain")}
+                    >
+                      <Crown className="size-3.5" aria-hidden />
+                      <span className="sr-only">{t("registrationTeams.member.captain")}</span>
                     </span>
                   )}
                   {teamBrief.is_substitute && (

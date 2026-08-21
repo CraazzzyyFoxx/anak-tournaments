@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useMemo } from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Crown, XCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -618,8 +618,12 @@ export function buildParticipantColumns(
             {reg.team.name}
           </span>
           {reg.team.is_captain ? (
-            <span className="shrink-0 rounded border border-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_10%,transparent)] px-1 py-px text-[10px] font-semibold leading-4 text-[color:var(--aqt-amber)]">
-              {teamCaptainLabel}
+            <span
+              className="inline-flex shrink-0 items-center text-[color:var(--aqt-amber)]"
+              title={teamCaptainLabel}
+            >
+              <Crown className="size-3.5" aria-hidden />
+              <span className="sr-only">{teamCaptainLabel}</span>
             </span>
           ) : null}
           {reg.team.is_substitute ? (
