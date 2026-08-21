@@ -820,6 +820,19 @@ def _diagnose_dead_invite(invite: models.BalancerRegistrationTeamInvite) -> ApiH
     return _fail(409, "invite_already_accepted", "This invite has already been accepted")
 
 
+def _normalize_invite_token(token: str) -> str:
+    """Strip EVERY whitespace character, not just the ends.
+
+    A real token is a bare base64url string — it never legitimately contains
+    whitespace anywhere. A stray leading/trailing/embedded space or newline is
+    always corruption picked up while the link was pasted out of the `<code>`
+    block that displays it, wrapped by a text field, or forwarded through a
+    chat client. Removing it can therefore only rescue a mangled presentation;
+    it can never turn one valid token into another.
+    """
+    return "".join(token.split())
+
+
 async def _resolve_invite(
     session: AsyncSession,
     *,
@@ -835,7 +848,8 @@ async def _resolve_invite(
     if token is not None:
         invite = await session.scalar(
             sa.select(models.BalancerRegistrationTeamInvite).where(
-                models.BalancerRegistrationTeamInvite.token_sha256 == hash_invite_token(token)
+                models.BalancerRegistrationTeamInvite.token_sha256
+                == hash_invite_token(_normalize_invite_token(token))
             )
         )
     elif invite_id is not None:
@@ -869,7 +883,12 @@ async def preview_invite(session: AsyncSession, *, token: str) -> RegistrationTe
     """
     invite = await session.scalar(
         sa.select(models.BalancerRegistrationTeamInvite)
-        .where(models.BalancerRegistrationTeamInvite.token_sha256 == hash_invite_token(token))
+        # See `_normalize_invite_token`'s docstring for why stripping whitespace
+        # here is safe: a real token never contains any.
+        .where(
+            models.BalancerRegistrationTeamInvite.token_sha256
+            == hash_invite_token(_normalize_invite_token(token))
+        )
         .options(
             selectinload(models.BalancerRegistrationTeamInvite.team).selectinload(
                 models.BalancerRegistrationTeam.tournament

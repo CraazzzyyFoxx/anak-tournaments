@@ -28,9 +28,15 @@ export function buildInviteLink(token: string, origin?: string): string {
  * fragment as absent rather than as an empty token — the page must be able to
  * tell "you arrived without a link" apart from "your link is invalid", because
  * those have different recourses.
+ *
+ * Strips EVERY whitespace character, not just the ends: a token is a bare
+ * base64url string and never legitimately contains one, so a stray space or
+ * line break picked up while the link was pasted, wrapped, or forwarded
+ * through a chat client can only be corruption — removing it can rescue a
+ * mangled link but can never turn one valid token into another.
  */
 export function readInviteTokenFromHash(hash: string): string | null {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  const token = decodeURIComponent(raw).trim();
+  const token = decodeURIComponent(raw).replace(/\s+/g, "");
   return token.length > 0 ? token : null;
 }

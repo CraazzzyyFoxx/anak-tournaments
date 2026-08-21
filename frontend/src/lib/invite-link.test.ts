@@ -49,4 +49,14 @@ describe("invite link", () => {
   it("decodes a fragment a chat client percent-encoded on the way", () => {
     expect(readInviteTokenFromHash("#ab%2Bcd")).toBe("ab+cd");
   });
+
+  it("strips whitespace picked up anywhere in the token, not just the ends", () => {
+    // A real token is a bare base64url string and never contains whitespace, so
+    // a space or line break wrapped in mid-token (pasted from a wrapped `<code>`
+    // block, or reflowed by a chat client) is corruption, not part of the value.
+    // Removing it can only rescue a mangled link, never break a valid one.
+    const [head, tail] = [TOKEN.slice(0, 10), TOKEN.slice(10)];
+    expect(readInviteTokenFromHash(`#${head} ${tail}`)).toBe(TOKEN);
+    expect(readInviteTokenFromHash(`#${head}\n${tail}`)).toBe(TOKEN);
+  });
 });

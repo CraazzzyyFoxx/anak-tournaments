@@ -42,6 +42,7 @@ from pydantic import ValidationError  # noqa: E402
 from sqlalchemy.dialects import postgresql  # noqa: E402
 
 from shared.core.errors import ApiHTTPException  # noqa: E402
+from shared.domain.invite_token import hash_invite_token  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.domain.team_roster import RosterMember, RosterOccupancy  # noqa: E402
 from src import models  # noqa: E402
@@ -514,6 +515,22 @@ class _PreviewSession:
         return self._invite
 
 
+class _HashMatchingSession:
+    """Unlike `_PreviewSession`, actually evaluates what the query asked for: the
+    canned invite comes back only if the statement's bound ``token_sha256``
+    literal equals the hash this test expects `preview_invite` to look up. This
+    is what makes the whitespace-stripping test below meaningful rather than
+    vacuous — `_PreviewSession` would return the invite for ANY token."""
+
+    def __init__(self, invite: Any, expected_hash: str) -> None:
+        self._invite = invite
+        self._expected_hash = expected_hash
+
+    async def scalar(self, stmt: Any) -> Any:
+        compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        return self._invite if self._expected_hash in compiled else None
+
+
 class InvitePreviewTests(IsolatedAsyncioTestCase):
     """The anonymous landing surface for a shared invite link.
 
@@ -572,6 +589,19 @@ class InvitePreviewTests(IsolatedAsyncioTestCase):
         fields = set(RegistrationTeamInvitePreview.model_fields)
 
         self.assertEqual(set(), fields & {"members", "invites", "open_slots", "captain"})
+
+    async def test_a_token_with_stray_whitespace_still_resolves(self) -> None:
+        """Pasted out of the `<code>` block that displays it, or forwarded through a
+        chat client, a token can pick up a leading/trailing/embedded space or
+        newline. A real token never contains one, so stripping it before hashing
+        can only rescue the corrupted presentation — never match a different,
+        wrong invite."""
+        raw = "PcWqruHUOoQe4AmdJagQPh_fpjqq2e9qJ61GJgRSIDI"
+        session = _HashMatchingSession(_PreviewInvite(), expected_hash=hash_invite_token(raw))
+
+        preview = await teams.preview_invite(session, token=f"  {raw[:10]}\n{raw[10:]}\t")
+
+        self.assertTrue(preview.is_redeemable)
 
 
 @dataclass
