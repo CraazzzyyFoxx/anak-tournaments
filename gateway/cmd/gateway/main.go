@@ -286,9 +286,15 @@ func run() error {
 	// division-grids + admin/stages: ambiguous patterns under ServeMux -> subtree matcher.
 	mux.Handle("/api/v1/division-grids/", tournamentEdge.Subtree(tournament.DivisionGridRoutes))
 	mux.Handle("/api/v1/admin/stages/", tournamentEdge.Subtree(tournament.StageSubtreeRoutes))
-	// Team logo upload: multipart -> base64 RPC body; the JSON dispatcher can't do it.
+	// registration-teams: the crest DELETE is ambiguous with the invite-revoke
+	// pattern under ServeMux, so it rides the subtree matcher. The prefix is less
+	// specific than PublicWriteRoutes' precise patterns, which still win.
+	mux.Handle("/api/v1/registration-teams/", tournamentEdge.Subtree(tournament.RegistrationTeamSubtreeRoutes))
+	// Team logo + registered-team crest uploads: multipart -> base64 RPC body;
+	// the JSON dispatcher can't do it.
 	tournamentBinary := tournament.NewBinary(rpcClient, resolver.Resolve, logger)
 	mux.HandleFunc("POST /api/v1/admin/teams/{team_id}/image", tournamentBinary.TeamImageUpload)
+	mux.HandleFunc("POST /api/v1/registration-teams/{team_id}/image", tournamentBinary.RegistrationTeamImageUpload)
 	// analytics-service: typed RPC reads + job-control (the rest of /api/analytics
 	// still proxies). Specific patterns win over the proxy.
 	analyticsEdge := edge.New(rpcClient, logger, resolver.Resolve)

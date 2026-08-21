@@ -138,6 +138,17 @@ DOCS: dict[str, dict] = {
         "summary": "Delete team image",
         "description": "Removes a team's image from S3 and clears its URL; requires team-update permission on its workspace.",
     },
+    # ── bespoke: registered-team image (binary upload + delete) ────────────
+    # Captain-gated, not workspace-permission-gated: a registration team belongs
+    # to the players who formed it, not to the organizer's staff.
+    "rpc.tournament.regteam_image_upload": {
+        "summary": "Upload registered team image",
+        "description": "Uploads a registered team's image to S3 and stores its URL; only that team's captain may call it, and only while the team is still forming.",
+    },
+    "rpc.tournament.regteam_image_delete": {
+        "summary": "Delete registered team image",
+        "description": "Removes a registered team's image from S3 and clears its URL; only that team's captain may call it, and only while the team is still forming.",
+    },
     # ── generic CRUD engine: player ────────────────────────────────────────
     "rpc.tournament.admin.create#player": {
         "summary": "Create player",

@@ -8,7 +8,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { notify } from "@/lib/notify";
+import { MAX_AVATAR_BYTES } from "@/lib/avatar";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { translateRegistrationTeamError } from "@/lib/registration-team-errors";
 import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
@@ -128,6 +130,24 @@ export default function MyTeamPanel({
     onError: failure,
   });
 
+  const uploadImageMutation = useMutation({
+    mutationFn: (file: File) => registrationTeamService.uploadImage(team.id, file),
+    onSuccess: async () => {
+      notify.success(t("myCard.logoSaved"));
+      await invalidate();
+    },
+    onError: failure,
+  });
+
+  const deleteImageMutation = useMutation({
+    mutationFn: () => registrationTeamService.deleteImage(team.id),
+    onSuccess: async () => {
+      notify.success(t("myCard.logoRemoved"));
+      await invalidate();
+    },
+    onError: failure,
+  });
+
   const busy =
     inviteMutation.isPending ||
     revokeMutation.isPending ||
@@ -147,17 +167,49 @@ export default function MyTeamPanel({
   const offerableSlots = ROSTER_SLOT_CODES.filter((code) => (team.open_slots[code] ?? 0) > 0);
   const pendingInvites = team.invites.filter((invite) => invite.state === "pending");
   const benchOpen = team.max_substitutes - team.substitutes_used > 0;
+  /** The crest is only writable while the roster still is: the server refuses a
+   *  terminal or already-exported team with `team_not_forming` /
+   *  `team_already_exported`, so offering the control would be a dead end. */
+  const logoEditable =
+    isCaptain &&
+    team.exported_team_id == null &&
+    (team.status === "forming" || team.status === "complete");
 
   return (
     <section className="grid gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <div className="grid gap-0.5">
-          <h3 className="text-base font-semibold">{team.name}</h3>
-          <p className="text-xs text-[color:var(--aqt-fg-muted)]">
-            {team.is_complete
-              ? t("list.complete")
-              : t("list.shortfall", { slots: formatShortfall(team.open_slots, tSlot) })}
-          </p>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <EditableAvatar
+            src={team.image_url}
+            name={team.name}
+            size={44}
+            shape="rounded"
+            editable={logoEditable}
+            busy={uploadImageMutation.isPending || deleteImageMutation.isPending}
+            onSelectFile={(file) => uploadImageMutation.mutate(file)}
+            onDelete={team.image_url ? () => deleteImageMutation.mutate() : undefined}
+            maxSizeBytes={MAX_AVATAR_BYTES}
+            onError={(message) => notify.error(message)}
+            labels={{
+              change: t("create.logoChange"),
+              upload: t("create.logoUpload"),
+              edit: t("create.logoEdit"),
+              drop: t("create.logoDrop"),
+              remove: t("create.logoRemove"),
+              unsupportedType: t("create.logoUnsupported"),
+              tooLarge: t("create.logoTooLarge", {
+                mb: Math.round(MAX_AVATAR_BYTES / (1024 * 1024)),
+              }),
+            }}
+          />
+          <div className="grid min-w-0 gap-0.5">
+            <h3 className="truncate text-base font-semibold">{team.name}</h3>
+            <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+              {team.is_complete
+                ? t("list.complete")
+                : t("list.shortfall", { slots: formatShortfall(team.open_slots, tSlot) })}
+            </p>
+          </div>
         </div>
         <span className="rounded-full border border-[color:var(--aqt-border-2)] px-2.5 py-0.5 text-xs">
           {t(`status.${team.status}`)}

@@ -19,11 +19,12 @@ const (
 	maxUpload        = 12 << 20 // 12 MiB upload cap before base64 into the RPC body
 )
 
-// Binary serves the tournament-service endpoint the generic JSON edge.Dispatcher
-// can't: the team-image multipart upload, base64-encoded into the RPC body. The
-// paired delete is plain JSON and rides the typed dispatcher (admin_routes.go).
-// Permission is enforced in the worker; the gateway only injects the resolved
-// identity.
+// Binary serves the tournament-service endpoints the generic JSON edge.Dispatcher
+// can't: the multipart image uploads, base64-encoded into the RPC body — the
+// admin team logo and the captain-owned registered-team crest. Both paired
+// deletes are plain JSON and ride the typed dispatcher (admin_routes.go /
+// public_routes.go). Permission is enforced in the worker; the gateway only
+// injects the resolved identity.
 type Binary struct {
 	rpc      edge.RPCCaller
 	identity edge.IdentityResolver
@@ -48,6 +49,20 @@ func (b *Binary) TeamImageUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.relayJSON(w, r, "rpc.tournament.teams.image_upload", data, http.StatusOK)
+}
+
+// RegistrationTeamImageUpload: POST /api/v1/registration-teams/{team_id}/image
+// (captain-gated in the worker, not workspace-permission-gated). The id travels
+// as "team_id" — the key the regteam_* subjects read — not TeamImageUpload's "id".
+func (b *Binary) RegistrationTeamImageUpload(w http.ResponseWriter, r *http.Request) {
+	data, ok := b.identityInto(w, r, map[string]any{"team_id": r.PathValue("team_id")})
+	if !ok {
+		return
+	}
+	if !b.attachFile(w, r, data) {
+		return
+	}
+	b.relayJSON(w, r, "rpc.tournament.regteam_image_upload", data, http.StatusOK)
 }
 
 // identityInto resolves the bearer identity (required) and injects it into data.

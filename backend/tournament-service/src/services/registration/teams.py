@@ -63,6 +63,7 @@ __all__ = (
     "DEFAULT_INVITE_TTL",
     "TEAM_STATUSES",
     "accept_invite",
+    "assert_may_edit_team",
     "count_unassigned_players",
     "create_team",
     "decline_invite",
@@ -73,6 +74,7 @@ __all__ = (
     "list_teams",
     "reject_team",
     "revoke_invite",
+    "set_team_image",
     "transfer_captaincy",
 )
 
@@ -369,6 +371,69 @@ async def _assert_captain(
     )
     if is_captain is None:
         raise _fail(403, "not_captain", "Only the team captain can do this")
+
+
+async def set_team_image(
+    session: AsyncSession,
+    *,
+    team_id: int,
+    auth_user: models.AuthUser,
+    image_url: str | None,
+) -> models.BalancerRegistrationTeam:
+    """Set (or clear, with ``None``) a registered team's crest.
+
+    Captain-gated rather than workspace-permission-gated — the deliberate
+    difference from the materialized ``Team``'s image pair in
+    ``services/admin/team.py``, which requires ``team.update`` on the workspace.
+    A registration team belongs to the players who formed it, not to the
+    organizer's staff: its captain is an ordinary competitor who typically holds
+    no workspace membership at all, so a workspace gate would lock out exactly
+    the person who owns the crest. The organizer's lever over a team's branding
+    stays :func:`reject_team`, not silent re-branding.
+
+    Same mutability rule as every other roster edit (:func:`_assert_mutable`): an
+    exported or terminal team is frozen, so its card cannot change after the
+    field is set.
+    """
+    team = await _lock_team(session, team_id)
+    await _assert_captain(session, team, auth_user)
+    _assert_mutable(team)
+    team.image_url = image_url
+    register_tournament_realtime_update(session, team.tournament_id, "registration_changed")
+    await session.commit()
+    # Scalar-only mutation; expire_on_commit=False keeps the instance renderable
+    # by ``describe_team`` without a refresh round-trip.
+    return team
+
+
+async def assert_may_edit_team(
+    session: AsyncSession,
+    *,
+    team_id: int,
+    auth_user: models.AuthUser,
+) -> None:
+    """The captain gate without the row lock, for callers that must refuse
+    *before* doing slow external work.
+
+    The crest upload deletes the previously stored S3 object before writing the
+    new one, so a stranger who reached S3 could destroy a captain's image
+    regardless of what the database later refuses. Taking :func:`_lock_team`'s
+    row lock across that network round-trip would instead pin a backend slot for
+    its whole duration, so this reads without ``FOR UPDATE``.
+
+    Advisory only: :func:`set_team_image` re-runs both checks under the lock, and
+    that is the authoritative decision.
+    """
+    team = await session.scalar(
+        sa.select(models.BalancerRegistrationTeam).where(
+            models.BalancerRegistrationTeam.id == team_id,
+            models.BalancerRegistrationTeam.deleted_at.is_(None),
+        )
+    )
+    if team is None:
+        raise _fail(404, "team_not_found", "Team not found")
+    await _assert_captain(session, team, auth_user)
+    _assert_mutable(team)
 
 
 async def invite_member(

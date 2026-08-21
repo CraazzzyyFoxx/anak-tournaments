@@ -58,7 +58,7 @@ def _validate_image(data: bytes, content_type: str, max_size: int) -> str | None
 async def upload_avatar(
     s3: S3Client,
     *,
-    entity_type: Literal["users", "workspaces", "players", "teams"],
+    entity_type: Literal["users", "workspaces", "players", "teams", "registration_teams"],
     entity_id: int,
     file_data: bytes,
     content_type: str,
@@ -126,7 +126,7 @@ async def upload_asset(
 async def delete_old_avatar(
     s3: S3Client,
     *,
-    entity_type: Literal["users", "workspaces", "players", "teams"],
+    entity_type: Literal["users", "workspaces", "players", "teams", "registration_teams"],
     entity_id: int,
 ) -> None:
     """Delete existing avatar files for an entity."""

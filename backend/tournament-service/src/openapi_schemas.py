@@ -16,6 +16,7 @@ from shared.rpc.openapi import Op, QueryParam
 from src import schemas
 from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas import registration as reg_schemas
+from src.schemas import registration_team as reg_team_schemas
 from src.schemas.admin import balancer as admin_balancer
 from src.schemas.admin import encounter as admin_encounter
 from src.schemas.admin import encounter_reports as admin_reports
@@ -133,6 +134,9 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: team image (binary upload + delete) ───────────────────────
     "rpc.tournament.teams.image_upload": Op(response=schemas.TeamRead),
     "rpc.tournament.teams.image_delete": Op(response=schemas.TeamRead),
+    # ── bespoke: registered-team image (binary upload + delete) ────────────
+    "rpc.tournament.regteam_image_upload": Op(response=reg_team_schemas.RegistrationTeamRead),
+    "rpc.tournament.regteam_image_delete": Op(response=reg_team_schemas.RegistrationTeamRead),
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": Op(response=schemas.TournamentRead),
     "rpc.tournament.tournament_status": Op(

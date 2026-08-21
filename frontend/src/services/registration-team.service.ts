@@ -47,6 +47,32 @@ const registrationTeamService = {
     return response.json();
   },
 
+  /**
+   * Set the team's logo. Captain-only, enforced server-side.
+   *
+   * Deliberately a SECOND call after `create` rather than a field on its payload:
+   * `create_team` runs one transaction that must also write the captain's
+   * registration, and an S3 round trip inside it would either lengthen that lock
+   * or, on failure, roll back a team the captain already named. A failed logo
+   * upload must leave the team standing.
+   */
+  async uploadImage(teamId: number, file: File): Promise<RegistrationTeam> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiFetch(`/api/v1/registration-teams/${teamId}/image`, {
+      method: "POST",
+      body: formData,
+    });
+    return response.json();
+  },
+
+  async deleteImage(teamId: number): Promise<RegistrationTeam> {
+    const response = await apiFetch(`/api/v1/registration-teams/${teamId}/image`, {
+      method: "DELETE",
+    });
+    return response.json();
+  },
+
   /** Returns the invite plus, for a link invite, the raw token — shown ONCE. */
   async invite(
     teamId: number,

@@ -76,10 +76,28 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/members/{registration_id}", Queue: "rpc.tournament.regteam_kick", Path: []string{"team_id", "registration_id"}, Auth: edge.AuthRequired, Success: 204},
 	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/members/me", Queue: "rpc.tournament.regteam_leave", Path: []string{"team_id"}, Auth: edge.AuthRequired, Success: 204},
 	{Method: "POST", Pattern: "/api/v1/registration-teams/{team_id}/captain/{registration_id}", Queue: "rpc.tournament.regteam_transfer_captain", Path: []string{"team_id", "registration_id"}, Auth: edge.AuthRequired, Success: 204},
+	// NOTE: DELETE /registration-teams/{team_id}/image is NOT here — it is
+	// ambiguous with /registration-teams/invites/{invite_id} under the stdlib
+	// ServeMux (both match "/registration-teams/invites/image", neither is more
+	// specific) and lives in RegistrationTeamSubtreeRoutes below.
 	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}", Queue: "rpc.tournament.regteam_disband", Path: []string{"team_id"}, Auth: edge.AuthRequired, Success: 204},
 
 	// Subscription entitlements — the patron's own standing plus challenge-code
 	// redemption (the Boosty fallback for organizers without a Discord server).
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/subscription/me", Queue: "rpc.tournament.sub_me", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/tournaments/{tournament_id}/subscription/redeem-code", Queue: "rpc.tournament.sub_redeem_code", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
+}
+
+// RegistrationTeamSubtreeRoutes holds the /api/v1/registration-teams/* routes the
+// stdlib ServeMux refuses to register alongside their siblings, served via
+// edge.Subtree (ordered match, first wins) mounted at /api/v1/registration-teams/.
+// The subtree prefix is less specific than every precise pattern in
+// PublicWriteRoutes, so those still win; only what nothing else claims lands here.
+//
+// Captain-gated in the worker like the rest of the team-registration block — not
+// a workspace permission, unlike the admin team-image pair in AdminCrudRoutes.
+// The paired multipart upload can't ride the JSON dispatcher at all; it is a
+// direct mux.HandleFunc (binary.go), documented in BinaryDocRoutes.
+var RegistrationTeamSubtreeRoutes = []edge.RouteSpec{
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/image", Queue: "rpc.tournament.regteam_image_delete", Path: []string{"team_id"}, Auth: edge.AuthRequired},
 }

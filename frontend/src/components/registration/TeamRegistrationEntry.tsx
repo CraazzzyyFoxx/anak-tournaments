@@ -8,12 +8,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { ROLES, type RoleCode } from "@/lib/roles";
+import { ROLES } from "@/lib/roles";
 import { isRegistrationOpen } from "@/lib/tournament-status";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import registrationService from "@/services/registration.service";
 import type { Tournament } from "@/types/tournament.types";
 
+import type { RosterSlotOption } from "./RosterSlotPicker";
 import TeamRegistrationWizard from "./TeamRegistrationWizard";
 
 /**
@@ -56,15 +57,16 @@ export default function TeamRegistrationEntry({
   if (myRegQuery.data || !formQuery.data) return null;
 
   /**
-   * Slots the captain may occupy. Constrained to the tournament's roster override
-   * when it has one, because the server rejects a slot the shape does not define
-   * (`slot_not_in_shape`). An all-`flex` roster yields none and the entry hides —
-   * that shape needs a slot picker this UI does not have yet.
+   * Slots the captain may occupy, each with its multiplicity in the roster.
+   * Constrained to the tournament's roster override when it has one, because the
+   * server rejects a slot the shape does not define (`slot_not_in_shape`). An
+   * all-`flex` roster yields none and the entry hides — that shape needs a slot
+   * picker this UI does not have yet.
    */
   const override = tournament.roster_slots_json ?? null;
-  const availableSlots: RoleCode[] = override
-    ? ROLES.filter((role) => (override[role.code] ?? 0) > 0).map((role) => role.code)
-    : ROLES.map((role) => role.code);
+  const availableSlots: RosterSlotOption[] = ROLES.filter(
+    (role) => !override || (override[role.code] ?? 0) > 0,
+  ).map((role) => ({ code: role.code, count: override?.[role.code] ?? 1 }));
   if (availableSlots.length === 0) return null;
 
   return (
@@ -76,7 +78,7 @@ export default function TeamRegistrationEntry({
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-2xl lg:max-w-3xl">
-          <DialogTitle>{t("create.title")}</DialogTitle>
+          <DialogTitle>{t("create.titleFor", { name: tournament.name })}</DialogTitle>
           <TeamRegistrationWizard
             workspaceId={tournament.workspace_id}
             tournamentId={tournament.id}

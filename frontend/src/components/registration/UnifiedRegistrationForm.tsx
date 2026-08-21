@@ -122,6 +122,16 @@ interface UnifiedRegistrationFormProps {
    * free-choice behaviour.
    */
   lockedRole?: RoleCode | null;
+  /**
+   * Suppress the form's own `<h2>`.
+   *
+   * For a host that already names itself visibly — the team-registration dialog
+   * does — the inner title is a near-duplicate heading, and because it sits below
+   * the host's own team section it makes an `<h3>` precede an `<h2>` in the
+   * outline. The solo path keeps it: there the dialog title is `sr-only` and this
+   * is the only visible heading.
+   */
+  hideTitle?: boolean;
 }
 
 export default function UnifiedRegistrationForm({
@@ -135,6 +145,7 @@ export default function UnifiedRegistrationForm({
   onCancel,
   submitPending = false,
   lockedRole = null,
+  hideTitle = false,
 }: Readonly<UnifiedRegistrationFormProps>) {
   const t = useTranslations();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
@@ -697,7 +708,7 @@ export default function UnifiedRegistrationForm({
 
   return (
     <div className="flex flex-col gap-4">
-      {mode === "public" && (
+      {mode === "public" && !hideTitle && (
         <h2 className="text-lg font-semibold text-[color:var(--aqt-fg)]">
           {tournamentName
             ? t("registration.wizard.titleFor", { name: tournamentName })

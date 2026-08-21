@@ -47,8 +47,9 @@ func TestTeamImageRouteContracts(t *testing.T) {
 // TestRoutesRegisterWithoutConflict guards against ServeMux pattern conflicts,
 // which panic at registration time (runtime), not at build time. It registers the
 // tournament route tables that are mounted as patterns — the subtree tables
-// (DivisionGridRoutes, StageSubtreeRoutes) are deliberately ambiguous and mounted
-// via edge.Subtree — plus the multipart handler wired in cmd/gateway/main.go.
+// (DivisionGridRoutes, StageSubtreeRoutes, RegistrationTeamSubtreeRoutes) are
+// deliberately ambiguous and mounted via edge.Subtree — plus the subtree prefixes
+// and multipart handlers wired in cmd/gateway/main.go.
 func TestRoutesRegisterWithoutConflict(t *testing.T) {
 	mux := http.NewServeMux()
 	dummy := func(http.ResponseWriter, *http.Request) {}
@@ -61,6 +62,48 @@ func TestRoutesRegisterWithoutConflict(t *testing.T) {
 			mux.HandleFunc(s.Method+" "+s.Pattern, dummy)
 		}
 	}
-	// Multipart handler registered directly in main.go.
+	// Subtree prefixes registered in main.go: less specific than every precise
+	// pattern above, so they must coexist with them.
+	mux.Handle("/api/v1/registration-teams/", http.NotFoundHandler())
+	// Multipart handlers registered directly in main.go.
 	mux.HandleFunc("POST /api/v1/admin/teams/{team_id}/image", dummy)
+	mux.HandleFunc("POST /api/v1/registration-teams/{team_id}/image", dummy)
+}
+
+// TestRegistrationTeamCrestRouting pins the precedence the crest DELETE depends
+// on. Its pattern cannot be registered on the ServeMux at all (it is ambiguous
+// with the invite-revoke wildcard), so it is served by the subtree mounted at
+// /api/v1/registration-teams/ — which must NOT shadow the precise sibling
+// patterns registered alongside it.
+func TestRegistrationTeamCrestRouting(t *testing.T) {
+	mux := http.NewServeMux()
+	hit := ""
+	mark := func(name string) http.HandlerFunc {
+		return func(http.ResponseWriter, *http.Request) { hit = name }
+	}
+	for _, s := range PublicWriteRoutes {
+		mux.HandleFunc(s.Method+" "+s.Pattern, mark(s.Queue))
+	}
+	mux.Handle("/api/v1/registration-teams/", mark("subtree"))
+	mux.HandleFunc("POST /api/v1/registration-teams/{team_id}/image", mark("rpc.tournament.regteam_image_upload"))
+
+	for _, tc := range []struct{ method, path, want string }{
+		{"DELETE", "/api/v1/registration-teams/5/image", "subtree"},
+		{"POST", "/api/v1/registration-teams/5/image", "rpc.tournament.regteam_image_upload"},
+		// The siblings the subtree must not swallow.
+		{"DELETE", "/api/v1/registration-teams/invites/9", "rpc.tournament.regteam_invite_revoke"},
+		{"DELETE", "/api/v1/registration-teams/5", "rpc.tournament.regteam_disband"},
+		{"DELETE", "/api/v1/registration-teams/5/members/me", "rpc.tournament.regteam_leave"},
+		{"POST", "/api/v1/registration-teams/invites/accept", "rpc.tournament.regteam_accept"},
+	} {
+		hit = ""
+		req, err := http.NewRequest(tc.method, tc.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mux.ServeHTTP(nil, req)
+		if hit != tc.want {
+			t.Errorf("%s %s routed to %q, want %q", tc.method, tc.path, hit, tc.want)
+		}
+	}
 }
