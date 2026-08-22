@@ -290,11 +290,11 @@ export default function MyTeamPanel({
         </span>
       </header>
 
-      <ul className="grid gap-1.5">
+      <ul className="divide-y divide-[color:var(--aqt-border)]">
         {team.members.map((member) => (
           <li
             key={member.registration_id}
-            className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] px-3 py-2 text-sm"
+            className="flex flex-wrap items-center gap-2 py-2.5 text-sm first:pt-0 last:pb-0"
           >
             <span className="font-medium">{member.display_name ?? member.battle_tag}</span>
             {member.slot_code && (
@@ -351,11 +351,11 @@ export default function MyTeamPanel({
           {pendingInvites.length === 0 ? (
             <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("invite.pendingEmpty")}</p>
           ) : (
-            <ul className="grid gap-1.5">
+            <ul className="divide-y divide-[color:var(--aqt-border)]">
               {pendingInvites.map((invite) => (
                 <li
                   key={invite.id}
-                  className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-3 py-2 text-sm"
+                  className="flex flex-wrap items-center gap-2 border-l-2 border-[color:var(--aqt-amber)]/50 py-2.5 pl-3 text-sm first:pt-0 last:pb-0"
                 >
                   <span>{slotLabel(invite.slot_code)}</span>
                   <span className="text-xs text-[color:var(--aqt-fg-muted)]">

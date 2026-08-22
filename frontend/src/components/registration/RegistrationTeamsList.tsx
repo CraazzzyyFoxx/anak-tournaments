@@ -7,11 +7,13 @@ import { useTranslations } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { normalizePlayerRole } from "@/lib/player-role";
 import { REGISTRATION_TEAM_STATUS_TONE } from "@/lib/registration-team-tone";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
+import registrationService from "@/services/registration.service";
 import registrationTeamService from "@/services/registration-team.service";
 import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
 import type { Tournament } from "@/types/tournament.types";
@@ -123,15 +125,28 @@ export default function RegistrationTeamsList({
   tournament
 }: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations();
+  const { status: authStatus, user } = useAuthProfile();
+  const isAuthenticated = authStatus === "authenticated" && user != null;
+
   const teamsQuery = useQuery({
     queryKey: tournamentQueryKeys.registrationTeams(tournament.workspace_id, tournament.id),
     queryFn: () => registrationTeamService.listPublic(tournament.id)
   });
+  // Same query key `MyTeamSection` already uses, so this is a cache read, not a
+  // second request: a captain's own team is already shown in full detail above
+  // (`MyTeamPanel`), so showing it again here as a third summary of the same
+  // roster and shortfall would be the exact clutter this section exists to avoid.
+  const myRegQuery = useQuery({
+    queryKey: tournamentQueryKeys.registration(tournament.workspace_id, tournament.id),
+    queryFn: () => registrationService.getMyRegistration(tournament.id),
+    enabled: isAuthenticated
+  });
+  const myTeamId = myRegQuery.data?.team?.id ?? null;
 
-  const teams = teamsQuery.data?.items ?? [];
+  const teams = (teamsQuery.data?.items ?? []).filter((team) => team.id !== myTeamId);
   const freeAgents = teamsQuery.data?.unassigned_players ?? 0;
 
-  if (teamsQuery.isLoading) {
+  if (teamsQuery.isLoading || (isAuthenticated && myRegQuery.isLoading)) {
     return (
       <section className="flex flex-col gap-3">
         <Skeleton className="h-6 w-48" />

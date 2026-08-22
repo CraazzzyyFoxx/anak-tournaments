@@ -104,6 +104,9 @@ export default defineConfig({
       "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx",
       "src/components/registration/DetailsStep.behavior.test.tsx",
       "src/components/registration/MyTeamPanel.i18n.test.tsx",
+      // Own-team dedup: unrun, a green suite would coexist with the exact
+      // duplicate-card regression this file exists to catch.
+      "src/components/registration/RegistrationTeamsList.test.tsx",
       // The only surface an addressed invite exists on. File-level for the same
       // mixed-runner reason as its neighbours; unrun, it would report green while
       // the whole targeted-invite mode was invisible.
