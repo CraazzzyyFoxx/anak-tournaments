@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import InviteHistorySection from "@/components/registration/InviteHistorySection";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { notify } from "@/lib/notify";
 import { MAX_AVATAR_BYTES } from "@/lib/avatar";
 import { buildInviteLink } from "@/lib/invite-link";
@@ -77,9 +78,9 @@ export default function MyTeamPanel({
   const [targetRegistrationId, setTargetRegistrationId] = useState<number | null>(null);
   /** Shown once, never refetchable: only the hash is stored server-side. */
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
-  /** Owned here, not by the section, because a refusal at the invite cap has to
+  /** Owned here, not by the drawer, because a refusal at the invite cap has to
    *  force it open — the answer to "where did 60 invites go" is in there. */
-  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   /** Per-row confirmation targets — mirrors the admin card's own
    *  `rejectTarget`/`resetTarget` pattern: the project's own `AlertDialog`
    *  instead of the browser's un-stylable `window.confirm`, with a button that
@@ -140,7 +141,7 @@ export default function MyTeamPanel({
       // The cap counts every invite ever issued, including ones long since
       // revoked, so this refusal is otherwise a dead end: nothing on screen
       // accounts for the ceiling. Open the ledger that does.
-      if (registrationTeamErrorCode(err) === "invite_cap_reached") setHistoryExpanded(true);
+      if (registrationTeamErrorCode(err) === "invite_cap_reached") setHistoryOpen(true);
     },
   });
 
@@ -296,12 +297,8 @@ export default function MyTeamPanel({
             key={member.registration_id}
             className="flex flex-wrap items-center gap-2 py-2.5 text-sm first:pt-0 last:pb-0"
           >
+            <RosterSlotGlyph code={member.slot_code} />
             <span className="font-medium">{member.display_name ?? member.battle_tag}</span>
-            {member.slot_code && (
-              <span className="text-xs text-[color:var(--aqt-fg-muted)]">
-                {slotLabel(member.slot_code)}
-              </span>
-            )}
             {member.is_captain && (
               <span className="inline-flex items-center gap-1 text-xs text-[color:var(--aqt-amber)]">
                 <Crown className="size-3.5" aria-hidden />
@@ -357,7 +354,7 @@ export default function MyTeamPanel({
                   key={invite.id}
                   className="flex flex-wrap items-center gap-2 border-l-2 border-[color:var(--aqt-amber)]/50 py-2.5 pl-3 text-sm first:pt-0 last:pb-0"
                 >
-                  <span>{slotLabel(invite.slot_code)}</span>
+                  <RosterSlotGlyph code={invite.slot_code} />
                   <span className="text-xs text-[color:var(--aqt-fg-muted)]">
                     {invite.target_battle_tag
                       ? t("invite.targetLabel", { name: invite.target_battle_tag })
@@ -395,15 +392,9 @@ export default function MyTeamPanel({
         </div>
       )}
 
-      {isCaptain && (
-        <InviteHistorySection
-          workspaceId={workspaceId}
-          teamId={team.id}
-          expanded={historyExpanded}
-          onToggle={() => setHistoryExpanded((open) => !open)}
-        />
-      )}
-
+      {/* The ledger's trigger lives in the actions row rather than as its own
+          row above it: it opens a drawer now, so it is an action like the two
+          beside it, and the card is one orphan row shorter for it. */}
       <footer className="flex flex-wrap gap-2">
         {isCaptain && (offerableSlots.length > 0 || benchOpen) && (
           <Button
@@ -445,6 +436,14 @@ export default function MyTeamPanel({
             <LogOut className="size-4" aria-hidden />
             {t("member.leave")}
           </Button>
+        )}
+        {isCaptain && (
+          <InviteHistorySection
+            workspaceId={workspaceId}
+            teamId={team.id}
+            open={historyOpen}
+            onOpenChange={setHistoryOpen}
+          />
         )}
       </footer>
 

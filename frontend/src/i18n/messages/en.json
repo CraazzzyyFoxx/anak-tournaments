@@ -588,6 +588,7 @@
     },
     "history": {
       "toggle": "Invite history",
+      "hint": "Every invite this team has issued, newest first.",
       "cap": "{used} of {limit} invites used",
       "capReset": "Counted since {date}",
       "capNearby": "Close to the limit. Revoke an outstanding invite, or ask an organizer to reset the count.",

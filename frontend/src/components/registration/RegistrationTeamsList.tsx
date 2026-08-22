@@ -4,11 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Crown, LifeBuoy } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { normalizePlayerRole } from "@/lib/player-role";
 import { REGISTRATION_TEAM_STATUS_TONE } from "@/lib/registration-team-tone";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -20,11 +19,10 @@ import type { Tournament } from "@/types/tournament.types";
 
 function RosterRow({ member }: Readonly<{ member: RegistrationTeamMember }>) {
   const t = useTranslations();
-  const role = member.slot_code ? normalizePlayerRole(member.slot_code) : null;
 
   return (
     <li className="flex items-center gap-2 text-sm">
-      <PlayerRoleIcon role={role} size={16} decorative />
+      <RosterSlotGlyph code={member.slot_code} />
       <span className="min-w-0 flex-1 truncate text-[color:var(--aqt-fg)]">
         {member.display_name ?? member.battle_tag ?? "—"}
       </span>
