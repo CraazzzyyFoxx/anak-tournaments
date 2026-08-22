@@ -2,8 +2,10 @@
 
 The HTTP service kept its S3 client on ``app.state.s3``; the typed-RPC handlers
 have no request state, so the worker owns a module-level singleton instead.
-``serve.py`` starts/stops it in the FastStream lifespan; match-log binary
-handlers import ``s3_client`` directly.
+``serve.py`` starts/stops it in the FastStream lifespan; rpc handlers and
+services import the instances directly. Lives in ``core`` rather than ``rpc``
+because ``services/subscription_collection/scheduler.py`` needs ``realtime_redis``,
+and a service reaching up into the transport package would invert the layering.
 """
 
 from __future__ import annotations

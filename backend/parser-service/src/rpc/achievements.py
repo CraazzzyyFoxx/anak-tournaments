@@ -42,6 +42,7 @@ from shared.repository.workspace import get_or_create_workspace_member
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models, schemas
+from src.core import clients as _clients
 from src.core import db
 from src.domain.achievement_validation import (
     LEAF_GRAINS,
@@ -80,7 +81,6 @@ from src.services.achievement.import_export import (
 )
 from src.services.achievement.rule_service import achievement_rule_service
 
-from . import _clients
 from . import _common as c
 
 _SF = db.async_session_maker

@@ -29,6 +29,7 @@ from shared.observability import publish_message
 from shared.schemas.events import ProcessMatchLogEvent, ProcessTournamentLogsEvent
 from src import models
 from src.core import auth, db
+from src.core import clients as _clients
 from src.core.config import settings
 from src.schemas.admin.logs import (
     LogRecordRead,
@@ -48,7 +49,6 @@ from src.services.match_logs.admin_reads import (
 from src.services.match_logs.log_records import log_records_service
 from src.services.tournament import flows as tournament_flows
 
-from . import _clients
 from . import _common as c
 
 _SF = db.async_session_maker
