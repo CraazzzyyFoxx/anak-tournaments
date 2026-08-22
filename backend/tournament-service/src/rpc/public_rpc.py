@@ -824,7 +824,7 @@ def register(broker: Any, logger: Any) -> None:
         """
 
         async def op(session: Any) -> Any:
-            token = str(data.get("token") or "")
+            token = str(_payload(data).get("token") or "")
             return _dump(await team_service.preview_invite(session, token=token))
 
         return await _run(logger, op)
