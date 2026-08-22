@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, History, LoaderCircle, Lock } from "lucide-react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { ChevronDown, LoaderCircle, Lock } from "lucide-react";
 
 import {
+  AUDIT_TRAIL_PAGE_SIZE,
   auditDiffRows,
   auditEntityLabel,
   auditHistoryStartQuery,
   auditSourceLabel,
+  auditTrailQueryKey,
   describeAuditAction,
   formatAuditActor,
   formatAuditDate,
@@ -17,16 +18,14 @@ import {
   hasUncapturedBefore,
   isMachineActor,
   type AuditDiffKind,
+  type AuditTrailScope,
 } from "@/components/admin/audit-log";
-import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { AuditLogRead } from "@/types/admin.types";
-
-/** One screenful. Anything deeper belongs in the feed, which paginates. */
-const TRAIL_PAGE_SIZE = 10;
 
 /**
  * Per-line marker for the field diff.
@@ -166,39 +165,55 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
 
   return (
     <li className="py-2">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <time
-          dateTime={entry.created_at}
-          className="shrink-0 tabular-nums text-xs text-muted-foreground"
-        >
-          {formatAuditTimestamp(entry.created_at)}
-        </time>
-        <span
-          className="text-sm font-medium text-foreground"
-          title={action.recognised ? undefined : action.raw}
-        >
-          {action.label}
-        </span>
-        {action.recognised ? null : (
-          // A phrase we had to derive from the string must not pass for a curated
-          // one: the reader needs to know the wording is a guess, not a fact.
-          <Badge variant="outline" className="border-border/60 font-normal text-muted-foreground">
-            unrecognised action
-          </Badge>
-        )}
-        <span className="text-xs text-muted-foreground">
-          by{" "}
-          <span className={cn("text-foreground", isMachineActor(entry) && "italic")}>
-            {formatAuditActor(entry)}
-          </span>
-        </span>
+      {/* Two columns, not one wrapping row. In the 576px drawer a long actor
+          name used to push "Details" onto a line of its own on some entries and
+          not others, so the list read as ragged rows of unequal height. The
+          disclosure now keeps one trailing edge and the actor truncates into it. */}
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <time
+              dateTime={entry.created_at}
+              className="shrink-0 tabular-nums text-xs text-muted-foreground"
+            >
+              {formatAuditTimestamp(entry.created_at)}
+            </time>
+            <span
+              className="text-sm font-medium text-foreground"
+              title={action.recognised ? undefined : action.raw}
+            >
+              {action.label}
+            </span>
+            {action.recognised ? null : (
+              // A phrase we had to derive from the string must not pass for a
+              // curated one: the reader needs to know the wording is a guess,
+              // not a fact.
+              <Badge
+                variant="outline"
+                className="border-border/60 font-normal text-muted-foreground"
+              >
+                unrecognised action
+              </Badge>
+            )}
+          </div>
+          {/* `title` keeps the full actor readable once it truncates. */}
+          <p
+            className="mt-0.5 truncate text-xs text-muted-foreground"
+            title={formatAuditActor(entry)}
+          >
+            by{" "}
+            <span className={cn("text-foreground", isMachineActor(entry) && "italic")}>
+              {formatAuditActor(entry)}
+            </span>
+          </p>
+        </div>
 
         {hasDetail ? (
           <button
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((current) => !current)}
-            className="ml-auto flex shrink-0 items-center gap-1 rounded text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="flex shrink-0 items-center gap-1 rounded text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             {open ? "Hide details" : "Details"}
             <ChevronDown
@@ -214,72 +229,63 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
   );
 }
 
-export interface AuditTrailProps {
-  /** Matches the `entity_type` the writers pair with this entity's actions. */
-  entityType: string;
-  entityId: number;
-  /**
-   * The workspace the entity belongs to — passed explicitly rather than left to
-   * the ambient one, so a trail on an entity page reads the same journal the
-   * mutation was authorized against.
-   */
-  workspaceId: number;
-}
-
 /**
- * "Who changed this" for a single entity, mounted on its own page.
+ * "Who changed this" for a single entity.
  *
  * Same endpoint as the feed (FR6), scoped to this entity. A compact list rather
- * than a table: it lives inside a settings page, and one entity's history is
- * read top-to-bottom, not sorted and filtered.
+ * than a table: one entity's history is read top-to-bottom, not sorted and
+ * filtered — that is what the feed at `/admin/audit` is for. The chrome around
+ * this list belongs to `AuditTrailSheet`, which is the only thing that mounts it.
  */
-export function AuditTrail({ entityType, entityId, workspaceId }: Readonly<AuditTrailProps>) {
-  const entityNoun = (auditEntityLabel(entityType) ?? "record").toLowerCase();
+export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) {
+  const entityNoun = (auditEntityLabel(scope.entityType) ?? "record").toLowerCase();
 
-  const trailQuery = useQuery({
-    queryKey: ["admin", "audit", "trail", workspaceId, entityType, entityId],
-    queryFn: () =>
+  const trailQuery = useInfiniteQuery({
+    queryKey: auditTrailQueryKey(scope),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
       adminService.listAudit({
-        workspace_id: workspaceId,
-        entity_type: entityType,
-        entity_id: entityId,
-        per_page: TRAIL_PAGE_SIZE,
+        workspace_id: scope.workspaceId,
+        entity_type: scope.entityType,
+        entity_id: scope.entityId,
+        page: pageParam,
+        per_page: AUDIT_TRAIL_PAGE_SIZE,
       }),
+    // An empty page ends the trail even when `total` still claims more: rows
+    // deleted between requests would otherwise leave a "Load more" that can
+    // never advance.
+    getNextPageParam: (lastPage, pages) => {
+      if (lastPage.results.length === 0) return undefined;
+      const loaded = pages.reduce((sum, page) => sum + page.results.length, 0);
+      return loaded < lastPage.total ? pages.length + 1 : undefined;
+    },
     retry: false,
   });
+
+  const entries = trailQuery.data?.pages.flatMap((page) => page.results) ?? [];
+  const total = trailQuery.data?.pages[0]?.total ?? 0;
 
   // Only asked for once the trail comes back empty, because that is the only
   // case whose wording depends on it.
   const historyStart = useQuery({
-    ...auditHistoryStartQuery({ workspaceId }),
-    enabled: trailQuery.data?.results.length === 0,
+    ...auditHistoryStartQuery({ workspaceId: scope.workspaceId }),
+    enabled: trailQuery.isSuccess && entries.length === 0,
     retry: false,
   });
 
-  const total = trailQuery.data?.total ?? 0;
-  const entries = trailQuery.data?.results ?? [];
-  const feedHref = `/admin/audit?entity_type=${encodeURIComponent(entityType)}&entity_id=${entityId}`;
+  if (trailQuery.isLoading) {
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
+  }
 
-  // One body per state, in priority order. The three empty states below are
-  // distinct claims about history, so they are never collapsed into one.
-  const renderTrailBody = () => {
-    if (trailQuery.isLoading) {
-      return <p className="text-xs text-muted-foreground">Loading…</p>;
-    }
-    if (trailQuery.isError) {
-      return renderTrailError(trailQuery.error, entityNoun);
-    }
-    if (entries.length > 0) {
-      return (
-        <ul className="divide-y divide-border/30">
-          {entries.map((entry) => (
-            <AuditEntry key={entry.id} entry={entry} />
-          ))}
-        </ul>
-      );
-    }
+  if (trailQuery.isError) {
+    return renderTrailError(trailQuery.error, entityNoun);
+  }
+
+  // The three empty states below are distinct claims about history, so they are
+  // never collapsed into one.
+  if (entries.length === 0) {
     if (historyStart.isLoading) {
-      return <p className="text-xs text-muted-foreground">Loading…</p>;
+      return <p className="text-sm text-muted-foreground">Loading…</p>;
     }
     if (historyStart.data) {
       // Empty state 1 of 3: the journal runs, this entity is simply older than
@@ -288,7 +294,7 @@ export function AuditTrail({ entityType, entityId, workspaceId }: Readonly<Audit
       // touched the record, which is the one claim the audit log exists to be
       // able to make truthfully.
       return (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           No changes recorded for this {entityNoun}. The audit log in this workspace starts on{" "}
           <span className="text-foreground">{formatAuditDate(historyStart.data)}</span> — anything
           done before that date left no trail.
@@ -298,40 +304,54 @@ export function AuditTrail({ entityType, entityId, workspaceId }: Readonly<Audit
     // Empty state 2 of 3: nothing anywhere in this workspace yet, so there is
     // no start date to quote and no claim to make about this entity.
     return (
-      <p className="text-xs text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         The audit log has no entries in this workspace yet. It records admin actions from the moment
         it was switched on, so history begins with the next change.
       </p>
     );
-  };
+  }
 
   return (
-    <section className="rounded-xl border border-border/50 bg-card/50">
-      <header className="flex items-center gap-2 border-b border-border/40 px-4 py-2.5">
-        <History aria-hidden className="size-4 text-muted-foreground" />
-        <h2 className={EYEBROW_CLASS}>Change history</h2>
-        {total > 0 ? (
-          <span className="text-xs tabular-nums text-muted-foreground">{total} recorded</span>
-        ) : null}
-        {trailQuery.isFetching ? (
-          <output className="flex items-center text-muted-foreground">
-            <LoaderCircle aria-hidden className="size-3 animate-spin" />
-            <span className="sr-only">Loading change history…</span>
-          </output>
-        ) : null}
-        {total > entries.length ? (
-          <Link
-            href={feedHref}
-            className="ml-auto shrink-0 text-xs text-primary underline-offset-2 hover:underline"
-          >
-            All {total} entries <span aria-hidden>→</span>
-          </Link>
-        ) : null}
-      </header>
+    <div className="space-y-3">
+      <ul className="divide-y divide-border/30">
+        {entries.map((entry) => (
+          <AuditEntry key={entry.id} entry={entry} />
+        ))}
+      </ul>
 
-      <div className="px-4 py-3">{renderTrailBody()}</div>
-    </section>
+      {/* Rendered from the first page onwards whenever the trail is longer than
+          one page, so the status region exists before the first "Load more"
+          rather than being inserted by it — a region that appears with its own
+          text is announced unreliably. */}
+      {total > AUDIT_TRAIL_PAGE_SIZE ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/40 pt-3">
+          <p role="status" className="text-xs tabular-nums text-muted-foreground">
+            Showing {entries.length} of {formatChangeCount(total)}
+          </p>
+          {trailQuery.hasNextPage ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ms-auto"
+              disabled={trailQuery.isFetchingNextPage}
+              onClick={() => trailQuery.fetchNextPage()}
+            >
+              {trailQuery.isFetchingNextPage ? (
+                <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+              ) : null}
+              Load more
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
+}
+
+/** Full templated strings, so the singular is not "1 changes". */
+function formatChangeCount(count: number): string {
+  return count === 1 ? "1 change" : `${count} changes`;
 }
 
 /**
@@ -347,8 +367,8 @@ function renderTrailError(error: unknown, entityNoun: string) {
 
   if (status === 401 || status === 403) {
     return (
-      <p className="flex items-start gap-2 text-xs text-muted-foreground">
-        <Lock aria-hidden className="mt-px size-3.5 shrink-0" />
+      <p className="flex items-start gap-2 text-sm text-muted-foreground">
+        <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
         <span>
           You do not have access to the audit log for this workspace, so this {entityNoun}&rsquo;s
           history is hidden rather than empty. Ask an owner for the audit read permission.
@@ -358,7 +378,7 @@ function renderTrailError(error: unknown, entityNoun: string) {
   }
 
   return (
-    <p className="text-xs text-danger">
+    <p className="text-sm text-danger">
       The change history could not be loaded
       {error instanceof Error && error.message ? `: ${error.message}` : "."}
     </p>

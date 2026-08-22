@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, MoreHorizontal, Pencil, ShieldX, Trash2, Undo2, X } from "lucide-react";
+import { Check, History, MoreHorizontal, Pencil, ShieldX, Trash2, Undo2, X } from "lucide-react";
 
+import { useAuditTrail } from "@/components/admin/AuditTrailSheet";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 
 interface RegistrationRowActionsProps {
@@ -98,6 +100,11 @@ export default function RegistrationRowActions({
   onDelete
 }: Readonly<RegistrationRowActionsProps>) {
   const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
+  const { open: openAuditTrail } = useAuditTrail();
+  const { canAccessPermission } = usePermissions();
+  // The row carries its own workspace, which is the scope its edits were
+  // authorized against — closer to the truth than the ambient selection.
+  const canReadAudit = canAccessPermission("audit.read", registration.workspace_id);
 
   return (
     <div className="flex items-center justify-end gap-1">
@@ -125,6 +132,21 @@ export default function RegistrationRowActions({
             <DropdownMenuItem onClick={() => onEdit(registration)}>
               <Pencil className="h-4 w-4" />
               Edit
+            </DropdownMenuItem>
+          ) : null}
+
+          {canReadAudit ? (
+            <DropdownMenuItem
+              onClick={() =>
+                openAuditTrail({
+                  entityType: "registration",
+                  entityId: registration.id,
+                  workspaceId: registration.workspace_id,
+                })
+              }
+            >
+              <History className="h-4 w-4" />
+              Change history
             </DropdownMenuItem>
           ) : null}
 

@@ -18,8 +18,14 @@ import type { AuditLogRead, AuditSource } from "@/types/admin.types";
  * actions. Only what is written today: `hero`/`map`/`gamemode`/`achievement` are
  * registered with the CRUD dispatcher but declare read-only actions, so they can
  * never produce a row, and a single-word `entity_type` derives correctly anyway.
+ *
+ * `as const` is load-bearing since the trail moved into a drawer: the keys ARE
+ * the closed set a trail may be opened for (`AuditEntityType`), so a typo in a
+ * call site fails the build instead of shipping a trail that silently queries an
+ * `entity_type` nobody writes — whose empty state would then assert this entity
+ * was never touched, the one claim the journal exists to be able to make truthfully.
  */
-const ENTITY_LABELS: Record<string, string> = {
+const ENTITY_LABELS = {
   api_key: "API key",
   auth_user: "Account",
   encounter: "Encounter",
@@ -36,7 +42,19 @@ const ENTITY_LABELS: Record<string, string> = {
   team: "Team",
   tournament: "Tournament",
   workspace: "Workspace",
-};
+} as const satisfies Record<string, string>;
+
+/** The `entity_type` values a per-entity trail may be opened for. */
+export type AuditEntityType = keyof typeof ENTITY_LABELS;
+
+/**
+ * `Object.hasOwn`, not `in`: `"toString" in ENTITY_LABELS` is true through the
+ * prototype, and a URL carrying `?history=toString:1:1` must not pass for a real
+ * entity type.
+ */
+export function isAuditEntityType(value: string | undefined | null): value is AuditEntityType {
+  return value != null && Object.hasOwn(ENTITY_LABELS, value);
+}
 
 /**
  * Verbs the generic CRUD dispatcher emits across its ten writable entities. Kept
@@ -130,7 +148,7 @@ export function describeAuditAction(action: string): AuditActionDescription {
   const subject = separator === -1 ? action : action.slice(0, separator);
   const verb = separator === -1 ? "" : action.slice(separator + 1);
 
-  const noun = ENTITY_LABELS[subject];
+  const noun = isAuditEntityType(subject) ? ENTITY_LABELS[subject] : undefined;
   const verbLabel = VERB_LABELS[verb];
 
   if (noun && verbLabel) return { label: `${noun} ${verbLabel}`, raw: action, recognised: true };
@@ -142,7 +160,7 @@ export function describeAuditAction(action: string): AuditActionDescription {
 
 export function auditEntityLabel(entityType: string | null): string | null {
   if (!entityType) return null;
-  return ENTITY_LABELS[entityType] ?? humanizeToken(entityType);
+  return isAuditEntityType(entityType) ? ENTITY_LABELS[entityType] : humanizeToken(entityType);
 }
 
 export function auditSourceLabel(source: string): string {
@@ -312,5 +330,110 @@ export function auditHistoryStartQuery(scope: {
     // The first row never moves once written; re-asking on every mount would
     // double the requests behind every trail on the page.
     staleTime: 10 * 60 * 1000,
+  };
+}
+
+// ─── Per-entity trail scope ──────────────────────────────────────────────────
+
+/**
+ * One page of a trail. Ten fills the drawer without scrolling on a laptop, and
+ * "Load more" costs one request rather than a page-size selector nobody tunes
+ * while reading one entity's history top to bottom.
+ */
+export const AUDIT_TRAIL_PAGE_SIZE = 10;
+
+/** The drawer's entire identity, and the only thing its URL param carries. */
+export interface AuditTrailScope {
+  entityType: AuditEntityType;
+  entityId: number;
+  /**
+   * Passed explicitly rather than read from the ambient workspace store, so the
+   * trail reads the journal the mutation was authorized against. A pasted link
+   * has no component left to supply it, which is why it rides in the URL too.
+   */
+  workspaceId: number;
+}
+
+/** `?history=tournament:12:3` — deep-linkable, and cheap to parse. */
+export const AUDIT_TRAIL_PARAM = "history";
+
+export function encodeAuditTrailScope(scope: AuditTrailScope): string {
+  return `${scope.entityType}:${scope.entityId}:${scope.workspaceId}`;
+}
+
+/**
+ * `null` for anything that is not a scope we can honour — an unknown
+ * `entity_type`, a non-numeric id, a truncated param. A bad link opens nothing;
+ * it never opens a drawer pointed at an entity that cannot exist.
+ */
+export function parseAuditTrailScope(value: string | null | undefined): AuditTrailScope | null {
+  if (!value) return null;
+
+  const [entityType, rawEntityId, rawWorkspaceId] = value.split(":");
+  if (!isAuditEntityType(entityType)) return null;
+
+  const entityId = Number(rawEntityId);
+  const workspaceId = Number(rawWorkspaceId);
+  if (!Number.isInteger(entityId) || entityId <= 0) return null;
+  if (!Number.isInteger(workspaceId) || workspaceId <= 0) return null;
+
+  return { entityType, entityId, workspaceId };
+}
+
+export function sameAuditTrailScope(
+  a: AuditTrailScope | null,
+  b: AuditTrailScope | null,
+): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  return (
+    a.entityType === b.entityType &&
+    a.entityId === b.entityId &&
+    a.workspaceId === b.workspaceId
+  );
+}
+
+export function auditTrailQueryKey(scope: AuditTrailScope) {
+  return [
+    "admin",
+    "audit",
+    "trail",
+    scope.workspaceId,
+    scope.entityType,
+    scope.entityId,
+  ] as const;
+}
+
+/**
+ * `total` alone, for the badge on the trigger.
+ *
+ * Deliberately its own request rather than a peek at the trail's first page:
+ * the drawer's pages are only fetched once it opens, and the whole point of the
+ * badge is to tell a reader whether opening it is worth it. `per_page: 1` keeps
+ * that promise cheap — one row on the wire, not ten.
+ */
+export function auditTrailCountQuery(scope: AuditTrailScope) {
+  return {
+    queryKey: [
+      "admin",
+      "audit",
+      "count",
+      scope.workspaceId,
+      scope.entityType,
+      scope.entityId,
+    ] as const,
+    queryFn: async (): Promise<number> => {
+      const page = await adminService.listAudit({
+        workspace_id: scope.workspaceId,
+        entity_type: scope.entityType,
+        entity_id: scope.entityId,
+        page: 1,
+        per_page: 1,
+      });
+      return page.total;
+    },
+    // A refusal is not a retryable condition, and the badge simply stays absent.
+    retry: false,
+    staleTime: 60 * 1000,
   };
 }

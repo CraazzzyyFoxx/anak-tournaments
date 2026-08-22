@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import RegistrationsTable from "./RegistrationsTable";
 
@@ -129,7 +130,11 @@ async function mount() {
     root.render(
       <NextIntlClientProvider locale="en" messages={{}}>
         <QueryClientProvider client={client}>
-          <RegistrationsTable tournamentId={80} basePath="/admin/tournaments/80/registration" />
+          {/* Each row's "Change history" action opens the shared audit drawer,
+              which the admin layout mounts in the real app. */}
+          <AuditTrailProvider>
+            <RegistrationsTable tournamentId={80} basePath="/admin/tournaments/80/registration" />
+          </AuditTrailProvider>
         </QueryClientProvider>
       </NextIntlClientProvider>
     );

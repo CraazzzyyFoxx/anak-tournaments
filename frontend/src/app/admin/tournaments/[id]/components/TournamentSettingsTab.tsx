@@ -22,7 +22,7 @@ import {
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { AuditTrail } from "@/components/admin/AuditTrail";
+import { AuditTrailButton } from "@/components/admin/AuditTrailSheet";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { RosterShapeEditor } from "@/components/admin/tournaments/RosterShapeEditor";
@@ -178,6 +178,22 @@ export function TournamentSettingsTab({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-20">
+      {/* At the top of the form rather than after it: every field below is an
+          audited action, and the answer to "who changed this" is wanted while
+          reading them — six hundred lines further down it is not findable at
+          all. Nothing is fetched beyond the count until the drawer opens. */}
+      <div className="flex justify-end">
+        <AuditTrailButton
+          scope={{
+            entityType: "tournament",
+            entityId: tournamentId,
+            workspaceId: tournament.workspace_id,
+          }}
+          target={`tournament “${tournament.name}”`}
+          showCount
+        />
+      </div>
+
       {/* Dirty state notification bar — the only place settings are saved from. */}
       {isDirty && (
         <div className="sticky top-4 z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3.5 shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-300 motion-reduce:animate-none">
@@ -637,15 +653,6 @@ export function TournamentSettingsTab({
           </Card>
         )}
       </div>
-
-      {/* Below the settings it explains: every field on this tab, and the delete
-          above, is an audited action, so the answer to "who changed this" belongs
-          on the same screen as the change. */}
-      <AuditTrail
-        entityType="tournament"
-        entityId={tournamentId}
-        workspaceId={tournament.workspace_id}
-      />
 
       {canDeleteTournament && (
         <DeleteConfirmDialog
