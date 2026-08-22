@@ -318,9 +318,12 @@ Unchanged, repo-wide, since `backend/docs/repository-boundaries.md`:
 - Large analytical queries (CTEs, window functions, leaderboards, ML feature extraction,
   achievement/recalculation queries) live in a domain's `queries.py`/service class, never behind
   a CRUD repository method.
-- `backend/tests/test_repository_boundaries.py` enforces this by regex across every service; its
-  allowlist is for pre-existing, intentionally-not-CRUD direct writes (outbox draining, bracket
-  advancement, bulk association-table updates) — new files are not added to it for convenience.
+- `backend/tests/test_repository_boundaries.py` enforces this by regex across every service.
+  It exempts two named sets: `APPROVED_DIRECT_WRITE_FILES` (intentionally not CRUD — outbox
+  draining, bracket advancement, bulk association-table updates) and
+  `PENDING_REPOSITORY_MIGRATION` (debt, one line to delete per finished migration). Both are
+  ratcheted — an exemption whose file stopped writing directly fails the suite — so neither
+  list can rot the way the single allowlist did.
 
 ## Import layering between domains, when it's worth enforcing
 
