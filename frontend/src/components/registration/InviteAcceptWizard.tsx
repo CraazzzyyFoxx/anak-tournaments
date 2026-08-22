@@ -15,6 +15,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { translateRegistrationTeamError } from "@/lib/registration-team-errors";
@@ -156,11 +157,18 @@ export default function InviteAcceptWizard({
         </div>
       )}
 
-      {/* An already-registered player is a free agent joining a roster, not a new
-          entrant: the backend attaches their existing registration and ignores any
-          submitted body, so making them refill a form they already filled would be
-          theatre. One button. */}
-      {alreadyRegistered ? (
+      {/* Which branch to offer depends on `myRegQuery`: an already-registered
+          player gets one button, everyone else gets the full form. Rendering
+          either before that resolves would flash the full multi-step form at
+          an already-registered player for a moment before it collapsed to one
+          button — the exact swap this skeleton avoids. */}
+      {myRegQuery.isLoading ? (
+        <Skeleton className="h-40 w-full rounded-lg" />
+      ) : alreadyRegistered ? (
+        // An already-registered player is a free agent joining a roster, not a
+        // new entrant: the backend attaches their existing registration and
+        // ignores any submitted body, so making them refill a form they
+        // already filled would be theatre. One button.
         <Button
           type="button"
           disabled={acceptMutation.isPending || declineMutation.isPending}

@@ -29,6 +29,7 @@ import {
   translateRegistrationTeamError,
 } from "@/lib/registration-team-errors";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
+import { REGISTRATION_TEAM_STATUS_TONE } from "@/lib/registration-team-tone";
 import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
@@ -244,7 +245,7 @@ export default function MyTeamPanel({
     (team.status === "forming" || team.status === "complete");
 
   return (
-    <section className="grid gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4">
+    <section className="relative grid gap-3 overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 shadow-md backdrop-blur-md sm:p-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <EditableAvatar
@@ -279,7 +280,12 @@ export default function MyTeamPanel({
             </p>
           </div>
         </div>
-        <span className="rounded-full border border-[color:var(--aqt-border-2)] px-2.5 py-0.5 text-xs">
+        <span
+          className={cn(
+            "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+            REGISTRATION_TEAM_STATUS_TONE[team.status]
+          )}
+        >
           {t(`status.${team.status}`)}
         </span>
       </header>

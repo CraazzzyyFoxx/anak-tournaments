@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { isRegistrationOpen } from "@/lib/tournament-status";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -47,6 +48,12 @@ export default function MyTeamSection({ tournament }: Readonly<{ tournament: Tou
 
   const myRegistration = myRegQuery.data ?? null;
   const brief = myRegistration?.team ?? null;
+
+  // The roster read only matters once there is a team brief to resolve, so a
+  // solo registrant never waits on a request its own branch does not use.
+  if (myRegQuery.isLoading || (brief && teamsQuery.isLoading)) {
+    return <Skeleton className="h-32 w-full rounded-xl" />;
+  }
 
   // The brief names the team; the full row carries the roster, the open slots and
   // the invites the captain needs. The public list omits invites, so a captain

@@ -6,32 +6,15 @@ import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { normalizePlayerRole } from "@/lib/player-role";
+import { REGISTRATION_TEAM_STATUS_TONE } from "@/lib/registration-team-tone";
 import { formatShortfall } from "@/lib/registration-team-shortfall";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
 import registrationTeamService from "@/services/registration-team.service";
-import type {
-  RegistrationTeam,
-  RegistrationTeamMember,
-  RegistrationTeamStatus
-} from "@/types/registration-team.types";
+import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
 import type { Tournament } from "@/types/tournament.types";
-
-/**
- * One tint recipe per lifecycle state, written out literally because Tailwind
- * only emits arbitrary values it can see verbatim in the source.
- */
-const STATUS_TONE: Record<RegistrationTeamStatus, string> = {
-  forming:
-    "border-[color:var(--aqt-amber)]/40 bg-[color:var(--aqt-amber)]/10 text-[color:var(--aqt-amber)]",
-  complete:
-    "border-[color:var(--aqt-teal)]/40 bg-[color:var(--aqt-teal)]/10 text-[color:var(--aqt-teal)]",
-  rejected:
-    "border-[color:var(--aqt-rose)]/40 bg-[color:var(--aqt-rose)]/10 text-[color:var(--aqt-rose)]",
-  disbanded:
-    "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-dim)]"
-};
 
 function RosterRow({ member }: Readonly<{ member: RegistrationTeamMember }>) {
   const t = useTranslations();
@@ -76,12 +59,12 @@ function RegistrationTeamCard({ team }: Readonly<{ team: RegistrationTeam }>) {
   );
 
   return (
-    <article className="flex flex-col gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4">
+    <article className="relative flex flex-col gap-3 overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 shadow-md backdrop-blur-md sm:p-5">
       <header className="flex items-start justify-between gap-2">
         <h3 className="min-w-0 flex-1 truncate font-onest text-base font-semibold text-[color:var(--aqt-fg)]">
           {team.name}
         </h3>
-        <Badge variant="outline" className={cn("shrink-0", STATUS_TONE[team.status])}>
+        <Badge variant="outline" className={cn("shrink-0", REGISTRATION_TEAM_STATUS_TONE[team.status])}>
           {t(`registrationTeams.status.${team.status}`)}
         </Badge>
       </header>
@@ -147,6 +130,20 @@ export default function RegistrationTeamsList({
 
   const teams = teamsQuery.data?.items ?? [];
   const freeAgents = teamsQuery.data?.unassigned_players ?? 0;
+
+  if (teamsQuery.isLoading) {
+    return (
+      <section className="flex flex-col gap-3">
+        <Skeleton className="h-6 w-48" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} className="h-44 w-full rounded-xl" />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   // Nothing registered at all: stay silent. A free-agent count alone is still
   // worth showing, because it is what tells a captain there are people to recruit.
   if (teams.length === 0 && freeAgents === 0) return null;

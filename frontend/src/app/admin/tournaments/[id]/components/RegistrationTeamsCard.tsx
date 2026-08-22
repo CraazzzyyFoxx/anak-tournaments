@@ -2,9 +2,10 @@
 
 import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, ChevronDown, FolderInput, Loader2, RotateCcw } from "lucide-react";
+import { Ban, ChevronDown, FolderInput, Loader2, RotateCcw, Users } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
+import { TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -52,25 +53,17 @@ import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
  * `tournament.team` (the export). Both are server-authorized; the buttons follow
  * the same permissions so a caller is not offered an action that will 403.
  */
-/** `rejected`/`disbanded` keep the shared Badge palette; `forming`/`complete`
- *  borrow the same warning/success weight the public roster already uses for
- *  these two states (`RegistrationTeamsList.tsx`'s `STATUS_TONE`), so the same
- *  status does not read as urgent on one surface and neutral on the other. */
-const STATUS_VARIANT: Record<
-  RegistrationTeamStatus,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  forming: "outline",
-  complete: "outline",
-  rejected: "destructive",
-  disbanded: "outline"
-};
-
-const STATUS_BADGE_CLASS: Record<RegistrationTeamStatus, string> = {
-  forming: "border-warning/40 bg-warning/10 text-warning",
-  complete: "border-success/40 bg-success/10 text-success",
-  rejected: "",
-  disbanded: ""
+/** Every tinted status badge in the admin uses the same tone vocabulary
+ *  (`@/components/admin/tone`) — the same recipe `TournamentSettingsTab` and
+ *  `StageManager` already use — so `forming`/`complete` carry the same
+ *  warning/success weight the public roster gives them
+ *  (`RegistrationTeamsList.tsx`'s tone map) instead of the plain neutral
+ *  Badge variants this card used to invent on its own. */
+const STATUS_TONE: Record<RegistrationTeamStatus, Tone> = {
+  forming: "warning",
+  complete: "success",
+  rejected: "danger",
+  disbanded: "neutral"
 };
 
 const EXPIRY_STAMP = {
@@ -351,7 +344,10 @@ export function RegistrationTeamsCard({
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <CardTitle>{t("admin.title")}</CardTitle>
+            <div className="flex items-center gap-2">
+              <Users className="size-4 text-primary" aria-hidden />
+              <CardTitle>{t("admin.title")}</CardTitle>
+            </div>
             <CardDescription>
               {t("list.count", { count: teamsQuery.data?.total ?? 0 })}
             </CardDescription>
@@ -412,17 +408,18 @@ export function RegistrationTeamsCard({
               <Skeleton className="h-24 w-full rounded-lg" />
             </div>
           ) : teams.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("list.empty")}</p>
+            <div className="rounded-lg border border-dashed border-border/50 px-4 py-8 text-center">
+              <Users className="mx-auto size-6 text-muted-foreground" aria-hidden />
+              <p className="mt-3 text-sm font-medium">{t("list.empty")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t("admin.emptyHint")}</p>
+            </div>
           ) : (
             teams.map((team) => (
               <div key={team.id} className="space-y-3 rounded-lg border border-border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{team.name}</span>
-                    <Badge
-                      variant={STATUS_VARIANT[team.status]}
-                      className={cn(STATUS_BADGE_CLASS[team.status])}
-                    >
+                    <Badge variant="outline" className={cn(TONE_CLASS[STATUS_TONE[team.status]])}>
                       {t(`status.${team.status}`)}
                     </Badge>
                     {team.exported_team_id != null && (
