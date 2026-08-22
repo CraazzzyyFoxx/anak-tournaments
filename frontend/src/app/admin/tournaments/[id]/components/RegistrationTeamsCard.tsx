@@ -52,14 +52,25 @@ import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
  * `tournament.team` (the export). Both are server-authorized; the buttons follow
  * the same permissions so a caller is not offered an action that will 403.
  */
+/** `rejected`/`disbanded` keep the shared Badge palette; `forming`/`complete`
+ *  borrow the same warning/success weight the public roster already uses for
+ *  these two states (`RegistrationTeamsList.tsx`'s `STATUS_TONE`), so the same
+ *  status does not read as urgent on one surface and neutral on the other. */
 const STATUS_VARIANT: Record<
   RegistrationTeamStatus,
   "default" | "secondary" | "destructive" | "outline"
 > = {
-  forming: "secondary",
-  complete: "default",
+  forming: "outline",
+  complete: "outline",
   rejected: "destructive",
   disbanded: "outline"
+};
+
+const STATUS_BADGE_CLASS: Record<RegistrationTeamStatus, string> = {
+  forming: "border-warning/40 bg-warning/10 text-warning",
+  complete: "border-success/40 bg-success/10 text-success",
+  rejected: "",
+  disbanded: ""
 };
 
 const EXPIRY_STAMP = {
@@ -408,7 +419,12 @@ export function RegistrationTeamsCard({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{team.name}</span>
-                    <Badge variant={STATUS_VARIANT[team.status]}>{t(`status.${team.status}`)}</Badge>
+                    <Badge
+                      variant={STATUS_VARIANT[team.status]}
+                      className={cn(STATUS_BADGE_CLASS[team.status])}
+                    >
+                      {t(`status.${team.status}`)}
+                    </Badge>
                     {team.exported_team_id != null && (
                       <Badge variant="outline">{tCommon("rostered")}</Badge>
                     )}
@@ -486,9 +502,12 @@ export function RegistrationTeamsCard({
                 {team.invites.length === 0 ? (
                   <p className="text-xs text-muted-foreground">{t("invite.pendingEmpty")}</p>
                 ) : (
-                  <ul className="space-y-1">
+                  <ul className="flex flex-wrap gap-2">
                     {team.invites.map((invite) => (
-                      <li key={invite.id} className="flex flex-wrap items-center gap-2 text-xs">
+                      <li
+                        key={invite.id}
+                        className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-xs"
+                      >
                         <Badge variant={invite.state === "pending" ? "secondary" : "outline"}>
                           {t(`inviteState.${invite.state}`)}
                         </Badge>

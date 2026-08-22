@@ -4,6 +4,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
@@ -55,10 +65,12 @@ export default function InviteAcceptWizard({
   onClose,
 }: Readonly<InviteAcceptWizardProps>) {
   const t = useTranslations("registrationTeams");
+  const tCommon = useTranslations("common");
   const tErrors = useTranslations("registrationTeams.errors");
   const { user: authUser } = useAuthProfile();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [declineOpen, setDeclineOpen] = useState(false);
 
   const userQuery = useQuery({
     queryKey: ["me", "social"],
@@ -182,14 +194,34 @@ export default function InviteAcceptWizard({
           type="button"
           variant="ghost"
           disabled={declineMutation.isPending || acceptMutation.isPending}
-          onClick={() => {
-            if (!window.confirm(t("accept.declineConfirm"))) return;
-            declineMutation.mutate();
-          }}
+          onClick={() => setDeclineOpen(true)}
         >
           {t("accept.decline")}
         </Button>
       </div>
+
+      <AlertDialog open={declineOpen} onOpenChange={setDeclineOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("accept.decline")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("accept.declineConfirm")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={declineMutation.isPending}>
+              {tCommon("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={declineMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                declineMutation.mutate();
+              }}
+            >
+              {t("accept.decline")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

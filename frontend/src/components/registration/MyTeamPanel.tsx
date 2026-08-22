@@ -5,7 +5,17 @@ import { Copy, Crown, LogOut, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +33,7 @@ import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster-shape";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { cn } from "@/lib/utils";
 import registrationTeamService from "@/services/registration-team.service";
-import type { RegistrationTeam } from "@/types/registration-team.types";
+import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
 
 interface MyTeamPanelProps {
   workspaceId: number;
@@ -50,6 +60,7 @@ export default function MyTeamPanel({
   isCaptain,
 }: Readonly<MyTeamPanelProps>) {
   const t = useTranslations("registrationTeams");
+  const tCommon = useTranslations("common");
   const tErrors = useTranslations("registrationTeams.errors");
   // The same translated slot vocabulary the admin card and the public tab use, so
   // one roster never shows "DPS" in its shortfall and "Урон" on a chip.
@@ -68,6 +79,14 @@ export default function MyTeamPanel({
   /** Owned here, not by the section, because a refusal at the invite cap has to
    *  force it open — the answer to "where did 60 invites go" is in there. */
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  /** Per-row confirmation targets — mirrors the admin card's own
+   *  `rejectTarget`/`resetTarget` pattern: the project's own `AlertDialog`
+   *  instead of the browser's un-stylable `window.confirm`, with a button that
+   *  repeats the verb instead of a bare "OK". */
+  const [transferTarget, setTransferTarget] = useState<RegistrationTeamMember | null>(null);
+  const [kickTarget, setKickTarget] = useState<RegistrationTeamMember | null>(null);
+  const [disbandOpen, setDisbandOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   /** Fetched only while the dialog is open: nobody else needs this list, and it
    *  goes stale the moment another captain recruits one of them. */
@@ -296,11 +315,7 @@ export default function MyTeamPanel({
                     variant="ghost"
                     size="sm"
                     disabled={busy}
-                    onClick={() => {
-                      const name = member.display_name ?? member.battle_tag ?? "";
-                      if (!window.confirm(t("member.makeCaptainConfirm", { name }))) return;
-                      transferMutation.mutate(member.registration_id);
-                    }}
+                    onClick={() => setTransferTarget(member)}
                   >
                     <Crown className="size-3.5" aria-hidden />
                     {t("member.makeCaptain")}
@@ -311,11 +326,7 @@ export default function MyTeamPanel({
                   variant="ghost"
                   size="sm"
                   disabled={busy}
-                  onClick={() => {
-                    const name = member.display_name ?? member.battle_tag ?? "";
-                    if (!window.confirm(t("member.kickConfirm", { name }))) return;
-                    kickMutation.mutate(member.registration_id);
-                  }}
+                  onClick={() => setKickTarget(member)}
                 >
                   <UserMinus className="size-3.5" aria-hidden />
                   {t("member.kick")}
@@ -412,10 +423,7 @@ export default function MyTeamPanel({
             variant="ghost"
             size="sm"
             disabled={busy}
-            onClick={() => {
-              if (!window.confirm(t("disband.confirm"))) return;
-              disbandMutation.mutate();
-            }}
+            onClick={() => setDisbandOpen(true)}
           >
             <Trash2 className="size-4" aria-hidden />
             {t("disband.action")}
@@ -426,10 +434,7 @@ export default function MyTeamPanel({
             variant="ghost"
             size="sm"
             disabled={busy}
-            onClick={() => {
-              if (!window.confirm(t("member.leaveConfirm"))) return;
-              leaveMutation.mutate();
-            }}
+            onClick={() => setLeaveOpen(true)}
           >
             <LogOut className="size-4" aria-hidden />
             {t("member.leave")}
@@ -464,34 +469,46 @@ export default function MyTeamPanel({
             </div>
           ) : (
             <div className="grid gap-3">
-              <div className="grid gap-1.5">
-                <span className="text-sm font-medium">{t("invite.slotLabel")}</span>
+              <fieldset className="grid gap-1.5">
+                <legend className="text-sm font-medium">{t("invite.slotLabel")}</legend>
                 <div className="flex flex-wrap gap-2">
-                  {offerableSlots.map((code) => (
-                    <button
-                      key={code}
-                      type="button"
-                      aria-pressed={inviteSlot === code}
-                      onClick={() => setInviteSlot(code)}
-                      className={cn(
-                        "rounded-lg border px-3 py-1.5 text-sm transition-colors",
-                        inviteSlot === code
-                          ? "border-[color:var(--aqt-accent)] bg-[color:color-mix(in_srgb,var(--aqt-accent)_12%,transparent)]"
-                          : "border-[color:var(--aqt-border)] hover:bg-muted/40",
-                      )}
-                    >
-                      {slotLabel(code)}
-                    </button>
-                  ))}
+                  {offerableSlots.map((code) => {
+                    const selected = inviteSlot === code;
+                    return (
+                      <label
+                        key={code}
+                        className="block cursor-pointer active:scale-[0.96] transition-transform duration-150 ease-out"
+                      >
+                        <input
+                          type="radio"
+                          name="invite-slot"
+                          value={code}
+                          checked={selected}
+                          onChange={() => setInviteSlot(code)}
+                          className="peer sr-only"
+                        />
+                        <span
+                          className={cn(
+                            "block rounded-lg border px-3 py-1.5 text-sm transition-colors",
+                            "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[color:var(--aqt-teal)]",
+                            selected
+                              ? "border-[color:var(--aqt-accent)] bg-[color:color-mix(in_srgb,var(--aqt-accent)_12%,transparent)]"
+                              : "border-[color:var(--aqt-border)] hover:bg-muted/40",
+                          )}
+                        >
+                          {slotLabel(code)}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
-              </div>
+              </fieldset>
 
               {benchOpen && (
                 <Label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={inviteSubstitute}
-                    onChange={(event) => setInviteSubstitute(event.target.checked)}
+                    onCheckedChange={(checked) => setInviteSubstitute(checked === true)}
                   />
                   {t("invite.substituteLabel")}
                 </Label>
@@ -528,35 +545,49 @@ export default function MyTeamPanel({
                   <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("picker.noMatch")}</p>
                 )}
                 {matchingAgents.length > 0 && (
-                  <ul className="grid max-h-48 gap-1 overflow-y-auto">
-                    {matchingAgents.map((agent) => (
-                      <li key={agent.registration_id}>
-                        <button
-                          type="button"
-                          aria-pressed={targetRegistrationId === agent.registration_id}
-                          onClick={() => setTargetRegistrationId(agent.registration_id)}
-                          className={cn(
-                            "flex w-full flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors",
-                            targetRegistrationId === agent.registration_id
-                              ? "border-[color:var(--aqt-accent)] bg-[color:color-mix(in_srgb,var(--aqt-accent)_12%,transparent)]"
-                              : "border-[color:var(--aqt-border)] hover:bg-muted/40",
-                          )}
-                        >
-                          <span className="truncate">{agent.battle_tag}</span>
-                          {/* Roles on the row: the captain is filling one specific
-                              slot and should spot a tank without opening a profile. */}
-                          {agent.roles.map((role) => (
-                            <span
-                              key={role}
-                              className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-muted)]"
-                            >
-                              {slotLabel(role)}
-                            </span>
-                          ))}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <fieldset>
+                    <legend className="sr-only">{t("picker.label")}</legend>
+                    <ul className="grid max-h-48 gap-1 overflow-y-auto">
+                      {matchingAgents.map((agent) => {
+                        const selected = targetRegistrationId === agent.registration_id;
+                        return (
+                          <li key={agent.registration_id}>
+                            <label className="block cursor-pointer active:scale-[0.96] transition-transform duration-150 ease-out">
+                              <input
+                                type="radio"
+                                name="invite-target-agent"
+                                value={agent.registration_id}
+                                checked={selected}
+                                onChange={() => setTargetRegistrationId(agent.registration_id)}
+                                className="peer sr-only"
+                              />
+                              <span
+                                className={cn(
+                                  "flex w-full flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors",
+                                  "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[color:var(--aqt-teal)]",
+                                  selected
+                                    ? "border-[color:var(--aqt-accent)] bg-[color:color-mix(in_srgb,var(--aqt-accent)_12%,transparent)]"
+                                    : "border-[color:var(--aqt-border)] hover:bg-muted/40",
+                                )}
+                              >
+                                <span className="truncate">{agent.battle_tag}</span>
+                                {/* Roles on the row: the captain is filling one specific
+                                    slot and should spot a tank without opening a profile. */}
+                                {agent.roles.map((role) => (
+                                  <span
+                                    key={role}
+                                    className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-muted)]"
+                                  >
+                                    {slotLabel(role)}
+                                  </span>
+                                ))}
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </fieldset>
                 )}
                 {targetRegistrationId == null && (
                   <p className="text-xs text-[color:var(--aqt-fg-muted)]">
@@ -576,6 +607,111 @@ export default function MyTeamPanel({
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={transferTarget != null}
+        onOpenChange={(open) => !open && setTransferTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("member.makeCaptainConfirm", {
+                name: transferTarget
+                  ? (transferTarget.display_name ?? transferTarget.battle_tag ?? "")
+                  : ""
+              })}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={transferMutation.isPending}>
+              {tCommon("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={transferMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!transferTarget) return;
+                transferMutation.mutate(transferTarget.registration_id);
+                setTransferTarget(null);
+              }}
+            >
+              {t("member.makeCaptain")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={kickTarget != null} onOpenChange={(open) => !open && setKickTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("member.kickConfirm", {
+                name: kickTarget ? (kickTarget.display_name ?? kickTarget.battle_tag ?? "") : ""
+              })}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={kickMutation.isPending}>
+              {tCommon("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={kickMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!kickTarget) return;
+                kickMutation.mutate(kickTarget.registration_id);
+                setKickTarget(null);
+              }}
+            >
+              {t("member.kick")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={disbandOpen} onOpenChange={setDisbandOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("disband.confirm")}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={disbandMutation.isPending}>
+              {tCommon("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={disbandMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                disbandMutation.mutate();
+              }}
+            >
+              {t("disband.action")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("member.leaveConfirm")}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={leaveMutation.isPending}>
+              {tCommon("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={leaveMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                leaveMutation.mutate();
+              }}
+            >
+              {t("member.leave")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

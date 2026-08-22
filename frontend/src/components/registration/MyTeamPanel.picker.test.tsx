@@ -118,6 +118,19 @@ function findButton(text: string): HTMLButtonElement {
   return match as HTMLButtonElement;
 }
 
+/** Free-agent rows are a native radio group (`<label><input type="radio">…`),
+ *  not buttons, so selecting one activates the input directly rather than
+ *  dispatching a click on a `<button>` that no longer exists. */
+function selectAgent(text: string): void {
+  const label = [...document.querySelectorAll("label")].find((el) =>
+    (el.textContent ?? "").includes(text)
+  );
+  if (!label) throw new Error(`no label matching ${text}`);
+  const input = label.querySelector("input");
+  if (!input) throw new Error(`label matching ${text} has no input`);
+  (input as HTMLInputElement).click();
+}
+
 beforeEach(() => {
   invite.mockReset().mockResolvedValue({ id: 5, token: null });
   listFreeAgents.mockReset().mockResolvedValue({ items: AGENTS, total: AGENTS.length });
@@ -155,7 +168,7 @@ describe("captain's free-agent picker", () => {
     await openDialog();
 
     await act(async () => {
-      findButton("Ana#1111").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      selectAgent("Ana#1111");
     });
     await act(async () => {
       findButton(en.registrationTeams.invite.submit).dispatchEvent(
@@ -188,7 +201,7 @@ describe("captain's free-agent picker", () => {
     await openDialog();
 
     await act(async () => {
-      findButton("Zen#2222").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      selectAgent("Zen#2222");
     });
     await act(async () => {
       findButton(en.registrationTeams.invite.submit).dispatchEvent(
