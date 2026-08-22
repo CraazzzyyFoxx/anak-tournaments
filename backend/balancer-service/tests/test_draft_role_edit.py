@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
 import sys
@@ -24,7 +25,8 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 
 from shared.core.enums import DraftStatus, HeroClass  # noqa: E402
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftPlayerRole, DraftSession  # noqa: E402
-from src.services.draft import feasibility  # noqa: E402
+from src.domain.draft import entities as feasibility  # noqa: E402
+from src.domain.draft import rules  # noqa: E402
 
 
 def _module():
@@ -57,10 +59,9 @@ def _player() -> DraftPlayer:
 
 @pytest.mark.parametrize("status", [DraftStatus.LIVE, DraftStatus.COMPLETED, DraftStatus.CANCELLED])
 def test_role_edit_requires_setup_ready_or_paused(status: DraftStatus) -> None:
-    role_edit = _module()
 
     with pytest.raises(Exception) as exc_info:
-        role_edit.validate_role_edit_request(
+        rules.validate_role_edit_request(
             _draft(status),
             _player(),
             role=HeroClass.support,
@@ -74,10 +75,9 @@ def test_role_edit_requires_setup_ready_or_paused(status: DraftStatus) -> None:
 
 
 def test_role_edit_rejects_duplicate_role() -> None:
-    role_edit = _module()
 
     with pytest.raises(Exception) as exc_info:
-        role_edit.validate_role_edit_request(
+        rules.validate_role_edit_request(
             _draft(),
             _player(),
             role=HeroClass.damage,
@@ -91,11 +91,10 @@ def test_role_edit_rejects_duplicate_role() -> None:
 
 
 def test_role_edit_requires_reason_rank_confirmation_and_current_version() -> None:
-    role_edit = _module()
     player = _player()
 
     with pytest.raises(Exception) as reason_error:
-        role_edit.validate_role_edit_request(
+        rules.validate_role_edit_request(
             _draft(),
             player,
             role=HeroClass.support,
@@ -107,7 +106,7 @@ def test_role_edit_requires_reason_rank_confirmation_and_current_version() -> No
     assert _code(reason_error.value) == "role_edit_reason_required"
 
     with pytest.raises(Exception) as rank_error:
-        role_edit.validate_role_edit_request(
+        rules.validate_role_edit_request(
             _draft(),
             player,
             role=HeroClass.support,
@@ -119,7 +118,7 @@ def test_role_edit_requires_reason_rank_confirmation_and_current_version() -> No
     assert _code(rank_error.value) == "role_rank_confirmation_required"
 
     with pytest.raises(Exception) as version_error:
-        role_edit.validate_role_edit_request(
+        rules.validate_role_edit_request(
             _draft(),
             player,
             role=HeroClass.support,
@@ -132,7 +131,6 @@ def test_role_edit_requires_reason_rank_confirmation_and_current_version() -> No
 
 
 def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state() -> None:
-    role_edit = _module()
     state = feasibility.DraftFeasibilityState(
         team_ids=(10, 20),
         slot_targets={"tank": 1, "dps": 1, "support": 1},
@@ -148,7 +146,7 @@ def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state
         ),
     )
 
-    preview = role_edit.preview_role_addition(state, player_id=2, role=HeroClass.support)
+    preview = rules.preview_role_addition(state, player_id=2, role=HeroClass.support)
 
     assert preview.before.is_feasible is False
     assert preview.after.is_feasible is True
@@ -162,6 +160,9 @@ class _FakeSession:
     def add(self, value: object) -> None:
         self.added.append(value)
 
+    async def flush(self) -> None:
+        return None
+
 
 def test_apply_role_edit_updates_snapshot_version_and_private_audit() -> None:
     role_edit = _module()
@@ -172,18 +173,20 @@ def test_apply_role_edit_updates_snapshot_version_and_private_audit() -> None:
         players=(feasibility.EligiblePlayer(20, frozenset({HeroClass.damage})),),
         assignments=(),
     )
-    preview = role_edit.preview_role_addition(state, player_id=20, role=HeroClass.support)
+    preview = rules.preview_role_addition(state, player_id=20, role=HeroClass.support)
     session = _FakeSession()
 
-    audit = role_edit.apply_role_edit(
-        session,
-        _draft(),
-        player,
-        role=HeroClass.support,
-        rank_value=2750,
-        reason="  Confirmed secondary role  ",
-        actor_auth_user_id=99,
-        preview=preview,
+    audit = asyncio.run(
+        role_edit.role_edit_service.apply_role_edit(
+            session,
+            _draft(),
+            player,
+            role=HeroClass.support,
+            rank_value=2750,
+            reason="  Confirmed secondary role  ",
+            actor_auth_user_id=99,
+            preview=preview,
+        )
     )
 
     assert player.version == 5

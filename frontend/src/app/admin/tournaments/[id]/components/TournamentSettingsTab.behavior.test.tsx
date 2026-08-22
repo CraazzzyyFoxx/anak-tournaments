@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import type { Tournament } from "@/types/tournament.types";
 import { TournamentSettingsTab } from "./TournamentSettingsTab";
 
@@ -97,17 +98,21 @@ async function mount() {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <TournamentSettingsTab
-          tournament={TOURNAMENT}
-          tournamentId={64}
-          divisionGridVersions={[]}
-          divisionGridLoading={false}
-          canDeleteTournament
-          canUpdateTournament
-          hasChallongeSource
-          discordChannel={null}
-          discordChannelLoading={false}
-        />
+        {/* The settings header opens the shared audit drawer, which the admin
+            layout mounts in the real app. */}
+        <AuditTrailProvider>
+          <TournamentSettingsTab
+            tournament={TOURNAMENT}
+            tournamentId={64}
+            divisionGridVersions={[]}
+            divisionGridLoading={false}
+            canDeleteTournament
+            canUpdateTournament
+            hasChallongeSource
+            discordChannel={null}
+            discordChannelLoading={false}
+          />
+        </AuditTrailProvider>
       </QueryClientProvider>
     );
   });

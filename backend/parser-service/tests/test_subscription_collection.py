@@ -193,7 +193,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=SubscriptionCollectionConfig(enabled=True)),
             ),
             patch.object(
-                scheduler.service,
+                scheduler.subscription_collection_service,
                 "collect_subscriptions_for_active_tournaments",
                 AsyncMock(return_value=5),
             ),
@@ -226,7 +226,9 @@ class SchedulerTests(IsolatedAsyncioTestCase):
                 "shared.services.settings_provider.get_subscription_collection_config",
                 AsyncMock(return_value=cfg),
             ),
-            patch.object(scheduler.service, "collect_subscriptions_for_active_tournaments", collect),
+            patch.object(
+                scheduler.subscription_collection_service, "collect_subscriptions_for_active_tournaments", collect
+            ),
         ):
             count = await scheduler.run_subscription_collection_tick(self._session_factory(session), AsyncMock())
 
@@ -254,7 +256,9 @@ class SchedulerTests(IsolatedAsyncioTestCase):
                 "shared.services.settings_provider.get_subscription_collection_config",
                 AsyncMock(return_value=cfg),
             ),
-            patch.object(scheduler.service, "collect_subscriptions_for_active_tournaments", collect),
+            patch.object(
+                scheduler.subscription_collection_service, "collect_subscriptions_for_active_tournaments", collect
+            ),
         ):
             count = await scheduler.run_subscription_collection_tick(self._session_factory(session), AsyncMock())
 
@@ -279,7 +283,9 @@ class SchedulerTests(IsolatedAsyncioTestCase):
                 "shared.services.settings_provider.get_subscription_collection_config",
                 AsyncMock(return_value=SubscriptionCollectionConfig(enabled=False)),
             ),
-            patch.object(scheduler.service, "collect_subscriptions_for_active_tournaments", collect),
+            patch.object(
+                scheduler.subscription_collection_service, "collect_subscriptions_for_active_tournaments", collect
+            ),
         ):
             count = await scheduler.run_subscription_collection_tick(self._session_factory(session), AsyncMock())
 

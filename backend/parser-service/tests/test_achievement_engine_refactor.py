@@ -34,6 +34,16 @@ from sqlalchemy.dialects import postgresql  # noqa: E402
 from shared.core.enums import StageType  # noqa: E402
 from shared.models.achievements.achievement import AchievementGrain, AchievementRule  # noqa: E402
 from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
+from src.domain.achievement_catalog import (  # noqa: E402
+    _all_default_rules,
+    _hero_kd_rules,
+    get_canonical_rule_catalog,
+)
+from src.domain.achievement_validation import (  # noqa: E402
+    LEAF_GRAINS,
+    infer_grain,
+    validate_condition_tree,
+)
 from src.services.achievement.engine import differ as differ_module  # noqa: E402
 from src.services.achievement.engine.conditions import (  # noqa: E402
     get_registered_types,
@@ -43,16 +53,6 @@ from src.services.achievement.engine.conditions.tournament_format import (  # no
     matches_tournament_format,
 )
 from src.services.achievement.engine.differ import EvaluationSlice, diff_and_apply  # noqa: E402
-from src.services.achievement.engine.seeder import (  # noqa: E402
-    _all_default_rules,
-    _hero_kd_rules,
-    get_canonical_rule_catalog,
-)
-from src.services.achievement.engine.validation import (  # noqa: E402
-    LEAF_GRAINS,
-    infer_grain,
-    validate_condition_tree,
-)
 
 
 def _legacy_rule_catalog() -> dict[str, tuple[str, str, str]]:

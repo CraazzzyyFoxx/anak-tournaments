@@ -1,8 +1,9 @@
 """Audit instrumentation of the bespoke workspace mutations in app-service.
 
 Only the flows that own their own ``session.commit()`` live here: the custom-domain
-set/verify/clear trio (``src/rpc/workspaces.py``) and the two icon writes
-(``src/rpc/binary.py``). Every field-level workspace edit — settings, SEO, the
+set/verify/clear trio (``WorkspaceService``) and the two icon writes
+(``WorkspaceBinaryService``), driven through their RPC subscribers. Every
+field-level workspace edit — settings, SEO, the
 branding palette, ``subdomain``, ``discord_guild_id``, the roster shape — travels
 ``PATCH /api/v1/workspaces/{id}`` -> ``rpc.app.admin.update`` -> the shared CRUD
 engine, which records it at its single hook; a second row from here would make one
@@ -31,7 +32,7 @@ from shared.models.platform.audit import AuditLog
 from src import models
 from src.rpc import binary as binary_rpc
 from src.rpc import workspaces as workspaces_rpc
-from src.services.workspace import service as workspace_service
+from src.services.workspace import binary as workspace_binary_service
 
 _WORKSPACE_ID = 7
 # ``username`` is what ``rehydrate_user`` turns into the actor label snapshot.
@@ -80,7 +81,8 @@ def _workspace(**overrides) -> models.Workspace:
 
     A real model, not a namespace: the handlers end by serializing it, and the
     columns whose defaults are server-side (``timezone``, ``branding_enabled``,
-    ``is_active``) are None on a transient row, which ``WorkspaceRead`` rejects.
+    ``is_active``, ``newcomer_scope``) are None on a transient row, which
+    ``WorkspaceRead`` rejects.
     """
     base = {
         "id": _WORKSPACE_ID,
@@ -91,6 +93,7 @@ def _workspace(**overrides) -> models.Workspace:
         "is_active": True,
         "timezone": "Europe/Moscow",
         "branding_enabled": False,
+        "newcomer_scope": "global",
     }
     base.update(overrides)
     return models.Workspace(**base)
@@ -158,7 +161,7 @@ class SetCustomDomainAuditTests(_AuditCase):
         # The duplicate-claim pre-check is the only query in this flow; the
         # conflict path is covered in test_workspace_custom_domain.py.
         patcher = patch.object(
-            workspace_service._workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None)
+            workspaces_rpc.workspace_service.workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None)
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -228,7 +231,7 @@ class VerifyCustomDomainAuditTests(_AuditCase):
         with (
             patch.object(workspaces_rpc, "_SF", lambda: session),
             patch.object(workspaces_rpc.workspace_service, "get_by_id", AsyncMock(return_value=workspace)),
-            patch.object(workspace_service, "_dns_txt_contains", AsyncMock(return_value=True)),
+            patch.object(workspaces_rpc.workspace_service, "_dns_txt_contains", AsyncMock(return_value=True)),
         ):
             envelope = await handler({"workspace_id": _WORKSPACE_ID, "identity": _IDENTITY}, MagicMock())
         self.assertIn("data", envelope)
@@ -278,7 +281,7 @@ class VerifyCustomDomainAuditTests(_AuditCase):
         with (
             patch.object(workspaces_rpc, "_SF", lambda: session),
             patch.object(workspaces_rpc.workspace_service, "get_by_id", AsyncMock(return_value=workspace)),
-            patch.object(workspace_service, "_dns_txt_contains", AsyncMock(return_value=False)),
+            patch.object(workspaces_rpc.workspace_service, "_dns_txt_contains", AsyncMock(return_value=False)),
         ):
             envelope = await handler({"workspace_id": _WORKSPACE_ID, "identity": _IDENTITY}, MagicMock())
 
@@ -328,8 +331,8 @@ class WorkspaceIconAuditTests(_AuditCase):
         upload = AsyncMock(return_value=MagicMock(success=True, public_url="https://cdn.test/new.png"))
         with (
             patch.object(binary_rpc, "_SF", lambda: session),
-            patch.object(binary_rpc.workspace_service, "get_by_id", AsyncMock(return_value=workspace)),
-            patch.object(binary_rpc, "upload_avatar", upload),
+            patch.object(binary_rpc.workspace_binary.workspaces, "get_by_id", AsyncMock(return_value=workspace)),
+            patch.object(workspace_binary_service, "upload_avatar", upload),
         ):
             envelope = await handler(
                 {"id": _WORKSPACE_ID, "identity": _IDENTITY, "content_b64": "AAAA", "content_type": "image/png"},
@@ -348,8 +351,8 @@ class WorkspaceIconAuditTests(_AuditCase):
         upload = AsyncMock(return_value=MagicMock(success=False, error="too large"))
         with (
             patch.object(binary_rpc, "_SF", lambda: session),
-            patch.object(binary_rpc.workspace_service, "get_by_id", AsyncMock(return_value=_workspace())),
-            patch.object(binary_rpc, "upload_avatar", upload),
+            patch.object(binary_rpc.workspace_binary.workspaces, "get_by_id", AsyncMock(return_value=_workspace())),
+            patch.object(workspace_binary_service, "upload_avatar", upload),
         ):
             envelope = await handler(
                 {"id": _WORKSPACE_ID, "identity": _IDENTITY, "content_b64": "AAAA", "content_type": "image/png"},
@@ -365,8 +368,8 @@ class WorkspaceIconAuditTests(_AuditCase):
         workspace = _workspace(icon_url="https://cdn.test/old.png")
         with (
             patch.object(binary_rpc, "_SF", lambda: session),
-            patch.object(binary_rpc.workspace_service, "get_by_id", AsyncMock(return_value=workspace)),
-            patch.object(binary_rpc, "s3_client", MagicMock(delete_prefix=AsyncMock())),
+            patch.object(binary_rpc.workspace_binary.workspaces, "get_by_id", AsyncMock(return_value=workspace)),
+            patch.object(workspace_binary_service, "s3_client", MagicMock(delete_prefix=AsyncMock())),
         ):
             envelope = await handler({"id": _WORKSPACE_ID, "identity": _IDENTITY}, MagicMock())
 

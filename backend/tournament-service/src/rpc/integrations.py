@@ -33,6 +33,7 @@ subscriber modules.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
@@ -42,9 +43,11 @@ from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
 from src import models, schemas
 from src.core import auth
-from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
+from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _require_q1, _run
 from src.rpc._s3 import get_s3
 from src.schemas.admin import balancer as admin_schemas
+from src.schemas.admin import team as team_admin_schemas
+from src.services.admin import tournament as tournament_admin_service
 from src.services.challonge import service as challonge_service
 from src.services.challonge import sync as challonge_sync
 from src.services.division_grid import import_jobs as division_grid_import_jobs
@@ -53,6 +56,7 @@ from src.services.division_grid import portable as division_grid_portable
 from src.services.division_grid import service as division_grid_service
 from src.services.registration import admin as registration_service
 from src.services.registration.serializers import serialize_feed
+from src.services.tournament import flows as tournament_flows
 
 _workspace_repo = WorkspaceRepository()
 
@@ -225,6 +229,56 @@ def register(broker: Any, logger: Any) -> None:
                 }
                 for log in logs
             ]
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.challonge_create_tournament")
+    async def _challonge_create_tournament(data: dict, msg: RabbitMessage) -> dict:
+        # Bootstrap importer, formerly rpc.parser.tournament.create_with_groups.
+        # POST /api/v1/tournament/create/with_groups (query params) — workspace tournament.create.
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _require_q1(data, "workspace_id", int)
+            ensure_workspace_permission(user, workspace_id, "tournament", "create")
+            tournament = await tournament_admin_service.create_tournament_from_challonge(
+                session,
+                workspace_id=workspace_id,
+                is_league=_q1(data, "is_league", _bool, default=False),
+                start_date=_require_q1(data, "start_date", date.fromisoformat),
+                end_date=_require_q1(data, "end_date", date.fromisoformat),
+                challonge_slug=_require_q1(data, "challonge_slug"),
+                division_grid_version_id=_q1(data, "division_grid_version_id", int),
+            )
+            return _dump(await tournament_flows.to_pydantic(session, tournament, ["stages"]))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.challonge_team_preview")
+    async def _challonge_team_preview(data: dict, msg: RabbitMessage) -> dict:
+        # Bootstrap importer, formerly rpc.parser.teams.challonge_preview.
+        # GET /api/v1/teams/challonge/preview — challonge.read on the tournament's workspace.
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _require_q1(data, "tournament_id", int)
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="challonge", action="read"
+            )
+            return _dump(await challonge_sync.preview_team_mapping(session, tournament_id))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.challonge_team_apply")
+    async def _challonge_team_apply(data: dict, msg: RabbitMessage) -> dict:
+        # Bootstrap importer, formerly rpc.parser.teams.create_challonge.
+        # POST /api/v1/teams/create/challonge — challonge.update on the tournament's workspace.
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _require_q1(data, "tournament_id", int)
+            await auth.require_tournament_id_permission(
+                session, user, tournament_id=tournament_id, resource="challonge", action="update"
+            )
+            body = team_admin_schemas.ChallongeTeamSyncRequest.model_validate(_payload(data))
+            return _dump(await challonge_sync.apply_team_mapping(session, tournament_id, body.mappings))
 
         return await _run(logger, op)
 

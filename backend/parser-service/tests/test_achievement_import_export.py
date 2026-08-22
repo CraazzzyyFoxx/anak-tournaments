@@ -180,6 +180,9 @@ class ImportRulesTests(IsolatedAsyncioTestCase):
             def add(self, obj: AchievementRule) -> None:
                 self.added.append(obj)
 
+            async def flush(self) -> None:
+                pass
+
         session = FakeSession()
         payloads = [
             PortableAchievementRule(

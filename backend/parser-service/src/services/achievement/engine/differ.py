@@ -9,26 +9,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementEvaluationResult, AchievementRule
 from shared.models.tenancy.workspace import WorkspaceMember
+from shared.repository.support import AchievementEvaluationResultRepository
 from shared.repository.workspace import get_or_create_workspace_member
 
 ResultSet = set[tuple[int, ...]]
-
-# Conflict target for the reconcile insert below. Mirrors the functional unique
-# index created by migration perfidx05 exactly; Postgres only matches an
-# ON CONFLICT target against an index whose expressions are identical, which is
-# also why the fallback is ``literal_column("0")`` and not a plain ``0`` — the
-# latter renders as a bind parameter and would not match ``COALESCE(x, 0)``.
-_DEDUP_INDEX_ELEMENTS = (
-    AchievementEvaluationResult.achievement_rule_id,
-    AchievementEvaluationResult.workspace_member_id,
-    sa.func.coalesce(AchievementEvaluationResult.tournament_id, sa.literal_column("0")),
-    sa.func.coalesce(AchievementEvaluationResult.match_id, sa.literal_column("0")),
-)
 
 
 @dataclass(frozen=True)
@@ -61,117 +49,124 @@ class EvaluationSlice:
         return True
 
 
-async def diff_and_apply(
-    session: AsyncSession,
-    rule: AchievementRule,
-    new_results: ResultSet,
-    run_id: str,
-    evaluation_slice: EvaluationSlice | None = None,
-) -> DiffResult:
-    """Compare new results with stored results and apply changes.
+class AchievementResultDifferService:
+    def __init__(
+        self, *, results_repo: AchievementEvaluationResultRepository = AchievementEvaluationResultRepository()
+    ) -> None:
+        self.results_repo = results_repo
 
-    ``new_results`` tuples carry the player identity (``players.user.id``,
-    matching what the condition-tree evaluator already returns via
-    ``WorkspaceMember.player_id``), never the raw ``workspace_member_id``.
-    Stored rows are anchored on ``workspace_member_id``, so the diff keys off
-    the player identity (joining back to ``WorkspaceMember`` to read it) and
-    resolves/creates the target ``workspace_member`` row — scoped to the
-    rule's own workspace — only when a row actually needs to be inserted.
+    async def diff_and_apply(
+        self,
+        session: AsyncSession,
+        rule: AchievementRule,
+        new_results: ResultSet,
+        run_id: str,
+        evaluation_slice: EvaluationSlice | None = None,
+    ) -> DiffResult:
+        """Compare new results with stored results and apply changes.
 
-    Returns a DiffResult with counts for audit.
-    """
-    # Load existing results for this rule, resolving each row's player
-    # identity through its workspace_member so the diff key is unchanged.
-    existing_query = (
-        sa.select(
-            AchievementEvaluationResult.id,
-            WorkspaceMember.player_id,
-            AchievementEvaluationResult.tournament_id,
-            AchievementEvaluationResult.match_id,
+        ``new_results`` tuples carry the player identity (``players.user.id``,
+        matching what the condition-tree evaluator already returns via
+        ``WorkspaceMember.player_id``), never the raw ``workspace_member_id``.
+        Stored rows are anchored on ``workspace_member_id``, so the diff keys off
+        the player identity (joining back to ``WorkspaceMember`` to read it) and
+        resolves/creates the target ``workspace_member`` row — scoped to the
+        rule's own workspace — only when a row actually needs to be inserted.
+
+        Returns a DiffResult with counts for audit.
+        """
+        # Load existing results for this rule, resolving each row's player
+        # identity through its workspace_member so the diff key is unchanged.
+        existing_query = (
+            sa.select(
+                AchievementEvaluationResult.id,
+                WorkspaceMember.player_id,
+                AchievementEvaluationResult.tournament_id,
+                AchievementEvaluationResult.match_id,
+            )
+            .select_from(AchievementEvaluationResult)
+            .join(WorkspaceMember, WorkspaceMember.id == AchievementEvaluationResult.workspace_member_id)
+            .where(AchievementEvaluationResult.achievement_rule_id == rule.id)
         )
-        .select_from(AchievementEvaluationResult)
-        .join(WorkspaceMember, WorkspaceMember.id == AchievementEvaluationResult.workspace_member_id)
-        .where(AchievementEvaluationResult.achievement_rule_id == rule.id)
-    )
-    if evaluation_slice is not None:
-        existing_query = existing_query.where(*evaluation_slice.query_filters())
+        if evaluation_slice is not None:
+            existing_query = existing_query.where(*evaluation_slice.query_filters())
 
-    existing_rows = await session.execute(existing_query)
+        existing_rows = await session.execute(existing_query)
 
-    # Build lookup: tuple → row_id
-    existing_map: dict[tuple[int, ...], int] = {}
-    for row_id, user_id, tournament_id, match_id in existing_rows:
-        key = _make_key(user_id, tournament_id, match_id)
-        existing_map[key] = row_id
+        # Build lookup: tuple → row_id
+        existing_map: dict[tuple[int, ...], int] = {}
+        for row_id, user_id, tournament_id, match_id in existing_rows:
+            key = _make_key(user_id, tournament_id, match_id)
+            existing_map[key] = row_id
 
-    existing_keys = set(existing_map.keys())
+        existing_keys = set(existing_map.keys())
 
-    # Normalize new results to consistent key format
-    new_keys: dict[tuple[int, ...], tuple[int, ...]] = {}
-    for result_tuple in new_results:
-        key = _normalize_tuple(result_tuple)
-        if evaluation_slice is not None and not evaluation_slice.contains_key(key):
-            continue
-        new_keys[key] = result_tuple
+        # Normalize new results to consistent key format
+        new_keys: dict[tuple[int, ...], tuple[int, ...]] = {}
+        for result_tuple in new_results:
+            key = _normalize_tuple(result_tuple)
+            if evaluation_slice is not None and not evaluation_slice.contains_key(key):
+                continue
+            new_keys[key] = result_tuple
 
-    new_key_set = set(new_keys.keys())
+        new_key_set = set(new_keys.keys())
 
-    # Compute diff
-    to_add = new_key_set - existing_keys
-    to_remove = existing_keys - new_key_set
+        # Compute diff
+        to_add = new_key_set - existing_keys
+        to_remove = existing_keys - new_key_set
 
-    # Apply deletions
-    ids_to_delete = [existing_map[key] for key in to_remove]
-    if ids_to_delete:
-        await session.execute(
-            sa.delete(AchievementEvaluationResult).where(AchievementEvaluationResult.id.in_(ids_to_delete))
-        )
+        # Apply deletions
+        ids_to_delete = [existing_map[key] for key in to_remove]
+        if ids_to_delete:
+            await self.results_repo.bulk_delete_by_ids(session, ids_to_delete)
 
-    # Apply insertions.
-    #
-    # The read-diff-write above is not atomic: two runs for the same workspace
-    # (e.g. two EncounterCompletedEvents for one tournament) read the same
-    # ``existing_map`` and then insert the same rows, tripping the
-    # ``uq_eval_result_dedup_coalesced`` unique index and failing the whole run.
-    # A single INSERT ... ON CONFLICT DO NOTHING makes the reconcile idempotent
-    # and replaces N ORM inserts with one statement. The conflict target must
-    # repeat the index's COALESCE expressions verbatim (see migration perfidx05)
-    # — the plain UniqueConstraint is NULL-blind and never matches for
-    # tournament/global-grain rows.
-    now = datetime.now(UTC)
-    inserts = []
-    values: list[dict] = []
-    member_id_by_player: dict[int, int] = {}
-    for key in to_add:
-        user_id, tournament_id, match_id = _unpack_key(key)
-        if user_id not in member_id_by_player:
-            member = await get_or_create_workspace_member(session, workspace_id=rule.workspace_id, player_id=user_id)
-            member_id_by_player[user_id] = member.id
-        values.append(
-            {
-                "achievement_rule_id": rule.id,
-                "workspace_member_id": member_id_by_player[user_id],
-                "tournament_id": tournament_id,
-                "match_id": match_id,
-                "qualified_at": now,
-                "rule_version": rule.rule_version,
-                "run_id": run_id,
-                "evidence_json": {"rule_slug": rule.slug, "rule_version": rule.rule_version},
-            }
-        )
-        inserts.append({"user_id": user_id, "tournament_id": tournament_id, "match_id": match_id})
+        # Apply insertions.
+        #
+        # The read-diff-write above is not atomic: two runs for the same workspace
+        # (e.g. two EncounterCompletedEvents for one tournament) read the same
+        # ``existing_map`` and then insert the same rows, tripping the
+        # ``uq_eval_result_dedup_coalesced`` unique index and failing the whole run.
+        # A single INSERT ... ON CONFLICT DO NOTHING makes the reconcile idempotent
+        # and replaces N ORM inserts with one statement. The conflict target must
+        # repeat the index's COALESCE expressions verbatim (see migration perfidx05)
+        # — the plain UniqueConstraint is NULL-blind and never matches for
+        # tournament/global-grain rows.
+        now = datetime.now(UTC)
+        inserts = []
+        values: list[dict] = []
+        member_id_by_player: dict[int, int] = {}
+        for key in to_add:
+            user_id, tournament_id, match_id = _unpack_key(key)
+            if user_id not in member_id_by_player:
+                member = await get_or_create_workspace_member(
+                    session, workspace_id=rule.workspace_id, player_id=user_id
+                )
+                member_id_by_player[user_id] = member.id
+            values.append(
+                {
+                    "achievement_rule_id": rule.id,
+                    "workspace_member_id": member_id_by_player[user_id],
+                    "tournament_id": tournament_id,
+                    "match_id": match_id,
+                    "qualified_at": now,
+                    "rule_version": rule.rule_version,
+                    "run_id": run_id,
+                    "evidence_json": {"rule_slug": rule.slug, "rule_version": rule.rule_version},
+                }
+            )
+            inserts.append({"user_id": user_id, "tournament_id": tournament_id, "match_id": match_id})
 
-    if values:
-        # get_or_create_workspace_member may have created member rows in this
-        # session; flush them so the FK below resolves.
-        await session.flush()
-        await session.execute(
-            pg_insert(AchievementEvaluationResult)
-            .values(values)
-            .on_conflict_do_nothing(index_elements=_DEDUP_INDEX_ELEMENTS)
-        )
+        if values:
+            # get_or_create_workspace_member may have created member rows in this
+            # session; flush them so the FK below resolves.
+            await session.flush()
+            await self.results_repo.bulk_upsert_ignore_conflicts(session, values)
 
-    return DiffResult(to_insert=inserts, to_delete=ids_to_delete)
+        return DiffResult(to_insert=inserts, to_delete=ids_to_delete)
+
+
+achievement_result_differ_service = AchievementResultDifferService()
+diff_and_apply = achievement_result_differ_service.diff_and_apply
 
 
 def _make_key(user_id: int, tournament_id: int | None, match_id: int | None) -> tuple[int, ...]:

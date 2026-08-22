@@ -123,8 +123,7 @@ const emptySchedule: WizardScheduleState = {
   phase_schedule: Object.fromEntries(
     SCHEDULABLE_PHASES.map((phase) => [phase, { starts_at: "", ends_at: "" }])
   ) as WizardScheduleState["phase_schedule"],
-  auto_transitions_enabled: true,
-  allow_late_registration: false
+  auto_transitions_enabled: true
 };
 
 export default function NewTournamentPage() {
@@ -144,7 +143,6 @@ export default function NewTournamentPage() {
   const [form, setForm] = useState<WizardFormData>(emptyForm);
   const [schedule, setSchedule] = useState<WizardScheduleState>(emptySchedule);
   const [registration, setRegistration] = useState<WizardRegistrationState>({
-    is_open: true,
     auto_approve: false,
     require_open_profile: false,
     require_subscription: false

@@ -20,6 +20,7 @@ import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
 import RegistrationWizard from "@/components/registration/RegistrationWizard";
+import TeamRegistrationEntry from "@/components/registration/TeamRegistrationEntry";
 
 type Props = {
   tournament: Tournament;
@@ -61,7 +62,9 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
   if (!form) return null;
   if (isAuthenticated && myRegQuery.isLoading) return null;
 
-  if (!isRegistrationOpen(tournament, form.is_open)) {
+  // The form must exist (checked above) but no longer decides openness — the
+  // tournament's REGISTRATION schedule window does.
+  if (!isRegistrationOpen(tournament)) {
     return (
       <div className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-2 text-sm text-[color:var(--aqt-fg-dim)]">
         <Clock className="size-4" aria-hidden />
@@ -128,15 +131,28 @@ export default function TournamentRegisterButton({ tournament }: Readonly<Props>
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
-      >
-        <UserPlus className="size-4" aria-hidden />
-        {t("registration.button.register")}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+        >
+          <UserPlus className="size-4" aria-hidden />
+          {t("registration.button.register")}
+        </button>
 
+        {/* On a team-registration tournament both choices belong HERE, together.
+            Registering solo first permanently forecloses founding a team (there is
+            one registration row per player), so the fork has to be presented
+            before either action is taken.
+
+            A real button, not a link to the Teams tab: the primary action of a
+            team tournament must not be a navigation step, and the tab rendered its
+            own copy, which put two identical buttons on one screen. */}
+        {tournament.team_formation === "registration" && (
+          <TeamRegistrationEntry tournament={tournament} />
+        )}
+      </div>
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-2xl lg:max-w-3xl">
           <DialogTitle className="sr-only">

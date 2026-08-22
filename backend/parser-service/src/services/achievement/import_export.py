@@ -11,10 +11,14 @@ import sqlalchemy as sa
 from shared.clients import S3Client
 from shared.clients.s3.upload import upload_asset
 from shared.models.achievements.achievement import AchievementRule
+from shared.repository import AchievementRuleRepository, HeroRepository
 from src import models
-from src.services.achievement.engine.validation import validate_rule_definition
+from src.domain.achievement_validation import validate_rule_definition
 
 EXPORT_SCHEMA_VERSION = 1
+
+_hero_repo = HeroRepository()
+_rule_repo = AchievementRuleRepository()
 
 
 @dataclass(slots=True)
@@ -105,8 +109,7 @@ async def load_rules_for_workspace(
 
 
 async def hero_exists(session, hero_id: int) -> bool:
-    hero = await session.get(models.Hero, hero_id)
-    return hero is not None
+    return await _hero_repo.get(session, hero_id) is not None
 
 
 def extract_s3_key_from_public_url(public_url: str | None, image_url: str | None) -> str | None:
@@ -327,7 +330,7 @@ async def import_portable_rules(
         if existing is None:
             rule = AchievementRule(workspace_id=target_workspace.id)
             _apply_rule_data(rule, payload, hero_id=hero_id, image_url=next_image_url)
-            session.add(rule)
+            await _rule_repo.create(session, rule)
             existing_rules[payload.slug] = rule
             created += 1
             continue

@@ -27,8 +27,8 @@ os.environ.setdefault("CHALLONGE_API_KEY", "x")
 tasks = importlib.import_module("src.services.overwatch_rank.tasks")
 from shared.core import enums  # noqa: E402
 from shared.schemas.settings import RankCollectionConfig  # noqa: E402
+from src.domain.overwatch_rank import RankFetchResult  # noqa: E402
 from src.services.overwatch_rank.client import OverFastRateLimited  # noqa: E402
-from src.services.overwatch_rank.schemas import RankFetchResult  # noqa: E402
 
 
 class FakeRedis:

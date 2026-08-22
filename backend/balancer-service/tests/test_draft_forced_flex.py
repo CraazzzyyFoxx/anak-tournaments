@@ -49,7 +49,7 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.core.enums import HERO_TYPE_CLASSES, HeroClass  # noqa: E402
-from src.services.draft import lifecycle  # noqa: E402
+from src.domain.draft import rules  # noqa: E402
 
 ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
 
@@ -84,7 +84,7 @@ class _Registration:
 
 
 def _mapped(roles: list[_Role], **kwargs: Any) -> dict:
-    return lifecycle._map_registration(_Registration(roles), **kwargs)
+    return rules.map_registration(_Registration(roles), **kwargs)
 
 
 class TestForcedFlexMapping:
@@ -199,24 +199,24 @@ class TestForcedFlexEnabledMirror:
         return _Form()
 
     def test_forced(self) -> None:
-        assert lifecycle._all_roles_required(self._form({"flex_role": {"mode": "forced"}})) is True
+        assert rules.all_roles_required(self._form({"flex_role": {"mode": "forced"}})) is True
 
     def test_optional(self) -> None:
-        assert lifecycle._all_roles_required(self._form({"flex_role": {"mode": "optional"}})) is False
+        assert rules.all_roles_required(self._form({"flex_role": {"mode": "optional"}})) is False
 
     def test_absent(self) -> None:
-        assert lifecycle._all_roles_required(self._form({})) is False
+        assert rules.all_roles_required(self._form({})) is False
 
     def test_disabled_field_wins(self) -> None:
         form = self._form({"flex_role": {"enabled": False, "mode": "forced"}})
 
-        assert lifecycle._all_roles_required(form) is False
+        assert rules.all_roles_required(form) is False
 
     def test_missing_form_fails_closed(self) -> None:
-        assert lifecycle._all_roles_required(None) is False
+        assert rules.all_roles_required(None) is False
 
     def test_all_roles_mode_also_requires_every_role(self) -> None:
-        assert lifecycle._all_roles_required(self._form({"flex_role": {"mode": "all_roles"}})) is True
+        assert rules.all_roles_required(self._form({"flex_role": {"mode": "all_roles"}})) is True
 
 
 class TestAllRolesModeKeepsThePriority:
@@ -231,7 +231,7 @@ class TestAllRolesModeKeepsThePriority:
     """
 
     def test_the_priority_role_becomes_primary(self) -> None:
-        mapped = lifecycle._map_registration(
+        mapped = rules.map_registration(
             _Registration(
                 [
                     _Role("tank", priority=0, is_primary=True, rank_value=3300),
@@ -248,7 +248,7 @@ class TestAllRolesModeKeepsThePriority:
 
     def test_is_flex_stays_false_for_a_priority_registrant(self) -> None:
         """``is_flex`` is the registration's own fact, not the mode's."""
-        mapped = lifecycle._map_registration(
+        mapped = rules.map_registration(
             _Registration([_Role("tank", is_primary=True, rank_value=3300)], flex=False),
             all_roles=True,
         )
@@ -256,7 +256,7 @@ class TestAllRolesModeKeepsThePriority:
         assert mapped["is_flex"] is False
 
     def test_every_role_is_rated_without_losing_the_stated_ranks(self) -> None:
-        mapped = lifecycle._map_registration(
+        mapped = rules.map_registration(
             _Registration(
                 [
                     _Role("tank", priority=0, is_primary=True, rank_value=2800),
@@ -299,7 +299,7 @@ class TestDiscomfortDivergesFromTheBalancer:
     """
 
     def test_draft_penalises_non_priority_roles_uniformly_and_harder(self) -> None:
-        from src.services.draft import suggestions as sug
+        from src.domain.draft import fit as sug
 
         player = sug.FitPlayer(
             player_id=1,
@@ -315,7 +315,7 @@ class TestDiscomfortDivergesFromTheBalancer:
         assert sug.role_discomfort(player, HeroClass.support) == 1000
 
     def test_balancer_penalises_them_by_position_instead(self) -> None:
-        from src.services.balancer.algorithm.entities import Player
+        from src.domain.balancer.entities import Player
 
         mask = {"Tank": 1, "Damage": 2, "Support": 2}
         player = Player(

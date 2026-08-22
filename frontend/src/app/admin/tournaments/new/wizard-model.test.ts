@@ -105,8 +105,7 @@ const schedule: WizardScheduleState = {
     draft: { starts_at: "", ends_at: "" },
     live: { starts_at: "", ends_at: "" }
   },
-  auto_transitions_enabled: false,
-  allow_late_registration: true
+  auto_transitions_enabled: false
 };
 
 function tournament(overrides: Partial<Tournament> = {}): Tournament {
@@ -152,7 +151,7 @@ describe("lazy Unpublished draft (D4)", () => {
     const kept = buildDraftUpdateInput(form, schedule, { publish: false });
     expect(kept.is_hidden).toBeUndefined();
     expect(kept.team_formation).toBe("draft");
-    expect(kept.allow_late_registration).toBe(true);
+    expect("allow_late_registration" in kept).toBe(false);
     expect(kept.auto_transitions_enabled).toBe(false);
 
     const published = buildDraftUpdateInput(form, schedule, { publish: true });
@@ -192,7 +191,6 @@ describe("wizardStateFromDraft prefill", () => {
       team_formation: "draft",
       win_points: 3,
       auto_transitions_enabled: false,
-      allow_late_registration: true,
       phase_schedule: [
         { status: "registration", starts_at: "2026-08-01T10:00:00Z", ends_at: null }
       ] as Tournament["phase_schedule"]
@@ -204,7 +202,7 @@ describe("wizardStateFromDraft prefill", () => {
     expect(state.form.team_formation).toBe("draft");
     expect(state.form.win_points).toBe(3);
     expect(state.schedule.auto_transitions_enabled).toBe(false);
-    expect(state.schedule.allow_late_registration).toBe(true);
+    expect("allow_late_registration" in state.schedule).toBe(false);
     expect(state.schedule.phase_schedule.registration.starts_at).toBe("2026-08-01T10:00");
     expect(state.schedule.phase_schedule.live.starts_at).toBe("");
   });

@@ -56,8 +56,66 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// `Path` left `data["id"]` unset and 422'd every call.
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/veto-configs", Queue: "rpc.tournament.get_veto_configs", IDParam: "tournament_id", Auth: edge.AuthOptional},
 
+	// The public "Teams" roster. AuthOptional like the participants list: anyone
+	// may see the field. Invites are omitted server-side, so this cannot leak who
+	// was asked and declined.
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_list_public", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
+
+	// Who a captain may invite, and what a player has been invited to. Both are
+	// AuthRequired reads: the first returns strictly a subset of the public
+	// participants list but exists only to act on, and the second is scoped to the
+	// caller's own token — "whose invites" is never a path parameter.
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams/free-agents", Queue: "rpc.tournament.regteam_free_agents", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams/my-invites", Queue: "rpc.tournament.regteam_my_invites", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	// A captain's own invite history. Captaincy-gated in the worker, not by
+	// workspace permission — the organizer reads the same rows through the admin
+	// route. `{team_id}` and not the caller's identity, because a captain may hold
+	// more than one team across tournaments.
+	{Method: "GET", Pattern: "/api/v1/registration-teams/{team_id}/invite-history", Queue: "rpc.tournament.regteam_invite_history_public", Path: []string{"team_id"}, Auth: edge.AuthRequired},
+
+	// registration.py — public TEAM registration (captain + invitee flows).
+	// See docs/plans/2026-08-20-team-registration.md §4. Every WRITE is
+	// AuthRequired: even the link-invite path writes a registration bound to the
+	// redeemer's account, so the token authorizes which SLOT you may take, never
+	// who you are. The one exception is the invite PREVIEW below, which is
+	// deliberately anonymous.
+	{Method: "POST", Pattern: "/api/v1/tournaments/{tournament_id}/registration-teams", Queue: "rpc.tournament.regteam_create", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "POST", Pattern: "/api/v1/registration-teams/{team_id}/invites", Queue: "rpc.tournament.regteam_invite", Path: []string{"team_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/invites/{invite_id}", Queue: "rpc.tournament.regteam_invite_revoke", Path: []string{"invite_id"}, Auth: edge.AuthRequired, Success: 204},
+	// The only anonymous invite surface: a link invite exists to reach someone with
+	// no account, and asking them to sign up before seeing what they were invited
+	// to is backwards. POST rather than GET so the token stays in the body — see
+	// the note below.
+	{Method: "POST", Pattern: "/api/v1/registration-teams/invites/preview", Queue: "rpc.tournament.regteam_invite_preview", Body: true, Auth: edge.AuthOptional},
+	// Accept/decline carry the invite reference in the BODY, not the path: a raw
+	// token in a URL lands in access logs, browser history and Referer headers.
+	{Method: "POST", Pattern: "/api/v1/registration-teams/invites/accept", Queue: "rpc.tournament.regteam_accept", Body: true, Auth: edge.AuthRequired, Success: 201},
+	{Method: "POST", Pattern: "/api/v1/registration-teams/invites/decline", Queue: "rpc.tournament.regteam_decline", Body: true, Auth: edge.AuthRequired, Success: 204},
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/members/{registration_id}", Queue: "rpc.tournament.regteam_kick", Path: []string{"team_id", "registration_id"}, Auth: edge.AuthRequired, Success: 204},
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/members/me", Queue: "rpc.tournament.regteam_leave", Path: []string{"team_id"}, Auth: edge.AuthRequired, Success: 204},
+	{Method: "POST", Pattern: "/api/v1/registration-teams/{team_id}/captain/{registration_id}", Queue: "rpc.tournament.regteam_transfer_captain", Path: []string{"team_id", "registration_id"}, Auth: edge.AuthRequired, Success: 204},
+	// NOTE: DELETE /registration-teams/{team_id}/image is NOT here — it is
+	// ambiguous with /registration-teams/invites/{invite_id} under the stdlib
+	// ServeMux (both match "/registration-teams/invites/image", neither is more
+	// specific) and lives in RegistrationTeamSubtreeRoutes below.
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}", Queue: "rpc.tournament.regteam_disband", Path: []string{"team_id"}, Auth: edge.AuthRequired, Success: 204},
+
 	// Subscription entitlements — the patron's own standing plus challenge-code
 	// redemption (the Boosty fallback for organizers without a Discord server).
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/subscription/me", Queue: "rpc.tournament.sub_me", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/tournaments/{tournament_id}/subscription/redeem-code", Queue: "rpc.tournament.sub_redeem_code", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
+}
+
+// RegistrationTeamSubtreeRoutes holds the /api/v1/registration-teams/* routes the
+// stdlib ServeMux refuses to register alongside their siblings, served via
+// edge.Subtree (ordered match, first wins) mounted at /api/v1/registration-teams/.
+// The subtree prefix is less specific than every precise pattern in
+// PublicWriteRoutes, so those still win; only what nothing else claims lands here.
+//
+// Captain-gated in the worker like the rest of the team-registration block — not
+// a workspace permission, unlike the admin team-image pair in AdminCrudRoutes.
+// The paired multipart upload can't ride the JSON dispatcher at all; it is a
+// direct mux.HandleFunc (binary.go), documented in BinaryDocRoutes.
+var RegistrationTeamSubtreeRoutes = []edge.RouteSpec{
+	{Method: "DELETE", Pattern: "/api/v1/registration-teams/{team_id}/image", Queue: "rpc.tournament.regteam_image_delete", Path: []string{"team_id"}, Auth: edge.AuthRequired},
 }

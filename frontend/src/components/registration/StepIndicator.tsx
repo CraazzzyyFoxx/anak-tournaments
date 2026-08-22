@@ -50,7 +50,7 @@ export default function StepIndicator({ steps, current }: Readonly<StepIndicator
               </div>
               <span
                 className={cn(
-                  "hidden text-xs font-medium sm:inline",
+                  "sr-only text-xs font-medium sm:not-sr-only sm:inline",
                   isActive ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
                 )}
               >

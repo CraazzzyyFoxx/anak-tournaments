@@ -1,7 +1,11 @@
-"""P5.3: balancer-service's ``bulk_create_from_balancer`` finalize-roster
-Player-creation site must populate ``workspace_member_id`` (``Player.user_id``
-was dropped in the contract step, iwrefac07) so workspace-scoped analytics
-readers that INNER-JOIN on it don't silently drop newly created roster rows.
+"""The shared team writer's Player-creation site must populate
+``workspace_member_id`` (``Player.user_id`` was dropped in the contract step,
+iwrefac07) so workspace-scoped analytics readers that INNER-JOIN on it don't
+silently drop newly created roster rows.
+
+Exercised through balancer-service's adapter (``to_materialization_teams``) so
+both the payload mapping and the writer stay covered after the writer moved to
+``shared.services.team_export``.
 """
 
 from __future__ import annotations
@@ -36,8 +40,10 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
+from shared.models.tournament.team import Player, Team  # noqa: E402
+from shared.services.team_export import materialization as materialization_module  # noqa: E402
 from src.schemas.team import BalancerTeam, BalancerTeamMember  # noqa: E402
-from src.services import team as team_service  # noqa: E402
+from src.services.team import to_materialization_teams  # noqa: E402
 
 
 def _scalar_result(value):
@@ -60,14 +66,14 @@ def _rows_result(rows):
     return result
 
 
-class BulkCreateFromBalancerWorkspaceMemberTests(IsolatedAsyncioTestCase):
+class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
     async def test_new_player_gets_workspace_member_id(self) -> None:
         tournament = SimpleNamespace(id=88, workspace_id=55, start_date=None)
         member_user = SimpleNamespace(id=42)
         created_team = SimpleNamespace(id=3, name="Roster", tournament_id=88)
         created_member = SimpleNamespace(id=9001)
 
-        # Batched execute() call order inside bulk_create_from_balancer:
+        # Batched execute() call order inside materialize_teams:
         # 1) load tournament (scalar),
         # 2) existing teams by name (scalars.all -> []),
         # 3) load_prior_participation: workspace.newcomer_scope lookup (scalar),
@@ -91,7 +97,7 @@ class BulkCreateFromBalancerWorkspaceMemberTests(IsolatedAsyncioTestCase):
         )
 
         def fake_add(entity):
-            if isinstance(entity, team_service.models.Team):
+            if isinstance(entity, Team):
                 entity.id = created_team.id
                 entity.name = created_team.name
 
@@ -116,25 +122,25 @@ class BulkCreateFromBalancerWorkspaceMemberTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                team_service.user_svc,
+                materialization_module,
                 "find_users_by_battle_tags",
                 AsyncMock(return_value={"Roster#0000": member_user}),
             ),
             patch.object(
-                team_service,
+                materialization_module,
                 "get_or_create_workspace_member",
                 AsyncMock(return_value=created_member),
             ) as get_or_create,
         ):
-            await team_service.bulk_create_from_balancer(session, 88, payload)
+            await materialization_module.materialize_teams(session, 88, to_materialization_teams(payload))
 
         get_or_create.assert_awaited_once_with(session, workspace_id=55, player_id=42)
-        player_calls = [
-            call.args[0] for call in session.add.call_args_list if isinstance(call.args[0], team_service.models.Player)
-        ]
+        player_calls = [call.args[0] for call in session.add.call_args_list if isinstance(call.args[0], Player)]
         self.assertEqual(1, len(player_calls))
         created_player = player_calls[0]
         self.assertFalse(hasattr(created_player, "user_id"))
         self.assertEqual(9001, created_player.workspace_member_id)
         self.assertTrue(created_player.is_newcomer)
         self.assertTrue(created_player.is_newcomer_role)
+        # The writer never commits — the orchestrator owns the boundary.
+        session.commit.assert_not_awaited()

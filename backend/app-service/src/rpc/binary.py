@@ -4,10 +4,8 @@ The gateway parses multipart uploads and base64-encodes the file into the RPC
 body (``content_b64`` + ``content_type``); the match-log read returns
 ``{content_b64, media_type, filename}`` which the gateway decodes back to raw
 bytes. Permission is enforced here (workspace.update for icons, superuser for
-assets). S3 access uses the worker's module-level client (started in serve.py).
-
-The two icon writes mutate the workspace, so each appends one ``audit_log`` row in
-the same transaction as the write.
+assets); every side effect — S3, the workspace row, the audit row, the commit —
+belongs to ``services/workspace/binary.py``.
 """
 
 from __future__ import annotations
@@ -15,18 +13,14 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 
-from shared.clients.s3.upload import upload_asset, upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
-from shared.services.audit import record_audit
-from src import models, schemas
+from src import schemas
 from src.core import db
 from src.rpc import _common as c
-from src.rpc._clients import s3_client
-from src.services.workspace import service as workspace_service
+from src.services.workspace.binary import workspace_binary
 
 _SF = db.async_session_maker
 _ASSET_TYPES = ("achievements", "divisions")
@@ -47,11 +41,11 @@ def _content_type(data: dict[str, Any]) -> str:
     return ct if isinstance(ct, str) and ct else "application/octet-stream"
 
 
-async def _resolve_workspace_slug(session: Any, workspace_id: int | None) -> str | None:
-    if workspace_id is None:
-        return None
-    ws = await session.get(models.Workspace, workspace_id)
-    return ws.slug if ws else None
+def _asset_type(data: dict[str, Any]) -> str:
+    asset_type = data.get("asset_type")
+    if asset_type not in _ASSET_TYPES:
+        raise HTTPException(status_code=422, detail="invalid asset_type")
+    return asset_type
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -62,36 +56,13 @@ def register(broker: Any, logger: Any) -> None:
             user = c.actor(data)
             c.require_active(user)
             ensure_workspace_permission(user, workspace_id, "workspace", "update")
-            workspace = await workspace_service.get_by_id(session, workspace_id)
-            if not workspace:
-                raise HTTPException(status_code=404, detail="Workspace not found")
-            result = await upload_avatar(
-                s3_client,
-                entity_type="workspaces",
-                entity_id=workspace_id,
+            workspace = await workspace_binary.set_icon(
+                session,
+                workspace_id=workspace_id,
+                actor=user,
                 file_data=_decode(data),
                 content_type=_content_type(data),
             )
-            if not result.success:
-                raise HTTPException(status_code=400, detail=result.error)
-            icon_before = workspace.icon_url
-            workspace = await workspace_service.update(session, workspace, {"icon_url": result.public_url})
-            await record_audit(
-                session,
-                action="workspace.branding_update",
-                source="admin",
-                actor=user,
-                actor_label=user.username,
-                # The workspace the permission check above ran against, reused rather
-                # than re-derived: the audit scope must be the authorization scope.
-                workspace_id=workspace_id,
-                entity_type="workspace",
-                entity_id=workspace.id,
-                entity_label=workspace.slug,
-                before={"icon_url": icon_before},
-                after={"icon_url": workspace.icon_url},
-            )
-            await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.icon_upload", op, session_factory=_SF)
@@ -103,29 +74,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.actor(data)
             c.require_active(user)
             ensure_workspace_permission(user, workspace_id, "workspace", "update")
-            workspace = await workspace_service.get_by_id(session, workspace_id)
-            if not workspace:
-                raise HTTPException(status_code=404, detail="Workspace not found")
-            await s3_client.delete_prefix(f"avatars/workspaces/{workspace_id}/")
-            icon_before = workspace.icon_url
-            workspace = await workspace_service.update(session, workspace, {"icon_url": None})
-            # The S3 objects are already gone by now; a rollback here would leave the
-            # row pointing at a dead URL, and the audit row would vanish with it -- so
-            # the trail matches the database, which is what the journal claims to show.
-            await record_audit(
-                session,
-                action="workspace.branding_update",
-                source="admin",
-                actor=user,
-                actor_label=user.username,
-                workspace_id=workspace_id,
-                entity_type="workspace",
-                entity_id=workspace.id,
-                entity_label=workspace.slug,
-                before={"icon_url": icon_before},
-                after={"icon_url": None},
-            )
-            await session.commit()
+            workspace = await workspace_binary.clear_icon(session, workspace_id=workspace_id, actor=user)
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.icon_delete", op, session_factory=_SF)
@@ -134,21 +83,14 @@ def register(broker: Any, logger: Any) -> None:
     async def _asset_upload(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
-            asset_type = data.get("asset_type")
-            if asset_type not in _ASSET_TYPES:
-                raise HTTPException(status_code=422, detail="invalid asset_type")
-            workspace_slug = await _resolve_workspace_slug(session, c.q1(data, "workspace_id", int))
-            result = await upload_asset(
-                s3_client,
-                asset_type=asset_type,
+            return await workspace_binary.store_asset(
+                session,
+                asset_type=_asset_type(data),
                 slug=data.get("slug"),
                 file_data=_decode(data),
                 content_type=_content_type(data),
-                workspace_slug=workspace_slug,
+                workspace_id=c.q1(data, "workspace_id", int),
             )
-            if not result.success:
-                raise HTTPException(status_code=400, detail=result.error)
-            return {"key": result.key, "public_url": result.public_url}
 
         return await c.envelope(logger, "assets.upload", op, session_factory=_SF)
 
@@ -156,18 +98,12 @@ def register(broker: Any, logger: Any) -> None:
     async def _asset_delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
-            asset_type = data.get("asset_type")
-            if asset_type not in _ASSET_TYPES:
-                raise HTTPException(status_code=422, detail="invalid asset_type")
-            slug = data.get("slug")
-            workspace_slug = await _resolve_workspace_slug(session, c.q1(data, "workspace_id", int))
-            if workspace_slug:
-                prefix = f"assets/{asset_type}/{workspace_slug}/{slug}."
-            else:
-                prefix = f"assets/{asset_type}/{slug}."
-            deleted = await s3_client.delete_prefix(prefix)
-            if deleted == 0:
-                raise HTTPException(status_code=404, detail="Asset not found")
+            deleted = await workspace_binary.remove_asset(
+                session,
+                asset_type=_asset_type(data),
+                slug=data.get("slug"),
+                workspace_id=c.q1(data, "workspace_id", int),
+            )
             return {"deleted": deleted}
 
         return await c.envelope(logger, "assets.delete", op, session_factory=_SF)
@@ -175,23 +111,7 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.matches.log")
     async def _match_log(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            match_id = c.require_id(data)
-            row = (
-                await session.execute(
-                    sa.select(models.Match.log_name, models.Encounter.tournament_id)
-                    .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-                    .where(models.Match.id == match_id)
-                )
-            ).first()
-            if row is None:
-                raise HTTPException(status_code=404, detail="Match not found")
-            log_name, tournament_id = row
-            filename = (log_name or "").rsplit("/", 1)[-1]
-            if not filename or ".." in filename:
-                raise HTTPException(status_code=404, detail="No log available for this match")
-            data_bytes = await s3_client.get_object(f"logs/{tournament_id}/{filename}")
-            if data_bytes is None:
-                raise HTTPException(status_code=404, detail="Log file not found")
+            filename, data_bytes = await workspace_binary.match_log(session, c.require_id(data))
             return {
                 "content_b64": base64.b64encode(data_bytes).decode("ascii"),
                 "media_type": "application/octet-stream",

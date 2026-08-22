@@ -21,8 +21,9 @@ from src.core import db
 from src.core.auth import _get_tournament_workspace_id
 from src.rpc import _common as c
 from src.schemas.team import BalancerTeam, InternalBalancerTeamsPayload
-from src.services import team as team_service
 from src.services.balancer.realtime import emit_balancer_data_event
+from src.services.registered_teams import registered_teams_service
+from src.services.team import team_service
 
 _SF = db.async_session_maker
 _PAYLOAD_FORMATS = ("auto", "atravkovs", "internal")
@@ -69,8 +70,46 @@ def register(broker: Any, logger: Any) -> None:
                 internal_payload = InternalBalancerTeamsPayload.model_validate(payload)
                 teams = [team.to_balancer_team() for team in internal_payload.teams]
 
-            await team_service.bulk_create_from_balancer(session, tournament_id, teams)
+            # ``import_teams`` commits once (the shared orchestrator owns the
+            # boundary) — the previous writer committed internally, so this RPC
+            # has never had a commit of its own.
+            await team_service.import_teams(session, tournament_id, teams)
             await emit_balancer_data_event(tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
             return {"imported_teams": len(teams)}
 
         return await c.envelope(logger, "admin.teams_import", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.teams.export_registered")
+    async def _export_registered(data: dict, msg: RabbitMessage) -> dict:
+        """Materialize this tournament's complete registered teams.
+
+        See docs/plans/2026-08-20-team-registration.md §5. The heavy lifting is the
+        shared orchestrator's; this handler owns only permission and the optional
+        team-id narrowing.
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            c.require_admin_panel(user)
+            tournament_id = c.require_id(data)
+            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            c.require_workspace_permission(data, user, ws_id, "team", "create")
+
+            # ``c.payload`` normalizes a missing/non-dict body to {}, so an empty
+            # POST means "export every complete team".
+            raw_ids = c.payload(data).get("team_ids")
+            team_ids = [int(value) for value in raw_ids] if isinstance(raw_ids, list) and raw_ids else None
+
+            result = await registered_teams_service.export_registered(session, tournament_id, team_ids=team_ids)
+            if result.imported_teams:
+                await emit_balancer_data_event(tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
+            return {
+                "removed_teams": result.removed_teams,
+                "imported_teams": result.imported_teams,
+                "created_players": result.created_players,
+                # Reported, never silently dropped: an organizer pressing export
+                # needs to know WHICH teams did not go and why (§12.5).
+                "skipped": [{"team_id": item.team_id, "name": item.name, "code": item.code} for item in result.skipped],
+            }
+
+        return await c.envelope(logger, "teams.export_registered", op, session_factory=_SF)

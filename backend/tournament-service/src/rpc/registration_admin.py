@@ -66,10 +66,12 @@ from src.schemas.registration import (
     SubscriptionProviderConfigUpsert,
     WorkspaceSubscriptionRequirementUpsert,
 )
+from src.schemas.registration_team import RegistrationTeamListResponse
 from src.services.registration import admin as registration_service
 from src.services.registration import audit as reg_audit
 from src.services.registration import service as reg_svc
 from src.services.registration import status_catalog, subscription_config
+from src.services.registration import teams as team_service
 from src.services.registration.ow_rank_selection import select_main_account_ow_ranks
 from src.services.registration.realtime import emit_balancer_registrations_changed
 from src.services.registration.serializers import (
@@ -77,6 +79,7 @@ from src.services.registration.serializers import (
     serialize_registration_form,
     serialize_status,
 )
+from src.services.registration.windows import load_registration_open
 
 # --- helpers -----------------------------------------------------------------
 
@@ -239,7 +242,8 @@ def register(broker: Any, logger: Any) -> None:
                 return None
             # The rule is the workspace's now; one scalar read feeds the sync serializer.
             requirement = await subscription_config.load_workspace_requirement_blob(session, ctx.ws_id)
-            return _dump(serialize_registration_form(form, subscription_requirement=requirement))
+            is_open = await load_registration_open(session, ctx.id)
+            return _dump(serialize_registration_form(form, is_open=is_open, subscription_requirement=requirement))
 
         return await _run(logger, op)
 
@@ -254,7 +258,123 @@ def register(broker: Any, logger: Any) -> None:
             # upsert_registration_form commits internally.
             form = await reg_svc.upsert_registration_form(session, ctx.id, body, workspace_id=ctx.ws_id)
             requirement = await subscription_config.load_workspace_requirement_blob(session, ctx.ws_id)
-            return _dump(serialize_registration_form(form, subscription_requirement=requirement))
+            is_open = await load_registration_open(session, ctx.id)
+            return _dump(serialize_registration_form(form, is_open=is_open, subscription_requirement=requirement))
+
+        return await _run(logger, op)
+
+    # GET /balancer/tournaments/{tournament_id}/registration-teams
+    #   dep: require_tournament_permission("team", "read")
+    #
+    # §8/§12.5: the organizer's answer to "who is incomplete, and what are they
+    # missing?". Occupancy is recomputed rather than read off the denormalized
+    # ``status`` column, because the per-slot shortfall is what is actionable.
+    @broker.subscriber("rpc.tournament.regteam_list")
+    async def _regteam_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "read")
+            # `_q1`, not `data.get`: `AllQuery` nests the query string, so a direct
+            # lookup would silently read `False` for every request.
+            include_terminal = _q1(data, "include_terminal", _bool, default=False)
+            pairs = await team_service.list_teams(
+                session,
+                tournament_id=ctx.id,
+                include_terminal=include_terminal,
+            )
+            items = [
+                await team_service.describe_team(session, team, include_invites=True) for team, _occupancy in pairs
+            ]
+            # The number the organizer must see before pressing export: these
+            # players are on no team, so the export cannot place them.
+            return _dump(
+                RegistrationTeamListResponse(
+                    items=items,
+                    total=len(items),
+                    unassigned_players=await team_service.count_unassigned_players(session, ctx.id),
+                )
+            )
+
+        return await _run(logger, op)
+
+    # POST /balancer/tournaments/{tournament_id}/registration-teams/{team_id}/reject
+    #   dep: require_tournament_permission("team", "update")
+    @broker.subscriber("rpc.tournament.regteam_reject")
+    async def _regteam_reject(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "update")
+            payload = _payload(data) or {}
+            # Defaults to True: leaving members approved is the §12.5 dead end.
+            # False is for "rejected because incomplete", which should return the
+            # players to the solo pool rather than strand them.
+            withdraw_members = bool(payload.get("withdraw_members", True))
+            team = await team_service.reject_team(
+                session,
+                tournament_id=ctx.id,
+                team_id=_path_int(data, "team_id"),
+                auth_user=ctx.user,
+                withdraw_members=withdraw_members,
+            )
+            return _dump(await team_service.describe_team(session, team, include_invites=True))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_invite_revoke_admin")
+    async def _regteam_invite_revoke_admin(data: dict, msg: RabbitMessage) -> dict:
+        """An organizer withdraws an offer from a team they do not captain.
+
+        A genuinely new privilege over someone else's roster, so the write records
+        who did it. ``"update"`` rather than a bespoke action: it is the same power
+        as rejecting a team, one rung smaller.
+
+        The service re-checks that the invite belongs to THIS tournament. An invite
+        id is global while this permission is not, so without that an organizer of
+        any tournament could pass any id.
+        """
+
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "update")
+            await team_service.revoke_invite_as_organizer(
+                session,
+                invite_id=_path_int(data, "invite_id"),
+                tournament_id=ctx.id,
+                auth_user=ctx.user,
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_invite_cap_reset")
+    async def _regteam_invite_cap_reset(data: dict, msg: RabbitMessage) -> dict:
+        """Forgive a team's cumulative invite count.
+
+        The recourse the cap's own error message names. Before this it named an
+        intervention no endpoint provided, so a captain at the ceiling was simply
+        stuck and the organizer they were sent to was powerless.
+        """
+
+        async def op(session: Any) -> Any:
+            ctx = await _tournament_ctx(session, data, "update")
+            await team_service.reset_invite_cap(
+                session,
+                team_id=_path_int(data, "team_id"),
+                tournament_id=ctx.id,
+                auth_user=ctx.user,
+            )
+            return None
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.regteam_invite_history")
+    async def _regteam_invite_history(data: dict, msg: RabbitMessage) -> dict:
+        """Every invite a team ever issued, with its cap standing.
+
+        Read-scoped to organizers here; the captain reads the same history through
+        the public handler, which authorizes by captaincy instead.
+        """
+
+        async def op(session: Any) -> Any:
+            await _tournament_ctx(session, data, "read")
+            return _dump(await team_service.list_invite_history(session, team_id=_path_int(data, "team_id")))
 
         return await _run(logger, op)
 

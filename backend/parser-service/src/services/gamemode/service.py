@@ -1,63 +1,76 @@
+"""Gamemode domain: OverFast sync + CRUD reads.
+
+Merges the former ``service.py`` (reads) and ``flows.py`` (OverFast sync
+orchestration) into one class, per ``backend/ARCHITECTURE.md``'s "small
+domains keep everything in one service.py" rule.
+"""
+
+from __future__ import annotations
+
 import typing
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
+from shared.repository import GamemodeRepository
+from src import models, schemas
+from src.clients.overfast import OverFastCatalogClient, overfast_catalog_client
 from src.core import pagination
 
-
-async def get(session: AsyncSession, id: int) -> models.Gamemode | None:
-    query = sa.select(
-        models.Gamemode,
-    ).where(sa.and_(models.Gamemode.id == id))
-    result = await session.execute(query)
-    return result.scalar_one_or_none()
+__all__ = ("GamemodeService", "gamemode_service")
 
 
-async def get_existing_slugs(session: AsyncSession, slugs: list[str]) -> set[str]:
-    """Slugs among ``slugs`` that already exist, in one query (batch counterpart
-    of the per-item ``get_by_slug`` probes in ``initial_create``)."""
-    if not slugs:
-        return set()
-    result = await session.execute(sa.select(models.Gamemode.slug).where(models.Gamemode.slug.in_(list(set(slugs)))))
-    return set(result.scalars().all())
+class GamemodeService:
+    def __init__(
+        self,
+        *,
+        repo: GamemodeRepository = GamemodeRepository(),
+        overfast: OverFastCatalogClient = overfast_catalog_client,
+    ) -> None:
+        self.repo = repo
+        self.overfast = overfast
+
+    async def get(self, session: AsyncSession, id: int) -> models.Gamemode | None:
+        return await self.repo.get(session, id)
+
+    async def get_existing_slugs(self, session: AsyncSession, slugs: list[str]) -> set[str]:
+        """Slugs among ``slugs`` that already exist, in one query (batch
+        counterpart of the per-item probe used by ``initial_create``)."""
+        return set(await self.repo.get_many_by(session, models.Gamemode.slug, slugs))
+
+    async def get_by_slug(self, session: AsyncSession, slug: str) -> models.Gamemode | None:
+        return await self.repo.get_by(session, slug=slug)
+
+    async def get_all(
+        self, session: AsyncSession, params: pagination.PaginationSortParams
+    ) -> tuple[typing.Sequence[models.Gamemode], int]:
+        return await self.repo.get_all(session, params)
+
+    async def fetch_gamemodes(self) -> list[schemas.OverfastGamemode]:
+        return await self.overfast.fetch_gamemodes()
+
+    async def initial_create(self, session: AsyncSession) -> None:
+        gamemodes = await self.fetch_gamemodes()
+
+        # One existence query + one bulk insert instead of a get-then-create pair
+        # per gamemode.
+        existing_slugs = await self.get_existing_slugs(session, [gamemode.key for gamemode in gamemodes])
+        new_gamemodes: list[models.Gamemode] = []
+        for gamemode in gamemodes:
+            if gamemode.key in existing_slugs:
+                continue
+            existing_slugs.add(gamemode.key)
+            new_gamemodes.append(
+                models.Gamemode(
+                    slug=gamemode.key,
+                    name=gamemode.name,
+                    image_path=gamemode.icon,
+                    description=gamemode.description,
+                )
+            )
+
+        if new_gamemodes:
+            await self.repo.create_many(session, new_gamemodes)
+            await session.commit()
 
 
-async def get_by_slug(session: AsyncSession, slug: str) -> models.Gamemode | None:
-    query = sa.select(
-        models.Gamemode,
-    ).where(sa.and_(models.Gamemode.slug == slug))
-    result = await session.execute(query)
-    return result.scalar_one_or_none()
-
-
-async def get_all(
-    session: AsyncSession,
-    params: pagination.PaginationSortParams,
-) -> tuple[typing.Sequence[models.Gamemode], int]:
-    query = sa.select(models.Gamemode)
-    query = params.apply_pagination_sort(query, models.Gamemode)
-    result = await session.execute(query)
-    total_query = sa.select(sa.func.count(models.Gamemode.id))
-    total_result = await session.execute(total_query)
-    return result.scalars().all(), total_result.scalar_one()
-
-
-async def create(
-    session: AsyncSession,
-    *,
-    slug: str,
-    name: str,
-    image_path: str,
-    description: str | None = None,
-) -> models.Gamemode:
-    gamemode = models.Gamemode(
-        slug=slug,
-        name=name,
-        image_path=image_path,
-        description=description,
-    )
-    session.add(gamemode)
-    await session.commit()
-    return gamemode
+gamemode_service = GamemodeService()

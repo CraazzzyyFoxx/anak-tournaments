@@ -28,7 +28,7 @@ from shared.core.errors import BaseAPIException
 from src import models, schemas
 from src.rpc import users_admin
 from src.schemas.admin.user import StreamVisibilityUpdate
-from src.services.user import flows
+from src.services.user.service import UserService
 
 SUBJECT = "rpc.app.users.me_set_stream_visibility"
 
@@ -91,7 +91,7 @@ def _invoke(session: _FakeSession, player: models.User | None, payload: dict) ->
         patch.object(users_admin.c, "actor", lambda _data: _actor()),
         patch.object(users_admin.c, "require_active", lambda _user: None),
         patch.object(users_admin.c, "envelope", _envelope),
-        patch.object(users_admin.admin_service, "get_user_or_404", call.loader),
+        patch.object(users_admin.admin_users, "get_user_or_404", call.loader),
         patch.object(users_admin.user_cache, "invalidate_user_caches", call.invalidate),
     ):
         call.result = asyncio.run(HANDLERS[SUBJECT]({"payload": payload}, None))
@@ -166,7 +166,7 @@ def test_the_body_must_say_which_way():
 
 
 def test_user_read_reports_the_flag_for_a_vetoed_player():
-    read = asyncio.run(flows.to_pydantic(None, models.User(id=7, name="Alice", stream_visible=False), []))
+    read = UserService.to_read(models.User(id=7, name="Alice", stream_visible=False), [])
 
     assert read.stream_visible is False
     assert "stream_visible" in read.model_dump()
@@ -176,5 +176,5 @@ def test_user_read_fails_open_for_a_transient_user():
     """A ``User`` built in memory has no column default applied yet (it lands at
     INSERT), so the attribute is None. Reporting that as "hidden" would show the owner
     a switch that lies about their own state."""
-    assert asyncio.run(flows.to_pydantic(None, models.User(id=7, name="Alice"), [])).stream_visible is True
+    assert UserService.to_read(models.User(id=7, name="Alice"), []).stream_visible is True
     assert schemas.UserRead(id=0, name="").stream_visible is True

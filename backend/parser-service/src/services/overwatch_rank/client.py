@@ -19,8 +19,7 @@ import httpx
 from shared.clients.http_client import ResilientHttpClient
 from shared.core import enums
 from src.core.config import settings
-
-from .schemas import ParsedRank, RankFetchResult
+from src.domain.overwatch_rank import ParsedRank, RankFetchResult
 
 logger = logging.getLogger(__name__)
 

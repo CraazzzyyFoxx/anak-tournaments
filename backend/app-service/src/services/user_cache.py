@@ -1,7 +1,7 @@
 """Single source of truth for invalidating the workspace-scoped ``/users/*``
 read caches.
 
-Every ``@cache`` in ``services.user.flows`` / ``services.map.flows`` stores its
+Every ``@cache`` in ``services.user.service`` / ``services.map.service`` stores its
 result under a ``backend:`` key whose prefix is listed in
 :data:`USER_CACHE_KEY_PREFIXES` and whose **first** template component is the
 subject user's id. That invariant lets us derive two invalidation shapes from
@@ -13,7 +13,7 @@ one list:
   a single user's profile/identity changes (name, avatar, socials, merge).
 
 Keep :data:`USER_CACHE_KEY_PREFIXES` in sync with the cache-key prefixes those
-flows register; ``tests/test_user_cache_invalidation.py`` enforces routability.
+flows register; ``tests/test_user_read_caches.py`` enforces routability.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
     "user_profile",
     "user_tournaments",
     "user_tournament_stats",
+    "user_tournament_encounters",
     "user_heroes",
     "user_encounters",
     "user_maps",

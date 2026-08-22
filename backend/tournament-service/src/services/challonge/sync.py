@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from shared.core import enums
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.distributed_lock import distributed_lock
 from shared.services.encounter.result_audit import record_result_transition
@@ -28,9 +29,11 @@ from shared.services.encounter_naming import build_encounter_name
 from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.core import config
+from src.schemas.admin import team as team_schemas
 from src.services.challonge import service as challonge_service
 from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.encounter.finalize import finalize_encounter_score
+from src.services.team import service as team_service
 from src.services.tournament.events import (
     enqueue_encounter_completed,
     enqueue_tournament_changed,
@@ -2135,3 +2138,146 @@ async def sync_active_challonge_tournaments(
                     }
                 )
     return results
+
+
+async def _existing_participant_mappings(
+    session: AsyncSession, source_ids: set[int]
+) -> dict[tuple[int, int], models.ChallongeParticipantMapping]:
+    if not source_ids:
+        return {}
+    result = await session.execute(
+        select(models.ChallongeParticipantMapping).where(models.ChallongeParticipantMapping.source_id.in_(source_ids))
+    )
+    mappings: dict[tuple[int, int], models.ChallongeParticipantMapping] = {}
+    for mapping in result.scalars().all():
+        mappings.setdefault((mapping.source_id, mapping.challonge_participant_id), mapping)
+    return mappings
+
+
+async def _fetch_team_sync_context(
+    session: AsyncSession, tournament_id: int
+) -> tuple[models.Tournament, list[models.Team], list[tuple[_ImportSource, _SourceFetch]]]:
+    """Shared setup for preview/apply: the tournament, its teams, and every
+    Challonge source's current participant list (matches are irrelevant here,
+    but ``_fetch_all_sources`` fetches both in one round-trip per source)."""
+    result = await session.execute(select(models.Tournament).where(models.Tournament.id == tournament_id))
+    tournament = result.scalar_one_or_none()
+    if tournament is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    sources = await discover_sources(session, tournament)
+    teams = list(await team_service.get_by_tournament(session, tournament, []))
+    raw_fetches = await _fetch_all_sources(sources)
+    fetches = [(source, fetch) for source, fetch in raw_fetches if not isinstance(fetch, Exception)]
+    return tournament, teams, fetches
+
+
+async def preview_team_mapping(session: AsyncSession, tournament_id: int) -> team_schemas.ChallongeTeamSyncPreview:
+    """Read-only: for every Challonge participant on this tournament's linked
+    source(s), suggest a local team by normalized-name match and report any
+    mapping already persisted. Counterpart to ``apply_team_mapping``, which
+    accepts an admin's explicit overrides for whatever this can't resolve
+    (no match, or an ambiguous name shared by two local teams)."""
+    tournament, teams, fetches = await _fetch_team_sync_context(session, tournament_id)
+    name_index = await _build_team_name_index(session, tournament_id)
+    source_ids = {source.source_id for source, _fetch in fetches if source.source_id is not None}
+    existing_mappings = await _existing_participant_mappings(session, source_ids)
+
+    participants: list[team_schemas.ChallongeTeamPreviewParticipant] = []
+    for source, fetch in fetches:
+        group = source.group
+        for participant in fetch.participants:
+            suggested_team_id = name_index.get(_normalize_team_name(participant.name))
+            if suggested_team_id == _AMBIGUOUS:
+                suggested_team_id = None
+            mapped_team_id = (
+                existing_mappings[(source.source_id, participant.id)].team_id
+                if source.source_id is not None and (source.source_id, participant.id) in existing_mappings
+                else None
+            )
+            participants.append(
+                team_schemas.ChallongeTeamPreviewParticipant(
+                    participant_id=participant.id,
+                    challonge_id=participant.id,
+                    group_id=group.id if group is not None else None,
+                    group_name=group.name if group is not None else None,
+                    challonge_tournament_id=source.challonge_id,
+                    name=participant.name,
+                    active=participant.active,
+                    suggested_team_id=suggested_team_id,
+                    mapped_team_id=mapped_team_id,
+                )
+            )
+
+    return team_schemas.ChallongeTeamSyncPreview(
+        teams=[
+            team_schemas.ChallongeTeamPreviewTeam(id=team.id, name=team.name, balancer_name=team.balancer_name)
+            for team in teams
+        ],
+        participants=participants,
+    )
+
+
+async def apply_team_mapping(
+    session: AsyncSession, tournament_id: int, mappings: list[team_schemas.ChallongeTeamMapping]
+) -> team_schemas.ChallongeTeamSyncResult:
+    """Persist an admin's explicit Challonge participant -> team mappings.
+
+    Every ``(participant_id, group_id)`` in ``mappings`` must resolve against
+    this tournament's currently fetched Challonge participants, and every
+    ``team_id`` must belong to this tournament -- both checked up front so a bad
+    entry fails the whole request rather than silently skipping it."""
+    tournament, teams, fetches = await _fetch_team_sync_context(session, tournament_id)
+    team_ids = {team.id for team in teams}
+
+    rows_by_request_key: dict[tuple[int, int | None], tuple[_ImportSource, schemas.ChallongeParticipant]] = {}
+    for source, fetch in fetches:
+        group_id = source.group.id if source.group is not None else None
+        for participant in fetch.participants:
+            rows_by_request_key[(participant.id, group_id)] = (source, participant)
+
+    validation_errors: list[str] = []
+    for mapping in mappings:
+        if (mapping.participant_id, mapping.group_id) not in rows_by_request_key:
+            validation_errors.append(f"Challonge participant {mapping.participant_id} not found on this tournament")
+        elif mapping.team_id not in team_ids:
+            validation_errors.append(f"Team {mapping.team_id} not found on this tournament")
+    if validation_errors:
+        raise HTTPException(status_code=400, detail=validation_errors)
+
+    source_ids = {source.source_id for source, _participant in rows_by_request_key.values() if source.source_id is not None}
+    existing_mappings = await _existing_participant_mappings(session, source_ids)
+
+    created = updated = unchanged = 0
+    for mapping in mappings:
+        source, participant = rows_by_request_key[(mapping.participant_id, mapping.group_id)]
+        if source.source_id is None:
+            continue
+        source_key = (source.source_id, participant.id)
+        existing = existing_mappings.get(source_key)
+        if existing is None:
+            row = models.ChallongeParticipantMapping(
+                source_id=source.source_id,
+                challonge_participant_id=participant.id,
+                team_id=mapping.team_id,
+            )
+            session.add(row)
+            existing_mappings[source_key] = row
+            created += 1
+        elif existing.team_id != mapping.team_id:
+            existing.team_id = mapping.team_id
+            updated += 1
+        else:
+            unchanged += 1
+
+    await session.commit()
+    mapped_keys = {(mapping.participant_id, mapping.group_id) for mapping in mappings}
+    skipped = max(len(rows_by_request_key) - len(mapped_keys), 0)
+    return team_schemas.ChallongeTeamSyncResult(
+        success=True,
+        count=created + updated + unchanged,
+        created=created,
+        updated=updated,
+        unchanged=unchanged,
+        skipped=skipped,
+    )

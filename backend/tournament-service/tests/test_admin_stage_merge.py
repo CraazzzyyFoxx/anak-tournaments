@@ -536,26 +536,3 @@ class PickBanConfigMergeDedupTests(IsolatedAsyncioTestCase):
                 str(statement.compile(compile_kwargs={"literal_binds": True})).replace("'", ""),
             )
 
-
-class PickBanConfigSignatureAnchorTests(TestCase):
-    """``_pick_ban_config_signature``/``_merge_pick_ban_configs`` exist
-    verbatim in BOTH tournament-service and parser-service (the merge route is
-    only ever exposed from tournament-service's RPC layer; parser-service's
-    copy is dead code kept in sync by this mechanical diff, same convention
-    dbarch05 established for the legacy ``_map_veto_signature`` pair)."""
-
-    def test_both_service_copies_are_identical(self) -> None:
-        opening = "def _pick_ban_config_signature"
-        closing = "async def _retarget_stage_rows"
-
-        def extract(relative: str) -> str:
-            source = (backend_root / relative).read_text(encoding="utf-8")
-            self.assertIn(opening, source, relative)
-            self.assertIn(closing, source, relative)
-            start = source.index(opening)
-            return source[start : source.index(closing, start)]
-
-        self.assertEqual(
-            extract("tournament-service/src/services/admin/stage.py"),
-            extract("parser-service/src/services/admin/stage.py"),
-        )

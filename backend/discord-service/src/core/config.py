@@ -1,3 +1,5 @@
+from pydantic import RedisDsn
+
 from shared.core.config import BaseServiceSettings
 
 
@@ -12,6 +14,13 @@ class Settings(BaseServiceSettings):
     service_client_id: str
     service_client_secret: str
     service_token_skew_seconds: int = 30
+
+    # Redis (member-triggered subscription resync invalidation). Declared on every
+    # sibling service's Settings; missing here it meant `settings.redis_url` raised
+    # AttributeError, silently swallowed by handle_member_subscription_change's
+    # `except Exception`, so role/join/leave events never invalidated the realtime
+    # subscription cache even though REDIS_URL was set in the environment all along.
+    redis_url: RedisDsn
 
     # RabbitMQ (optional)
     rabbitmq_url: str | None = None

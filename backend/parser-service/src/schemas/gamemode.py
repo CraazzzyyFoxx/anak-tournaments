@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from src.schemas import BaseRead
+from shared.schemas.catalog import GamemodeRead
 
 __all__ = (
     "OverfastGamemode",
@@ -14,10 +14,3 @@ class OverfastGamemode(BaseModel):
     icon: str
     description: str
     screenshot: str
-
-
-class GamemodeRead(BaseRead):
-    slug: str
-    name: str
-    image_path: str
-    description: str | None

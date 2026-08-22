@@ -16,11 +16,14 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import WorkspaceRepository
 from src import models
+
+_workspace_repo = WorkspaceRepository()
 
 
 async def _get_workspace_or_404(session: AsyncSession, workspace_id: int) -> models.Workspace:
-    workspace = await session.get(models.Workspace, workspace_id)
+    workspace = await _workspace_repo.get(session, workspace_id)
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
     return workspace
@@ -42,7 +45,7 @@ async def _get_source_workspace_or_404(
     if source_workspace_id == target_workspace_id:
         raise HTTPException(status_code=400, detail="Source and target workspace must be different")
 
-    workspace = await session.get(models.Workspace, source_workspace_id)
+    workspace = await _workspace_repo.get(session, source_workspace_id)
     if workspace is None:
         raise HTTPException(status_code=404, detail="Source workspace not found")
     if not user.is_superuser and source_workspace_id not in user.get_workspace_ids():

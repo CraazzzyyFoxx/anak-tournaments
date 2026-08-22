@@ -31,13 +31,13 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftPlayerRole, DraftTeam  # noqa: E402
-from src.services.draft import lifecycle, selection  # noqa: E402
+from src.domain.draft import rules  # noqa: E402
 
 
 def _load_feature_modules():
     try:
-        matching = importlib.import_module("src.services.role_matching")
-        feasibility = importlib.import_module("src.services.draft.feasibility")
+        matching = importlib.import_module("src.domain.matching")
+        feasibility = importlib.import_module("src.domain.draft.feasibility")
     except ModuleNotFoundError as exc:
         pytest.fail(f"draft feasibility feature is not implemented: {exc}")
     return matching, feasibility
@@ -94,8 +94,8 @@ def test_service_errors_expose_contract_codes_and_role_deficit_details() -> None
         ],
     )
 
-    preflight_error = lifecycle._role_shortage_error(report)
-    pick_error = selection._unsafe_pick_error(report)
+    preflight_error = rules.role_shortage_error(report)
+    pick_error = rules.unsafe_pick_error(report)
 
     assert _error_code(preflight_error) == "role_shortage"
     assert "support" in _error_message(preflight_error)

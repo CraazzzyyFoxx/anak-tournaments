@@ -14,7 +14,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-user_flows = importlib.import_module("src.services.user.flows")
+user_flows = importlib.import_module("src.services.user.service")
 enums = importlib.import_module("src.core.enums")
 division_grid = importlib.import_module("shared.division_grid")
 division_grid_schemas = importlib.import_module("src.schemas.division_grid")
@@ -68,7 +68,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         )
 
         with (
-            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
             patch.object(
                 user_flows,
                 "build_workspace_division_grid_normalizer",
@@ -80,12 +80,12 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=workspace_grid_version),
             ),
             patch.object(
-                user_flows.service,
+                user_flows.users.profile,
                 "get_overall_statistics",
                 AsyncMock(return_value=(7, 3, 0.61)),
             ),
             patch.object(
-                user_flows.service,
+                user_flows.users.profile,
                 "get_roles",
                 AsyncMock(
                     return_value=[
@@ -105,17 +105,17 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 ),
             ),
             patch.object(
-                user_flows.hero_flows,
+                user_flows.hero_service,
                 "get_playtime",
                 AsyncMock(return_value=SimpleNamespace(results=[])),
             ),
             patch.object(
-                user_flows.service,
+                user_flows.users.profile,
                 "get_teams",
                 AsyncMock(return_value=([], 0)),
             ),
         ):
-            profile = await user_flows.get_profile(session, 42, workspace_id=5, grid=grid)
+            profile = await user_flows.users.get_profile(session, 42, workspace_id=5, grid=grid)
 
         self.assertEqual(1, len(profile.roles))
         self.assertEqual(enums.HeroClass.damage, profile.roles[0].role)
@@ -193,9 +193,9 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         )
 
         with (
-            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
             patch.object(
-                user_flows.service,
+                user_flows.users.profile,
                 "get_tournaments_with_stats",
                 AsyncMock(return_value=[(team, 4, 2, 0.75)]),
             ),
@@ -234,7 +234,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 ),
             ),
         ):
-            tournaments = await user_flows.get_tournaments(
+            tournaments = await user_flows.users.get_tournaments(
                 session,
                 42,
                 workspace_id=5,
@@ -284,34 +284,34 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         player = SimpleNamespace(rank=1500, role=enums.HeroClass.damage, team=team)
 
         with (
-            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
             patch.object(
-                user_flows._repositories,
+                user_flows.users.encounters,
                 "get_player_by_user_and_tournament",
                 AsyncMock(return_value=player),
             ),
             patch.object(
-                user_flows.service,
+                user_flows.users.profile,
                 "get_tournament_stats_overall",
                 AsyncMock(return_value=(7, 3, 0.61, 3600.0)),
             ),
             patch.object(
-                user_flows.statistics_service,
+                user_flows.users.statistics_queries,
                 "get_tournament_winrate",
                 AsyncMock(return_value=None),
             ),
             patch.object(
-                user_flows.statistics_service,
+                user_flows.users.statistics_queries,
                 "get_tournament_avg_match_stat_for_user_bulk",
                 AsyncMock(return_value=[]),
             ),
             patch.object(
-                user_flows.statistics_service,
+                user_flows.users.statistics_queries,
                 "get_tournament_mvp_stat_for_user",
                 AsyncMock(return_value=None),
             ),
         ):
-            result = await user_flows.get_tournament_with_stats(
+            result = await user_flows.users.get_tournament_with_stats(
                 session,
                 42,
                 3,
@@ -348,9 +348,9 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         )
 
         with (
-            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
             patch.object(
-                user_flows.service,
+                user_flows.users.profile,
                 "get_tournaments_with_stats",
                 AsyncMock(return_value=[(team, 4, 2, 0.75)]),
             ),
@@ -389,7 +389,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 ),
             ),
         ):
-            tournaments = await user_flows.get_tournaments(
+            tournaments = await user_flows.users.get_tournaments(
                 session,
                 42,
                 workspace_id=5,
@@ -439,22 +439,26 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             raise AssertionError("get_tournaments must not call get_user_encounter_matches_unpaginated")
 
         with (
-            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
             patch.object(
-                user_flows.service,
+                user_flows.users.profile,
                 "get_tournaments_with_stats",
                 AsyncMock(return_value=[(team, 4, 2, 0.75)]),
             ),
-            patch.object(user_flows._repositories, "count_teams_by_tournament_bulk", AsyncMock(return_value={3: 8})),
-            patch.object(user_flows._repositories, "get_roster_avg_mvp_bulk", AsyncMock(return_value={})),
-            patch.object(user_flows._repositories, "get_roster_top_heroes_bulk", AsyncMock(return_value={})),
             patch.object(
-                user_flows._repositories,
+                user_flows.users.encounters, "count_teams_by_tournament_bulk", AsyncMock(return_value={3: 8})
+            ),
+            patch.object(user_flows.users.encounters, "get_roster_avg_mvp_bulk", AsyncMock(return_value={})),
+            patch.object(user_flows.users.encounters, "get_roster_top_heroes_bulk", AsyncMock(return_value={})),
+            patch.object(
+                user_flows.users.encounters,
                 "get_user_encounter_matches_unpaginated",
                 AsyncMock(side_effect=_boom),
             ),
         ):
-            tournaments = await user_flows.get_tournaments(session, 42, workspace_id=5, grid=division_grid.DEFAULT_GRID)
+            tournaments = await user_flows.users.get_tournaments(
+                session, 42, workspace_id=5, grid=division_grid.DEFAULT_GRID
+            )
 
         self.assertEqual(1, len(tournaments))
         self.assertEqual([], tournaments[0].encounters)
@@ -484,12 +488,12 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         )
 
         with (
-            patch.object(user_flows, "get", AsyncMock(return_value=user)),
-            patch.object(user_flows._repositories, "get_user_encounter_matches_unpaginated", repo_mock),
+            patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
+            patch.object(user_flows.users.encounters, "get_user_encounter_matches_unpaginated", repo_mock),
             patch.object(user_flows._mappers, "to_match_with_user_stats", match_mapper),
             patch.object(user_flows._mappers, "to_encounter_with_user_stats", encounter_mapper),
         ):
-            result = await user_flows.get_tournament_encounters(session, 42, 7)
+            result = await user_flows.users.get_tournament_encounters(session, 42, 7)
 
         repo_mock.assert_awaited_once_with(session, user.id, tournament_id=7)
         self.assertEqual([101, 102], [enc.id for enc in result])

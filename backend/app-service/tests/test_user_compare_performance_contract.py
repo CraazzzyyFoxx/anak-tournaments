@@ -9,7 +9,10 @@ from sqlalchemy.dialects import postgresql
 from shared.division_grid import DEFAULT_GRID
 from src import schemas
 from src.core import enums
-from src.services.user import flows, service
+from src.services.user import service as user_service
+from src.services.user.queries.compare import COMPARE_METRIC_DEFINITIONS
+from src.services.user.queries.compare import compare as compare_queries
+from src.services.user.queries.profile import profile as profile_queries
 
 
 def _postgres_sql(statement) -> str:
@@ -22,7 +25,7 @@ def _postgres_sql(statement) -> str:
 
 
 def test_overall_compare_v2_is_a_grouped_candidate_query() -> None:
-    statement = service._compare_metrics_query_v2(  # noqa: SLF001 - query contract
+    statement = compare_queries._compare_metrics_query_v2(  # noqa: SLF001 - query contract
         user_ids=None,
         role=None,
         div_min=None,
@@ -46,7 +49,7 @@ def test_compare_population_executes_the_grouped_v2_query() -> None:
     session.execute.return_value = result
 
     payload = asyncio.run(
-        service.get_compare_population(
+        compare_queries.get_compare_population(
             session,
             user_ids=[7],
             grid=DEFAULT_GRID,
@@ -60,7 +63,7 @@ def test_compare_population_executes_the_grouped_v2_query() -> None:
 
 def _compare_row(user_id: int, name: str, value: float) -> dict[str, float | int | str]:
     row: dict[str, float | int | str] = {"id": user_id, "name": name}
-    for key, _label, _higher_is_better in service.COMPARE_METRIC_DEFINITIONS:
+    for key, _label, _higher_is_better in COMPARE_METRIC_DEFINITIONS:
         row[key] = value
     return row
 
@@ -71,11 +74,11 @@ def test_target_compare_fetches_both_users_in_one_population_query() -> None:
     get_user = AsyncMock(side_effect=[SimpleNamespace(id=7, name="Subject"), SimpleNamespace(id=9, name="Target")])
 
     with (
-        patch.object(service, "get_compare_population", get_population),
-        patch.object(flows, "get", get_user),
+        patch.object(compare_queries, "get_compare_population", get_population),
+        patch.object(user_service.users, "get", get_user),
     ):
         response = asyncio.run(
-            flows.get_compare(
+            user_service.users.get_compare(
                 AsyncMock(),
                 7,
                 schemas.UserCompareParams(baseline="target_user", target_user_id=9),
@@ -92,7 +95,7 @@ def test_target_compare_fetches_both_users_in_one_population_query() -> None:
 
 
 def test_hero_compare_v2_combines_playtime_and_stats_in_one_statement() -> None:
-    statement = service._users_hero_compare_query_v2(  # noqa: SLF001 - query contract
+    statement = compare_queries._users_hero_compare_query_v2(  # noqa: SLF001 - query contract
         user_ids=[7, 9],
         hero_id=None,
         map_id=None,
@@ -113,7 +116,7 @@ def test_hero_compare_v2_combines_playtime_and_stats_in_one_statement() -> None:
 
 
 def test_hero_role_scope_preserves_legacy_team_filter_semantics() -> None:
-    statement = service._users_hero_compare_query_v2(  # noqa: SLF001 - parity contract
+    statement = compare_queries._users_hero_compare_query_v2(  # noqa: SLF001 - parity contract
         user_ids=[7, 9],
         hero_id=None,
         map_id=None,
@@ -149,7 +152,7 @@ def test_users_hero_compare_stats_executes_one_statement() -> None:
     session.execute.side_effect = execute
 
     playtime, stats = asyncio.run(
-        service.get_users_hero_compare_stats(
+        compare_queries.get_users_hero_compare_stats(
             session,
             user_ids=[7, 9],
             hero_id=None,
@@ -171,7 +174,7 @@ def test_compare_catalog_entities_execute_one_statement() -> None:
     session.execute.return_value = result
 
     entities = asyncio.run(
-        service.get_compare_catalog_entities(
+        compare_queries.get_compare_catalog_entities(
             session,
             left_hero_id=1,
             right_hero_id=2,
@@ -192,7 +195,7 @@ def test_statistics_by_heroes_defers_metadata_join_off_the_window() -> None:
     full eligible set already fanned out across four tables and blows past
     ``statement_timeout`` for heavy users (Sentry OWT-TOURNAMENTS-2G).
     """
-    statement = service._statistics_by_heroes_query(  # noqa: SLF001 - query contract
+    statement = profile_queries._statistics_by_heroes_query(  # noqa: SLF001 - query contract
         user_id=552,
         stats=None,
         tournament_id=None,

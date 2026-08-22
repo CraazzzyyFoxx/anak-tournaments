@@ -15,7 +15,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 from shared.core.impact import IMPACT_WEIGHTS  # noqa: E402
-from src.services.baselines import flows  # noqa: E402
+from src.domain.baselines import build_baseline_rows  # noqa: E402
 
 
 def _stats_frame(n=90):
@@ -62,7 +62,7 @@ def _frame_with_elimination_rates(ranks, elimination_rates, has_killfeed=True):
 
 
 def test_rows_cover_all_buckets_and_role_wide():
-    rows = flows.build_baseline_rows(_stats_frame())
+    rows = build_baseline_rows(_stats_frame())
     buckets = {(r["role"], r["rank_bucket"]) for r in rows}
     assert ("damage", -1) in buckets
     assert {("damage", 0), ("damage", 1), ("damage", 2)} <= buckets
@@ -72,7 +72,7 @@ def test_event_stats_use_only_killfeed_rows():
     df = _stats_frame()
     df.loc[df.has_killfeed, "FirstPicks_rate"] = 5.0
     df.loc[~df.has_killfeed, "FirstPicks_rate"] = 100.0  # must be ignored
-    rows = flows.build_baseline_rows(df)
+    rows = build_baseline_rows(df)
     fp = next(r for r in rows if r["stat"] == "FirstPicks" and r["rank_bucket"] == -1)
     assert fp["mean"] == 5.0
 
@@ -83,13 +83,13 @@ def test_short_playtime_rows_excluded():
     extra = df.iloc[[0]].copy()
     extra["minutes"] = 1.0
     extra["Eliminations_rate"] = 10_000.0
-    rows = flows.build_baseline_rows(pd.concat([df, extra], ignore_index=True))
+    rows = build_baseline_rows(pd.concat([df, extra], ignore_index=True))
     el = next(r for r in rows if r["stat"] == "Eliminations" and r["rank_bucket"] == -1)
     assert el["mean"] == 10.0
 
 
 def test_bucket_bounds_frozen_in_meta():
-    rows = flows.build_baseline_rows(_stats_frame())
+    rows = build_baseline_rows(_stats_frame())
     bounds = rows[0]["meta"]["bucket_bounds"]
     assert len(bounds) == 2 and bounds[0] < bounds[1]
 
@@ -101,7 +101,7 @@ def test_std_is_sample_stdev_ddof1():
     rates = [8.0, 10.0, 12.0]
     df = _frame_with_elimination_rates(ranks=[100, 700, 1500], elimination_rates=rates)
 
-    rows = flows.build_baseline_rows(df)
+    rows = build_baseline_rows(df)
     row = next(r for r in rows if r["stat"] == "Eliminations" and r["rank_bucket"] == -1)
 
     expected_mean = sum(rates) / len(rates)  # 10.0
@@ -123,7 +123,7 @@ def test_single_row_bucket_std_is_zero_not_nan():
     assert ranks[0] <= bucket_bounds[0] < ranks[1] <= bucket_bounds[1] < ranks[2]
 
     df = _frame_with_elimination_rates(ranks=ranks, elimination_rates=[8.0, 10.0, 12.0])
-    rows = flows.build_baseline_rows(df)
+    rows = build_baseline_rows(df)
     bucket0 = next(r for r in rows if r["stat"] == "Eliminations" and r["rank_bucket"] == 0)
 
     assert bucket0["mean"] == pytest.approx(8.0)

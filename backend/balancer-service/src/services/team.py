@@ -1,198 +1,86 @@
-"""Simplified team service for balancer-service.
+"""balancer-service adapter onto the shared team materialization.
 
-Provides bulk_create_from_balancer used when exporting a balance result
-to tournament teams and players.
+The writer itself now lives in :mod:`shared.services.team_export` — this module
+only maps balancer-service's ``BalancerTeam`` wire payload onto the shared
+``MaterializationTeam`` input, and offers the plain-import entry point used by the
+admin teams-import RPC.
+
+The export paths (``admin/balancer.py``, ``draft/export.py``) build their own
+:class:`~shared.services.team_export.ExportPlan` because they also need the
+destructive cleanup, the ``exported_team_id`` backfill and their own stamp.
+
+``to_materialization_teams`` stays a plain module-level function (not a class
+method): ``draft/export.py`` and ``admin/balancer.py`` both import it directly.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.domain.player_sub_roles import normalize_sub_role
-from shared.domain.roster_shape import FLEX_SLOT_CODE
-from shared.repository import get_or_create_workspace_member
-from shared.services.newcomer_status import load_prior_participation
-from src import models
-from src.core.enums import HeroClass
+from shared.services.team_export import (
+    ExportOutcome,
+    ExportPlan,
+    MaterializationMember,
+    MaterializationTeam,
+    team_materialization,
+)
 from src.schemas.team import BalancerTeam
-from src.services import user as user_svc
+
+__all__ = ("TeamService", "team_service", "to_materialization_teams")
 
 logger = logging.getLogger(__name__)
 
 
-def _resolve_hero_role(role: str | None) -> HeroClass | None:
-    """Roster slot code -> the role stored on ``tournament.player``.
+def to_materialization_teams(payload: Sequence[BalancerTeam]) -> list[MaterializationTeam]:
+    """``BalancerTeam`` -> shared writer input.
 
-    ``flex`` is a real answer, not a missing one: a role-less roster assigns no
-    game role, and ``HeroClass.flex`` is how that survives the export. ``None``
-    stays reserved for "the payload named no slot at all".
+    ``BalancerTeam.name`` is both the stored ``balancer_name`` and, by
+    convention, the captain's battle tag; each member's ``name`` is their own
+    tag. Both stay implicit here exactly as they were in the writer this replaces.
     """
-    if role is None:
-        return None
-    normalized = role.lower()
-    if normalized == "tank":
-        return HeroClass.tank
-    if normalized in {"dps", "damage"}:
-        return HeroClass.damage
-    if normalized == "support":
-        return HeroClass.support
-    if normalized == FLEX_SLOT_CODE:
-        return HeroClass.flex
-    return None
-
-
-async def bulk_create_from_balancer(
-    session: AsyncSession,
-    tournament_id: int,
-    payload: list[BalancerTeam],
-) -> None:
-    """Create tournament teams and players from a balancer export payload.
-
-    Previously this issued ~5 sequential queries per player (battle-tag lookup,
-    existing-in-tournament, existing-globally, existing-role, member get/create)
-    inside a single long transaction — O(players×5) round-trips (review H12).
-    It now front-loads a handful of batch queries and makes only in-memory
-    decisions plus INSERTs in the build loop.
-    """
-    tournament_result = await session.execute(sa.select(models.Tournament).where(models.Tournament.id == tournament_id))
-    tournament = tournament_result.scalar_one_or_none()
-    if tournament is None:
-        logger.warning("Tournament %s not found, skipping bulk_create_from_balancer", tournament_id)
-        return
-
-    # ── Batch phase: resolve everything the build loop needs up front ──────────
-    # 1. Resolve every battle tag (team captains + members) to users in one pass.
-    all_tags: set[str] = set()
-    for team_data in payload:
-        all_tags.add(team_data.name)
-        for member in team_data.members:
-            all_tags.add(member.name)
-    users_by_tag = await user_svc.find_users_by_battle_tags(session, list(all_tags))
-    resolved_user_ids = {user.id for user in users_by_tag.values()}
-
-    # 2. Batch-load existing teams for this tournament by lowercased name.
-    team_names = {team_data.name.split("#")[0].lower() for team_data in payload}
-    existing_teams: dict[str, models.Team] = {}
-    if team_names:
-        team_rows = (
-            (
-                await session.execute(
-                    sa.select(models.Team).where(
-                        models.Team.tournament_id == tournament_id,
-                        sa.func.lower(models.Team.name).in_(list(team_names)),
-                    )
+    return [
+        MaterializationTeam(
+            balancer_name=team.name,
+            members=tuple(
+                MaterializationMember(
+                    name=member.name,
+                    rank=member.rank,
+                    slot_code=member.role,
+                    sub_role=member.sub_role,
                 )
-            )
-            .scalars()
-            .all()
+                for member in team.members
+            ),
         )
-        for team in team_rows:
-            existing_teams.setdefault(team.name.lower(), team)
+        for team in payload
+    ]
 
-    # 3. One query over the workspace_member→player join (uses
-    #    ix_workspace_member_player_id) finds players already in this
-    #    tournament; ``load_prior_participation`` answers the newcomer
-    #    question separately (chronological, scope-aware).
-    players_in_tournament: set[int] = set()
-    members_by_player: dict[int, models.WorkspaceMember] = {}
-    history = await load_prior_participation(session, tournament=tournament, user_ids=resolved_user_ids)
-    if resolved_user_ids:
-        user_id_list = list(resolved_user_ids)
-        player_rows = (
-            await session.execute(
-                sa.select(
-                    models.WorkspaceMember.player_id,
-                    models.Player.tournament_id,
-                )
-                .join(models.Player, models.Player.workspace_member_id == models.WorkspaceMember.id)
-                .where(models.WorkspaceMember.player_id.in_(user_id_list))
-            )
-        ).all()
-        for player_id, player_tournament_id in player_rows:
-            if player_tournament_id == tournament_id:
-                players_in_tournament.add(player_id)
 
-        # 4. Batch-load existing workspace members for these users.
-        member_rows = (
-            (
-                await session.execute(
-                    sa.select(models.WorkspaceMember).where(
-                        models.WorkspaceMember.workspace_id == tournament.workspace_id,
-                        models.WorkspaceMember.player_id.in_(user_id_list),
-                    )
-                )
-            )
-            .scalars()
-            .all()
+class TeamService:
+    async def import_teams(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        payload: Sequence[BalancerTeam],
+    ) -> ExportOutcome:
+        """Plain import: create teams/players, no prior-export cleanup, no stamp.
+
+        Commits once (the orchestrator owns the boundary), which is what the previous
+        ``bulk_create_from_balancer`` did internally — callers that relied on that
+        commit keep working unchanged.
+        """
+        return await team_materialization.run(
+            session,
+            ExportPlan(
+                tournament_id=tournament_id,
+                teams=to_materialization_teams(payload),
+                # Lenient, as balancer-service has always been: an unresolvable
+                # battle tag skips that player rather than failing the whole import.
+                on_unresolved="skip",
+            ),
         )
-        for member_row in member_rows:
-            members_by_player[member_row.player_id] = member_row
 
-    # ── Build phase: in-memory decisions + INSERTs only ────────────────────────
-    # Tracks users already placed in this tournament (DB pre-state + this import)
-    # so a repeated roster entry never creates a duplicate Player.
-    placed_user_ids: set[int] = set(players_in_tournament)
 
-    for team_data in payload:
-        try:
-            name = team_data.name.split("#")[0]
-        except ValueError:
-            name = team_data.name
-
-        captain = users_by_tag.get(team_data.name)
-        team = existing_teams.get(name.lower())
-
-        if team is None:
-            team = models.Team(
-                name=name,
-                balancer_name=team_data.name,
-                tournament_id=tournament.id,
-                captain_id=captain.id if captain else None,
-            )
-            session.add(team)
-            await session.flush()
-            existing_teams[name.lower()] = team
-            logger.info("Team %s created in tournament %s", name, tournament_id)
-        else:
-            logger.info("Team %s already exists in tournament %s, skipping", name, tournament_id)
-
-        for member in team_data.members:
-            user = users_by_tag.get(member.name)
-            if user is None:
-                logger.warning("User %s not found, skipping player creation", member.name)
-                continue
-
-            if user.id in placed_user_ids:
-                logger.info("Player %s already in tournament %s, skipping", member.name, tournament_id)
-                continue
-
-            role = _resolve_hero_role(member.role)
-            is_newcomer = history.is_newcomer(user.id)
-            is_newcomer_role = history.is_newcomer_role(user.id, role)
-
-            workspace_member = members_by_player.get(user.id)
-            if workspace_member is None:
-                workspace_member = await get_or_create_workspace_member(
-                    session, workspace_id=tournament.workspace_id, player_id=user.id
-                )
-                members_by_player[user.id] = workspace_member
-
-            player = models.Player(
-                name=member.name,
-                sub_role=normalize_sub_role(member.sub_role),
-                rank=member.rank,
-                role=role,
-                tournament_id=tournament.id,
-                team_id=team.id,
-                is_newcomer=is_newcomer,
-                is_newcomer_role=is_newcomer_role,
-                workspace_member_id=workspace_member.id,
-            )
-            session.add(player)
-            placed_user_ids.add(user.id)
-            logger.info("Player %s added to team %s", member.name, team.name)
-
-    await session.commit()
+team_service = TeamService()

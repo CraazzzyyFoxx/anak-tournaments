@@ -37,7 +37,7 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.core.enums import DraftFormat  # noqa: E402
-from src.services.draft.lifecycle import (  # noqa: E402
+from src.domain.draft.rules import (  # noqa: E402
     DYNAMIC_ROUND_RULES,
     average_seat_order,
     round_seat_order,

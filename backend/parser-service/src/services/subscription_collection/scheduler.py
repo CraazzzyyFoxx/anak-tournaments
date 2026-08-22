@@ -34,7 +34,7 @@ from src.core.broker import optional_broker
 from src.core.config import settings
 from src.rpc._clients import realtime_redis
 
-from . import service
+from .service import subscription_collection_service
 
 SCHEDULER_TICK_SECONDS = 60
 LEADER_LOCK_KEY = "subscription_collection:scheduler:leader"
@@ -92,7 +92,7 @@ async def run_subscription_collection_tick(
 
                 active_broker = optional_broker()
 
-                count = await service.collect_subscriptions_for_active_tournaments(
+                count = await subscription_collection_service.collect_subscriptions_for_active_tournaments(
                     session,
                     discord_bot_token=settings.discord_token,
                     twitch_client_id=settings.twitch_client_id,

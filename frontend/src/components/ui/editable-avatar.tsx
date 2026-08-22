@@ -32,6 +32,27 @@ export interface EditableAvatarProps {
   onError?: (message: string) => void;
   /** Disable all interaction without changing the read-only look. */
   disabled?: boolean;
+  /**
+   * Localized copy for the accessible names, the hover overlay and the two
+   * client-side validation messages. Every field is optional and falls back to
+   * the English default, so callers that have not been localized keep working.
+   */
+  labels?: {
+    /** Accessible name of the picker surface. */
+    change?: string;
+    /** Overlay word when there is no image yet. */
+    upload?: string;
+    /** Overlay word when replacing an existing image. */
+    edit?: string;
+    /** Overlay word while a file is dragged over the frame. */
+    drop?: string;
+    /** Accessible name and tooltip of the delete button. */
+    remove?: string;
+    /** Reported through `onError` for a disallowed MIME type. */
+    unsupportedType?: string;
+    /** Reported through `onError` for an oversized file. Already formatted. */
+    tooLarge?: string;
+  };
   className?: string;
 }
 
@@ -66,6 +87,7 @@ export function EditableAvatar({
   maxSizeBytes,
   onError,
   disabled = false,
+  labels,
   className,
 }: Readonly<EditableAvatarProps>) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,11 +105,14 @@ export function EditableAvatar({
   const handleFile = (file: File | undefined | null) => {
     if (!file) return;
     if (!accepts(file.type)) {
-      onError?.("Unsupported file type");
+      onError?.(labels?.unsupportedType ?? "Unsupported file type");
       return;
     }
     if (maxSizeBytes && file.size > maxSizeBytes) {
-      onError?.(`File too large (max ${Math.round(maxSizeBytes / (1024 * 1024))} MB)`);
+      onError?.(
+        labels?.tooLarge ??
+          `File too large (max ${Math.round(maxSizeBytes / (1024 * 1024))} MB)`,
+      );
       return;
     }
     onSelectFile(file);
@@ -112,7 +137,7 @@ export function EditableAvatar({
         )}
         role={interactive ? "button" : undefined}
         tabIndex={interactive ? 0 : undefined}
-        aria-label={interactive ? "Change image" : undefined}
+        aria-label={interactive ? (labels?.change ?? "Change image") : undefined}
         onClick={() => interactive && inputRef.current?.click()}
         onKeyDown={(e) => {
           if (interactive && (e.key === "Enter" || e.key === " ")) {
@@ -150,7 +175,11 @@ export function EditableAvatar({
           >
             {src ? <Pencil className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
             <span className="text-[10px] font-medium uppercase tracking-wide">
-              {dragging ? "Drop" : src ? "Edit" : "Upload"}
+              {dragging
+                ? (labels?.drop ?? "Drop")
+                : src
+                  ? (labels?.edit ?? "Edit")
+                  : (labels?.upload ?? "Upload")}
             </span>
           </div>
         )}
@@ -175,8 +204,8 @@ export function EditableAvatar({
             "absolute z-10 rounded-full border border-border bg-background/90 p-1 text-destructive/80 shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive hover:text-destructive-foreground",
             shape === "circle" ? "bottom-1 right-1" : "bottom-0.5 right-0.5",
           )}
-          aria-label="Remove image"
-          title="Remove image"
+          aria-label={labels?.remove ?? "Remove image"}
+          title={labels?.remove ?? "Remove image"}
         >
           <Trash2 className="h-3 w-3" />
         </button>

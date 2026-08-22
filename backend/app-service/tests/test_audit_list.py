@@ -27,6 +27,7 @@ from shared.rpc.query import build_query_model
 from src import openapi_docs, openapi_schemas
 from src.rpc import audit as audit_rpc
 from src.schemas.admin import audit as audit_schemas
+from src.services.admin.audit import audit_log as audit_queries
 from tests.conftest import _CaptureBroker, build_query
 
 _SUBJECT = "rpc.app.audit_list"
@@ -156,7 +157,7 @@ def test_a_superuser_may_still_narrow_to_one_workspace() -> None:
 def test_an_entity_filter_narrows_within_the_scope_it_does_not_replace_it() -> None:
     # entity_type+entity_id names a row directly. Pointed at another tenant's
     # tournament it must return nothing, so both predicates have to survive.
-    sql = _compiled(audit_rpc.rows_query(7, _params(entity_type="tournament", entity_id=999)))
+    sql = _compiled(audit_queries.rows_query(7, _params(entity_type="tournament", entity_id=999)))
     assert "audit_log.workspace_id = 7" in sql
     assert "audit_log.entity_type = 'tournament'" in sql
     assert "audit_log.entity_id = 999" in sql
@@ -164,13 +165,13 @@ def test_an_entity_filter_narrows_within_the_scope_it_does_not_replace_it() -> N
 
 def test_an_actor_filter_narrows_within_the_scope_it_does_not_replace_it() -> None:
     # Same for "show me what that admin did": scoped, or it is a tenant leak.
-    sql = _compiled(audit_rpc.rows_query(7, _params(actor_user_id=4242)))
+    sql = _compiled(audit_queries.rows_query(7, _params(actor_user_id=4242)))
     assert "audit_log.workspace_id = 7" in sql
     assert "audit_log.actor_auth_user_id = 4242" in sql
 
 
 def test_a_search_term_narrows_within_the_scope_it_does_not_replace_it() -> None:
-    sql = _compiled(audit_rpc.rows_query(7, _params(search="delete")))
+    sql = _compiled(audit_queries.rows_query(7, _params(search="delete")))
     assert "audit_log.workspace_id = 7" in sql
     # ``literal_binds`` renders the LIKE wildcards through the DBAPI paramstyle,
     # which doubles them ('%%delete%%'). Assert on the column list instead: what
@@ -184,7 +185,7 @@ def test_a_search_term_narrows_within_the_scope_it_does_not_replace_it() -> None
 def test_the_count_query_carries_the_same_scope_as_the_page_query() -> None:
     # A total computed without the scope would leak the size of other tenants'
     # history through the pager even with an empty results array.
-    sql = _compiled(audit_rpc.count_query(7, _params(entity_type="tournament", entity_id=999)))
+    sql = _compiled(audit_queries.count_query(7, _params(entity_type="tournament", entity_id=999)))
     assert "audit_log.workspace_id = 7" in sql
     assert "audit_log.entity_id = 999" in sql
 
@@ -196,13 +197,13 @@ def test_the_superuser_feed_has_no_workspace_predicate_so_platform_rows_show() -
     # No WHERE at all: nothing to exclude the `workspace_id IS NULL` rows, which
     # is how "platform events are superuser-only" is expressed — by who reaches
     # this branch, not by a second rule.
-    assert "WHERE" not in _compiled(audit_rpc.rows_query(None, _params()))
+    assert "WHERE" not in _compiled(audit_queries.rows_query(None, _params()))
 
 
 def test_the_organizer_feed_excludes_platform_rows() -> None:
     # `workspace_id = 7` is never true for NULL, which is the whole mechanism:
     # no separate "hide the platform rows" rule exists to forget.
-    sql = _compiled(audit_rpc.rows_query(7, _params()))
+    sql = _compiled(audit_queries.rows_query(7, _params()))
     assert "audit_log.workspace_id = 7" in sql
     assert "audit_log.workspace_id IS NULL" not in sql
 
@@ -214,18 +215,18 @@ def test_the_default_order_is_created_at_then_id_both_descending() -> None:
     # created_at is the transaction START time, so rows written by one
     # transaction share it; without the id tiebreaker offset pagination would
     # repeat a row on one page and drop another.
-    sql = _compiled(audit_rpc.rows_query(7, _params()))
+    sql = _compiled(audit_queries.rows_query(7, _params()))
     assert sql.split("ORDER BY")[1].strip().startswith("audit_log.created_at DESC, audit_log.id DESC")
 
 
 def test_ascending_order_keeps_the_id_tiebreaker_in_the_same_direction() -> None:
-    sql = _compiled(audit_rpc.rows_query(7, _params(order="asc")))
+    sql = _compiled(audit_queries.rows_query(7, _params(order="asc")))
     assert sql.split("ORDER BY")[1].strip().startswith("audit_log.created_at ASC, audit_log.id ASC")
 
 
 @pytest.mark.parametrize("field", audit_schemas.AUDIT_SORT_FIELDS)
 def test_every_sortable_column_still_ends_on_the_id_tiebreaker(field: str) -> None:
-    order_by = _compiled(audit_rpc.rows_query(7, _params(sort=field))).split("ORDER BY")[1]
+    order_by = _compiled(audit_queries.rows_query(7, _params(sort=field))).split("ORDER BY")[1]
     assert order_by.strip().endswith("audit_log.id DESC")
 
 
@@ -242,6 +243,6 @@ def test_the_actor_name_join_is_left_outer_so_a_deleted_account_keeps_its_rows()
     # An INNER join would erase exactly the history the journal exists for:
     # "who deleted this account" would vanish with the account. `user` is a
     # reserved word, so PostgreSQL renders the table as auth."user".
-    sql = _compiled(audit_rpc.rows_query(7, _params()))
+    sql = _compiled(audit_queries.rows_query(7, _params()))
     assert 'LEFT OUTER JOIN auth."user"' in sql
     assert "INNER JOIN" not in sql

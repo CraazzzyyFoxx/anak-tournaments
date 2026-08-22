@@ -247,7 +247,7 @@ class DraftPlayerRead(BaseRead):
     # under a shape with role slots, their best role rank under a role-less
     # (all-flex) one, where nobody is assigned a role. Clients render it instead
     # of ``rank_value`` wherever they show a player with no role context, so the
-    # flex rule lives once, in ``services.draft.ranks.slot_rank``.
+    # flex rule lives once, in ``domain.draft.ranks.slot_rank``.
     effective_rank: int | None = None
     # Projected on the read side (not an ORM column) — see board.build_board.
     custom_fields: list[DraftPlayerCustomFieldRead] = Field(default_factory=list)

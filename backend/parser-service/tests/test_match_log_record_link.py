@@ -61,7 +61,6 @@ class CreateMatchRecordsTheLog(IsolatedAsyncioTestCase):
             home_score=2,
             away_score=1,
             log_record_id=99,
-            commit=False,
         )
         self.assertEqual(99, match.log_record_id)
         self.assertEqual([match], added)
@@ -80,7 +79,6 @@ class CreateMatchRecordsTheLog(IsolatedAsyncioTestCase):
             away_team_id=2,
             home_score=1,
             away_score=0,
-            commit=False,
         )
         self.assertIsNone(match.log_record_id)
 
@@ -110,7 +108,7 @@ class ProcessorCarriesTheRecordId(IsolatedAsyncioTestCase):
 
         with (
             patch.object(flows.tournament_flows, "get", AsyncMock(return_value=SimpleNamespace(id=1, name="t"))),
-            patch.object(flows.s3_service, "get_log_by_filename", AsyncMock(return_value=b"a\nb")),
+            patch.object(flows.binary_match_logs, "get_log_by_filename", AsyncMock(return_value=b"a\nb")),
             patch.object(record_service, "is_already_processed", AsyncMock(return_value=False)),
             patch.object(record_service, "set_processing", AsyncMock(return_value=record)),
             patch.object(record_service, "set_done", AsyncMock()),

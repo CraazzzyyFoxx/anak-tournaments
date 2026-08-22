@@ -50,7 +50,8 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
 from src import models  # noqa: E402
 from src.core import enums  # noqa: E402
-from src.services.user import service  # noqa: E402
+from src.services.user.queries import _scope  # noqa: E402
+from src.services.user.queries.compare import compare as compare_queries  # noqa: E402
 
 
 @compiles(JSONB, "sqlite")
@@ -162,7 +163,7 @@ class HeroCompareBaselineScopeTests(TestCase):
 
     def _candidates(self, **filters: object) -> set[int]:
         """Run the real helper the statement embeds."""
-        select = service.compare_hero_candidates_select(user_ids=None, grid=_grid(), **filters)  # type: ignore[arg-type]
+        select = compare_queries.compare_hero_candidates_select(user_ids=None, grid=_grid(), **filters)  # type: ignore[arg-type]
         return {int(row[0]) for row in self.session.execute(select)}
 
     def _population(self, **filters: object) -> set[int]:
@@ -170,7 +171,7 @@ class HeroCompareBaselineScopeTests(TestCase):
         query = sa.select(models.User.id)
         if any(value is not None for value in filters.values()):
             query = query.where(
-                service._compare_user_scope_exists(  # noqa: SLF001 - the predicate that function applies
+                _scope._compare_user_scope_exists(  # noqa: SLF001 - the predicate that function applies
                     models.User.id,
                     grid=_grid(),
                     **filters,  # type: ignore[arg-type]
@@ -199,7 +200,7 @@ class HeroCompareBaselineScopeTests(TestCase):
             {
                 int(row[0])
                 for row in self.session.execute(
-                    service.compare_hero_candidates_select(
+                    compare_queries.compare_hero_candidates_select(
                         user_ids=[QUALIFIES, NEVER_PLAYED],
                         role=ROLE,
                         div_min=None,
@@ -217,7 +218,7 @@ class HeroCompareBaselineScopeTests(TestCase):
 
         def bind_params(user_ids: list[int] | None) -> int:
             sql = str(
-                service._users_hero_compare_query_v2(  # noqa: SLF001 - builder under test
+                compare_queries._users_hero_compare_query_v2(  # noqa: SLF001 - builder under test
                     user_ids=user_ids,
                     hero_id=None,
                     map_id=None,

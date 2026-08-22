@@ -149,7 +149,15 @@ export default function TournamentClientLayout({
             </span>
             <span className="meta-pill">
               <span className="k">{t("common.teamFormation")}</span>
-              <span className="v">{t(`common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft"}`)}</span>
+              {/* The cast must list every value the column can hold. It said
+                  `"balancer" | "draft"` while `team_formation` is a free string,
+                  so a "registration" tournament rendered the raw key path
+                  `common.registration` in the badge. */}
+              <span className="v">
+                {t(
+                  `common.${(tournament.team_formation ?? "balancer") as "balancer" | "draft" | "registration"}`,
+                )}
+              </span>
             </span>
           </>
         }

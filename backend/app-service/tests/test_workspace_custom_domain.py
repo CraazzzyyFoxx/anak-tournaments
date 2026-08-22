@@ -33,6 +33,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 workspace_service = importlib.import_module("src.services.workspace.service")
+workspaces = workspace_service.workspaces
 
 
 def _txt_answer(*values: str) -> list[TXT]:
@@ -49,7 +50,7 @@ class DnsTxtContainsTests(IsolatedAsyncioTestCase):
         with patch.object(
             workspace_service.dns.asyncresolver, "resolve", AsyncMock(return_value=_txt_answer("owt-verify-abc123"))
         ) as resolve:
-            result = await workspace_service._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
+            result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertTrue(result)
         resolve.assert_awaited_once_with("_owt-verify.example.com", "TXT")
@@ -60,7 +61,7 @@ class DnsTxtContainsTests(IsolatedAsyncioTestCase):
             "resolve",
             AsyncMock(return_value=_txt_answer("some-other-value", "owt-verify-abc123")),
         ):
-            result = await workspace_service._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
+            result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertTrue(result)
 
@@ -68,13 +69,13 @@ class DnsTxtContainsTests(IsolatedAsyncioTestCase):
         with patch.object(
             workspace_service.dns.asyncresolver, "resolve", AsyncMock(return_value=_txt_answer("owt-verify-wrong"))
         ):
-            result = await workspace_service._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
+            result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertFalse(result)
 
     async def test_empty_answer_returns_false(self) -> None:
         with patch.object(workspace_service.dns.asyncresolver, "resolve", AsyncMock(return_value=[])):
-            result = await workspace_service._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
+            result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertFalse(result)
 
@@ -84,7 +85,7 @@ class DnsTxtContainsTests(IsolatedAsyncioTestCase):
             "resolve",
             AsyncMock(side_effect=dns.resolver.NXDOMAIN()),
         ):
-            result = await workspace_service._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
+            result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertFalse(result)
 
@@ -94,7 +95,7 @@ class DnsTxtContainsTests(IsolatedAsyncioTestCase):
             "resolve",
             AsyncMock(side_effect=dns.exception.DNSException("boom")),
         ):
-            result = await workspace_service._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
+            result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertFalse(result)
 
@@ -104,7 +105,7 @@ class DnsTxtContainsTests(IsolatedAsyncioTestCase):
         with patch.object(
             workspace_service.dns.asyncresolver, "resolve", AsyncMock(side_effect=RuntimeError("resolver down"))
         ):
-            result = await workspace_service._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
+            result = await workspaces._dns_txt_contains("_owt-verify.example.com", "owt-verify-abc123")
 
         self.assertFalse(result)
 
@@ -129,7 +130,7 @@ class SetCustomDomainTests(IsolatedAsyncioTestCase):
         # the DNS tests patch ``_dns_txt_contains`` at the exact seam instead
         # of stubbing the network.
         patcher = patch.object(
-            workspace_service._workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None)
+            workspaces.workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None)
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -142,7 +143,7 @@ class SetCustomDomainTests(IsolatedAsyncioTestCase):
             custom_domain_verified_at=datetime.now(UTC),
         )
 
-        result = await workspace_service.set_custom_domain(session, workspace, "Tourney.Customer.com")
+        result = await workspaces.set_custom_domain(session, workspace, "Tourney.Customer.com")
 
         self.assertIs(result, workspace)
         self.assertEqual("tourney.customer.com", workspace.custom_domain)  # normalized (lowercased)
@@ -155,9 +156,9 @@ class SetCustomDomainTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(flush=AsyncMock())
         workspace = _make_workspace()
 
-        await workspace_service.set_custom_domain(session, workspace, "example.com")
+        await workspaces.set_custom_domain(session, workspace, "example.com")
         first_token = workspace.custom_domain_verification_token
-        await workspace_service.set_custom_domain(session, workspace, "example.com")
+        await workspaces.set_custom_domain(session, workspace, "example.com")
         second_token = workspace.custom_domain_verification_token
 
         self.assertNotEqual(first_token, second_token)
@@ -167,7 +168,7 @@ class SetCustomDomainTests(IsolatedAsyncioTestCase):
         workspace = _make_workspace()
 
         with self.assertRaises(ValueError):
-            await workspace_service.set_custom_domain(session, workspace, "not a domain")
+            await workspaces.set_custom_domain(session, workspace, "not a domain")
 
         self.assertIsNone(workspace.custom_domain)
         session.flush.assert_not_awaited()
@@ -177,7 +178,7 @@ class SetCustomDomainTests(IsolatedAsyncioTestCase):
         workspace = _make_workspace()
 
         with self.assertRaises(ValueError):
-            await workspace_service.set_custom_domain(session, workspace, "team-a.owt.craazzzyyfoxx.me")
+            await workspaces.set_custom_domain(session, workspace, "team-a.owt.craazzzyyfoxx.me")
 
         session.flush.assert_not_awaited()
 
@@ -195,12 +196,12 @@ class DuplicateCustomDomainTests(IsolatedAsyncioTestCase):
         other_workspace = _make_workspace(id=99, custom_domain="tourney.customer.com")
 
         with patch.object(
-            workspace_service._workspace_repo,
+            workspaces.workspace_repo,
             "get_by_custom_domain_any",
             AsyncMock(return_value=other_workspace),
         ):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
-                await workspace_service.set_custom_domain(session, workspace, "tourney.customer.com")
+                await workspaces.set_custom_domain(session, workspace, "tourney.customer.com")
 
         self.assertEqual(409, ctx.exception.status_code)
         self.assertIsNone(workspace.custom_domain)  # never written
@@ -211,11 +212,11 @@ class DuplicateCustomDomainTests(IsolatedAsyncioTestCase):
         workspace = _make_workspace(id=7, custom_domain="tourney.customer.com")
 
         with patch.object(
-            workspace_service._workspace_repo,
+            workspaces.workspace_repo,
             "get_by_custom_domain_any",
             AsyncMock(return_value=workspace),  # the pre-check finds itself
         ):
-            result = await workspace_service.set_custom_domain(session, workspace, "tourney.customer.com")
+            result = await workspaces.set_custom_domain(session, workspace, "tourney.customer.com")
 
         self.assertIs(result, workspace)
         session.flush.assert_awaited_once()
@@ -235,9 +236,9 @@ class DuplicateCustomDomainTests(IsolatedAsyncioTestCase):
         )
         workspace = _make_workspace(id=7)
 
-        with patch.object(workspace_service._workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None)):
+        with patch.object(workspaces.workspace_repo, "get_by_custom_domain_any", AsyncMock(return_value=None)):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
-                await workspace_service.set_custom_domain(session, workspace, "tourney.customer.com")
+                await workspaces.set_custom_domain(session, workspace, "tourney.customer.com")
 
         self.assertEqual(409, ctx.exception.status_code)
         session.rollback.assert_awaited_once()
@@ -252,7 +253,7 @@ class ClearCustomDomainTests(IsolatedAsyncioTestCase):
             custom_domain_verified_at=datetime.now(UTC),
         )
 
-        result = await workspace_service.clear_custom_domain(session, workspace)
+        result = await workspaces.clear_custom_domain(session, workspace)
 
         self.assertIs(result, workspace)
         self.assertIsNone(workspace.custom_domain)
@@ -267,7 +268,7 @@ class VerifyCustomDomainTests(IsolatedAsyncioTestCase):
         workspace = _make_workspace()
 
         with self.assertRaises(workspace_service.HTTPException) as ctx:
-            await workspace_service.verify_custom_domain(session, workspace)
+            await workspaces.verify_custom_domain(session, workspace)
 
         self.assertEqual(400, ctx.exception.status_code)
         session.flush.assert_not_awaited()
@@ -277,7 +278,7 @@ class VerifyCustomDomainTests(IsolatedAsyncioTestCase):
         workspace = _make_workspace(custom_domain="tourney.customer.com", custom_domain_verification_token=None)
 
         with self.assertRaises(workspace_service.HTTPException) as ctx:
-            await workspace_service.verify_custom_domain(session, workspace)
+            await workspaces.verify_custom_domain(session, workspace)
 
         self.assertEqual(400, ctx.exception.status_code)
 
@@ -288,8 +289,8 @@ class VerifyCustomDomainTests(IsolatedAsyncioTestCase):
             custom_domain_verification_token="owt-verify-abc123",
         )
 
-        with patch.object(workspace_service, "_dns_txt_contains", AsyncMock(return_value=True)) as dns_check:
-            result = await workspace_service.verify_custom_domain(session, workspace)
+        with patch.object(workspaces, "_dns_txt_contains", AsyncMock(return_value=True)) as dns_check:
+            result = await workspaces.verify_custom_domain(session, workspace)
 
         self.assertIs(result, workspace)
         dns_check.assert_awaited_once_with("_owt-verify.tourney.customer.com", "owt-verify-abc123")
@@ -315,8 +316,8 @@ class VerifyCustomDomainTests(IsolatedAsyncioTestCase):
             call_order.append("dns")
             return True
 
-        with patch.object(workspace_service, "_dns_txt_contains", _fake_dns_check):
-            await workspace_service.verify_custom_domain(session, workspace)
+        with patch.object(workspaces, "_dns_txt_contains", _fake_dns_check):
+            await workspaces.verify_custom_domain(session, workspace)
 
         self.assertEqual(["commit", "dns"], call_order)
 
@@ -327,9 +328,9 @@ class VerifyCustomDomainTests(IsolatedAsyncioTestCase):
             custom_domain_verification_token="owt-verify-abc123",
         )
 
-        with patch.object(workspace_service, "_dns_txt_contains", AsyncMock(return_value=False)):
+        with patch.object(workspaces, "_dns_txt_contains", AsyncMock(return_value=False)):
             with self.assertRaises(workspace_service.HTTPException) as ctx:
-                await workspace_service.verify_custom_domain(session, workspace)
+                await workspaces.verify_custom_domain(session, workspace)
 
         self.assertEqual(400, ctx.exception.status_code)
         self.assertIsNone(workspace.custom_domain_verified_at)

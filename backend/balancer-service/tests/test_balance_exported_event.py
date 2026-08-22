@@ -94,7 +94,7 @@ class BalanceExportedEventTests(IsolatedAsyncioTestCase):
         exported_teams = {"Team A": SimpleNamespace(id=99)}
 
         with patch.object(balance_analytics, "enqueue_outbox_event", AsyncMock()) as enqueue:
-            await balance_analytics.enqueue_balance_exported_event(session, balance, _payload(), exported_teams)
+            await balance_analytics.balance_analytics_service.enqueue_balance_exported_event(session, balance, _payload(), exported_teams)
 
         # Exactly one outbox event, and no direct analytics-table writes on the session.
         self.assertEqual(1, enqueue.await_count)
@@ -147,7 +147,7 @@ class BalanceExportedEventTests(IsolatedAsyncioTestCase):
         )
 
         with patch.object(balance_analytics, "enqueue_outbox_event", AsyncMock()) as enqueue:
-            result = await balance_analytics.enqueue_balance_exported_event(
+            result = await balance_analytics.balance_analytics_service.enqueue_balance_exported_event(
                 session, balance, InternalBalancerTeamsPayload(teams=[]), {}
             )
 
@@ -180,7 +180,7 @@ class ExportBalanceLoaderTests(IsolatedAsyncioTestCase):
         session.execute = execute
 
         with self.assertRaises(Stop):
-            await balancer_service.export_balance(session, 1)
+            await balancer_service.balancer_admin_service.export_balance(session, 1)
 
         eager_loaded = {
             entity.key

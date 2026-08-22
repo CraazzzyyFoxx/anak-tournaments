@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -40,6 +41,7 @@ from src.schemas.registration_build import (
     _reg_to_read,
     _resolve_top_heroes_config,
     _resolve_tournament_workspace,
+    registration_read_loaders,
 )
 from src.services.registration._common import FlexRoleMode, apply_all_roles, flex_role_mode
 from src.services.registration.subscription_reads import (
@@ -99,9 +101,9 @@ async def get_registration(
             .selectinload(models.BalancerRegistrationRoleHero.hero)
         )
         .options(selectinload(models.BalancerRegistration.tournament))
-        # _reg_to_read serializes user_id from workspace_member.player_id and
-        # must never lazy-load it in async code.
-        .options(selectinload(models.BalancerRegistration.workspace_member))
+        # _reg_to_read serializes user_id from workspace_member.player_id and the
+        # team brief from registration_team; neither may lazy-load in async code.
+        .options(*registration_read_loaders())
     )
     return result.scalar_one_or_none()
 
@@ -674,22 +676,53 @@ async def check_in_registration(
 # ── public self-service use-cases (called by rpc/public_rpc.py) ──────────────
 
 
+@dataclass(frozen=True)
+class TeamPlacement:
+    """Where a registration sits on a registering team's roster.
+
+    Threaded into :func:`submit_public_registration` so the captain and invitee
+    flows reuse the one validated self-registration writer instead of copying its
+    form/subrole/hero/verified-identity validation. ``None`` (the default) is
+    exactly today's solo behaviour.
+    """
+
+    registration_team_id: int
+    slot_code: str
+    is_substitute: bool = False
+
+
 async def submit_public_registration(
     session: AsyncSession,
     *,
     tournament_id: int,
     auth_user: models.AuthUser,
     body: RegistrationCreate,
+    team_placement: TeamPlacement | None = None,
+    commit: bool = True,
 ) -> RegistrationRead:
     """Full public self-registration use-case.
 
     Validates form state, subrole/hero catalogs and verified-identity fields,
     rejects duplicates, creates the registration + role rows and returns the
-    serialized read model. Commits internally.
+    serialized read model.
+
+    ``team_placement`` binds the new registration to a registering team's roster
+    slot. The caller owns the slot decision and must already hold the team's row
+    lock — this function only writes what it is told, so that the check and the
+    write cannot be separated by a concurrent acceptance.
+
+    ``commit=False`` flushes instead, leaving the transaction boundary to the
+    caller — the same split the team-export orchestrator uses. The team flows need
+    it because consuming an invite, writing the registration and updating the
+    team's denormalized status must land together or not at all. A caller that
+    passes it also owns mapping ``IntegrityError`` at its own commit, since that
+    now fires outside this function's ``try``.
     """
     form = await get_registration_form(session, tournament_id)
     tournament = await session.get(models.Tournament, tournament_id)
-    if form is None or tournament is None or not is_registration_open(tournament, form):
+    # ``form is None`` still gates: a tournament with no registration form has
+    # nothing to submit against. Openness itself is now purely the schedule.
+    if form is None or tournament is None or not is_registration_open(tournament):
         raise HTTPException(status_code=400, detail="Registration is not open for this tournament")
 
     workspace_id = form.workspace_id
@@ -751,11 +784,23 @@ async def submit_public_registration(
             auth_user=auth_user,
         )
 
+        if team_placement is not None:
+            # Set before the commit that also writes the roles, so a team member's
+            # registration can never be visible without its slot: a row with a
+            # team_id but no slot_code would be counted by the roster reader and
+            # placed nowhere.
+            registration.registration_team_id = team_placement.registration_team_id
+            registration.team_slot_code = team_placement.slot_code
+            registration.is_substitute = team_placement.is_substitute
+
         # Write normalized roles
         for entry in role_entries:
             entry.registration_id = registration.id
             session.add(entry)
-        await session.commit()
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
     except IntegrityError:
         raise HTTPException(status_code=409, detail="Already registered for this tournament")
 
@@ -766,8 +811,7 @@ async def submit_public_registration(
             selectinload(models.BalancerRegistration.roles)
             .selectinload(models.BalancerRegistrationRole.hero_entries)
             .selectinload(models.BalancerRegistrationRoleHero.hero),
-            # _reg_to_read serializes user_id from workspace_member.player_id.
-            selectinload(models.BalancerRegistration.workspace_member),
+            *registration_read_loaders(),
         )
     )
     registration = result.scalar_one()
@@ -850,8 +894,9 @@ async def build_public_registration_list(
             .selectinload(models.BalancerRegistrationRole.hero_entries)
             .selectinload(models.BalancerRegistrationRoleHero.hero),
             # Needed by _build_tournament_history and _reg_to_read below —
-            # the member is the registration's only identity anchor.
-            selectinload(models.BalancerRegistration.workspace_member),
+            # the member is the registration's only identity anchor, and the team
+            # brief feeds the participants table's team column.
+            *registration_read_loaders(),
         )
         .order_by(models.BalancerRegistration.submitted_at.asc())
     )
@@ -917,7 +962,6 @@ async def upsert_registration_form(
         form = models.BalancerRegistrationForm(
             tournament_id=tournament_id,
             workspace_id=workspace_id,
-            is_open=body.is_open,
             auto_approve=body.auto_approve,
             require_open_profile=body.require_open_profile,
             open_profile_scope=body.open_profile_scope,
@@ -929,7 +973,6 @@ async def upsert_registration_form(
         )
         session.add(form)
     else:
-        form.is_open = body.is_open
         form.auto_approve = body.auto_approve
         form.require_open_profile = body.require_open_profile
         form.open_profile_scope = body.open_profile_scope

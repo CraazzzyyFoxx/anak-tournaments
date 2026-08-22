@@ -1,7 +1,9 @@
 # Repository Boundaries
 
 Shared CRUD repositories live in `shared.repository` and are the preferred way
-to access ORM rows from multiple services.
+to access ORM rows from multiple services. This is the repository layer's slice of the
+full rpc → services → domain → repository → models stack described in
+[`backend/ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 ## Repository Rules
 

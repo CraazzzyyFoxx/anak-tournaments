@@ -26,6 +26,14 @@ var IntegrationsRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/challonge/sync/push-result/{encounter_id}", Queue: "rpc.tournament.challonge_push_result", IDParam: "encounter_id", Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/challonge/sync/log/{tournament_id}", Queue: "rpc.tournament.challonge_sync_log", IDParam: "tournament_id", Query: []string{"limit"}, Auth: edge.AuthRequired},
 
+	// ── Bootstrap importers (formerly parser-service's rpc.parser.*; migrated
+	// here 2026-08-21 since tournament-service's own Challonge sync engine is a
+	// strict superset of what parser's one-shot bootstrap flows did). External
+	// paths are unchanged so the frontend needs no update.
+	{Method: "POST", Pattern: "/api/v1/tournament/create/with_groups", Queue: "rpc.tournament.challonge_create_tournament", AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/teams/challonge/preview", Queue: "rpc.tournament.challonge_team_preview", AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/teams/create/challonge", Queue: "rpc.tournament.challonge_team_apply", AllQuery: true, Body: true, Auth: edge.AuthRequired},
+
 	// ── Registration Google Sheets (admin) ────────────────────────────────
 	{Method: "GET", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/sheet", Queue: "rpc.tournament.sheet_get", IDParam: "tournament_id", Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/v1/admin/balancer/tournaments/{tournament_id}/sheet", Queue: "rpc.tournament.sheet_upsert", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},

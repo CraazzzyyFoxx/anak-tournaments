@@ -69,7 +69,7 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
         publish = AsyncMock()
         with (
             patch.object(serve.db, "async_session_maker", lambda: _Session(tournament_id)),
-            patch.object(serve.s3_service, "get_logs_by_tournament", AsyncMock(return_value=keys)),
+            patch.object(serve.binary_match_logs, "get_logs_by_tournament", AsyncMock(return_value=keys)),
             patch.object(serve, "publish_message", publish),
             patch.object(serve.logs_flows, "process_match_log", AsyncMock()) as parse,
         ):

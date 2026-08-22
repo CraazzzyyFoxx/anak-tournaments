@@ -42,6 +42,32 @@ export const tournamentQueryKeys = {
     ["registrations-list", workspaceId, tournamentId] as const,
   registrationForm: (workspaceId: number, tournamentId: number) =>
     ["registration-form", workspaceId, tournamentId] as const,
+  /** The public roster of registered teams (pre-formation). Distinct from
+   *  `teams`, which is the post-balancer materialized `tournament.team` list. */
+  registrationTeams: (workspaceId: number, tournamentId: number) =>
+    ["registration-teams", workspaceId, tournamentId] as const,
+  /** Organizer view: same rows plus invites, and optionally terminal teams. The
+   *  flag is part of the key because the two results are different data, not a
+   *  filtered view of one cache entry. */
+  registrationTeamsAdmin: (
+    workspaceId: number,
+    tournamentId: number,
+    includeTerminal: boolean,
+  ) => ["registration-teams-admin", workspaceId, tournamentId, includeTerminal] as const,
+  /** The captain's invite picker: registrants on no team. */
+  registrationFreeAgents: (workspaceId: number, tournamentId: number) =>
+    ["registration-free-agents", workspaceId, tournamentId] as const,
+  /** Invites addressed to the CURRENT user. No user id in the key: the server
+   *  scopes it from the token, and a per-user key would imply the cache could
+   *  legitimately hold another account's offers. Cleared on sign-out with the
+   *  rest of the authenticated cache. */
+  registrationMyInvites: (workspaceId: number, tournamentId: number) =>
+    ["registration-my-invites", workspaceId, tournamentId] as const,
+  /** A team's full invite history. Keyed by TEAM, not tournament: it is fetched
+   *  only when a captain or organizer expands one team's section, and keying it
+   *  by tournament would make every team share — and invalidate — one entry. */
+  registrationInviteHistory: (workspaceId: number, teamId: number) =>
+    ["registration-invite-history", workspaceId, teamId] as const,
   subscriptionStatus: (tournamentId: number) =>
     ["subscription-status", tournamentId] as const,
   draftBoard: (tournamentId: number) => ["draft", tournamentId, "board"] as const,

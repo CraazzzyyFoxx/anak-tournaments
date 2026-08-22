@@ -26,7 +26,8 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-from src.services import helix, state  # noqa: E402
+from src.services import helix  # noqa: E402
+from src.services.state import TOKEN_KEY  # noqa: E402
 
 TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 HELIX_URL = "https://api.twitch.tv/helix"
@@ -99,6 +100,25 @@ class _FakeRedis:
         self.deleted.append(key)
 
 
+def _client(
+    redis: Any,
+    *,
+    client_id: str | None = "cid",
+    client_secret: str | None = "secret",
+    helix_url: str = HELIX_URL,
+    token_url: str = TOKEN_URL,
+    request: helix.HelixRequest | None = None,
+) -> helix.HelixClient:
+    return helix.HelixClient(
+        redis,
+        client_id=client_id,
+        client_secret=client_secret,
+        helix_url=helix_url,
+        token_url=token_url,
+        request=request,
+    )
+
+
 def _query(call: dict[str, Any]) -> str:
     """The wire form of the request's params — what Twitch actually parses."""
     return str(httpx.QueryParams(call["params"]))
@@ -108,15 +128,9 @@ class BatchingTests(IsolatedAsyncioTestCase):
     async def test_over_hundred_logins_split_into_two_requests(self) -> None:
         logins = [f"streamer{i}" for i in range(150)]
         recorder = _Recorder(_ok([]), _ok([]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        result = await helix.get_live_streams(
-            logins=logins,
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            batch_size=100,
-            request=recorder,
-        )
+        result = await client.get_live_streams(logins=logins, token="tok", batch_size=100)
 
         self.assertEqual(len(recorder.gets), 2)
         self.assertEqual(len([p for p in recorder.gets[0]["params"] if p[0] == "user_login"]), 100)
@@ -125,14 +139,12 @@ class BatchingTests(IsolatedAsyncioTestCase):
 
     async def test_batch_size_is_capped_at_the_helix_limit(self) -> None:
         recorder = _Recorder(_ok([]), _ok([]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        await helix.get_live_streams(
+        await client.get_live_streams(
             logins=[f"s{i}" for i in range(120)],
             token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
             batch_size=500,  # an operator-supplied value Helix would reject
-            request=recorder,
         )
 
         self.assertEqual(len(recorder.gets), 2)
@@ -140,14 +152,9 @@ class BatchingTests(IsolatedAsyncioTestCase):
     async def test_first_is_pinned_to_the_batch_size(self) -> None:
         """Unset, Helix defaults to 20 and drops the tail of a 100-channel batch."""
         recorder = _Recorder(_ok([]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        await helix.get_live_streams(
-            logins=[f"s{i}" for i in range(30)],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            request=recorder,
-        )
+        await client.get_live_streams(logins=[f"s{i}" for i in range(30)], token="tok")
 
         self.assertIn(("first", "30"), recorder.gets[0]["params"])
 
@@ -155,14 +162,9 @@ class BatchingTests(IsolatedAsyncioTestCase):
 class QueryEncodingTests(IsolatedAsyncioTestCase):
     async def test_multi_value_params_repeat_instead_of_comma_joining(self) -> None:
         recorder = _Recorder(_ok([]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        await helix.get_live_streams(
-            logins=["alpha", "beta"],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            request=recorder,
-        )
+        await client.get_live_streams(logins=["alpha", "beta"], token="tok")
 
         query = _query(recorder.gets[0])
         self.assertIn("user_login=alpha", query)
@@ -173,15 +175,9 @@ class QueryEncodingTests(IsolatedAsyncioTestCase):
 
     async def test_user_ids_and_logins_ride_in_one_request(self) -> None:
         recorder = _Recorder(_ok([]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        await helix.get_live_streams(
-            logins=["alpha"],
-            user_ids=["12345"],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            request=recorder,
-        )
+        await client.get_live_streams(logins=["alpha"], user_ids=["12345"], token="tok")
 
         query = _query(recorder.gets[0])
         self.assertEqual(len(recorder.gets), 1)
@@ -190,14 +186,9 @@ class QueryEncodingTests(IsolatedAsyncioTestCase):
 
     async def test_credentials_travel_in_headers(self) -> None:
         recorder = _Recorder(_ok([]))
+        client = _client(_FakeRedis(), client_id="cid", request=recorder)
 
-        await helix.get_live_streams(
-            logins=["alpha"],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            request=recorder,
-        )
+        await client.get_live_streams(logins=["alpha"], token="tok")
 
         self.assertEqual(recorder.gets[0]["headers"]["Authorization"], "Bearer tok")
         self.assertEqual(recorder.gets[0]["headers"]["Client-Id"], "cid")
@@ -206,14 +197,9 @@ class QueryEncodingTests(IsolatedAsyncioTestCase):
 class SnapshotTests(IsolatedAsyncioTestCase):
     async def test_thumbnail_placeholders_are_substituted_in_the_client(self) -> None:
         recorder = _Recorder(_ok([_stream_row("caster")]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        result = await helix.get_live_streams(
-            logins=["caster"],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            request=recorder,
-        )
+        result = await client.get_live_streams(logins=["caster"], token="tok")
 
         snapshot = result.snapshots[0]
         assert snapshot.thumbnail_url is not None
@@ -223,14 +209,9 @@ class SnapshotTests(IsolatedAsyncioTestCase):
 
     async def test_channel_is_lowercased_and_url_derived(self) -> None:
         recorder = _Recorder(_ok([_stream_row("CasterName")]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        result = await helix.get_live_streams(
-            logins=["CasterName"],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            request=recorder,
-        )
+        result = await client.get_live_streams(logins=["CasterName"], token="tok")
 
         self.assertEqual(result.snapshots[0].channel, "castername")
         self.assertEqual(result.snapshots[0].url, "https://twitch.tv/castername")
@@ -239,14 +220,9 @@ class SnapshotTests(IsolatedAsyncioTestCase):
     async def test_absent_channel_is_simply_missing_from_the_result(self) -> None:
         """Helix returns only live channels — there is no ``is_live`` field to read."""
         recorder = _Recorder(_ok([_stream_row("live_one")]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        result = await helix.get_live_streams(
-            logins=["live_one", "offline_one"],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            request=recorder,
-        )
+        result = await client.get_live_streams(logins=["live_one", "offline_one"], token="tok")
 
         self.assertEqual([s.channel for s in result.snapshots], ["live_one"])
         self.assertEqual(result.polled_logins, frozenset({"live_one", "offline_one"}))
@@ -255,29 +231,22 @@ class SnapshotTests(IsolatedAsyncioTestCase):
 class RateLimitTests(IsolatedAsyncioTestCase):
     async def test_429_raises_with_the_reset_timestamp(self) -> None:
         recorder = _Recorder(httpx.Response(429, json={}, headers={"Ratelimit-Reset": "1780000000"}))
+        client = _client(_FakeRedis(), request=recorder)
 
         with self.assertRaises(helix.HelixRateLimited) as caught:
-            await helix.get_live_streams(
-                logins=["alpha"],
-                token="tok",
-                client_id="cid",
-                helix_url=HELIX_URL,
-                request=recorder,
-            )
+            await client.get_live_streams(logins=["alpha"], token="tok")
 
         self.assertEqual(caught.exception.reset_at, 1780000000)
 
     async def test_remaining_below_the_floor_truncates_the_batch_loop(self) -> None:
         recorder = _Recorder(_ok([], remaining=5), _ok([]))
+        client = _client(_FakeRedis(), request=recorder)
 
-        result = await helix.get_live_streams(
+        result = await client.get_live_streams(
             logins=[f"s{i}" for i in range(150)],
             token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
             batch_size=100,
             ratelimit_floor=100,
-            request=recorder,
         )
 
         self.assertEqual(len(recorder.gets), 1)
@@ -287,15 +256,9 @@ class RateLimitTests(IsolatedAsyncioTestCase):
 
     async def test_headroom_keeps_the_loop_running(self) -> None:
         recorder = _Recorder(_ok([], remaining=700), _ok([], remaining=690))
+        client = _client(_FakeRedis(), request=recorder)
 
-        result = await helix.get_live_streams(
-            logins=[f"s{i}" for i in range(150)],
-            token="tok",
-            client_id="cid",
-            helix_url=HELIX_URL,
-            batch_size=100,
-            request=recorder,
-        )
+        result = await client.get_live_streams(logins=[f"s{i}" for i in range(150)], token="tok", batch_size=100)
 
         self.assertEqual(len(recorder.gets), 2)
         self.assertFalse(result.truncated)
@@ -304,116 +267,78 @@ class RateLimitTests(IsolatedAsyncioTestCase):
 class TokenTests(IsolatedAsyncioTestCase):
     async def test_missing_client_id_raises_not_configured_without_a_request(self) -> None:
         recorder = _Recorder()
+        client = _client(_FakeRedis(), client_id="", client_secret="secret", request=recorder)
 
         with self.assertRaises(helix.HelixNotConfigured):
-            await helix.get_app_token(
-                _FakeRedis(),  # type: ignore[arg-type]
-                client_id="",
-                client_secret="secret",
-                token_url=TOKEN_URL,
-                request=recorder,
-            )
+            await client.get_app_token()
 
         self.assertEqual(recorder.calls, [])
 
     async def test_missing_secret_raises_not_configured(self) -> None:
+        client = _client(_FakeRedis(), client_id="cid", client_secret=None, request=_Recorder())
+
         with self.assertRaises(helix.HelixNotConfigured):
-            await helix.get_app_token(
-                _FakeRedis(),  # type: ignore[arg-type]
-                client_id="cid",
-                client_secret=None,
-                token_url=TOKEN_URL,
-                request=_Recorder(),
-            )
+            await client.get_app_token()
 
     async def test_token_is_cached_with_a_renewal_margin(self) -> None:
         redis = _FakeRedis()
         recorder = _Recorder(httpx.Response(200, json={"access_token": "app-token", "expires_in": 5000}))
+        client = _client(redis, request=recorder)
 
-        token = await helix.get_app_token(
-            redis,  # type: ignore[arg-type]
-            client_id="cid",
-            client_secret="secret",
-            token_url=TOKEN_URL,
-            request=recorder,
-        )
+        token = await client.get_app_token()
 
         self.assertEqual(token, "app-token")
-        self.assertEqual(redis.values[state.TOKEN_KEY], "app-token")
-        self.assertEqual(redis.expirations[state.TOKEN_KEY], 5000 - 60)
+        self.assertEqual(redis.values[TOKEN_KEY], "app-token")
+        self.assertEqual(redis.expirations[TOKEN_KEY], 5000 - 60)
         self.assertEqual(recorder.posts[0]["data"]["grant_type"], "client_credentials")
 
     async def test_cached_token_skips_the_token_endpoint(self) -> None:
-        redis = _FakeRedis(**{state.TOKEN_KEY: "cached"})
+        redis = _FakeRedis(**{TOKEN_KEY: "cached"})
         recorder = _Recorder()
+        client = _client(redis, request=recorder)
 
-        token = await helix.get_app_token(
-            redis,  # type: ignore[arg-type]
-            client_id="cid",
-            client_secret="secret",
-            token_url=TOKEN_URL,
-            request=recorder,
-        )
+        token = await client.get_app_token()
 
         self.assertEqual(token, "cached")
         self.assertEqual(recorder.calls, [])
 
     async def test_rejected_credentials_surface_as_unauthorized(self) -> None:
         recorder = _Recorder(httpx.Response(400, json={"message": "invalid client"}))
+        client = _client(_FakeRedis(), client_secret="wrong", request=recorder)
 
         with self.assertRaises(helix.HelixUnauthorized):
-            await helix.get_app_token(
-                _FakeRedis(),  # type: ignore[arg-type]
-                client_id="cid",
-                client_secret="wrong",
-                token_url=TOKEN_URL,
-                request=recorder,
-            )
+            await client.get_app_token()
 
 
 class TokenRefreshRetryTests(IsolatedAsyncioTestCase):
     async def test_401_drops_the_cached_token_and_retries_once(self) -> None:
-        redis = _FakeRedis(**{state.TOKEN_KEY: "stale"})
+        redis = _FakeRedis(**{TOKEN_KEY: "stale"})
         recorder = _Recorder(
             httpx.Response(401, json={}),
             httpx.Response(200, json={"access_token": "fresh", "expires_in": 5000}),
             _ok([_stream_row("caster")]),
         )
+        client = _client(redis, request=recorder)
 
-        result = await helix.fetch_live_streams(
-            redis,  # type: ignore[arg-type]
-            logins=["caster"],
-            client_id="cid",
-            client_secret="secret",
-            helix_url=HELIX_URL,
-            token_url=TOKEN_URL,
-            request=recorder,
-        )
+        result = await client.fetch_live_streams(logins=["caster"])
 
         self.assertEqual([s.channel for s in result.snapshots], ["caster"])
-        self.assertEqual(redis.deleted, [state.TOKEN_KEY])
+        self.assertEqual(redis.deleted, [TOKEN_KEY])
         self.assertEqual(len(recorder.gets), 2)
         self.assertEqual(recorder.gets[0]["headers"]["Authorization"], "Bearer stale")
         self.assertEqual(recorder.gets[1]["headers"]["Authorization"], "Bearer fresh")
 
     async def test_second_401_raises_unauthorized(self) -> None:
-        redis = _FakeRedis(**{state.TOKEN_KEY: "stale"})
+        redis = _FakeRedis(**{TOKEN_KEY: "stale"})
         recorder = _Recorder(
             httpx.Response(401, json={}),
             httpx.Response(200, json={"access_token": "fresh", "expires_in": 5000}),
             httpx.Response(401, json={}),
         )
+        client = _client(redis, request=recorder)
 
         with self.assertRaises(helix.HelixUnauthorized):
-            await helix.fetch_live_streams(
-                redis,  # type: ignore[arg-type]
-                logins=["caster"],
-                client_id="cid",
-                client_secret="secret",
-                helix_url=HELIX_URL,
-                token_url=TOKEN_URL,
-                request=recorder,
-            )
+            await client.fetch_live_streams(logins=["caster"])
 
         self.assertEqual(len(recorder.gets), 2)
 
@@ -423,21 +348,13 @@ class TransportTests(IsolatedAsyncioTestCase):
         async def _boom(*args: Any, **kwargs: Any) -> httpx.Response:
             raise httpx.ConnectTimeout("proxy is down")
 
+        client = _client(_FakeRedis(), request=_boom)
+
         with self.assertRaises(helix.HelixUnavailable):
-            await helix.get_live_streams(
-                logins=["alpha"],
-                token="tok",
-                client_id="cid",
-                helix_url=HELIX_URL,
-                request=_boom,
-            )
+            await client.get_live_streams(logins=["alpha"], token="tok")
 
     async def test_5xx_becomes_unavailable(self) -> None:
+        client = _client(_FakeRedis(), request=_Recorder(httpx.Response(503, json={})))
+
         with self.assertRaises(helix.HelixUnavailable):
-            await helix.get_live_streams(
-                logins=["alpha"],
-                token="tok",
-                client_id="cid",
-                helix_url=HELIX_URL,
-                request=_Recorder(httpx.Response(503, json={})),
-            )
+            await client.get_live_streams(logins=["alpha"], token="tok")

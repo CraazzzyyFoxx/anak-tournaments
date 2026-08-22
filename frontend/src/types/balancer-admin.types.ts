@@ -319,7 +319,9 @@ export interface AdminRegistrationForm {
 }
 
 export interface AdminRegistrationFormUpsert {
-  is_open: boolean;
+  // No `is_open`: registration openness is the tournament's REGISTRATION
+  // phase-schedule window, so the form cannot set it. The server ignores the
+  // field if a stale client still sends it.
   auto_approve: boolean;
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";

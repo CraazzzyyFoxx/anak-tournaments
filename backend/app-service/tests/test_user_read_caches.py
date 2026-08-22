@@ -34,7 +34,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-flows = importlib.import_module("src.services.user.flows")
+flows = importlib.import_module("src.services.user.service")
 enums = importlib.import_module("src.core.enums")
 pagination = importlib.import_module("shared.core.pagination")
 user_cache = importlib.import_module("src.services.user_cache")
@@ -106,13 +106,12 @@ class UserCacheInvalidationTests(_CacheTestBase):
 class HeroesCacheTests(_CacheTestBase):
     def _patch_deps(self):
         user = SimpleNamespace(id=101, name="Player")
-        get_user = patch.object(flows, "get", AsyncMock(return_value=user))
+        get_user = patch.object(flows.users, "get", AsyncMock(return_value=user))
         compute = AsyncMock(return_value=[])
         svc = patch.multiple(
-            flows.service,
+            flows.users.profile,
             get_statistics_by_heroes=compute,
             get_statistics_by_heroes_all_values=AsyncMock(return_value=[]),
-            get_statistics_by_heroes_all_values_filtered=AsyncMock(return_value=[]),
         )
         return get_user, svc, compute
 
@@ -121,22 +120,22 @@ class HeroesCacheTests(_CacheTestBase):
         params = pagination.PaginationParams(page=1, per_page=10)
         stats = [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations]
         with get_user, svc:
-            await flows.get_heroes(object(), 101, params, stats, workspace_id=1)
-            await flows.get_heroes(object(), 101, params, stats, workspace_id=1)
+            await flows.users.get_heroes(object(), 101, params, stats, workspace_id=1)
+            await flows.users.get_heroes(object(), 101, params, stats, workspace_id=1)
         compute.assert_awaited_once()
 
     async def test_stats_order_and_duplicates_share_one_key(self) -> None:
         get_user, svc, compute = self._patch_deps()
         params = pagination.PaginationParams(page=1, per_page=10)
         with get_user, svc:
-            await flows.get_heroes(
+            await flows.users.get_heroes(
                 object(),
                 101,
                 params,
                 [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations],
                 workspace_id=1,
             )
-            await flows.get_heroes(
+            await flows.users.get_heroes(
                 object(),
                 101,
                 params,
@@ -149,10 +148,10 @@ class HeroesCacheTests(_CacheTestBase):
         get_user, svc, compute = self._patch_deps()
         stats = [enums.LogStatsName.Deaths]
         with get_user, svc:
-            await flows.get_heroes(
+            await flows.users.get_heroes(
                 object(), 101, pagination.PaginationParams(page=1, per_page=10), stats, workspace_id=1
             )
-            await flows.get_heroes(
+            await flows.users.get_heroes(
                 object(), 101, pagination.PaginationParams(page=2, per_page=10), stats, workspace_id=1
             )
         self.assertEqual(2, compute.await_count)
@@ -163,11 +162,62 @@ class MatchesSummaryCacheTests(_CacheTestBase):
         user = SimpleNamespace(id=202, name="Player")
         opponents = AsyncMock(return_value=[])
         with (
-            patch.object(flows, "get", AsyncMock(return_value=user)),
-            patch.object(flows._repositories, "get_user_opponents", opponents),
-            patch.object(flows._repositories, "get_user_stage_breakdown", AsyncMock(return_value=[])),
+            patch.object(flows.users, "get", AsyncMock(return_value=user)),
+            patch.object(flows.users.encounters, "get_user_opponents", opponents),
+            patch.object(flows.users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
         ):
-            await flows.get_matches_summary(object(), 202, workspace_id=1)
-            await flows.get_matches_summary(object(), 202, workspace_id=1)
-            await flows.get_matches_summary(object(), 202, workspace_id=2)  # different scope
+            await flows.users.get_matches_summary(object(), 202, workspace_id=1)
+            await flows.users.get_matches_summary(object(), 202, workspace_id=1)
+            await flows.users.get_matches_summary(object(), 202, workspace_id=2)  # different scope
         self.assertEqual(2, opponents.await_count)
+
+
+class CacheKeyRoutabilityTests(_CacheTestBase):
+    """The keys the decorators really write must be reachable by the patterns in
+    ``user_cache``.
+
+    Regression: every ``@cache`` in this domain used to pass
+    ``prefix="backend:"`` next to a bare ``key="user_…"`` template, and cashews
+    renders that as ``backend:`` + ``:`` + template. So the stored key was
+    ``backend::user_profile:7:2`` while every invalidation pattern was
+    ``backend:user_profile:7:*`` — off by one colon, matching nothing. Profile
+    edits, merges and tournament changes silently invalidated *nothing* for
+    ~300 s. The other tests in this file seed their own keys in the pattern's
+    shape, so none of them could see it. This one asserts against the key the
+    decorator itself produced.
+    """
+
+    async def test_a_cached_read_is_dropped_by_its_own_invalidation_pattern(self) -> None:
+        user = SimpleNamespace(id=303, name="Player")
+        opponents = AsyncMock(return_value=[])
+        with (
+            patch.object(flows.users, "get", AsyncMock(return_value=user)),
+            patch.object(flows.users.encounters, "get_user_opponents", opponents),
+            patch.object(flows.users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
+        ):
+            await flows.users.get_matches_summary(object(), 303, workspace_id=1)
+            stored = [key async for key in cache.scan("backend:*")]
+
+            await user_cache.invalidate_user_caches(303)
+            self.assertEqual([], [key async for key in cache.scan("backend:*")])
+
+            await flows.users.get_matches_summary(object(), 303, workspace_id=1)
+
+        self.assertTrue(stored, "the decorated read stored nothing")
+        for key in stored:
+            self.assertTrue(
+                key.startswith("backend:user_matches_summary:303:"),
+                f"key {key!r} is not in the shape user_cache_patterns() globs for",
+            )
+        self.assertEqual(2, opponents.await_count, "invalidation did not force a recompute")
+
+    def test_no_cache_decorator_reintroduces_the_prefix_kwarg(self) -> None:
+        """``prefix=`` is what produced the double colon. The prefix belongs in
+        the key template, which is also where ``user_cache`` looks for it."""
+        domain = Path(__file__).resolve().parents[1] / "src" / "services"
+        offenders = [
+            path.relative_to(domain).as_posix()
+            for path in domain.rglob("*.py")
+            if 'prefix="backend:"' in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual([], offenders)

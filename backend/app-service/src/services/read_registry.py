@@ -18,15 +18,15 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementRule
+from shared.repository import GamemodeRepository
 from shared.rpc.crud import CrudDispatcher, EntityConfig
 from shared.rpc.query import build_query_model
-from src import models
-from src.core import db, pagination
+from src import models, schemas
+from src.core import db, errors, pagination
 from src.rpc import _common as c
-from src.services.achievements import flows_v2 as achievements_flows
-from src.services.gamemode import flows as gamemode_flows
-from src.services.hero import flows as hero_flows
-from src.services.map import flows as map_flows
+from src.services.achievements.service import achievements as achievement_service
+from src.services.hero.service import heroes as hero_service
+from src.services.map.service import maps as map_service
 
 # Sort-field whitelists mirror the route declarations exactly. The Literal only
 # constrains the `sort` field; an out-of-set value raises ValidationError, which
@@ -35,6 +35,8 @@ _HERO_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity
 _MAP_SORT = typing.Literal["id", "gamemode_id", "name", "similarity:name"]
 _GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
 _ACH_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
+
+_gamemode_repo = GamemodeRepository()
 
 
 def _entities(data: dict[str, Any]) -> list[str]:
@@ -49,46 +51,83 @@ async def _ser(session: AsyncSession, obj: Any) -> Any:
 
 # --- hero --------------------------------------------------------------------
 async def _hero_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await hero_flows.get(session, obj_id)
+    return await hero_service.get(session, obj_id)
 
 
 async def _hero_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortSearchQueryParams[_HERO_SORT], data.get("query"))
     params = pagination.PaginationSortSearchParams.from_query_params(qp)
-    return (await hero_flows.get_all(session, params)).model_dump(mode="json")
+    return (await hero_service.get_all(session, params)).model_dump(mode="json")
 
 
 # --- map ---------------------------------------------------------------------
 async def _map_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await map_flows.get(session, obj_id, _entities(data))
+    return await map_service.get(session, obj_id, _entities(data))
 
 
 async def _map_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortSearchQueryParams[_MAP_SORT], data.get("query"))
     params = pagination.PaginationSortSearchParams.from_query_params(qp)
-    return (await map_flows.get_all(session, params)).model_dump(mode="json")
+    return (await map_service.get_all(session, params)).model_dump(mode="json")
 
 
 # --- gamemode ----------------------------------------------------------------
+# Gamemode is a pure reference table: no cache, no analytical SQL, no
+# transaction, nothing bespoke. Its whole read surface is these three functions
+# over `GamemodeRepository`, so it has no service module of its own — a class
+# holding only `repo.get` + 404 + schema construction earned nothing.
+
+
+def _gamemode_read(gamemode: models.Gamemode) -> schemas.GamemodeRead:
+    """Spreads ``to_dict()`` rather than enumerating fields, matching the map and
+    hero serializers. The enumerated version silently dropped every column added
+    after it was written: ``aliases`` fell back to the schema default ``[]``, so
+    the admin dialog rendered an empty editor over real data and saving it would
+    have wiped the aliases the log parser resolves names through."""
+    return schemas.GamemodeRead(**gamemode.to_dict())
+
+
 async def _gamemode_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await gamemode_flows.get(session, obj_id, _entities(data))
+    gamemode = await _gamemode_repo.get_expanded(session, obj_id, _entities(data))
+    if gamemode is None:
+        raise errors.ApiHTTPException(
+            status_code=404,
+            detail=[errors.ApiExc(code="not_found", msg=f"Gamemode not found with id={obj_id}")],
+        )
+    return _gamemode_read(gamemode)
 
 
 async def _gamemode_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortSearchQueryParams[_GAMEMODE_SORT], data.get("query"))
     params = pagination.PaginationSortSearchParams.from_query_params(qp)
-    return (await gamemode_flows.get_all(session, params)).model_dump(mode="json")
+    gamemodes, total = await _gamemode_repo.all(session, params, entities=params.entities)
+    return pagination.Paginated(
+        total=total,
+        per_page=params.per_page,
+        page=params.page,
+        results=[_gamemode_read(gamemode) for gamemode in gamemodes],
+    ).model_dump(mode="json")
+
+
+async def gamemode_lookup(session: AsyncSession) -> list[schemas.LookupItem]:
+    """``(id, name)`` pairs for the admin/filter pickers, name-ordered.
+
+    Public because ``rpc/gamemodes.py`` serves it on its own topic
+    (``rpc.app.gamemodes.lookup``), outside the get/list registry below.
+    """
+    rows = await _gamemode_repo.list_lookup(session)
+    return [schemas.LookupItem(id=row.id, name=row.name) for row in rows]
 
 
 # --- achievement -------------------------------------------------------------
 async def _achievement_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    return await achievements_flows.get(session, obj_id, _entities(data))
+    return await achievement_service.get(session, obj_id, _entities(data))
 
 
 async def _achievement_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortQueryParams[_ACH_SORT], data.get("query"))
     params = pagination.PaginationSortParams.from_query_params(qp)
-    result = await achievements_flows.get_all(session, params, workspace_id=c.q1(data, "workspace_id", int))
+    result = await achievement_service.get_all(session, params, workspace_id=c.q1(data, "workspace_id", int))
     return result.model_dump(mode="json")
 
 

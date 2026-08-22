@@ -11,6 +11,29 @@ consumer. It has no HTTP server.
 - **Entry point:** `main.py` (`python main.py`)
 - **Compose service:** `discord` (profile `workers`)
 
+## Architecture
+
+`LogCollectorBot` (`src/bot.py`) is a `discord.ext.commands.Bot` subclass that wires together:
+
+- **Cogs** (`src/cogs/`) — gateway event listeners:
+  - `LogIngestionCog` — monitored-channel message/edit handling, the periodic channel-list
+    reload (`discord.ext.tasks.loop`), and the startup history rescan.
+  - `MembershipEventsCog` — guild join/leave logging and member-join/leave/role-update →
+    instant subscription resync.
+- **Services** (`src/services/`) — plain classes holding the business logic, independent of
+  discord.py wiring:
+  - `ChannelRegistry` — the active `channel_id -> tournament_id` cache and its DB-backed reload.
+  - `AttachmentProcessor` — the log-upload pipeline (download, dedupe, publish, feedback).
+  - `DiscordDirectoryService` — guild/member introspection served over RPC.
+  - `MemberSubscriptionSyncService` — Discord-event-triggered subscription re-evaluation.
+  - `ParserClientFactory` / `ServiceTokenClient` — HTTP access to the parser service.
+- **`DiscordRabbitGateway`** (`src/rabbit/gateway.py`) — owns the RabbitMQ broker's lifecycle
+  and every subscriber, delegating to the services above.
+
+All database access goes through `shared.repository` (`DiscordChannelRepository`,
+`LogProcessingRepository`, `WorkspaceRepository`, `OAuthConnectionRepository`) — no ad hoc
+SQLAlchemy queries in the bot's own code.
+
 ## Responsibilities
 
 - **Watch active tournament channels** and pick up match-log attachments.

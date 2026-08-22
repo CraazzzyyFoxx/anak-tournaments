@@ -21,7 +21,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 from shared.core.enums import HeroClass  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftPlayer, DraftPlayerRole  # noqa: E402
-from src.services.draft import ranks  # noqa: E402
+from src.domain.draft import ranks  # noqa: E402
 
 ROLE_SHAPE = parse_roster_slots({"tank": 1, "dps": 2, "support": 2})
 FLEX_SHAPE = parse_roster_slots({"flex": 5})

@@ -16,6 +16,7 @@ from shared.rpc.openapi import Op, QueryParam
 from src import schemas
 from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas import registration as reg_schemas
+from src.schemas import registration_team as reg_team_schemas
 from src.schemas.admin import balancer as admin_balancer
 from src.schemas.admin import encounter as admin_encounter
 from src.schemas.admin import encounter_reports as admin_reports
@@ -133,6 +134,9 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: team image (binary upload + delete) ───────────────────────
     "rpc.tournament.teams.image_upload": Op(response=schemas.TeamRead),
     "rpc.tournament.teams.image_delete": Op(response=schemas.TeamRead),
+    # ── bespoke: registered-team image (binary upload + delete) ────────────
+    "rpc.tournament.regteam_image_upload": Op(response=reg_team_schemas.RegistrationTeamRead),
+    "rpc.tournament.regteam_image_delete": Op(response=reg_team_schemas.RegistrationTeamRead),
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": Op(response=schemas.TournamentRead),
     "rpc.tournament.tournament_status": Op(
@@ -189,6 +193,26 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.challonge_fetch_tournament": Op(response=schemas.ChallongeTournament),
     "rpc.tournament.challonge_fetch_participants": Op(response=schemas.ChallongeParticipant, response_array=True),
     "rpc.tournament.challonge_fetch_matches": Op(response=schemas.ChallongeMatch, response_array=True),
+    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    "rpc.tournament.challonge_create_tournament": Op(
+        response=schemas.TournamentRead,
+        query_params=(
+            QueryParam("workspace_id", "integer", required=True),
+            QueryParam("start_date", required=True),
+            QueryParam("end_date", required=True),
+            QueryParam("challonge_slug", required=True),
+            QueryParam("is_league", "boolean"),
+            QueryParam("division_grid_version_id", "integer"),
+        ),
+    ),
+    "rpc.tournament.challonge_team_preview": Op(
+        response=admin_team.ChallongeTeamSyncPreview, query_params=(QueryParam("tournament_id", "integer", required=True),)
+    ),
+    "rpc.tournament.challonge_team_apply": Op(
+        request=admin_team.ChallongeTeamSyncRequest,
+        response=admin_team.ChallongeTeamSyncResult,
+        query_params=(QueryParam("tournament_id", "integer", required=True),),
+    ),
     # ── integrations: Google Sheets ────────────────────────────────────────
     "rpc.tournament.sheet_get": Op(response=admin_balancer.BalancerGoogleSheetFeedRead),
     "rpc.tournament.sheet_upsert": Op(

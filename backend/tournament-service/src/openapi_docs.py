@@ -138,6 +138,17 @@ DOCS: dict[str, dict] = {
         "summary": "Delete team image",
         "description": "Removes a team's image from S3 and clears its URL; requires team-update permission on its workspace.",
     },
+    # ── bespoke: registered-team image (binary upload + delete) ────────────
+    # Captain-gated, not workspace-permission-gated: a registration team belongs
+    # to the players who formed it, not to the organizer's staff.
+    "rpc.tournament.regteam_image_upload": {
+        "summary": "Upload registered team image",
+        "description": "Uploads a registered team's image to S3 and stores its URL; only that team's captain may call it, and only while the team is still forming.",
+    },
+    "rpc.tournament.regteam_image_delete": {
+        "summary": "Delete registered team image",
+        "description": "Removes a registered team's image from S3 and clears its URL; only that team's captain may call it, and only while the team is still forming.",
+    },
     # ── generic CRUD engine: player ────────────────────────────────────────
     "rpc.tournament.admin.create#player": {
         "summary": "Create player",
@@ -564,6 +575,19 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.challonge_sync_log": {
         "summary": "Get Challonge sync log",
         "description": "Returns recent Challonge sync-log entries for a tournament (limit-bounded); requires challonge-read permission on the tournament.",
+    },
+    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    "rpc.tournament.challonge_create_tournament": {
+        "summary": "Create tournament from Challonge",
+        "description": "Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot; requires workspace tournament.create.",
+    },
+    "rpc.tournament.challonge_team_preview": {
+        "summary": "Preview Challonge team sync",
+        "description": "Previews the mapping of Challonge participants to teams for a tournament before syncing; requires challonge.read on the tournament's workspace.",
+    },
+    "rpc.tournament.challonge_team_apply": {
+        "summary": "Sync Challonge teams",
+        "description": "Applies Challonge participant-to-team mappings for a tournament; requires challonge.update on the tournament's workspace.",
     },
     # ── integrations: Google Sheets ────────────────────────────────────────
     "rpc.tournament.sheet_get": {

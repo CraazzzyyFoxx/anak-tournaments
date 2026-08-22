@@ -75,6 +75,9 @@ class RegistrationFormRead(BaseModel):
     id: int
     tournament_id: int
     workspace_id: int
+    # DERIVED, read-only: "is registration open right now", computed from the
+    # tournament's REGISTRATION phase-schedule window. No longer a column on the
+    # form — see shared.services.registration_window.
     is_open: bool
     auto_approve: bool = False
     require_open_profile: bool = False
@@ -99,12 +102,13 @@ class RegistrationFormRead(BaseModel):
 
 
 class RegistrationFormUpsert(BaseModel):
-    # No `subscription_requirement_json`: the rule is workspace-scoped now. A stale
-    # client that still sends it is TOLERATED, not rejected -- Pydantic's default
-    # `extra="ignore"` drops the key and the rest of the save succeeds. Deliberate: no
-    # schema in this module sets `extra`, and turning every unknown field into a 422 is
-    # a separate decision with a much wider blast radius than this move.
-    is_open: bool = False
+    # No `subscription_requirement_json`: the rule is workspace-scoped now. No
+    # `is_open` either: registration openness is the tournament's REGISTRATION
+    # schedule window, so the form has no say. A stale client that still sends
+    # either one is TOLERATED, not rejected -- Pydantic's default `extra="ignore"`
+    # drops the key and the rest of the save succeeds. Deliberate: no schema in
+    # this module sets `extra`, and turning every unknown field into a 422 is a
+    # separate decision with a much wider blast radius than these moves.
     auto_approve: bool = False
     require_open_profile: bool = False
     open_profile_scope: str = "main"
@@ -164,6 +168,23 @@ class RegistrationRoleRead(BaseModel):
     top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs
 
 
+class RegistrationTeamBrief(BaseModel):
+    """The registered team a roster read carries inline.
+
+    Deliberately not the full ``RegistrationTeamRead``: this rides in every row of
+    the public participants list, so it holds only what a team column and the
+    §12.5 status line need. In particular it carries **no invites** — a public
+    roster must not leak who has been asked and declined.
+    """
+
+    id: int
+    name: str
+    status: str
+    slot_code: str | None = None
+    is_substitute: bool = False
+    is_captain: bool = False
+
+
 class RegistrationRead(BaseModel):
     id: int
     tournament_id: int
@@ -194,6 +215,12 @@ class RegistrationRead(BaseModel):
     # why the composed outcome is sent separately rather than derived client-side.
     subscription_outcome: str | None = None
     subscription_verdicts: dict[str, Any] | None = None
+    # Team registration: which registered team this player belongs to, if any.
+    # Present on the PUBLIC roster because the participants table needs a team
+    # column and the "Your Registration" card must be able to say "your team is
+    # still incomplete" — §12.5's whole point is that the people in a stuck team
+    # learn it from their own card, not from an admin-only list.
+    team: RegistrationTeamBrief | None = None
     submitted_at: datetime | None = None
     reviewed_at: datetime | None = None
 

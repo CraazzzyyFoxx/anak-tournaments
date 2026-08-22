@@ -64,7 +64,6 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 from shared.core import enums  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.rbac import user_roles  # noqa: E402
-from shared.models.registration.registration import BalancerRegistrationForm  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
 from shared.rbac import get_workspace_system_role  # noqa: E402
@@ -383,8 +382,14 @@ def _gate_tournament(
     return tournament
 
 
-def _gate_form(*, is_open: bool = True) -> BalancerRegistrationForm:
-    return BalancerRegistrationForm(tournament_id=1, workspace_id=1, is_open=is_open)
+def _open_row(now: datetime) -> TournamentPhaseSchedule:
+    """A REGISTRATION window that is currently open, open-ended."""
+    return TournamentPhaseSchedule(
+        tournament_id=1,
+        status=enums.TournamentStatus.REGISTRATION,
+        starts_at=now - timedelta(hours=1),
+        ends_at=None,
+    )
 
 
 def _schedule_row(
@@ -396,19 +401,44 @@ def _schedule_row(
     return TournamentPhaseSchedule(tournament_id=1, status=status, starts_at=starts_at, ends_at=ends_at)
 
 
-def test_registration_closed_when_live_without_late_flag() -> None:
-    tournament = _gate_tournament(enums.TournamentStatus.LIVE)
-    assert windows.is_registration_open(tournament, _gate_form()) is False
-
-
-def test_registration_open_when_live_with_late_flag() -> None:
-    tournament = _gate_tournament(enums.TournamentStatus.LIVE, allow_late_registration=True)
-    assert windows.is_registration_open(tournament, _gate_form()) is True
-
-
-def test_registration_open_in_registration_status_without_schedule_row() -> None:
+def test_registration_needs_a_schedule_row_at_all() -> None:
+    """The inversion. ``is_within_phase_window`` treats a missing row as "spans
+    the whole phase"; registration treats it as CLOSED, because that contract is
+    what keeps the pre-consolidation default (``is_open`` defaulted to false) —
+    a brand-new tournament must not accept sign-ups before anyone opened them."""
     tournament = _gate_tournament(enums.TournamentStatus.REGISTRATION)
-    assert windows.is_registration_open(tournament, _gate_form()) is True
+    assert windows.is_registration_open(tournament) is False
+
+
+def test_registration_open_inside_the_window_regardless_of_phase() -> None:
+    """Phase no longer participates: an open window means open, even at LIVE.
+
+    This is what replaces ``allow_late_registration`` — late registration is now
+    expressed as an ``ends_at`` that extends past the LIVE start.
+    """
+    now = datetime.now(UTC)
+    for status in (
+        enums.TournamentStatus.REGISTRATION,
+        enums.TournamentStatus.CHECK_IN,
+        enums.TournamentStatus.DRAFT,
+        enums.TournamentStatus.LIVE,
+    ):
+        tournament = _gate_tournament(status, schedule=[_open_row(now)])
+        assert windows.is_registration_open(tournament, now=now) is True, status
+
+
+def test_registration_closed_before_the_window_starts() -> None:
+    now = datetime.now(UTC)
+    tournament = _gate_tournament(
+        enums.TournamentStatus.REGISTRATION,
+        schedule=[
+            _schedule_row(
+                enums.TournamentStatus.REGISTRATION,
+                starts_at=now + timedelta(hours=1),
+            )
+        ],
+    )
+    assert windows.is_registration_open(tournament, now=now) is False
 
 
 def test_registration_closed_outside_registration_row_window() -> None:
@@ -423,20 +453,31 @@ def test_registration_closed_outside_registration_row_window() -> None:
             )
         ],
     )
-    assert windows.is_registration_open(tournament, _gate_form(), now=now) is False
+    assert windows.is_registration_open(tournament, now=now) is False
 
 
-def test_registration_form_is_open_is_a_kill_switch() -> None:
-    form = _gate_form(is_open=False)
-    registration_phase = _gate_tournament(enums.TournamentStatus.REGISTRATION)
-    late_live = _gate_tournament(enums.TournamentStatus.LIVE, allow_late_registration=True)
-    assert windows.is_registration_open(registration_phase, form) is False
-    assert windows.is_registration_open(late_live, form) is False
+def test_registration_ignores_a_check_in_window() -> None:
+    """Only the REGISTRATION row is consulted — a wide-open CHECK_IN window must
+    not leak registration open."""
+    now = datetime.now(UTC)
+    tournament = _gate_tournament(
+        enums.TournamentStatus.CHECK_IN,
+        schedule=[
+            _schedule_row(
+                enums.TournamentStatus.CHECK_IN,
+                starts_at=now - timedelta(hours=1),
+            )
+        ],
+    )
+    assert windows.is_registration_open(tournament, now=now) is False
 
 
-def test_registration_closed_when_completed_even_with_late_flag() -> None:
-    tournament = _gate_tournament(enums.TournamentStatus.COMPLETED, allow_late_registration=True)
-    assert windows.is_registration_open(tournament, _gate_form()) is False
+def test_terminal_status_is_a_floor_not_a_knob() -> None:
+    """A mis-set (or open-ended) window can never reopen a finished tournament."""
+    now = datetime.now(UTC)
+    for status in (enums.TournamentStatus.COMPLETED, enums.TournamentStatus.ARCHIVED):
+        tournament = _gate_tournament(status, schedule=[_open_row(now)])
+        assert windows.is_registration_open(tournament, now=now) is False, status
 
 
 def test_check_in_window_closed_after_row_ends_at() -> None:

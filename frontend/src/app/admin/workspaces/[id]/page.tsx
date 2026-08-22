@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, Copy, Loader2 } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { AuditTrail } from "@/components/admin/AuditTrail";
+import { AuditTrailButton } from "@/components/admin/AuditTrailSheet";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
@@ -371,11 +371,22 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
         title={`Edit ${ws.name}`}
         description={`Workspace “${ws.slug}” — branding, domains and metadata`}
         actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/admin/workspaces">
-              <ArrowLeft aria-hidden className="mr-2 h-4 w-4" /> Back to workspaces
-            </Link>
-          </Button>
+          <>
+            {/* Branding, the custom domain and the Discord guild are all
+                audited from this screen, so the trail that answers "who changed
+                this" is reachable from its header rather than parked below the
+                save row where a long form hides it. */}
+            <AuditTrailButton
+              scope={{ entityType: "workspace", entityId: id, workspaceId: id }}
+              target={`workspace “${ws.name}”`}
+              showCount
+            />
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/admin/workspaces">
+                <ArrowLeft aria-hidden className="mr-2 h-4 w-4" /> Back to workspaces
+              </Link>
+            </Button>
+          </>
         }
       />
 
@@ -426,10 +437,10 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
             </SelectContent>
           </Select>
           <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-            Decides who counts as a "newcomer" (rating confidence, achievements) when a roster is
-            created: platform-wide counts a player&apos;s history in any workspace, this-workspace-only
-            ignores it — a veteran of another workspace will show as a newcomer the first time they join
-            this one.
+            Decides who counts as a &ldquo;newcomer&rdquo; (rating confidence, achievements) when a
+            roster is created: platform-wide counts a player&apos;s history in any workspace,
+            this-workspace-only ignores it — a veteran of another workspace will show as a newcomer
+            the first time they join this one.
           </p>
         </div>
         <div>
@@ -708,10 +719,6 @@ export default function WorkspaceEditPage({ params }: Readonly<{ params: Promise
         </Button>
       </div>
 
-      {/* Branding, the custom domain and the Discord guild are all audited from
-          this screen, so the trail that answers "who changed this" sits on it.
-          Below the save row on purpose: history is for after the fact. */}
-      <AuditTrail entityType="workspace" entityId={id} workspaceId={id} />
       <DeleteConfirmDialog
         open={removeDomainOpen}
         onOpenChange={setRemoveDomainOpen}

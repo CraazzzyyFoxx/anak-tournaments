@@ -70,16 +70,15 @@ def test_the_canonical_name_is_never_stored_as_its_own_alias() -> None:
 
 
 def test_the_gamemode_serializer_carries_every_column() -> None:
-    """Regression: `to_pydantic` used to enumerate fields, so `aliases` silently
+    """Regression: the serializer used to enumerate fields, so `aliases` silently
     fell back to the schema default and the API served `[]` over real data.
 
     The admin editor reads through this payload, so an empty list there means the
     next save wipes the aliases the log parser resolves gamemode names through.
     """
-    import asyncio
     from types import SimpleNamespace
 
-    from src.services.gamemode import flows as gamemode_flows
+    from src.services.read_registry import _gamemode_read
 
     row = SimpleNamespace(
         to_dict=lambda: {
@@ -91,5 +90,4 @@ def test_the_gamemode_serializer_carries_every_column() -> None:
             "aliases": ["Осада"],
         }
     )
-    read = asyncio.run(gamemode_flows.to_pydantic(None, row, []))
-    assert read.aliases == ["Осада"]
+    assert _gamemode_read(row).aliases == ["Осада"]

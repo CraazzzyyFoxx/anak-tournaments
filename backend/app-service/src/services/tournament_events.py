@@ -89,4 +89,4 @@ def register(broker: Any, logger: Any) -> None:
             await handle_tournament_changed_event(data)
             # Match data changed → schedule a debounced refresh of the global
             # hero-stats materialized view (no-op if refreshed recently).
-            hero_stats_refresh.request_refresh(db.async_session_maker, logger)
+            hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)

@@ -11,18 +11,17 @@ from __future__ import annotations
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
-from sqlalchemy import delete, select
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
-from src import models
 from src.core import auth, db
 from src.schemas.admin import settings as settings_schemas
 from src.schemas.admin.discord_channel import DiscordChannelRead, DiscordChannelUpsert
-from src.services.admin import settings as settings_service
-from src.services.gamemode import flows as gamemode_flows
-from src.services.hero import flows as hero_flows
-from src.services.map import flows as map_flows
+from src.services.admin.discord_channel import discord_channel_service
+from src.services.admin.settings import settings_service
+from src.services.gamemode.service import gamemode_service
+from src.services.hero.service import hero_service
+from src.services.map.service import map_service
 
 from . import _common as c
 
@@ -36,15 +35,16 @@ def register(broker: Any, logger: Any) -> None:
         async def _sync(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
                 c.require_superuser(c.actor(data))
+                # The service's own `initial_create` already commits — see
+                # `HeroService`/`MapService`/`GamemodeService.initial_create`.
                 await initial_create(session)
-                await session.commit()
                 return {"success": True}
 
             return await c.envelope(logger, label, op, session_factory=_SF)
 
-    _sync_handler("rpc.parser.metadata.sync_heroes", hero_flows.initial_create, "metadata.sync_heroes")
-    _sync_handler("rpc.parser.metadata.sync_maps", map_flows.initial_create, "metadata.sync_maps")
-    _sync_handler("rpc.parser.metadata.sync_gamemodes", gamemode_flows.initial_create, "metadata.sync_gamemodes")
+    _sync_handler("rpc.parser.metadata.sync_heroes", hero_service.initial_create, "metadata.sync_heroes")
+    _sync_handler("rpc.parser.metadata.sync_maps", map_service.initial_create, "metadata.sync_maps")
+    _sync_handler("rpc.parser.metadata.sync_gamemodes", gamemode_service.initial_create, "metadata.sync_gamemodes")
 
     # ── Global settings (superuser) ─────────────────────────────────────────────
     @broker.subscriber("rpc.parser.settings.list")
@@ -77,10 +77,11 @@ def register(broker: Any, logger: Any) -> None:
             if not key:
                 raise HTTPException(status_code=422, detail="key is required")
             body = settings_schemas.SettingUpsert.model_validate(c.payload(data))
+            # `settings_service.upsert_setting` already commits — no rpc-level
+            # re-commit.
             setting = await settings_service.upsert_setting(
                 session, key, body.value, description=body.description, updated_by=user.id
             )
-            await session.commit()
             return settings_schemas.SettingRead.model_validate(setting)
 
         return await c.envelope(logger, "settings.upsert", op, session_factory=_SF)
@@ -94,11 +95,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = c.require_id(data)
             workspace_id = await auth._get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, workspace_id, "discord_channel", "read")
-            channel = await session.scalar(
-                select(models.TournamentDiscordChannel).where(
-                    models.TournamentDiscordChannel.tournament_id == tournament_id
-                )
-            )
+            channel = await discord_channel_service.get(session, tournament_id)
             return DiscordChannelRead.model_validate(channel, from_attributes=True) if channel else None
 
         return await c.envelope(logger, "discord_channel.get", op, session_factory=_SF)
@@ -113,23 +110,15 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, workspace_id, "discord_channel", "update")
             body = DiscordChannelUpsert.model_validate(c.payload(data))
 
-            tournament = await session.get(models.Tournament, tournament_id)
-            if not tournament:
-                raise HTTPException(status_code=404, detail="Tournament not found")
-
-            channel = await session.scalar(
-                select(models.TournamentDiscordChannel).where(
-                    models.TournamentDiscordChannel.tournament_id == tournament_id
-                )
+            # `_get_tournament_workspace_id` above already raises 404 if the
+            # tournament doesn't exist, so no separate existence check here.
+            channel = await discord_channel_service.upsert(
+                session,
+                tournament_id,
+                channel_id=int(body.channel_id),
+                channel_name=body.channel_name,
+                is_active=body.is_active,
             )
-            if channel is None:
-                channel = models.TournamentDiscordChannel(tournament_id=tournament_id)
-                session.add(channel)
-            channel.channel_id = int(body.channel_id)
-            channel.channel_name = body.channel_name
-            channel.is_active = body.is_active
-            await session.commit()
-            await session.refresh(channel)
             return DiscordChannelRead.model_validate(channel, from_attributes=True)
 
         return await c.envelope(logger, "discord_channel.upsert", op, session_factory=_SF)
@@ -142,14 +131,9 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = c.require_id(data)
             workspace_id = await auth._get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, workspace_id, "discord_channel", "delete")
-            result = await session.execute(
-                delete(models.TournamentDiscordChannel).where(
-                    models.TournamentDiscordChannel.tournament_id == tournament_id
-                )
-            )
-            if result.rowcount == 0:
+            deleted = await discord_channel_service.delete(session, tournament_id)
+            if not deleted:
                 raise HTTPException(status_code=404, detail="Discord channel not configured")
-            await session.commit()
             return None
 
         return await c.envelope(logger, "discord_channel.delete", op, session_factory=_SF)

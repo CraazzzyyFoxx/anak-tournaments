@@ -97,27 +97,9 @@ export function ScheduleStep({ value, onChange, showDraftPhase }: Readonly<Sched
           />
         </div>
 
-        <div className="flex items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <Label
-              htmlFor="wizard-allow-late-registration"
-              className="cursor-pointer text-sm font-medium"
-            >
-              Allow late registration
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Keep registration open after the registration phase, until the tournament is
-              completed.
-            </p>
-          </div>
-          <Switch
-            id="wizard-allow-late-registration"
-            checked={value.allow_late_registration}
-            onCheckedChange={(checked) =>
-              onChange({ ...value, allow_late_registration: checked })
-            }
-          />
-        </div>
+        {/* No "allow late registration": registration openness is the
+            REGISTRATION window above, and late registration is simply an
+            `ends_at` that reaches past the LIVE start. */}
       </div>
     </div>
   );

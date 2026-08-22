@@ -32,8 +32,8 @@ from shared.core.enums import (  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftSession  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
+from src.domain.draft import rules  # noqa: E402
 from src.schemas import draft as ds  # noqa: E402
-from src.services.draft import lifecycle  # noqa: E402
 
 
 def test_create_request_defaults() -> None:
@@ -63,13 +63,13 @@ def test_create_request_ignores_a_stale_client_sending_rounds_or_team_size() -> 
 
 def test_lifecycle_rejects_rounds_that_do_not_match_the_shape() -> None:
     with pytest.raises(Exception) as exc_info:
-        lifecycle.validate_draft_rounds(rounds=3, shape=parse_roster_slots({"flex": 6}))
+        rules.validate_draft_rounds(rounds=3, shape=parse_roster_slots({"flex": 6}))
 
     assert exc_info.value.detail[0]["code"] == "invalid_roster_shape"
 
 
 def test_lifecycle_accepts_rounds_equal_to_the_shape_minus_the_captain() -> None:
-    lifecycle.validate_draft_rounds(rounds=5, shape=parse_roster_slots({"flex": 6}))
+    rules.validate_draft_rounds(rounds=5, shape=parse_roster_slots({"flex": 6}))
 
 
 def test_session_read_reports_the_shape_and_never_a_scalar_team_size() -> None:

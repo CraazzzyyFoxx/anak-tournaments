@@ -26,10 +26,10 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from src import schemas
 from src.core import db
+from src.domain.overwatch_rank import resolve_date_range
 from src.schemas.admin import rank_collection as rc_schemas
 from src.services.overwatch_rank import admin as rank_admin
-from src.services.overwatch_rank import read_service
-from src.services.overwatch_rank.date_range import _resolve_date_range
+from src.services.overwatch_rank import queries
 
 from . import _common as c
 
@@ -71,9 +71,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user_id = c.require_id(data)
             granularity = c.q1(data, "granularity", str, "daily")
-            date_from, date_to = _resolve_date_range(granularity, _dt(data, "date_from"), _dt(data, "date_to"))
+            date_from, date_to = resolve_date_range(granularity, _dt(data, "date_from"), _dt(data, "date_to"))
             service_granularity = "daily" if granularity == "daily" else "raw"
-            series = await read_service.get_rank_series(
+            series = await queries.get_rank_series(
                 session,
                 user_id=user_id,
                 social_account_id=c.q1(data, "social_account_id", int),
@@ -93,9 +93,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             social_account_id = c.require_id(data)
             granularity = c.q1(data, "granularity", str, "daily")
-            date_from, date_to = _resolve_date_range(granularity, _dt(data, "date_from"), _dt(data, "date_to"))
+            date_from, date_to = resolve_date_range(granularity, _dt(data, "date_from"), _dt(data, "date_to"))
             service_granularity = "daily" if granularity == "daily" else "raw"
-            series = await read_service.get_rank_series(
+            series = await queries.get_rank_series(
                 session,
                 social_account_id=social_account_id,
                 platform=c.q1(data, "platform"),
@@ -113,7 +113,7 @@ def register(broker: Any, logger: Any) -> None:
         # GET /users/{user_id}/current-ranks (public).
         async def op(session: Any) -> Any:
             user_id = c.require_id(data)
-            ranks = await read_service.get_current_ranks(session, user_id=user_id, platform=c.q1(data, "platform"))
+            ranks = await queries.get_current_ranks(session, user_id=user_id, platform=c.q1(data, "platform"))
             return schemas.CurrentRanksResponse(user_id=user_id, ranks=ranks, generated_at=datetime.now(UTC))
 
         return await c.envelope(logger, "rank.user_current", op, session_factory=_SF)

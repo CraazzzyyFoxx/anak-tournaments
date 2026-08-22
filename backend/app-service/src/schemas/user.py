@@ -238,7 +238,7 @@ class UserTournament(BaseModel):
     # Populated only by `get_tournament_encounters` (the lazy per-tournament
     # dossier detail); `get_tournaments` (the list endpoint) leaves this `[]`
     # so the list response doesn't ship every tournament's full encounter/
-    # match history up front — see services/user/flows.py::get_tournaments.
+    # match history up front — see services/user/service.py::get_tournaments.
     encounters: list[EncounterReadWithUserStats] = Field(default_factory=list)
 
 

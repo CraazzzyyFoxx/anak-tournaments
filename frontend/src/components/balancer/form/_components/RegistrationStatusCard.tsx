@@ -7,15 +7,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
+/**
+ * `isOpen` is READ-ONLY and derived.
+ *
+ * Registration openness is the tournament's REGISTRATION phase-schedule window —
+ * one switch, on the tournament, driven by the stage. The form used to carry its
+ * own `is_open` kill switch, so opening registration needed two separate acts in
+ * two places; the toggle that used to live here would now write to a column
+ * nothing reads, so it is a status line instead of a control.
+ */
 export function RegistrationStatusCard({
   isOpen,
   autoApprove,
-  onChangeOpen,
   onChangeAutoApprove,
 }: Readonly<{
   isOpen: boolean;
   autoApprove: boolean;
-  onChangeOpen: (value: boolean) => void;
   onChangeAutoApprove: (value: boolean) => void;
 }>) {
   const t = useTranslations("registrationFormAdmin.status");
@@ -29,12 +36,18 @@ export function RegistrationStatusCard({
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
           <div className="space-y-0.5">
-            <Label htmlFor={`${idPrefix}-accept`} className="text-sm font-medium">
-              {t("acceptLabel")}
-            </Label>
-            <p className="max-w-prose text-xs text-muted-foreground">{t("acceptHint")}</p>
+            <p className="text-sm font-medium">{t("acceptLabel")}</p>
+            <p className="max-w-prose text-xs text-muted-foreground">{t("scheduleHint")}</p>
           </div>
-          <Switch id={`${idPrefix}-accept`} checked={isOpen} onCheckedChange={onChangeOpen} />
+          <span
+            className={
+              isOpen
+                ? "shrink-0 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                : "shrink-0 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
+            }
+          >
+            {isOpen ? t("stateOpen") : t("stateClosed")}
+          </span>
         </div>
         <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
           <div className="space-y-0.5">

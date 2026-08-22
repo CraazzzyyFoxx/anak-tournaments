@@ -38,10 +38,15 @@ class BalancerRegistrationRepository(BaseRepository[models.BalancerRegistration]
         self,
         session: AsyncSession,
         tournament_id: int,
+        *,
+        with_workspace_member: bool = False,
     ) -> Sequence[models.BalancerRegistration]:
+        options = [selectinload(models.BalancerRegistration.roles)]
+        if with_workspace_member:
+            options.append(selectinload(models.BalancerRegistration.workspace_member))
         result = await session.execute(
             sa.select(models.BalancerRegistration)
-            .options(selectinload(models.BalancerRegistration.roles))
+            .options(*options)
             .where(
                 models.BalancerRegistration.tournament_id == tournament_id,
                 models.BalancerRegistration.deleted_at.is_(None),
@@ -127,3 +132,8 @@ class GoogleSheetFeedRepository(BaseRepository[models.BalancerRegistrationGoogle
         tournament_id: int,
     ) -> models.BalancerRegistrationGoogleSheetFeed | None:
         return await self.get_by(session, tournament_id=tournament_id)
+
+
+class BalancerRegistrationTeamRepository(BaseRepository[models.BalancerRegistrationTeam]):
+    def __init__(self) -> None:
+        super().__init__(models.BalancerRegistrationTeam)

@@ -55,7 +55,7 @@ class MatchLogRecordKeyingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(flows.tournament_flows, "get", AsyncMock(return_value=self.tournament)),
-            patch.object(flows.s3_service, "get_log_by_filename", AsyncMock(return_value=raw_bytes)),
+            patch.object(flows.binary_match_logs, "get_log_by_filename", AsyncMock(return_value=raw_bytes)),
             patch.object(record_service, "is_already_processed", AsyncMock(return_value=False)) as already,
             patch.object(record_service, "set_processing", AsyncMock(return_value=None)) as set_processing,
             patch.object(record_service, "set_done", AsyncMock()),
@@ -75,7 +75,7 @@ class MatchLogRecordKeyingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(flows.tournament_flows, "get", AsyncMock(return_value=self.tournament)),
-            patch.object(flows.s3_service, "get_log_by_filename", AsyncMock(return_value=raw_bytes)),
+            patch.object(flows.binary_match_logs, "get_log_by_filename", AsyncMock(return_value=raw_bytes)),
             patch.object(record_service, "is_already_processed", AsyncMock(return_value=True)),
             patch.object(record_service, "finish_duplicate_record", AsyncMock()) as finish,
             patch.object(flows, "MatchLogProcessor") as processor_cls,
@@ -88,7 +88,7 @@ class MatchLogRecordKeyingTests(IsolatedAsyncioTestCase):
     async def test_missing_s3_object_fails_the_record_instead_of_leaving_it_queued(self) -> None:
         with (
             patch.object(flows.tournament_flows, "get", AsyncMock(return_value=self.tournament)),
-            patch.object(flows.s3_service, "get_log_by_filename", AsyncMock(return_value=None)),
+            patch.object(flows.binary_match_logs, "get_log_by_filename", AsyncMock(return_value=None)),
             patch.object(record_service, "fail_unstarted", AsyncMock()) as fail_unstarted,
         ):
             with self.assertRaises(errors.ApiHTTPException):
@@ -103,7 +103,7 @@ class MatchLogRecordKeyingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(flows.tournament_flows, "get", AsyncMock(return_value=self.tournament)),
-            patch.object(flows.s3_service, "get_log_by_filename", AsyncMock(return_value=oversized)),
+            patch.object(flows.binary_match_logs, "get_log_by_filename", AsyncMock(return_value=oversized)),
             patch.object(record_service, "fail_unstarted", AsyncMock()) as fail_unstarted,
             patch.object(flows, "MatchLogProcessor") as processor_cls,
         ):

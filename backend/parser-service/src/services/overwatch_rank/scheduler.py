@@ -25,6 +25,7 @@ from shared.services.distributed_lock import (
 )
 from shared.services.scheduler import IntervalScheduler
 from src.core import db
+from src.domain.overwatch_rank import compute_per_tick
 
 from . import service, tasks
 
@@ -33,29 +34,6 @@ LEADER_LOCK_KEY = "ow_rank:scheduler:leader"
 LEADER_LOCK_TTL_SECONDS = SCHEDULER_TICK_SECONDS * 2
 
 _scheduler = IntervalScheduler(job_id="ow_rank_collection", label="OverFast rank")
-
-
-def compute_per_tick(
-    total_in_scope: int,
-    *,
-    interval_seconds: int,
-    tick_seconds: int,
-    rate_limit_per_minute: int,
-    batch_size: int,
-    max_per_tick: int | None,
-) -> int:
-    """How many tags to claim this tick to cover the population once per interval.
-
-    ``needed`` is the steady rate that spreads the whole in-scope population
-    evenly across ``interval_seconds``. It is capped by the per-tick share of the
-    OverFast rate budget (and ``batch_size`` / ``max_per_tick``); when ``needed``
-    exceeds that cap the effective interval gracefully stretches.
-    """
-    needed = math.ceil(total_in_scope * tick_seconds / interval_seconds)
-    rate_budget = max(1, math.floor(rate_limit_per_minute * tick_seconds / 60))
-    cap = batch_size if max_per_tick is None else min(batch_size, max_per_tick)
-    cap = min(cap, rate_budget)
-    return max(1, min(needed, cap))
 
 
 async def run_collection_tick(

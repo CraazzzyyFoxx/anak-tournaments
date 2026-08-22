@@ -33,7 +33,7 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from src.schemas.team import InternalBalancerTeamsPayload  # noqa: E402
-from src.services.admin import balancer as balancer_admin_service  # noqa: E402
+from src.services.admin.balancer import balancer_admin_service  # noqa: E402
 from src.services.balancer.config.provider import (  # noqa: E402
     EDITABLE_CONFIG_FIELD_KEYS,
     get_balancer_config_payload,

@@ -91,13 +91,13 @@ def _identity(ws_id: int, perms: list[dict[str, str]]) -> dict:
 
 def test_readiness_counts(rpc, seeded):
     from src.core import db as async_db
-    from src.services.dashboard.readiness import compute_readiness
+    from src.services.dashboard.readiness import readiness
 
     _ws_id, tournament_id = seeded
 
     async def run():
         async with async_db.async_session_maker() as session:
-            return await compute_readiness(session, tournament_id)
+            return await readiness.compute_readiness(session, tournament_id)
 
     r = asyncio.run(run())
     assert r.tournament_id == tournament_id

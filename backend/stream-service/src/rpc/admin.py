@@ -25,25 +25,26 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.models.tournament.tournament import Tournament
+from shared.repository import TournamentRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_audit
 from shared.services.settings_provider import get_stream_collection_config
 from src.core import db
 from src.core.config import settings
 from src.schemas.stream import StreamPollHealthRead, StreamRepollRead
-from src.services import state
+from src.services.state import StreamStateStore
 
 from . import _common as c
 from ._clients import realtime_redis
 
 __all__ = ("health", "register", "repoll")
+
+_tournaments = TournamentRepository()
 
 
 async def health(session: AsyncSession, data: dict[str, Any]) -> StreamPollHealthRead:
@@ -58,7 +59,7 @@ async def health(session: AsyncSession, data: dict[str, Any]) -> StreamPollHealt
 
     cfg = await get_stream_collection_config(session)
 
-    recorded = await state.read_poll_status(realtime_redis) or {}
+    recorded = await StreamStateStore(realtime_redis).read_poll_status() or {}
     ran_at = recorded.get("ran_at")
     return StreamPollHealthRead(
         enabled=cfg.enabled,
@@ -87,7 +88,7 @@ async def repoll(session: AsyncSession, data: dict[str, Any]) -> StreamRepollRea
     # nothing about which workspace owns THIS tournament. Without this check an
     # admin of their own workspace could trigger polling for someone else's
     # tournament by passing a foreign tournament_id.
-    owner_workspace_id = await session.scalar(sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id))
+    owner_workspace_id = await _tournaments.get_workspace_id(session, tournament_id)
     if owner_workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
     if int(owner_workspace_id) != workspace_id:
@@ -129,7 +130,7 @@ async def repoll(session: AsyncSession, data: dict[str, Any]) -> StreamRepollRea
     # scale, and the tick's own `ratelimit_remaining` gate stops it if it is not.
     # Upgrade path if operators start hammering this: a `stream:poll:due` SET of
     # tournament ids that `run_poll_tick` drains ahead of the interval check.
-    await state.clear_last_run(realtime_redis)
+    await StreamStateStore(realtime_redis).clear_last_run()
     return StreamRepollRead(tournament_id=tournament_id)
 
 

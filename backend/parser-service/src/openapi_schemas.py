@@ -118,20 +118,4 @@ OPERATIONS: dict[str, Op] = {
     "rpc.parser.ach.lib_list": Op(response=ach_schemas.AchievementLibraryRuleRead, response_array=True),
     "rpc.parser.ach.overrides_list": Op(response=ach_schemas.OverrideRead, response_array=True),
     "rpc.parser.ach.override_create": Op(request=ach_schemas.OverrideCreate, response=ach_schemas.OverrideRead),
-    # ── bootstrap importers ────────────────────────────────────────────────
-    "rpc.parser.tournament.create_with_groups": Op(
-        response=schemas.TournamentRead,
-        query_params=(
-            QueryParam("workspace_id", "integer", required=True),
-            QueryParam("start_date", required=True),
-            QueryParam("end_date", required=True),
-            QueryParam("is_league", "boolean"),
-            QueryParam("division_grid_version_id", "integer"),
-            QueryParam("challonge_slug"),
-        ),
-    ),
-    "rpc.parser.teams.challonge_preview": Op(response=schemas.ChallongeTeamSyncPreview),
-    "rpc.parser.teams.create_challonge": Op(
-        request=schemas.ChallongeTeamSyncRequest, response=schemas.ChallongeTeamSyncResult
-    ),
 }

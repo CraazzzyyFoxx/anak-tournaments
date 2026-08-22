@@ -624,10 +624,49 @@ asserting an unlinked substitute (`is_substitution: true`,
 
 ## 10. Implementation order
 
-1. **Refactor, no behaviour change.** Consolidate the writer into
-   `shared/services/team_export/`, introduce `TeamMaterializationService`, migrate
-   `export_balance`, draft `export` and the parser-service caller. Existing tests
-   are the oracle.
+1. ✅ **DONE — Refactor.** Consolidated into `shared/services/team_export/`
+   (`identity.py`, `materialization.py`, `service.py`). All **four** writer callers
+   migrated: `export_balance`, draft `export`, `rpc/binary.py::teams_import`
+   (balancer-service) and `rpc/bootstrap.py::teams_create_balancer` (parser-service).
+   Two further divergences surfaced during implementation and are now explicit
+   parameters or preserved deliberately:
+   - The slot-code resolver also diverged: parser **raised** on an unknown code and
+     did not accept `"damage"`; balancer returned `None` and did. `on_unresolved`
+     now governs both identity *and* slot resolution, since each old caller was
+     uniformly strict or uniformly lenient.
+   - Parser raised **404** for an unknown tournament where balancer logged a no-op.
+     Preserved by keeping parser's explicit `tournament_flows.get` before the call.
+   - `rpc/binary.py` and parser's `bootstrap.py` had **no commit of their own** and
+     depended entirely on the writer's internal commit — routing them through the
+     orchestrator (which commits once) is what keeps them working.
+   - The battle-tag resolver was a *third* byte-identical duplicate pair; it moved
+     to `identity.py` and both service-local copies became re-exports.
+     Verification: 1365 tests pass (`balancer-service` 348, `parser-service` 288,
+     `shared`+root 1077 minus overlap); the failure contract is pinned by 6 new tests
+     in `shared/tests/test_team_export_service.py`. The 3 remaining failures
+     (`test_db_pool_config`, `test_rank_snapshots`, `test_repository_boundaries`) were
+     confirmed **already failing at HEAD** in a clean worktree.
+
+     ✅ **DB-backed verification done (2026-08-20).** Against real Postgres 18.1 on
+     the Stockholm server (ssh tunnel, isolated scratch database built from this
+     tree's own migration chain — see the note under 2a for why `anak_dev` itself
+     could not be used): `test_draft_integration` **27 passed**, including
+     `test_full_run_autopick_to_completion_then_export` and
+     `test_export_is_idempotent` — the end-to-end proof this refactor needed;
+     `test_draft_custom_rules` + `test_admin_summary` **9 passed**. The scratch
+     database was dropped afterwards and `anak_dev` is byte-identical to before
+     (same revision, same row counts).
+
+   > ⚠️ **`anak_dev` is on a different migration lineage.** It reports revision
+   > `mtchlog001`, which does not exist in this tree (local head before this work
+   > was `ncscope01`), and its `workspace` table lacks `discord_guild_id` — a
+   > column created by this tree's **base** migration `initial_v6`. So `anak_dev`
+   > was not built from this chain at all: `alembic upgrade head` cannot run there,
+   > and this tree's ORM-backed integration tests fail at setup on the missing
+   > column. All DB verification therefore used an isolated scratch database on the
+   > same server, created from this chain and dropped afterwards. Reconciling that
+   > divergence is a separate decision, and it blocks using `anak_dev` for
+   > ORM-level testing until it is resolved.
 2. **Activation consolidation** — the widest-blast-radius step, and it is
    **cross-service and universal**, not team-registration-specific. **Ship this on
    its own, before any team-registration code**, and split it expand/contract,
@@ -636,25 +675,416 @@ asserting an unlinked substitute (`is_substitution: true`,
    Postgres — a migration landing before the old containers are replaced yields
    `UndefinedColumn` on the readiness card, the dashboard count, and the
    `subscription_collection` worker that drives subscription targeting:
-   - **2a (expand).** Add the dedicated Python gate **and** the
-     `registration_open_clause(now)` SQL clause. Backfill the `REGISTRATION` phase
-     rows per the §6 table. Migrate all four direct readers and the
-     schema/serializer/upsert surface to the new predicate. Make the row required
-     in the wizard and in `canCreateNow`'s defaults. `is_open` and
-     `allow_late_registration` remain in the DB, written but no longer read.
-     Deploy and verify every service image.
+   - ✅ **2a (expand) — DONE.** `shared/services/registration_window.py` provides
+     both forms: `is_registration_window_open` (Python) and
+     `registration_open_clause(now)` (SQL), so the per-tournament and in-query
+     answers cannot drift. `windows.py::is_registration_open` delegates and **lost
+     its `form` parameter** — keeping it would imply the form still had a say.
+     All four direct readers migrated, `readiness.py`'s conflated scalar split in
+     two, and the API's `is_open` became a **derived, read-only** field (passed
+     into the sync serializers exactly as `subscription_requirement` already was);
+     `RegistrationFormUpsert` dropped it, tolerated via the module's existing
+     `extra="ignore"` convention rather than 422'ing stale clients.
+     Migration `regwin0001` backfills. Frontend: the dead `is_open` toggle became
+     a read-only status line, and `allow_late_registration` is gone from the
+     settings tab, the creation wizard, the review step and all four TS types.
+
+     Two things this step found that no review round had:
+     - **A fifth reader**: `frontend/src/lib/tournament-status.ts::isRegistrationOpen`
+       is a client-side duplicate of the whole gate (form flag + phase window +
+       late flag). Found by `tsc`, not by grep — the reviews had enumerated
+       backend readers only. Now schedule-only, with the missing-row inversion.
+     - **An off-by-one in the backfill**, found by the equivalence test: `ends_at`
+       is *inclusive* (`now <= ends_at`), so closing a window with
+       `ends_at = now()` leaves it open at that instant. The migration now closes
+       strictly before now, guarded by `GREATEST` against the CHECK constraint.
+
+     Verification: 1966 backend tests pass (3 failures pre-existing at HEAD,
+     confirmed in a clean worktree); 916 vitest + 574 bun frontend tests pass;
+     ruff, tsc and eslint clean. `shared/tests/test_registration_window.py` pins
+     the predicate and checks old-vs-new equivalence across the full 120-case
+     cross product of status x is_open x allow_late x 5 window shapes.
+
+     **Not done in 2a, deliberately:** the "Close registration now" one-click
+     affordance (§12.3) and making the `REGISTRATION` row required in the wizard
+     (§6). Both are additive UX; omitting them is safe because a missing row means
+     *closed*, so the untouched default direction is the conservative one. The
+     schedule editor is currently the only way to close registration — that is the
+     usability regression §12.3 exists to fix, and it is the top of the 2b list.
    - **2b (contract).** Only once no deployed image references them, drop
      `BalancerRegistrationForm.is_open` and `Tournament.allow_late_registration`,
      and replace the kill-switch test. This is the step with no rollback, so it
      must be its own migration.
-3. **Data model.** Migration for the two new tables and the three nullable
-   columns; the roster-shape lock guard.
-4. **Backend flows.** Team CRUD, invites, accept/decline, kick/leave/transfer/
-   disband, `regteam_list`, `regteam_reject`.
-5. **Materialization path.** `rpc.balancer.teams.export_registered` on the shared
-   service, substitutes included.
-6. **Frontend.** Captain flow, invitee flow, Teams view, participants column,
-   admin Team card, i18n parity.
+3. ✅ **DONE — Data model.** Migration `regteam0001` (revises `regwin0001`) creates
+   `balancer.registration_team` (16 columns) and `balancer.registration_team_invite`
+   (14), and adds the three additive columns to `balancer.registration`. Models in
+   `shared/models/registration/registration.py`; guard in
+   `shared/services/registration_team_guards.py`, a deliberate sibling of
+   `draft_guards.py` with the same three-function shape.
+
+   Decisions worth recording because the obvious choice was the wrong one:
+   - The captain FK is **circular** with `registration.registration_team_id`, so it
+     carries `use_alter` (the pattern `draft_session.current_pick_id` already uses)
+     and both FKs are added after the tables exist. Pinned by a test that asserts
+     the captain FK is **not** emitted inside `CREATE TABLE`.
+   - Deleting a team is `SET NULL` on the member, never a cascade: a captain
+     disbanding must not destroy real people's registrations. Pinned by a test.
+   - The guard treats `disbanded`/`rejected`/already-exported teams as **not**
+     blocking — a released team holds no slots, and an exported one already froze
+     its shape into `tournament.player` rows. That set is the entire content of the
+     guard, so the test asserts the emitted SQL, not the constants.
+   - The read side gained `roster_locked_by_teams` alongside
+     `roster_locked_by_draft` rather than widening the existing flag's meaning: the
+     name is specific and renaming it would be a breaking API change. The Settings
+     tab must disable the shape editor when **either** is set — frontend work,
+     step 6.
+
+   Verification: applied against real Postgres 18.1 (isolated scratch database,
+   dropped after) — both partial unique indexes carry their `WHERE` clauses
+   (`deleted_at IS NULL`, `token_sha256 IS NOT NULL`), both circular FKs land as
+   `SET NULL`, and `downgrade -1` → `upgrade head` round-trips cleanly (tables and
+   columns gone, revision restored). Suites: 1984 + 288 + 348 pass; the only 3
+   failures remain the ones pre-existing at HEAD. Ruff caught a missing import that
+   the tests could not, for the second time in this feature — the lazy RPC/read
+   handlers mean an undefined name surfaces at call time, not at import.
+4. ✅ **DONE — Backend flows.** Eleven flows in
+   `tournament-service/src/services/registration/teams.py`: `create_team`,
+   `invite_member`, `revoke_invite`, `accept_invite`, `decline_invite`,
+   `kick_member`, `leave_team`, `transfer_captaincy`, `disband_team`, plus the
+   organizer's `list_teams` and `reject_team`. Two pure-domain modules carry the
+   risky logic: `shared/domain/team_roster.py` (slot accounting) and
+   `shared/domain/invite_token.py` (256-bit url-safe token, sha256 at rest,
+   `compare_digest`).
+
+   **Reuse instead of a second writer.** The captain and invitee flows delegate to
+   `submit_public_registration`, which gained exactly two optional parameters:
+   `team_placement` (the three team columns) and `commit` (transaction boundary).
+   Both default to today's behaviour. Copying that function's form/subrole/hero/
+   verified-identity validation into a team path would have been the third
+   divergent duplicate of a validated writer in this codebase — the same class of
+   debt step 1 spent its whole budget consolidating.
+
+   **`commit=False` was forced, not preferred.** Consuming the invite, writing the
+   registration and updating the team's denormalized `status` must land together:
+   the row lock is released at commit, so a status written afterwards can drift
+   from the roster it describes. Same split the team-export orchestrator uses.
+   A caller passing it also owns `IntegrityError` mapping, since that now fires
+   outside the helper's own `try`.
+
+   **Two asymmetries are the whole design.** A pending invite *reserves* its slot
+   for offering (else ten offers can be held open for one place, and the invite
+   table becomes an unmetered spam surface in the slot dimension) but must *not*
+   block its own acceptance (else every invite is un-acceptable). `can_offer` and
+   `can_accept` are separate methods for exactly this, and both directions are
+   pinned by test.
+
+   **Ordering, so a failed accept never burns the invite.** Every knowable
+   rejection — closed window, terminal team, exported team, already registered,
+   slot taken — is raised *before* the guarded `UPDATE`. A later failure rolls the
+   consume back with it, since there is no commit in between.
+
+   **§12.1 implemented.** The guard folds state and expiry into the `UPDATE`
+   (`now()`, the database clock — a Python timestamp would be evaluated before the
+   lock is granted). On rowcount 0 `_diagnose_dead_invite` re-reads for reporting
+   only and returns `invite_already_accepted` / `invite_revoked` /
+   `invite_declined` / `invite_expired`. Pending-and-unexpired maps to
+   `already_accepted`, not `expired` — reporting an expiry there would be a lie.
+
+   **§12.2 implemented.** Every rejection is `ApiHTTPException(detail=[ApiExc(msg,
+   code)])`, which already existed. Codes are split where the recourse differs:
+   `slot_taken` vs `slot_already_offered` (revoke the outstanding invite),
+   `bench_full` vs `roster full`, and `slot_not_in_shape` is a **400** not a 409 —
+   no future team state makes `tank` valid on a role-less tournament.
+
+   **Corrections found while building.** `WorkspaceMember` has no `auth_user_id`
+   (`dbarch02` dropped it); identity runs member → player → auth user. I had
+   hand-rolled the wrong join twice before checking how `get_registration` does it
+   — now one `_owned_by` predicate. Ruff caught an unused import; the tests could
+   not have.
+
+   **`max_substitutes` was missing from step 3.** Decision 4 promised configurable
+   substitutes but `regteam0001` shipped no knob for it. Added by `regteam0002` on
+   `registration_form`, not on `Tournament.roster_slots_json`: a substitute holds
+   no starter slot, so the shape and the `roster_locked_by_teams` guard stay
+   untouched.
+
+   Verification: **1253** tournament + **782** shared/root + **288** parser +
+   **338** app + **348** balancer pass; the only failures are the 3 confirmed
+   failing at HEAD. `regteam0002` applied on real Postgres 18.1 (isolated scratch
+   DB, dropped after), `downgrade -1` → `upgrade head` clean, and the expand
+   proven against **4 real `registration_form` rows in `anak_dev`** inside a
+   rolled-back transaction — all backfilled to 0. The **36 DB-backed export tests**
+   (`test_draft_integration`, `test_draft_custom_rules`, `test_admin_summary`) pass
+   against the migrated schema, which is what proves the new mapped column and the
+   `commit=False` split did not break the export path.
+
+   **Not done, deliberately:** RPC subjects and gateway routes — the flows are not
+   yet reachable over HTTP. Also no rate limiter (§7 control 1), so public invite
+   creation is unmetered *per actor*; the slot reservation above caps it per team
+   but not per attacker. Both are named in step 4's remainder below.
+
+   **Deploy ordering is now load-bearing.** `max_substitutes` is a mapped column,
+   so SQLAlchemy emits it in every `registration_form` SELECT. `regteam0002` must
+   land before any image carrying this code, or every form read 500s.
+
+   **Step 4 remainder — transport, ✅ DONE.** Eleven RPC subjects
+   (`rpc.tournament.regteam_*`: nine public in `public_rpc.py`, plus
+   `regteam_list`/`regteam_reject` in `registration_admin.py`), eleven gateway
+   routes, and `src/schemas/registration_team.py` with the request/read models and
+   two serializers. `apidocs/groups.go` generates from the same route tables, so
+   the OpenAPI surface needed no hand-editing.
+
+   **A new static guard: `tests/test_rpc_route_parity.py`.** A gateway route naming
+   a subject nobody subscribes to is the one wiring bug in the RPC layer with *no*
+   signal — the gateway publishes happily, the caller sees a request timeout, and
+   nothing logs "unknown subject". With 11 new subject/route pairs a typo on either
+   side was a real risk, so the two literal-string sides are now compared
+   statically (text parsing; no Go toolchain, no broker). The sweep found no
+   pre-existing orphans across all ~50 tournament subjects. It also pins the two
+   security decisions that live in the route table itself: every team route is
+   `AuthRequired`, and no route carries `{token}` in its path.
+
+   **Three corrections the wiring surfaced:**
+   - `reject_team` had no tournament scope. It is authorized by
+     `_tournament_ctx` against *one* tournament's workspace, so accepting a bare
+     `team_id` let an organizer of event A reject teams in event B. Now
+     `tournament_id` is keyword-only without a default and asserted against the
+     locked row — returning **404, not 403**, since confirming the team exists
+     elsewhere leaks roster membership across workspaces. Both the boundary and the
+     un-omittable signature are tested.
+   - Query params must be read with `_q1`, not `data.get`: `AllQuery` nests the
+     query string, so `include_terminal` would have silently been `False` forever.
+   - Accept/decline take the invite reference in the **body**, not the path. A raw
+     token in a URL lands in access logs, browser history and `Referer` headers.
+
+   Verification: **1258** tournament + **789** shared/root + **288** parser +
+   **338** app + **348** balancer pass (only the 3 known-at-HEAD failures);
+   `go build ./...` and `go test ./...` clean; ruff clean.
+
+   **§7 controls 1 and 2 — ✅ DONE**, in
+   `tournament-service/src/services/registration/team_rate_limits.py`. These are
+   the **only authenticated rate limits in the stack**: the gateway's
+   `internal/ratelimit` is per-IP, per-process and scoped to `/api/auth/*`, and
+   nginx is coarser still. Neither bounds what one logged-in account can do.
+
+   **The fail direction is deliberately NOT uniform, and that corrects this
+   design's own earlier note.** The note said "fail-closed per-actor limiter"; on
+   implementation that is right for one endpoint and wrong for the other.
+   - `invite` **fails closed** (503 → `rate_limit_unavailable`). Each call mints a
+     bearer credential — a token whose holder writes a registration into someone
+     else's roster — and will send a notification once step 6 lands. Losing Redis
+     must not turn an amplifier unmetered. Accepted cost: during a Redis outage
+     captains cannot invite.
+   - `accept`/`decline` **fail open**, matching the existing
+     `assert_redeem_attempt_allowed` for challenge codes. What a limiter protects
+     there is a 256-bit token against guessing, which is already infeasible, so it
+     is defence in depth. A *successful* accept is self-limiting anyway: one
+     registration per player per tournament means a second cannot succeed.
+
+     Uniform fail-closed would trade a real availability loss for protection
+     against an attack 256 bits of entropy already prevents. One test asserts both
+     directions together, so unifying them fails exactly one line.
+
+   **Control 2 is a cumulative cap, not a pending cap.** Reserving a slot bounds
+   *concurrent* pending invites at the number of open slots — but `invite → revoke
+   → invite` in a loop satisfies every slot rule. `TEAM_INVITE_TOTAL_CAP` counts
+   every invite ever created for a team, revoked and declined included, so the loop
+   terminates even inside one rate-limit window.
+
+   **The limiter runs BEFORE the row lock.** Metering behind it would let a flood
+   serialize on the team row and hold it, turning the throttle into a
+   lock-contention amplifier.
+
+   **A vocabulary gap this surfaced.** The service raised 503, but
+   `shared/schemas/rpc.py`'s `status_to_code` had no 503 entry, so it degraded to
+   `internal` → **500 at the client**: the worker said "retry shortly" and the
+   caller was told "we are broken". Added `unavailable` (503) to both the Python
+   vocabulary and `gateway/internal/rpc/envelope.go`, plus
+   `tests/test_rpc_error_code_parity.py` — a cross-language guard pinning the
+   round-trip for all ten statuses, since nothing tied the two declarations
+   together before. Both sides degrade safely: an unknown code is still 500.
+
+   **Deployment note:** invite creation now has a hard Redis dependency by design.
+   Redis down = no new invites (everything else keeps working).
+5. ✅ **DONE — Materialization path.** `rpc.balancer.teams.export_registered`,
+   implemented as `shared/services/team_export/registered.py` (synthesizer) plus
+   `balancer-service/src/services/registered_teams.py` (the flow), and one gateway
+   route. Decision 14 held up: **no third writer was needed.** Step 1's
+   consolidation had already put `workspace_member_id`, `is_substitute`,
+   `captain_player_id` and `guard_standings` into the seam, so this step added a
+   caller and nothing else — the writer itself is untouched.
+
+   **Two settings differ from the other two callers, both deliberately.**
+   `guard_standings=True`: the balancer and draft exports re-export destructively
+   by design, but doing that here would silently invalidate a bracket already built
+   on these teams. `on_unresolved="error"`: registered members arrive pre-resolved,
+   so `"skip"` would materialize an under-sized roster with nothing raised — the
+   exact failure the shared writer's docstring warns about. Both are asserted on
+   the plan, because a copy-paste from `draft/export.py` would drop them silently.
+
+   **Both rank rules are borrowed, not invented.** `Player.rank` is NOT NULL while
+   `BalancerRegistrationRole.rank_value` is nullable, so a rank source had to be
+   chosen. Missing rank → `0`, matching `registration/export.py::build_class`
+   (raising would make the feature unusable for tournaments that never collect
+   ranks); which rank → mirrors `draft/ranks.py::slot_rank`, role-specific on a
+   role shape and the maximum on a role-less one. A cross-file test reads the other
+   module's source, since the two live in different services and cannot import each
+   other — otherwise the same player would rank differently depending on which path
+   materialized their team.
+
+   **One constraint the seam forced:** a registered team name may not contain
+   `"#"`. The seam derives `Team.name` by splitting `balancer_name` on it (the
+   battle-tag convention), so `"Team #1"` would materialize as `"Team "` *and* the
+   name-keyed `exported_team_id` backfill would then miss. Rejected at creation
+   (`team_name_invalid`), which is the only place it is cheap.
+
+   Verification: **8 new DB-backed integration tests pass against real Postgres
+   18.1** (isolated scratch DB at `regteam0002`, dropped after) — a complete team
+   becomes a `tournament.team` with the right name, slot codes become player roles,
+   ranks come from the registration roles, the substitute is written as one and
+   **excluded from `total_sr` (7500, not 8500)**, the `exported_team_id`/
+   `export_status`/`exported_at` stamp lands, re-export replaces rather than
+   duplicates (new team id, same player count), an incomplete team is skipped with
+   `team_incomplete` and writes nothing, and a withdrawn member releases their slot.
+   The pre-existing **36 DB-backed export tests** still pass, which is what proves
+   the shared writer was not disturbed. Unit suites: 1261 tournament + 733 shared +
+   67 root + 355 balancer + 288 parser + 338 app, only the 3 known-at-HEAD
+   failures. `go build`/`go test` clean, ruff clean.
+
+   **The parity guard found two real gaps when extended to `rpc.balancer`.** Its
+   original `@broker.subscriber("...")`-anchored regex reported eleven false
+   orphans, because two registration styles defeat it: five balancer draft subjects
+   register through a `_make_lifecycle(subject, …)` factory, and the whole
+   `rpc.tournament.admin.*` CRUD family registers from `services/admin/registry.py`
+   — outside `src/rpc` entirely. It now matches any subject literal outside the
+   doc-only modules. A second test's premise was simply **wrong** and was
+   corrected rather than made to pass: several subjects are deliberately exposed at
+   two paths, so "no subject is routed twice" is false repo-wide and is now scoped
+   to the subjects this feature added.
+
+   **Kept off the repository-boundary exemption list.** `session.get` became
+   `session.scalar(select(...))` (a read has no business counting as a write), and
+   the failure hook stayed a row-by-row `inner.get` loop rather than one
+   `sa.update` — the guard's regex is name-based, so `inner.get` needs no
+   exemption, which is exactly why `draft/export.py` needs none either. Zero new
+   allowlist entries.
+6. ✅ **DONE — Frontend.** Captain flow, invitee flow, Teams view, participants
+   column, admin Team card, i18n parity.
+
+   **6a — read surface + backend prerequisites: ✅ DONE.** Scoping this step
+   surfaced **three gaps that blocked all UI work**, none of which were in the
+   plan:
+   - **The team columns were exposed nowhere.** `registration_team_id` /
+     `team_slot_code` / `is_substitute` existed on the table since step 3 but not
+     on `RegistrationRead`, so the participants table's team column and the §12.5
+     "your team is incomplete" line had **no data source at all**. Added
+     `RegistrationTeamBrief` (deliberately not the full read model: it rides in
+     every row of a public list, and it carries **no invites** so the roster cannot
+     leak who declined).
+   - **No public teams list existed** — only the admin `regteam_list`. A public
+     Teams tab had nothing to read. Added `rpc.tournament.regteam_list_public`
+     (`AuthOptional`, invites omitted server-side, terminal teams excluded).
+   - **Six load sites needed the eager load**, and forgetting one does not raise —
+     it silently serializes `team: null`. Added `registration_read_loaders()`
+     *colocated with `_reg_to_read`*, since the invariant is "if you serialize with
+     this, load these" and the two must not drift.
+
+   **§12.2 implemented — the first code→i18n mapping in the codebase.**
+   `friendlyMessage` in `api-error.ts` prefers the server's `msg` **verbatim**, and
+   every backend message is English, so the audience being Russian-first meant raw
+   English error text. `lib/registration-team-errors.ts` maps all **31** codes to
+   translated strings, scoped to this feature rather than grown into the
+   English-only generic `ERROR_CODE_MESSAGES` table. Unmapped codes fall through to
+   the old path, so a future backend code degrades rather than blanks.
+
+   **A scout brief was wrong and the correction matters.** It reported "no
+   whole-file ru/en parity test exists"; `frontend/src/i18n/messages.parity.test.ts`
+   asserts **identical nested key paths across both entire files**. It is a
+   `bun:test` file, which is why a vitest-only search missed it. Verified by
+   reading and running it — adding a key to one locale *does* fail CI.
+
+   Parity alone is not enough, though: both dictionaries can be symmetric and both
+   missing a code. `registration-team-errors.test.ts` ties the TS code list to the
+   dictionaries and additionally asserts the Russian tree is not an English
+   copy-paste (no en/ru value identical, every ru value contains Cyrillic) — which
+   key-based assertions cannot catch.
+
+   Also landed: `registration-team.types.ts`, `registration-team.service.ts` (all
+   13 calls), and two query-key factories. `include_terminal` is part of the admin
+   key because the two results are different data, not a filtered view of one entry.
+
+   Verification: **1276** tournament + **733** shared + **74** root pass (only the
+   3 known-at-HEAD failures); frontend **916 vitest + 588 bun** pass; `tsc`,
+   `eslint`, `ruff` and `go build` clean. Two project lint rules fired during
+   review and were complied with rather than suppressed (`Set`→`Record` for a
+   static table; inlined a one-expression wrapper).
+
+   **6b — remaining UI: ✅ DONE.** Built as four parallel slices against the 6a
+   contracts (types, service, query keys, error map, all 114 i18n keys settled up
+   front, which is what made parallel work safe).
+
+   **`lockedRole`** on `RoleStep` + `UnifiedRegistrationForm`: the matrix collapses
+   to one row, `normalize()` is bypassed (its cross-role rebalancing would demote
+   the invite's own slot by reading the two hidden rows), the priority control is
+   hidden, and both role rules in `validateCurrentStep` are skipped — a locked slot
+   *is* the answer to "which role", and an invitee has no second row to fill nor
+   authority to change the first. `buildRolesPayload` submits exactly that role
+   with `is_primary: true`.
+
+   **Surfaces:** `TeamRegistrationWizard` (captain), `InviteAcceptWizard`
+   (invitee), `MyTeamPanel` (roster management: invite with one-time token reveal,
+   revoke, kick, transfer, disband, leave), `MyTeamSection` (the entry point, self-
+   contained so the tab hosts it in one line), the public Teams tab on its own
+   section id `registration-teams`, the participants team column, the §12.5 line on
+   the registration card, and the admin `RegistrationTeamsCard`.
+
+   **Four real problems surfaced by building it:**
+
+   - **The feature was unreachable.** Nothing could set
+     `team_formation = "registration"` — the three admin selects offered only
+     `balancer` and `draft`, and the backend column is a free string with no
+     writer. Added in all three, plus `ReviewStep`, which summarised a registration
+     tournament as "Auto-balance (Balancer)". Hardcoded English deliberately: all
+     three files hardcode their existing two options, and one translated option
+     beside two hardcoded ones is worse than consistent debt.
+   - **`myCard.rejected`/`disbanded` were dead, and that was §12.5's dead end
+     again.** `disband_team` and `reject_team` cleared `registration_team_id` on
+     every member, and the brief is derived from that FK — so a player whose team
+     was rejected saw only an unexplained withdrawal. Now the link is **retained**
+     on disband and on reject-with-withdrawal (safe: `_roster_members` filters
+     withdrawn rows, so slot accounting and the export are unaffected), and cleared
+     only on kick/leave and reject-without-withdrawal. The distinction is real:
+     kick/leave means "you are not on this team", disband/reject means "this team
+     ended".
+   - **The server's `shortfall` string leaked English into Russian sentences.**
+     `describe_shortfall()` renders `"1x dps, 2x support"` — raw slot codes. Now
+     built client-side from `open_slots` via `formatShortfall`. My first version
+     used `ROLE_LABELS` (hardcoded English, **no `flex` entry**), which a slice
+     caught: one card read "1× DPS" beside a translated "Урон" chip and a flex slot
+     degraded to its raw code. It now takes the `rosterShape.slotCodes` translator
+     every other slot display already uses. The server field remains the source of
+     truth; only its presentation moved.
+   - **next-intl types its translators narrowly.** `ErrorTranslator` was
+     `(key: string) => string`, which the real scoped translator is not assignable
+     to — and the same applied to `has`. Both now take the code union, so a missing
+     key is a *type* error rather than a runtime fallback.
+
+   **Deliberate `defaultVisible` choice** on the team column, worth recording: it
+   is data-derived (`any registration carries a team`), not a constant. Hardcoded
+   `true` puts a permanently blank column on every solo tournament; hardcoded
+   `false` is equally wrong because search only walks *visible* columns, so
+   find-players-by-team — the column's entire purpose — would be off until the user
+   hunted through the picker.
+
+   Verification: frontend **934 vitest + 588 bun** pass, `tsc`/`eslint` clean, the
+   vitest include allow-list check passes; backend **1276** tournament + **733**
+   shared + **74** root + **355** balancer, only the 3 known-at-HEAD failures;
+   `go build`/`go test` clean. New tests include a mount-based i18n test rendering
+   `MyTeamPanel` in both locales (fails on any unresolved key, and asserts the copy
+   actually differs per locale), an executable leak guard proving the public teams
+   tab renders nothing from an invites-carrying payload, and 8 admin-card behaviour
+   tests including one that a real `ApiError` code renders the translated string
+   rather than the server's English `msg`.
 
 ## 11. Open risks
 

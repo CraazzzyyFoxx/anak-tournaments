@@ -11,10 +11,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
+from src.domain.achievement_stage_filters import standing_is_elimination
 
 from ..context import EvalContext
 from . import ResultSet, register
-from ._stage_filters import standing_is_elimination
 
 
 @register("consecutive")

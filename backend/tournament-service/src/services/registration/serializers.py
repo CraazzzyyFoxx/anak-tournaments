@@ -115,6 +115,7 @@ def serialize_registration(
 def serialize_registration_form(
     form: models.BalancerRegistrationForm,
     *,
+    is_open: bool,
     subscription_requirement: dict[str, Any] | None = None,
 ) -> RegistrationFormRead:
     """``subscription_requirement`` is the WORKSPACE's rule, passed in by the caller.
@@ -122,12 +123,16 @@ def serialize_registration_form(
     An argument rather than a lookup because this stays sync and must not issue a
     second round trip per call; the async RPC handler already has the session and
     fetches it once via ``subscription_config.load_workspace_requirement_blob``.
+
+    ``is_open`` is passed in for the same reason, and is now DERIVED from the
+    tournament's REGISTRATION schedule window rather than read off the form — the
+    form no longer has a say in whether registration is open.
     """
     return RegistrationFormRead(
         id=form.id,
         tournament_id=form.tournament_id,
         workspace_id=form.workspace_id,
-        is_open=form.is_open,
+        is_open=is_open,
         auto_approve=form.auto_approve,
         require_open_profile=form.require_open_profile,
         open_profile_scope=form.open_profile_scope,

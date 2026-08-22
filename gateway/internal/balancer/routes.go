@@ -39,6 +39,11 @@ var AdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_get", IDParam: "tournament_id", Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_save", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/balances/{balance_id}/export", Queue: "rpc.balancer.admin.balance_export", IDParam: "balance_id", Auth: edge.AuthRequired},
+	// Materialize pre-formed registered teams (docs/plans/2026-08-20-team-registration.md §5).
+	// `Body: true` carries the optional `team_ids` narrowing; an empty body exports
+	// every complete team. Unlike balance_export this refuses when standings exist
+	// for teams it does not own, so it cannot silently invalidate a live bracket.
+	{Method: "POST", Pattern: "/api/balancer/tournaments/{tournament_id}/registered-teams/export", Queue: "rpc.balancer.teams.export_registered", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/balancer/workspaces/{workspace_id}/config", Queue: "rpc.balancer.admin.workspace_config_get", IDParam: "workspace_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "PUT", Pattern: "/api/balancer/workspaces/{workspace_id}/config", Queue: "rpc.balancer.admin.workspace_config_upsert", IDParam: "workspace_id", Body: true, Auth: edge.AuthRequired},
 }

@@ -13,7 +13,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 from shared.core import enums  # noqa: E402
-from src.services.match_logs import backfill  # noqa: E402
+from src.domain.match_logs import impact_backfill  # noqa: E402
 
 
 def _stat_rows():
@@ -35,7 +35,7 @@ def _stat_rows():
 
 
 def test_rebuild_frames_pivots_round_and_match():
-    round_df, match_df = backfill.rebuild_frames(_stat_rows())
+    round_df, match_df = impact_backfill.rebuild_frames(_stat_rows())
     assert list(round_df["round"].unique()) == [1]
     assert round_df[enums.LogStatsName.Eliminations].iloc[0] == 5.0
     assert match_df["round"].iloc[0] == 0
@@ -53,5 +53,5 @@ def test_rebuild_frames_drops_already_derived_new_stats():
         ],
         ignore_index=True,
     )
-    _, match_df = backfill.rebuild_frames(rows)
+    _, match_df = impact_backfill.rebuild_frames(rows)
     assert enums.LogStatsName.ImpactPoints not in match_df.columns

@@ -190,6 +190,28 @@ describe("buildTournamentSectionNav", () => {
     });
   });
 
+  it("never carries a registered-teams section, on any formation", () => {
+    // Registered teams render on the Participants page, not behind their own tab.
+    // A dedicated tab put three sections in one conceptual space (`Teams`,
+    // `Participants`, `Registered teams`) and duplicated the `Teams` tab outright
+    // once the organizer exported: both then listed the same teams. This pins the
+    // removal, since re-adding a section id is a one-line change.
+    for (const teamFormation of ["balancer", "draft", "registration"]) {
+      const nav = buildTournamentSectionNav({
+        tournamentId,
+        status: "registration",
+        stages: [stage()],
+        teamFormation,
+        hasSchedule: true,
+        hasTeams: true,
+        pathname: `/tournaments/${tournamentId}/participants`
+      });
+      expect(nav.filter((item) => item.id.includes("registration"))).toEqual([]);
+      // ...and exactly one section is about teams.
+      expect(nav.filter((item) => item.labelKey === "common.teams")).toHaveLength(1);
+    }
+  });
+
   it("marks exactly the canonical nested route active", () => {
     const items = model("playoffs", `/tournaments/${tournamentId}/standings/`);
 

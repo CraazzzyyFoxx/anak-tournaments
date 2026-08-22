@@ -9,9 +9,12 @@ type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.noSchedule"
   | "tournamentDetail.nav.reasons.noTeams";
 
+/** Every section labels itself from `common.<id>`. */
+export type TournamentSectionLabelKey = `common.${TournamentSectionId}`;
+
 export type TournamentSectionNavItem = {
   id: TournamentSectionId;
-  labelKey: `common.${TournamentSectionId}`;
+  labelKey: TournamentSectionLabelKey;
   href: string;
   active: boolean;
   available: boolean;
@@ -65,6 +68,9 @@ const tournamentSections: Exclude<TournamentSectionId, "draft">[] = [
   "stream",
   "teams",
   "participants",
+  // Sits with `participants`, not next to `teams`: both read registration-phase
+  // data, and the post-balancer `teams` tab carries the same visible label, so
+  // neighbouring them would read as a duplicate rather than two views.
   "schedule",
   "matches",
   "maps",
@@ -131,9 +137,12 @@ export function buildTournamentSectionNav({
   // locked tab claims the content exists somewhere: `draft`, which only a draft
   // tournament has at all, and `stream`, which needs a broadcast link or a live
   // participant. `stream` is filtered from its display position instead of
-  // appended like `draft`, so the rail keeps one order in both cases.
+  // appended like `draft`, so the rail keeps one order in every case.
   const sections: TournamentSectionId[] = [
-    ...tournamentSections.filter((id) => id !== "stream" || hasStreams),
+    ...tournamentSections.filter((id) => {
+      if (id === "stream") return hasStreams;
+      return true;
+    }),
     ...(teamFormation === "draft" ? (["draft"] as const) : [])
   ];
 

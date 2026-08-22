@@ -45,6 +45,7 @@ from shared.schemas.events import (
     UploadMatchLogEvent,
 )
 from src import models
+from src.clients.overfast import overfast_catalog_client
 from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
@@ -53,9 +54,6 @@ from src.rpc import (
 )
 from src.rpc import (
     achievements as rpc_achievements,
-)
-from src.rpc import (
-    bootstrap as rpc_bootstrap,
 )
 from src.rpc import (
     impact as rpc_impact,
@@ -77,10 +75,10 @@ from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import realtime as logs_realtime
 from src.services.match_logs import reaper as logs_reaper
 from src.services.match_logs import uploads as upload_service
+from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.result_events import publish_match_log_result
 from src.services.overwatch_rank import scheduler as rank_scheduler
 from src.services.overwatch_rank import tasks as rank_tasks
-from src.services.s3 import service as s3_service
 from src.services.subscription_collection import scheduler as subscription_scheduler
 
 logger = setup_logging(
@@ -141,7 +139,6 @@ rpc_logs.register(broker, logger)
 rpc_rank.register(broker, logger)
 rpc_achievements.register(broker, logger)
 rpc_misc.register(broker, logger)
-rpc_bootstrap.register(broker, logger)
 rpc_impact.register(broker, logger)
 rpc_subscription.register(broker, logger)
 
@@ -176,6 +173,7 @@ async def start_worker() -> None:
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
     await s3_client.start()
+    await overfast_catalog_client.start()
     await rank_tasks.rank_client.start()
     # Periodic OverFast rank collection trigger (Redis leader-locked across worker
     # replicas, admin-settings-gated — no-ops while collection is disabled). Lives
@@ -194,6 +192,7 @@ async def stop_worker() -> None:
     logs_reaper.shutdown_scheduler()
     subscription_scheduler.shutdown_scheduler()
     await s3_client.close()
+    await overfast_catalog_client.close()
     await rank_tasks.rank_client.close()
     await rank_tasks.close_redis()
     await _clients.realtime_redis.aclose()
@@ -328,7 +327,7 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
                 )
                 if tournament_exists is None:
                     raise RuntimeError(f"Tournament {event.tournament_id} not found")
-                filenames = await s3_service.get_logs_by_tournament(s3_client, event.tournament_id)
+                filenames = await binary_match_logs.get_logs_by_tournament(s3_client, event.tournament_id)
 
             # Fan out instead of parsing the whole tournament inline: an inline
             # loop holds one session (and one unacked delivery) for as long as it

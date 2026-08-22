@@ -37,11 +37,9 @@ export type WizardFormData = TournamentFormFieldsValue & {
 export interface WizardScheduleState {
   phase_schedule: Record<SchedulablePhase, { starts_at: string; ends_at: string }>;
   auto_transitions_enabled: boolean;
-  allow_late_registration: boolean;
 }
 
 export interface WizardRegistrationState {
-  is_open: boolean;
   auto_approve: boolean;
   require_open_profile: boolean;
   require_subscription: boolean;
@@ -146,7 +144,6 @@ export function buildDraftUpdateInput(
     division_grid_version_id: form.division_grid_version_id ?? null,
     team_formation: form.team_formation,
     auto_transitions_enabled: schedule.auto_transitions_enabled,
-    allow_late_registration: schedule.allow_late_registration,
     ...(publish ? { is_hidden: false } : {})
   };
 }
@@ -190,8 +187,7 @@ export function wizardStateFromDraft(
     },
     schedule: {
       phase_schedule: state.phase_schedule,
-      auto_transitions_enabled: state.auto_transitions_enabled,
-      allow_late_registration: state.allow_late_registration
+      auto_transitions_enabled: state.auto_transitions_enabled
     }
   };
 }

@@ -83,7 +83,6 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	pbin := parser.NewBinary(errCaller{}, func(*http.Request) (map[string]any, bool, error) { return nil, false, nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	mux.HandleFunc("POST /api/v1/admin/logs/upload", pbin.AdminLogsUpload)
-	mux.HandleFunc("POST /api/v1/teams/create/balancer", pbin.TeamsBalancerUpload)
 	// Unmatched /api/v1/* falls to the /api/v1/ guard (404), never the "/" frontend
 	// catch-all.
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, _ *http.Request) {

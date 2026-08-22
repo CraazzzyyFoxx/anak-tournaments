@@ -18,10 +18,9 @@ from shared.observability import (
     setup_tracing,
     start_worker_metrics_server,
 )
-from src.core import config, db
+from src.core import clients, config, db
 from src.core.caching import configure_cache
 from src.rpc import (
-    _clients,
     achievements,
     admin_crud,
     audit,
@@ -88,7 +87,7 @@ binary.register(broker, logger)
 @app.on_startup
 async def start_worker() -> None:
     await broker.connect()
-    await _clients.s3_client.start()
+    await clients.s3_client.start()
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,
@@ -119,10 +118,10 @@ async def start_worker() -> None:
     await cache.delete_match("backend:*")
     # Kick off the initial build of the hero global-stats materialized view as a
     # debounced background task — never blocks startup or the event consumer.
-    hero_stats_refresh.request_refresh(db.async_session_maker, logger)
+    hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
     logger.info("App RPC service (app-svc) started")
 
 
 @app.on_shutdown
 async def stop_worker() -> None:
-    await _clients.s3_client.close()
+    await clients.s3_client.close()

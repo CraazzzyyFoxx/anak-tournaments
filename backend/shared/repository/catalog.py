@@ -6,8 +6,10 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core import enums
@@ -33,6 +35,16 @@ class HeroRepository(BaseRepository[models.Hero]):
 
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Hero | None:
         return await self.get_by(session, name=name)
+
+    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(id, name)`` name-ordered, for admin/filter pickers.
+
+        A two-column projection rather than `get_all`: the pickers render a
+        label, and hydrating ~40 full hero rows (aliases JSONB included) to read
+        two columns is waste.
+        """
+        result = await session.execute(sa.select(models.Hero.id, models.Hero.name).order_by(models.Hero.name))
+        return result.all()
 
     async def list_by_role(
         self,
@@ -146,37 +158,65 @@ class GamemodeRepository(BaseRepository[models.Gamemode]):
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Gamemode | None:
         return await self.get_by(session, name=name)
 
-    async def get_with_maps(self, session: AsyncSession, gamemode_id: int) -> models.Gamemode | None:
-        return await self.get(session, gamemode_id, options=[selectinload(models.Gamemode.maps)])
+    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
+        result = await session.execute(sa.select(models.Gamemode.id, models.Gamemode.name).order_by(models.Gamemode.name))
+        return result.all()
+
+    @staticmethod
+    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
+        """Loader options for the relations an ``entities`` token list asks for.
+
+        ``maps`` is the only expandable relation on a gamemode. Which relation a
+        token loads is a property of the table, not of the request, so it lives
+        here rather than in a per-caller ``if "maps" in entities`` branch — and
+        unknown tokens are ignored, so a caller may pass its whole list through.
+        """
+        return [selectinload(models.Gamemode.maps)] if "maps" in entities else []
+
+    async def get_expanded(
+        self, session: AsyncSession, gamemode_id: int, entities: Sequence[str] = ()
+    ) -> models.Gamemode | None:
+        return await self.get(session, gamemode_id, options=self.load_options(entities))
 
     async def all(
         self,
         session: AsyncSession,
         params: PaginationSortSearchParams,
         *,
-        with_maps: bool = False,
+        entities: Sequence[str] = (),
     ) -> tuple[Sequence[models.Gamemode], int]:
-        """Paginated gamemodes — optionally eager-loads `Gamemode.maps`."""
-        options = [selectinload(models.Gamemode.maps)] if with_maps else None
-        return await self.get_all(session, params, options=options)
+        return await self.get_all(session, params, options=self.load_options(entities))
 
 
 class MapRepository(BaseRepository[models.Map]):
     def __init__(self) -> None:
         super().__init__(models.Map)
 
-    async def get_with_gamemode(self, session: AsyncSession, map_id: int) -> models.Map | None:
-        return await self.get(session, map_id, options=[selectinload(models.Map.gamemode)])
+    @staticmethod
+    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
+        """``gamemode`` is the only expandable relation on a map — see
+        `GamemodeRepository.load_options`."""
+        return [selectinload(models.Map.gamemode)] if "gamemode" in entities else []
+
+    async def get_expanded(
+        self, session: AsyncSession, map_id: int, entities: Sequence[str] = ()
+    ) -> models.Map | None:
+        return await self.get(session, map_id, options=self.load_options(entities))
+
+    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
+        result = await session.execute(sa.select(models.Map.id, models.Map.name).order_by(models.Map.name))
+        return result.all()
 
     async def get_by_name(
         self,
         session: AsyncSession,
         name: str,
         *,
-        with_gamemode: bool = False,
+        entities: Sequence[str] = (),
     ) -> models.Map | None:
-        options = [selectinload(models.Map.gamemode)] if with_gamemode else None
-        return await self.get_by(session, options=options, name=name)
+        return await self.get_by(session, options=self.load_options(entities), name=name)
 
     @staticmethod
     def build_name_or_alias_query(*, name: str, gamemode: str) -> sa.Select:
@@ -223,8 +263,79 @@ class MapRepository(BaseRepository[models.Map]):
         session: AsyncSession,
         params: PaginationSortParams | PaginationSortSearchParams,
         *,
-        with_gamemode: bool = False,
+        entities: Sequence[str] = (),
     ) -> tuple[Sequence[models.Map], int]:
-        """Paginated maps — optionally eager-loads `Map.gamemode`."""
-        options = [selectinload(models.Map.gamemode)] if with_gamemode else None
-        return await self.get_all(session, params, options=options)
+        return await self.get_all(session, params, options=self.load_options(entities))
+
+
+class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
+    """``overwatch.catalog_alias_miss`` — the unresolved-name worklist.
+
+    Rows are never deleted; ``resolved_at`` is stamped on attach/dismiss and
+    cleared again when the same name reappears (see the model docstring).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.CatalogAliasMiss)
+
+    async def resolve_by_raw_name(
+        self,
+        session: AsyncSession,
+        *,
+        entity_type: enums.CatalogEntityType,
+        raw_name: str,
+    ) -> None:
+        """Close the miss for one ``(entity_type, raw_name)`` pair.
+
+        Set-based rather than load-then-mutate: the pair is unique
+        (``uq_catalog_alias_miss_entity_raw``) but may legitimately be absent —
+        an alias can be attached before any log ever missed on it.
+        """
+        await session.execute(
+            sa.update(models.CatalogAliasMiss)
+            .where(
+                models.CatalogAliasMiss.entity_type == entity_type,
+                models.CatalogAliasMiss.raw_name == raw_name,
+            )
+            .values(resolved_at=sa.func.now())
+        )
+
+    async def record_miss(
+        self,
+        session: AsyncSession,
+        entity_type: enums.CatalogEntityType,
+        raw_names: typing.Iterable[str],
+        *,
+        log_record_id: int | None = None,
+        name_max_length: int = 128,
+    ) -> None:
+        """Upsert one occurrence-tracked miss row per cleaned name.
+
+        A name showing up again reopens a dismissed miss (``resolved_at`` reset
+        to ``None`` on conflict) — "hidden, but it keeps coming back" must stay
+        visible instead of being lost.
+        """
+        names = sorted({name.strip() for name in raw_names if name and name.strip()})
+        if not names:
+            return
+        statement = pg_insert(self.model).values(
+            [
+                {
+                    "entity_type": entity_type,
+                    "raw_name": name[:name_max_length],
+                    "last_log_record_id": log_record_id,
+                }
+                for name in names
+            ]
+        )
+        await session.execute(
+            statement.on_conflict_do_update(
+                constraint="uq_catalog_alias_miss_entity_raw",
+                set_={
+                    "occurrences": self.model.occurrences + 1,
+                    "last_seen_at": sa.func.now(),
+                    "last_log_record_id": statement.excluded.last_log_record_id,
+                    "resolved_at": None,
+                },
+            )
+        )

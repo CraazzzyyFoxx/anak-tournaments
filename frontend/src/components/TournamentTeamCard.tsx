@@ -3,7 +3,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { sortTeamPlayers, type TeamRosterPlayer } from "@/utils/player";
-import { CircleMinus, CirclePlus, CornerDownRight } from "lucide-react";
+import { CircleMinus, CirclePlus, CornerDownRight, Crown } from "lucide-react";
 import PlayerName from "@/components/PlayerName";
 import { Team } from "@/types/team.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -40,12 +40,15 @@ function avgMvpColor(value: number): string {
 export const TournamentTeamTable = ({
   players,
   tournamentGrid,
-  highlightUserId
+  highlightUserId,
+  captainUserId
 }: {
   players: TeamRosterPlayer[];
   tournamentGrid?: DivisionGridVersion | null;
   /** When a roster row belongs to this user id, it gets a "you" tag. */
   highlightUserId?: number;
+  /** When a roster row belongs to this user id, it gets a captain crown. */
+  captainUserId?: number;
 }) => {
   const t = useTranslations();
   const sortedPlayers = sortTeamPlayers(players);
@@ -99,6 +102,15 @@ export const TournamentTeamTable = ({
               <td>
                 <div className="flex items-center gap-2">
                   <PlayerName player={player} includeSpecialization={true} />
+                  {captainUserId != null && player.user_id === captainUserId ? (
+                    <span
+                      className="inline-flex shrink-0 items-center text-[color:var(--aqt-amber)]"
+                      title={t("registrationTeams.member.captain")}
+                    >
+                      <Crown className="size-3.5" aria-hidden />
+                      <span className="sr-only">{t("registrationTeams.member.captain")}</span>
+                    </span>
+                  ) : null}
                   {highlightUserId != null && player.user_id === highlightUserId ? (
                     <span
                       className="aqt-mono rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em]"
@@ -256,6 +268,7 @@ export const TournamentTeamCard = ({ team }: { team: Team }) => {
       <TournamentTeamTable
         players={team.players}
         tournamentGrid={team.tournament?.division_grid_version}
+        captainUserId={team.captain_id}
       />
     </TournamentTeamCardFrame>
   );

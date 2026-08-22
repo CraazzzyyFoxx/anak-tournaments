@@ -1,3418 +1,1687 @@
 import typing
-from collections import defaultdict
+from statistics import mean
 
-import sqlalchemy as sa
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased, joinedload, selectinload
-from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.core.social import SocialProvider, normalize_social_handle
-from shared.division_grid import DivisionGrid, division_case_expr, division_filter_predicates
-from shared.models import mv_hero_global_stats
-from shared.services.achievement_effective import build_effective_achievement_rows_subquery
-from src import models
-from src.core import config, enums, pagination, utils
-
-# Overview sorts whose ORDER BY is a correlated scalar subquery evaluated over the
-# whole filtered population (not just the page). Cached id-order applies to these.
-_EXPENSIVE_OVERVIEW_SORTS = frozenset({"tournaments_count", "achievements_count", "avg_placement"})
-
-
-def _team_load_options(entities: list[str]) -> list[_AbstractLoad]:
-    """Load options for selecting Team with optional related entities.
-
-    Replaces the dependency on services/team — kept local because the only
-    consumer of this function in app-service is get_teams() below, which
-    passes entities=["tournament", "placement"].
-    """
-    opts: list[_AbstractLoad] = []
-    if "tournament" in entities:
-        opts.append(joinedload(models.Team.tournament))
-    if "placement" in entities:
-        opts.append(selectinload(models.Team.standings))
-    return opts
-
-
-if typing.TYPE_CHECKING:
-    from src import schemas as app_schemas
-
-home_score_case = sa.case(
-    (models.Encounter.home_team_id == models.Team.id, models.Encounter.home_score),
-    else_=models.Encounter.away_score,
+from shared.division_grid import DivisionGrid, load_runtime_grid
+from shared.services.division_grid_access import build_workspace_division_grid_normalizer
+from shared.services.division_grid_normalization import (
+    DivisionGridNormalizationError,
+    DivisionGridNormalizer,
 )
-away_score_case = sa.case(
-    (models.Encounter.home_team_id == models.Team.id, models.Encounter.away_score),
-    else_=models.Encounter.home_score,
+from shared.services.division_grid_resolution import (
+    resolve_tournament_division,
+    resolve_workspace_division,
 )
+from src import models, schemas
+from src.core import config, enums, errors, pagination
+from src.core.workspace import get_division_grid_version
+from src.services.hero.service import heroes as hero_service
+from src.services.statistics.queries import StatisticsQueries
+from src.services.statistics.queries import queries as statistics_queries
 
-winrate_sum = sa.func.sum(home_score_case) / (sa.func.sum(home_score_case) + sa.func.sum(away_score_case))
+from . import _mappers
+from .queries.compare import COMPARE_METRIC_DEFINITIONS, DEFAULT_HERO_COMPARE_STATS, UserCompareQueries
+from .queries.compare import compare as compare_queries
+from .queries.encounters import UserEncounterQueries
+from .queries.encounters import encounters as encounter_queries
+from .queries.overview import UserOverviewQueries
+from .queries.overview import overview as overview_queries
+from .queries.profile import UserProfileQueries
+from .queries.profile import profile as profile_queries
 
-OVERVIEW_HERO_METRICS: tuple[enums.LogStatsName, ...] = (
+__all__ = ["UserService", "users"]
+
+tournament_stats = [
+    enums.LogStatsName.HeroDamageDealt,
+    enums.LogStatsName.KD,
+    enums.LogStatsName.Eliminations,
+    enums.LogStatsName.Assists,
+    enums.LogStatsName.KDA,
+    enums.LogStatsName.DamageDelta,
+    enums.LogStatsName.Deaths,
+    enums.LogStatsName.Performance,
+]
+
+
+overview_hero_metrics_order = [
     enums.LogStatsName.Eliminations,
     enums.LogStatsName.FinalBlows,
     enums.LogStatsName.HeroDamageDealt,
     enums.LogStatsName.HealingDealt,
-)
+]
 
-DEFAULT_HERO_COMPARE_STATS: tuple[enums.LogStatsName, ...] = tuple(
-    stat for stat in enums.LogStatsName if stat != enums.LogStatsName.HeroTimePlayed
-)
 
+# Computed once at import — COMPARE_METRIC_DEFINITIONS is module-level
+# constant; rebuilding these dicts per request was pure waste.
+_METRIC_DIRECTION_MAP: dict[str, bool] = {
+    key: higher_is_better for key, _label, higher_is_better in COMPARE_METRIC_DEFINITIONS
+}
 
-async def get_compare_catalog_entities(
-    session: AsyncSession,
-    *,
-    left_hero_id: int | None,
-    right_hero_id: int | None,
-    map_id: int | None,
-) -> tuple[models.Hero | None, models.Hero | None, models.Map | None]:
-    """Load the optional left hero, right hero, and map in one round trip."""
-    left_hero = aliased(models.Hero, name="compare_left_hero")
-    right_hero = aliased(models.Hero, name="compare_right_hero")
-    compare_map = aliased(models.Map, name="compare_map")
-    anchor = sa.select(sa.literal(1).label("anchor")).subquery("compare_catalog_anchor")
 
-    statement = (
-        sa.select(left_hero, right_hero, compare_map)
-        .select_from(anchor)
-        .outerjoin(left_hero, left_hero.id == left_hero_id if left_hero_id is not None else sa.false())
-        .outerjoin(right_hero, right_hero.id == right_hero_id if right_hero_id is not None else sa.false())
-        .outerjoin(compare_map, compare_map.id == map_id if map_id is not None else sa.false())
-    )
-    row = (await session.execute(statement)).one()
-    return row[0], row[1], row[2]
+_METRIC_LABEL_MAP: dict[str, str] = {key: label for key, label, _higher_is_better in COMPARE_METRIC_DEFINITIONS}
 
 
-COMPARE_METRIC_DEFINITIONS: tuple[tuple[str, str, bool], ...] = (
-    ("tournaments_count", "Tournaments", True),
-    ("achievements_count", "Achievements", True),
-    ("maps_total", "Maps Played", True),
-    ("maps_won", "Maps Won", True),
-    ("maps_winrate", "Map Winrate", True),
-    ("avg_placement", "Average Placement", False),
-    ("avg_playoff_placement", "Average Playoff Placement", False),
-    ("avg_group_placement", "Average Group Placement", False),
-    ("avg_closeness", "Average Closeness", True),
-    ("mvp_score_avg", "MVP Score", False),
-    ("eliminations_avg_10", "Eliminations", True),
-    ("final_blows_avg_10", "Final Blows", True),
-    ("hero_damage_dealt_avg_10", "Hero Damage", True),
-    ("healing_dealt_avg_10", "Healing Dealt", True),
-)
+def _build_baseline_average_row(rows: list[dict[str, typing.Any]]) -> dict[str, float | None]:
+    baseline: dict[str, float | None] = {}
+    for key, _label, _higher_is_better in COMPARE_METRIC_DEFINITIONS:
+        values = [row.get(key) for row in rows if row.get(key) is not None]
+        if not values:
+            baseline[key] = None
+        else:
+            baseline[key] = float(sum(float(value) for value in values) / len(values))
+    return baseline
 
 
-def user_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    """
-    Constructs a list of SQLAlchemy load options for querying related entities of a `User` model.
+def _compute_rank_and_percentile(
+    rows: list[dict[str, typing.Any]],
+    key: str,
+    subject_value: float | int | None,
+    higher_is_better: bool,
+) -> tuple[int | None, float | None]:
+    if subject_value is None:
+        return None, None
 
-    Args:
-        in_entities: A list of strings representing the names of related entities to load.
-        child: An optional SQLAlchemy relationship or join entity to chain the load options.
+    values = [row.get(key) for row in rows if row.get(key) is not None]
+    if not values:
+        return None, None
 
-    Returns:
-        A list of SQLAlchemy load options (`_AbstractLoad`) for the specified entities.
-    """
-    entities = []
-    # Unified identity source consumed by ``to_pydantic``. Loaded whenever any
-    # identity entity token is requested (legacy ``battle_tag``/``discord``/
-    # ``twitch`` tokens are still accepted for caller/API compatibility).
-    if any(name in in_entities for name in ("social_accounts", "battle_tag", "discord", "twitch")):
-        # Eager-load each account's visibility rows alongside it so to_pydantic can
-        # compute ``visible_global`` and (on public reads) drop hidden accounts
-        # without a lazy load outside the async greenlet.
-        social_load = utils.join_entity(child, models.User.social_accounts)
-        entities.append(social_load.selectinload(models.SocialAccount.visibilities))
-    return entities
-
-
-def _hero_direction_score(value_column: sa.ColumnElement[typing.Any], name_column: sa.ColumnElement[typing.Any]):
-    ascending_stats = [stat for stat, direction in enums.LOG_STATS_DEFAULT_DIRECTION.items() if direction == "asc"]
-    direction_multiplier = sa.case(
-        (name_column.in_(ascending_stats), -1.0),
-        else_=1.0,
-    )
-    return value_column * direction_multiplier
-
-
-def _build_eligible_hero_stats_cte(
-    *,
-    user_id: int | None,
-    stats: list[enums.LogStatsName] | None,
-    cte_name: str,
-    tournament_id: int | None = None,
-    workspace_id: int | None = None,
-) -> sa.CTE:
-    # (match, user, hero) combos that actually played the hero (HeroTimePlayed
-    # > 60s). Expressed as a DISTINCT semi-join CTE rather than a correlated
-    # EXISTS so the planner joins it once (backed by ix_match_statistics_playtime_r0)
-    # instead of re-probing matches.statistics per candidate row. DISTINCT keeps
-    # the join a true semi-join: even if a (match, user, hero) ever had duplicate
-    # playtime rows, the eligible set is not fanned out.
-    qualified_where: list[typing.Any] = [
-        models.MatchStatistics.round == 0,
-        models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-        models.MatchStatistics.value > 60,
-    ]
-    if user_id is not None:
-        # Scope the playtime probe to the same user as the eligible base: a
-        # per-user query then touches only that user's rows (a user-leading
-        # index seek) instead of DISTINCT-scanning every player's playtime stats.
-        qualified_where.append(models.MatchStatistics.user_id == user_id)
-    qualified_combos = (
-        sa.select(
-            models.MatchStatistics.match_id.label("match_id"),
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.hero_id.label("hero_id"),
-        )
-        .where(*qualified_where)
-        .distinct()
-        .cte(f"{cte_name}_qualified")
-    )
-
-    where_conditions: list[typing.Any] = [
-        models.MatchStatistics.round == 0,
-        models.MatchStatistics.hero_id.isnot(None),
-    ]
-    if user_id is not None:
-        where_conditions.append(models.MatchStatistics.user_id == user_id)
-    if stats:
-        where_conditions.append(models.MatchStatistics.name.in_(stats))
-
-    base_select = (
-        sa.select(
-            models.MatchStatistics.match_id.label("match_id"),
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.hero_id.label("hero_id"),
-            models.MatchStatistics.name.label("name"),
-            models.MatchStatistics.value.label("value"),
-        )
-        .join(
-            qualified_combos,
-            sa.and_(
-                qualified_combos.c.match_id == models.MatchStatistics.match_id,
-                qualified_combos.c.user_id == models.MatchStatistics.user_id,
-                qualified_combos.c.hero_id == models.MatchStatistics.hero_id,
-            ),
-        )
-        .where(*where_conditions)
-    )
-
-    if tournament_id is not None or workspace_id is not None:
-        base_select = base_select.join(models.Match, models.Match.id == models.MatchStatistics.match_id).join(
-            models.Encounter, models.Encounter.id == models.Match.encounter_id
-        )
-        if tournament_id is not None:
-            base_select = base_select.where(models.Encounter.tournament_id == tournament_id)
-        if workspace_id is not None:
-            base_select = base_select.join(
-                models.Tournament, models.Tournament.id == models.Encounter.tournament_id
-            ).where(models.Tournament.workspace_id == workspace_id)
-
-    return base_select.cte(cte_name)
-
-
-def _apply_overview_role_filters(
-    query: sa.Select,
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    grid: DivisionGrid,
-) -> sa.Select:
-    role_filters: list[typing.Any] = [
-        models.Player.workspace_member.has(models.WorkspaceMember.player_id == models.User.id),
-        models.Player.is_substitution.is_(False),
-    ]
-
-    if role is not None:
-        role_filters.append(models.Player.role == role)
-    role_filters.extend(division_filter_predicates(models.Player.rank, div_min, div_max, grid))
-
-    role_exists = sa.exists(sa.select(1).select_from(models.Player).where(*role_filters))
-    return query.where(role_exists)
-
-
-def _apply_workspace_member_filter(query: sa.Select, workspace_id: int | None) -> sa.Select:
-    """Scope a ``User``-selecting query to members of the given workspace.
-
-    Post identity/workspace refactor, workspace membership is anchored on
-    ``workspace_member.player_id -> players.user.id``. When ``workspace_id`` is
-    ``None`` the query is returned unchanged (no scoping), mirroring the
-    ``workspace_filter`` contract in ``core.workspace``.
-    """
-    if workspace_id is None:
-        return query
-    member_exists = sa.exists(
-        sa.select(1)
-        .select_from(models.WorkspaceMember)
-        .where(
-            models.WorkspaceMember.player_id == models.User.id,
-            models.WorkspaceMember.workspace_id == workspace_id,
-        )
-    )
-    return query.where(member_exists)
-
-
-def _compare_player_scope_filters(
-    player_model: type[models.Player],
-    user_id_column: sa.ColumnElement[typing.Any] | int,
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> list[typing.Any]:
-    filters: list[typing.Any] = [
-        player_model.workspace_member.has(models.WorkspaceMember.player_id == user_id_column),
-        player_model.is_substitution.is_(False),
-    ]
-
-    if role is not None:
-        filters.append(player_model.role == role)
-    filters.extend(division_filter_predicates(player_model.rank, div_min, div_max, grid))
-    if tournament_id is not None:
-        filters.append(player_model.tournament_id == tournament_id)
-
-    return filters
-
-
-def _compare_tournament_scope_exists(
-    user_id_column: sa.ColumnElement[typing.Any] | int,
-    tournament_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ColumnElement[bool]:
-    scoped_player = aliased(models.Player)
-    scoped_tournament = aliased(models.Tournament)
-    filters = _compare_player_scope_filters(
-        scoped_player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    filters.append(scoped_player.tournament_id == tournament_id_column)
-    filters.extend(
-        [
-            scoped_tournament.id == scoped_player.tournament_id,
-            scoped_tournament.is_finished.is_(True),
-            scoped_tournament.is_league.is_(False),
-        ]
-    )
-    return sa.exists(sa.select(1).select_from(scoped_player).select_from(scoped_tournament).where(*filters))
-
-
-def _compare_team_scope_exists(
-    user_id_column: sa.ColumnElement[typing.Any] | int,
-    team_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ColumnElement[bool]:
-    scoped_player = aliased(models.Player)
-    filters = _compare_player_scope_filters(
-        scoped_player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    filters.append(scoped_player.team_id == team_id_column)
-    return sa.exists(sa.select(1).select_from(scoped_player).where(*filters))
-
-
-def _compare_user_scope_exists(
-    user_id_column: sa.ColumnElement[typing.Any] | int,
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ColumnElement[bool]:
-    scoped_player = aliased(models.Player)
-    scoped_tournament = aliased(models.Tournament)
-    filters = _compare_player_scope_filters(
-        scoped_player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    filters.extend(
-        [
-            scoped_tournament.id == scoped_player.tournament_id,
-            scoped_tournament.is_finished.is_(True),
-            scoped_tournament.is_league.is_(False),
-        ]
-    )
-    return sa.exists(sa.select(1).select_from(scoped_player).select_from(scoped_tournament).where(*filters))
-
-
-def _hero_compare_stat_visibility_condition(
-    name_column: sa.ColumnElement[typing.Any],
-    hero_id_column: sa.ColumnElement[typing.Any],
-    *,
-    hero_id: int | None,
-) -> sa.ColumnElement[bool]:
-    if hero_id is not None:
-        return hero_id_column == hero_id
-
-    return sa.or_(
-        hero_id_column.isnot(None),
-        name_column == enums.LogStatsName.Performance,
-    )
-
-
-def _overview_tournaments_count_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    player_filters = _compare_player_scope_filters(
-        models.Player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    where_conditions: list[typing.Any] = [
-        *player_filters,
-        models.Tournament.is_finished.is_(True),
-        models.Tournament.is_league.is_(False),
-    ]
-    if tournament_id is not None:
-        where_conditions.append(models.Tournament.id == tournament_id)
-    return (
-        sa.select(sa.func.count(sa.distinct(models.Team.tournament_id)))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .where(*where_conditions)
-        .scalar_subquery()
-    )
-
-
-def _overview_achievements_count_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    effective_rows = build_effective_achievement_rows_subquery(
-        user_ids=None,
-        name="overview_effective_achievement_rows",
-    )
-    query = sa.select(sa.func.count(sa.distinct(effective_rows.c.achievement_rule_id))).where(
-        effective_rows.c.user_id == user_id_column
-    )
-
-    if role is None and div_min is None and div_max is None and tournament_id is None:
-        return query.scalar_subquery()
-
-    achievement_match = aliased(models.Match)
-    achievement_encounter = aliased(models.Encounter)
-    tournament_scope = _compare_tournament_scope_exists(
-        user_id_column,
-        effective_rows.c.tournament_id,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    match_scope = sa.exists(
-        sa.select(1)
-        .select_from(achievement_match)
-        .join(achievement_encounter, achievement_encounter.id == achievement_match.encounter_id)
-        .where(
-            achievement_match.id == effective_rows.c.match_id,
-            _compare_tournament_scope_exists(
-                user_id_column,
-                achievement_encounter.tournament_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            ),
-        )
-    )
-
-    return query.where(sa.or_(tournament_scope, match_scope)).scalar_subquery()
-
-
-def _overview_avg_placement_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    player_filters = _compare_player_scope_filters(
-        models.Player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    where_conditions: list[typing.Any] = [
-        *player_filters,
-        models.Tournament.is_finished.is_(True),
-        models.Tournament.is_league.is_(False),
-    ]
-    if tournament_id is not None:
-        where_conditions.append(models.Tournament.id == tournament_id)
-    team_placement_subquery = (
-        sa.select(
-            models.Player.team_id.label("team_id"),
-            sa.func.min(models.Standing.overall_position).label("overall_position"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .join(
-            models.Standing,
-            sa.and_(
-                models.Standing.team_id == models.Player.team_id,
-                models.Standing.tournament_id == models.Player.tournament_id,
-            ),
-        )
-        .where(*where_conditions)
-        .group_by(models.Player.team_id)
-        .subquery()
-    )
-
-    return (
-        sa.select(sa.func.avg(team_placement_subquery.c.overall_position))
-        .select_from(team_placement_subquery)
-        .scalar_subquery()
-    )
-
-
-def _overview_avg_playoff_placement_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    player_filters = _compare_player_scope_filters(
-        models.Player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    where_conditions: list[typing.Any] = [
-        *player_filters,
-        models.Tournament.is_finished.is_(True),
-        models.Tournament.is_league.is_(False),
-        models.Standing.buchholz.is_(None),
-    ]
-    if tournament_id is not None:
-        where_conditions.append(models.Tournament.id == tournament_id)
-    return (
-        sa.select(sa.func.avg(models.Standing.position))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .join(
-            models.Standing,
-            sa.and_(
-                models.Standing.team_id == models.Player.team_id,
-                models.Standing.tournament_id == models.Player.tournament_id,
-            ),
-        )
-        .where(*where_conditions)
-        .scalar_subquery()
-    )
-
-
-def _overview_avg_group_placement_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    player_filters = _compare_player_scope_filters(
-        models.Player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    where_conditions: list[typing.Any] = [
-        *player_filters,
-        models.Tournament.is_finished.is_(True),
-        models.Tournament.is_league.is_(False),
-        models.Standing.buchholz.isnot(None),
-    ]
-    if tournament_id is not None:
-        where_conditions.append(models.Tournament.id == tournament_id)
-    return (
-        sa.select(sa.func.avg(models.Standing.position))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .join(
-            models.Standing,
-            sa.and_(
-                models.Standing.team_id == models.Player.team_id,
-                models.Standing.tournament_id == models.Player.tournament_id,
-            ),
-        )
-        .where(*where_conditions)
-        .scalar_subquery()
-    )
-
-
-def _overview_avg_closeness_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    player_filters = _compare_player_scope_filters(
-        models.Player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    where_conditions: list[typing.Any] = [
-        *player_filters,
-        models.Tournament.is_finished.is_(True),
-        models.Tournament.is_league.is_(False),
-        models.Encounter.closeness.isnot(None),
-    ]
-    if tournament_id is not None:
-        where_conditions.append(models.Tournament.id == tournament_id)
-    return (
-        sa.select(sa.func.avg(models.Encounter.closeness))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(*where_conditions)
-        .scalar_subquery()
-    )
-
-
-def _overview_maps_won_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    player_filters = _compare_player_scope_filters(
-        models.Player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    where_conditions: list[typing.Any] = [
-        *player_filters,
-        models.Tournament.is_finished.is_(True),
-        models.Tournament.is_league.is_(False),
-    ]
-    if tournament_id is not None:
-        where_conditions.append(models.Tournament.id == tournament_id)
-    return (
-        sa.select(sa.func.coalesce(sa.func.sum(home_score_case), 0))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(*where_conditions)
-        .scalar_subquery()
-    )
-
-
-def _overview_maps_lost_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    player_filters = _compare_player_scope_filters(
-        models.Player,
-        user_id_column,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    where_conditions: list[typing.Any] = [
-        *player_filters,
-        models.Tournament.is_finished.is_(True),
-        models.Tournament.is_league.is_(False),
-    ]
-    if tournament_id is not None:
-        where_conditions.append(models.Tournament.id == tournament_id)
-    return (
-        sa.select(sa.func.coalesce(sa.func.sum(away_score_case), 0))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(*where_conditions)
-        .scalar_subquery()
-    )
-
-
-def _overview_match_stat_avg_10_expr(
-    user_id_column: sa.ColumnElement[typing.Any],
-    stat: enums.LogStatsName,
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ScalarSelect:
-    hero_time_alias = aliased(models.MatchStatistics)
-    where_conditions: list[typing.Any] = [
-        models.MatchStatistics.user_id == user_id_column,
-        models.MatchStatistics.round == 0,
-        models.MatchStatistics.hero_id.isnot(None),
-        models.MatchStatistics.name == stat,
-        sa.exists(
-            sa.select(1)
-            .select_from(hero_time_alias)
-            .where(
-                hero_time_alias.match_id == models.MatchStatistics.match_id,
-                hero_time_alias.user_id == models.MatchStatistics.user_id,
-                hero_time_alias.hero_id == models.MatchStatistics.hero_id,
-                hero_time_alias.name == enums.LogStatsName.HeroTimePlayed,
-                hero_time_alias.round == 0,
-                hero_time_alias.value > 60,
-            )
-        ),
-    ]
-
-    if role is not None or div_min is not None or div_max is not None:
-        where_conditions.append(
-            _compare_team_scope_exists(
-                user_id_column,
-                models.MatchStatistics.team_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
-        )
-
-    query = (
-        sa.select(sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600)
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-    )
-
-    if tournament_id is not None:
-        query = query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        where_conditions.append(models.Encounter.tournament_id == tournament_id)
-
-    return query.where(*where_conditions).scalar_subquery()
-
-
-async def get(session: AsyncSession, user_id: int, entities: list[str]) -> models.User | None:
-    """
-    Retrieves a `User` model instance by its ID, optionally including related entities.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        user_id: The ID of the user to retrieve.
-        entities: A list of strings representing the names of related entities to include.
-
-    Returns:
-        A `User` model instance if found, otherwise `None`.
-    """
-    query = sa.select(models.User).options(*user_entities(entities)).where(sa.and_(models.User.id == user_id))
-    result = await session.execute(query)
-    return result.unique().scalar_one_or_none()
-
-
-async def get_all(
-    session: AsyncSession, params: pagination.PaginationSortSearchParams
-) -> tuple[typing.Sequence[models.User], int]:
-    """
-    Retrieves a paginated list of `User` model instances based on filtering and sorting parameters.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        params: An instance of `SearchPaginationParams` containing pagination, sorting, and filtering parameters.
-
-    Returns:
-        A tuple containing:
-        1. A sequence of `User` model instances.
-        2. The total count of users matching the filtering criteria.
-    """
-    query = sa.select(models.User).options(*user_entities(params.entities))
-    total_query = sa.select(sa.func.count(sa.distinct(models.User.id)))
-
-    if params.query:
-        query = params.apply_search(query, models.User)
-        total_query = params.apply_search(total_query, models.User)
-
-    query = params.apply_pagination_sort(query, models.User)
-
-    result = await session.execute(query)
-    result_total = await session.execute(total_query)
-    return result.unique().scalars().all(), result_total.scalar_one()
-
-
-def _overview_sort_expr(sort_key: str, grid: DivisionGrid) -> sa.ColumnElement[typing.Any]:
-    if sort_key == "tournaments_count":
-        return _overview_tournaments_count_expr(models.User.id, grid=grid)
-    if sort_key == "achievements_count":
-        return _overview_achievements_count_expr(models.User.id, grid=grid)
-    if sort_key == "avg_placement":
-        return _overview_avg_placement_expr(models.User.id, grid=grid)
-    return models.User.depth_get_column(sort_key.split("."))
-
-
-# Cache key intentionally omits `session`/`grid` (see get_profile). For the sorts
-# this path serves — the correlated aggregates with *no* role/division/search
-# filter — the ordering depends only on (workspace, sort, direction); `grid` only
-# feeds the division predicates, which are absent here. Short TTL + invalidation
-# on TournamentChangedEvent (services.tournament_events) bound staleness.
-@cache(
-    ttl=config.settings.users_cache_ttl,
-    key="user_overview_order:{workspace_id}:{sort_key}:{descending}",
-    prefix="backend:",
-)
-async def _overview_ordered_ids(
-    session: AsyncSession,
-    *,
-    workspace_id: int | None,
-    sort_key: str,
-    descending: bool,
-    grid: DivisionGrid,
-) -> tuple[list[int], int]:
-    """Full workspace-scoped user-id order + total for an expensive overview sort.
-
-    The correlated aggregate in ORDER BY is evaluated over the whole population,
-    so this whole-population sort is cached per (workspace, sort, direction)
-    instead of being recomputed for every page and every concurrent viewer.
-    """
-    id_query = _apply_workspace_member_filter(sa.select(models.User.id), workspace_id)
-    total_query = _apply_workspace_member_filter(sa.select(sa.func.count(sa.distinct(models.User.id))), workspace_id)
-    sort_expr = _overview_sort_expr(sort_key, grid)
-    if descending:
-        id_query = id_query.order_by(sort_expr.desc(), models.User.id.asc())
+    if higher_is_better:
+        better_count = sum(1 for value in values if float(value) > float(subject_value))
     else:
-        id_query = id_query.order_by(sort_expr.asc(), models.User.id.asc())
-    ids = (await session.execute(id_query)).scalars().all()
-    total = (await session.execute(total_query)).scalar_one()
-    return list(ids), total
+        better_count = sum(1 for value in values if float(value) < float(subject_value))
 
-
-async def get_overview_users(
-    session: AsyncSession,
-    params: "app_schemas.UserOverviewParams",
-    grid: DivisionGrid,
-    workspace_id: int | None = None,
-) -> tuple[typing.Sequence[models.User], int]:
-    is_desc = params.order == pagination.SortOrder.DESC or params.order == "desc"
-    sort_key = params.sort
-
-    # Fast path (H13): an expensive correlated sort with no search/role/division
-    # filter has a population-wide ORDER BY that depends only on
-    # (workspace, sort, direction). Reuse a short-TTL cached id order and fetch
-    # only the page, instead of re-sorting the whole population on every request.
-    if (
-        sort_key in _EXPENSIVE_OVERVIEW_SORTS
-        and not params.query
-        and params.role is None
-        and params.div_min is None
-        and params.div_max is None
-    ):
-        ordered_ids, total = await _overview_ordered_ids(
-            session,
-            workspace_id=workspace_id,
-            sort_key=sort_key,
-            descending=is_desc,
-            grid=grid,
-        )
-        offset = (params.page - 1) * params.per_page
-        page_ids = ordered_ids[offset : offset + params.per_page]
-        if not page_ids:
-            return [], total
-        rows = await session.execute(sa.select(models.User).where(models.User.id.in_(page_ids)))
-        by_id = {user.id: user for user in rows.unique().scalars().all()}
-        # Preserve the cached ORDER BY sequence (IN (...) is unordered).
-        return [by_id[uid] for uid in page_ids if uid in by_id], total
-
-    query = sa.select(models.User)
-    total_query = sa.select(sa.func.count(sa.distinct(models.User.id)))
-
-    query = _apply_workspace_member_filter(query, workspace_id)
-    total_query = _apply_workspace_member_filter(total_query, workspace_id)
-
-    if params.query:
-        query = params.apply_search(query, models.User)
-        total_query = params.apply_search(total_query, models.User)
-
-    if params.role is not None or params.div_min is not None or params.div_max is not None:
-        query = _apply_overview_role_filters(
-            query,
-            role=params.role,
-            div_min=params.div_min,
-            div_max=params.div_max,
-            grid=grid,
-        )
-        total_query = _apply_overview_role_filters(
-            total_query,
-            role=params.role,
-            div_min=params.div_min,
-            div_max=params.div_max,
-            grid=grid,
-        )
-
-    sort_expr = _overview_sort_expr(sort_key, grid)
-
-    if is_desc:
-        query = query.order_by(sort_expr.desc(), models.User.id.asc())
+    rank = better_count + 1
+    total = len(values)
+    if total == 1:
+        percentile = 100.0
     else:
-        query = query.order_by(sort_expr.asc(), models.User.id.asc())
+        percentile = ((total - rank) / (total - 1)) * 100
 
-    query = params.apply_pagination(query)
-
-    result = await session.execute(query)
-    result_total = await session.execute(total_query)
-    return result.unique().scalars().all(), result_total.scalar_one()
+    return rank, round(percentile, 2)
 
 
-async def get_overview_role_divisions(
-    session: AsyncSession,
-    user_ids: list[int],
-    workspace_id: int | None = None,
-) -> dict[int, list[tuple[enums.HeroClass, int, int | None]]]:
-    """Return (role, rank, division_grid_version_id) for each user's most recent entry per role.
+def _compute_better_worse(
+    subject_value: float | int | None,
+    baseline_value: float | int | None,
+    higher_is_better: bool,
+) -> typing.Literal["better", "worse", "equal"] | None:
+    if subject_value is None or baseline_value is None:
+        return None
 
-    Division computation is intentionally deferred to the caller so that each
-    player's rank can be normalised through the tournament's own grid version
-    rather than a single global grid. When ``workspace_id`` is given, only that
-    workspace's tournaments are considered (so the "latest" rank per role is the
-    latest *within the workspace*), matching the scoped user list.
-    """
-    if not user_ids:
-        return {}
+    subject = float(subject_value)
+    baseline = float(baseline_value)
 
-    latest_roles_select = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            models.Player.role.label("role"),
-            models.Player.rank.label("rank"),
-            models.Player.tournament_id.label("tournament_id"),
-            sa.func.row_number()
-            .over(
-                partition_by=[models.WorkspaceMember.player_id, models.Player.role],
-                order_by=[models.Player.tournament_id.desc(), models.Player.id.desc()],
+    if subject == baseline:
+        return "equal"
+
+    if higher_is_better:
+        return "better" if subject > baseline else "worse"
+
+    return "better" if subject < baseline else "worse"
+
+
+class UserService:
+    """Orchestrates the user read surface: query objects in, pydantic DTOs out."""
+
+    def __init__(
+        self,
+        *,
+        profile: UserProfileQueries = profile_queries,
+        overview: UserOverviewQueries = overview_queries,
+        compare: UserCompareQueries = compare_queries,
+        encounters: UserEncounterQueries = encounter_queries,
+        statistics: StatisticsQueries = statistics_queries,
+    ) -> None:
+        self.profile = profile
+        self.overview = overview
+        self.compare = compare
+        self.encounters = encounters
+        self.statistics_queries = statistics
+
+    @staticmethod
+    def to_read(user: models.User, entities: list[str], *, visible_only: bool = False) -> schemas.UserRead:
+        """Convert a `User` to ``UserRead``. Identities come from the unified
+        ``user.social_accounts`` relationship and are only accessed (and serialized)
+        when an identity entity was requested — and therefore eager-loaded — so this
+        never triggers a lazy load outside the async greenlet. The legacy entity
+        tokens (``battle_tag``/``discord``/``twitch``) are still honored as triggers
+        for backward compatibility with existing callers.
+
+        ``visible_only`` is set by public-facing reads (profile, list): accounts the
+        owner has hidden from the public profile (no global visibility row) are
+        dropped. Admin/self reads leave it False so they see every account.
+        """
+        social_accounts: list[schemas.SocialAccountRead] = []
+        if any(name in entities for name in _mappers._IDENTITY_ENTITIES):
+            accounts = sorted(user.social_accounts, key=lambda a: (a.provider, not a.is_primary, a.id))
+            if visible_only:
+                accounts = [account for account in accounts if _mappers._is_globally_visible(account)]
+            social_accounts = [_mappers._social_account_read(account) for account in accounts]
+        return schemas.UserRead(
+            id=user.id,
+            name=user.name,
+            avatar_url=user.avatar_url,
+            # ``is not False`` rather than a truthiness check: the column default lands
+            # at INSERT, so a transient (unflushed) ``User`` reads None here, and
+            # reporting that as "hidden" would show the owner a switch that lies about
+            # their own state. Same fail-open direction as ``_is_globally_visible``.
+            stream_visible=user.stream_visible is not False,
+            social_accounts=social_accounts,
+        )
+
+    async def get(self, session: AsyncSession, user_id: int, entities: list[str]) -> models.User:
+        """A user by ID with ``entities`` eager-loaded; 400 when no such user exists."""
+        user = await self.profile.get(session, user_id, entities)
+        if not user:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="not_found", msg=f"User with id {user_id} not found.")],
             )
-            .label("row_num"),
-        )
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Player.role.isnot(None),
-        )
-    )
-    if workspace_id is not None:
-        latest_roles_select = latest_roles_select.join(
-            models.Tournament, models.Tournament.id == models.Player.tournament_id
-        ).where(models.Tournament.workspace_id == workspace_id)
-    latest_roles_subquery = latest_roles_select.subquery()
+        return user
 
-    query = (
-        sa.select(
-            latest_roles_subquery.c.user_id,
-            latest_roles_subquery.c.role,
-            latest_roles_subquery.c.rank,
-            models.Tournament.division_grid_version_id,
-        )
-        .join(models.Tournament, models.Tournament.id == latest_roles_subquery.c.tournament_id)
-        .where(latest_roles_subquery.c.row_num == 1)
-    )
-
-    result = await session.execute(query)
-
-    payload: dict[int, list[tuple[enums.HeroClass, int, int | None]]] = defaultdict(list)
-    for user_id, role, rank, version_id in result.all():
-        if role is None:
-            continue
-        payload[user_id].append((role, rank, version_id))
-
-    role_order = {
-        enums.HeroClass.tank: 0,
-        enums.HeroClass.damage: 1,
-        enums.HeroClass.support: 2,
-    }
-
-    for user_id in payload:
-        payload[user_id].sort(key=lambda row: role_order.get(row[0], 99))
-
-    return dict(payload)
-
-
-async def get_overview_tournaments_count(
-    session: AsyncSession,
-    user_ids: list[int],
-    workspace_id: int | None = None,
-) -> dict[int, int]:
-    if not user_ids:
-        return {}
-
-    query = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            sa.func.count(sa.distinct(models.Team.tournament_id)).label("tournaments_count"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Tournament.is_finished.is_(True),
-            models.Tournament.is_league.is_(False),
-        )
-        .group_by(models.WorkspaceMember.player_id)
-    )
-
-    if workspace_id is not None:
-        query = query.where(models.Tournament.workspace_id == workspace_id)
-
-    result = await session.execute(query)
-    return dict(result.all())
-
-
-async def get_overview_achievements_count(
-    session: AsyncSession,
-    user_ids: list[int],
-    workspace_id: int | None = None,
-) -> dict[int, int]:
-    if not user_ids:
-        return {}
-
-    effective_rows = build_effective_achievement_rows_subquery(
-        user_ids=user_ids,
-        workspace_id=workspace_id,
-        name="overview_achievement_count_rows",
-    )
-    query = sa.select(
-        effective_rows.c.user_id,
-        sa.func.count(sa.distinct(effective_rows.c.achievement_rule_id)).label("achievements_count"),
-    ).group_by(effective_rows.c.user_id)
-
-    result = await session.execute(query)
-    return dict(result.all())
-
-
-async def get_overview_averages(
-    session: AsyncSession,
-    user_ids: list[int],
-    workspace_id: int | None = None,
-) -> dict[int, tuple[float | None, float | None, float | None, float | None]]:
-    if not user_ids:
-        return {}
-
-    ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
-
-    team_overall_subquery = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            models.Player.team_id.label("team_id"),
-            sa.func.min(models.Standing.overall_position).label("overall_position"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .join(
-            models.Standing,
-            sa.and_(
-                models.Standing.team_id == models.Player.team_id,
-                models.Standing.tournament_id == models.Player.tournament_id,
-            ),
-        )
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Tournament.is_finished.is_(True),
-            models.Tournament.is_league.is_(False),
-            *ws_filter,
-        )
-        .group_by(models.WorkspaceMember.player_id, models.Player.team_id)
-        .cte("overview_team_overall")
-    )
-
-    placement_query = sa.select(
-        team_overall_subquery.c.user_id,
-        sa.func.avg(team_overall_subquery.c.overall_position).label("avg_placement"),
-    ).group_by(team_overall_subquery.c.user_id)
-
-    placement_stage_query = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            sa.func.avg(sa.case((models.Standing.buchholz.isnot(None), models.Standing.position), else_=None)).label(
-                "avg_group_placement"
-            ),
-            sa.func.avg(sa.case((models.Standing.buchholz.is_(None), models.Standing.position), else_=None)).label(
-                "avg_playoff_placement"
-            ),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .join(
-            models.Standing,
-            sa.and_(
-                models.Standing.team_id == models.Player.team_id,
-                models.Standing.tournament_id == models.Player.tournament_id,
-            ),
-        )
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Tournament.is_finished.is_(True),
-            models.Tournament.is_league.is_(False),
-            *ws_filter,
-        )
-        .group_by(models.WorkspaceMember.player_id)
-    )
-
-    closeness_query = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            sa.func.avg(models.Encounter.closeness).label("avg_closeness"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Tournament.is_finished.is_(True),
-            models.Tournament.is_league.is_(False),
-            models.Encounter.closeness.isnot(None),
-            *ws_filter,
-        )
-        .group_by(models.WorkspaceMember.player_id)
-    )
-
-    placement_result = await session.execute(placement_query)
-    placement_stage_result = await session.execute(placement_stage_query)
-    closeness_result = await session.execute(closeness_query)
-
-    payload: dict[int, tuple[float | None, float | None, float | None, float | None]] = dict.fromkeys(
-        user_ids, (None, None, None, None)
-    )
-
-    for user_id, avg_placement in placement_result.all():
-        _, _, _, current_closeness = payload.get(user_id, (None, None, None, None))
-        payload[user_id] = (avg_placement, None, None, current_closeness)
-
-    for user_id, avg_group_placement, avg_playoff_placement in placement_stage_result.all():
-        avg_placement, _, _, current_closeness = payload.get(user_id, (None, None, None, None))
-        payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, current_closeness)
-
-    for user_id, avg_closeness in closeness_result.all():
-        avg_placement, avg_playoff_placement, avg_group_placement, _ = payload.get(user_id, (None, None, None, None))
-        payload[user_id] = (avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness)
-
-    return payload
-
-
-async def get_overview_top_heroes(
-    session: AsyncSession,
-    user_ids: list[int],
-    *,
-    limit: int = 5,
-    workspace_id: int | None = None,
-) -> dict[int, list[tuple[models.Hero, float]]]:
-    if not user_ids:
-        return {}
-
-    playtime_select = (
-        sa.select(
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.hero_id.label("hero_id"),
-            sa.func.sum(models.MatchStatistics.value).label("playtime_seconds"),
-            sa.func.row_number()
-            .over(
-                partition_by=models.MatchStatistics.user_id,
-                order_by=[
-                    sa.func.sum(models.MatchStatistics.value).desc(),
-                    models.MatchStatistics.hero_id.asc(),
+    async def get_by_battle_tag(self, session: AsyncSession, battle_tag: str, entities: list[str]) -> schemas.UserRead:
+        """A user by battle tag as ``UserRead``; 400 when no such user exists."""
+        user = await self.profile.find_by_battle_tag(session, battle_tag, entities)
+        if not user:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[
+                    errors.ApiExc(
+                        code="not_found",
+                        msg=f"User with battle tag {battle_tag} not found.",
+                    )
                 ],
             )
-            .label("row_num"),
-        )
-        .where(
-            models.MatchStatistics.user_id.in_(user_ids),
-            models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.isnot(None),
-            models.MatchStatistics.value > 0,
-        )
-        .group_by(models.MatchStatistics.user_id, models.MatchStatistics.hero_id)
-    )
-    if workspace_id is not None:
-        # MatchStatistics -> Match -> Encounter -> Tournament (all 1:1 per stat
-        # row, so the playtime sum is unchanged) to scope heroes to the workspace.
-        playtime_select = (
-            playtime_select.join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(models.Tournament.workspace_id == workspace_id)
-        )
-    playtime_subquery = playtime_select.cte("overview_user_hero_playtime")
+        return self.to_read(user, entities, visible_only=True)
 
-    query = (
-        sa.select(
-            playtime_subquery.c.user_id,
-            playtime_subquery.c.playtime_seconds,
-            models.Hero,
-        )
-        .join(models.Hero, models.Hero.id == playtime_subquery.c.hero_id)
-        .where(playtime_subquery.c.row_num <= limit)
-        .order_by(playtime_subquery.c.user_id.asc(), playtime_subquery.c.row_num.asc())
-    )
-
-    result = await session.execute(query)
-
-    payload: dict[int, list[tuple[models.Hero, float]]] = defaultdict(list)
-    for user_id, playtime_seconds, hero in result.all():
-        payload[user_id].append((hero, playtime_seconds))
-
-    return dict(payload)
-
-
-async def get_overview_top_hero_metrics(
-    session: AsyncSession,
-    top_heroes: dict[int, list[tuple[models.Hero, float]]],
-    workspace_id: int | None = None,
-) -> dict[tuple[int, int], dict[enums.LogStatsName, float]]:
-    if not top_heroes:
-        return {}
-
-    hero_pairs = [(user_id, hero.id) for user_id, heroes in top_heroes.items() for hero, _ in heroes]
-    if not hero_pairs:
-        return {}
-
-    hero_playtime_stat = sa.alias(models.MatchStatistics)
-    eligible_stats = (
-        sa.select(
-            models.MatchStatistics.match_id.label("match_id"),
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.hero_id.label("hero_id"),
-            models.MatchStatistics.name.label("name"),
-            models.MatchStatistics.value.label("value"),
-        )
-        .where(
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.isnot(None),
-            models.MatchStatistics.name.in_(OVERVIEW_HERO_METRICS),
-            sa.tuple_(models.MatchStatistics.user_id, models.MatchStatistics.hero_id).in_(hero_pairs),
-            sa.exists(
-                sa.select(1)
-                .select_from(hero_playtime_stat)
-                .where(
-                    hero_playtime_stat.c.match_id == models.MatchStatistics.match_id,
-                    hero_playtime_stat.c.user_id == models.MatchStatistics.user_id,
-                    hero_playtime_stat.c.hero_id == models.MatchStatistics.hero_id,
-                    hero_playtime_stat.c.name == enums.LogStatsName.HeroTimePlayed,
-                    hero_playtime_stat.c.round == 0,
-                    hero_playtime_stat.c.value > 60,
-                )
-            ),
-        )
-        .cte("overview_eligible_stats")
-    )
-
-    query = (
-        sa.select(
-            eligible_stats.c.user_id,
-            eligible_stats.c.hero_id,
-            eligible_stats.c.name,
-            (sa.func.sum(eligible_stats.c.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600).label(
-                "avg_10"
-            ),
-        )
-        .join(models.Match, models.Match.id == eligible_stats.c.match_id)
-        .group_by(eligible_stats.c.user_id, eligible_stats.c.hero_id, eligible_stats.c.name)
-    )
-    if workspace_id is not None:
-        # Scope the per-metric aggregation to the workspace's matches
-        # (Match -> Encounter -> Tournament, all 1:1) so avg_10 reflects
-        # workspace-only performance, consistent with the scoped hero list.
-        query = (
-            query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(models.Tournament.workspace_id == workspace_id)
-        )
-
-    result = await session.execute(query)
-
-    payload: dict[tuple[int, int], dict[enums.LogStatsName, float]] = defaultdict(dict)
-    for user_id, hero_id, stat_name, avg_10 in result.all():
-        payload[(user_id, hero_id)][stat_name] = avg_10
-
-    return dict(payload)
-
-
-def _compare_scoped_players_cte(
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None,
-    grid: DivisionGrid,
-    name: str = "compare_scoped_players",
-    require_finished_nonleague: bool = True,
-) -> sa.CTE:
-    """Resolve eligible roster rows once for all grouped compare metrics."""
-
-    filters: list[typing.Any] = [
-        models.Player.is_substitution.is_(False),
-    ]
-    if require_finished_nonleague:
-        filters.extend(
-            [
-                models.Tournament.is_finished.is_(True),
-                models.Tournament.is_league.is_(False),
-            ]
-        )
-    if role is not None:
-        filters.append(models.Player.role == role)
-    filters.extend(division_filter_predicates(models.Player.rank, div_min, div_max, grid))
-    if tournament_id is not None:
-        filters.append(models.Player.tournament_id == tournament_id)
-
-    return (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            models.Player.team_id.label("team_id"),
-            models.Player.tournament_id.label("tournament_id"),
-        )
-        .select_from(models.Player)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .where(*filters)
-        .cte(name)
-    )
-
-
-def _compare_metrics_query_v2(
-    *,
-    user_ids: list[int] | None,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.Select:
-    """Build one set-based query instead of correlated subqueries per user."""
-
-    scoped_players = _compare_scoped_players_cte(
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    stat_scoped_players = _compare_scoped_players_cte(
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-        name="compare_stat_scoped_players",
-        require_finished_nonleague=False,
-    )
-    has_scope_filter = role is not None or div_min is not None or div_max is not None or tournament_id is not None
-
-    # The cohort, expressed once as something pushable into a subquery. Everything
-    # downstream that would otherwise scan a whole table and only meet the cohort at
-    # the final join takes this instead.
-    cohort_scope: typing.Any | None = None
-    if user_ids is not None:
-        cohort_scope = user_ids
-    elif has_scope_filter:
-        cohort_scope = sa.select(scoped_players.c.user_id).distinct()
-
-    candidates_query = sa.select(
-        models.User.id.label("id"),
-        models.User.name.label("name"),
-    )
-    if cohort_scope is not None:
-        candidates_query = candidates_query.where(models.User.id.in_(cohort_scope))
-    candidates = candidates_query.cte("compare_candidates")
-
-    tournament_counts = (
-        sa.select(
-            scoped_players.c.user_id,
-            sa.func.count(sa.distinct(scoped_players.c.tournament_id)).label("tournaments_count"),
-        )
-        .group_by(scoped_players.c.user_id)
-        .cte("compare_tournament_counts")
-    )
-
-    encounter_tournament = aliased(models.Tournament)
-    map_totals = (
-        sa.select(
-            scoped_players.c.user_id,
-            sa.func.coalesce(sa.func.sum(home_score_case), 0).label("maps_won"),
-            sa.func.coalesce(sa.func.sum(away_score_case), 0).label("maps_lost"),
-        )
-        .select_from(scoped_players)
-        .join(models.Team, models.Team.id == scoped_players.c.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(encounter_tournament, encounter_tournament.id == models.Encounter.tournament_id)
-        .where(
-            encounter_tournament.is_finished.is_(True),
-            encounter_tournament.is_league.is_(False),
-            *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
-        )
-        .group_by(scoped_players.c.user_id)
-        .cte("compare_map_totals")
-    )
-
-    team_positions = (
-        sa.select(
-            scoped_players.c.user_id,
-            scoped_players.c.team_id,
-            sa.func.min(models.Standing.overall_position).label("overall_position"),
-        )
-        .select_from(scoped_players)
-        .join(
-            models.Standing,
-            sa.and_(
-                models.Standing.team_id == scoped_players.c.team_id,
-                models.Standing.tournament_id == scoped_players.c.tournament_id,
-            ),
-        )
-        .group_by(scoped_players.c.user_id, scoped_players.c.team_id)
-        .cte("compare_team_positions")
-    )
-    average_placements = (
-        sa.select(
-            team_positions.c.user_id,
-            sa.func.avg(team_positions.c.overall_position).label("avg_placement"),
-        )
-        .group_by(team_positions.c.user_id)
-        .cte("compare_average_placements")
-    )
-    phase_placements = (
-        sa.select(
-            scoped_players.c.user_id,
-            sa.func.avg(models.Standing.position)
-            .filter(models.Standing.buchholz.is_(None))
-            .label("avg_playoff_placement"),
-            sa.func.avg(models.Standing.position)
-            .filter(models.Standing.buchholz.isnot(None))
-            .label("avg_group_placement"),
-        )
-        .select_from(scoped_players)
-        .join(
-            models.Standing,
-            sa.and_(
-                models.Standing.team_id == scoped_players.c.team_id,
-                models.Standing.tournament_id == scoped_players.c.tournament_id,
-            ),
-        )
-        .group_by(scoped_players.c.user_id)
-        .cte("compare_phase_placements")
-    )
-    average_closeness = (
-        sa.select(
-            scoped_players.c.user_id,
-            sa.func.avg(models.Encounter.closeness).label("avg_closeness"),
-        )
-        .select_from(scoped_players)
-        .join(models.Team, models.Team.id == scoped_players.c.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .where(
-            models.Encounter.closeness.isnot(None),
-            *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
-        )
-        .group_by(scoped_players.c.user_id)
-        .cte("compare_average_closeness")
-    )
-
-    # Unrestricted, this scans every evaluation result and grant in the database and
-    # runs the correlated revoke NOT EXISTS over all of them before grouping -- and
-    # the cohort was only met at the ``candidates`` join below, which cannot be
-    # pushed through the subquery's GROUP BY. Same rows, whole-table cost, and it is
-    # what timed the compare page out. ``candidates.id`` is a primary key, so
-    # joining it and filtering by membership in it are the same thing.
-    effective_achievements = build_effective_achievement_rows_subquery(
-        user_ids=cohort_scope,
-        name="compare_effective_achievement_rows_v2",
-    )
-    achievement_match = aliased(models.Match)
-    achievement_encounter = aliased(models.Encounter)
-    achievements_query = (
-        sa.select(
-            effective_achievements.c.user_id,
-            sa.func.count(sa.distinct(effective_achievements.c.achievement_rule_id)).label("achievements_count"),
-        )
-        .select_from(effective_achievements)
-        .join(candidates, candidates.c.id == effective_achievements.c.user_id)
-    )
-    if has_scope_filter:
-        achievements_query = (
-            achievements_query.outerjoin(
-                achievement_match,
-                achievement_match.id == effective_achievements.c.match_id,
+    async def get_by_discord(self, session: AsyncSession, discord: str, entities: list[str]) -> schemas.UserRead:
+        """A user by Discord handle as ``UserRead``; 400 when no such user exists."""
+        user = await self.profile.get_by_discord(session, discord, entities)
+        if not user:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="not_found", msg=f"User with discord {discord} not found.")],
             )
-            .outerjoin(
-                achievement_encounter,
-                achievement_encounter.id == achievement_match.encounter_id,
+        return self.to_read(user, entities, visible_only=True)
+
+    async def get_all(
+        self,
+        session: AsyncSession, params: pagination.PaginationSortSearchParams
+    ) -> pagination.Paginated[schemas.UserRead]:
+        """Paginated users as ``UserRead`` schemas."""
+        users, total = await self.profile.get_all(session, params)
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=total,
+            results=[self.to_read(user, params.entities, visible_only=True) for user in users],
+        )
+
+    async def get_overview(
+        self,
+        session: AsyncSession,
+        params: schemas.UserOverviewParams,
+        workspace_id: int | None = None,
+        *,
+        grid: DivisionGrid,
+        normalizer: DivisionGridNormalizer | None = None,
+    ) -> pagination.Paginated[schemas.UserOverviewRow]:
+        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[
+                    errors.ApiExc(
+                        code="invalid_filter",
+                        msg="div_min must be less than or equal to div_max.",
+                    )
+                ],
             )
-            .join(
-                scoped_players,
-                sa.and_(
-                    scoped_players.c.user_id == effective_achievements.c.user_id,
-                    sa.or_(
-                        scoped_players.c.tournament_id == effective_achievements.c.tournament_id,
-                        scoped_players.c.tournament_id == achievement_encounter.tournament_id,
+
+        users, total = await self.overview.get_overview_users(session, params, grid, workspace_id=workspace_id)
+        if not users:
+            return pagination.Paginated(
+                page=params.page,
+                per_page=params.per_page,
+                total=total,
+                results=[],
+            )
+
+        user_ids = [user.id for user in users]
+        raw_roles_map = await self.overview.get_overview_role_divisions(session, user_ids, workspace_id=workspace_id)
+        tournaments_count_map = await self.overview.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
+        achievements_count_map = await self.overview.get_overview_achievements_count(session, user_ids, workspace_id=workspace_id)
+        averages_map = await self.overview.get_overview_averages(session, user_ids, workspace_id=workspace_id)
+        top_heroes_map = await self.overview.get_overview_top_heroes(session, user_ids, workspace_id=workspace_id)
+        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(session, top_heroes_map, workspace_id=workspace_id)
+
+        rows: list[schemas.UserOverviewRow] = []
+        for user in users:
+            roles = [
+                schemas.UserOverviewRoleDivision(
+                    role=role,
+                    division=resolve_workspace_division(
+                        rank,
+                        source_version_id=version_id,
+                        fallback_grid=grid,
+                        normalizer=normalizer,
                     ),
-                ),
-            )
-        )
-    achievements = achievements_query.group_by(effective_achievements.c.user_id).cte("compare_achievement_counts")
-
-    eligible_hero_time = (
-        sa.select(
-            models.MatchStatistics.match_id,
-            models.MatchStatistics.user_id,
-            models.MatchStatistics.hero_id,
-        )
-        .where(
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-            models.MatchStatistics.hero_id.isnot(None),
-            models.MatchStatistics.value > 60,
-        )
-        .distinct()
-        .cte("compare_eligible_hero_time")
-    )
-    per_10_stats = (
-        sa.select(
-            models.MatchStatistics.user_id,
-            *[
-                (
-                    sa.func.sum(models.MatchStatistics.value).filter(models.MatchStatistics.name == stat)
-                    / sa.func.nullif(sa.func.sum(models.Match.time).filter(models.MatchStatistics.name == stat), 0)
-                    * 600
-                ).label(label)
-                for stat, label in (
-                    (enums.LogStatsName.Eliminations, "eliminations_avg_10"),
-                    (enums.LogStatsName.FinalBlows, "final_blows_avg_10"),
-                    (enums.LogStatsName.HeroDamageDealt, "hero_damage_dealt_avg_10"),
-                    (enums.LogStatsName.HealingDealt, "healing_dealt_avg_10"),
                 )
+                for role, rank, version_id in raw_roles_map.get(user.id, [])
+            ]
+
+            top_heroes: list[schemas.UserOverviewHero] = []
+            for hero, playtime_seconds in top_heroes_map.get(user.id, []):
+                metrics_payload: list[schemas.UserOverviewHeroMetric] = []
+                metrics = hero_metrics_map.get((user.id, hero.id), {})
+                for metric_name in overview_hero_metrics_order:
+                    metric_value = metrics.get(metric_name)
+                    if metric_value is None:
+                        continue
+                    metrics_payload.append(
+                        schemas.UserOverviewHeroMetric(
+                            name=metric_name,
+                            avg_10=round(metric_value, 2),
+                        )
+                    )
+
+                top_heroes.append(
+                    schemas.UserOverviewHero(
+                        hero=hero_service.to_read(hero),
+                        playtime_seconds=round(playtime_seconds, 2),
+                        metrics=metrics_payload,
+                    )
+                )
+
+            avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness = averages_map.get(
+                user.id,
+                (None, None, None, None),
+            )
+
+            rows.append(
+                schemas.UserOverviewRow(
+                    id=user.id,
+                    name=user.name,
+                    roles=roles,
+                    top_heroes=top_heroes,
+                    tournaments_count=tournaments_count_map.get(user.id, 0),
+                    achievements_count=achievements_count_map.get(user.id, 0),
+                    averages=schemas.UserOverviewAverages(
+                        avg_closeness=round(avg_closeness, 2) if avg_closeness is not None else None,
+                        avg_placement=round(avg_placement, 2) if avg_placement is not None else None,
+                        avg_playoff_placement=(
+                            round(avg_playoff_placement, 2) if avg_playoff_placement is not None else None
+                        ),
+                        avg_group_placement=round(avg_group_placement, 2) if avg_group_placement is not None else None,
+                    ),
+                )
+            )
+
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=total,
+            results=rows,
+        )
+
+    async def get_overview_stats(
+        self,
+        session: AsyncSession,
+        params: "schemas.UserOverviewStatsQueryParams",
+        *,
+        grid: DivisionGrid,
+        workspace_id: int | None = None,
+    ) -> "schemas.UserOverviewStats":
+        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[
+                    errors.ApiExc(
+                        code="invalid_filter",
+                        msg="div_min must be less than or equal to div_max.",
+                    )
+                ],
+            )
+
+        payload = await self.overview.get_overview_stats(
+            session,
+            role=params.role,
+            div_min=params.div_min,
+            div_max=params.div_max,
+            query=params.query,
+            grid=grid,
+            workspace_id=workspace_id,
+        )
+        return schemas.UserOverviewStats(**payload)
+
+    async def get_catalog(
+        self,
+        session: AsyncSession,
+        params: "schemas.UserCatalogParams",
+        *,
+        grid: DivisionGrid,
+        normalizer: DivisionGridNormalizer | None = None,
+        workspace_id: int | None = None,
+    ) -> "schemas.UserCatalogResponse":
+        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[
+                    errors.ApiExc(
+                        code="invalid_filter",
+                        msg="div_min must be less than or equal to div_max.",
+                    )
+                ],
+            )
+
+        letters_with_users, total_users, available_letters = await self.overview.get_catalog_users(
+            session,
+            role=params.role,
+            div_min=params.div_min,
+            div_max=params.div_max,
+            query=params.query,
+            letter=params.letter,
+            per_letter=params.per_letter,
+            max_letters=params.max_letters,
+            grid=grid,
+            workspace_id=workspace_id,
+        )
+
+        flat_users = [user for _letter, bucket in letters_with_users for user in bucket]
+        if not flat_users:
+            return schemas.UserCatalogResponse(
+                letters=[],
+                total=total_users,
+                available_letters=available_letters,
+            )
+
+        user_ids = [user.id for user in flat_users]
+        raw_roles_map = await self.overview.get_overview_role_divisions(session, user_ids, workspace_id=workspace_id)
+        tournaments_count_map = await self.overview.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
+        achievements_count_map = await self.overview.get_overview_achievements_count(session, user_ids, workspace_id=workspace_id)
+        averages_map = await self.overview.get_overview_averages(session, user_ids, workspace_id=workspace_id)
+        top_heroes_map = await self.overview.get_overview_top_heroes(session, user_ids, limit=3, workspace_id=workspace_id)
+        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(session, top_heroes_map, workspace_id=workspace_id)
+
+        catalog_letters: list[schemas.UserCatalogLetter] = []
+        for letter_label, users in letters_with_users:
+            entries: list[schemas.UserCatalogEntry] = []
+            for user in users:
+                roles = [
+                    schemas.UserOverviewRoleDivision(
+                        role=role,
+                        division=resolve_workspace_division(
+                            rank,
+                            source_version_id=version_id,
+                            fallback_grid=grid,
+                            normalizer=normalizer,
+                        ),
+                    )
+                    for role, rank, version_id in raw_roles_map.get(user.id, [])
+                ]
+
+                top_heroes: list[schemas.UserOverviewHero] = []
+                for hero, playtime_seconds in top_heroes_map.get(user.id, []):
+                    metrics_payload: list[schemas.UserOverviewHeroMetric] = []
+                    metrics = hero_metrics_map.get((user.id, hero.id), {})
+                    for metric_name in overview_hero_metrics_order:
+                        metric_value = metrics.get(metric_name)
+                        if metric_value is None:
+                            continue
+                        metrics_payload.append(
+                            schemas.UserOverviewHeroMetric(
+                                name=metric_name,
+                                avg_10=round(metric_value, 2),
+                            )
+                        )
+                    top_heroes.append(
+                        schemas.UserOverviewHero(
+                            hero=hero_service.to_read(hero),
+                            playtime_seconds=round(playtime_seconds, 2),
+                            metrics=metrics_payload,
+                        )
+                    )
+
+                avg_placement, _, _, _ = averages_map.get(user.id, (None, None, None, None))
+
+                entries.append(
+                    schemas.UserCatalogEntry(
+                        id=user.id,
+                        name=user.name,
+                        roles=roles,
+                        top_heroes=top_heroes,
+                        tournaments_count=tournaments_count_map.get(user.id, 0),
+                        achievements_count=achievements_count_map.get(user.id, 0),
+                        avg_placement=round(avg_placement, 2) if avg_placement is not None else None,
+                    )
+                )
+
+            catalog_letters.append(
+                schemas.UserCatalogLetter(
+                    letter=letter_label,
+                    count=len(entries),
+                    users=entries,
+                )
+            )
+
+        return schemas.UserCatalogResponse(
+            letters=catalog_letters,
+            total=total_users,
+            available_letters=available_letters,
+        )
+
+    async def get_compare(
+        self,
+        session: AsyncSession,
+        id: int,
+        params: schemas.UserCompareParams,
+        *,
+        grid: DivisionGrid,
+    ) -> schemas.UserCompareResponse:
+        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="invalid_filter", msg="div_min must be less than or equal to div_max.")],
+            )
+
+        mode = params.baseline
+        resolved_role = params.role
+        resolved_div_min = params.div_min
+        resolved_div_max = params.div_max
+        compare_role = resolved_role if mode == "cohort" else None
+        compare_div_min = resolved_div_min if mode == "cohort" else None
+        compare_div_max = resolved_div_max if mode == "cohort" else None
+
+        if mode == "target_user" and not params.target_user_id:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+            )
+
+        baseline_target: schemas.UserCompareUser | None = None
+        sample_size = 0
+        population_rows: list[dict[str, typing.Any]] = []
+
+        if mode == "target_user":
+            requested_ids = [id, typing.cast(int, params.target_user_id)]
+            pair_rows = await self.compare.get_compare_population(
+                session,
+                user_ids=requested_ids,
+                tournament_id=params.tournament_id,
+                grid=grid,
+            )
+            pair_by_id = {int(row["id"]): row for row in pair_rows}
+            subject_row = pair_by_id.get(id)
+            if subject_row is None:
+                raise errors.ApiHTTPException(
+                    status_code=400,
+                    detail=[errors.ApiExc(code="not_found", msg=f"User with id {id} not found.")],
+                )
+            target_id = typing.cast(int, params.target_user_id)
+            baseline_row = pair_by_id.get(target_id)
+            if baseline_row is None:
+                raise errors.ApiHTTPException(
+                    status_code=400,
+                    detail=[errors.ApiExc(code="not_found", msg=f"User with id {target_id} not found.")],
+                )
+            sample_size = 1
+            baseline_target = schemas.UserCompareUser(id=target_id, name=str(baseline_row["name"]))
+        else:
+            subject_rows = await self.compare.get_compare_population(
+                session,
+                user_ids=[id],
+                role=compare_role,
+                div_min=compare_div_min,
+                div_max=compare_div_max,
+                tournament_id=params.tournament_id,
+                grid=grid,
+            )
+            if not subject_rows:
+                raise errors.ApiHTTPException(
+                    status_code=400,
+                    detail=[errors.ApiExc(code="not_found", msg=f"User with id {id} not found.")],
+                )
+            subject_row = subject_rows[0]
+            population_rows = await self.compare.get_compare_population(
+                session,
+                role=compare_role,
+                div_min=compare_div_min,
+                div_max=compare_div_max,
+                tournament_id=params.tournament_id,
+                grid=grid,
+            )
+            if not population_rows:
+                raise errors.ApiHTTPException(
+                    status_code=404,
+                    detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
+                )
+            baseline_row = _build_baseline_average_row(population_rows)
+            sample_size = len(population_rows)
+
+        labels = _METRIC_LABEL_MAP
+        directions = _METRIC_DIRECTION_MAP
+
+        metrics: list[schemas.UserCompareMetric] = []
+        for key, _label, _higher_is_better in COMPARE_METRIC_DEFINITIONS:
+            subject_value = subject_row.get(key)
+            baseline_value = baseline_row.get(key)
+
+            delta = None
+            delta_percent = None
+            if subject_value is not None and baseline_value is not None:
+                delta = float(subject_value) - float(baseline_value)
+                if float(baseline_value) != 0:
+                    delta_percent = (delta / abs(float(baseline_value))) * 100
+
+            rank = None
+            percentile = None
+            if mode != "target_user":
+                rank, percentile = _compute_rank_and_percentile(
+                    population_rows,
+                    key,
+                    subject_value,
+                    directions[key],
+                )
+
+            metrics.append(
+                schemas.UserCompareMetric(
+                    key=key,
+                    label=labels[key],
+                    subject_value=subject_value,
+                    baseline_value=baseline_value,
+                    delta=round(delta, 4) if delta is not None else None,
+                    delta_percent=round(delta_percent, 2) if delta_percent is not None else None,
+                    better_worse=_compute_better_worse(subject_value, baseline_value, directions[key]),
+                    higher_is_better=directions[key],
+                    subject_rank=rank,
+                    subject_percentile=percentile,
+                )
+            )
+
+        return schemas.UserCompareResponse(
+            subject=schemas.UserCompareUser(id=id, name=str(subject_row["name"])),
+            baseline=schemas.UserCompareBaselineInfo(
+                mode=mode,
+                sample_size=sample_size,
+                target_user=baseline_target,
+                role=resolved_role if mode == "cohort" else None,
+                div_min=resolved_div_min if mode == "cohort" else None,
+                div_max=resolved_div_max if mode == "cohort" else None,
+            ),
+            metrics=metrics,
+        )
+
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key=(
+            "backend:user_compare:v2:{id}:{baseline}:{target_user_id}:{role}:{div_min}:{div_max}:"
+            "{tournament_id}:{grid_version}"
+        ),
+        lock=True,
+    )
+    async def _get_compare_cached(
+        self,
+        session: AsyncSession,
+        id: int,
+        baseline: schemas.UserCompareBaselineMode,
+        target_user_id: int | None,
+        role: str | None,
+        div_min: int | None,
+        div_max: int | None,
+        tournament_id: int | None,
+        grid_version: int | None,
+        *,
+        grid: DivisionGrid,
+    ) -> schemas.UserCompareResponse:
+        # ``session`` and the runtime grid object deliberately stay out of the key.
+        # The immutable grid version is enough to prevent cross-version reuse.
+        del grid_version
+        return await self.get_compare(
+            session,
+            id,
+            schemas.UserCompareParams(
+                baseline=baseline,
+                target_user_id=target_user_id,
+                role=enums.HeroClass(role) if role is not None else None,
+                div_min=div_min,
+                div_max=div_max,
+                tournament_id=tournament_id,
+            ),
+            grid=grid,
+        )
+
+    async def get_compare_cached(
+        self,
+        session: AsyncSession,
+        id: int,
+        params: schemas.UserCompareParams,
+        *,
+        grid: DivisionGrid,
+    ) -> schemas.UserCompareResponse:
+        is_cohort = params.baseline == "cohort"
+        return await self._get_compare_cached(
+            session,
+            id,
+            params.baseline,
+            params.target_user_id if params.baseline == "target_user" else None,
+            params.role.value if is_cohort and params.role is not None else None,
+            params.div_min if is_cohort else None,
+            params.div_max if is_cohort else None,
+            params.tournament_id,
+            grid.version_id,
+            grid=grid,
+        )
+
+    async def get_hero_compare(
+        self,
+        session: AsyncSession,
+        id: int,
+        params: schemas.UserHeroCompareParams,
+        *,
+        grid: DivisionGrid,
+    ) -> schemas.UserHeroCompareResponse:
+        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="invalid_filter", msg="div_min must be less than or equal to div_max.")],
+            )
+
+        mode = params.baseline
+        resolved_role = params.role
+        resolved_div_min = params.div_min
+        resolved_div_max = params.div_max
+        compare_role = resolved_role if mode == "cohort" else None
+        compare_div_min = resolved_div_min if mode == "cohort" else None
+        compare_div_max = resolved_div_max if mode == "cohort" else None
+
+        if mode == "target_user" and not params.target_user_id:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+            )
+
+        subject = await self.get(session, id, [])
+        target: schemas.UserCompareUser | None = None
+        baseline_target: schemas.UserCompareUser | None = None
+        sample_size = 0
+
+        requested_stats = [stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed]
+        if not requested_stats:
+            requested_stats = list(DEFAULT_HERO_COMPARE_STATS)
+
+        left_playtime, left_stats = await self.compare.get_user_hero_compare_stats(
+            session,
+            user_id=subject.id,
+            hero_id=params.left_hero_id,
+            map_id=params.map_id,
+            stats=requested_stats,
+            role=compare_role,
+            div_min=compare_div_min,
+            div_max=compare_div_max,
+            tournament_id=params.tournament_id,
+            grid=grid,
+        )
+        if left_playtime < 600:
+            left_stats = {}
+
+        if mode == "target_user":
+            target_model = await self.get(session, params.target_user_id, [])
+            right_playtime, right_stats = await self.compare.get_user_hero_compare_stats(
+                session,
+                user_id=target_model.id,
+                hero_id=params.right_hero_id,
+                map_id=params.map_id,
+                stats=requested_stats,
+                tournament_id=params.tournament_id,
+                grid=grid,
+            )
+            if right_playtime < 600:
+                right_stats = {}
+            target = schemas.UserCompareUser(id=target_model.id, name=target_model.name)
+            baseline_target = target
+            sample_size = 1
+        else:
+            # Only "is the cohort empty?" is needed here, to tell the two 404s apart.
+            # This used to materialize the whole population -- ~560 (id, name) rows --
+            # and hand the ids straight back as an ``IN`` list, so the statistics query
+            # arrived with 584 bind parameters and timed out. The population is now
+            # resolved inside that query; the names were never read.
+            if not await self.compare.compare_population_exists(
+                session,
+                role=compare_role,
+                div_min=compare_div_min,
+                div_max=compare_div_max,
+                tournament_id=params.tournament_id,
+                grid=grid,
+            ):
+                raise errors.ApiHTTPException(
+                    status_code=404,
+                    detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
+                )
+
+            baseline_playtime_by_user, baseline_stats_by_user = await self.compare.get_users_hero_compare_stats(
+                session,
+                user_ids=None,
+                hero_id=params.right_hero_id,
+                map_id=params.map_id,
+                stats=requested_stats,
+                role=compare_role,
+                div_min=compare_div_min,
+                div_max=compare_div_max,
+                tournament_id=params.tournament_id,
+                grid=grid,
+            )
+
+            sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime >= 600]
+            if not sample_user_ids:
+                raise errors.ApiHTTPException(
+                    status_code=404,
+                    detail=[errors.ApiExc(code="not_found", msg="No users found for selected hero/map filters.")],
+                )
+
+            sample_size = len(sample_user_ids)
+            right_playtime = float(sum(baseline_playtime_by_user[user_id] for user_id in sample_user_ids) / sample_size)
+            right_stats = {
+                stat: float(
+                    sum(baseline_stats_by_user.get((user_id, stat), 0.0) for user_id in sample_user_ids) / sample_size
+                )
+                for stat in requested_stats
+            }
+
+        metrics: list[schemas.UserHeroCompareMetric] = []
+        for stat in requested_stats:
+            left_value = float(left_stats.get(stat, 0.0))
+            right_value = float(right_stats.get(stat, 0.0))
+            delta = left_value - right_value
+            higher_is_better = not enums.is_ascending_stat(stat)
+            delta_percent = None
+            if right_value != 0:
+                delta_percent = (delta / abs(right_value)) * 100
+            metrics.append(
+                schemas.UserHeroCompareMetric(
+                    stat=stat,
+                    left_value=round(left_value, 2),
+                    right_value=round(right_value, 2),
+                    delta=round(delta, 2),
+                    delta_percent=round(delta_percent, 2) if delta_percent is not None else None,
+                    better_worse=_compute_better_worse(left_value, right_value, higher_is_better),
+                    higher_is_better=higher_is_better,
+                )
+            )
+
+        left_hero_model, right_hero_model, map_model = await self.compare.get_compare_catalog_entities(
+            session,
+            left_hero_id=params.left_hero_id,
+            right_hero_id=params.right_hero_id,
+            map_id=params.map_id,
+        )
+        if params.left_hero_id is not None and left_hero_model is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Hero {params.left_hero_id} not found")],
+            )
+        if params.right_hero_id is not None and right_hero_model is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Hero {params.right_hero_id} not found")],
+            )
+        if params.map_id is not None and map_model is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Map with ID {params.map_id} not found")],
+            )
+
+        # Local import: ``map.service`` imports this module's ``users`` singleton at
+        # module level, so importing it at the top would be a cycle.
+        from src.services.map.service import maps as map_service
+
+        left_hero = hero_service.to_read(left_hero_model) if left_hero_model else None
+        right_hero = hero_service.to_read(right_hero_model) if right_hero_model else None
+        map_value = map_service.to_read(map_model, []) if map_model else None
+
+        return schemas.UserHeroCompareResponse(
+            subject=schemas.UserCompareUser(id=subject.id, name=subject.name),
+            target=target,
+            baseline=schemas.UserCompareBaselineInfo(
+                mode=mode,
+                sample_size=sample_size,
+                target_user=baseline_target,
+                role=resolved_role if mode == "cohort" else None,
+                div_min=resolved_div_min if mode == "cohort" else None,
+                div_max=resolved_div_max if mode == "cohort" else None,
+            ),
+            subject_hero=left_hero,
+            target_hero=right_hero,
+            map=map_value,
+            left_playtime_seconds=round(left_playtime, 2),
+            right_playtime_seconds=round(right_playtime, 2),
+            metrics=metrics,
+        )
+
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key=(
+            "backend:user_hero_compare:v2:{id}:{baseline}:{target_user_id}:{left_hero_id}:"
+            "{right_hero_id}:{map_id}:{role}:{div_min}:{div_max}:{tournament_id}:"
+            "{stats_key}:{grid_version}"
+        ),
+        lock=True,
+    )
+    async def _get_hero_compare_cached(
+        self,
+        session: AsyncSession,
+        id: int,
+        baseline: schemas.UserCompareBaselineMode,
+        target_user_id: int | None,
+        left_hero_id: int | None,
+        right_hero_id: int | None,
+        map_id: int | None,
+        role: str | None,
+        div_min: int | None,
+        div_max: int | None,
+        tournament_id: int | None,
+        stats_key: str,
+        grid_version: int | None,
+        *,
+        grid: DivisionGrid,
+    ) -> schemas.UserHeroCompareResponse:
+        del grid_version
+        return await self.get_hero_compare(
+            session,
+            id,
+            schemas.UserHeroCompareParams(
+                baseline=baseline,
+                target_user_id=target_user_id,
+                left_hero_id=left_hero_id,
+                right_hero_id=right_hero_id,
+                map_id=map_id,
+                role=enums.HeroClass(role) if role is not None else None,
+                div_min=div_min,
+                div_max=div_max,
+                tournament_id=tournament_id,
+                stats=[enums.LogStatsName(value) for value in stats_key.split(",") if value],
+            ),
+            grid=grid,
+        )
+
+    async def get_hero_compare_cached(
+        self,
+        session: AsyncSession,
+        id: int,
+        params: schemas.UserHeroCompareParams,
+        *,
+        grid: DivisionGrid,
+    ) -> schemas.UserHeroCompareResponse:
+        requested_stats = {stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed}
+        if not requested_stats:
+            requested_stats = set(DEFAULT_HERO_COMPARE_STATS)
+        stats_key = ",".join(sorted(stat.value for stat in requested_stats))
+        is_cohort = params.baseline == "cohort"
+        return await self._get_hero_compare_cached(
+            session,
+            id,
+            params.baseline,
+            params.target_user_id if params.baseline == "target_user" else None,
+            params.left_hero_id,
+            params.right_hero_id,
+            params.map_id,
+            params.role.value if is_cohort and params.role is not None else None,
+            params.div_min if is_cohort else None,
+            params.div_max if is_cohort else None,
+            params.tournament_id,
+            stats_key,
+            grid.version_id,
+            grid=grid,
+        )
+
+    async def search_by_name(self, session: AsyncSession, name: str, fields: list[str]) -> list[schemas.UserSearch]:
+        """Battle-tag autocomplete matches as ``UserSearch`` rows.
+
+        ``fields`` is accepted for API compatibility only; the search always runs on the
+        unified battlenet handle.
+        """
+        users = await self.profile.search_by_name(session, name, fields)
+        return [schemas.UserSearch(id=user.user_id, name=user.username) for user in users]
+
+    async def get_read(self, session: AsyncSession, user_id: int, entities: list[str]) -> schemas.UserRead:
+        """A user by ID as ``UserRead``, with ``entities`` eager-loaded."""
+        user = await self.get(session, user_id, entities)
+        return self.to_read(user, entities)
+
+    async def get_roles(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        workspace_id: int | None = None,
+        *,
+        grid: DivisionGrid,
+        normalizer: DivisionGridNormalizer | None = None,
+        division_grid_version: schemas.DivisionGridVersionRead | None = None,
+    ) -> list[schemas.UserRole]:
+        """A user's per-role record and current division across tournaments.
+
+        ``grid`` resolves divisions from the raw player rank, and ``workspace_id`` scopes
+        the roles to a single workspace when given.
+        """
+        roles = await self.profile.get_roles(session, user_id, workspace_id=workspace_id, grid=grid)
+        payload: list[schemas.UserRole] = []
+        for role, maps_won, maps_lost, division in roles:
+            latest_role = max(division, key=lambda item: item["tournament"])
+            payload.append(
+                schemas.UserRole(
+                    role=role,
+                    tournaments=len({item["tournament"] for item in division}),
+                    maps_won=maps_won,
+                    maps=maps_won + maps_lost,
+                    division=resolve_workspace_division(
+                        latest_role["rank"],
+                        source_version_id=latest_role["division_grid_version_id"],
+                        fallback_grid=grid,
+                        normalizer=normalizer,
+                    ),
+                    division_grid_version=division_grid_version,
+                )
+            )
+        return payload
+
+    # Cache key intentionally omits `session`, `grid`, `normalizer` — they're
+    # either non-hashable runtime fixtures (session) or derivable from workspace_id
+    # (grid/normalizer are loaded fresh for the workspace). Workspace-level grid
+    # changes are rare; a TournamentChangedEvent invalidates all user_* keys.
+    @cache(
+        ttl=config.settings.user_profile_cache_ttl,
+        key="backend:user_profile:{id}:{workspace_id}",
+    )
+    async def get_profile(
+        self,
+        session: AsyncSession,
+        id: int,
+        workspace_id: int | None = None,
+        *,
+        grid: DivisionGrid,
+        normalizer: DivisionGridNormalizer | None = None,
+    ) -> schemas.UserProfile:
+        """A user's profile: overall statistics, roles and tournament history."""
+        user = await self.get(session, id, [])
+        matches = await self.profile.get_overall_statistics(session, user.id, workspace_id=workspace_id)
+        matches_won, matches_lose, avg_closeness = 0, 0, 0
+        if matches:
+            matches_won, matches_lose, avg_closeness = matches
+        if workspace_id is not None and normalizer is None:
+            try:
+                normalizer = await build_workspace_division_grid_normalizer(
+                    session,
+                    workspace_id,
+                    require_complete=False,
+                )
+            except DivisionGridNormalizationError:
+                normalizer = None
+
+        current_grid_version_model = await get_division_grid_version(session, workspace_id)
+        current_grid_version = (
+            schemas.DivisionGridVersionRead.model_validate(current_grid_version_model, from_attributes=True)
+            if current_grid_version_model is not None
+            else None
+        )
+
+        roles = await self.get_roles(
+            session,
+            user.id,
+            workspace_id=workspace_id,
+            grid=grid,
+            normalizer=normalizer,
+            division_grid_version=current_grid_version,
+        )
+        hero_statistics = await hero_service.get_playtime(
+            session,
+            schemas.HeroPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
+            workspace_id=workspace_id,
+        )
+
+        teams, _ = await self.profile.get_teams(
+            session,
+            user.id,
+            params=pagination.PaginationSortParams(page=1, per_page=-1, entities=["tournament", "placement"]),
+            workspace_id=workspace_id,
+        )
+
+        placements: list[int] = []
+        placements_playoff: list[int] = []
+        placements_group: list[int] = []
+        tournaments_count: int = 0
+        tournaments_won: int = 0
+
+        # Narrow tournament summary — only fields the frontend renders on the user
+        # overview. Pure CPU conversion (no SQL), no need to fan out.
+        tournaments: list[schemas.UserTournamentSummary] = [
+            _mappers.to_user_tournament_summary(team.tournament) for team in teams
+        ]
+
+        for team in teams:
+            if team.tournament.is_league:
+                continue
+
+            # Participation, not scoring: a live tournament has no final placement
+            # yet, but the player is already in it — counting only scored events
+            # reported 0 tournaments and collapsed the whole profile into the
+            # empty-career panel.
+            tournaments_count += 1
+
+            placement = _mappers.resolve_team_placement(team)
+            if placement is None:
+                continue
+            placements.append(placement)
+            if placement == 1:
+                tournaments_won += 1
+            for standing in team.standings:
+                if standing.buchholz is None:
+                    placements_playoff.append(standing.position)
+                else:
+                    placements_group.append(standing.position)
+
+        return schemas.UserProfile(
+            tournaments_count=tournaments_count,
+            tournaments_won=tournaments_won,
+            maps_total=matches_lose + matches_won,
+            maps_won=matches_won,
+            avg_placement=round(mean(placements), 2) if placements else None,
+            avg_playoff_placement=(round(mean(placements_playoff), 2) if placements_playoff else None),
+            avg_group_placement=(round(mean(placements_group), 2) if placements_group else None),
+            avg_closeness=round(avg_closeness, 2) if avg_closeness else 0,
+            most_played_hero=(hero_statistics.results[0].hero if hero_statistics.results else None),
+            heroes_count=hero_statistics.total,
+            roles=roles,
+            hero_statistics=hero_statistics.results,
+            tournaments=sorted(tournaments, key=lambda x: x.id, reverse=True),
+        )
+
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key="backend:user_tournaments:{id}:{workspace_id}",
+    )
+    async def get_tournaments(
+        self,
+        session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+    ) -> list[schemas.UserTournament]:
+        """
+        Retrieves a user's tournament history with per-event stats (record,
+        placement, roster, avg MVP, signature heroes).
+
+        Deliberately does NOT populate `UserTournament.encounters` — that used to
+        make this endpoint ship every tournament's full encounter/match history
+        (a veteran player's response ran past 1 MB) even though the Tournaments
+        tab only ever renders one selected tournament's encounters at a time
+        (master-detail dossier). Callers that need the per-match run for one
+        tournament call `get_tournament_encounters` lazily instead.
+        """
+        user = await self.get(session, id, [])
+        output: list[schemas.UserTournament] = []
+        tournaments = await self.profile.get_tournaments_with_stats(session, user.id, workspace_id=workspace_id)
+        tournaments_ids = [tournament[0].tournament_id for tournament in tournaments]
+        placements = await self.encounters.count_teams_by_tournament_bulk(session, tournaments_ids)
+
+        # Per-roster-player enrichment (avg MVP + signature heroes), scoped to the
+        # tournaments this history covers. Gather every teammate's canonical user id
+        # (workspace_member.player_id) up front and resolve both metrics in two bulk
+        # queries keyed by (tournament_id, user_id) — no N+1 across roster players.
+        roster_user_ids = list(
+            {
+                player.workspace_member.player_id
+                for team, *_ in tournaments
+                for player in team.players
+                if player.workspace_member is not None
+            }
+        )
+        avg_mvp_map = await self.encounters.get_roster_avg_mvp_bulk(session, tournaments_ids, roster_user_ids)
+        top_heroes_map = await self.encounters.get_roster_top_heroes_bulk(session, tournaments_ids, roster_user_ids)
+
+        for team, wins, losses, avg_closeness in tournaments:
+            user_role: enums.HeroClass | None = None
+            user_division: int | None = None
+            won: int = 0
+            lost: int = 0
+            draw: int = 0
+            placement = _mappers.resolve_team_placement(team)
+
+            # Use tournament-specific grid if available, otherwise fall back to workspace grid
+            tournament_grid = (
+                load_runtime_grid(team.tournament.division_grid_version)
+                if team.tournament.division_grid_version is not None
+                else grid
+            )
+
+            for player in team.players:
+                if player.workspace_member is not None and player.workspace_member.player_id == user.id:
+                    user_role = player.role
+                    user_division = resolve_tournament_division(
+                        player.rank,
+                        tournament_grid=tournament_grid,
+                        fallback_grid=grid,
+                    )
+                    break
+
+            for standing in team.standings:
+                won += standing.win
+                lost += standing.lose
+                draw += standing.draw
+
+            division_grid_version = (
+                schemas.DivisionGridVersionRead.model_validate(team.tournament.division_grid_version, from_attributes=True)
+                if team.tournament.division_grid_version is not None
+                else None
+            )
+
+            players_read = [
+                _mappers.to_user_tournament_player(
+                    player,
+                    grid=tournament_grid,
+                    avg_mvp=(
+                        avg_mvp_map.get((team.tournament_id, player.workspace_member.player_id))
+                        if player.workspace_member is not None
+                        else None
+                    ),
+                    heroes=(
+                        top_heroes_map.get((team.tournament_id, player.workspace_member.player_id), [])
+                        if player.workspace_member is not None
+                        else []
+                    ),
+                )
+                for player in team.players
+            ]
+
+            tournament = schemas.UserTournament(
+                id=team.tournament.id,
+                name=team.tournament.name,
+                is_league=team.tournament.is_league,
+                team_id=team.id,
+                team=team.name,
+                players=players_read,
+                closeness=round(avg_closeness, 2) if avg_closeness else 0,
+                maps_won=wins,
+                maps_lost=losses,
+                placement=placement,
+                role=user_role,
+                division=user_division,
+                division_grid_version=division_grid_version,
+                count_teams=placements[team.tournament_id],
+                won=won,
+                lost=lost,
+                draw=draw,
+            )
+            output.append(tournament)
+
+        output = sorted(output, key=lambda x: x.id, reverse=True)
+        return output
+
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key="backend:user_tournament_encounters:{id}:{tournament_id}",
+    )
+    async def get_tournament_encounters(
+        self,
+        session: AsyncSession, id: int, tournament_id: int
+    ) -> list[schemas.EncounterReadWithUserStats]:
+        """
+        Retrieves one user's encounters (with their per-match stats) within a
+        single tournament — the lazy detail behind the Tournaments-tab dossier,
+        split out of `get_tournaments` so the list endpoint doesn't have to ship
+        every tournament's encounters up front (see that function's docstring).
+
+        Covers every team the user played on in that tournament, if there was more
+        than one — e.g. a mid-tournament substitution.
+        """
+        user = await self.get(session, id, [])
+        rows = await self.encounters.get_user_encounter_matches_unpaginated(session, user.id, tournament_id=tournament_id)
+
+        encounters_cache: dict[int, models.Encounter] = {}
+        matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}
+
+        for (
+            _team,
+            encounter,
+            match,
+            performance,
+            heroes,
+            impact_rank,
+            impact_points,
+            overperformance_score,
+            overperf_pos,
+        ) in rows:
+            encounters_cache.setdefault(encounter.id, encounter)
+            matches_cache.setdefault(encounter.id, [])
+
+            if match:
+                matches_cache[encounter.id].append(
+                    _mappers.to_match_with_user_stats(
+                        match,
+                        performance=performance,
+                        heroes=heroes,
+                        impact_rank=impact_rank,
+                        impact_points=impact_points,
+                        overperformance_score=overperformance_score,
+                        overperf_pos=overperf_pos,
+                    )
+                )
+
+        return [
+            _mappers.to_encounter_with_user_stats(
+                encounter,
+                matches=matches_cache.get(encounter_id, []),
+                viewer_user_id=user.id,
+            )
+            for encounter_id, encounter in encounters_cache.items()
+        ]
+
+    # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own
+    # division_grid_version), so it stays out of the key; a grid change fires a
+    # TournamentChangedEvent that broadly drops ``user_tournament_stats:*``.
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key="backend:user_tournament_stats:{id}:{tournament_id}",
+        lock=True,
+    )
+    async def get_tournament_with_stats(
+        self,
+        session: AsyncSession, id: int, tournament_id: int, *, grid: DivisionGrid
+    ) -> schemas.UserTournamentWithStats | None:
+        """Detailed statistics for a user in one tournament; 404 when the user never
+        played in it.
+        """
+        user = await self.get(session, id, [])
+        player = await self.encounters.get_player_by_user_and_tournament(session, user.id, tournament_id)
+        if player is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[
+                    errors.ApiExc(
+                        code="not_found",
+                        msg=f"Player with user [id={user.id}] not found in tournament [id={tournament_id}].",
+                    )
+                ],
+            )
+        team = player.team
+        statistics = await self.profile.get_tournament_stats_overall(session, team.tournament, user.id)
+        last_playoff_placement: float | None = None
+        last_group_placement: float | None = None
+        stats: dict[enums.LogStatsName | typing.Literal["winrate"], schemas.UserTournamentStat] = {}
+        winrate = await self.statistics_queries.get_tournament_winrate(session, team.tournament, user.id)
+
+        if winrate:
+            stats["winrate"] = schemas.UserTournamentStat(value=winrate[1], rank=winrate[2], total=winrate[3])
+        else:
+            stats["winrate"] = schemas.UserTournamentStat(value=0, rank=0, total=0)
+
+        for values in await self.statistics_queries.get_tournament_avg_match_stat_for_user_bulk(
+            session,
+            team.tournament,
+            user.id,
+            [name for name in tournament_stats if name != enums.LogStatsName.Performance],
+        ):
+            if not values:
+                continue
+            stat, _user_id, value, rank_desc, rank_asc, total = values
+
+            rank = rank_asc if enums.is_ascending_stat(stat) else rank_desc
+
+            stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
+
+        # MVP placement spans two LogStatsName columns (COALESCE(ImpactRank, Performance) —
+        # see get_tournament_mvp_stat_for_user), so it can't ride the generic single-name
+        # loop above. Slots into the same "performance" key the frontend already reads.
+        mvp_row = await self.statistics_queries.get_tournament_mvp_stat_for_user(session, team.tournament, user.id)
+        if mvp_row:
+            stats[enums.LogStatsName.Performance] = schemas.UserTournamentStat(
+                value=mvp_row.value, rank=mvp_row.rank, total=mvp_row.total
+            )
+
+        for placement in team.standings:
+            if placement.buchholz is None:
+                last_playoff_placement = placement.position
+            else:
+                last_group_placement = placement.position
+
+        return schemas.UserTournamentWithStats(
+            id=team.tournament.id,
+            name=team.tournament.name,
+            division=resolve_tournament_division(
+                player.rank,
+                tournament_grid=grid,
+            ),
+            division_grid_version=_mappers._division_grid_version(team.tournament),
+            closeness=round(statistics[2], 2) if statistics[2] else 0,
+            role=player.role,
+            maps=statistics[0] + statistics[1] if statistics[0] else 0,
+            maps_won=statistics[0] if statistics[0] else 0,
+            playtime=round(statistics[3], 2) if statistics[3] else 0,
+            group_placement=last_group_placement,
+            playoff_placement=last_playoff_placement,
+            stats=stats,
+        )
+
+    async def get_tournament_leaderboard(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        stat: enums.LogStatsName,
+    ) -> schemas.LobbyLeaderboard:
+        """Per-stat lobby leaderboard: every player in a tournament ranked by one stat.
+
+        Exposes the full ranked population that backs a single user's
+        ``UserTournamentWithStats.stats[stat].{rank,total}`` on the tournament-stats
+        page. For every stat except ``Performance`` it reuses the exact ranking
+        scheme (``statistics_service.get_tournament_stat_leaderboard``, a
+        generalization of ``get_tournament_avg_match_stat_for_user_bulk``) — same
+        AVG + dense_rank window and same inverse-stat direction handling — so an
+        entry's rank/value here matches that user's row. ``Performance`` is the MVP
+        placement stat and spans two ``LogStatsName`` columns (see
+        ``get_tournament_mvp_stat_leaderboard`` / ``get_tournament_mvp_stat_for_user``),
+        so it routes to its own query instead.
+
+        ``stat`` must be one of the tournament-stats feature's ranked stats
+        (``tournament_stats``); any other stat raises 400.
+        """
+        if stat not in tournament_stats:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[
+                    errors.ApiExc(
+                        code="invalid_stat",
+                        msg=f"Stat [{stat.value}] is not a ranked tournament stat.",
+                    )
+                ],
+            )
+
+        if stat == enums.LogStatsName.Performance:
+            rows = await self.statistics_queries.get_tournament_mvp_stat_leaderboard(session, tournament_id)
+        else:
+            rows = await self.statistics_queries.get_tournament_stat_leaderboard(session, tournament_id, stat)
+        entries = [
+            schemas.LobbyLeaderboardEntry(rank=row.rank, player_id=row.user_id, name=row.name, value=row.value)
+            for row in rows
+        ]
+        return schemas.LobbyLeaderboard(stat=stat, total_players=len(entries), entries=entries)
+
+    async def get_heroes(
+        self,
+        session: AsyncSession,
+        id: int,
+        params: pagination.PaginationParams,
+        stats: list[enums.LogStatsName] | None = None,
+        tournament_id: int | None = None,
+        workspace_id: int | None = None,
+    ) -> pagination.Paginated[schemas.HeroWithUserStats]:
+        """Cache wrapper for a user's hero statistics.
+
+        Normalizes the requested-stats list (sort + dedup) into a stable cache key
+        before delegating to the cached implementation, so ``[Deaths, Elims]`` and
+        ``[Elims, Deaths, Elims]`` share one entry (mirrors the hero-compare cache).
+        """
+        stats_key = ",".join(sorted({stat.value for stat in (stats or [])}))
+        return await self._get_heroes_cached(
+            session,
+            id,
+            params,
+            stats_key,
+            stats=stats,
+            tournament_id=tournament_id,
+            workspace_id=workspace_id,
+        )
+
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key="backend:user_heroes:{id}:{workspace_id}:{tournament_id}:{stats_key}:{params.page}:{params.per_page}",
+        lock=True,
+    )
+    async def _get_heroes_cached(
+        self,
+        session: AsyncSession,
+        id: int,
+        params: pagination.PaginationParams,
+        stats_key: str,
+        stats: list[enums.LogStatsName] | None = None,
+        tournament_id: int | None = None,
+        workspace_id: int | None = None,
+    ) -> pagination.Paginated[schemas.HeroWithUserStats]:
+        """Paginated hero statistics for a user, each stat paired with the global
+        per-hero comparison values.
+        """
+        del stats_key  # participates in the cache key only
+        user = await self.get(session, id, [])
+        requested_stats = set(stats or [])
+        stats_filter = list(requested_stats) if requested_stats else None
+
+        user_stats = await self.profile.get_statistics_by_heroes(
+            session, user.id, stats_filter, tournament_id=tournament_id, workspace_id=workspace_id
+        )
+        all_stats = await self.profile.get_statistics_by_heroes_all_values(session, stats_filter)
+        payload: list[schemas.HeroWithUserStats] = []
+
+        stats_by_hero: dict[int, dict[enums.LogStatsName, schemas.HeroStat]] = {}
+        cache_hero: dict[int, schemas.HeroRead] = {}
+
+        for name, hero, value, value_best, value_avg_10, best_meta in user_stats:
+            if requested_stats and name not in requested_stats and name != enums.LogStatsName.HeroTimePlayed:
+                continue
+            if hero.id not in cache_hero:
+                cache_hero[hero.id] = hero_service.to_read(hero)
+            if hero.id not in stats_by_hero:
+                stats_by_hero[hero.id] = {}
+            stats_by_hero[hero.id][name] = schemas.HeroStat(
+                name=name,
+                overall=round(value, 2),
+                best=schemas.HeroStatBest(
+                    encounter_id=best_meta["encounter_id"],
+                    map_name=best_meta["map_name"],
+                    value=round(value_best, 2),
+                    map_image_path=best_meta["map_image_path"],
+                    tournament_name=best_meta["tournament_name"],
+                    player_name=user.name,
+                ),
+                avg_10=round(value_avg_10, 2),
+                best_all=None,
+                avg_10_all=0,
+            )
+
+        for name, hero_id, value_best, value_avg_10, best_meta in all_stats:
+            if requested_stats and name not in requested_stats:
+                continue
+            if hero_id in stats_by_hero:
+                stats_by_hero[hero_id][name].best_all = schemas.HeroStatBest(
+                    encounter_id=best_meta["encounter_id"],
+                    map_name=best_meta["map_name"],
+                    value=round(value_best, 2),
+                    map_image_path=best_meta["map_image_path"],
+                    tournament_name=best_meta["tournament_name"],
+                    player_name=best_meta["username"],
+                )
+                stats_by_hero[hero_id][name].avg_10_all = round(value_avg_10, 2)
+
+        for hero_id, stats in stats_by_hero.items():
+            # Filter out heroes without meaningful playtime. Previously we used
+            # eliminations == 0 which could hide valid support picks.
+            playtime_stat = stats.get(enums.LogStatsName.HeroTimePlayed)
+            if not playtime_stat or playtime_stat.overall <= 0:
+                continue
+
+            hero_stats = list(stats.values())
+            if requested_stats:
+                hero_stats = [hero_stat for hero_stat in hero_stats if hero_stat.name in requested_stats]
+                if not hero_stats:
+                    continue
+
+            payload.append(
+                schemas.HeroWithUserStats(
+                    hero=cache_hero[hero_id],
+                    stats=hero_stats,
+                )
+            )
+
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=len(payload),
+            results=params.paginate_data(payload),
+        )
+
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key="backend:user_teammates:{id}:{workspace_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}",
+    )
+    async def get_best_teammates(
+        self,
+        session: AsyncSession,
+        id: int,
+        params: pagination.PaginationSortParams,
+        workspace_id: int | None = None,
+    ) -> pagination.Paginated[schemas.UserBestTeammate]:
+        """Paginated best teammates for a user with their shared win rate, tournaments
+        and performance statistics.
+        """
+        user = await self.get(session, id, [])
+        teammates, total = await self.profile.get_best_teammates(session, user.id, params, workspace_id=workspace_id)
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=total,
+            results=[
+                schemas.UserBestTeammate(
+                    user=self.to_read(teammate, []),
+                    winrate=round(winrate, 2),
+                    tournaments=tournaments,
+                    maps=maps or 0,
+                    stats={
+                        enums.LogStatsName.Performance: (round(performance, 2) if performance else 0),
+                        enums.LogStatsName.KDA: round(kda, 2) if kda else 0,
+                    },
+                )
+                for teammate, winrate, tournaments, maps, performance, kda in teammates
             ],
         )
-        .select_from(models.MatchStatistics)
-        .join(
-            eligible_hero_time,
-            sa.and_(
-                eligible_hero_time.c.match_id == models.MatchStatistics.match_id,
-                eligible_hero_time.c.user_id == models.MatchStatistics.user_id,
-                eligible_hero_time.c.hero_id == models.MatchStatistics.hero_id,
-            ),
-        )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(candidates, candidates.c.id == models.MatchStatistics.user_id)
-        .where(
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.isnot(None),
-            models.MatchStatistics.name.in_(OVERVIEW_HERO_METRICS),
-        )
-    )
-    if role is not None or div_min is not None or div_max is not None:
-        per_10_stats = per_10_stats.join(
-            stat_scoped_players,
-            sa.and_(
-                stat_scoped_players.c.user_id == models.MatchStatistics.user_id,
-                stat_scoped_players.c.team_id == models.MatchStatistics.team_id,
-            ),
-        )
-    if tournament_id is not None:
-        per_10_stats = per_10_stats.join(
-            models.Encounter,
-            models.Encounter.id == models.Match.encounter_id,
-        ).where(models.Encounter.tournament_id == tournament_id)
-    per_10_stats = per_10_stats.group_by(models.MatchStatistics.user_id).cte("compare_match_stats")
 
-    # MVP placement spans two LogStatsName columns: ImpactRank when the
-    # impact-scoring pipeline computed it for a match, legacy Performance
-    # otherwise — same COALESCE(ImpactRank, Performance) per-match average as
-    # services.user._repositories.get_roster_avg_mvp_bulk. First collapse each
-    # match's two candidate rows into one (impact_rank, performance) pair, THEN
-    # average the coalesced placement per user.
-    mvp_per_match = (
-        sa.select(
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.match_id.label("match_id"),
-            sa.func.max(
-                sa.case(
-                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
-                )
-            ).label("impact_rank"),
-            sa.func.max(
-                sa.case(
-                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
-                )
-            ).label("performance"),
-        )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(candidates, candidates.c.id == models.MatchStatistics.user_id)
-        .where(
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
-        )
-    )
-    if role is not None or div_min is not None or div_max is not None:
-        mvp_per_match = mvp_per_match.join(
-            stat_scoped_players,
-            sa.and_(
-                stat_scoped_players.c.user_id == models.MatchStatistics.user_id,
-                stat_scoped_players.c.team_id == models.MatchStatistics.team_id,
-            ),
-        )
-    if tournament_id is not None:
-        mvp_per_match = mvp_per_match.join(
-            models.Encounter,
-            models.Encounter.id == models.Match.encounter_id,
-        ).where(models.Encounter.tournament_id == tournament_id)
-    mvp_per_match = mvp_per_match.group_by(
-        models.MatchStatistics.user_id, models.MatchStatistics.match_id
-    ).cte("compare_mvp_per_match")
-
-    mvp_placement = sa.func.coalesce(mvp_per_match.c.impact_rank, mvp_per_match.c.performance)
-    mvp_stats = (
-        sa.select(
-            mvp_per_match.c.user_id,
-            sa.func.avg(mvp_placement).label("mvp_score_avg"),
-        )
-        .where(mvp_placement.isnot(None))
-        .group_by(mvp_per_match.c.user_id)
-    ).cte("compare_mvp_stats")
-
-    maps_won = sa.func.coalesce(map_totals.c.maps_won, 0)
-    maps_total = maps_won + sa.func.coalesce(map_totals.c.maps_lost, 0)
-    return (
-        sa.select(
-            candidates.c.id,
-            candidates.c.name,
-            sa.func.coalesce(tournament_counts.c.tournaments_count, 0).label("tournaments_count"),
-            sa.func.coalesce(achievements.c.achievements_count, 0).label("achievements_count"),
-            maps_won.label("maps_won"),
-            maps_total.label("maps_total"),
-            sa.func.coalesce(maps_won / sa.func.nullif(maps_total, 0), 0).label("maps_winrate"),
-            average_placements.c.avg_placement,
-            phase_placements.c.avg_playoff_placement,
-            phase_placements.c.avg_group_placement,
-            average_closeness.c.avg_closeness,
-            mvp_stats.c.mvp_score_avg,
-            per_10_stats.c.eliminations_avg_10,
-            per_10_stats.c.final_blows_avg_10,
-            per_10_stats.c.hero_damage_dealt_avg_10,
-            per_10_stats.c.healing_dealt_avg_10,
-        )
-        .select_from(candidates)
-        .outerjoin(tournament_counts, tournament_counts.c.user_id == candidates.c.id)
-        .outerjoin(achievements, achievements.c.user_id == candidates.c.id)
-        .outerjoin(map_totals, map_totals.c.user_id == candidates.c.id)
-        .outerjoin(average_placements, average_placements.c.user_id == candidates.c.id)
-        .outerjoin(phase_placements, phase_placements.c.user_id == candidates.c.id)
-        .outerjoin(average_closeness, average_closeness.c.user_id == candidates.c.id)
-        .outerjoin(mvp_stats, mvp_stats.c.user_id == candidates.c.id)
-        .outerjoin(per_10_stats, per_10_stats.c.user_id == candidates.c.id)
-    )
-
-
-def _normalize_compare_value(value: typing.Any) -> float | int | None:
-    if value is None:
-        return None
-    if isinstance(value, int):
-        return value
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-async def get_overview_stats(
-    session: AsyncSession,
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    query: str | None,
-    grid: DivisionGrid,
-    workspace_id: int | None = None,
-) -> dict[str, typing.Any]:
-    """Compute KPI numbers for the users hero header.
-
-    Counts respect the same filter chips as the main overview table:
-    role, division range, and search query. The result includes:
-      - total_players: distinct users matching the filters
-      - with_logs_count / with_logs_pct: how many have at least one parsed match stat row
-      - avg_tournaments_per_player / median_tournaments_per_player
-      - active_last_30d / active_last_30d_pct: distinct players in tournaments
-        whose start_date or end_date falls within the last 30 days
-      - tank / damage / support / flex counts (distinct roles per user)
-    """
-    base_query = sa.select(models.User.id).select_from(models.User)
-    base_query = _apply_workspace_member_filter(base_query, workspace_id)
-
-    if query:
-        base_query = pagination.apply_search(models.User, base_query, query, ["name"])
-
-    if role is not None or div_min is not None or div_max is not None:
-        base_query = _apply_overview_role_filters(
-            base_query,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            grid=grid,
-        )
-
-    candidate_user_ids: list[int] = [row[0] for row in (await session.execute(base_query.distinct())).all()]
-    total_players = len(candidate_user_ids)
-
-    if not candidate_user_ids:
-        return {
-            "total_players": 0,
-            "with_logs_count": 0,
-            "with_logs_pct": 0.0,
-            "avg_tournaments_per_player": 0.0,
-            "median_tournaments_per_player": 0.0,
-            "active_last_30d": 0,
-            "active_last_30d_pct": 0.0,
-            "tank_count": 0,
-            "damage_count": 0,
-            "support_count": 0,
-            "flex_count": 0,
-        }
-
-    # Scope the KPI sub-aggregates to the workspace so they stay consistent with
-    # the workspace-scoped candidate set (total_players).
-    ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
-
-    # NB: "has any parsed logs" is intentionally NOT workspace-scoped — reaching
-    # the workspace from match_statistics requires a Match->Encounter->Tournament
-    # join over that (very large) table, which times out for big workspaces. The
-    # candidate set is already workspace-scoped, so this counts scoped players who
-    # have parsed logs anywhere; the slight cross-workspace leniency is acceptable.
-    with_logs_query = sa.select(sa.func.count(sa.distinct(models.MatchStatistics.user_id))).where(
-        models.MatchStatistics.user_id.in_(candidate_user_ids)
-    )
-    with_logs_count = (await session.execute(with_logs_query)).scalar_one() or 0
-
-    tournaments_query = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            sa.func.count(sa.distinct(models.Team.tournament_id)).label("tournaments_count"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(candidate_user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Tournament.is_finished.is_(True),
-            models.Tournament.is_league.is_(False),
-            *ws_filter,
-        )
-        .group_by(models.WorkspaceMember.player_id)
-    )
-    tournament_counts = [int(count) for _user_id, count in (await session.execute(tournaments_query)).all()]
-    counts_with_zero = tournament_counts + [0] * (total_players - len(tournament_counts))
-    avg_tournaments = sum(counts_with_zero) / total_players if total_players else 0.0
-    sorted_counts = sorted(counts_with_zero)
-    if sorted_counts:
-        mid = len(sorted_counts) // 2
-        if len(sorted_counts) % 2 == 0:
-            median_tournaments = (sorted_counts[mid - 1] + sorted_counts[mid]) / 2
-        else:
-            median_tournaments = float(sorted_counts[mid])
-    else:
-        median_tournaments = 0.0
-
-    cutoff = sa.func.now() - sa.text("INTERVAL '30 days'")
-    active_query = (
-        sa.select(sa.func.count(sa.distinct(models.WorkspaceMember.player_id)))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(candidate_user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Tournament.is_league.is_(False),
-            sa.or_(
-                sa.and_(models.Tournament.end_date.isnot(None), models.Tournament.end_date >= cutoff),
-                sa.and_(models.Tournament.start_date.isnot(None), models.Tournament.start_date >= cutoff),
-            ),
-            *ws_filter,
-        )
-    )
-    active_last_30d = (await session.execute(active_query)).scalar_one() or 0
-
-    roles_query = (
-        sa.select(models.WorkspaceMember.player_id.label("user_id"), models.Player.role)
-        .select_from(models.Player)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id.in_(candidate_user_ids),
-            models.Player.is_substitution.is_(False),
-            models.Player.role.isnot(None),
-        )
-        .distinct()
-    )
-    if workspace_id is not None:
-        roles_query = roles_query.join(models.Tournament, models.Tournament.id == models.Player.tournament_id).where(
-            models.Tournament.workspace_id == workspace_id
-        )
-    user_roles: dict[int, set[enums.HeroClass]] = defaultdict(set)
-    for user_id, player_role in (await session.execute(roles_query)).all():
-        user_roles[user_id].add(player_role)
-
-    tank_count = damage_count = support_count = flex_count = 0
-    for roles_set in user_roles.values():
-        # "Flex" here means "plays anything", which a player reaches two ways:
-        # by having been rostered on more than one role, or by carrying the
-        # explicit HeroClass.flex a role-less roster assigns. Before flex
-        # existed only the first was possible; an explicitly flex player has a
-        # one-element role set and would otherwise land in no bucket at all.
-        if len(roles_set) > 1 or enums.HeroClass.flex in roles_set:
-            flex_count += 1
-        if enums.HeroClass.tank in roles_set:
-            tank_count += 1
-        if enums.HeroClass.damage in roles_set:
-            damage_count += 1
-        if enums.HeroClass.support in roles_set:
-            support_count += 1
-
-    return {
-        "total_players": total_players,
-        "with_logs_count": int(with_logs_count),
-        "with_logs_pct": round(with_logs_count / total_players * 100, 1) if total_players else 0.0,
-        "avg_tournaments_per_player": round(avg_tournaments, 1),
-        "median_tournaments_per_player": round(median_tournaments, 1),
-        "active_last_30d": int(active_last_30d),
-        "active_last_30d_pct": round(active_last_30d / total_players * 100, 1) if total_players else 0.0,
-        "tank_count": tank_count,
-        "damage_count": damage_count,
-        "support_count": support_count,
-        "flex_count": flex_count,
-    }
-
-
-def _classify_letter(name: str) -> str:
-    """Bucket the first character of a name into A..Z or '#'."""
-    if not name:
-        return "#"
-    first_char = name[0].upper()
-    if "A" <= first_char <= "Z":
-        return first_char
-    return "#"
-
-
-async def get_catalog_users(
-    session: AsyncSession,
-    *,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    query: str | None,
-    letter: str | None,
-    per_letter: int,
-    max_letters: int,
-    grid: DivisionGrid,
-    workspace_id: int | None = None,
-) -> tuple[list[tuple[str, list[models.User]]], int, list[str]]:
-    """Return (letters_with_users, total_users, available_letters).
-
-    Users are loaded across the full filtered set, grouped by their starting
-    letter (or '#' for non-alpha names), then per-letter capped at `per_letter`.
-    If `letter` is specified, only that bucket is returned (still capped).
-    `available_letters` reports every letter that has at least one matching user
-    (used to grey out empty letters in the alphabet index).
-    """
-    base_query = (
-        sa.select(models.User)
-        .select_from(models.User)
-        .order_by(sa.func.lower(models.User.name).asc(), models.User.id.asc())
-    )
-    base_query = _apply_workspace_member_filter(base_query, workspace_id)
-
-    if query:
-        base_query = pagination.apply_search(models.User, base_query, query, ["name"])
-
-    if role is not None or div_min is not None or div_max is not None:
-        base_query = _apply_overview_role_filters(
-            base_query,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            grid=grid,
-        )
-
-    all_users = list((await session.execute(base_query)).unique().scalars().all())
-
-    grouped: dict[str, list[models.User]] = defaultdict(list)
-    for user in all_users:
-        grouped[_classify_letter(user.name)].append(user)
-
-    available_letters = sorted(grouped.keys(), key=lambda x: (x != "#", x))
-
-    if letter is not None:
-        letter_key = letter.upper() if letter != "#" else "#"
-        bucket = grouped.get(letter_key, [])
-        letters_with_users = [(letter_key, bucket[:per_letter])] if bucket else []
-    else:
-        sorted_letters = sorted(grouped.keys(), key=lambda x: (x != "#", x))
-        letters_with_users = [(lbl, grouped[lbl][:per_letter]) for lbl in sorted_letters[:max_letters]]
-
-    return letters_with_users, len(all_users), available_letters
-
-
-async def get_compare_population(
-    session: AsyncSession,
-    *,
-    user_ids: list[int] | None = None,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> list[dict[str, typing.Any]]:
-    if user_ids is not None and not user_ids:
-        return []
-
-    query = _compare_metrics_query_v2(
-        user_ids=user_ids,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-
-    result = await session.execute(query)
-    payload: list[dict[str, typing.Any]] = []
-
-    for row in result.mappings().all():
-        item: dict[str, typing.Any] = {
-            "id": row["id"],
-            "name": row["name"],
-        }
-        for key, _label, _higher_is_better in COMPARE_METRIC_DEFINITIONS:
-            item[key] = _normalize_compare_value(row.get(key))
-        payload.append(item)
-
-    return payload
-
-
-async def compare_population_exists(
-    session: AsyncSession,
-    *,
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> bool:
-    """Does the baseline cohort contain anybody?
-
-    ``_compare_user_scope_exists`` without materializing the cohort. Its caller
-    only needs this to tell "empty cohort" from "empty result" apart — the two are
-    different 404s — and used to pull the whole population (~560 ``(id, name)``
-    rows) to evaluate ``if not population_users``.
-    """
-    query = sa.select(sa.literal(1)).select_from(models.User)
-    if role is not None or div_min is not None or div_max is not None or tournament_id is not None:
-        query = query.where(
-            _compare_user_scope_exists(
-                models.User.id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
-        )
-    return await session.scalar(query.limit(1)) is not None
-
-
-def compare_hero_candidates_select(
-    *,
-    user_ids: list[int] | None,
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None,
-    grid: DivisionGrid,
-) -> sa.Select:
-    """The users a hero-compare baseline covers, as a selectable.
-
-    Public (not ``_``-prefixed) so a test can execute the real thing instead of a
-    re-implementation of the predicate: the whole point of the change is that this
-    set must stay identical while it stops travelling through Python.
-
-    ``user_ids=None`` = the whole cohort, filtered exactly the way
-    ``compare_population_exists`` tests it. An explicit list is passed through
-    unchanged for callers that really do hold a few ids.
-    """
-    query = sa.select(models.User.id.label("user_id"))
-    if user_ids is not None:
-        return query.where(models.User.id.in_(user_ids))
-    if role is None and div_min is None and div_max is None and tournament_id is None:
-        return query
-    return query.where(
-        _compare_user_scope_exists(
-            models.User.id,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            tournament_id=tournament_id,
-            grid=grid,
-        )
-    )
-
-
-def _users_hero_compare_query_v2(
-    *,
-    user_ids: list[int] | None,
-    hero_id: int | None,
-    map_id: int | None,
-    stats: list[enums.LogStatsName],
-    role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None,
-    grid: DivisionGrid,
-) -> sa.Select:
-    """Return playtime and per-stat rows for all candidates in one statement.
-
-    ``user_ids=None`` means "the whole baseline population", resolved HERE as a
-    subquery rather than handed in as a list. The list form is still supported for
-    callers that genuinely hold a few ids, but the population must not travel
-    through Python: the caller used to resolve the cohort and hand ~560 ids straight
-    back as an ``IN`` list, so this statement arrived with 584 bind
-    parameters. That is slow twice over -- the planner cannot estimate selectivity
-    through a list that long, and under pgBouncer (``prepared_statement_cache_size
-    = 0``) the plan is rebuilt on every call, on a statement whose text changes
-    whenever the population size does, so nothing is ever reused. It timed out.
-
-    The predicate is ``_compare_user_scope_exists``, the same one the caller applied when it
-    resolved the cohort itself, so the
-    candidate set is unchanged. It is NOT the same as ``scoped_players`` below,
-    which deliberately drops the finished/non-league restriction
-    (``require_finished_nonleague=False``) -- reusing that CTE here would silently
-    widen the baseline.
-    """
-
-    requested_stats = stats or list(DEFAULT_HERO_COMPARE_STATS)
-    candidates = compare_hero_candidates_select(
-        user_ids=user_ids,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    ).cte("compare_hero_candidates")
-    scoped_players = _compare_scoped_players_cte(
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-        name="compare_hero_scoped_players",
-        require_finished_nonleague=False,
-    )
-
-    playtime_query = (
-        sa.select(
-            models.MatchStatistics.user_id,
-            sa.func.coalesce(sa.func.sum(models.MatchStatistics.value), 0.0).label("playtime_seconds"),
-        )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(candidates, candidates.c.user_id == models.MatchStatistics.user_id)
-        .where(
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-            models.MatchStatistics.hero_id.isnot(None),
-        )
-    )
-    if role is not None or div_min is not None or div_max is not None:
-        playtime_query = playtime_query.join(
-            scoped_players,
-            sa.and_(
-                scoped_players.c.user_id == models.MatchStatistics.user_id,
-                scoped_players.c.team_id == models.MatchStatistics.team_id,
-            ),
-        )
-    if tournament_id is not None:
-        playtime_query = playtime_query.join(
-            models.Encounter,
-            models.Encounter.id == models.Match.encounter_id,
-        ).where(models.Encounter.tournament_id == tournament_id)
-    if hero_id is not None:
-        playtime_query = playtime_query.where(models.MatchStatistics.hero_id == hero_id)
-    if map_id is not None:
-        playtime_query = playtime_query.where(models.Match.map_id == map_id)
-    playtime = playtime_query.group_by(models.MatchStatistics.user_id).cte("compare_hero_playtime")
-
-    eligible_hero_time = aliased(models.MatchStatistics)
-    stats_query = (
-        sa.select(
-            models.MatchStatistics.user_id,
-            models.MatchStatistics.name,
-            (sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600).label(
-                "avg_10"
-            ),
-        )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(candidates, candidates.c.user_id == models.MatchStatistics.user_id)
-        .where(
-            models.MatchStatistics.round == 0,
-            _hero_compare_stat_visibility_condition(
-                models.MatchStatistics.name,
-                models.MatchStatistics.hero_id,
-                hero_id=hero_id,
-            ),
-            models.MatchStatistics.name.in_(requested_stats),
-            sa.exists(
-                sa.select(1)
-                .select_from(eligible_hero_time)
-                .where(
-                    eligible_hero_time.match_id == models.MatchStatistics.match_id,
-                    eligible_hero_time.user_id == models.MatchStatistics.user_id,
-                    eligible_hero_time.hero_id == models.MatchStatistics.hero_id,
-                    eligible_hero_time.name == enums.LogStatsName.HeroTimePlayed,
-                    eligible_hero_time.round == 0,
-                    eligible_hero_time.value > 60,
-                )
-            ),
-        )
-    )
-    if role is not None or div_min is not None or div_max is not None:
-        stats_query = stats_query.join(
-            scoped_players,
-            sa.and_(
-                scoped_players.c.user_id == models.MatchStatistics.user_id,
-                scoped_players.c.team_id == models.MatchStatistics.team_id,
-            ),
-        )
-    if tournament_id is not None:
-        stats_query = stats_query.join(
-            models.Encounter,
-            models.Encounter.id == models.Match.encounter_id,
-        ).where(models.Encounter.tournament_id == tournament_id)
-    if map_id is not None:
-        stats_query = stats_query.where(models.Match.map_id == map_id)
-    hero_stats = stats_query.group_by(
-        models.MatchStatistics.user_id,
-        models.MatchStatistics.name,
-    ).cte("compare_hero_stats")
-
-    return (
-        sa.select(
-            candidates.c.user_id,
-            sa.func.coalesce(playtime.c.playtime_seconds, 0.0).label("playtime_seconds"),
-            hero_stats.c.name,
-            hero_stats.c.avg_10,
-        )
-        .select_from(candidates)
-        .outerjoin(playtime, playtime.c.user_id == candidates.c.user_id)
-        .outerjoin(hero_stats, hero_stats.c.user_id == candidates.c.user_id)
-    )
-
-
-async def _get_user_hero_compare_stats_legacy(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    hero_id: int | None,
-    map_id: int | None,
-    stats: list[enums.LogStatsName],
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> tuple[float, dict[enums.LogStatsName, float]]:
-    playtime_query = (
-        sa.select(sa.func.coalesce(sa.func.sum(models.MatchStatistics.value), 0.0))
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .where(
-            models.MatchStatistics.user_id == user_id,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-            models.MatchStatistics.hero_id.isnot(None),
-        )
-    )
-
-    if role is not None or div_min is not None or div_max is not None:
-        playtime_query = playtime_query.where(
-            _compare_team_scope_exists(
-                user_id,
-                models.MatchStatistics.team_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
-        )
-
-    if tournament_id is not None:
-        playtime_query = playtime_query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        playtime_query = playtime_query.where(models.Encounter.tournament_id == tournament_id)
-
-    if hero_id is not None:
-        playtime_query = playtime_query.where(models.MatchStatistics.hero_id == hero_id)
-    if map_id is not None:
-        playtime_query = playtime_query.where(models.Match.map_id == map_id)
-
-    playtime_result = await session.execute(playtime_query)
-    playtime_seconds = float(playtime_result.scalar_one() or 0.0)
-
-    if not stats:
-        stats = list(DEFAULT_HERO_COMPARE_STATS)
-
-    hero_time_alias = aliased(models.MatchStatistics)
-    stats_where: list[typing.Any] = [
-        models.MatchStatistics.user_id == user_id,
-        models.MatchStatistics.round == 0,
-        _hero_compare_stat_visibility_condition(
-            models.MatchStatistics.name,
-            models.MatchStatistics.hero_id,
-            hero_id=hero_id,
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key=(
+            "backend:user_encounters:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
+            "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
-        models.MatchStatistics.name.in_(stats),
-        sa.exists(
-            sa.select(1)
-            .select_from(hero_time_alias)
-            .where(
-                hero_time_alias.match_id == models.MatchStatistics.match_id,
-                hero_time_alias.user_id == models.MatchStatistics.user_id,
-                hero_time_alias.hero_id == models.MatchStatistics.hero_id,
-                hero_time_alias.name == enums.LogStatsName.HeroTimePlayed,
-                hero_time_alias.round == 0,
-                hero_time_alias.value > 60,
-            )
-        ),
-    ]
-
-    stats_query = (
-        sa.select(
-            models.MatchStatistics.name,
-            (sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600).label(
-                "avg_10"
-            ),
-        )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .where(*stats_where)
-        .group_by(models.MatchStatistics.name)
+        lock=True,
     )
+    async def get_encounters_by_user(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        params: pagination.PaginationSortParams,
+        workspace_id: int | None = None,
+        *,
+        result_filter: str | None = None,
+        stage: str | None = None,
+        mvp1: bool = False,
+        has_logs: bool | None = None,
+        opponent: str | None = None,
+    ) -> pagination.Paginated[schemas.EncounterReadWithUserStats]:
+        """Paginated encounters involving a specific user, with per-user stats.
 
-    if role is not None or div_min is not None or div_max is not None:
-        stats_query = stats_query.where(
-            _compare_team_scope_exists(
-                user_id,
-                models.MatchStatistics.team_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
+        Returns narrow `EncounterReadWithUserStats` objects — the tournament and
+        team summaries are always populated (loaded via joinedload in the repo).
+        The `params.entities` query parameter is accepted for backward
+        compatibility but ignored: the shape is fixed by the narrow DTO.
+        """
+        user = await self.get(session, user_id, [])
+        encounters, total = await self.encounters.get_user_encounters_paginated(
+            session,
+            user.id,
+            params,
+            workspace_id=workspace_id,
+            result=result_filter,
+            stage=stage,
+            mvp1=mvp1,
+            has_logs=has_logs,
+            opponent=opponent,
         )
+        encounters_read: list[schemas.EncounterReadWithUserStats] = []
+        encounters_cache: dict[int, models.Encounter] = {}
+        matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}
 
-    if tournament_id is not None:
-        stats_query = stats_query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        stats_query = stats_query.where(models.Encounter.tournament_id == tournament_id)
+        for (
+            encounter,
+            match,
+            performance,
+            heroes,
+            impact_rank,
+            impact_points,
+            overperformance_score,
+            overperf_pos,
+        ) in encounters:
+            encounters_cache.setdefault(encounter.id, encounter)
+            matches_cache.setdefault(encounter.id, [])
 
-    if map_id is not None:
-        stats_query = stats_query.where(models.Match.map_id == map_id)
-
-    stats_result = await session.execute(stats_query)
-    stats_payload = {name: float(avg_10) for name, avg_10 in stats_result.all() if avg_10 is not None}
-    return playtime_seconds, stats_payload
-
-
-async def _get_users_hero_compare_stats_legacy(
-    session: AsyncSession,
-    *,
-    user_ids: list[int],
-    hero_id: int | None,
-    map_id: int | None,
-    stats: list[enums.LogStatsName],
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> tuple[dict[int, float], dict[tuple[int, enums.LogStatsName], float]]:
-    if not user_ids:
-        return {}, {}
-
-    playtime_query = (
-        sa.select(
-            models.MatchStatistics.user_id,
-            sa.func.coalesce(sa.func.sum(models.MatchStatistics.value), 0.0).label("playtime_seconds"),
-        )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .where(
-            models.MatchStatistics.user_id.in_(user_ids),
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-            models.MatchStatistics.hero_id.isnot(None),
-        )
-        .group_by(models.MatchStatistics.user_id)
-    )
-
-    if role is not None or div_min is not None or div_max is not None:
-        playtime_query = playtime_query.where(
-            _compare_team_scope_exists(
-                models.MatchStatistics.user_id,
-                models.MatchStatistics.team_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
-        )
-
-    if tournament_id is not None:
-        playtime_query = playtime_query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        playtime_query = playtime_query.where(models.Encounter.tournament_id == tournament_id)
-
-    if hero_id is not None:
-        playtime_query = playtime_query.where(models.MatchStatistics.hero_id == hero_id)
-    if map_id is not None:
-        playtime_query = playtime_query.where(models.Match.map_id == map_id)
-
-    playtime_result = await session.execute(playtime_query)
-    playtime_payload = {int(user_id): float(playtime or 0.0) for user_id, playtime in playtime_result.all()}
-
-    if not stats:
-        stats = list(DEFAULT_HERO_COMPARE_STATS)
-
-    hero_time_alias = aliased(models.MatchStatistics)
-    stats_where: list[typing.Any] = [
-        models.MatchStatistics.user_id.in_(user_ids),
-        models.MatchStatistics.round == 0,
-        _hero_compare_stat_visibility_condition(
-            models.MatchStatistics.name,
-            models.MatchStatistics.hero_id,
-            hero_id=hero_id,
-        ),
-        models.MatchStatistics.name.in_(stats),
-        sa.exists(
-            sa.select(1)
-            .select_from(hero_time_alias)
-            .where(
-                hero_time_alias.match_id == models.MatchStatistics.match_id,
-                hero_time_alias.user_id == models.MatchStatistics.user_id,
-                hero_time_alias.hero_id == models.MatchStatistics.hero_id,
-                hero_time_alias.name == enums.LogStatsName.HeroTimePlayed,
-                hero_time_alias.round == 0,
-                hero_time_alias.value > 60,
-            )
-        ),
-    ]
-
-    stats_query = (
-        sa.select(
-            models.MatchStatistics.user_id,
-            models.MatchStatistics.name,
-            (sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600).label(
-                "avg_10"
-            ),
-        )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .where(*stats_where)
-        .group_by(models.MatchStatistics.user_id, models.MatchStatistics.name)
-    )
-
-    if role is not None or div_min is not None or div_max is not None:
-        stats_query = stats_query.where(
-            _compare_team_scope_exists(
-                models.MatchStatistics.user_id,
-                models.MatchStatistics.team_id,
-                role=role,
-                div_min=div_min,
-                div_max=div_max,
-                tournament_id=tournament_id,
-                grid=grid,
-            )
-        )
-
-    if tournament_id is not None:
-        stats_query = stats_query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        stats_query = stats_query.where(models.Encounter.tournament_id == tournament_id)
-
-    if map_id is not None:
-        stats_query = stats_query.where(models.Match.map_id == map_id)
-
-    stats_result = await session.execute(stats_query)
-    stats_payload: dict[tuple[int, enums.LogStatsName], float] = {}
-    for user_id, stat_name, avg_10 in stats_result.all():
-        if avg_10 is None:
-            continue
-        stats_payload[(int(user_id), stat_name)] = float(avg_10)
-
-    return playtime_payload, stats_payload
-
-
-async def get_users_hero_compare_stats(
-    session: AsyncSession,
-    *,
-    user_ids: list[int] | None,
-    hero_id: int | None,
-    map_id: int | None,
-    stats: list[enums.LogStatsName],
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> tuple[dict[int, float], dict[tuple[int, enums.LogStatsName], float]]:
-    """``user_ids=None`` resolves the baseline population in SQL — see
-    ``_users_hero_compare_query_v2``. An empty LIST still means "nobody"."""
-    if user_ids is not None and not user_ids:
-        return {}, {}
-
-    result = await session.execute(
-        _users_hero_compare_query_v2(
-            user_ids=user_ids,
-            hero_id=hero_id,
-            map_id=map_id,
-            stats=stats,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            tournament_id=tournament_id,
-            grid=grid,
-        )
-    )
-
-    playtime_payload: dict[int, float] = {}
-    stats_payload: dict[tuple[int, enums.LogStatsName], float] = {}
-    for user_id, playtime_seconds, stat_name, avg_10 in result.all():
-        resolved_user_id = int(user_id)
-        playtime_payload[resolved_user_id] = float(playtime_seconds or 0.0)
-        if stat_name is not None and avg_10 is not None:
-            stats_payload[(resolved_user_id, stat_name)] = float(avg_10)
-
-    return playtime_payload, stats_payload
-
-
-async def get_user_hero_compare_stats(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    hero_id: int | None,
-    map_id: int | None,
-    stats: list[enums.LogStatsName],
-    role: enums.HeroClass | None = None,
-    div_min: int | None = None,
-    div_max: int | None = None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> tuple[float, dict[enums.LogStatsName, float]]:
-    playtime_by_user, stats_by_user = await get_users_hero_compare_stats(
-        session,
-        user_ids=[user_id],
-        hero_id=hero_id,
-        map_id=map_id,
-        stats=stats,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    return (
-        playtime_by_user.get(user_id, 0.0),
-        {
-            stat_name: value
-            for (resolved_user_id, stat_name), value in stats_by_user.items()
-            if resolved_user_id == user_id
-        },
-    )
-
-
-async def search_by_name(session: AsyncSession, query: str, fields: list[str]) -> typing.Sequence[models.SocialAccount]:
-    """Search battlenet ``social_account`` rows by handle (autocomplete).
-
-    ``fields`` is accepted for API compatibility; search is always on the unified
-    ``social_account.username`` (battlenet). Returns up to 10 matches ranked by
-    exact / prefix / trigram similarity.
-    """
-    query = query.strip().replace("-", "#")
-    if not query or len(query) < 2:
-        return []
-
-    column = models.SocialAccount.username
-    like_query = f"{query}%" if len(query) < 3 else f"%{query}%"
-    query_lower = query.lower()
-
-    exact_score = sa.case((sa.func.lower(column) == query_lower, 0), else_=1)
-    prefix_score = sa.case((sa.func.lower(column).like(f"{query_lower}%"), 0), else_=1)
-    similarity_score = sa.func.word_similarity(column, query)
-
-    conditions = [column.ilike(like_query)]
-    if len(query) >= 3:
-        conditions.append(column.op("%")(query))
-
-    stmt = (
-        sa.select(models.SocialAccount)
-        .where(
-            models.SocialAccount.provider == SocialProvider.BATTLENET,
-            sa.or_(*conditions),
-            # Accounts hidden from the public profile (no global visibility row)
-            # must not surface in search either.
-            sa.select(models.SocialAccountVisibility.id)
-            .where(
-                models.SocialAccountVisibility.account_id == models.SocialAccount.id,
-                models.SocialAccountVisibility.workspace_id.is_(None),
-            )
-            .exists(),
-        )
-        .order_by(
-            exact_score.asc(),
-            prefix_score.asc(),
-            similarity_score.desc(),
-            column.asc(),
-        )
-        .limit(10)
-    )
-    result = await session.scalars(stmt)
-    return result.unique().all()
-
-
-async def find_by_battle_tag(session: AsyncSession, battle_tag: str, entities: list[str]) -> models.User | None:
-    """
-    Retrieves a `User` model instance by its battle tag, optionally including related entities.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        battle_tag: The battle tag of the user to retrieve.
-        entities: A list of strings representing the names of related entities to include.
-
-    Returns:
-        A `User` model instance if found, otherwise `None`.
-    """
-    normalized_battle_tag = battle_tag.strip().replace("-", "#")
-    if not normalized_battle_tag:
-        return None
-
-    battle_tag_lower = normalized_battle_tag.lower()
-    exact_user_name_match = sa.func.lower(models.User.name) == battle_tag_lower
-    # Battlenet identity now lives in players.social_account; match the full
-    # normalized handle or the in-game name part (before ``#``), case-insensitive.
-    bnet_name_part = sa.func.lower(sa.func.split_part(models.SocialAccount.username, "#", 1))
-
-    query = (
-        sa.select(models.User)
-        .options(*user_entities(entities))
-        .outerjoin(
-            models.SocialAccount,
-            sa.and_(
-                models.User.id == models.SocialAccount.user_id,
-                models.SocialAccount.provider == SocialProvider.BATTLENET,
-            ),
-        )
-        .where(
-            sa.or_(
-                exact_user_name_match,
-                models.SocialAccount.username_normalized
-                == normalize_social_handle(SocialProvider.BATTLENET, normalized_battle_tag),
-                bnet_name_part == battle_tag_lower,
-            )
-        )
-        .order_by(
-            sa.case((exact_user_name_match, 0), else_=1),
-            models.User.id.asc(),
-        )
-        .limit(1)
-    )
-    result = await session.execute(query)
-    return result.unique().scalar_one_or_none()
-
-
-async def get_by_discord(session: AsyncSession, discord: str, entities: list[str]) -> models.User | None:
-    """
-    Retrieves a `User` model instance by its Discord ID.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        discord: The Discord ID of the user to retrieve.
-        entities: A list of strings representing the names of related entities to include.
-
-    Returns:
-        A `User` model instance if found, otherwise `None`.
-    """
-    query = (
-        sa.select(models.User)
-        .options(*user_entities(entities))
-        .join(models.SocialAccount, models.User.id == models.SocialAccount.user_id)
-        .where(
-            models.SocialAccount.provider == SocialProvider.DISCORD,
-            models.SocialAccount.username_normalized == normalize_social_handle(SocialProvider.DISCORD, discord),
-        )
-    )
-    result = await session.scalars(query)
-    return result.unique().first()
-
-
-async def get_overall_statistics(
-    session: AsyncSession, user_id: int, workspace_id: int | None = None
-) -> tuple[int, int, int]:
-    """
-    Retrieves overall statistics for a user, including maps won, maps lost, and average closeness.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        user_id: The ID of the user to retrieve statistics for.
-
-    Returns:
-        A tuple containing:
-        1. The number of maps won.
-        2. The number of maps lost.
-        3. The average closeness of encounters.
-    """
-    query = (
-        sa.select(
-            sa.func.sum(home_score_case).label("won_maps"),
-            sa.func.sum(away_score_case).label("lost_maps"),
-            sa.func.avg(models.Encounter.closeness).label("closeness"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.Player.is_substitution.is_(False),
-                models.WorkspaceMember.player_id == user_id,
-            )
-        )
-        .group_by(models.WorkspaceMember.player_id)
-    )
-
-    if workspace_id is not None:
-        query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id).where(
-            models.Tournament.workspace_id == workspace_id
-        )
-
-    matches = await session.execute(query)
-    return matches.first()
-
-
-async def get_teams(
-    session: AsyncSession,
-    user_id: int,
-    params: pagination.PaginationSortParams,
-    workspace_id: int | None = None,
-) -> tuple[typing.Sequence[models.Team], int]:
-    """
-    Retrieves a paginated list of teams associated with a user, optionally including related entities.
-
-    Scoped exactly like ``get_tournaments_with_stats`` (which powers the
-    Tournaments tab): a tournament belongs to a user's history as soon as the
-    user has played an encounter in it, not once ``is_finished`` flips. Gating on
-    ``is_finished`` left the profile of a player whose only event is the live one
-    completely empty even though every other read (maps, heroes, roles,
-    encounters) already counted it. Hidden tournaments (issue #115) never appear.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        user_id: The ID of the user to retrieve teams for.
-        params: An instance of `PaginationParams` containing pagination parameters.
-
-    Returns:
-        A tuple containing:
-        1. A sequence of `Team` model instances.
-        2. The total count of teams associated with the user.
-    """
-    played_encounter = (
-        sa.select(1)
-        .select_from(models.Encounter)
-        .where(
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            )
-        )
-        .exists()
-    )
-    scope = (
-        models.WorkspaceMember.player_id == user_id,
-        models.Player.is_substitution.is_(False),
-        models.Tournament.is_hidden.is_(False),
-        played_encounter,
-    )
-
-    total_query = (
-        sa.select(sa.func.count(sa.distinct(models.Team.id)))
-        .join(models.Player, models.Player.team_id == models.Team.id)
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(sa.and_(*scope))
-    )
-
-    query = (
-        sa.select(models.Team)
-        .options(*_team_load_options(params.entities))
-        .join(models.Player, models.Player.team_id == models.Team.id)
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(sa.and_(*scope))
-    )
-    if workspace_id is not None:
-        total_query = total_query.where(models.Tournament.workspace_id == workspace_id)
-        query = query.where(models.Tournament.workspace_id == workspace_id)
-
-    query = params.apply_pagination_sort(query, models.Team)
-    result = await session.scalars(query)
-    result_total = await session.execute(total_query)
-    return result.unique().all(), result_total.scalar_one()
-
-
-async def get_roles(
-    session: AsyncSession, user_id: int, workspace_id: int | None = None, *, grid: DivisionGrid
-) -> typing.Sequence[tuple[enums.HeroClass, int, int, list[dict]]]:
-    """
-    Retrieves the roles and statistics for a user across tournaments.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        user_id: The ID of the user to retrieve roles for.
-
-    Returns:
-        A sequence of tuples containing:
-        1. The role (e.g., tank, damage, support).
-        2. The number of maps won.
-        3. The number of maps lost.
-        4. A list of dictionaries containing tournament and division information.
-    """
-    query = (
-        sa.select(
-            models.Player.role,
-            sa.func.sum(home_score_case).label("won_maps"),
-            sa.func.sum(away_score_case).label("lost_maps"),
-            sa.func.jsonb_agg(
-                sa.func.jsonb_build_object(
-                    "tournament",
-                    models.Team.tournament_id,
-                    "rank",
-                    models.Player.rank,
-                    "division_grid_version_id",
-                    models.Tournament.division_grid_version_id,
+            if match:
+                matches_cache[encounter.id].append(
+                    _mappers.to_match_with_user_stats(
+                        match,
+                        performance=performance,
+                        heroes=heroes,
+                        impact_rank=impact_rank,
+                        impact_points=impact_points,
+                        overperformance_score=overperformance_score,
+                        overperf_pos=overperf_pos,
+                    )
                 )
-            ),
-        )
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.Player.is_substitution.is_(False),
-                models.WorkspaceMember.player_id == user_id,
-            )
-        )
-        .group_by(models.Player.role)
-    )
-    if workspace_id is not None:
-        query = query.where(models.Tournament.workspace_id == workspace_id)
-    result = await session.execute(query)
-    return result.all()  # type: ignore
 
-
-async def get_tournament_role(
-    session: AsyncSession, tournament: models.Tournament, user_id: int, *, grid: DivisionGrid
-) -> tuple[enums.HeroClass, int]:
-    """
-    Retrieves the role and division of a user in a specific tournament.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        tournament: The `Tournament` model instance to filter by.
-        user_id: The ID of the user to retrieve the role for.
-
-    Returns:
-        A tuple containing:
-        1. The role of the user in the tournament.
-        2. The division of the user in the tournament.
-    """
-    query = (
-        sa.select(models.Player.role, division_case_expr(models.Player.rank, grid).label("div"))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.Team.tournament_id == tournament.id,
-                models.WorkspaceMember.player_id == user_id,
-                models.Player.is_substitution.is_(False),
-            )
-        )
-    )
-    result_role = await session.execute(query)
-    return result_role.one()  # type: ignore
-
-
-async def get_tournaments_with_stats(
-    session: AsyncSession,
-    user_id: int,
-    workspace_id: int | None = None,
-) -> typing.Sequence[tuple[models.Team, int, int, int]]:
-    """
-    Retrieves a user's tournament history with statistics, including maps won, maps lost, and average closeness.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        user_id: The ID of the user to retrieve tournament history for.
-
-    Returns:
-        A sequence of tuples containing:
-        1. A `Team` model instance.
-        2. The number of maps won.
-        3. The number of maps lost.
-        4. The average closeness of encounters.
-    """
-    query = (
-        sa.select(
-            models.Team,
-            sa.func.sum(home_score_case).label("won_maps"),
-            sa.func.sum(away_score_case).label("lost_maps"),
-            sa.func.avg(models.Encounter.closeness).label("closeness"),
-        )
-        .select_from(models.Player)
-        .options(
-            selectinload(models.Team.players).selectinload(models.Player.workspace_member),
-            selectinload(models.Team.tournament).selectinload(models.Tournament.standings),
-            selectinload(models.Team.tournament).selectinload(models.Tournament.division_grid_version),
-            selectinload(models.Team.standings).selectinload(models.Standing.group),
-        )
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            sa.and_(
-                models.WorkspaceMember.player_id == user_id,
-                models.Player.is_substitution.is_(False),
-                # Hidden tournaments (issue #115) never appear in a user's public
-                # tournament list. This read is cashews-cached without the viewer,
-                # so exclude unconditionally; admins/allowlisted view hidden
-                # tournaments through the gated tournament pages instead.
-                models.Tournament.is_hidden.is_(False),
-            )
-        )
-        .group_by(models.Team.id)
-    )
-
-    if workspace_id is not None:
-        query = query.where(models.Tournament.workspace_id == workspace_id)
-
-    result = await session.execute(query)
-    return result.unique().all()
-
-
-async def get_tournament_stats_overall(
-    session: AsyncSession, tournament: models.Tournament, user_id: int
-) -> tuple[int, int, int, float]:
-    """
-    Retrieves overall statistics for a user in a specific tournament, including maps won, maps lost, closeness, and playtime.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        tournament: The `Tournament` model instance to filter by.
-        user_id: The ID of the user to retrieve statistics for.
-
-    Returns:
-        A tuple containing:
-        1. The number of maps won.
-        2. The number of maps lost.
-        3. The average closeness of encounters.
-        4. The total playtime in seconds.
-    """
-    playtime_subquery = (
-        sa.select(sa.func.sum(models.MatchStatistics.value))
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-        .join(models.MatchStatistics, models.MatchStatistics.match_id == models.Match.id)
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id == user_id,
-            models.Player.is_substitution.is_(False),
-            models.Team.tournament_id == tournament.id,
-            models.MatchStatistics.user_id == models.WorkspaceMember.player_id,
-            models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-            models.MatchStatistics.hero_id.is_(None),
-            models.MatchStatistics.round == 0,
-        )
-        .scalar_subquery()
-    )
-
-    query = (
-        sa.select(
-            sa.func.coalesce(sa.func.sum(home_score_case), 0).label("won_maps"),
-            sa.func.coalesce(sa.func.sum(away_score_case), 0).label("lost_maps"),
-            sa.func.coalesce(sa.func.avg(models.Encounter.closeness), 0).label("closeness"),
-            sa.func.coalesce(playtime_subquery, 0).label("playtime"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(
-            models.WorkspaceMember.player_id == user_id,
-            models.Player.is_substitution.is_(False),
-            models.Team.tournament_id == tournament.id,
-        )
-    )
-    result = await session.execute(query)
-    row = result.one_or_none()
-    if not row:
-        return 0, 0, 0, 0
-
-    won_maps, lost_maps, closeness, playtime = row
-    return won_maps, lost_maps, closeness, playtime
-
-
-def _statistics_by_heroes_query(
-    *,
-    user_id: int,
-    stats: list[enums.LogStatsName] | None,
-    tournament_id: int | None,
-    workspace_id: int | None,
-) -> sa.Select:
-    """Build the per-(hero, stat) totals + best-performance query for one user.
-
-    Uses the deferred-metadata-join rewrite (same shape as the precomputed
-    ``matches.mv_hero_global_stats`` view; see migration ``herostatmv01``): rank
-    the slim eligible set with a bare window function, then join the four
-    metadata tables (match/map/encounter/tournament) only for the
-    ~(#heroes x #stats) winning rows. The previous form joined those tables
-    *into* the window CTE, so ``row_number()`` ranked the full eligible set
-    already fanned out across four tables — which blew past ``statement_timeout``
-    for heavy users (e.g. an unfiltered workspace-wide read).
-    """
-    eligible_stats = _build_eligible_hero_stats_cte(
-        user_id=user_id,
-        stats=stats,
-        cte_name="eligible_user_hero_stats",
-        tournament_id=tournament_id,
-        workspace_id=workspace_id,
-    )
-    direction_score = _hero_direction_score(eligible_stats.c.value, eligible_stats.c.name)
-
-    # Totals per (hero, stat). Joins matches.match only for playtime (the
-    # per-10min average denominator); no metadata tables, no window function.
-    agg_cte = (
-        sa.select(
-            eligible_stats.c.hero_id,
-            eligible_stats.c.name,
-            sa.func.sum(eligible_stats.c.value).label("total_value"),
-            sa.func.sum(models.Match.time).label("total_time"),
-        )
-        .select_from(eligible_stats)
-        .join(models.Match, models.Match.id == eligible_stats.c.match_id)
-        .group_by(eligible_stats.c.hero_id, eligible_stats.c.name)
-        .cte("hero_stats_agg")
-    )
-
-    # Rank eligible rows per (hero, stat) on the slim set alone. The tiebreaker
-    # is the match id, which equals ``eligible.match_id``, so no join is needed
-    # here (the old form joined matches.match purely for ``match.id``).
-    ranked_cte = (
-        sa.select(
-            eligible_stats.c.hero_id,
-            eligible_stats.c.name,
-            eligible_stats.c.match_id,
-            eligible_stats.c.value,
-            sa.func.row_number()
-            .over(
-                partition_by=[
-                    eligible_stats.c.hero_id,
-                    eligible_stats.c.name,
-                ],
-                order_by=[direction_score.desc(), eligible_stats.c.match_id.desc()],
-            )
-            .label("row_num"),
-        )
-        .select_from(eligible_stats)
-        .cte("hero_stats_ranked")
-    )
-
-    # Hydrate map/tournament metadata only for the winning row per (hero, stat).
-    best_result_cte = (
-        sa.select(
-            ranked_cte.c.hero_id,
-            ranked_cte.c.name,
-            ranked_cte.c.value.label("best_value"),
-            models.Match.encounter_id,
-            models.Map.name.label("map_name"),
-            models.Map.image_path.label("map_link"),
-            models.Tournament.name.label("tournament_name"),
-        )
-        .select_from(ranked_cte)
-        .join(models.Match, models.Match.id == ranked_cte.c.match_id)
-        .join(models.Map, models.Map.id == models.Match.map_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(ranked_cte.c.row_num == 1)
-        .cte("best_result_cte")
-    )
-
-    return (
-        sa.select(
-            agg_cte.c.name,
-            models.Hero,
-            agg_cte.c.total_value.label("total_value"),
-            best_result_cte.c.best_value.label("best_value"),
-            (agg_cte.c.total_value / sa.func.nullif(agg_cte.c.total_time, 0) * 600).label("avg_per_10min"),
-            sa.func.jsonb_build_object(
-                "encounter_id",
-                best_result_cte.c.encounter_id,
-                "map_name",
-                best_result_cte.c.map_name,
-                "map_image_path",
-                best_result_cte.c.map_link,
-                "tournament_name",
-                best_result_cte.c.tournament_name,
-            ).label("best_metadata"),
-        )
-        .select_from(agg_cte)
-        .join(models.Hero, models.Hero.id == agg_cte.c.hero_id)
-        .join(
-            best_result_cte,
-            sa.and_(
-                best_result_cte.c.hero_id == agg_cte.c.hero_id,
-                best_result_cte.c.name == agg_cte.c.name,
-            ),
-        )
-    )
-
-
-async def get_statistics_by_heroes(
-    session: AsyncSession,
-    user_id: int,
-    stats: list[enums.LogStatsName] | None = None,
-    tournament_id: int | None = None,
-    workspace_id: int | None = None,
-) -> typing.Sequence[tuple[enums.LogStatsName, models.Hero, float, float, float, dict]]:
-    """
-    Retrieves a user's hero statistics, including total value, best value, average value, and best performance metadata.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        user_id: The ID of the user to retrieve hero statistics for.
-
-    Returns:
-        A sequence of tuples containing:
-        1. The statistic name (e.g., HeroDamageDealt, Eliminations).
-        2. The `Hero` model instance.
-        3. The total value of the statistic.
-        4. The best value of the statistic.
-        5. The average value of the statistic (per 10 minutes).
-        6. A dictionary containing metadata about the best performance (e.g., encounter ID, map name, tournament name).
-    """
-    query = _statistics_by_heroes_query(
-        user_id=user_id,
-        stats=stats,
-        tournament_id=tournament_id,
-        workspace_id=workspace_id,
-    )
-    result = await session.execute(query)
-    return result.all()
-
-
-def _read_hero_global_stats_query(stats: list[enums.LogStatsName] | None) -> sa.Select:
-    """Read precomputed global per-(hero, stat) records from the materialized
-    view ``matches.mv_hero_global_stats``.
-
-    The heavy aggregation that used to run here on every cache miss (a window
-    function over the whole eligible set joined to 5 tables) blew past
-    ``statement_timeout``. It now lives in the view body and is refreshed
-    out-of-band by the app-worker (see ``hero_stats_refresh``); reads are a
-    cheap indexed scan, so the per-request cache is no longer needed.
-    """
-    mv = mv_hero_global_stats
-    query = sa.select(
-        mv.c.name,
-        mv.c.hero_id,
-        mv.c.best_value,
-        mv.c["avg"],
-        mv.c["metadata"],
-    )
-    if stats:
-        query = query.where(mv.c.name.in_(stats))
-    return query.order_by(mv.c.hero_id)
-
-
-async def get_statistics_by_heroes_all_values(
-    session: AsyncSession,
-) -> typing.Sequence[tuple[enums.LogStatsName, int, float, float, dict]]:
-    """Best value (+ metadata) and global per-10min average for every (hero, stat).
-
-    Served from the precomputed ``matches.mv_hero_global_stats`` view. Returns an
-    empty sequence until the view's first refresh has populated it, so callers
-    degrade gracefully (per-user stats render without the global comparison).
-    """
-    result = await session.execute(_read_hero_global_stats_query(None))
-    return result.all()  # type: ignore[return-value]
-
-
-async def get_statistics_by_heroes_all_values_filtered(
-    session: AsyncSession,
-    stats: list[enums.LogStatsName],
-) -> typing.Sequence[tuple[enums.LogStatsName, int, float, float, dict]]:
-    result = await session.execute(_read_hero_global_stats_query(stats))
-    return result.all()  # type: ignore[return-value]
-
-
-async def get_best_teammates(
-    session: AsyncSession,
-    user_id: int,
-    params: pagination.PaginationSortParams,
-    workspace_id: int | None = None,
-) -> tuple[typing.Sequence[tuple[models.User, float, int, int, float | None, float | None]], int]:
-    """
-    Retrieves a user's best teammates, including win rate, tournaments played together, and performance statistics.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        user_id: The ID of the user to retrieve best teammates for.
-        params: An instance of `PaginationParams` containing pagination parameters.
-
-    Returns:
-        A tuple containing:
-        1. A sequence of tuples containing:
-            - A `User` model instance representing the teammate.
-            - The win rate with the user.
-            - The number of tournaments played together.
-            - The average performance statistic.
-            - The average KDA statistic.
-        2. The total count of the best teammates.
-    """
-    self_player = sa.orm.aliased(models.Player, name="self_player")
-    teammate_player = sa.orm.aliased(models.Player, name="teammate_player")
-    self_member = sa.orm.aliased(models.WorkspaceMember, name="self_member")
-    teammate_member = sa.orm.aliased(models.WorkspaceMember, name="teammate_member")
-
-    shared_teams_select = (
-        sa.select(
-            teammate_member.player_id.label("teammate_id"),
-            teammate_player.team_id.label("team_id"),
-            teammate_player.tournament_id.label("tournament_id"),
-        )
-        .select_from(self_player)
-        .join(teammate_player, teammate_player.team_id == self_player.team_id)
-        .join(self_member, self_member.id == self_player.workspace_member_id)
-        .join(teammate_member, teammate_member.id == teammate_player.workspace_member_id)
-        .where(
-            self_member.player_id == user_id,
-            self_player.is_substitution.is_(False),
-            teammate_player.is_substitution.is_(False),
-            teammate_member.player_id != user_id,
-        )
-        .distinct()
-    )
-
-    if workspace_id is not None:
-        shared_teams_select = shared_teams_select.join(
-            models.Tournament, models.Tournament.id == self_player.tournament_id
-        ).where(models.Tournament.workspace_id == workspace_id)
-
-    shared_teams = shared_teams_select.cte("shared_teams")
-
-    teammate_encounters = (
-        sa.select(
-            shared_teams.c.teammate_id,
-            models.Encounter.tournament_id.label("tournament_id"),
-            sa.case(
-                (models.Encounter.home_team_id == shared_teams.c.team_id, models.Encounter.home_score),
-                else_=models.Encounter.away_score,
-            ).label("won_score"),
-            sa.case(
-                (models.Encounter.home_team_id == shared_teams.c.team_id, models.Encounter.away_score),
-                else_=models.Encounter.home_score,
-            ).label("lost_score"),
-        )
-        .select_from(shared_teams)
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == shared_teams.c.team_id,
-                models.Encounter.away_team_id == shared_teams.c.team_id,
-            ),
-        )
-        .cte("teammate_encounters")
-    )
-
-    teammates_query = (
-        sa.select(
-            teammate_encounters.c.teammate_id.label("user_id"),
-            (
-                sa.func.sum(teammate_encounters.c.won_score)
-                / sa.func.nullif(
-                    sa.func.sum(teammate_encounters.c.won_score + teammate_encounters.c.lost_score),
-                    0,
+        for encounter_id, encounter in encounters_cache.items():
+            encounters_read.append(
+                _mappers.to_encounter_with_user_stats(
+                    encounter,
+                    matches=matches_cache.get(encounter_id, []),
+                    viewer_user_id=user.id,
                 )
-            ).label("winrate"),
-            sa.func.count(sa.distinct(teammate_encounters.c.tournament_id)).label("tournaments"),
-        )
-        .group_by(teammate_encounters.c.teammate_id)
-        .having(sa.func.count(sa.distinct(teammate_encounters.c.tournament_id)) > 1)
-    ).cte("teammates_query")
+            )
 
-    # Teammate "MVP" column spans two LogStatsName columns: ImpactRank when the
-    # impact-scoring pipeline computed it for a match, legacy Performance
-    # otherwise — same COALESCE(ImpactRank, Performance) per-match average as
-    # services.user._repositories.get_roster_avg_mvp_bulk. First collapse each
-    # match's rows into one (impact_rank, performance, kda) tuple via an
-    # outer join (keeps a teammate with zero stat rows in the result with
-    # NULLs, matching the prior behaviour), THEN average per teammate.
-    stats_per_match = (
-        sa.select(
-            shared_teams.c.teammate_id.label("user_id"),
-            models.MatchStatistics.match_id.label("match_id"),
-            sa.func.max(
-                sa.case(
-                    (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
-                )
-            ).label("impact_rank"),
-            sa.func.max(
-                sa.case(
-                    (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
-                )
-            ).label("performance"),
-            sa.func.max(
-                sa.case((models.MatchStatistics.name == enums.LogStatsName.KDA, models.MatchStatistics.value))
-            ).label("kda"),
+        return pagination.Paginated(
+            total=total,
+            per_page=params.per_page,
+            page=params.page,
+            results=encounters_read,
         )
-        .select_from(shared_teams)
-        .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id)
-        .outerjoin(
-            models.MatchStatistics,
-            sa.and_(
-                models.MatchStatistics.team_id == shared_teams.c.team_id,
-                models.MatchStatistics.user_id == shared_teams.c.teammate_id,
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.hero_id.is_(None),
-                models.MatchStatistics.name.in_(
-                    [
-                        enums.LogStatsName.ImpactRank,
-                        enums.LogStatsName.Performance,
-                        enums.LogStatsName.KDA,
-                    ]
-                ),
-            ),
-        )
-        .group_by(shared_teams.c.teammate_id, models.MatchStatistics.match_id)
-    ).cte("teammate_stats_per_match")
 
-    mvp_placement = sa.func.coalesce(stats_per_match.c.impact_rank, stats_per_match.c.performance)
-    stats_query = (
-        sa.select(
-            stats_per_match.c.user_id,
-            sa.func.avg(mvp_placement).label("performance"),
-            sa.func.avg(stats_per_match.c.kda).label("kda"),
-        )
-        .group_by(stats_per_match.c.user_id)
-    ).cte("stats_query")
-
-    # Distinct maps played together (separate CTE so the encounter→match fan-out
-    # does not skew the winrate/tournament aggregates in teammates_query).
-    maps_query = (
-        sa.select(
-            shared_teams.c.teammate_id.label("user_id"),
-            sa.func.count(sa.distinct(models.Match.map_id)).label("maps"),
-        )
-        .select_from(shared_teams)
-        .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id)
-        .outerjoin(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == shared_teams.c.team_id,
-                models.Encounter.away_team_id == shared_teams.c.team_id,
-            ),
-        )
-        .outerjoin(models.Match, models.Match.encounter_id == models.Encounter.id)
-        .group_by(shared_teams.c.teammate_id)
-    ).cte("maps_query")
-
-    count_query = sa.select(sa.func.count(teammates_query.c.user_id))
-
-    query = (
-        sa.select(
-            models.User,
-            teammates_query.c.winrate,
-            teammates_query.c.tournaments,
-            maps_query.c.maps,
-            stats_query.c.performance,
-            stats_query.c.kda,
-        )
-        .select_from(teammates_query)
-        .join(models.User, models.User.id == teammates_query.c.user_id)
-        .join(stats_query, stats_query.c.user_id == teammates_query.c.user_id)
-        .join(maps_query, maps_query.c.user_id == teammates_query.c.user_id)
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key="backend:user_matches_summary:{user_id}:{workspace_id}:{opponents_limit}",
     )
+    async def get_matches_summary(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        workspace_id: int | None = None,
+        *,
+        opponents_limit: int = 8,
+    ) -> schemas.UserMatchesSummary:
+        """Most-fought opponents + per-stage win/loss record for the Matches-tab
+        sidebars, aggregated over ALL of the user's encounters (not the current
+        page, which is what the old client-side computation was limited to)."""
+        user = await self.get(session, user_id, [])
+        opponent_rows = await self.encounters.get_user_opponents(session, user.id, workspace_id, limit=opponents_limit)
+        stage_rows = await self.encounters.get_user_stage_breakdown(session, user.id, workspace_id)
 
-    query = params.apply_pagination_sort(query)
-    result = await session.execute(query)
-    count_result = await session.execute(count_query)
-    return result.all(), count_result.scalar_one()  # type: ignore
+        stages = {kind: schemas.UserStageRecord(w=0, l=0) for kind in ("group", "playoffs", "finals")}
+        for row in stage_rows:
+            if row.kind in stages:
+                stages[row.kind] = schemas.UserStageRecord(w=row.w or 0, l=row.l or 0)
+
+        return schemas.UserMatchesSummary(
+            opponents=[
+                schemas.UserOpponentStat(
+                    name=row.name,
+                    wins=row.wins or 0,
+                    losses=row.losses or 0,
+                    draws=row.draws or 0,
+                )
+                for row in opponent_rows
+                if row.name
+            ],
+            stages=stages,
+        )
+
+
+users = UserService()

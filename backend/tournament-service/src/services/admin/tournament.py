@@ -1,5 +1,6 @@
 """Admin service layer for tournament CRUD operations"""
 
+from datetime import date
 from urllib.parse import urlparse
 
 import sqlalchemy as sa
@@ -14,11 +15,13 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_division_grid_version_id
 from shared.services.draft_guards import assert_no_active_draft_session
+from shared.services.registration_team_guards import assert_no_registered_teams
 from shared.services.roster_shape_access import invalidate_roster_shape_cache
 from src import models
 from src.schemas.admin import tournament as admin_schemas
 from src.services.admin import stage as stage_service
 from src.services.challonge import service as challonge_service
+from src.services.challonge import sync as challonge_sync
 from src.services.computation import jobs as computation_jobs
 from src.services.tournament.events import enqueue_tournament_changed, enqueue_tournament_state_changed
 
@@ -214,6 +217,10 @@ async def update_tournament(
     )
     if roster_slots_changed:
         await assert_no_active_draft_session(session, tournament_id, change="roster shape")
+        # Registered teams hold slots assigned from the shape in force when their
+        # members accepted; changing it afterwards silently invalidates every one
+        # of those rosters. Same protection a live draft already gets.
+        await assert_no_registered_teams(session, tournament_id, change="the roster shape")
 
     if "challonge_slug" in update_data:
         raw_slug = update_data.pop("challonge_slug")
@@ -251,6 +258,49 @@ async def update_tournament(
     if roster_slots_changed:
         await invalidate_roster_shape_cache(tournament_id=tournament_id)
     return await get_tournament(session, tournament_id)
+
+
+async def create_tournament_from_challonge(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    is_league: bool,
+    start_date: date,
+    end_date: date,
+    challonge_slug: str,
+    division_grid_version_id: int | None = None,
+) -> models.Tournament:
+    """Bootstrap a new tournament from an existing Challonge bracket: fetch it
+    (its name/description become the tournament's), create the tournament, link
+    the bracket the same way ``update_tournament(challonge_slug=...)`` does, then
+    pull its current structure and results in one shot.
+
+    Supersedes parser-service's old ``tournament.create_with_groups`` (which only
+    parsed empty ``TournamentGroup`` rows out of the bracket's matches without
+    persisting them) -- ``challonge_sync.import_tournament`` builds the full
+    stage/group/stage-item structure AND imports any already-recorded results,
+    exactly like a manual "Sync from Challonge" run would.
+    """
+    challonge_tournament = await challonge_service.fetch_tournament(_normalize_challonge_slug(challonge_slug))
+
+    tournament = await create_tournament(
+        session,
+        admin_schemas.TournamentCreate(
+            workspace_id=workspace_id,
+            name=challonge_tournament.name,
+            description=challonge_tournament.description,
+            is_league=is_league,
+            start_date=start_date,
+            end_date=end_date,
+            division_grid_version_id=division_grid_version_id,
+        ),
+    )
+    await _link_tournament_challonge_source(
+        session, tournament, challonge_id=challonge_tournament.id, slug=challonge_tournament.url
+    )
+    await session.commit()
+    await challonge_sync.import_tournament(session, tournament.id)
+    return await get_tournament(session, tournament.id)
 
 
 async def delete_tournament(session: AsyncSession, tournament_id: int) -> None:

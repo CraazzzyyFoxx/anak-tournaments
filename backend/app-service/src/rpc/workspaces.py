@@ -8,10 +8,11 @@ update/delete go through the shared CRUD engine (see services/workspace/registry
 ``workspace.update`` permission — since verification has a side effect (a DNS
 lookup) the generic CRUD engine has no hook for.
 
-Each bespoke mutation here appends one ``audit_log`` row inside the mutation's own
-transaction (``record_audit``), so the trail lives or dies with the write. The
-workspace's own field updates are NOT audited here: they go through the shared CRUD
-engine, which records them at its single hook.
+This module is pure transport: it decodes params, runs the permission gate and
+calls one ``WorkspaceService`` operation. The service owns the transaction and
+the ``audit_log`` row for each bespoke mutation, so the trail lives or dies with
+the write. The workspace's own field updates are NOT audited from here at all:
+they go through the shared CRUD engine, which records them at its single hook.
 
 The role-resolution / member-payload / RBAC-cache-bust helpers are replicated
 here (not imported from the route module) so the headless worker never depends on
@@ -20,7 +21,6 @@ route internals — the route module is deleted at decommission.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
@@ -35,19 +35,15 @@ from shared.messaging.config import (
     DISCORD_GUILD_ROLES_QUEUE,
 )
 from shared.messaging.rpc import request_dict
-from shared.rbac import (
-    assign_workspace_system_role,
-    ensure_workspace_system_roles,
-    get_workspace_system_role,
-)
+from shared.rbac import ensure_workspace_system_roles, get_workspace_system_role
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission
-from shared.services.audit import record_audit
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
 from src import models, schemas
 from src.core import config, db
 from src.rpc import _common as c
-from src.services.workspace import service as workspace_service
+from src.services.workspace.service import MEMBERS_SORT_FIELDS
+from src.services.workspace.service import workspaces as workspace_service
 
 _SF = db.async_session_maker
 _auth_user_repo = AuthUserRepository()
@@ -58,11 +54,6 @@ def _path_int(data: dict[str, Any], key: str) -> int:
         return int(data[key])
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"{key} is required") from exc
-
-
-def _iso(value: datetime | None) -> str | None:
-    """JSONB-safe timestamp for an audit before/after snapshot."""
-    return value.isoformat() if value else None
 
 
 CROSS_SERVICE_RBAC_KEY_PREFIX = "rbac:v2:user:"  # noqa: E501 -- must match identity-service/src/services/session_cache.py RBAC_KEY_PREFIX
@@ -140,6 +131,45 @@ async def _resolve_role_ids(
     return [role.id]
 
 
+async def _discord_lookup(
+    broker: Any,
+    logger: Any,
+    session: AsyncSession,
+    data: dict[str, Any],
+    *,
+    label: str,
+    queue: str,
+    empty: dict[str, Any],
+    degraded: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One gated read of an organizer's Discord guild, shared by the three
+    ``discord_*`` subscribers.
+
+    ``empty`` is the body returned when no guild is linked and when the peer
+    answers with something unusable; ``degraded`` (defaulting to ``empty``) is
+    the body carrying the ``error`` when the round trip fails outright. A
+    settings picker with no options is the right answer for an unreachable bot —
+    a 500 would take the whole settings page down with it.
+    """
+    workspace_id = _path_int(data, "workspace_id")
+    user = c.actor(data)
+    c.require_active(user)
+    ensure_workspace_permission(user, workspace_id, "workspace", "update")
+    workspace = await workspace_service.get_by_id(session, workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    guild_id = workspace.discord_guild_id
+    if not guild_id:
+        return {"guild_id": None, **empty}
+
+    try:
+        res = await request_dict(broker, {"guild_id": guild_id}, queue, timeout=5.0)
+        return res or {"guild_id": guild_id, **empty}
+    except Exception as exc:  # noqa: BLE001 -- the pickers degrade, they never 500
+        logger.warning(f"{label} RPC failed for workspace {workspace_id}: {exc}")
+        return {"guild_id": guild_id, **(degraded if degraded is not None else empty), "error": str(exc)}
+
+
 def register(broker: Any, logger: Any) -> None:
     # --- public reads -------------------------------------------------------
     @broker.subscriber("rpc.app.workspaces.list")
@@ -198,20 +228,9 @@ def register(broker: Any, logger: Any) -> None:
             user = c.actor(data)
             c.require_superuser(user)
             body = schemas.WorkspaceCreate.model_validate(c.payload(data))
-            if await workspace_service.get_by_slug(session, body.slug):
-                raise HTTPException(status_code=400, detail="Workspace with this slug already exists")
-            workspace = await workspace_service.create(session, **body.model_dump())
-            await ensure_workspace_system_roles(session, workspace.id)
-            await workspace_service.add_member(session, workspace.id, user.id)
-            await assign_workspace_system_role(session, user_id=user.id, workspace_id=workspace.id, role_name="owner")
-            await session.commit()
-            # The workspace was built in Python and only flushed, so its
-            # ``default_division_grid_version`` was never loaded -- ``selectin`` is
-            # a query-time strategy and does not run for an instance that never
-            # went through a SELECT. Reading it below would then lazy-load from
-            # sync Pydantic code (MissingGreenlet) whenever the create body named
-            # a version. Awaited here, it is ordinary IO.
-            await session.refresh(workspace, ["default_division_grid_version"])
+            workspace = await workspace_service.provision(
+                session, payload=body.model_dump(), owner_auth_user_id=user.id
+            )
             await _invalidate_auth_rbac_cache(int(user.id), logger)
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
@@ -234,7 +253,7 @@ def register(broker: Any, logger: Any) -> None:
             search = c.q1(data, "search", str, None)
             role_id = c.q1(data, "role_id", int, None)
             sort = c.q1(data, "sort", str, "username")
-            if sort not in workspace_service.MEMBERS_SORT_FIELDS:
+            if sort not in MEMBERS_SORT_FIELDS:
                 sort = "username"
             order = "desc" if c.q1(data, "order", str, "asc") == "desc" else "asc"
             total, rows = await workspace_service.list_members_page(
@@ -265,8 +284,7 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, workspace_id, "workspace_member", "update")
             if not await workspace_service.get_by_id(session, workspace_id):
                 raise HTTPException(status_code=404, detail="Workspace not found")
-            assigned = await workspace_service.autofill_member_roles(session, workspace_id)
-            await session.commit()
+            assigned = await workspace_service.backfill_member_roles(session, workspace_id)
             return {"assigned": assigned}
 
         return await c.envelope(logger, "workspaces.members_autofill_roles", op, session_factory=_SF)
@@ -287,13 +305,12 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=400, detail="User is already a member")
             role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
             try:
-                member = await workspace_service.add_member_with_roles(
+                member = await workspace_service.invite_member(
                     session, workspace_id, body.auth_user_id, role_ids=role_ids
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             payload = await _member_payload(session, member)
-            await session.commit()
             await _invalidate_auth_rbac_cache(body.auth_user_id, logger)
             return payload
 
@@ -315,11 +332,10 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=400, detail="role_ids or role is required")
             role_ids = await _resolve_role_ids(session, workspace_id, role_ids=body.role_ids, role_name=body.role)
             try:
-                member = await workspace_service.update_member_roles(session, member, role_ids=role_ids)
+                member = await workspace_service.change_member_roles(session, member, role_ids=role_ids)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             payload = await _member_payload(session, member)
-            await session.commit()
             await _invalidate_auth_rbac_cache(auth_user_id, logger)
             return payload
 
@@ -338,8 +354,7 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=404, detail="Member not found")
             if not await workspace_service.can_remove_member(session, member):
                 raise HTTPException(status_code=400, detail="Cannot remove the last workspace owner")
-            await workspace_service.remove_member(session, member)
-            await session.commit()
+            await workspace_service.revoke_member(session, member)
             await _invalidate_auth_rbac_cache(auth_user_id, logger)
             return None
 
@@ -357,36 +372,12 @@ def register(broker: Any, logger: Any) -> None:
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
             body = schemas.WorkspaceCustomDomainSet.model_validate(c.payload(data))
-            domain_before = workspace.custom_domain
-            verified_before = workspace.custom_domain_verified_at
             try:
-                workspace = await workspace_service.set_custom_domain(session, workspace, body.custom_domain)
+                workspace = await workspace_service.apply_custom_domain(
+                    session, workspace, body.custom_domain, actor=user, workspace_id=workspace_id
+                )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            # The freshly minted ``custom_domain_verification_token`` is deliberately
-            # absent from before/after: the row records that a token was issued, never
-            # its value. It is not a platform secret (the organizer publishes it as a
-            # public DNS TXT record), but the journal is append-only and never purged,
-            # so every rotated challenge would pile up there forever while answering
-            # nothing an auditor asks -- "who re-pointed our domain" is answered by the
-            # domain itself.
-            await record_audit(
-                session,
-                action="workspace.domain_set",
-                source="admin",
-                actor=user,
-                actor_label=user.username,
-                # The workspace the permission check above ran against, reused rather
-                # than re-derived: the audit scope must be the authorization scope.
-                workspace_id=workspace_id,
-                entity_type="workspace",
-                entity_id=workspace.id,
-                entity_label=workspace.slug,
-                before={"custom_domain": domain_before, "custom_domain_verified_at": _iso(verified_before)},
-                # Re-pointing always resets verification, so the after side is known.
-                after={"custom_domain": workspace.custom_domain, "custom_domain_verified_at": None},
-            )
-            await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.set_custom_domain", op, session_factory=_SF)
@@ -401,32 +392,9 @@ def register(broker: Any, logger: Any) -> None:
             workspace = await workspace_service.get_by_id(session, workspace_id)
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
-            verified_before = workspace.custom_domain_verified_at
-            workspace = await workspace_service.verify_custom_domain(session, workspace)
-            # Recorded after the service call, not before it: ``verify_custom_domain``
-            # commits once to release the connection across the DNS lookup, so a row
-            # added earlier would survive a failed verification.
-            #
-            # ``custom_domain`` is unchanged and sits on both sides on purpose --
-            # without it the row says a domain was verified without saying which one.
-            # The token stays out for the reason spelled out in domain_set above.
-            await record_audit(
-                session,
-                action="workspace.domain_verified",
-                source="admin",
-                actor=user,
-                actor_label=user.username,
-                workspace_id=workspace_id,
-                entity_type="workspace",
-                entity_id=workspace.id,
-                entity_label=workspace.slug,
-                before={"custom_domain": workspace.custom_domain, "custom_domain_verified_at": _iso(verified_before)},
-                after={
-                    "custom_domain": workspace.custom_domain,
-                    "custom_domain_verified_at": _iso(workspace.custom_domain_verified_at),
-                },
+            workspace = await workspace_service.confirm_custom_domain(
+                session, workspace, actor=user, workspace_id=workspace_id
             )
-            await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.verify_custom_domain", op, session_factory=_SF)
@@ -441,25 +409,9 @@ def register(broker: Any, logger: Any) -> None:
             workspace = await workspace_service.get_by_id(session, workspace_id)
             if not workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
-            domain_before = workspace.custom_domain
-            verified_before = workspace.custom_domain_verified_at
-            workspace = await workspace_service.clear_custom_domain(session, workspace)
-            # Token value omitted for the reason given in domain_set; that it was
-            # dropped follows from the domain going away.
-            await record_audit(
-                session,
-                action="workspace.domain_clear",
-                source="admin",
-                actor=user,
-                actor_label=user.username,
-                workspace_id=workspace_id,
-                entity_type="workspace",
-                entity_id=workspace.id,
-                entity_label=workspace.slug,
-                before={"custom_domain": domain_before, "custom_domain_verified_at": _iso(verified_before)},
-                after={"custom_domain": None, "custom_domain_verified_at": None},
+            workspace = await workspace_service.drop_custom_domain(
+                session, workspace, actor=user, workspace_id=workspace_id
             )
-            await session.commit()
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.clear_custom_domain", op, session_factory=_SF)
@@ -472,86 +424,47 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.workspaces.discord_roles")
     async def _discord_roles(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            workspace_id = _path_int(data, "workspace_id")
-            user = c.actor(data)
-            c.require_active(user)
-            ensure_workspace_permission(user, workspace_id, "workspace", "update")
-            workspace = await workspace_service.get_by_id(session, workspace_id)
-            if not workspace:
-                raise HTTPException(status_code=404, detail="Workspace not found")
-            if not workspace.discord_guild_id:
-                return {"guild_id": None, "roles": []}
-
-            try:
-                res = await request_dict(
-                    broker,
-                    {"guild_id": workspace.discord_guild_id},
-                    DISCORD_GUILD_ROLES_QUEUE,
-                    timeout=5.0,
-                )
-                return res or {"guild_id": workspace.discord_guild_id, "roles": []}
-            except Exception as exc:
-                logger.warning(f"discord_roles RPC failed for workspace {workspace_id}: {exc}")
-                return {"guild_id": workspace.discord_guild_id, "roles": [], "error": str(exc)}
+            return await _discord_lookup(
+                broker,
+                logger,
+                session,
+                data,
+                label="discord_roles",
+                queue=DISCORD_GUILD_ROLES_QUEUE,
+                empty={"roles": []},
+            )
 
         return await c.envelope(logger, "workspaces.discord_roles", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.workspaces.discord_channels")
     async def _discord_channels(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            workspace_id = _path_int(data, "workspace_id")
-            user = c.actor(data)
-            c.require_active(user)
-            ensure_workspace_permission(user, workspace_id, "workspace", "update")
-            workspace = await workspace_service.get_by_id(session, workspace_id)
-            if not workspace:
-                raise HTTPException(status_code=404, detail="Workspace not found")
-            if not workspace.discord_guild_id:
-                return {"guild_id": None, "channels": []}
-
-            try:
-                res = await request_dict(
-                    broker,
-                    {"guild_id": workspace.discord_guild_id},
-                    DISCORD_GUILD_CHANNELS_QUEUE,
-                    timeout=5.0,
-                )
-                return res or {"guild_id": workspace.discord_guild_id, "channels": []}
-            except Exception as exc:
-                logger.warning(f"discord_channels RPC failed for workspace {workspace_id}: {exc}")
-                return {"guild_id": workspace.discord_guild_id, "channels": [], "error": str(exc)}
+            return await _discord_lookup(
+                broker,
+                logger,
+                session,
+                data,
+                label="discord_channels",
+                queue=DISCORD_GUILD_CHANNELS_QUEUE,
+                empty={"channels": []},
+            )
 
         return await c.envelope(logger, "workspaces.discord_channels", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.workspaces.discord_guild")
     async def _discord_guild(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            workspace_id = _path_int(data, "workspace_id")
-            user = c.actor(data)
-            c.require_active(user)
-            ensure_workspace_permission(user, workspace_id, "workspace", "update")
-            workspace = await workspace_service.get_by_id(session, workspace_id)
-            if not workspace:
-                raise HTTPException(status_code=404, detail="Workspace not found")
-            if not workspace.discord_guild_id:
-                return {"guild_id": None, "connected": False, "name": None, "icon_url": None, "member_count": 0}
-
-            try:
-                res = await request_dict(
-                    broker,
-                    {"guild_id": workspace.discord_guild_id},
-                    DISCORD_GUILD_INFO_QUEUE,
-                    timeout=5.0,
-                )
-                return res or {
-                    "guild_id": workspace.discord_guild_id,
-                    "connected": False,
-                    "name": None,
-                    "icon_url": None,
-                    "member_count": 0,
-                }
-            except Exception as exc:
-                logger.warning(f"discord_guild RPC failed for workspace {workspace_id}: {exc}")
-                return {"guild_id": workspace.discord_guild_id, "connected": False, "error": str(exc)}
+            return await _discord_lookup(
+                broker,
+                logger,
+                session,
+                data,
+                label="discord_guild",
+                queue=DISCORD_GUILD_INFO_QUEUE,
+                empty={"connected": False, "name": None, "icon_url": None, "member_count": 0},
+                # A failed round trip only knows the guild is unreachable; the rest
+                # of the shape would be inventing values the caller must not trust.
+                degraded={"connected": False},
+            )
 
         return await c.envelope(logger, "workspaces.discord_guild", op, session_factory=_SF)

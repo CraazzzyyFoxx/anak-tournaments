@@ -23,6 +23,7 @@ from shared.balancer_registration_statuses import balancer_pool_excluded_clause,
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from src import models
+from src.schemas.registration_build import registration_read_loaders
 from src.services.registration._common import (
     AUTO_MANAGED_BALANCER_STATUSES,
     EXCLUDED_BALANCER_STATUS,
@@ -77,8 +78,9 @@ async def list_registrations(
             selectinload(models.BalancerRegistration.google_sheet_binding).selectinload(
                 models.BalancerRegistrationGoogleSheetBinding.feed
             ),
-            # serialize_registration derives user_id from workspace_member.player_id.
-            selectinload(models.BalancerRegistration.workspace_member),
+            # serialize_registration derives user_id from workspace_member.player_id
+            # and the team brief from registration_team; both must be eager.
+            *registration_read_loaders(),
         )
         .order_by(models.BalancerRegistration.submitted_at.desc(), models.BalancerRegistration.id.desc())
     )
@@ -112,8 +114,7 @@ async def get_registration_by_id(session: AsyncSession, registration_id: int) ->
             selectinload(models.BalancerRegistration.checked_in_by_user),
             selectinload(models.BalancerRegistration.google_sheet_binding),
             selectinload(models.BalancerRegistration.tournament),
-            # serialize_registration derives user_id from workspace_member.player_id.
-            selectinload(models.BalancerRegistration.workspace_member),
+            *registration_read_loaders(),
         )
     )
     registration = result.scalar_one_or_none()

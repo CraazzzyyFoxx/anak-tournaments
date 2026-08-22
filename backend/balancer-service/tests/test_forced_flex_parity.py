@@ -1,7 +1,7 @@
 """Python half of the effective-rank parity check, for both every-role modes
 (``all_roles`` and ``forced``).
 
-The rule lives in two languages -- ``_map_registration`` here and
+The rule lives in two languages -- ``map_registration`` here and
 ``flattenRolesToMaxRank`` in
 ``frontend/src/app/balancer/components/workspace-helpers.ts`` -- because the
 balancer payload is assembled on the client while the draft is seeded on the
@@ -57,7 +57,7 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from shared.core.enums import HERO_TYPE_CLASSES  # noqa: E402
-from src.services.draft import lifecycle  # noqa: E402
+from src.domain.draft import rules  # noqa: E402
 
 CASES: list[dict[str, Any]] = json.loads(FIXTURES.read_text(encoding="utf-8"))["cases"]
 ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
@@ -83,7 +83,7 @@ class _Registration:
 
 def _map(case: dict[str, Any]) -> dict:
     roles = [_Role(spec, index) for index, spec in enumerate(case["roles"])]
-    return lifecycle._map_registration(_Registration(roles), all_roles=True)
+    return rules.map_registration(_Registration(roles), all_roles=True)
 
 
 def test_fixtures_are_loaded() -> None:

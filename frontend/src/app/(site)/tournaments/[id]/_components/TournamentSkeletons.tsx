@@ -195,6 +195,12 @@ export function TournamentTeamsSkeleton() {
   );
 }
 
+/**
+ * Registered-team roster placeholder. Reuses the `teams` grid — same card
+ * geometry — but no control row, because the roster has no filters, and the
+ * announced message is the shared "loading teams" copy: the roster is what a
+ * registration tournament calls its teams.
+ */
 export function TournamentParticipantsSkeleton() {
   const t = useTranslations();
 

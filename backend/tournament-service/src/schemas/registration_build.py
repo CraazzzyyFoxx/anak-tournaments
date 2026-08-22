@@ -12,6 +12,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.division_grid import DivisionGrid, load_runtime_grid
@@ -27,8 +28,24 @@ from src.schemas.registration import (
     RegistrationFormRead,
     RegistrationRead,
     RegistrationRoleRead,
+    RegistrationTeamBrief,
     TournamentHistoryEntry,
 )
+
+
+def registration_read_loaders() -> tuple[Any, ...]:
+    """Eager-load options every ``_reg_to_read`` caller must apply.
+
+    Colocated with the serializer on purpose: both relationships are documented as
+    "never lazy-loaded in async code", and forgetting one does not raise here — it
+    silently serializes ``user_id=None`` or ``team=None``. Keeping the list next to
+    the code that reads it is what stops the two from drifting.
+    """
+    return (
+        selectinload(models.BalancerRegistration.workspace_member),
+        selectinload(models.BalancerRegistration.registration_team),
+    )
+
 
 # Max past-tournament history entries returned per participant. The public
 # participants table only renders the most recent few (in a hover tooltip), so the
@@ -94,6 +111,7 @@ async def _resolve_top_heroes_config(
 def _form_to_read(
     form: models.BalancerRegistrationForm,
     *,
+    is_open: bool,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
     subscription_requirement: dict[str, Any] | None = None,
 ) -> RegistrationFormRead:
@@ -102,12 +120,15 @@ def _form_to_read(
     An argument rather than a lookup because this stays sync and must not issue a
     second round trip per call; the async RPC handler already has the session and
     fetches it once alongside the sub-role catalog.
+
+    ``is_open`` is passed in for the same reason, and is now DERIVED from the
+    tournament's REGISTRATION schedule window rather than read off the form.
     """
     return RegistrationFormRead(
         id=form.id,
         tournament_id=form.tournament_id,
         workspace_id=form.workspace_id,
-        is_open=form.is_open,
+        is_open=is_open,
         auto_approve=form.auto_approve,
         require_open_profile=form.require_open_profile,
         open_profile_scope=form.open_profile_scope,
@@ -160,6 +181,24 @@ def _reg_to_read(
         else []
     )
 
+    # ``registration_team`` must be eager-loaded by the caller: the model marks it
+    # "never lazy-loaded in async code", and a lazy load here would raise
+    # MissingGreenlet inside a response serializer. Absent relationship == no team,
+    # which is also the honest answer for every solo registration.
+    team_row = reg.__dict__.get("registration_team")
+    team = (
+        RegistrationTeamBrief(
+            id=team_row.id,
+            name=team_row.name,
+            status=team_row.status,
+            slot_code=reg.team_slot_code,
+            is_substitute=bool(reg.is_substitute),
+            is_captain=team_row.captain_registration_id == reg.id,
+        )
+        if team_row is not None
+        else None
+    )
+
     return RegistrationRead(
         id=reg.id,
         tournament_id=reg.tournament_id,
@@ -188,6 +227,7 @@ def _reg_to_read(
         profiles_open=profiles_open,
         subscription_outcome=subscription_outcome,
         subscription_verdicts=subscription_verdicts,
+        team=team,
         submitted_at=reg.submitted_at,
         reviewed_at=reg.reviewed_at,
     )

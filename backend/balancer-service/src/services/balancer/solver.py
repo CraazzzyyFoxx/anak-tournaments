@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from src.services.balancer.algorithm.runtime import balance_teams_moo
+from src.domain.balancer.runtime import balance_teams_moo
 
 
 async def run_balance(

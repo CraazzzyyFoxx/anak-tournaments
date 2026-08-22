@@ -1,5 +1,9 @@
 # Service Layering (app-service)
 
+This is `app-service`'s specific, enforced sub-domain hierarchy inside the `services/` layer.
+For the general rpc → services → domain → repository → models layering every service follows,
+see [`backend/ARCHITECTURE.md`](../../ARCHITECTURE.md).
+
 Enforced by `backend/app-service/.importlinter`. Run from `backend/`:
 
 ```bash

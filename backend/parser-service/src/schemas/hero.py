@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from src.schemas import BaseRead
+from shared.schemas.catalog import HeroRead
 
 __all__ = (
     "OverfastHero",
@@ -13,11 +13,3 @@ class OverfastHero(BaseModel):
     name: str
     portrait: str
     role: str
-
-
-class HeroRead(BaseRead):
-    slug: str
-    name: str
-    image_path: str
-    type: str
-    color: str

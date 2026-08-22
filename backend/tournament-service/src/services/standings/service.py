@@ -11,6 +11,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.core import enums
 from shared.core.enums import StageType
+from shared.repository import TeamRepository
 from shared.services.bracket.swiss_settings import swiss_bye_counts, swiss_scope_stopped
 from shared.services.tournament_utils import (
     completed_encounters as _shared_completed_encounters,
@@ -22,7 +23,6 @@ from shared.services.tournament_utils import sort_bracket_matches
 from src import models, schemas
 from src.core import utils
 from src.services.encounter import service as encounter_service
-from src.services.team import service as team_service
 
 GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
 ELIMINATION_STAGE_TYPES = {
@@ -89,7 +89,7 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
     if _entity_requested(in_entities, "team"):
         team_entity = sa.orm.selectinload(models.Standing.team)
         entities.append(team_entity)
-        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "team"), team_entity))
+        entities.extend(TeamRepository.team_entities(utils.prepare_entities(in_entities, "team"), team_entity))
     return entities
 
 

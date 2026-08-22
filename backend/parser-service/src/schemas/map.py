@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 
-from src.schemas.base import BaseRead
-from src.schemas.gamemode import GamemodeRead
+from shared.schemas.catalog import MapRead
 
 __all__ = (
     "OverfastMap",
@@ -15,12 +14,3 @@ class OverfastMap(BaseModel):
     gamemodes: list[str]
     location: str
     country_code: str | None
-
-
-class MapRead(BaseRead):
-    gamemode_id: int
-    name: str
-    image_path: str
-    in_competitive: bool = True
-
-    gamemode: GamemodeRead | None

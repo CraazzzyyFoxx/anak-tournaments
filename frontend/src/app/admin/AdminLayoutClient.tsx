@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { AuditTrailProvider } from "@/components/admin/AuditTrailSheet";
 import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
 import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { getTournamentWorkspaceQueryKeys } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
@@ -213,7 +214,9 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: Readonly<Adm
             tabIndex={-1}
             className="flex flex-1 flex-col gap-4 overflow-x-hidden p-4"
           >
-            {children}
+            {/* One drawer for the whole panel: every per-entity trail opens
+                here, so no screen mounts its own copy and none can nest. */}
+            <AuditTrailProvider>{children}</AuditTrailProvider>
           </div>
         </SidebarInset>
       </SidebarProvider>

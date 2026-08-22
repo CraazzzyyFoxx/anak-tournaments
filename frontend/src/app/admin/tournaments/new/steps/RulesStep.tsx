@@ -43,6 +43,7 @@ export function RulesStep({
             <SelectContent>
               <SelectItem value="balancer">Auto-balance (Balancer)</SelectItem>
               <SelectItem value="draft">Live draft</SelectItem>
+              <SelectItem value="registration">Team registration</SelectItem>
             </SelectContent>
           </Select>
         </div>

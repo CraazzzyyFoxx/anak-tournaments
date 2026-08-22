@@ -1,13 +1,14 @@
-"""Native OverFast division+tier -> integer rank_value mapping.
+"""Effective native OverFast division+tier -> integer rank_value mapping.
 
-The default table is derived from :data:`shared.domain.ow_ladder.LADDER` — the
-one place the ladder's shape is written down — so it cannot drift from the
-division grid every service resolves ranks against. The mapping is configurable
-at runtime via the ``parser.rank_mapping`` settings key: admin-provided entries
-override individual cells of the default.
+The default table (:func:`build_default_lookup`, in
+``src.domain.overwatch_rank``) is derived from :data:`shared.domain.ow_ladder.LADDER`
+— the one place the ladder's shape is written down — so it cannot drift from
+the division grid every service resolves ranks against. The mapping is
+configurable at runtime via the ``parser.rank_mapping`` settings key:
+admin-provided entries override individual cells of the default.
 
-The native ``division``/``tier`` are always stored on the snapshot regardless, so
-a mapping miss never loses source data, and a rebase of the ladder (see
+The native ``division``/``tier`` are always stored on the snapshot regardless,
+so a mapping miss never loses source data, and a rebase of the ladder (see
 ``DEFAULT_RANK_MAPPING_VERSION``) can always be backfilled from them.
 """
 
@@ -15,34 +16,15 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.domain import ow_ladder
 from shared.schemas.settings import DEFAULT_RANK_MAPPING_VERSION
 from shared.services import settings_provider
+from src.domain.overwatch_rank import RankLookup, build_default_lookup, map_division_tier_to_rank_value
 
-#: Lower bound (bottom tier) rank_value per native division.
-DEFAULT_OW2_DIVISION_BASE = ow_ladder.ow_division_bases()
-
-# Lookup key: (division_lowercase, tier) -> rank_value.
-RankLookup = dict[tuple[str, int], int]
-
-
-def build_default_lookup() -> RankLookup:
-    return {
-        (division, tier): ow_ladder.tier_rank_min(base, tier)
-        for division, base in DEFAULT_OW2_DIVISION_BASE.items()
-        for tier in range(1, ow_ladder.TIERS_PER_DIVISION + 1)
-    }
-
-
-def map_division_tier_to_rank_value(
-    division: str | None,
-    tier: int | None,
-    lookup: RankLookup,
-) -> int | None:
-    """Resolve a native division+tier to an integer rank_value, or ``None``."""
-    if not division or tier is None:
-        return None
-    return lookup.get((division.lower(), int(tier)))
+# ``build_default_lookup``/``map_division_tier_to_rank_value`` now live in
+# ``src.domain.overwatch_rank`` (pure logic); re-imported here so this module
+# keeps resolving them for existing callers/tests
+# (``mapping.build_default_lookup(...)``).
+__all__ = ("RankLookup", "build_default_lookup", "map_division_tier_to_rank_value", "get_rank_mapping")
 
 
 async def get_rank_mapping(session: AsyncSession) -> tuple[RankLookup, str]:

@@ -31,11 +31,6 @@ const ROWS: Array<{
   description: string;
 }> = [
   {
-    key: "is_open",
-    label: "Open registration",
-    description: "Players can submit the registration form."
-  },
-  {
     key: "auto_approve",
     label: "Auto-approve registrations",
     description: "New registrations skip the manual review queue."

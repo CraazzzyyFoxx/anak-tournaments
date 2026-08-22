@@ -266,7 +266,8 @@
     "favorite": {
       "add": "Add to favorites",
       "remove": "Remove from favorites"
-    }
+    },
+    "registration": "Team registration"
   },
   "registration": {
     "wizard": {
@@ -385,6 +386,222 @@
       },
       "showDetails": "Show details",
       "hideDetails": "Hide details"
+    }
+  },
+  "registrationTeams": {
+    "status": {
+      "forming": "Forming",
+      "complete": "Roster complete",
+      "rejected": "Rejected",
+      "disbanded": "Disbanded"
+    },
+    "inviteState": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "declined": "Declined",
+      "revoked": "Revoked"
+    },
+    "list": {
+      "title": "Registered teams",
+      "empty": "No teams have registered yet.",
+      "count": "{count, plural, =1 {# team} other {# teams}}",
+      "shortfall": "Still needed: {slots}",
+      "complete": "Roster complete",
+      "substitutes": "{used} of {max} substitutes",
+      "freeAgents": "{count, plural, =1 {# player is} other {# players are}} registered without a team and can be invited."
+    },
+    "create": {
+      "action": "Register a team",
+      "title": "Register a team",
+      "titleFor": "Register a team for {name}",
+      "identityHeading": "Your team",
+      "nameLabel": "Team name",
+      "namePlaceholder": "Your team's name",
+      "nameHint": "Cannot contain “#”.",
+      "logoLabel": "Logo",
+      "logoChange": "Change the team logo",
+      "logoUpload": "Add",
+      "logoEdit": "Change",
+      "logoDrop": "Drop",
+      "logoRemove": "Remove the team logo",
+      "logoUnsupported": "Choose a PNG, JPEG, WebP or GIF image.",
+      "logoTooLarge": "Choose an image under {mb} MB.",
+      "imageFailed": "Your team was created, but the logo did not upload. Add it from the team panel.",
+      "slotLabel": "Your slot",
+      "slotHint": "You are a member of the team like anyone else — pick the slot you will play.",
+      "submit": "Create team",
+      "success": "Team created. Invite your players next.",
+      "blockedBySolo": "You are registered as an individual player, so you cannot create a team — but a captain can still invite you, and accepting will move your existing registration onto their roster."
+    },
+    "invite": {
+      "action": "Invite a player",
+      "title": "Invite a player",
+      "slotLabel": "Slot",
+      "substituteLabel": "Invite as a substitute",
+      "modeAccount": "Invite an account",
+      "modeLink": "Create a link",
+      "accountLabel": "Player",
+      "ttlLabel": "Link valid for",
+      "ttlDays": "{days, plural, =1 {# day} other {# days}}",
+      "submit": "Send invite",
+      "success": "Invite created.",
+      "tokenTitle": "Copy this link now",
+      "tokenHint": "It is shown once and cannot be recovered. Anyone with the link can take this slot.",
+      "copy": "Copy link",
+      "copied": "Link copied.",
+      "revoke": "Revoke",
+      "revokeSuccess": "Invite revoked.",
+      "pendingEmpty": "No open invites.",
+      "expiresAt": "Expires {date}",
+      "targetLabel": "Invited {name}",
+      "linkLabel": "Shareable link"
+    },
+    "accept": {
+      "title": "Join {team}",
+      "slotLocked": "Your slot on this team is {slot} and cannot be changed here.",
+      "substituteNotice": "You are joining as a substitute.",
+      "submit": "Join the team",
+      "success": "You joined {team}.",
+      "decline": "Decline",
+      "declineSuccess": "Invite declined.",
+      "declineConfirm": "Decline this invite? The captain will be able to offer the slot to someone else."
+    },
+    "member": {
+      "captain": "Captain",
+      "substitute": "Substitute",
+      "kick": "Remove from team",
+      "kickConfirm": "Remove {name} from the team? Their registration is withdrawn and the slot reopens.",
+      "kickSuccess": "Player removed.",
+      "leave": "Leave the team",
+      "leaveConfirm": "Leave this team? Your registration is withdrawn.",
+      "leaveSuccess": "You left the team.",
+      "makeCaptain": "Make captain",
+      "makeCaptainConfirm": "Hand captaincy to {name}? You will no longer be able to edit the roster.",
+      "makeCaptainSuccess": "Captaincy transferred."
+    },
+    "disband": {
+      "action": "Disband the team",
+      "confirm": "Disband the team? Every member's registration is withdrawn. This cannot be undone.",
+      "success": "Team disbanded."
+    },
+    "myCard": {
+      "teamLabel": "Team",
+      "logoSaved": "Team logo updated.",
+      "logoRemoved": "Team logo removed.",
+      "incomplete": "Your team {team} is still incomplete: {shortfall}. Until the roster is full it cannot enter the tournament.",
+      "complete": "Your team {team} has a full roster and is waiting for the organizer.",
+      "exported": "Your team {team} is in the tournament.",
+      "rejected": "Your team {team} was rejected by an organizer.",
+      "disbanded": "Your team {team} was disbanded."
+    },
+    "admin": {
+      "title": "Registered teams",
+      "includeTerminal": "Show rejected and disbanded",
+      "reject": "Reject team",
+      "rejectConfirm": "Reject {team}?",
+      "rejectWithdraw": "Also withdraw the members' registrations",
+      "rejectWithdrawHint": "Leave this on unless the team is only being rejected for being incomplete — members should return to the solo pool rather than hold a registration they cannot use.",
+      "rejectSuccess": "Team rejected.",
+      "export": "Add teams to the tournament",
+      "exportSuccess": "{count, plural, =1 {# team} other {# teams}} added.",
+      "exportSkipped": "Skipped: {names}",
+      "exportNothing": "No complete teams to add.",
+      "unassigned": "{count, plural, =1 {# player is} other {# players are}} on no team. The export cannot place them — invite them to a team or withdraw them first.",
+      "revokeInvite": "Withdraw invite",
+      "revokeInviteSuccess": "Invite withdrawn.",
+      "resetCap": "Reset invite count",
+      "resetCapSuccess": "Invite count reset for {team}.",
+      "resetCapConfirm": "Let {team} issue invites again? Past invites stay in the history.",
+      "emptyHint": "Captains create teams from this tournament's registration page once it opens."
+    },
+    "errors": {
+      "team_name_required": "Enter a team name.",
+      "team_name_invalid": "A team name cannot contain “#”.",
+      "team_name_taken": "A team with this name is already registered.",
+      "already_registered": "You are already registered for this tournament.",
+      "registration_closed": "Registration for this tournament is closed.",
+      "team_not_found": "Team not found.",
+      "tournament_not_found": "Tournament not found.",
+      "team_already_exported": "This team has already been added to the tournament and can no longer be changed.",
+      "team_not_forming": "This team is no longer accepting changes.",
+      "team_has_no_captain": "This team has no captain — contact an organizer.",
+      "not_captain": "Only the team captain can do this.",
+      "invite_not_for_you": "This invite was sent to a different account.",
+      "member_not_found": "This player is not on the team.",
+      "cannot_kick_captain": "A captain cannot remove themselves — transfer captaincy or disband the team.",
+      "captain_must_transfer": "Transfer captaincy or disband the team instead of leaving.",
+      "captain_must_be_starter": "A substitute cannot be made captain.",
+      "slot_taken": "That slot is already filled.",
+      "slot_already_offered": "That slot already has an open invite — revoke it first.",
+      "bench_full": "There are no substitute places left.",
+      "slot_not_in_shape": "This tournament’s roster has no such slot.",
+      "roster_slots_unknown_code": "Unknown roster slot.",
+      "invite_not_found": "Invite not found.",
+      "invite_reference_required": "This invite link is incomplete.",
+      "invite_expired": "This invite has expired — ask the captain for a new one.",
+      "invite_revoked": "The captain withdrew this invite.",
+      "invite_declined": "This invite was already declined.",
+      "invite_already_accepted": "Someone already took this slot.",
+      "invite_cap_reached": "This team has issued too many invites. Withdraw an outstanding one, or ask an organizer to reset the count.",
+      "invite_rate_limited": "Too many invites. Wait a little before sending more.",
+      "accept_rate_limited": "Too many attempts. Wait a little and try again.",
+      "rate_limit_unavailable": "Invites are temporarily unavailable. Try again shortly.",
+      "registration_terminal": "Your registration for this tournament is no longer active, so you cannot take a team slot.",
+      "registration_not_found": "That registration is not in this tournament.",
+      "player_not_free": "That player already joined a team. Pick someone else.",
+      "player_has_no_account": "That player has no site account. Send them a link instead."
+    },
+    "landing": {
+      "title": "Team invite",
+      "noLink": "This page opens an invite link. Ask the team captain to send you theirs.",
+      "invitedTo": "You have been invited to join {team} in {tournament}.",
+      "slot": "Slot offered: {slot}",
+      "slotSubstitute": "Slot offered: {slot} (substitute)",
+      "signInHint": "Sign in to take this slot. The invite is held for you until you do.",
+      "signInAction": "Sign in",
+      "dead": {
+        "expired": "This invite has expired. Ask the captain for a new link.",
+        "accepted": "This invite has already been used. Ask the captain for a new link.",
+        "declined": "This invite was declined. Ask the captain for a new link.",
+        "revoked": "This invite was withdrawn by the captain.",
+        "unavailable": "This slot is no longer available."
+      }
+    },
+    "offers": {
+      "title": "Team invites",
+      "sentence": "{team} invited you to play {slot}.",
+      "sentenceSubstitute": "{team} invited you as a substitute ({slot}).",
+      "expires": "Expires {date}",
+      "accept": "Join team",
+      "decline": "Decline",
+      "accepted": "You joined {team}.",
+      "declined": "Invite declined."
+    },
+    "picker": {
+      "label": "Invite a registered player",
+      "search": "Search by battle tag",
+      "linkInstead": "Or create a shareable link",
+      "empty": "Nobody is registered without a team right now.",
+      "noMatch": "No free agent matches that.",
+      "selected": "Inviting {name}",
+      "clear": "Clear"
+    },
+    "history": {
+      "toggle": "Invite history",
+      "cap": "{used} of {limit} invites used",
+      "capReset": "Counted since {date}",
+      "capNearby": "Close to the limit. Revoke an outstanding invite, or ask an organizer to reset the count.",
+      "empty": "No invites have been issued yet.",
+      "issued": "Sent {date}",
+      "answered": "Ended {date}",
+      "byOrganizer": "Withdrawn by an organizer",
+      "state": {
+        "pending": "Open",
+        "accepted": "Accepted",
+        "declined": "Declined",
+        "revoked": "Withdrawn",
+        "expired": "Expired"
+      }
     }
   },
   "accountSettings": {
@@ -4380,9 +4597,12 @@
     },
     "status": {
       "title": "Registration Status",
-      "description": "Control whether players can register for this tournament.",
-      "acceptLabel": "Accept registrations",
+      "description": "Whether players can register is set by the tournament's registration phase schedule.",
+      "acceptLabel": "Accepting registrations",
       "acceptHint": "When enabled, the registration form will be visible on the tournament page.",
+      "scheduleHint": "Governed by the Registration phase window in tournament Settings — open, extend or close it there.",
+      "stateOpen": "Open",
+      "stateClosed": "Closed",
       "autoApproveLabel": "Auto-approve",
       "autoApproveHint": "Skip manual review. Registrations are approved instantly and players are added to the pool automatically."
     }

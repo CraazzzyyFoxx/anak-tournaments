@@ -22,6 +22,8 @@ __all__ = (
     "BalancerRegistrationRole",
     "BalancerRegistrationRoleHero",
     "BalancerRegistrationStatus",
+    "BalancerRegistrationTeam",
+    "BalancerRegistrationTeamInvite",
 )
 
 
@@ -47,6 +49,12 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     require_open_profile: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     open_profile_scope: Mapped[str] = mapped_column(String(8), nullable=False, server_default="main", default="main")
     show_ranks: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    #: Bench size for team registration (decision 4): the roster ``RosterShape`` is
+    #: strict, but an organizer may allow this many extra ``is_substitute`` members
+    #: per team. Zero disables the bench entirely. Deliberately here and not on
+    #: ``Tournament.roster_slots_json``: a substitute holds no starter slot, so the
+    #: shape -- and the lock guarding it -- stay untouched.
+    max_substitutes: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     # Subscription admission gate. ``require_subscription`` is the per-tournament
     # decision and stays here; the RULE it enforces does not. That moved to
     # ``subscriptions.requirement`` (one row per workspace) so a new tournament no
@@ -194,6 +202,24 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
     balancer_profile_overridden_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # ── Team registration (see docs/plans/2026-08-20-team-registration.md) ────
+    # A registered team's roster IS a set of these rows; there is deliberately no
+    # slot table, because a slot would carry its own state machine alongside
+    # ``status`` and the two would have to be kept in sync forever. ``NULL`` means
+    # "not on a team", so no backfill is needed for existing rows.
+    registration_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("balancer.registration_team.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # The captain-assigned roster slot. NOT derivable from ``roles``:
+    # ``REGISTRATION_ROLE_CODES`` is tank/dps/support only, while ``flex`` is a
+    # roster SLOT code, so a role-less roster's slot cannot be expressed as a
+    # role row. Values are ``shared.domain.roster_shape.RosterSlotCode``.
+    team_slot_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Bench member. Exported as ``Player.is_substitution=True`` with a NULL
+    # ``related_player_id`` (nobody has been replaced yet); ``Team.avg_sr`` /
+    # ``total_sr`` filter on ``is_substitution`` alone, so that stays correct.
+    is_substitute: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+
     tournament: Mapped[Tournament] = relationship()
     # Readers needing the domain player must eager-load this relationship
     # (selectinload / explicit join) — never rely on a lazy load in async code.
@@ -208,6 +234,12 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
         back_populates="registration",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    # Never lazy-loaded in async code: readers wanting the team must eager-load
+    # it (the same standing rule as ``workspace_member`` above).
+    registration_team: Mapped[BalancerRegistrationTeam | None] = relationship(
+        back_populates="members",
+        foreign_keys=[registration_team_id],
     )
 
     @hybrid_property
@@ -316,3 +348,158 @@ class BalancerRegistrationGoogleSheetBinding(db.TimeStampIntegerMixin):
 
     feed: Mapped[BalancerRegistrationGoogleSheetFeed] = relationship(back_populates="bindings")
     registration: Mapped[BalancerRegistration] = relationship(back_populates="google_sheet_binding")
+
+
+class BalancerRegistrationTeam(db.TimeStampIntegerMixin):
+    """A team registering for a tournament as a unit.
+
+    Its roster is the set of ``BalancerRegistration`` rows pointing back here —
+    ordinary registrations, so every existing gate, count and reader keeps
+    working. Completeness is ``members grouped by team_slot_code`` compared to the
+    tournament's resolved ``RosterShape``; ``status`` denormalizes that answer for
+    indexable querying and is only ever written under the same row lock that
+    accepts and kicks take, so it cannot drift.
+    """
+
+    __tablename__ = "registration_team"
+    __table_args__ = (
+        # Mirrors the export writer's dedup rule (it reuses a team whose
+        # LOWERCASED name already exists in the tournament), which is what makes
+        # a silent two-teams-become-one merge structurally impossible.
+        Index(
+            "uq_balancer_registration_team_name_active",
+            "tournament_id",
+            "name_normalized",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
+        Index(
+            "ix_balancer_registration_team_tournament_status",
+            "tournament_id",
+            "status",
+            postgresql_where="deleted_at IS NULL",
+        ),
+        {"schema": "balancer"},
+    )
+
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: Lowercased ``name``, maintained by the service layer — same convention as
+    #: ``BalancerRegistration.battle_tag_normalized``. The unique index above is
+    #: on this, not on ``name``.
+    name_normalized: Mapped[str] = mapped_column(String(255), nullable=False)
+    image_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The captain's own registration. Circular with
+    #: ``BalancerRegistration.registration_team_id``, hence ``use_alter``.
+    captain_registration_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "balancer.registration.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_registration_team_captain_registration",
+        ),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="forming", default="forming")
+    #: Set when the team is materialized into ``tournament.team`` — the only DB
+    #: link from the pre-formation domain to the final row, mirroring
+    #: ``DraftTeam.exported_team_id``.
+    exported_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tournament.team.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    exported_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    export_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    export_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    deleted_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
+    #: Watermark for the cumulative invite cap, not a counter.
+    #:
+    #: The cap is a COUNT over every invite the team ever created, so "reset" can
+    #: only mean "stop counting the ones before this moment". Deleting the old rows
+    #: would be the other way to do it and is worse: the invite history is now a
+    #: read, and an organizer clearing a cap would silently erase the evidence of
+    #: whatever abuse made them clear it.
+    invite_cap_reset_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invite_cap_reset_by: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True
+    )
+
+    tournament: Mapped[Tournament] = relationship()
+    workspace: Mapped[Workspace] = relationship()
+    members: Mapped[list[BalancerRegistration]] = relationship(
+        back_populates="registration_team",
+        foreign_keys="BalancerRegistration.registration_team_id",
+    )
+    captain_registration: Mapped[BalancerRegistration | None] = relationship(
+        foreign_keys=[captain_registration_id],
+        post_update=True,
+    )
+    invites: Mapped[list[BalancerRegistrationTeamInvite]] = relationship(
+        back_populates="team", cascade="all, delete-orphan"
+    )
+
+
+class BalancerRegistrationTeamInvite(db.TimeStampIntegerMixin):
+    """An offer of one roster slot on a registering team.
+
+    Deliberately NOT a placeholder ``BalancerRegistration``: an unaccepted invite
+    has no person behind it, and a placeholder row would silently inflate
+    ``get_registration_count_by_tournament`` — the public participant count —
+    with no compile-time error anywhere.
+
+    Two addressing modes share one row: ``target_auth_user_id`` for an in-app
+    invite to a known account, and ``token_sha256`` for a shareable link to
+    someone with no account yet. Both may be set.
+    """
+
+    __tablename__ = "registration_team_invite"
+    __table_args__ = (
+        # Only the HASH is stored (see the module docstring of the invite service):
+        # redeeming this token creates a registration bound to the redeemer inside
+        # a third party's roster, which puts it in the ApiKey tier, not the
+        # scrim-room-address tier.
+        Index(
+            "uq_balancer_registration_team_invite_token",
+            "token_sha256",
+            unique=True,
+            postgresql_where="token_sha256 IS NOT NULL",
+        ),
+        Index("ix_balancer_registration_team_invite_team_state", "team_id", "state"),
+        {"schema": "balancer"},
+    )
+
+    team_id: Mapped[int] = mapped_column(ForeignKey("balancer.registration_team.id", ondelete="CASCADE"), index=True)
+    slot_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_substitute: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    target_auth_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    #: ``sha256`` of the raw token, which is returned exactly once at creation.
+    token_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", default="pending")
+    invited_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
+    invited_at: Mapped[db.DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    #: Who withdrew the offer, and when. A captain and an ORGANIZER can both
+    #: revoke, and those are materially different events: a captain changing their
+    #: mind needs no explanation, an organizer reaching into someone else's roster
+    #: does. Without this the two are indistinguishable after the fact, which makes
+    #: the organizer power unauditable.
+    revoked_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
+    revoked_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Whether staff took the offer away, recorded by the entry point that knows
+    #: rather than inferred at read time. Comparing the revoker against "the
+    #: captain" would be a lie: captaincy transfers, so the captain now is not
+    #: necessarily the captain then.
+    revoked_by_organizer: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    accepted_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_registration_id: Mapped[int | None] = mapped_column(
+        ForeignKey("balancer.registration.id", ondelete="SET NULL"), nullable=True
+    )
+
+    team: Mapped[BalancerRegistrationTeam] = relationship(back_populates="invites")
+    target_auth_user: Mapped[AuthUser | None] = relationship(foreign_keys=[target_auth_user_id])
+    invited_by_user: Mapped[AuthUser | None] = relationship(foreign_keys=[invited_by])
+    revoked_by_user: Mapped[AuthUser | None] = relationship(foreign_keys=[revoked_by])

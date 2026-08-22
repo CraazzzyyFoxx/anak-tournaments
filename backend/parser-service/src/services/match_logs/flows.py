@@ -1,39 +1,42 @@
 import csv
 
 import pandas as pd
-import sqlalchemy as sa
 from loguru import logger
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.clients.s3 import S3Client
 from shared.core import impact as impact_consts
+from shared.core.social import SocialProvider
 from shared.messaging.config import (
     TOURNAMENT_CHANGED_EXCHANGE,
     TOURNAMENT_EVENTS_EXCHANGE,
 )
 from shared.messaging.outbox import enqueue_outbox_event
+from shared.repository.identity import UserRepository
+from shared.repository.match_logs import MatchEventRepository, MatchKillFeedRepository, MatchStatisticsRepository
+from shared.repository.tournament import MatchRepository
 from shared.schemas.events import (
     EncounterCompletedEvent,
     TournamentChangedEvent,
     TournamentStandingsInvalidatedEvent,
 )
+from shared.services import social_identity
 from shared.services.newcomer_status import load_prior_participation
 from src import models
 from src.core import enums, errors, pagination
 from src.core.config import settings
+from src.domain.match_logs import impact
 from src.services import catalog_aliases
 from src.services.baselines import service as baselines_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
 from src.services.hero import service as hero_service
 from src.services.map import flows as map_flows
-from src.services.match_logs import impact
+from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.event_models import KillEvent, MatchEventRow, PlayerStatRow
-from src.services.s3 import service as s3_service
 from src.services.team import service as team_service
 from src.services.tournament import flows as tournament_flows
-from src.services.user import service as user_service
 
 from . import service
 
@@ -92,6 +95,13 @@ async def _enqueue_match_log_tournament_events(
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
         routing_key="tournament.encounter.completed",
     )
+
+
+_match_repo = MatchRepository()
+_stats_repo = MatchStatisticsRepository()
+_events_repo = MatchEventRepository()
+_kill_feed_repo = MatchKillFeedRepository()
+_user_repo = UserRepository()
 
 
 class MatchLogProcessor:
@@ -240,7 +250,7 @@ class MatchLogProcessor:
         if self._get_rows(enums.LogEventType.MatchEnd).empty:
             msg = f"Match log {self.filename} in tournament {self.tournament.name} is not finished"
             logger.error(msg)
-            await s3_service.delete_log(self._s3, self.tournament.id, self.filename)
+            await binary_match_logs.delete_log(self._s3, self.tournament.id, self.filename)
             if is_raise:
                 raise errors.ApiHTTPException(
                     status_code=400,
@@ -344,7 +354,7 @@ class MatchLogProcessor:
                     return team_db
 
         player_names_str = ", ".join([name for name, _ in players])
-        await s3_service.delete_log(self._s3, self.tournament.id, self.filename)
+        await binary_match_logs.delete_log(self._s3, self.tournament.id, self.filename)
         raise errors.ApiHTTPException(
             status_code=400,
             detail=[
@@ -995,7 +1005,6 @@ class MatchLogProcessor:
                 home_score=home_score,
                 away_score=away_score,
                 log_record_id=self.log_record_id,
-                commit=False,
             )
             logger.info(
                 f"Match created [id={match_model.id}] in match log {self.filename} in tournament {self.tournament.name}"
@@ -1018,16 +1027,13 @@ class MatchLogProcessor:
             match_model.source = enums.MatchSource.LOG_PARSER
             if self.log_record_id is not None:
                 match_model.log_record_id = self.log_record_id
-            session.add(match_model)
-            await session.flush()
+            await _match_repo.create(session, match_model)
             logger.info(f"Match updated [id={match_model.id}] for log {self.filename}")
 
         logger.info(f"Clearing existing stats/events/kills for match {match_model.id}")
-        await session.execute(
-            sa.delete(models.MatchStatistics).where(models.MatchStatistics.match_id == match_model.id)
-        )
-        await session.execute(sa.delete(models.MatchEvent).where(models.MatchEvent.match_id == match_model.id))
-        await session.execute(sa.delete(models.MatchKillFeed).where(models.MatchKillFeed.match_id == match_model.id))
+        await _stats_repo.delete_for_match(session, match_model.id)
+        await _events_repo.delete_for_match(session, match_model.id)
+        await _kill_feed_repo.delete_for_match(session, match_model.id)
 
         logger.info(f"Processing kills for match {match_model.id}")
         kill_feed_db_objects = await self.process_kills(match_model, players_map)
@@ -1045,10 +1051,13 @@ class MatchLogProcessor:
                 enums.CatalogEntityType.hero, self.hero_misses, log_record_id=self.log_record_id
             )
 
-        all_objects = kill_feed_db_objects + events + stats
         try:
-            if all_objects:
-                session.add_all(all_objects)
+            if kill_feed_db_objects:
+                await _kill_feed_repo.create_many(session, kill_feed_db_objects)
+            if events:
+                await _events_repo.create_many(session, events)
+            if stats:
+                await _stats_repo.create_many(session, stats)
             await _enqueue_match_log_tournament_events(session, encounter)
             await session.commit()
         except Exception:
@@ -1195,18 +1204,18 @@ class MatchLogProcessor:
                     f"likely changed battle_name to '{new_battle_name_from_log}'."
                 )
 
-                user_to_update = player_who_changed_name.workspace_member.player or await user_service.get(
-                    session, player_who_changed_name.workspace_member.player_id, []
+                user_to_update = player_who_changed_name.workspace_member.player or await _user_repo.get(
+                    session, player_who_changed_name.workspace_member.player_id
                 )
 
                 if user_to_update:
-                    await user_service.create_battle_tag(
+                    await social_identity.upsert_social_account(
                         session,
-                        user_to_update,
-                        name=new_battle_name_from_log,
-                        tag="0000",
-                        battle_tag=f"{new_battle_name_from_log}#0000",
+                        user_id=user_to_update.id,
+                        provider=SocialProvider.BATTLENET,
+                        username=f"{new_battle_name_from_log}#0000",
                     )
+                    await session.commit()
                     logger.info(
                         f"Associated new battle_name '{new_battle_name_from_log}' with User ID {user_to_update.id}."
                     )
@@ -1287,7 +1296,7 @@ async def process_match_log(
     object_name = filename.rsplit("/", 1)[-1]
     logger.info(f"Fetching logs from S3 for tournament {tournament.id} and file {filename}")
 
-    raw_bytes = await s3_service.get_log_by_filename(s3, tournament.id, filename)
+    raw_bytes = await binary_match_logs.get_log_by_filename(s3, tournament.id, filename)
     if not raw_bytes:
         msg = f"Log file {filename} not found or empty in S3"
         # WARNING, not ERROR: a missing/empty object is a state of the uploaded

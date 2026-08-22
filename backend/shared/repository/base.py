@@ -48,8 +48,19 @@ class BaseRepository[ModelType: Base]:
         id: int | str,
         *,
         options: Sequence[_AbstractLoad] | None = None,
+        populate_existing: bool = False,
     ) -> ModelType | None:
+        """Fetch by primary key.
+
+        ``populate_existing`` forces a fresh load of an already identity-mapped
+        row: without it, ``session.get``-equivalent lookups silently return the
+        row exactly as it was first loaded in this session, which can be missing
+        the eager-load ``options`` a later caller needs (and would otherwise
+        raise ``MissingGreenlet`` on the first async lazy-load of the relationship).
+        """
         query = self._apply_options(self.select().where(self.model.id == id), options)
+        if populate_existing:
+            query = query.execution_options(populate_existing=True)
         result = await session.execute(query)
         return result.unique().scalars().first()
 
@@ -124,6 +135,28 @@ class BaseRepository[ModelType: Base]:
         options: Sequence[_AbstractLoad] | None = None,
     ) -> Sequence[ModelType]:
         return await self.bulk_get(session, ids, options=options)
+
+    async def get_many_by(
+        self,
+        session: AsyncSession,
+        field: Any,
+        values: Sequence[Any],
+        *,
+        options: Sequence[_AbstractLoad] | None = None,
+    ) -> dict[Any, ModelType]:
+        """Batch existence lookup keyed by an arbitrary column's value.
+
+        One query instead of a get-then-create/update probe per item — the
+        "does this already exist" half of every external-catalog sync
+        (OverFast heroes/maps/gamemodes, ...): ``field`` is the mapped column
+        to match on (``models.Hero.slug``, ``models.Map.name``, ...),
+        deduplicated internally since a caller's list commonly isn't.
+        """
+        if not values:
+            return {}
+        query = self._apply_options(self.select().where(field.in_(set(values))), options)
+        result = await session.execute(query)
+        return {getattr(row, field.key): row for row in result.unique().scalars().all()}
 
     async def count(
         self,

@@ -103,6 +103,25 @@ export default defineConfig({
       "src/components/registration/SubscriptionRow.behavior.test.tsx",
       "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx",
       "src/components/registration/DetailsStep.behavior.test.tsx",
+      "src/components/registration/MyTeamPanel.i18n.test.tsx",
+      // Own-team dedup: unrun, a green suite would coexist with the exact
+      // duplicate-card regression this file exists to catch.
+      "src/components/registration/RegistrationTeamsList.test.tsx",
+      // The only surface an addressed invite exists on. File-level for the same
+      // mixed-runner reason as its neighbours; unrun, it would report green while
+      // the whole targeted-invite mode was invisible.
+      "src/components/registration/MyInviteOffers.behavior.test.tsx",
+      // The captain's half of the same mode. Separate from the i18n mount test
+      // above because it drives the dialog rather than only rendering it.
+      "src/components/registration/MyTeamPanel.picker.test.tsx",
+      // The invite ledger. Unrun, a green suite would coexist with a section that
+      // fetches on every mount or renders raw i18n key paths.
+      "src/components/registration/InviteHistorySection.behavior.test.tsx",
+      // File-level for the same mixed-runner reason as its neighbours above.
+      // The landing page for a shared invite link: an unrun mount test here
+      // would report green while the whole invitee flow was unreachable, which
+      // is exactly the state this route was added to fix.
+      "src/app/(site)/invite/page.behavior.test.tsx",
       // Same mixed-runner situation in `src/lib`, so file-level again. This one
       // mirrors the backend's best-of resolution and sequence generation, and
       // the veto room runs the SERVER's sequence — an unrun drift check is

@@ -17,7 +17,7 @@ os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
-from src.services.achievements import service_v2  # noqa: E402
+from src.services.achievements.queries import queries  # noqa: E402
 
 
 class AchievementQueryTests(IsolatedAsyncioTestCase):
@@ -30,7 +30,7 @@ class AchievementQueryTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(execute=AsyncMock(side_effect=execute_side_effect))
 
-        await service_v2.get(session, 123, [], workspace_id=77)
+        await queries.get(session, 123, [], workspace_id=77)
 
         self.assertEqual(1, len(captured_queries))
         self.assertIn("LEFT OUTER JOIN", str(captured_queries[0]).upper())

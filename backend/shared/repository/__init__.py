@@ -1,5 +1,21 @@
+from .balance import (
+    BalancerBalanceRepository,
+    BalancerBalanceVariantRepository,
+    BalancerTeamRepository,
+    BalancerTeamSlotRepository,
+    BalancerTournamentConfigRepository,
+    WorkspaceBalancerConfigRepository,
+)
 from .base import BaseRepository
-from .catalog import GamemodeRepository, HeroRepository, MapRepository
+from .baselines import StatBaselineRepository
+from .catalog import CatalogAliasMissRepository, GamemodeRepository, HeroRepository, MapRepository
+from .draft import (
+    DraftAuditEventRepository,
+    DraftPickRepository,
+    DraftPlayerRepository,
+    DraftSessionRepository,
+    DraftTeamRepository,
+)
 from .identity import (
     ApiKeyRepository,
     AuthUserRepository,
@@ -7,17 +23,32 @@ from .identity import (
     RefreshTokenRepository,
     SocialAccountRepository,
     SocialAccountVisibilityRepository,
+    UserMergeAuditRepository,
     UserPermissionDenyRepository,
     UserRepository,
     UserRoleRepository,
 )
+from .match_logs import (
+    MatchEventRepository,
+    MatchKillFeedRepository,
+    MatchStatisticsRepository,
+)
+from .preferences import FavoritePlayerRepository
 from .registration import (
     BalancerRegistrationRepository,
+    BalancerRegistrationTeamRepository,
     GoogleSheetFeedRepository,
     RegistrationFormRepository,
     RegistrationStatusRepository,
 )
 from .settings import SettingsRepository
+from .stream import (
+    SelfDeclaredChannelRow,
+    StreamRosterRow,
+    StreamTargetRepository,
+    TournamentPollTarget,
+    VerifiedChannelRow,
+)
 from .support import (
     AchievementOverrideRepository,
     AchievementRuleRepository,
@@ -31,10 +62,13 @@ from .tournament import (
     EncounterRepository,
     MatchRepository,
     PlayerRepository,
+    StageItemInputRepository,
     StageItemRepository,
     StageRepository,
     StandingRepository,
     TeamRepository,
+    TournamentGroupRepository,
+    TournamentLinkRepository,
     TournamentRepository,
 )
 from .workspace import (
@@ -43,6 +77,7 @@ from .workspace import (
     WorkspaceMemberRepository,
     WorkspaceRepository,
     get_or_create_workspace_member,
+    resolve_workspace_member_id,
 )
 
 __all__ = (
@@ -51,18 +86,34 @@ __all__ = (
     "AnalyticsStateRepository",
     "ApiKeyRepository",
     "AuthUserRepository",
+    "BalancerBalanceRepository",
+    "BalancerBalanceVariantRepository",
     "BalancerRegistrationRepository",
+    "BalancerRegistrationTeamRepository",
+    "BalancerTeamRepository",
+    "BalancerTeamSlotRepository",
+    "BalancerTournamentConfigRepository",
     "BaseRepository",
+    "CatalogAliasMissRepository",
     "ChallongeMappingRepository",
     "DiscordChannelRepository",
     "DivisionGridRepository",
+    "DraftAuditEventRepository",
+    "DraftPickRepository",
+    "DraftPlayerRepository",
+    "DraftSessionRepository",
+    "DraftTeamRepository",
     "EncounterRepository",
+    "FavoritePlayerRepository",
     "GamemodeRepository",
     "GoogleSheetFeedRepository",
     "HeroRepository",
     "LogProcessingRepository",
     "MapRepository",
+    "MatchEventRepository",
+    "MatchKillFeedRepository",
     "MatchRepository",
+    "MatchStatisticsRepository",
     "OAuthConnectionRepository",
     "PermissionRepository",
     "PlayerRepository",
@@ -70,18 +121,30 @@ __all__ = (
     "RegistrationFormRepository",
     "RegistrationStatusRepository",
     "RoleRepository",
+    "SelfDeclaredChannelRow",
     "SettingsRepository",
     "SocialAccountRepository",
     "SocialAccountVisibilityRepository",
+    "StageItemInputRepository",
     "StageItemRepository",
     "StageRepository",
     "StandingRepository",
+    "StatBaselineRepository",
+    "StreamRosterRow",
+    "StreamTargetRepository",
     "TeamRepository",
+    "TournamentGroupRepository",
+    "TournamentLinkRepository",
+    "TournamentPollTarget",
     "TournamentRepository",
+    "UserMergeAuditRepository",
     "UserPermissionDenyRepository",
     "UserRepository",
     "UserRoleRepository",
+    "VerifiedChannelRow",
+    "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
     "WorkspaceRepository",
     "get_or_create_workspace_member",
+    "resolve_workspace_member_id",
 )

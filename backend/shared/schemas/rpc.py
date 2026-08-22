@@ -12,7 +12,10 @@ from typing import Any
 # Error codes -> HTTP status are mapped on the gateway side:
 #   unauthorized->401, forbidden->403, bad_request->400, not_found->404,
 #   conflict->409, gone->410, unprocessable->422, payload_too_large->413,
-#   rate_limited->429, internal->500
+#   rate_limited->429, unavailable->503, internal->500
+#
+# Both sides degrade safely: an unknown code becomes 500 on the gateway, which is
+# what every code here did before it was added.
 ERROR_CODES = frozenset(
     {
         "unauthorized",
@@ -24,6 +27,10 @@ ERROR_CODES = frozenset(
         "unprocessable",
         "payload_too_large",
         "rate_limited",
+        # A dependency the worker needs is down and the operation deliberately
+        # fails closed rather than running unmetered. Distinct from ``internal``
+        # because the correct client behaviour is "retry shortly", not "give up".
+        "unavailable",
         "internal",
     }
 )
@@ -49,4 +56,5 @@ def status_to_code(http_status: int) -> str:
         413: "payload_too_large",
         422: "unprocessable",
         429: "rate_limited",
+        503: "unavailable",
     }.get(http_status, "internal")

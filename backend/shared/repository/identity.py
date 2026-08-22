@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -19,6 +19,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core.pagination import PaginationSortParams
+from shared.core.utils import join_entity
 from shared.repository.base import BaseRepository
 
 
@@ -76,6 +77,28 @@ class UserRepository(BaseRepository[models.User]):
             .where(models.User.auth_user_id == auth_user_id)
             .values(avatar_url=avatar_url)
         )
+
+    # Legacy entity tokens are still accepted for caller/API compatibility; all
+    # four select the same unified `user.social_accounts` relationship.
+    IDENTITY_ENTITY_TOKENS: ClassVar[tuple[str, ...]] = ("social_accounts", "battle_tag", "discord", "twitch")
+
+    @staticmethod
+    def identity_options(in_entities: Sequence[str], child: _AbstractLoad | None = None) -> list[_AbstractLoad]:
+        """Eager-load option for `.get(..., options=...)` when any identity entity token was requested."""
+        if any(name in in_entities for name in UserRepository.IDENTITY_ENTITY_TOKENS):
+            return [join_entity(child, models.User.social_accounts)]
+        return []
+
+    @staticmethod
+    def visible_social_accounts(user: models.User, in_entities: Sequence[str]) -> list[models.SocialAccount]:
+        """Social accounts to expose for the requested entity tokens, sorted
+        (primary account per provider first, then insertion order) — the
+        shared filter+sort core every service's ``UserRead`` wire-mapping
+        builds on; only the final pydantic shape stays per-service.
+        """
+        if not any(name in in_entities for name in UserRepository.IDENTITY_ENTITY_TOKENS):
+            return []
+        return sorted(user.social_accounts, key=lambda a: (a.provider, not a.is_primary, a.id))
 
 
 class SocialAccountRepository(BaseRepository[models.SocialAccount]):
@@ -866,6 +889,55 @@ class UserRoleRepository:
             or 0
         )
 
+    async def grant_missing_workspace_member_role(self, session: AsyncSession, workspace_id: int) -> int:
+        """Grant the baseline ``member`` role to every auth-linked member of
+        ``workspace_id`` whose auth user currently holds no role there.
+
+        One set-based statement, and idempotent: the ``NOT EXISTS`` guard only
+        touches role-less members, so re-running grants nothing and never
+        duplicates. Raw SQL because the join walks three schemas
+        (``workspace_member`` -> ``players.user`` -> ``auth.roles``) into an
+        association table with no mapped class; ``workspace_id`` is bound, not
+        interpolated. Returns the number of grants inserted. The caller must
+        have ensured the workspace's system roles exist.
+        """
+        result = await session.execute(
+            sa.text(
+                """
+            INSERT INTO auth.user_roles (user_id, role_id)
+            SELECT DISTINCT pu.auth_user_id, r.id
+            FROM workspace_member wm
+            JOIN players."user" pu ON pu.id = wm.player_id AND pu.auth_user_id IS NOT NULL
+            JOIN auth.roles r ON r.workspace_id = wm.workspace_id AND r.name = 'member'
+            WHERE wm.workspace_id = :workspace_id
+              AND NOT EXISTS (
+                SELECT 1 FROM auth.user_roles ur
+                JOIN auth.roles r2 ON r2.id = ur.role_id
+                WHERE ur.user_id = pu.auth_user_id AND r2.workspace_id = wm.workspace_id
+              )
+            """
+            ),
+            {"workspace_id": workspace_id},
+        )
+        return result.rowcount or 0
+
+    async def revoke_workspace_roles(self, session: AsyncSession, *, user_id: int, workspace_id: int) -> None:
+        """Drop every grant this auth user holds for ``workspace_id``'s roles.
+
+        Set-based: membership removal must not leave orphaned grants behind, and
+        the grant count is unbounded (system roles plus any custom ones), so
+        loading them to delete one by one buys nothing. Global roles are
+        untouched — the subquery is scoped to roles owned by this workspace.
+        """
+        await session.execute(
+            sa.delete(models.user_roles).where(
+                models.user_roles.c.user_id == user_id,
+                models.user_roles.c.role_id.in_(
+                    sa.select(models.Role.id).where(models.Role.workspace_id == workspace_id)
+                ),
+            )
+        )
+
 
 class ApiKeyRepository(BaseRepository[models.ApiKey]):
     def __init__(self) -> None:
@@ -951,3 +1023,10 @@ class ApiKeyRepository(BaseRepository[models.ApiKey]):
             )
         )
         return result.scalar_one_or_none()
+
+
+class UserMergeAuditRepository(BaseRepository[models.UserMergeAudit]):
+    """``players.user_merge_audit`` — the append-only trail of profile merges."""
+
+    def __init__(self) -> None:
+        super().__init__(models.UserMergeAudit)

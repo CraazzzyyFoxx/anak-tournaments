@@ -15,6 +15,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 workspace_service = importlib.import_module("src.services.workspace.service")
+workspaces = workspace_service.workspaces
 
 
 class WorkspaceServiceTests(IsolatedAsyncioTestCase):
@@ -26,7 +27,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
             "get_default_division_grid_version_id",
             AsyncMock(return_value=77),
         ) as get_default_version_id:
-            workspace = await workspace_service.create(
+            workspace = await workspaces.create(
                 session,
                 slug="homies-family",
                 name="Homies Family",
@@ -45,7 +46,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         workspace = SimpleNamespace(id=4, default_division_grid_version_id=12)
 
         with self.assertRaises(Exception) as caught:
-            await workspace_service.update(
+            await workspaces.update(
                 session,
                 workspace,
                 {"default_division_grid_version_id": 77},
@@ -58,7 +59,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(scalar=AsyncMock(return_value=9))
 
         with self.assertRaises(Exception) as caught:
-            await workspace_service.validate_default_division_grid_version(
+            await workspaces.validate_default_division_grid_version(
                 session,
                 workspace_id=4,
                 version_id=55,
@@ -76,7 +77,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                workspace_service,
+                workspaces,
                 "get_member_auth_user_id",
                 AsyncMock(return_value=22),
             ) as get_auth_user_id,
@@ -91,7 +92,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
                 AsyncMock(),
             ) as replace_roles,
         ):
-            result = await workspace_service.update_member_roles(session, member, role_ids=[5])
+            result = await workspaces.update_member_roles(session, member, role_ids=[5])
 
         self.assertIs(result, member)
         get_auth_user_id.assert_awaited_once_with(session, member)
@@ -105,7 +106,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                workspace_service,
+                workspaces,
                 "add_member",
                 AsyncMock(return_value=member),
             ) as add_member,
@@ -115,7 +116,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
                 AsyncMock(),
             ) as replace_roles,
         ):
-            result = await workspace_service.add_member_with_roles(
+            result = await workspaces.add_member_with_roles(
                 session,
                 2,
                 22,
@@ -134,11 +135,11 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace()
 
         with patch.object(
-            workspace_service._user_repo,
+            workspaces.user_repo,
             "get",
             AsyncMock(return_value=player),
         ) as get_player:
-            auth_user_id = await workspace_service.get_member_auth_user_id(session, member)
+            auth_user_id = await workspaces.get_member_auth_user_id(session, member)
 
         self.assertEqual(22, auth_user_id)
         get_player.assert_awaited_once_with(session, 99)
@@ -148,16 +149,16 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace()
 
         with patch.object(
-            workspace_service._user_repo,
+            workspaces.user_repo,
             "get",
             AsyncMock(return_value=None),
         ):
             with self.assertRaises(workspace_service.HTTPException):
-                await workspace_service.get_member_auth_user_id(session, member)
+                await workspaces.get_member_auth_user_id(session, member)
 
     async def test_add_member_resolves_player_id_from_auth_user_id(self) -> None:
         auth_user = SimpleNamespace(id=22, username="staff", email="s@ex.com")
-        session = SimpleNamespace(get=AsyncMock(return_value=auth_user))
+        session = SimpleNamespace()
         player = SimpleNamespace(id=99, auth_user_id=22)
         created_member = SimpleNamespace(id=14, player_id=99, workspace_id=2)
 
@@ -168,7 +169,12 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
                 AsyncMock(),
             ),
             patch.object(
-                workspace_service._user_repo,
+                workspaces.auth_user_repo,
+                "get",
+                AsyncMock(return_value=auth_user),
+            ),
+            patch.object(
+                workspaces.user_repo,
                 "ensure_for_auth_user",
                 AsyncMock(return_value=player),
             ) as ensure_for_auth_user,
@@ -178,7 +184,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=created_member),
             ) as get_or_create,
         ):
-            result = await workspace_service.add_member(session, 2, 22)
+            result = await workspaces.add_member(session, 2, 22)
 
         self.assertIs(result, created_member)
         ensure_for_auth_user.assert_awaited_once_with(session, auth_user_id=22, name_hint="staff")
@@ -188,7 +194,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         # Legacy auth user with no players.user: add_member now provisions a bare
         # player on demand (via ensure_for_auth_user) instead of raising 500.
         auth_user = SimpleNamespace(id=22, username="staff", email="s@ex.com")
-        session = SimpleNamespace(get=AsyncMock(return_value=auth_user))
+        session = SimpleNamespace()
         provisioned = SimpleNamespace(id=77, auth_user_id=22)
         created_member = SimpleNamespace(id=14, player_id=77, workspace_id=2)
 
@@ -199,7 +205,12 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
                 AsyncMock(),
             ),
             patch.object(
-                workspace_service._user_repo,
+                workspaces.auth_user_repo,
+                "get",
+                AsyncMock(return_value=auth_user),
+            ),
+            patch.object(
+                workspaces.user_repo,
                 "ensure_for_auth_user",
                 AsyncMock(return_value=provisioned),
             ) as ensure_for_auth_user,
@@ -209,7 +220,7 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=created_member),
             ) as get_or_create,
         ):
-            result = await workspace_service.add_member(session, 2, 22)
+            result = await workspaces.add_member(session, 2, 22)
 
         self.assertIs(result, created_member)
         ensure_for_auth_user.assert_awaited_once_with(session, auth_user_id=22, name_hint="staff")

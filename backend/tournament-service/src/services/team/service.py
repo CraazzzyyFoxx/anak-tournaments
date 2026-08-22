@@ -2,88 +2,10 @@ import typing
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared.repository import PlayerRepository, TeamRepository
 from shared.services.tournament_visibility import visible_tournament_ids_subquery
 from src import models, schemas
-from src.core import utils
-from src.services.user import service as user_service
-
-
-def team_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    """
-    Constructs a list of SQLAlchemy load options for querying related entities of a `Team` model.
-
-    Args:
-        in_entities: A list of strings representing the names of related entities to load.
-        child: An optional SQLAlchemy relationship or join entity to chain the load options.
-
-    Returns:
-        A list of SQLAlchemy load options (`_AbstractLoad`) for the specified entities.
-    """
-    entities: list[_AbstractLoad] = []
-
-    if "tournament" in in_entities:
-        entities.append(utils.join_entity(child, models.Team.tournament))
-    if "players" in in_entities:
-        players_entities = utils.prepare_entities(in_entities, "players")
-        players_entity = utils.selectin_entity(child, models.Team.players)
-        entities.append(players_entity)
-        # PlayerRead.user_id is a required field (resolved from
-        # workspace_member.player_id, contract step iwrefac07), so
-        # workspace_member itself must always be loaded here -- not just when
-        # "user" is requested. The nested workspace_member.player (+ further
-        # user sub-entities) stays gated behind "user" since that's the
-        # expensive/optional part (full user profile, not just its id).
-        workspace_member_entity = utils.join_entity(players_entity, models.Player.workspace_member)
-        entities.append(workspace_member_entity)
-        if "user" in players_entities:
-            user_entity = utils.join_entity(workspace_member_entity, models.WorkspaceMember.player)
-            entities.append(user_entity)
-            entities.extend(user_service.user_entities(utils.prepare_entities(players_entities, "user"), user_entity))
-    if "captain" in in_entities:
-        captain_entity = utils.join_entity(child, models.Team.captain)
-        entities.append(captain_entity)
-        entities.extend(user_service.user_entities(utils.prepare_entities(in_entities, "captain"), captain_entity))
-    if "placement" in in_entities:
-        entities.append(utils.selectin_entity(child, models.Team.standings))
-    if "group" in in_entities:
-        standings = utils.selectin_entity(child, models.Team.standings)
-        entities.append(standings)
-        entities.append(utils.join_entity(standings, models.Standing.group))
-
-    return entities
-
-
-def player_entities(entities_in: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    """
-    Constructs a list of SQLAlchemy load options for querying related entities of a `Player` model.
-
-    Args:
-        entities_in: A list of strings representing the names of related entities to load.
-        child: An optional SQLAlchemy relationship or join entity to chain the load options.
-
-    Returns:
-        A list of SQLAlchemy load options (`_AbstractLoad`) for the specified entities.
-    """
-    entities = []
-
-    # PlayerRead.user_id is a required field resolved from
-    # workspace_member.player_id (contract step iwrefac07), so workspace_member
-    # is always loaded here -- the nested .player (full user profile) stays
-    # gated behind "user".
-    workspace_member_entity = utils.join_entity(child, models.Player.workspace_member)
-    entities.append(workspace_member_entity)
-    if "user" in entities_in:
-        entities.append(utils.join_entity(workspace_member_entity, models.WorkspaceMember.player))
-    if "tournament" in entities_in:
-        entities.append(utils.join_entity(child, models.Player.tournament))
-    if "team" in entities_in:
-        team_entity = utils.join_entity(child, models.Player.team)
-        entities.append(team_entity)
-        entities.extend(team_entities(utils.prepare_entities(entities_in, "team"), team_entity))
-
-    return entities
 
 
 async def get(session: AsyncSession, team_id: int, entities: list[str]) -> models.Team | None:
@@ -98,7 +20,11 @@ async def get(session: AsyncSession, team_id: int, entities: list[str]) -> model
     Returns:
         A `Team` model instance if found, otherwise `None`.
     """
-    query = sa.select(models.Team).where(sa.and_(models.Team.id == team_id)).options(*team_entities(entities))
+    query = (
+        sa.select(models.Team)
+        .where(sa.and_(models.Team.id == team_id))
+        .options(*TeamRepository.team_entities(entities))
+    )
     result = await session.execute(query)
     return result.unique().scalars().first()
 
@@ -126,7 +52,7 @@ async def get_by_name_and_tournament(
                 models.Team.tournament_id == tournament_id,
             )
         )
-        .options(*team_entities(entities))
+        .options(*TeamRepository.team_entities(entities))
     )
     result = await session.execute(query)
     return result.unique().scalars().first()
@@ -146,7 +72,9 @@ async def get_by_tournament(
     Returns:
         A sequence of `Team` model instances.
     """
-    query = sa.select(models.Team).filter_by(tournament_id=tournament.id).options(*team_entities(entities))
+    query = (
+        sa.select(models.Team).filter_by(tournament_id=tournament.id).options(*TeamRepository.team_entities(entities))
+    )
     result = await session.execute(query)
     return result.unique().scalars().all()
 
@@ -168,7 +96,7 @@ async def get_by_tournament_challonge_id(
     """
     query = (
         sa.select(models.Team)
-        .options(*team_entities(entities))
+        .options(*TeamRepository.team_entities(entities))
         .join(
             models.ChallongeParticipantMapping,
             models.ChallongeParticipantMapping.team_id == models.Team.id,
@@ -206,7 +134,7 @@ async def get_all(
         1. A sequence of `Team` model instances.
         2. The total count of teams matching the filtering criteria.
     """
-    query = sa.select(models.Team).options(*team_entities(params.entities))
+    query = sa.select(models.Team).options(*TeamRepository.team_entities(params.entities))
     total_query = sa.select(sa.func.count(models.Team.id))
     if params.tournament_id:
         query = query.where(sa.and_(models.Team.tournament_id == params.tournament_id))
@@ -257,7 +185,11 @@ async def get_player(session: AsyncSession, player_id: int, entities: list[str])
     Returns:
         A `Player` model instance if found, otherwise `None`.
     """
-    query = sa.select(models.Player).where(sa.and_(models.Player.id == player_id)).options(*player_entities(entities))
+    query = (
+        sa.select(models.Player)
+        .where(sa.and_(models.Player.id == player_id))
+        .options(*PlayerRepository.player_entities(entities))
+    )
     result = await session.execute(query)
     return result.unique().scalars().first()
 
@@ -279,7 +211,7 @@ async def get_player_by_user_and_tournament(
     """
     query = (
         sa.select(models.Player)
-        .options(*player_entities(entities))
+        .options(*PlayerRepository.player_entities(entities))
         .where(
             sa.and_(
                 models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
@@ -306,7 +238,7 @@ async def get_player_all(
         1. A sequence of `Player` model instances.
         2. The total count of players matching the filtering criteria.
     """
-    query = sa.select(models.Player).options(*player_entities(params.entities))
+    query = sa.select(models.Player).options(*PlayerRepository.player_entities(params.entities))
     total_query = sa.select(sa.func.count(models.Player.id))
     if params.tournament_id:
         query = query.where(sa.and_(models.Player.tournament_id == params.tournament_id))

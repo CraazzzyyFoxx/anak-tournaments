@@ -20,8 +20,8 @@ from src import schemas
 from src.core import db, enums, pagination
 from src.core.workspace import get_division_grid, resolve_workspace_context
 from src.rpc import _common as c
-from src.services.map import flows as map_flows
-from src.services.user import flows as user_flows
+from src.services.map.service import maps as map_service
+from src.services.user.service import users as user_service
 
 _SF = db.async_session_maker
 
@@ -52,7 +52,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationSortSearchQueryParams[_USERS_SORT], data.get("query"))
-            return await user_flows.get_all(session, pagination.PaginationSortSearchParams.from_query_params(qp))
+            return await user_service.get_all(session, pagination.PaginationSortSearchParams.from_query_params(qp))
 
         return await c.envelope(logger, "users.list", op, session_factory=_SF)
 
@@ -61,7 +61,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             query = c.q1(data, "query", str, "")
             fields = c.q(data, "fields") or []
-            return await user_flows.search_by_name(session, query, fields)
+            return await user_service.search_by_name(session, query, fields)
 
         return await c.envelope(logger, "users.search", op, session_factory=_SF)
 
@@ -70,7 +70,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ws = await resolve_workspace_context(session, _ws_id(data))
             qp = build_query_model(schemas.UserOverviewQueryParams, data.get("query"))
-            return await user_flows.get_overview(
+            return await user_service.get_overview(
                 session,
                 schemas.UserOverviewParams.from_query_params(qp),
                 workspace_id=ws.id,
@@ -86,7 +86,7 @@ def register(broker: Any, logger: Any) -> None:
             ws = await resolve_workspace_context(session, _ws_id(data))
             # Route passes the QueryParams model straight to the flow (no from_query_params).
             params = build_query_model(schemas.UserOverviewStatsQueryParams, data.get("query"))
-            return await user_flows.get_overview_stats(session, params, grid=ws.grid, workspace_id=ws.id)
+            return await user_service.get_overview_stats(session, params, grid=ws.grid, workspace_id=ws.id)
 
         return await c.envelope(logger, "users.overview_stats", op, session_factory=_SF)
 
@@ -95,7 +95,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             ws = await resolve_workspace_context(session, _ws_id(data))
             qp = build_query_model(schemas.UserCatalogQueryParams, data.get("query"))
-            return await user_flows.get_catalog(
+            return await user_service.get_catalog(
                 session,
                 schemas.UserCatalogParams.from_query_params(qp),
                 grid=ws.grid,
@@ -111,7 +111,7 @@ def register(broker: Any, logger: Any) -> None:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
             grid = await get_division_grid(session, None)
             qp = build_query_model(schemas.UserCompareQueryParams, data.get("query"))
-            return await user_flows.get_compare_cached(
+            return await user_service.get_compare_cached(
                 session, c.require_id(data), schemas.UserCompareParams.from_query_params(qp), grid=grid
             )
 
@@ -123,7 +123,7 @@ def register(broker: Any, logger: Any) -> None:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
             grid = await get_division_grid(session, None)
             qp = build_query_model(schemas.UserHeroCompareQueryParams, data.get("query"))
-            return await user_flows.get_hero_compare_cached(
+            return await user_service.get_hero_compare_cached(
                 session, c.require_id(data), schemas.UserHeroCompareParams.from_query_params(qp), grid=grid
             )
 
@@ -135,8 +135,8 @@ def register(broker: Any, logger: Any) -> None:
             name = str(data.get("name", "")).replace("-", "#")
             entities = c.q(data, "entities") or []
             if "#" in name:
-                return await user_flows.get_by_battle_tag(session, name, entities)
-            return await user_flows.get_by_discord(session, name, entities)
+                return await user_service.get_by_battle_tag(session, name, entities)
+            return await user_service.get_by_discord(session, name, entities)
 
         return await c.envelope(logger, "users.by_name", op, session_factory=_SF)
 
@@ -144,7 +144,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _get_profile(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ws = await resolve_workspace_context(session, _ws_id(data))
-            return await user_flows.get_profile(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
+            return await user_service.get_profile(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.get_profile", op, session_factory=_SF)
 
@@ -152,7 +152,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _tournaments(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ws = await resolve_workspace_context(session, _ws_id(data))
-            return await user_flows.get_tournaments(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
+            return await user_service.get_tournaments(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.tournaments", op, session_factory=_SF)
 
@@ -162,7 +162,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = int(data["tournament_id"])
             await c.gate_tournament(session, data, tournament_id)
             grid = await get_division_grid(session, None, tournament_id)
-            return await user_flows.get_tournament_with_stats(session, c.require_id(data), tournament_id, grid=grid)
+            return await user_service.get_tournament_with_stats(session, c.require_id(data), tournament_id, grid=grid)
 
         return await c.envelope(logger, "users.tournament", op, session_factory=_SF)
 
@@ -171,7 +171,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             tournament_id = int(data["tournament_id"])
             await c.gate_tournament(session, data, tournament_id)
-            return await user_flows.get_tournament_encounters(session, c.require_id(data), tournament_id)
+            return await user_service.get_tournament_encounters(session, c.require_id(data), tournament_id)
 
         return await c.envelope(logger, "users.tournament_encounters", op, session_factory=_SF)
 
@@ -191,7 +191,7 @@ def register(broker: Any, logger: Any) -> None:
                 stat = enums.LogStatsName(raw_stat)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=f"invalid stat value: {raw_stat}") from exc
-            return await user_flows.get_tournament_leaderboard(session, tournament_id, stat)
+            return await user_service.get_tournament_leaderboard(session, tournament_id, stat)
 
         return await c.envelope(logger, "users.tournament_leaderboard", op, session_factory=_SF)
 
@@ -200,7 +200,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
             qp = build_query_model(schemas.UserMapsSearchQueryParams[_MAPS_SORT], data.get("query"))
-            return await map_flows.get_top_user(
+            return await map_service.get_top_user(
                 session,
                 c.require_id(data),
                 schemas.UserMapsSearchParams.from_query_params(qp),
@@ -214,7 +214,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
             qp = build_query_model(schemas.UserMapsSearchQueryParams[_MAPS_SORT], data.get("query"))
-            return await map_flows.get_top_user_summary(
+            return await map_service.get_top_user_summary(
                 session,
                 c.require_id(data),
                 schemas.UserMapsSearchParams.from_query_params(qp),
@@ -227,7 +227,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _encounters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationSortQueryParams[_ENCOUNTER_SORT], data.get("query"))
-            return await user_flows.get_encounters_by_user(
+            return await user_service.get_encounters_by_user(
                 session,
                 c.require_id(data),
                 pagination.PaginationSortParams.from_query_params(qp),
@@ -244,7 +244,7 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.matches_summary")
     async def _matches_summary(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            return await user_flows.get_matches_summary(session, c.require_id(data), workspace_id=_ws_id(data))
+            return await user_service.get_matches_summary(session, c.require_id(data), workspace_id=_ws_id(data))
 
         return await c.envelope(logger, "users.matches_summary", op, session_factory=_SF)
 
@@ -258,7 +258,7 @@ def register(broker: Any, logger: Any) -> None:
                 stats = [enums.LogStatsName(s) for s in raw_stats]
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=f"invalid stats value: {exc}") from exc
-            return await user_flows.get_heroes(
+            return await user_service.get_heroes(
                 session,
                 c.require_id(data),
                 pagination.PaginationParams.from_query_params(qp),
@@ -273,7 +273,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _teammates(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationSortQueryParams[_TEAMMATES_SORT], data.get("query"))
-            return await user_flows.get_best_teammates(
+            return await user_service.get_best_teammates(
                 session,
                 c.require_id(data),
                 pagination.PaginationSortParams.from_query_params(qp),

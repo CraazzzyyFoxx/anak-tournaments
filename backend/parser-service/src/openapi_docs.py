@@ -213,21 +213,4 @@ DOCS: dict[str, dict] = {
         "summary": "Delete tournament Discord channel",
         "description": "Removes a tournament's Discord channel configuration; requires discord_channel.delete on the workspace.",
     },
-    # ── bootstrap importers ───────────────────────────────────────────────────
-    "rpc.parser.tournament.create_with_groups": {
-        "summary": "Create tournament with groups",
-        "description": "Creates a tournament and its group stages (optionally from a Challonge slug) for a workspace; requires workspace tournament.create.",
-    },
-    "rpc.parser.teams.challonge_preview": {
-        "summary": "Preview Challonge team sync",
-        "description": "Previews the mapping of Challonge participants to teams for a tournament before syncing; requires challonge.read in the tournament's workspace.",
-    },
-    "rpc.parser.teams.create_challonge": {
-        "summary": "Sync Challonge teams",
-        "description": "Applies Challonge participant-to-team mappings for a tournament; requires challonge.update in the tournament's workspace.",
-    },
-    "rpc.parser.teams.create_balancer": {
-        "summary": "Import balancer teams",
-        "description": "Multipart (base64) import of teams from a balancer export JSON (atravkovs or internal format) for a tournament; requires team.create in the tournament's workspace.",
-    },
 }

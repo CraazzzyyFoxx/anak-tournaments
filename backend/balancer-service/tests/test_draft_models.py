@@ -34,8 +34,8 @@ from shared.models.balancer.draft import (  # noqa: E402
     DraftTeam,
 )
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
-from src.services.draft import selection  # noqa: E402
-from src.services.draft.selection import _role_is_legal  # noqa: E402
+from src.domain.draft import rules  # noqa: E402
+from src.domain.draft.rules import role_is_legal  # noqa: E402
 
 
 def test_mappers_configure_cleanly() -> None:
@@ -155,9 +155,9 @@ def test_role_is_legal_reads_off_role_from_child_rows() -> None:
             DraftPlayerRole(role="support", rank_value=2800, is_secondary=True, priority=1),
         ],
     )
-    assert _role_is_legal(player, HeroClass.support) is True  # declared off-role
-    assert _role_is_legal(player, HeroClass.tank) is False  # not playable
-    assert _role_is_legal(player, None) is True  # no requested role
+    assert role_is_legal(player, HeroClass.support) is True  # declared off-role
+    assert role_is_legal(player, HeroClass.tank) is False  # not playable
+    assert role_is_legal(player, None) is True  # no requested role
 
 
 def test_team_and_pick_compat_properties() -> None:
@@ -191,7 +191,7 @@ def test_role_shortage_pauses_without_resolving_the_current_pick() -> None:
         clock_remaining_ms=None,
     )
 
-    result = selection.mark_role_shortage_paused(draft, pick)
+    result = rules.mark_role_shortage_paused(draft, pick)
 
     assert draft.status == "paused"
     assert pick.status == "on_clock"
