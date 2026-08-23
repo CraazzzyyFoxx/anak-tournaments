@@ -38,8 +38,14 @@ const (
 	customDomainVerifiedSQL = `SELECT EXISTS(SELECT 1 FROM workspace WHERE custom_domain = $1 AND custom_domain_verified_at IS NOT NULL)`
 
 	// Hidden-tournament visibility (issue #115): the WS topic ACL must not leak
-	// a hidden tournament's live bracket/draft/map-veto to outsiders.
-	tournamentHiddenSQL    = `SELECT is_hidden FROM tournament.tournament WHERE id = $1`
+	// a hidden tournament's live bracket/draft/map-veto to outsiders. A tournament
+	// also reads hidden when its owning workspace is (Python's
+	// shared/services/tournament_visibility.py:can_view_workspace_tournaments) --
+	// the OR below cascades that without a second cached lookup. allowSpectate's
+	// existing member/superuser/preview-allowlist check already covers the wider
+	// "any member" audience the workspace dimension needs, so no other change
+	// is required here.
+	tournamentHiddenSQL    = `SELECT t.is_hidden OR w.is_hidden FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id WHERE t.id = $1`
 	previewAllowedSQL      = `SELECT EXISTS(SELECT 1 FROM tournament.tournament_preview_access WHERE tournament_id = $1 AND auth_user_id = $2)`
 	encounterTournamentSQL = `SELECT tournament_id FROM tournament.encounter WHERE id = $1`
 

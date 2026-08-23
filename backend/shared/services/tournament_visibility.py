@@ -6,6 +6,14 @@ users on the tournament's preview allowlist. Everyone else must never see it:
 it is filtered out of listings and every direct read returns **404** (not 403,
 to avoid disclosing existence).
 
+A tournament is ALSO gated when its owning ``Workspace.is_hidden`` is set, even
+if the tournament's own ``is_hidden`` is False -- an org that hides itself hides
+its ordinary tournaments too. This is a deliberately DIFFERENT, wider rule
+(``can_view_workspace_tournaments``): any workspace member (or superuser), not
+just admins+allowlist -- consistent with how a hidden workspace is still listed
+to its own members (``WorkspaceService.get_all``). The two gates are
+independent and both must pass; neither is a special case of the other.
+
 Every tournament-scoped read across tournament-service AND app-service routes
 through this module. Gate coverage is the crux of the feature — see issue #115.
 
@@ -19,10 +27,12 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.auth_user import AuthUser
+from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament.preview_access import TournamentPreviewAccess
 from shared.models.tournament.tournament import Tournament
 from shared.services.scrim_scope import is_scrim_container
@@ -30,6 +40,7 @@ from shared.services.scrim_scope import is_scrim_container
 __all__ = (
     "load_preview_user_ids",
     "can_view_tournament",
+    "can_view_workspace_tournaments",
     "assert_tournament_viewable",
     "admin_visible_workspace_ids",
     "visible_tournaments_predicate",
@@ -46,7 +57,11 @@ async def load_preview_user_ids(session: AsyncSession, tournament_id: int) -> se
 
 
 def can_view_tournament(user: AuthUser | None, tournament: Tournament, preview_user_ids: set[int]) -> bool:
-    """Pure predicate: may ``user`` (possibly anonymous) see ``tournament``?"""
+    """Pure predicate: may ``user`` (possibly anonymous) see ``tournament``?
+
+    Only the tournament's OWN ``is_hidden`` flag -- the workspace-cascade
+    dimension is a separate, independent gate: ``can_view_workspace_tournaments``.
+    """
     if not tournament.is_hidden:
         return True
     if user is None:
@@ -54,6 +69,21 @@ def can_view_tournament(user: AuthUser | None, tournament: Tournament, preview_u
     if user.is_workspace_admin(tournament.workspace_id):
         return True
     return int(user.id) in preview_user_ids
+
+
+def can_view_workspace_tournaments(user: AuthUser | None, workspace_id: int, workspace_is_hidden: bool) -> bool:
+    """Pure predicate for the workspace-cascade dimension (see module docstring).
+
+    Independent from ``can_view_tournament``: a tournament hidden only because
+    its OWN workspace is hidden was never itself marked hidden by an admin, so
+    the narrower admin+allowlist rule doesn't apply here -- any member (or
+    superuser) of the workspace sees it, matching ``WorkspaceService.get_all``.
+    """
+    if not workspace_is_hidden:
+        return True
+    if user is None:
+        return False
+    return user.is_superuser or workspace_id in user.get_workspace_ids()
 
 
 async def assert_tournament_viewable(session: AsyncSession, user: AuthUser | None, tournament_id: int) -> Tournament:
@@ -82,8 +112,12 @@ async def assert_tournament_viewable(session: AsyncSession, user: AuthUser | Non
     can reach a scrim room, and ``visible_tournaments_predicate`` still keeps the
     container out of every listing.
     """
-    tournament = await session.scalar(sa.select(Tournament).where(Tournament.id == tournament_id))
+    tournament = await session.scalar(
+        sa.select(Tournament).options(joinedload(Tournament.workspace)).where(Tournament.id == tournament_id)
+    )
     if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    if not can_view_workspace_tournaments(user, tournament.workspace_id, tournament.workspace.is_hidden):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
     if not tournament.is_hidden:
         return tournament
@@ -110,9 +144,15 @@ def admin_visible_workspace_ids(user: AuthUser) -> list[int]:
 def visible_tournaments_predicate(user: AuthUser | None) -> sa.ColumnElement[bool]:
     """SQL predicate for list filtering. Apply to BOTH the page and count query.
 
-    - anonymous: only non-hidden tournaments.
+    - anonymous: only non-hidden tournaments, excluding every hidden workspace.
     - superuser: everything (``sa.true()``).
-    - logged-in: non-hidden OR in an admin workspace OR on the preview allowlist.
+    - logged-in: (non-hidden OR in an admin workspace OR on the preview
+      allowlist) AND NOT in a hidden workspace the viewer isn't a member of.
+
+    The two dimensions are independent (see module docstring): a tournament in
+    an admin's own hidden workspace still needs the tournament-hidden OR-clause
+    to pass on its own merits, but the workspace-hidden AND-clause only needs
+    membership, not admin rights.
     """
     if user is not None and user.is_superuser:
         return sa.true()
@@ -130,7 +170,15 @@ def visible_tournaments_predicate(user: AuthUser | None) -> sa.ColumnElement[boo
         )
     # Avoid the SQLAlchemy single-element or_() deprecation warning (anonymous
     # viewers produce exactly one clause).
-    return clauses[0] if len(clauses) == 1 else sa.or_(*clauses)
+    tournament_visible = clauses[0] if len(clauses) == 1 else sa.or_(*clauses)
+
+    hidden_workspaces = sa.select(Workspace.id).where(Workspace.is_hidden.is_(True))
+    member_workspace_ids = user.get_workspace_ids() if user is not None else []
+    if member_workspace_ids:
+        hidden_workspaces = hidden_workspaces.where(Workspace.id.notin_(member_workspace_ids))
+    workspace_visible = Tournament.workspace_id.notin_(hidden_workspaces)
+
+    return sa.and_(tournament_visible, workspace_visible)
 
 
 def visible_tournament_ids_subquery(user: AuthUser | None):

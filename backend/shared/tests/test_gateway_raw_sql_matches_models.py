@@ -38,6 +38,7 @@ _GATEWAY_COLUMN_DEPENDENCIES: tuple[tuple[str | None, str, str], ...] = (
     ("players", "user", "auth_user_id"),
     (None, "workspace", "custom_domain"),
     (None, "workspace", "custom_domain_verified_at"),
+    (None, "workspace", "is_hidden"),
     ("tournament", "tournament_preview_access", "tournament_id"),
     ("tournament", "tournament_preview_access", "auth_user_id"),
     ("tournament", "encounter", "tournament_id"),
@@ -95,3 +96,11 @@ class GatewayRawSQLMatchesModelsTests(TestCase):
         self.assertIn("u.id = wm.player_id", normalized, msg=normalized)
         self.assertIn("u.auth_user_id = $1", normalized, msg=normalized)
         self.assertNotIn("wm.auth_user_id", normalized, msg=normalized)
+
+    def test_tournament_hidden_lookup_cascades_the_owning_workspace(self) -> None:
+        """A tournament with its own is_hidden=False must still read hidden when
+        its workspace is -- the OR is the whole cascade, no second cached call."""
+        hidden = self.sql.split("tournamentHiddenSQL", 1)[1].split("`", 2)[1]
+        normalized = " ".join(hidden.split())
+        self.assertIn("t.is_hidden OR w.is_hidden", normalized, msg=normalized)
+        self.assertIn("JOIN workspace w ON w.id = t.workspace_id", normalized, msg=normalized)

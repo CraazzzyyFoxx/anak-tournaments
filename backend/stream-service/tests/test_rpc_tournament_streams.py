@@ -104,6 +104,11 @@ class _FakeSession:
         self.executed: list[Any] = []
 
     async def scalar(self, statement: Any) -> Any:
+        # ``assert_tournament_viewable`` now joinedloads ``Tournament.workspace``
+        # for the workspace-hidden cascade; this fake never runs a real join, so
+        # stub a non-hidden workspace onto the transient tournament directly.
+        if self._tournament is not None:
+            self._tournament.workspace = SimpleNamespace(is_hidden=False)
         return self._tournament
 
     async def execute(self, statement: Any) -> Any:
