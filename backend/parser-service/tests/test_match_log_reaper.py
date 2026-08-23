@@ -53,7 +53,7 @@ def _record(**overrides) -> models.LogProcessingRecord:
     record.id = overrides.pop("id", 1)
     record.created_at = overrides.pop("created_at", LONG_AGO)
     record.updated_at = overrides.pop("updated_at", None)
-    record.tournament = models.Tournament(id=78, workspace_id=7, name="OWT 78")
+    record.tournament = models.Tournament(id=78, workspace_id=7, name="OWT 78", slug="owt-78")
     for field, value in overrides.items():
         setattr(record, field, value)
     return record

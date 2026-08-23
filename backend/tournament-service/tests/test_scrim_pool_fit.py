@@ -148,6 +148,7 @@ class _Fixture:
             id=CONTAINER_ID,
             workspace_id=WORKSPACE_ID,
             name=scrim.CONTAINER_NAME,
+            slug="scrims",
             is_hidden=True,
             is_league=False,
             start_date=datetime(2026, 8, 12, tzinfo=UTC),

@@ -37,6 +37,31 @@ func doGet(h http.Handler, target string, auth string) *httptest.ResponseRecorde
 	return rec
 }
 
+// doGetWithID is doGet's cousin for requests whose {id} path value is not the
+// literal "72" doGet hardcodes -- needed to exercise a slug-shaped segment.
+func doGetWithID(h http.Handler, target, id, auth string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req.SetPathValue("id", id)
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// upstreamTournament replies like the tournament-detail RPC: a JSON body
+// whose "id" is the canonical numeric id regardless of which path segment
+// (numeric or slug) the request used to reach it.
+func upstreamTournament(calls *atomic.Int64, id int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, `{"id":%d,"name":"Season 5"}`, id)
+	})
+}
+
 // The core promise: two identical anonymous GETs cost one upstream call, and
 // the second is served from the cache with X-Cache: HIT and the same body.
 func TestAnonymousHitServesStoredResponse(t *testing.T) {
@@ -715,5 +740,111 @@ func TestByteBudgetSmallerThanSingleEntryStillStores(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("calls = %d, want 1", calls.Load())
+	}
+}
+
+// A slug-shaped path segment (Extract fails to parse it as an id) must not
+// silently bypass the cache when the rule carries ExtractFromBody: the first
+// request populates the entry from the response's own numeric "id", and a
+// repeat request for the same slug URL is a HIT.
+func TestSlugPathFallsBackToBodyExtractedID(t *testing.T) {
+	var calls atomic.Int64
+	c := testCache(t)
+	h := c.Wrap(upstreamTournament(&calls, 72), Rule{
+		Extract:         FromPathValue("id"),
+		ExtractFromBody: ExtractIDFromJSONBody(),
+	})
+
+	first := doGetWithID(h, "/api/v1/tournaments/overwatch-season-5", "overwatch-season-5", "")
+	second := doGetWithID(h, "/api/v1/tournaments/overwatch-season-5", "overwatch-season-5", "")
+
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls = %d, want 1", calls.Load())
+	}
+	if got := second.Header().Get("X-Cache"); got != "HIT" {
+		t.Fatalf("X-Cache = %q, want HIT", got)
+	}
+	if first.Body.String() != second.Body.String() {
+		t.Fatalf("cached body diverged: %q vs %q", first.Body.String(), second.Body.String())
+	}
+	// Invalidate(72, ...) must reach it too: the entry was indexed under the
+	// numeric id extracted from the body, not the unparseable path segment.
+	if n := c.Invalidate(72, nil); n != 1 {
+		t.Fatalf("Invalidate(72, nil) = %d, want 1 (slug entry unreachable)", n)
+	}
+	doGetWithID(h, "/api/v1/tournaments/overwatch-season-5", "overwatch-season-5", "")
+	if calls.Load() != 2 {
+		t.Fatalf("calls = %d, want 2 after invalidation", calls.Load())
+	}
+}
+
+// Without ExtractFromBody, a slug-shaped segment keeps bypassing the cache
+// exactly like the pre-existing numeric-id-missing case — the fallback is
+// opt-in per rule, so every other route's behavior is unchanged.
+func TestSlugPathWithoutBodyFallbackBypassesCache(t *testing.T) {
+	var calls atomic.Int64
+	c := testCache(t)
+	h := c.Wrap(upstreamTournament(&calls, 72), Rule{Extract: FromPathValue("id")})
+
+	for range 2 {
+		rec := doGetWithID(h, "/api/v1/tournaments/overwatch-season-5", "overwatch-season-5", "")
+		if rec.Header().Get("X-Cache") != "" {
+			t.Fatal("slug request without ExtractFromBody must bypass the cache")
+		}
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("calls = %d, want 2 (no caching)", calls.Load())
+	}
+}
+
+// registration_changed must still evict the tournament-detail entry when it
+// was reached (and cached) via its slug rather than its numeric id — the
+// bareTournamentDetailPattern shape check does not depend on knowing the
+// segment's literal text the way the old numeric-id substring did.
+func TestBroadcastRegistrationChangedEvictsSlugKeyedDetailEntry(t *testing.T) {
+	var calls atomic.Int64
+	c := testCache(t)
+	h := c.Wrap(upstreamTournament(&calls, 72), Rule{
+		Extract:         FromPathValue("id"),
+		ExtractFromBody: ExtractIDFromJSONBody(),
+	})
+
+	doGetWithID(h, "/api/v1/tournaments/overwatch-season-5", "overwatch-season-5", "")
+
+	c.Broadcast("tournament:72:bracket", realtimeFrame("registration_changed"))
+
+	rec := doGetWithID(h, "/api/v1/tournaments/overwatch-season-5", "overwatch-season-5", "")
+	if rec.Header().Get("X-Cache") == "HIT" {
+		t.Fatal("registration_changed must evict the slug-keyed tournament-detail entry")
+	}
+}
+
+// The shape check must not overreach onto a sibling sub-route (e.g. /stages)
+// sharing the same slug prefix, mirroring the numeric-id "?" boundary case.
+func TestBareTournamentDetailPatternDoesNotOverreachOntoSlugSubroutes(t *testing.T) {
+	var detailCalls, stagesCalls atomic.Int64
+	c := testCache(t)
+	detailHandler := c.Wrap(upstreamTournament(&detailCalls, 72), Rule{
+		Extract:         FromPathValue("id"),
+		ExtractFromBody: ExtractIDFromJSONBody(),
+	})
+	stagesHandler := c.Wrap(upstreamTournament(&stagesCalls, 72), Rule{
+		Extract:         FromPathValue("id"),
+		ExtractFromBody: ExtractIDFromJSONBody(),
+	})
+
+	doGetWithID(detailHandler, "/api/v1/tournaments/overwatch-season-5", "overwatch-season-5", "")
+	stagesReq := httptest.NewRequest(http.MethodGet, "/api/v1/tournaments/overwatch-season-5/stages", nil)
+	stagesReq.SetPathValue("id", "overwatch-season-5")
+	stagesHandler.ServeHTTP(httptest.NewRecorder(), stagesReq)
+
+	c.Broadcast("tournament:72:bracket", realtimeFrame("registration_changed"))
+
+	stagesReq2 := httptest.NewRequest(http.MethodGet, "/api/v1/tournaments/overwatch-season-5/stages", nil)
+	stagesReq2.SetPathValue("id", "overwatch-season-5")
+	rec := httptest.NewRecorder()
+	stagesHandler.ServeHTTP(rec, stagesReq2)
+	if rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("registration_changed must not evict the slug-keyed /stages entry")
 	}
 }

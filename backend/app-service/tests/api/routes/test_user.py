@@ -170,18 +170,21 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             models.Tournament(
                 id=ids["subject_cohort_tournament"],
                 name="Compare Division Subject Cohort",
+                slug="compare-division-subject-cohort",
                 is_finished=True,
                 is_league=False,
             ),
             models.Tournament(
                 id=ids["subject_other_tournament"],
                 name="Compare Division Subject Other",
+                slug="compare-division-subject-other",
                 is_finished=True,
                 is_league=False,
             ),
             models.Tournament(
                 id=ids["baseline_cohort_tournament"],
                 name="Compare Division Baseline Cohort",
+                slug="compare-division-baseline-cohort",
                 is_finished=True,
                 is_league=False,
             ),

@@ -65,6 +65,7 @@ def _tournament(
         updated_at=None,
         workspace_id=_WORKSPACE_ID,
         name=f"Tournament {tournament_id}",
+        slug=f"tournament-{tournament_id}",
         description=None,
         is_league=False,
         is_finished=False,

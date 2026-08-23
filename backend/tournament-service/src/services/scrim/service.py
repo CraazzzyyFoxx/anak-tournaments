@@ -312,6 +312,12 @@ class ScrimService:
         container = models.Tournament(
             workspace_id=workspace_id,
             name=CONTAINER_NAME,
+            # Deterministic, not generated: one container per workspace (see the
+            # lookup above), so workspace_id alone already guarantees uniqueness
+            # without the collision-checking path real tournaments go through.
+            # Never surfaced (is_hidden, not a real tournament), so a stable
+            # internal value is all the public-URL slug column needs here.
+            slug=f"scrims-{workspace_id}",
             description="Container for ad-hoc scrim rooms. Not a real tournament.",
             is_hidden=True,
             status=TournamentStatus.LIVE,

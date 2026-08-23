@@ -8,12 +8,14 @@ the routes' ``response_model_exclude_none``. The gateway provides path params as
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core.enums import PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import TournamentRepository
 from shared.rpc.identity import rehydrate_user_optional
 from shared.rpc.query import build_query_model
 from shared.services.division_grid_access import build_workspace_division_grid_normalizer
@@ -29,6 +31,24 @@ from src.services.encounter import pick_ban_session as pick_ban_session_service
 from src.services.standings import flows as standings_flows
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
+
+_NUMERIC_REF = re.compile(r"^[1-9]\d*$")
+
+
+async def _resolve_tournament_id(session: Any, data: dict[str, Any]) -> int:
+    """The public ``{id}`` path segment is a legacy numeric id, the current
+    slug, or a slug an explicit admin rename retired -- resolve any of them to
+    the canonical numeric id everything downstream (cache keys, invalidation,
+    visibility gate) still keys on.
+    """
+    raw = str(data.get("id") or "").strip()
+    if not raw:
+        raise HTTPException(status_code=422, detail="id is required")
+    ref: int | str = int(raw) if _NUMERIC_REF.fullmatch(raw) else raw
+    tournament = await TournamentRepository().resolve_public_ref(session, ref)
+    if tournament is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return tournament.id
 
 
 def _identity_user_id(data: dict[str, Any]) -> int | None:
@@ -72,9 +92,10 @@ def register(broker: Any, logger: Any) -> None:
     async def _get_tournament(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             viewer = rehydrate_user_optional(data.get("identity"))
+            tournament_id = await _resolve_tournament_id(session, data)
             # Gate BEFORE the cached get_read (cache is keyed without the viewer).
-            await assert_tournament_viewable(session, viewer, _require_id(data))
-            return await tournament_flows.flows_service.get_read(session, _require_id(data), _q(data, "entities") or [])
+            await assert_tournament_viewable(session, viewer, tournament_id)
+            return await tournament_flows.flows_service.get_read(session, tournament_id, _q(data, "entities") or [])
 
         return await _read(logger, op, exclude_none=True)
 

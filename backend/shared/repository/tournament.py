@@ -22,6 +22,27 @@ class TournamentRepository(BaseRepository[models.Tournament]):
     async def get_by_name(self, session: AsyncSession, name: str) -> models.Tournament | None:
         return await self.get_by(session, name=name)
 
+    async def get_by_slug(self, session: AsyncSession, slug: str) -> models.Tournament | None:
+        return await self.get_by(session, slug=slug)
+
+    async def resolve_public_ref(self, session: AsyncSession, ref: int | str) -> models.Tournament | None:
+        """Resolve a public URL ref to a tournament: a legacy numeric id, the
+        current slug, or an old slug an explicit rename retired (see
+        ``models.TournamentSlugRedirect``). Old links keep resolving even after
+        a rename -- only newly generated links ever use the current slug.
+        """
+        if isinstance(ref, int):
+            return await self.get(session, ref)
+        tournament = await self.get_by_slug(session, ref)
+        if tournament is not None:
+            return tournament
+        redirected_id = await session.scalar(
+            sa.select(models.TournamentSlugRedirect.tournament_id).where(
+                models.TournamentSlugRedirect.old_slug == ref
+            )
+        )
+        return await self.get(session, redirected_id) if redirected_id is not None else None
+
     async def get_workspace_id(self, session: AsyncSession, tournament_id: int) -> int | None:
         """The owning workspace, without loading the rest of the row.
 

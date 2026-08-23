@@ -38,6 +38,7 @@ def _tournament() -> models.Tournament:
         updated_at=None,
         workspace_id=1,
         name="Tournament 10",
+        slug="tournament-10",
         description=None,
         is_league=False,
         is_finished=False,

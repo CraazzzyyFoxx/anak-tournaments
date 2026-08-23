@@ -93,6 +93,8 @@ export interface Tournament {
   updated_at: Date | null;
   workspace_id: number;
   name: string;
+  // Public-URL identity (`/tournaments/{slug}`); see lib/tournament-url.ts.
+  slug: string;
   start_date: Date;
   end_date: Date;
   description: string | null;

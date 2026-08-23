@@ -18,6 +18,7 @@ from shared.services.draft_guards import assert_no_active_draft_session
 from shared.services.registration_team_guards import assert_no_registered_teams
 from shared.services.roster_shape_access import invalidate_roster_shape_cache
 from shared.services.tournament_computation import request_bracket_job
+from shared.services.tournament_slug import generate_unique_tournament_slug, slugify
 from src import models
 from src.clients.challonge import challonge_client
 from src.schemas.admin import tournament as admin_schemas
@@ -180,6 +181,10 @@ class AdminTournamentService:
             )
 
         payload = data.model_dump()
+        payload["slug"] = await generate_unique_tournament_slug(
+            session, data.name, tournament_repo=self.tournament_repo
+        )
+
         payload["division_grid_version_id"] = await self._resolve_division_grid_version_id(
             session,
             workspace_id=data.workspace_id,
@@ -242,6 +247,21 @@ class AdminTournamentService:
                 )
             else:
                 await self._unlink_tournament_challonge_source(session, tournament)
+
+        if "slug" in update_data:
+            requested_slug = update_data.pop("slug")
+            new_slug = slugify(requested_slug) if requested_slug else None
+            if new_slug and new_slug != tournament.slug:
+                slug_taken = await self.tournament_repo.get_by_slug(session, new_slug)
+                redirect_taken = await session.scalar(
+                    sa.select(models.TournamentSlugRedirect.id).where(
+                        models.TournamentSlugRedirect.old_slug == new_slug
+                    )
+                )
+                if slug_taken is not None or redirect_taken is not None:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slug already in use")
+                session.add(models.TournamentSlugRedirect(old_slug=tournament.slug, tournament_id=tournament.id))
+                tournament.slug = new_slug
 
         if "division_grid_version_id" in update_data:
             update_data["division_grid_version_id"] = await self._resolve_division_grid_version_id(

@@ -151,6 +151,7 @@ class ScrimContainerVisibilityTests(IsolatedAsyncioTestCase):
                     id=tournament_id,
                     workspace_id=WORKSPACE_ID,
                     name=name,
+                    slug=f"tournament-{tournament_id}",
                     is_hidden=hidden,
                     is_league=False,
                     start_date=datetime(2026, 8, 12, tzinfo=UTC),

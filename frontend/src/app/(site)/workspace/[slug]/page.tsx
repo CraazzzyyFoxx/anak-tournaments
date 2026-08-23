@@ -17,6 +17,7 @@ import heroService from "@/services/hero.service";
 import workspaceService from "@/services/workspace.service";
 import tournamentService from "@/services/tournament.service";
 import { formatDateRange } from "@/lib/utils";
+import { tournamentHref } from "@/lib/tournament-url";
 import {
   ChartCardSkeleton,
   PopularHeroesCardSkeleton,
@@ -224,7 +225,7 @@ async function EventCard({ tournament }: Readonly<{ tournament: TournamentWithCo
 
   return (
     <Link
-      href={`/tournaments/${tournament.id}`}
+      href={tournamentHref(tournament)}
       className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
     >
       <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150">

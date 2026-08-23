@@ -15,6 +15,7 @@ import workspaceService from "@/services/workspace.service";
 import tournamentService from "@/services/tournament.service";
 import { isTenantHost } from "@/lib/tenant-host";
 import { formatDateRange } from "@/lib/utils";
+import { tournamentHref } from "@/lib/tournament-url";
 import {
   ChartCardSkeleton,
   StatsGridSkeleton,
@@ -262,7 +263,7 @@ async function EventCard({
   );
 
   return (
-    <Link href={`/tournaments/${tournament.id}`} className={CARD_LINK_FOCUS}>
+    <Link href={tournamentHref(tournament)} className={CARD_LINK_FOCUS}>
       <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150">
         {/* Status + badges row */}
         <div className="flex items-center justify-between">

@@ -44,6 +44,9 @@ class TournamentUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     challonge_slug: str | None = None
+    # Explicit rename of the public-URL slug (frozen otherwise). Slugified
+    # server-side; the retired value keeps resolving via a slug_redirect row.
+    slug: str | None = None
     is_league: bool | None = None
     is_finished: bool | None = None
     is_hidden: bool | None = None

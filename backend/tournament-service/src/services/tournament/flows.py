@@ -161,6 +161,7 @@ class TournamentFlowsService:
         return schemas.TournamentRead(
             id=tournament.id,
             workspace_id=tournament.workspace_id,
+            slug=tournament.slug,
             start_date=tournament.start_date,
             end_date=tournament.end_date,
             is_league=tournament.is_league,

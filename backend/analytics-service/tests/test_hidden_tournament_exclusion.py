@@ -157,6 +157,7 @@ class _Fixture:
             id=tournament_id,
             workspace_id=WORKSPACE_ID,
             name=name or f"Tournament {tournament_id}",
+            slug=f"tournament-{tournament_id}",
             is_hidden=is_hidden,
             # ``AnalyticsMatch.time`` is a required datetime sourced from here.
             # A lazily provisioned scrim container has no start date, which is a

@@ -44,6 +44,8 @@ class TournamentPhaseScheduleRead(BaseModel):
 class TournamentRead(BaseRead):
     workspace_id: int
     name: str
+    # Public-URL identity (`/tournaments/{slug}`); see Tournament.slug.
+    slug: str
     description: str | None
     challonge_id: int | None
     challonge_slug: str | None
