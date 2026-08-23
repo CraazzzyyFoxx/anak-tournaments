@@ -16,17 +16,63 @@ tournament names are frequently Russian) run once for existing rows; every
 tournament created after this migration gets its slug from the same algorithm
 in ``shared.services.tournament_slug.slugify`` instead. Collisions within the
 backfill are disambiguated with a ``-2``, ``-3``, ... suffix ordered by id.
+
+``tournament.tournament`` is read by nearly every service in the system, so
+each ``ADD COLUMN``/``ALTER COLUMN``/``CREATE UNIQUE INDEX`` below needs an
+ACCESS EXCLUSIVE lock that has to land in a gap between transactions --
+``_with_lock_retry`` is the same short-timeout-plus-retry technique as
+``streamvis01_user_stream_visible.py`` (see that file for the full rationale
+and the query to name whatever is holding the lock if every attempt here
+still gives up).
 """
 
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.exc import OperationalError
 
 revision: str = "tslug0001"
 down_revision: str | Sequence[str] | None = "wshidden01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# SQLSTATE 55P03 (``lock_not_available``): matched precisely so a real failure
+# (bad type, missing table) raises immediately instead of being retried and
+# reported as a lock problem.
+LOCK_NOT_AVAILABLE = "55P03"
+LOCK_TIMEOUT = "3s"
+LOCK_ATTEMPTS = 40
+LOCK_BACKOFF_SECONDS = 6.0
+
+
+def _with_lock_retry(operation: Callable[[], None]) -> None:
+    """Run a DDL statement, retrying while Postgres refuses it the lock.
+
+    Each attempt is its own SAVEPOINT: a cancelled statement aborts the
+    transaction alembic wraps the migration in, and the next attempt needs a
+    clean one to run in. ``SET LOCAL`` is issued outside the savepoint so
+    rolling one back does not also roll back the timeout.
+    """
+    bind = op.get_bind()
+    bind.execute(sa.text(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'"))
+
+    for attempt in range(1, LOCK_ATTEMPTS + 1):
+        savepoint = bind.begin_nested()
+        try:
+            operation()
+        except OperationalError as exc:
+            savepoint.rollback()
+            if getattr(exc.orig, "sqlstate", None) != LOCK_NOT_AVAILABLE:
+                raise
+            if attempt == LOCK_ATTEMPTS:
+                raise
+            time.sleep(LOCK_BACKOFF_SECONDS)
+        else:
+            savepoint.commit()
+            return
+
 
 # Cyrillic digraphs must be substituted before the single-character TRANSLATE
 # below (ж/ц/ч/ш/щ/ю/я have no one-character Latin equivalent; ъ/ь drop).
@@ -68,7 +114,11 @@ WHERE ranked.id = t.id
 
 
 def upgrade() -> None:
-    op.add_column("tournament", sa.Column("slug", sa.String(), nullable=True), schema="tournament")
+    _with_lock_retry(
+        lambda: op.add_column(
+            "tournament", sa.Column("slug", sa.String(), nullable=True), schema="tournament"
+        )
+    )
 
     name_expr = "lower(name)"
     for src, dst in _DIGRAPHS:
@@ -77,13 +127,17 @@ def upgrade() -> None:
         sa.text(_BACKFILL_SQL.format(name_expr=name_expr)).bindparams(src=_SINGLE_SRC, dst=_SINGLE_DST)
     )
 
-    op.alter_column("tournament", "slug", nullable=False, schema="tournament")
-    op.create_index(
-        op.f("ix_tournament_tournament_slug"),
-        "tournament",
-        ["slug"],
-        unique=True,
-        schema="tournament",
+    _with_lock_retry(
+        lambda: op.alter_column("tournament", "slug", nullable=False, schema="tournament")
+    )
+    _with_lock_retry(
+        lambda: op.create_index(
+            op.f("ix_tournament_tournament_slug"),
+            "tournament",
+            ["slug"],
+            unique=True,
+            schema="tournament",
+        )
     )
 
     op.create_table(
@@ -117,5 +171,9 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_tournament_slug_redirect_tournament_id"), table_name="slug_redirect", schema="tournament")
     op.drop_index(op.f("ix_tournament_slug_redirect_old_slug"), table_name="slug_redirect", schema="tournament")
     op.drop_table("slug_redirect", schema="tournament")
-    op.drop_index(op.f("ix_tournament_tournament_slug"), table_name="tournament", schema="tournament")
-    op.drop_column("tournament", "slug", schema="tournament")
+    _with_lock_retry(
+        lambda: op.drop_index(
+            op.f("ix_tournament_tournament_slug"), table_name="tournament", schema="tournament"
+        )
+    )
+    _with_lock_retry(lambda: op.drop_column("tournament", "slug", schema="tournament"))
