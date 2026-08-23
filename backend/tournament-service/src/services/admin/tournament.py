@@ -181,9 +181,21 @@ class AdminTournamentService:
             )
 
         payload = data.model_dump()
-        payload["slug"] = await generate_unique_tournament_slug(
-            session, data.name, tournament_repo=self.tournament_repo
-        )
+        if data.slug:
+            requested_slug = slugify(data.slug)
+            slug_taken = await self.tournament_repo.get_by_slug(session, requested_slug)
+            redirect_taken = await session.scalar(
+                sa.select(models.TournamentSlugRedirect.id).where(
+                    models.TournamentSlugRedirect.old_slug == requested_slug
+                )
+            )
+            if slug_taken is not None or redirect_taken is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slug already in use")
+            payload["slug"] = requested_slug
+        else:
+            payload["slug"] = await generate_unique_tournament_slug(
+                session, data.name, tournament_repo=self.tournament_repo
+            )
 
         payload["division_grid_version_id"] = await self._resolve_division_grid_version_id(
             session,
