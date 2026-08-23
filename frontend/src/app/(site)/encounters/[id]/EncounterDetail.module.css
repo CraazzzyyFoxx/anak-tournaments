@@ -116,7 +116,7 @@
 }
 
 .label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -669,7 +669,7 @@
 /* The head cells carry abbreviations because the columns are ~3rem wide; the
    full column name is the accessible name and the explanation is the title. */
 .rosterHeadCell {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -736,13 +736,13 @@
 
 .playerTag {
   font-family: var(--ed-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ed-faint);
 }
 
 .playerSpec {
   font-family: var(--ed-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ed-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -812,7 +812,7 @@
 }
 
 .seriesTable th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;

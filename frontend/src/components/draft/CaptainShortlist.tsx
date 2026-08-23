@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag, HelpCircle } from "lucide-react";
+import { Flag, HelpCircle, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
@@ -22,7 +22,7 @@ export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: 
 
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("shortlist")}>
-      <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.13em] text-[color:var(--aqt-fg-muted)]">
+      <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.13em] text-[color:var(--aqt-fg-muted)]">
         <Flag className="h-3 w-3 text-[color:var(--aqt-teal)]" aria-hidden />
         {t("shortlist")}
         <TooltipProvider delayDuration={200}>
@@ -52,7 +52,7 @@ export function CaptainShortlist({ players, onSelect, onRemove, divisionGrid }: 
               )}
               <span className="min-w-0 truncate">{player.battle_tag ?? `#${player.id}`}</span>
             </button>
-            <button type="button" className="relative grid h-5 w-5 shrink-0 place-items-center rounded text-[color:var(--aqt-fg-muted)] outline-none after:absolute after:-inset-x-0.5 after:-inset-y-1.5 after:content-[''] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]" onClick={() => onRemove(player.id)} aria-label={t("removeShortlist")}>×</button>
+            <button type="button" className="relative grid h-5 w-5 shrink-0 place-items-center rounded text-[color:var(--aqt-fg-muted)] outline-none after:absolute after:-inset-x-0.5 after:-inset-y-1.5 after:content-[''] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]" onClick={() => onRemove(player.id)} aria-label={t("removeShortlist")}><X className="size-4" aria-hidden /></button>
           </div>
         );
       })}

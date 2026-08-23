@@ -96,6 +96,10 @@ function BrandColorField({
 }>) {
   const hex = value ?? "";
   const valid = /^#[0-9a-fA-F]{6}$/.test(hex);
+  // Both hexes below are exempt from the design-token rule: `<input type="color">`
+  // only accepts a literal `#rrggbb` (it cannot resolve a CSS variable), and the
+  // text field's placeholder just shows that expected shape. Neither paints chrome
+  // — the value they carry is the workspace's own persisted brand colour.
   return (
     <div>
       <Label htmlFor={id}>{label}</Label>

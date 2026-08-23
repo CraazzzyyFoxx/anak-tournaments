@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { Crown, Trophy } from "lucide-react";
 import { LogStatsName } from "@/types/stats.types";
 import type { HeroBestStat, HeroWithUserStats } from "@/types/hero.types";
@@ -38,6 +38,7 @@ interface Record {
  *  shows the map/tournament on hover; a crown marks an all-time (global) best. */
 const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
   const t = useTranslations();
+  const format = useFormatter();
   const records: Record[] = RECORD_STATS.map((name) => {
     const stat = hero.stats.find((s) => s.name === name);
     if (!stat || !stat.best || !Number.isFinite(stat.best.value) || stat.best.value <= 0) return null;
@@ -61,7 +62,7 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
                   href={`/encounters/${best.encounter_id}`}
                   className="flex flex-col gap-1 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.018)] px-3 py-2.5 transition-colors hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)]"
                 >
-                  <span className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
                     {getHumanizedStats(name)}
                     {isGlobalRecord ? (
                       <Crown
@@ -72,7 +73,7 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
                     ) : null}
                   </span>
                   <span className="aqt-display text-[24px] font-bold leading-none text-[color:var(--aqt-fg)]">
-                    {formatStatValue(name, best.value)}
+                    {formatStatValue(format, name, best.value)}
                   </span>
                   <span className="aqt-mono truncate text-[11px] text-[color:var(--aqt-fg-dim)]">
                     {best.map_name} · {best.tournament_name}

@@ -26,7 +26,7 @@ import { formatSubRoleLabel, getHeroIconUrl, getPlayerSlug } from "@/utils/playe
 import { optionForSelection, playerRoles, roleTopHeroes } from "@/lib/draft-workspace-model";
 
 const BADGE_CLASS =
-  "rounded border border-[color:var(--aqt-border-2)] px-1 text-[10px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]";
+  "rounded border border-[color:var(--aqt-border-2)] px-1 text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]";
 
 interface PlayerInspectorProps {
   player: DraftPlayer | null;

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
 import { BarChart3, ChevronDown, ChevronUp, LayoutGrid, Search, Trophy } from "lucide-react";
@@ -185,6 +185,7 @@ const UsersRedesignClient = () => {
   const divisionGrid = useDivisionGrid();
   const workspaceId = useCurrentWorkspaceId();
   const t = useTranslations();
+  const format = useFormatter();
 
   const page = parsePositiveInt(searchParams?.get("page") ?? null, 1);
   const perPage = parsePositiveInt(searchParams?.get("per_page") ?? null, 20);
@@ -392,7 +393,7 @@ const UsersRedesignClient = () => {
             <div className={styles.heroStat}>
               <span className={styles.statLabel}>{t("users.list.stats.totalPlayers")}</span>
               <span className={styles.statValue}>
-                {stats ? stats.total_players.toLocaleString("en") : "-"}
+                {stats ? format.number(stats.total_players) : "-"}
               </span>
               <span className={styles.statSub}>
                 {stats
@@ -412,7 +413,7 @@ const UsersRedesignClient = () => {
               </span>
               <span className={styles.statSub}>
                 {stats
-                  ? t("users.list.stats.withParsedGames", { count: stats.with_logs_count.toLocaleString("en") })
+                  ? t("users.list.stats.withParsedGames", { count: format.number(stats.with_logs_count) })
                   : "—"}
               </span>
             </div>
@@ -430,7 +431,7 @@ const UsersRedesignClient = () => {
             <div className={styles.heroStat}>
               <span className={styles.statLabel}>{t("users.list.stats.activeLast30d")}</span>
               <span className={styles.statValue}>
-                {stats ? stats.active_last_30d.toLocaleString("en") : "-"}
+                {stats ? format.number(stats.active_last_30d) : "-"}
               </span>
               <span className={styles.statSub}>
                 {stats ? t("users.list.stats.ofRoster", { pct: String(Math.round(stats.active_last_30d_pct)) }) : "—"}

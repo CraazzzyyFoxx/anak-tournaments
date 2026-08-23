@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
@@ -34,8 +35,9 @@ function formatRankSource(role: RegistrationRankAutofillRole): string {
  * analytics, with the chosen signal marked. Lines with no value are omitted.
  */
 function formatBlendBreakdown(role: RegistrationRankAutofillRole): string[] {
+  // Plain-text `title` content, so the marker has to stay a word rather than an icon.
   const mark = (source: RegistrationRankAutofillRole["used_source"]) =>
-    role.used_source === source ? " ← used" : "";
+    role.used_source === source ? " (used)" : "";
   const lines: string[] = [];
   if (role.ow_rank_value != null) {
     lines.push(`OW (week) ${role.ow_rank_value}${mark("ow")}`);
@@ -146,7 +148,7 @@ function RankAutofillRolePill({ role }: Readonly<{ role: RegistrationRankAutofil
                 <DivisionIcon division={currentDivision} width={16} height={16} />
               )}
               <span className="tabular-nums opacity-50">{role.current_rank_value}</span>
-              <span className="opacity-40">→</span>
+              <ArrowRight className="size-4 shrink-0 opacity-40" aria-hidden />
             </>
           )}
           {primaryDivision != null && (
@@ -234,7 +236,7 @@ export function RankAutofillPreviewTables({
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
             {t("rankAutofill.sections.assign")}
           </span>
-          <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+          <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-300">
             {selectedIds.size}/{updatablePlayers.length}
           </span>
         </div>
@@ -259,13 +261,14 @@ export function RankAutofillPreviewTables({
                     {playerLabel(player)}
                   </span>
                   {player.partial && (
-                    <span className="shrink-0 rounded border border-amber-400/20 bg-amber-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-200">
+                    <span className="shrink-0 rounded border border-amber-400/20 bg-amber-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-amber-200">
                       {t("rankAutofill.badgePartial")}
                     </span>
                   )}
                   {player.will_add_to_balancer && (
-                    <span className="shrink-0 rounded border border-cyan-400/20 bg-cyan-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-cyan-200">
-                      → Balancer
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-cyan-400/20 bg-cyan-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-cyan-200">
+                      <ArrowRight className="size-4 shrink-0" aria-hidden />
+                      Balancer
                     </span>
                   )}
                 </div>
@@ -290,7 +293,7 @@ export function RankAutofillPreviewTables({
             {t("rankAutofill.sections.skipped")}
           </span>
           {skippedPlayers.length > 0 && (
-            <span className="rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300">
+            <span className="rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-orange-300">
               {skippedPlayers.length}
             </span>
           )}
@@ -326,7 +329,7 @@ export function RankAutofillPreviewTables({
             {t("rankAutofill.sections.alreadySet")}
           </span>
           {unchangedPlayers.length > 0 && (
-            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--aqt-fg-dim)]">
+            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">
               {unchangedPlayers.length}
             </span>
           )}
@@ -349,12 +352,12 @@ export function RankAutofillPreviewTables({
                       {playerLabel(player)}
                     </span>
                     {hasUnverifiedRole(player) && (
-                      <span className="shrink-0 rounded border border-amber-400/20 bg-amber-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-200">
+                      <span className="shrink-0 rounded border border-amber-400/20 bg-amber-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-amber-200">
                         {t("rankAutofill.badgeUnverified")}
                       </span>
                     )}
                     {playerHasMismatch(player) && (
-                      <span className="shrink-0 rounded border border-rose-400/20 bg-rose-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-rose-200">
+                      <span className="shrink-0 rounded border border-rose-400/20 bg-rose-500/10 px-1 py-px text-[11px] font-semibold uppercase tracking-wide text-rose-200">
                         {t("rankAutofill.badgeMismatch")}
                       </span>
                     )}

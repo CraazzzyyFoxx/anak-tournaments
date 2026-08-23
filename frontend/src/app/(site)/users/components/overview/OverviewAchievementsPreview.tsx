@@ -77,12 +77,12 @@ const OverviewAchievementsPreview = async ({ achievements, userSlug, limit = DEF
                 </div>
                 <div className="flex items-center gap-2">
                   <span
-                    className="aqt-mono text-[10px] font-bold uppercase tracking-[0.1em]"
+                    className="aqt-mono text-[11px] font-bold uppercase tracking-[0.1em]"
                     style={{ color: "hsl(var(--rar))" }}
                   >
                     <span aria-hidden>◆</span> {rarityLabel}
                   </span>
-                  <span className="aqt-mono text-[10px] text-[color:var(--aqt-fg-dim)]">
+                  <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-dim)]">
                     {(ach.rarity * 100).toFixed(2)}%
                   </span>
                 </div>

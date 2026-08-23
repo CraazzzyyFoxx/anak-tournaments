@@ -157,7 +157,7 @@ export function PregameAdminControls({
 
         {awaitingChoice ? (
           <div className="flex flex-col gap-1">
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
               {t("admin.electLabel")}
             </span>
             <div className="flex gap-1">
@@ -222,7 +222,7 @@ function ChoiceGroup<TValue extends string>({
 }>) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+      <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
         {label}
       </span>
       <div className="flex gap-1">

@@ -220,7 +220,7 @@ const HeroBadge = ({
           {hero.name ?? t("users.compare.allHeroes")}
         </span>
         {hero.playtimeSeconds !== undefined ? (
-          <span className="aqt-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+          <span className="aqt-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
             {hero.playtimeLabel ?? t("users.compare.playtime")}:{" "}
             {formatDuration(hero.playtimeSeconds, durationUnits)}
           </span>
@@ -277,7 +277,7 @@ const CompareUnifiedTable = ({
                 <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">
                   {subjectName}
                 </span>
-                <span className="aqt-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+                <span className="aqt-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
                   {t("users.compare.selectedUserColumn")}
                 </span>
               </div>
@@ -288,7 +288,7 @@ const CompareUnifiedTable = ({
                 <span className="text-sm font-semibold text-[color:var(--aqt-fg)]">
                   {baselineName}
                 </span>
-                <span className="aqt-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+                <span className="aqt-mono text-[11px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
                   {isTargetBaseline
                     ? t("users.compare.compareAgainst")
                     : t("users.compare.baseline")}

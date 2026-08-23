@@ -124,7 +124,7 @@ export default function ActiveEvents() {
                 <span className="text-xs font-medium text-muted-foreground truncate">
                   {group.workspace.name}
                 </span>
-                <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
+                <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
                   {group.totalRegistrations}
                   <Users className="ml-0.5 inline size-2.5" aria-hidden />
                 </span>
@@ -147,14 +147,14 @@ export default function ActiveEvents() {
                         <span className="block truncate">{tournament.name}</span>
                         <span
                           className={cn(
-                            "block text-[10px] uppercase tracking-wide",
+                            "block text-[11px] uppercase tracking-wide",
                             statusMeta.badgeClassName
                           )}
                         >
                           {statusMeta.badgeLabel}
                         </span>
                       </div>
-                      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                         {tournament.registrations_count ?? 0}
                         <Users className="ml-0.5 inline size-2.5" aria-hidden />
                       </span>

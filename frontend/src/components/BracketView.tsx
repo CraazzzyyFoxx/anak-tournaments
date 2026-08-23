@@ -5,7 +5,7 @@ import { Pencil, FileEdit, ListChecks, Maximize2, Search } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useSearchParams } from "next/navigation";
 
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 
 import {
   Dialog,
@@ -36,6 +36,8 @@ import {
 } from "@/hooks/useBracketRoundLabel";
 
 type Translate = ReturnType<typeof useTranslations<never>>;
+/** Only `dateTime` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
+type DateFormatter = Pick<ReturnType<typeof useFormatter>, "dateTime">;
 
 interface BracketViewProps {
   encounters: Encounter[];
@@ -489,7 +491,7 @@ function buildLayout(
   };
 }
 
-function getMatchMeta(encounter: Encounter, t: Translate) {
+function getMatchMeta(encounter: Encounter, t: Translate, format: DateFormatter) {
   const isCompleted = COMPLETED_STATUSES.has(encounter.status);
   const isLive = !isCompleted && Boolean(encounter.started_at) && !encounter.ended_at;
   const played = (encounter.score?.home ?? 0) + (encounter.score?.away ?? 0);
@@ -499,7 +501,7 @@ function getMatchMeta(encounter: Encounter, t: Translate) {
   if (isLive) {
     timeLabel = t("common.live");
   } else if (!isCompleted && encounter.scheduled_at) {
-    timeLabel = new Date(encounter.scheduled_at).toLocaleDateString("en-US", {
+    timeLabel = format.dateTime(new Date(encounter.scheduled_at), {
       month: "short",
       day: "numeric"
     });
@@ -527,7 +529,8 @@ function MatchCard({
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
 }>) {
   const t = useTranslations();
-  const meta = getMatchMeta(encounter, t);
+  const format = useFormatter();
+  const meta = getMatchMeta(encounter, t, format);
   const hasVisibleScore = data.isCompleted || data.homeScore !== 0 || data.awayScore !== 0;
   const footerHeight = CARD_HEIGHT - CARD_ROW_HEIGHT * 2;
 
@@ -604,7 +607,7 @@ function MatchCard({
       <div
         className={cn(
           "flex items-center justify-between gap-2 px-2.5 transition-colors",
-          side === "home" && "border-b border-[var(--aqt-border)]",
+          side === "home" && "border-b border-[color:var(--aqt-border)]",
           getRowClasses(side),
           isHighlighted(side) &&
             "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] text-[color:var(--aqt-fg)]"
@@ -667,19 +670,19 @@ function MatchCard({
   return (
     <div
       className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-[10px] border bg-[var(--aqt-card)] shadow-[0_10px_24px_rgba(0,0,0,0.28)]",
+        "relative flex h-full flex-col overflow-hidden rounded-[10px] border bg-[color:var(--aqt-card)] shadow-[0_10px_24px_rgba(0,0,0,0.28)]",
         meta.isLive
           ? "border-[color:color-mix(in_srgb,var(--aqt-rose)_45%,transparent)]"
           : data.winner
-            ? "border-[var(--aqt-border-2)]"
-            : "border-[var(--aqt-border)]"
+            ? "border-[color:var(--aqt-border-2)]"
+            : "border-[color:var(--aqt-border)]"
       )}
     >
       {renderRow("home")}
       {renderRow("away")}
 
       <div
-        className="flex items-center justify-between gap-2 border-t border-[var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5"
+        className="flex items-center justify-between gap-2 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5"
         style={{ height: footerHeight }}
       >
         <div className="flex items-center gap-2">
@@ -721,7 +724,7 @@ function MatchCard({
         {meta.timeLabel && (
           <span
             className={cn(
-              "flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wide",
+              "flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-wide",
               meta.isLive ? "text-[color:var(--aqt-rose)]" : "text-[color:var(--aqt-fg-muted)]"
             )}
           >
@@ -757,7 +760,7 @@ function resultStatusBadge(encounter: Encounter, t: Translate) {
         : "var(--aqt-fg-faint)";
   return (
     <span
-      className="absolute left-1 top-1 rounded px-1 text-[9px] font-semibold uppercase"
+      className="absolute left-1 top-1 rounded px-1 text-[11px] font-semibold uppercase"
       style={{ background: color, color: "var(--aqt-bg)" }}
     >
       {label}

@@ -453,22 +453,15 @@ const TeamRow = ({
         ? styles.deltaDown
         : undefined;
 
-  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onToggle();
-    }
-  };
+  // No onKeyDown: the row is a real <button>, so Enter/Space activate it natively.
 
   return (
     <div className={styles.teamRow} id={team.id.toString()}>
-      <div
+      <button
+        type="button"
         className={styles.teamRowMain}
-        role="button"
-        tabIndex={0}
         aria-expanded={open}
         onClick={onToggle}
-        onKeyDown={onKeyDown}
       >
         <span className={cn(styles.groupBand, groupClass)} />
         <div className={styles.placement}>
@@ -546,7 +539,7 @@ const TeamRow = ({
           size={18}
           aria-hidden="true"
         />
-      </div>
+      </button>
       {open ? <TeamDetail team={team} performanceByPlayer={performanceByPlayer} /> : null}
     </div>
   );

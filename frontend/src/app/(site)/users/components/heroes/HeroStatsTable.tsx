@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { ArrowDown, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogStatsName } from "@/types/stats.types";
@@ -35,6 +35,7 @@ const HeroStatsTable = ({
   onSearchChange: (value: string) => void;
 }) => {
   const t = useTranslations();
+  const format = useFormatter();
   // Plain render helper (not a component) to avoid recreating a component during render.
   // `srLabel` names the column for assistive tech when the visible header is a
   // bare symbol (the Δ column) that reads as nonsense on its own.
@@ -110,11 +111,11 @@ const HeroStatsTable = ({
                     />
                   ) : null}
                 </td>
-                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{formatStatValue(r.name, r.overall)}</td>
+                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{formatStatValue(format, r.name, r.overall)}</td>
                 <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
-                  {r.bestYou != null ? formatStatValue(r.name, r.bestYou) : "—"}
+                  {r.bestYou != null ? formatStatValue(format, r.name, r.bestYou) : "—"}
                 </td>
-                <td className="aqt-mono px-3 py-2 text-right font-semibold text-[color:var(--aqt-fg)]">{formatStatValue(r.name, r.avg10)}</td>
+                <td className="aqt-mono px-3 py-2 text-right font-semibold text-[color:var(--aqt-fg)]">{formatStatValue(format, r.name, r.avg10)}</td>
                 <td
                   className="aqt-mono px-3 py-2 text-right font-bold"
                   style={{ color: r.delta == null ? "var(--aqt-fg-faint)" : r.delta >= 0 ? "var(--aqt-emerald)" : "var(--aqt-rose)" }}
@@ -122,9 +123,9 @@ const HeroStatsTable = ({
                   {r.delta != null ? formatDelta(r.delta) : "—"}
                 </td>
                 <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-dim)]">
-                  {r.bestAll != null ? formatStatValue(r.name, r.bestAll) : "—"}
+                  {r.bestAll != null ? formatStatValue(format, r.name, r.bestAll) : "—"}
                 </td>
-                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-dim)]">{formatStatValue(r.name, r.global10)}</td>
+                <td className="aqt-mono px-3 py-2 text-right text-[color:var(--aqt-fg-dim)]">{formatStatValue(format, r.name, r.global10)}</td>
               </tr>
             ))}
           </tbody>

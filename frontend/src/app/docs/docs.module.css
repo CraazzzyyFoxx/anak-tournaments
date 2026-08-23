@@ -1,20 +1,30 @@
-/* Self-contained dark/teal developer-docs explorer. No external fonts/CDN. */
+/* Developer-docs explorer. Local aliases onto the global --aqt-* tokens so this
+   page is themeable instead of carrying a duplicated hardcoded palette.
+   --docs-* prefix on the two names that collide with shadcn tokens: --border and
+   --muted hold bare HSL triplets (Tailwind emits `hsl(var(--border))`), so
+   redefining them to complete colours would break any semantic class here. */
 
 .root {
-  --bg: #0d1117;
-  --panel: #12171f;
-  --panel-2: #161b22;
-  --border: #21262d;
-  --border-soft: #1c2430;
-  --teal: #2dd4bf;
-  --teal-dim: rgba(45, 212, 191, 0.14);
-  --teal-line: rgba(45, 212, 191, 0.5);
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --muted-2: #6e7681;
-  --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
-  --sans:
-    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --bg: var(--aqt-bg);
+  --panel: var(--aqt-card);
+  --panel-2: var(--aqt-card-2);
+  /* Both docs border hexes sat at L≈15%; mapping by role instead of by value
+     keeps them distinguishable (soft stays below primary). */
+  --docs-border: var(--aqt-border-2);
+  --docs-border-soft: var(--aqt-border);
+  --teal: var(--aqt-teal);
+  --teal-dim: color-mix(in srgb, var(--aqt-teal) 14%, transparent);
+  --teal-line: color-mix(in srgb, var(--aqt-teal) 50%, transparent);
+  --text: var(--aqt-fg);
+  --docs-muted: var(--aqt-fg-muted);
+  --docs-muted-2: var(--aqt-fg-dim);
+  /* The app's two sanctioned families, spelled out rather than borrowed via
+     var(--aqt-mono): that token is declared on :root but references
+     --font-jetbrains-mono, which next/font puts on <body>, so it computes to
+     the guaranteed-invalid value and silently drops to the inherited family.
+     .root sits under <body>, so the --font-* vars resolve here. */
+  --mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+  --sans: var(--font-inter), system-ui, sans-serif;
 
   position: fixed;
   inset: 0;
@@ -32,7 +42,7 @@
   align-items: center;
   gap: 1.5rem;
   padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--docs-border);
   background: var(--panel);
   flex: 0 0 auto;
 }
@@ -58,7 +68,7 @@
 
 .subtitle {
   font-size: 0.72rem;
-  color: var(--muted);
+  color: var(--docs-muted);
   white-space: nowrap;
 }
 
@@ -88,7 +98,7 @@
   font-size: 0.8rem;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--docs-border);
   border-radius: 6px;
   outline: none;
   transition:
@@ -97,7 +107,7 @@
 }
 
 .searchInput::placeholder {
-  color: var(--muted-2);
+  color: var(--docs-muted-2);
 }
 
 .searchInput:focus {
@@ -110,7 +120,7 @@
   left: 0.6rem;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--muted-2);
+  color: var(--docs-muted-2);
   pointer-events: none;
   font-size: 0.85rem;
 }
@@ -120,7 +130,7 @@
   right: 0.4rem;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--muted);
+  color: var(--docs-muted);
   background: none;
   border: none;
   cursor: pointer;
@@ -142,7 +152,7 @@
 
 .sidebar {
   flex: 0 0 288px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--docs-border);
   background: var(--panel);
   overflow-y: auto;
   padding: 0.75rem;
@@ -150,8 +160,8 @@
 
 .sidebarHint {
   padding: 0.4rem 0.6rem;
-  font-size: 0.68rem;
-  color: var(--muted-2);
+  font-size: 0.6875rem; /* 11px — the readability floor */
+  color: var(--docs-muted-2);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -212,16 +222,16 @@
 
 .navSchema {
   font-family: var(--mono);
-  font-size: 0.68rem;
-  color: var(--muted);
+  font-size: 0.6875rem; /* 11px — the readability floor */
+  color: var(--docs-muted);
 }
 
 .navCount {
   font-family: var(--mono);
-  font-size: 0.64rem;
-  color: var(--muted-2);
+  font-size: 0.6875rem; /* 11px — the readability floor */
+  color: var(--docs-muted-2);
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--docs-border);
   border-radius: 4px;
   padding: 0 5px;
 }
@@ -236,16 +246,16 @@
 
 .chip {
   font-family: var(--mono);
-  font-size: 0.62rem;
-  color: var(--muted);
+  font-size: 0.6875rem; /* 11px — the readability floor */
+  color: var(--docs-muted);
   background: var(--bg);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--docs-border-soft);
   border-radius: 4px;
   padding: 1px 5px;
 }
 
 .chipMatch {
-  color: #0d1117;
+  color: var(--aqt-bg);
   background: var(--teal);
   border-color: var(--teal);
   font-weight: 600;
@@ -254,7 +264,7 @@
 .navEmpty {
   padding: 1rem 0.6rem;
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--docs-muted);
 }
 
 /* ---------- Stage ---------- */
@@ -270,7 +280,7 @@
 .stageHeader {
   flex: 0 0 auto;
   padding: 1rem 1.5rem 0.75rem;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--docs-border-soft);
 }
 
 .stageTitle {
@@ -300,7 +310,7 @@
 .stageDesc {
   margin: 0.5rem 0 0;
   font-size: 0.82rem;
-  color: var(--muted);
+  color: var(--docs-muted);
   line-height: 1.5;
   max-width: 70ch;
 }
@@ -351,7 +361,7 @@
   display: flex;
   gap: 4px;
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--docs-border);
   border-radius: 8px;
   padding: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
@@ -364,7 +374,7 @@
   height: 30px;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--docs-border);
   border-radius: 5px;
   cursor: pointer;
   display: inline-flex;
@@ -381,7 +391,7 @@
 .zoomLevel {
   font-family: var(--mono);
   font-size: 0.72rem;
-  color: var(--muted);
+  color: var(--docs-muted);
   display: inline-flex;
   align-items: center;
   padding: 0 6px;
@@ -397,12 +407,12 @@
   justify-content: center;
   font-family: var(--mono);
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--docs-muted);
   pointer-events: none;
 }
 
 .diagramError {
-  color: #f85149;
+  color: var(--aqt-rose);
   padding: 1.5rem;
   font-family: var(--mono);
   font-size: 0.8rem;
@@ -426,13 +436,13 @@
   font-weight: 600;
   margin: 0 0 0.85rem;
   padding-bottom: 0.4rem;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--docs-border-soft);
   color: var(--text);
 }
 
 .tableScroll {
   overflow-x: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--docs-border);
   border-radius: 8px;
 }
 
@@ -446,18 +456,18 @@
   text-align: left;
   padding: 0.55rem 0.75rem;
   background: var(--panel-2);
-  color: var(--muted);
+  color: var(--docs-muted);
   font-weight: 600;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--docs-border);
   white-space: nowrap;
 }
 
 .schemaTable td {
   padding: 0.55rem 0.75rem;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--docs-border-soft);
   vertical-align: top;
   color: var(--text);
 }
@@ -483,13 +493,13 @@
 .schemaKeyTables {
   font-family: var(--mono);
   font-size: 0.72rem;
-  color: var(--muted);
+  color: var(--docs-muted);
 }
 
 .owner {
   font-family: var(--mono);
   font-size: 0.72rem;
-  color: var(--muted);
+  color: var(--docs-muted);
   white-space: nowrap;
 }
 
@@ -529,13 +539,13 @@
 
 .mapNote {
   font-size: 0.78rem;
-  color: var(--muted);
+  color: var(--docs-muted);
   margin: 0 0 0.85rem;
   line-height: 1.5;
 }
 
 .mapWrap {
-  border: 1px solid var(--border);
+  border: 1px solid var(--docs-border);
   border-radius: 8px;
   background: var(--panel);
   padding: 1rem;
@@ -557,14 +567,14 @@
 .overview::-webkit-scrollbar-thumb,
 .tableScroll::-webkit-scrollbar-thumb,
 .mapWrap::-webkit-scrollbar-thumb {
-  background: #2b3440;
+  background: var(--aqt-border-3);
   border-radius: 6px;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover,
 .diagramScroll::-webkit-scrollbar-thumb:hover,
 .overview::-webkit-scrollbar-thumb:hover {
-  background: #3a4550;
+  background: var(--aqt-fg-faint);
 }
 
 @media (max-width: 720px) {

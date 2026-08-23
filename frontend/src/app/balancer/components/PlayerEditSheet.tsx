@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   CheckCircle2,
   GripVertical,
   History,
@@ -102,26 +103,28 @@ const ROLE_ACCENTS: Record<
   BalancerRoleCode,
   { row: string; text: string; chip: string; line: string; sliderColor: string }
 > = {
+  // `sliderColor` lands in an inline `style` (accent-color + a linear-gradient
+  // stop), so a `var()` reference resolves like any other CSS value.
   tank: {
     row: "border-sky-400/40 bg-sky-500/[0.07] shadow-[0_0_0_1px_rgba(56,189,248,0.08)]",
     text: "text-sky-200",
     chip: "border-sky-300/30 bg-sky-500/12 text-sky-200",
     line: "bg-sky-300",
-    sliderColor: "#7dd3fc"
+    sliderColor: "var(--aqt-tank)"
   },
   dps: {
     row: "border-orange-400/40 bg-orange-500/[0.07] shadow-[0_0_0_1px_rgba(251,146,60,0.08)]",
     text: "text-orange-200",
     chip: "border-orange-300/30 bg-orange-500/12 text-orange-200",
     line: "bg-orange-300",
-    sliderColor: "#fdba74"
+    sliderColor: "var(--aqt-damage)"
   },
   support: {
     row: "border-emerald-400/40 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(52,211,153,0.08)]",
     text: "text-emerald-200",
     chip: "border-emerald-300/30 bg-emerald-500/12 text-emerald-200",
     line: "bg-emerald-300",
-    sliderColor: "#6ee7b7"
+    sliderColor: "var(--aqt-support)"
   }
 };
 
@@ -367,7 +370,7 @@ function SortableRoleEntry({
         >
           <GripVertical className="h-3 w-3" />
         </button>
-        <span className="text-[10px] font-semibold text-[color:var(--aqt-fg-dim)]">#{index + 1}</span>
+        <span className="text-[11px] font-semibold text-[color:var(--aqt-fg-dim)]">#{index + 1}</span>
       </div>
 
       <div className="space-y-2">
@@ -383,7 +386,7 @@ function SortableRoleEntry({
               {ROLE_DISPLAY[entry.role]}
             </span>
             {subtypeLabel ? (
-              <Badge className={cn("h-4 border px-1.5 text-[9px]", accent.chip)}>
+              <Badge className={cn("h-4 border px-1.5 text-[11px]", accent.chip)}>
                 {subtypeLabel}
               </Badge>
             ) : null}
@@ -399,7 +402,7 @@ function SortableRoleEntry({
               />
               <span
                 className={cn(
-                  "text-[10px] font-semibold uppercase tracking-wide",
+                  "text-[11px] font-semibold uppercase tracking-wide",
                   entry.is_active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
                 )}
               >
@@ -420,7 +423,7 @@ function SortableRoleEntry({
 
         <div className="grid gap-2 lg:grid-cols-[minmax(0,140px)_minmax(0,1fr)_130px]">
           <div className="space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
               Sub-role
             </span>
             <Select
@@ -454,13 +457,13 @@ function SortableRoleEntry({
 
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
                 Skill rating
               </span>
               {entry.rank_value != null ? (
                 <span
                   className={cn(
-                    "text-[10px] font-semibold",
+                    "text-[11px] font-semibold",
                     entry.is_active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
                   )}
                 >
@@ -514,7 +517,7 @@ function SortableRoleEntry({
           </div>
 
           <div className="space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
               Rank
             </span>
             <div
@@ -534,7 +537,7 @@ function SortableRoleEntry({
                   </div>
                 </>
               ) : (
-                <span className="text-[10px] text-[color:var(--aqt-fg-dim)]">No rank yet</span>
+                <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No rank yet</span>
               )}
             </div>
           </div>
@@ -554,17 +557,17 @@ function SortableRoleEntry({
             className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-black/15 px-2 py-1.5 text-left transition hover:border-[color:var(--aqt-border-2)] hover:bg-white/5"
           >
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
-            <span className="text-[9px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
             {owSuggestionDivision != null ? (
               <DivisionIcon division={owSuggestionDivision} width={16} height={16} />
             ) : null}
             <span className="truncate text-[11px] font-medium text-[color:var(--aqt-fg-muted)]">
               {owSuggestionName ?? `Division ${owSuggestionDivision}`}
             </span>
-            <span className="text-[10px] tabular-nums text-[color:var(--aqt-fg-dim)]">({owRankValue})</span>
+            <span className="text-[11px] tabular-nums text-[color:var(--aqt-fg-dim)]">({owRankValue})</span>
             <span
               className={cn(
-                "ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold",
+                "ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold",
                 accent.chip
               )}
             >
@@ -574,7 +577,7 @@ function SortableRoleEntry({
         ) : (
           <div className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-black/10 px-2 py-1.5 text-left">
             <Sparkles className="h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)]" />
-            <span className="text-[9px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
             <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No live OW rank</span>
           </div>
         )}
@@ -629,7 +632,7 @@ function HistoryPreviewCard({
               {ROLE_DISPLAY[entry.role]}
             </span>
           </div>
-          <Badge className={cn("h-5 border px-2 text-[10px]", accent.chip)}>
+          <Badge className={cn("h-5 border px-2 text-[11px]", accent.chip)}>
             {entry.rank_value} SR
           </Badge>
           {/* Original division (source tournament grid) */}
@@ -649,7 +652,7 @@ function HistoryPreviewCard({
           {/* Normalised division (workspace target grid) — only when different */}
           {showNormalisedArrow && divisionName ? (
             <>
-              <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">→</span>
+              <ArrowRight className="size-4 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden />
               <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-white/5 px-2 py-1 text-[color:var(--aqt-fg)]">
                 {entry.division_number != null ? (
                   <DivisionIcon division={entry.division_number} width={16} height={16} />
@@ -665,7 +668,7 @@ function HistoryPreviewCard({
         <div className="flex items-center justify-end gap-1.5">
           <span
             className={cn(
-              "rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              "rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
               entry.source === "balancer"
                 ? "border-indigo-400/25 bg-indigo-500/10 text-indigo-200"
                 : "border-[color:var(--aqt-border-2)] bg-white/5 text-[color:var(--aqt-fg-muted)]"
@@ -1010,7 +1013,7 @@ export function PlayerEditModal({
             </SheetTitle>
             <BattleTagCopyButton battleTag={primaryBattleTag} className="h-6 w-6" />
             {isFlex ? (
-              <Badge className="h-5 border-emerald-400/25 bg-emerald-400/10 px-2 text-[10px] text-emerald-200 hover:bg-emerald-400/10">
+              <Badge className="h-5 border-emerald-400/25 bg-emerald-400/10 px-2 text-[11px] text-emerald-200 hover:bg-emerald-400/10">
                 Flex
               </Badge>
             ) : null}
@@ -1027,11 +1030,11 @@ export function PlayerEditModal({
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Balancer status</span>
                 {registration ? (
-                  <StatusMetaBadge meta={registration.balancer_status_meta} className="h-5 text-[10px]" />
+                  <StatusMetaBadge meta={registration.balancer_status_meta} className="h-5 text-[11px]" />
                 ) : (
                   <Badge
                     className={cn(
-                      "h-5 px-2 text-[10px]",
+                      "h-5 px-2 text-[11px]",
                       isComputedReady
                         ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
                         : "border-orange-400/25 bg-orange-400/10 text-orange-200"
@@ -1103,7 +1106,7 @@ export function PlayerEditModal({
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-[color:var(--aqt-fg)]">History preview</span>
                     {historyPreviewAverage != null ? (
-                      <Badge className="h-5 border-primary/20 bg-primary/10 px-2 text-[10px] text-[color:var(--aqt-fg)] hover:bg-primary/10">
+                      <Badge className="h-5 border-primary/20 bg-primary/10 px-2 text-[11px] text-[color:var(--aqt-fg)] hover:bg-primary/10">
                         Avg {historyPreviewAverage}
                       </Badge>
                     ) : null}
@@ -1164,10 +1167,10 @@ export function PlayerEditModal({
                     value={historyWorkspaceValue}
                     onValueChange={handleHistoryWorkspaceChange}
                   >
-                    <SelectTrigger className="h-6 w-[180px] border-[color:var(--aqt-border-2)] bg-black/20 text-[10px] text-[color:var(--aqt-fg)] px-2">
+                    <SelectTrigger className="h-6 w-[180px] border-[color:var(--aqt-border-2)] bg-black/20 text-[11px] text-[color:var(--aqt-fg)] px-2">
                       <SelectValue placeholder="Select workspace" />
                     </SelectTrigger>
-                    <SelectContent className="border-[color:var(--aqt-border-2)] bg-zinc-950 text-[color:var(--aqt-fg)] text-[11px]">
+                    <SelectContent className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)] text-[color:var(--aqt-fg)] text-[11px]">
                       <SelectItem value="current" className="text-[11px]">
                         Current Workspace
                       </SelectItem>
@@ -1285,7 +1288,7 @@ export function PlayerEditModal({
                   </SelectContent>
                 </Select>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-[10px] text-[color:var(--aqt-fg-dim)]">
+                  <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">
                     Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
                   </p>
                   {registrationBalancerStatus !== "ready" ? (
@@ -1293,7 +1296,7 @@ export function PlayerEditModal({
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
+                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-[11px] text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
                       disabled={saving}
                       onClick={handleMoveToReady}
                       title="Saves your pending edits, then recomputes this player's balancer status from their current role ranks"

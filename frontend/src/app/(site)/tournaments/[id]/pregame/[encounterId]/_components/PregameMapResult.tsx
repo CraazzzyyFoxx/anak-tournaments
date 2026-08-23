@@ -150,7 +150,7 @@ export function PregameMapResult({
                 </>
               ) : null}
               <div className="relative flex flex-col gap-0.5 p-4">
-                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-teal)]">
+                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-teal)]">
                   {t("round.label", { n: round })} · {t("mapResult.eyebrow")}
                 </span>
                 <h2 className="font-onest text-2xl font-semibold leading-tight tracking-[-0.015em] sm:text-3xl">
@@ -327,7 +327,7 @@ function ClaimTile({
       <span
         aria-hidden
         className={cn(
-          "inline-flex items-center gap-1 font-mono text-[9.5px] uppercase tracking-[0.1em]",
+          "inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.1em]",
           state === "waiting"
             ? "text-[color:var(--aqt-fg-faint)]"
             : "text-[color:var(--aqt-support)]"
@@ -366,7 +366,7 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
       </span>
       <span
         className={cn(
-          "max-w-[7.5rem] text-center font-mono text-[9px] uppercase leading-tight tracking-[0.1em]",
+          "max-w-[7.5rem] text-center font-mono text-[11px] uppercase leading-tight tracking-[0.1em]",
           tone === "good"
             ? "text-[color:var(--aqt-support)]"
             : tone === "bad"

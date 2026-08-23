@@ -104,7 +104,7 @@ const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndi
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-1.5" onClick={stop}>
-        <div className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        <div className="px-2 pb-1.5 pt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
           {t("common.matchLogs.title")}
         </div>
         <div className="flex flex-col">

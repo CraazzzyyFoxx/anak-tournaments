@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 
 import { HeroFrame, HeroCoord, HeroStat } from "@/components/site/PageHero";
 import type { Achievement } from "@/types/achievement.types";
@@ -18,6 +18,7 @@ interface Props {
  *  on the page root, so this stays a plain presentational block. */
 const AchievementDetailHeader = ({ achievement }: Props) => {
   const t = useTranslations();
+  const format = useFormatter();
   const rarity = classifyRarity(achievement.rarity * 100);
   const titles = rarityTitles(t);
   const imgSrc = achievement.image_url ?? `/achievements/${achievement.slug}.webp`;
@@ -74,7 +75,7 @@ const AchievementDetailHeader = ({ achievement }: Props) => {
           />
           <HeroStat
             label={t("achievements.stats.totalEarned")}
-            value={(achievement.count ?? 0).toLocaleString()}
+            value={format.number(achievement.count ?? 0)}
             sub={t("achievements.detail.timesAwarded")}
           />
         </div>

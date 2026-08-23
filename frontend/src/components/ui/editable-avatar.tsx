@@ -174,7 +174,7 @@ export function EditableAvatar({
             )}
           >
             {src ? <Pencil className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
-            <span className="text-[10px] font-medium uppercase tracking-wide">
+            <span className="text-[11px] font-medium uppercase tracking-wide">
               {dragging
                 ? (labels?.drop ?? "Drop")
                 : src

@@ -6,6 +6,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
+import { ArrowRight } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -367,9 +368,7 @@ function RankMappingSection({
                   <span className="font-medium capitalize">{cell.division}</span>
                   <span className="text-xs text-muted-foreground">· Tier {cell.tier}</span>
                 </div>
-                <span aria-hidden className="text-center text-muted-foreground">
-                  →
-                </span>
+                <ArrowRight className="mx-auto size-4 text-muted-foreground" aria-hidden />
                 <Select
                   value={divisionNumber != null ? String(divisionNumber) : ""}
                   onValueChange={(value) => setCellDivision(index, Number(value))}

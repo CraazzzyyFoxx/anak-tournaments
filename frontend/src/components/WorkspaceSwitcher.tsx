@@ -30,7 +30,7 @@ const FALLBACK_ACCENTS = [
 
 function WorkspaceAvatar({ workspace, size = "sm" }: Readonly<{ workspace: Workspace; size?: "sm" | "md" | "header" }>) {
   const sizeClass = size === "sm" ? "size-5" : "size-7";
-  const textSize = size === "sm" ? "text-[10px]" : "text-xs";
+  const textSize = size === "sm" ? "text-[11px]" : "text-xs";
 
   return (
     <Avatar key={workspace.id} className={cn(sizeClass, "rounded-md")}>

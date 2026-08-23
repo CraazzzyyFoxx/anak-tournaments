@@ -85,11 +85,25 @@ const TournamentsPlacementTimeline = ({ tournaments, selectedIds = [], onSelect 
       </div>
       <div className="flex flex-wrap gap-3.5 border-t border-[color:var(--aqt-border)] px-[18px] py-3.5 text-[12px] text-[color:var(--aqt-fg-muted)]">
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "linear-gradient(135deg,#fcd34d,#d97706)" }} />
+          {/* Must stay identical to `.aqt-timeline .aqt-dot.gold` in globals.css. */}
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--aqt-medal-gold), color-mix(in srgb, var(--aqt-medal-gold) 65%, black))"
+            }}
+          />
           {tr("users.tournaments.timeline.legend.first")}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "linear-gradient(135deg,#e5e7eb,#9ca3af)" }} />
+          {/* Must stay identical to `.aqt-timeline .aqt-dot.silver` in globals.css. */}
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--aqt-medal-silver), color-mix(in srgb, var(--aqt-medal-silver) 65%, black))"
+            }}
+          />
           {tr("users.tournaments.timeline.legend.podium")}
         </span>
         <span className="inline-flex items-center gap-1.5">

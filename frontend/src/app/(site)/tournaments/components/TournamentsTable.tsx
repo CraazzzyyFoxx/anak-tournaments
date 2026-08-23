@@ -35,7 +35,7 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
               {tournament.name}
             </Link>
             {(tournament.status === "live" || tournament.status === "playoffs") && (
-              <span className="status-pill live" style={{ fontSize: "8.5px", padding: "2px 7px" }}>
+              <span className="status-pill live" style={{ padding: "2px 7px" }}>
                 <span aria-hidden className="dot" />
                 {t("common.live")}
               </span>
@@ -44,7 +44,6 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
               <span
                 className="status-pill"
                 style={{
-                  fontSize: "8.5px",
                   padding: "2px 7px",
                   background: "hsl(var(--muted) / 0.6)",
                   color: "hsl(var(--muted-foreground))",

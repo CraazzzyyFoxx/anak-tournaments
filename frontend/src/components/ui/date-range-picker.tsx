@@ -2,12 +2,22 @@
 
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
+import { useFormatter, type DateTimeFormatOptions } from "next-intl";
 import { type DateRange } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+/**
+ * The slice of next-intl's formatter this trigger needs. `useFormatter()` and
+ * `await getFormatter()` both satisfy it, so `formatDisplay` never has to pin a
+ * locale of its own.
+ */
+interface DateFormatter {
+  dateTime: (value: Date, options?: DateTimeFormatOptions) => string;
+}
 
 interface DateRangePickerProps {
   startDate?: string;
@@ -17,8 +27,8 @@ interface DateRangePickerProps {
   id?: string;
 }
 
-function formatDisplay(date: Date): string {
-  return date.toLocaleDateString("en-US", {
+function formatDisplay(format: DateFormatter, date: Date): string {
+  return format.dateTime(date, {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -45,6 +55,7 @@ export function DateRangePicker({
   placeholder = "Pick a date range",
   id,
 }: Readonly<DateRangePickerProps>) {
+  const format = useFormatter();
   const [open, setOpen] = React.useState(false);
 
   const from = React.useMemo(() => parseDateValue(startDate), [startDate]);
@@ -54,10 +65,10 @@ export function DateRangePicker({
     from || to ? { from, to } : undefined;
 
   const displayText = React.useMemo(() => {
-    if (from && to) return `${formatDisplay(from)} - ${formatDisplay(to)}`;
-    if (from) return formatDisplay(from);
+    if (from && to) return `${formatDisplay(format, from)} - ${formatDisplay(format, to)}`;
+    if (from) return formatDisplay(format, from);
     return "";
-  }, [from, to]);
+  }, [format, from, to]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

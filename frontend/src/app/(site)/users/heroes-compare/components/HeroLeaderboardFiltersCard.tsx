@@ -24,7 +24,7 @@ interface HeroLeaderboardFiltersCardProps {
 
 const TRIGGER =
   "border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.025)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]";
-const LABEL = "text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]";
+const LABEL = "text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]";
 
 const HeroLeaderboardFiltersCard = ({
   heroId,

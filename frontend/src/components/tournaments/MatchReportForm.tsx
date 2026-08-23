@@ -133,7 +133,7 @@ function BlockHeading({
 }>) {
   const t = useTranslations();
   const headingClass =
-    "text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]";
+    "text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]";
 
   return (
     <div className="space-y-0.5">
@@ -149,7 +149,7 @@ function BlockHeading({
         )}
         <span
           className={cn(
-            "shrink-0 text-[10px] font-bold uppercase tracking-[0.12em]",
+            "shrink-0 text-[11px] font-bold uppercase tracking-[0.12em]",
             required ? "text-[color:var(--aqt-gold)]" : "text-[color:var(--aqt-fg-faint)]"
           )}
         >
@@ -483,7 +483,7 @@ export function MatchReportForm({
                           : "text-[color:var(--aqt-fg-faint)]"
                       )}
                     />
-                    <span className="text-[10.5px] font-bold font-mono">{val}/10</span>
+                    <span className="text-[11px] font-bold font-mono">{val}/10</span>
                   </button>
                 );
               })}
@@ -613,7 +613,7 @@ export function MatchReportForm({
 
         {customDefs.length > 0 && (
           <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
               {t("matchReport.customFields")}
             </p>
             {customDefs.map((definition) => {

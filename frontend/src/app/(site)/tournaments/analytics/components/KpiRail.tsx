@@ -37,24 +37,8 @@ export default function KpiRail({ kpis, onExplain, onSelect }: Readonly<KpiRailP
     <div className={styles.cKpiRail}>
       {kpis.map((kpi) => {
         const filterable = onSelect != null && KPI_FILTERS.has(kpi.id);
-        return (
-          <div
-            className={cn(styles.cKpi, filterable && styles.cKpiClickable)}
-            key={kpi.id}
-            role={filterable ? "button" : undefined}
-            tabIndex={filterable ? 0 : undefined}
-            onClick={filterable ? () => onSelect!(kpi.id) : undefined}
-            onKeyDown={
-              filterable
-                ? (event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onSelect!(kpi.id);
-                    }
-                  }
-                : undefined
-            }
-          >
+        const body = (
+          <>
             <span className={styles.cKpiLabel}>
               {t(`analytics.community.kpi.${kpi.id}`)}
               {/* On a clickable card the dot stays hover-only (no nested button);
@@ -65,6 +49,23 @@ export default function KpiRail({ kpis, onExplain, onSelect }: Readonly<KpiRailP
               {kpi.display}
             </span>
             <span className={styles.cKpiSub}>{t(`analytics.community.kpi.${kpi.id}Foot`)}</span>
+          </>
+        );
+
+        // A real <button>, not a div with role="button": Enter/Space and the
+        // focus ring come from the platform. Static KPIs stay plain divs.
+        return filterable ? (
+          <button
+            type="button"
+            className={cn(styles.cKpi, styles.cKpiClickable)}
+            key={kpi.id}
+            onClick={() => onSelect!(kpi.id)}
+          >
+            {body}
+          </button>
+        ) : (
+          <div className={styles.cKpi} key={kpi.id}>
+            {body}
           </div>
         );
       })}

@@ -87,7 +87,7 @@ export function PregameHeroBans({
   const note = hint === undefined ? t("heroBans.hint") : hint;
   const caption =
     eyebrow === undefined ? (
-      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
+      <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
         {t("heroBans.eyebrow")}
       </span>
     ) : (

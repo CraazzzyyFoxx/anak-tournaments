@@ -302,7 +302,7 @@ export function PlayerPool({
                       <PlayerRoleIcon key={entry} role={getRoleIconName(entry)} size={12} color="var(--aqt-fg-faint)" />
                     ))}
                     {player.is_flex && (
-                      <span className="rounded border border-[color:var(--aqt-border-2)] px-1 text-[10px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+                      <span className="rounded border border-[color:var(--aqt-border-2)] px-1 text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
                         {t("flex")}
                       </span>
                     )}

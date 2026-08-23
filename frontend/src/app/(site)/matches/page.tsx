@@ -132,7 +132,7 @@ const MatchesPage = () => {
                       <th
                         key={label}
                         scope="col"
-                        className="h-8 whitespace-nowrap px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-faint)]"
+                        className="h-8 whitespace-nowrap px-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-faint)]"
                       >
                         {label}
                       </th>

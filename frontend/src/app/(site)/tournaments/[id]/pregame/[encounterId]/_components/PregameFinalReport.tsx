@@ -146,7 +146,7 @@ export function PregameFinalReport({
                   className="grid gap-3 py-4 first:pt-1 last:pb-1 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-6"
                 >
                   {block.round == null || block.mapName == null ? (
-                    <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
+                    <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-rose)]">
                       {t("heroBans.seriesEyebrow")}
                     </span>
                   ) : (
@@ -161,7 +161,7 @@ export function PregameFinalReport({
                         size={60}
                       />
                       <div className="flex min-w-0 flex-col">
-                        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]">
+                        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]">
                           {t("round.label", { n: block.round })}
                         </span>
                         <span

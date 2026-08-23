@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import {
   BarChart,
   Bar,
@@ -43,6 +43,7 @@ interface Datum {
 
 const MatchContributionChart = ({ home, away, round }: MatchContributionChartProps) => {
   const t = useTranslations<never>();
+  const format = useFormatter();
   const [metric, setMetric] = useState<LogStatsName>(LogStatsName.HeroDamageDealt);
 
   const data: Datum[] = [
@@ -67,7 +68,7 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="aqt-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
           {t("matches.contribution.title")}
         </span>
         <div className="flex flex-wrap gap-1.5">
@@ -98,7 +99,7 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
             <XAxis
               type="number"
               tick={{ fill: "var(--aqt-fg-muted)", fontSize: 11 }}
-              tickFormatter={(value: number) => formatStat(metric, value)}
+              tickFormatter={(value: number) => formatStat(metric, value, format)}
             />
             <YAxis
               type="category"
@@ -120,7 +121,7 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
               labelStyle={{ color: "var(--aqt-fg)", fontWeight: 600, marginBottom: 2 }}
               itemStyle={{ color: "var(--aqt-fg)" }}
               formatter={(value: number) => [
-                formatStat(metric, value),
+                formatStat(metric, value, format),
                 t((STAT_META[metric]?.labelKey ?? metric) as Parameters<typeof t>[0])
               ]}
             />

@@ -50,8 +50,14 @@ function resolveFamily(varExpr: string): string {
   return fam;
 }
 
+/** Last-resort colour when a design token cannot be resolved from the document
+ *  (e.g. the card renders before stylesheets settle). Canvas 2D cannot take
+ *  `var()`, so this has to be a literal — it is `--aqt-fg-faint`
+ *  (`hsl(214 10% 52%)`) frozen to hex, not a new colour. */
+const TOKEN_FALLBACK = "#788391";
+
 function token(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || TOKEN_FALLBACK;
 }
 
 function initialsFrom(name: string): string {

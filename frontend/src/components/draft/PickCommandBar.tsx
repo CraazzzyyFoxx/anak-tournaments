@@ -109,7 +109,7 @@ export function PickCommandBar({
           <div className="flex min-w-0 items-center gap-2 sm:contents">
             <DraftClockRing expiresAt={current?.clock_expires_at ?? null} paused={board.session.status === "paused"} totalSeconds={board.session.pick_time_seconds} accent={accent} />
             <div className="min-w-0 shrink-0 border-r border-[color:var(--aqt-border-2)] pr-3 sm:pr-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[color:var(--aqt-teal)]">{isMyPick ? t("yourTurn") : t("onClockLabel")}</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[color:var(--aqt-teal)]">{isMyPick ? t("yourTurn") : t("onClockLabel")}</p>
               <p className="text-sm font-semibold">
                 <span className="hidden sm:inline">
                   <span className="inline-block max-w-[12rem] truncate align-bottom" title={onClockTeamName}>{onClockTeamName}</span>{" · "}
@@ -159,7 +159,7 @@ export function PickCommandBar({
             <ShieldCheck className="mr-2 h-4 w-4" aria-hidden />
             {t("reviewPick")}
             {ready && (
-              <span className="ml-1 hidden items-center rounded border border-current/40 px-1.5 py-0.5 font-mono text-[10px] font-normal opacity-80 sm:inline-flex">
+              <span className="ml-1 hidden items-center rounded border border-current/40 px-1.5 py-0.5 font-mono text-[11px] font-normal opacity-80 sm:inline-flex">
                 {t("enterHint")}
               </span>
             )}

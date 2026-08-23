@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 
 import { PageHero, HeroCoord, HeroStat } from "@/components/site/PageHero";
 
@@ -20,6 +20,7 @@ const AchievementsHero = ({
   mythicCount
 }: AchievementsHeroProps) => {
   const t = useTranslations();
+  const format = useFormatter();
 
   return (
     <PageHero
@@ -49,7 +50,7 @@ const AchievementsHero = ({
           />
           <HeroStat
             label={t("achievements.stats.totalEarned")}
-            value={totalEarned.toLocaleString()}
+            value={format.number(totalEarned)}
             sub={t("achievements.hero.earnedSub")}
           />
         </div>

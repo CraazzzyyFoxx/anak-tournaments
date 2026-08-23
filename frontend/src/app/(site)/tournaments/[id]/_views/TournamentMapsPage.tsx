@@ -417,7 +417,7 @@ export default function TournamentMapsPage({ tournamentId }: Readonly<Tournament
           ) : (
             <span
               data-slot-index
-              className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]"
+              className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]"
             >
               {t("mapVeto.roundPoolShared")}
             </span>
@@ -428,7 +428,7 @@ export default function TournamentMapsPage({ tournamentId }: Readonly<Tournament
               {modeIcon ? (
                 <Image src={modeIcon} alt="" width={14} height={14} className="opacity-70" />
               ) : null}
-              <span className="truncate text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+              <span className="truncate text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
                 {mode}
               </span>
             </span>
@@ -501,7 +501,7 @@ export default function TournamentMapsPage({ tournamentId }: Readonly<Tournament
               heading ? (
                 <p
                   key={`${half}-heading`}
-                  className="bg-[color:var(--aqt-overlay-1)] px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-faint)]"
+                  className="bg-[color:var(--aqt-overlay-1)] px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-faint)]"
                 >
                   {heading}
                 </p>

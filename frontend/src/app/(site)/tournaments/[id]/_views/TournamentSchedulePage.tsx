@@ -156,12 +156,12 @@ const TournamentScheduleView = ({ tournament }: { tournament: Tournament }) => {
                         {t(`common.statusBadge.${segment.status}`)}
                       </span>
                       {segment.state === "done" ? (
-                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+                        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
                           {t("tournamentDetail.publicPages.schedule.state.done")}
                         </span>
                       ) : null}
                       {segment.state === "current" ? (
-                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-teal)]">
+                        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-teal)]">
                           {t("tournamentDetail.publicPages.schedule.state.current")}
                         </span>
                       ) : null}
@@ -175,7 +175,7 @@ const TournamentScheduleView = ({ tournament }: { tournament: Tournament }) => {
                     <dl className="mt-1 flex flex-wrap gap-x-5 gap-y-0.5 text-xs">
                       {startText === null ? null : (
                         <div className="flex items-baseline gap-1.5">
-                          <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+                          <dt className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
                             {t("tournamentDetail.publicPages.schedule.startsLabel")}
                           </dt>
                           <dd className="aqt-tnum text-[color:var(--aqt-fg-muted)]">
@@ -185,7 +185,7 @@ const TournamentScheduleView = ({ tournament }: { tournament: Tournament }) => {
                       )}
                       {endText === null ? null : (
                         <div className="flex items-baseline gap-1.5">
-                          <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
+                          <dt className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
                             {t("tournamentDetail.publicPages.schedule.closesLabel")}
                           </dt>
                           <dd className="aqt-tnum text-[color:var(--aqt-fg-muted)]">

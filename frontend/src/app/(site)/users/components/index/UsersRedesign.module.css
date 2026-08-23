@@ -20,6 +20,14 @@
   --u-damage: var(--aqt-damage);
   --u-support: var(--aqt-support);
 
+  /* Avatar-placeholder tile: a lifted steel wash that reads above --u-card.
+     Declared once here because two rules (.playerAvatar, .catCardAvatar) share it. */
+  --u-avatar-fill: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--aqt-border-3) 70%, var(--aqt-card)),
+    var(--aqt-card)
+  );
+
   --u-display: var(--aqt-display);
   --u-mono: var(--aqt-mono);
 
@@ -46,7 +54,7 @@
 }
 
 .statLabel {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -145,7 +153,7 @@
 
 .filterChipCount {
   font-family: var(--u-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--u-faint);
   background: var(--aqt-overlay-3);
   padding: 1px 6px;
@@ -264,7 +272,7 @@
 }
 
 .table th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -316,7 +324,7 @@
 
 .playerRank {
   font-family: var(--u-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--u-faint);
   min-width: 28px;
   text-align: right;
@@ -327,7 +335,7 @@
   height: 32px;
   border-radius: 50%;
   border: 1px solid var(--u-border-2);
-  background: linear-gradient(135deg, #3a5168, #1c2937);
+  background: var(--u-avatar-fill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -368,7 +376,7 @@
 }
 
 .playerSub {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--u-dim);
 }
 
@@ -520,7 +528,7 @@
 }
 
 .exStatLabel {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -611,7 +619,7 @@
   gap: 5px;
   background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border-2);
-  font-size: 10.5px;
+  font-size: 11px;
   font-family: var(--u-mono);
   color: var(--u-muted);
   padding: 3px 7px;
@@ -619,7 +627,7 @@
 }
 
 .metricBadgeKey {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--u-faint);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -760,7 +768,7 @@
 
 .viewSwitch .countBadge {
   font-family: var(--u-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--u-faint);
   background: var(--aqt-overlay-3);
   padding: 1px 6px;
@@ -785,7 +793,7 @@
 }
 
 .alphaLabel {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -877,7 +885,7 @@
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3a5168, #1c2937);
+  background: var(--u-avatar-fill);
   border: 1px solid var(--u-border-2);
   display: flex;
   align-items: center;
@@ -930,7 +938,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--u-dim);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -964,7 +972,7 @@
 }
 
 .catStatLabel {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;

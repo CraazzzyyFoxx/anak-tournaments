@@ -15,20 +15,39 @@ export const PROVIDER_META: Record<
   github: { label: "GitHub", icon: null }
 };
 
-/** Brand colours, not status tones — always explicit hexes so no semantic
- *  token gets repurposed for branding. */
-const PROVIDER_COLORS: Record<OAuthProvider, string> = {
-  discord: "bg-[#5865F2]/15 text-[#7289da] border-[#5865F2]/30",
-  twitch: "bg-[#9146FF]/15 text-[#b380ff] border-[#9146FF]/30",
-  battlenet: "bg-[#148EFF]/15 text-[#60b0ff] border-[#148EFF]/30",
-  google: "bg-[#EA4335]/15 text-[#f28b82] border-[#EA4335]/30",
-  github: "bg-[#6E7681]/15 text-[#c9d1d9] border-[#6E7681]/30"
+/**
+ * Brand colour per provider, entirely from `globals.css`'s `--aqt-brand-*` block —
+ * which exists precisely so brand hues stop being "raw hex sprinkled through cards".
+ *
+ * Two tokens each, not one plus a derivation. The mark keeps the exact brand hue;
+ * the *label* needs a lighter one, because raw brand hues fail WCAG AA as small
+ * text on our dark surfaces (Discord 4.04:1, Twitch 4.01:1 — measured in
+ * `SocialAccountBadge`, which solves the same problem). That lighter value is a
+ * contrast-tuned hue/saturation shift, not a white mix, so it is a token of its
+ * own rather than something computed here.
+ */
+const PROVIDER_COLOR: Record<OAuthProvider, { hue: string; label: string }> = {
+  discord: { hue: "var(--aqt-brand-discord)", label: "var(--aqt-brand-discord-fg)" },
+  twitch: { hue: "var(--aqt-brand-twitch)", label: "var(--aqt-brand-twitch-fg)" },
+  battlenet: { hue: "var(--aqt-brand-battlenet)", label: "var(--aqt-brand-battlenet-fg)" },
+  google: { hue: "var(--aqt-brand-google)", label: "var(--aqt-brand-google-fg)" },
+  github: { hue: "var(--aqt-brand-github)", label: "var(--aqt-brand-github-fg)" }
 };
 
 export function ProviderBadge({ provider }: Readonly<{ provider: OAuthProvider }>) {
   const meta = PROVIDER_META[provider];
+  const color = PROVIDER_COLOR[provider];
   return (
-    <Badge variant="outline" className={`gap-1.5 ${PROVIDER_COLORS[provider]}`}>
+    <Badge
+      variant="outline"
+      className="gap-1.5"
+      style={{
+        // Surface and edge are alpha tints of the base token, so they follow it.
+        background: `color-mix(in srgb, ${color.hue} 15%, transparent)`,
+        borderColor: `color-mix(in srgb, ${color.hue} 30%, transparent)`,
+        color: color.label
+      }}
+    >
       {meta?.icon ? (
         <Image
           src={meta.icon}

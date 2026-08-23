@@ -126,7 +126,7 @@ function ReadyRow({
       />
       <span
         className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em]",
+          "inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em]",
           ready ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-fg-faint)]"
         )}
       >

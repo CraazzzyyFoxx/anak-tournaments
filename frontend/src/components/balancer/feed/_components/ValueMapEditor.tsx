@@ -234,10 +234,10 @@ export function ValueMapEditor({
       ) : (
         <div className="space-y-2">
           <div className={`grid items-center gap-2 ${kind === "role_subrole" ? "grid-cols-[1fr_2fr_auto]" : "grid-cols-[1fr_1fr_auto]"}`}>
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
               Sheet text
             </Label>
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
               Mapped value
             </Label>
             <span />

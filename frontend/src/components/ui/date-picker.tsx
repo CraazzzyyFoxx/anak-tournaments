@@ -2,12 +2,22 @@
 
 import * as React from "react";
 import { CalendarIcon, ChevronDownIcon, X } from "lucide-react";
+import { useFormatter, type DateTimeFormatOptions } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { TimeInput } from "@/components/ui/time-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+/**
+ * The slice of next-intl's formatter these triggers need. `useFormatter()` and
+ * `await getFormatter()` both satisfy it, so the helpers below never have to pin
+ * a locale of their own.
+ */
+interface DateFormatter {
+  dateTime: (value: Date, options?: DateTimeFormatOptions) => string;
+}
 
 interface DatePickerProps {
   value?: string;
@@ -37,18 +47,29 @@ interface DateTimePickerProps {
   labelClassName?: string;
 }
 
-function formatDisplay(date: Date | undefined): string {
+/**
+ * Takes the formatter rather than pinning a locale: an `en-US` literal here
+ * printed English dates into the `ru` default UI. Callers pass `useFormatter()`.
+ */
+function formatDisplay(format: DateFormatter, date: Date | undefined): string {
   if (!date) return "";
-  return date.toLocaleDateString("en-US", {
+  return format.dateTime(date, {
     day: "2-digit",
     month: "long",
     year: "numeric"
   });
 }
 
-function formatDateTimeDisplay(date: Date | undefined): string {
+/**
+ * NOTE: identical to `formatDisplay` — the date-and-time trigger shows only the
+ * date part. Pre-existing behaviour, preserved verbatim; the `DateTimePicker`
+ * puts the clock in its own adjacent `TimeInput`, so this may well be
+ * intentional. Flagged rather than "fixed", since changing it would alter every
+ * `DateTimePicker` trigger's rendered text.
+ */
+function formatDateTimeDisplay(format: DateFormatter, date: Date | undefined): string {
   if (!date) return "";
-  return date.toLocaleDateString("en-US", {
+  return format.dateTime(date, {
     day: "2-digit",
     month: "long",
     year: "numeric"
@@ -105,6 +126,7 @@ function isBeforeMinDate(date: Date, minDate: Date | undefined): boolean {
 }
 
 export function DatePicker({ value, onChange, placeholder = "Pick a date", id }: Readonly<DatePickerProps>) {
+  const format = useFormatter();
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => parseDateValue(value), [value]);
 
@@ -123,7 +145,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", id }:
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {selected ? formatDisplay(selected) : <span>{placeholder}</span>}
+          {selected ? formatDisplay(format, selected) : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -161,6 +183,7 @@ export function DateTimePicker({
   value,
   labelClassName
 }: Readonly<DateTimePickerProps>) {
+  const format = useFormatter();
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => parseDateTimeValue(value), [value]);
   const timeValue = getTimeValue(selected);
@@ -186,7 +209,7 @@ export function DateTimePicker({
                 )}
               >
                 <span className="truncate">
-                  {selected ? formatDateTimeDisplay(selected) : placeholder}
+                  {selected ? formatDateTimeDisplay(format, selected) : placeholder}
                 </span>
                 <ChevronDownIcon data-icon="inline-end" />
               </Button>

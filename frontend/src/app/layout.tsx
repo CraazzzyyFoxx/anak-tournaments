@@ -105,16 +105,15 @@ export default async function RootLayout({
   const cookieConsent =
     rawConsent === "accepted" || rawConsent === "declined" ? rawConsent : null;
   return (
-    <html lang={locale}>
-      <body
-        className={cn(
-          inter.className,
-          inter.variable,
-          jetbrainsMono.variable,
-          onest.variable,
-          "dark"
-        )}
-      >
+    // The next/font `.variable` classes MUST sit on <html>, not <body>: they
+    // define --font-inter/--font-onest/--font-jetbrains-mono, and globals.css
+    // aliases them from `:root` (--aqt-mono, --aqt-display, --aqt-onest).
+    // Custom properties are substituted where they are *declared*, so a
+    // `:root` alias cannot read a variable defined one level down on <body> —
+    // it resolves to nothing and every .aqt-mono surface silently falls back
+    // to Inter instead of JetBrains Mono.
+    <html lang={locale} className={cn(inter.variable, jetbrainsMono.variable, onest.variable)}>
+      <body className={cn(inter.className, "dark")}>
         <NextIntlClientProvider>
           <Providers>
             <Suspense fallback={null}>

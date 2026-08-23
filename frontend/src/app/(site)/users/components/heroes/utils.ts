@@ -1,9 +1,12 @@
+import type { useFormatter } from "next-intl";
+
 import { LogStatsName } from "@/types/stats.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 
-const numberFmt = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 2
-});
+/** Only `number` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
+export type NumberFormatter = Pick<ReturnType<typeof useFormatter>, "number">;
+
+const STAT_NUMBER_OPTIONS = { maximumFractionDigits: 2 } as const;
 
 export const formatPercent = (value: number, digits = 0) => {
   const safe = Number.isFinite(value) ? value : 0;
@@ -26,7 +29,7 @@ export const formatSeconds = (secondsRaw: number, options?: { withSeconds?: bool
   return `${m}m`;
 };
 
-export const formatStatValue = (name: string, value: number) => {
+export const formatStatValue = (format: NumberFormatter, name: string, value: number) => {
   if (!Number.isFinite(value)) {
     return "-";
   }
@@ -37,9 +40,9 @@ export const formatStatValue = (name: string, value: number) => {
   }
 
   if (Math.abs(value) >= 1000) {
-    return numberFmt.format(Math.round(value));
+    return format.number(Math.round(value), STAT_NUMBER_OPTIONS);
   }
-  return numberFmt.format(value);
+  return format.number(value, STAT_NUMBER_OPTIONS);
 };
 
 export const isRevertedStat = (name: LogStatsName) => {

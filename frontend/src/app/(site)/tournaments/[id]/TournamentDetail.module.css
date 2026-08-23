@@ -322,7 +322,7 @@
 .updating {
   color: var(--aqt-teal);
   font-family: var(--aqt-mono);
-  font-size: 0.65rem;
+  font-size: 0.6875rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -410,7 +410,7 @@
   flex: 0 0 auto;
   color: var(--aqt-fg-faint);
   font-family: var(--aqt-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -472,7 +472,7 @@
   overflow: hidden;
   color: var(--aqt-fg-faint);
   font-family: var(--aqt-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-overflow: ellipsis;
@@ -617,7 +617,7 @@
 .participantDetailLabel {
   color: var(--aqt-fg-dim);
   font-family: var(--aqt-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -755,7 +755,7 @@
     flex: 0 0 5.5rem;
     color: var(--aqt-fg-dim);
     font-family: var(--aqt-mono);
-    font-size: 0.58rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -782,7 +782,7 @@
     background: var(--aqt-overlay-2);
     color: var(--aqt-fg-muted);
     font-family: var(--aqt-mono);
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;

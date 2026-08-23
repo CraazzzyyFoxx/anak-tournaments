@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueries } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -282,13 +282,14 @@ function SeriesPlayerRow({
 
 /** Value plus the same 3px magnitude bar the per-map tables draw. */
 function SeriesStatCell({ name, value, max }: Readonly<{ name: LogStatsName; value: number; max: number }>) {
+  const format = useFormatter();
   const meta = STAT_META[name];
   const showBar = meta?.bar && max > 0;
 
   return (
     <td>
       <span className="inline-flex flex-col items-end gap-1">
-        <span>{formatStat(name, value)}</span>
+        <span>{formatStat(name, value, format)}</span>
         {showBar ? (
           <span
             aria-hidden

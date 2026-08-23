@@ -1,3 +1,5 @@
+import type { NumberFormatOptions } from "next-intl";
+
 import { LogStatsName } from "@/types/stats.types";
 import type { PlayerWithStats, TeamWithStats } from "@/types/team.types";
 
@@ -101,7 +103,18 @@ export const GROUP_COLOR: Record<StatGroup, string> = {
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
-const numberFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+/**
+ * The slice of next-intl's formatter this module needs.
+ *
+ * A plain module cannot call `useFormatter()`, and a module-level
+ * `Intl.NumberFormat` has to pin a locale — which printed `1,557` in a UI whose
+ * default locale is `ru` and expects `1 557`. So the caller supplies it:
+ * client components pass `useFormatter()`, server components
+ * `await getFormatter()`. Both satisfy this shape.
+ */
+export interface StatNumberFormatter {
+  number: (value: number, options?: NumberFormatOptions) => string;
+}
 
 function formatDuration(secondsRaw: number): string {
   const seconds = Math.max(0, Math.floor(secondsRaw));
@@ -115,9 +128,14 @@ function formatDuration(secondsRaw: number): string {
  * Format a stat value for display. Accuracy stats are stored as a 0–1 fraction
  * (mirrors the heroes stat table convention); values > 1 are treated as absent.
  */
-export function formatStat(name: LogStatsName, value: number | undefined | null): string {
+export function formatStat(
+  name: LogStatsName,
+  value: number | undefined | null,
+  formatter: StatNumberFormatter
+): string {
   if (value == null || !Number.isFinite(value)) return "—";
   const format = STAT_META[name]?.format ?? "int";
+  const num = (v: number) => formatter.number(v, { maximumFractionDigits: 2 });
   switch (format) {
     case "percent":
       if (value > 1.0001) return "—";
@@ -125,12 +143,12 @@ export function formatStat(name: LogStatsName, value: number | undefined | null)
     case "duration":
       return formatDuration(value);
     case "thousands":
-      return numberFmt.format(Math.round(value));
+      return num(Math.round(value));
     case "float":
-      return numberFmt.format(Number(value.toFixed(2)));
+      return num(Number(value.toFixed(2)));
     case "int":
     default:
-      return numberFmt.format(Math.round(value));
+      return num(Math.round(value));
   }
 }
 

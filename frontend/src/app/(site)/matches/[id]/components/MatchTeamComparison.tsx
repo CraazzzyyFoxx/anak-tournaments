@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { TeamWithStats } from "@/types/team.types";
 import { LogStatsName } from "@/types/stats.types";
 import { COMPARISON_STATS, STAT_META, formatStat, teamTotal } from "@/utils/matchStats";
@@ -25,6 +25,7 @@ interface Row {
 
 const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) => {
   const t = useTranslations<never>();
+  const format = useFormatter();
 
   const rows: Row[] = COMPARISON_STATS.map((name) => {
     const homeValue = teamTotal(home, round, name);
@@ -57,7 +58,7 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
           size="xs"
           nameClassName="aqt-tnum text-sm font-semibold text-[color:var(--aqt-teal)]"
         />
-        <span className="aqt-mono px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <span className="aqt-mono px-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
           {t("matches.comparison.title")}
         </span>
         <TeamName
@@ -78,10 +79,10 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
                 fontWeight: row.winner === "home" ? 700 : 500
               }}
             >
-              {formatStat(row.name, row.home)}
+              {formatStat(row.name, row.home, format)}
             </span>
             <div className="flex flex-col gap-1">
-              <span className="text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
+              <span className="text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--aqt-fg-dim)]">
                 {row.label}
               </span>
               <div className="flex items-center">
@@ -115,7 +116,7 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
                 fontWeight: row.winner === "away" ? 700 : 500
               }}
             >
-              {formatStat(row.name, row.away)}
+              {formatStat(row.name, row.away, format)}
             </span>
           </div>
         ))}

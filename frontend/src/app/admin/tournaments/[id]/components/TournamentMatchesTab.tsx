@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   ArrowUpDown,
   CheckCircle,
@@ -714,9 +715,10 @@ export function TournamentMatchesTab({
               <div className="border-t border-border/30 px-3 py-2">
                 <Link
                   href={`/admin/encounters?tournament=${tournamentId}`}
-                  className="text-sm tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+                  className="inline-flex items-center gap-1 text-sm tabular-nums text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  Show all {filteredEncounters.length} encounters <span aria-hidden>→</span>
+                  Show all {filteredEncounters.length} encounters
+                  <ArrowRight className="size-4" aria-hidden />
                 </Link>
               </div>
             ) : null}

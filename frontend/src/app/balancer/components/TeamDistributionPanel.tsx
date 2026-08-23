@@ -161,7 +161,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
                       <span
                         key={point.id}
                         className={cn(
-                          "inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-[10px] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+                          "inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-[11px] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
                           point.accent,
                           stackIndex === 0 ? "" : "-ml-1"
                         )}
@@ -185,7 +185,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
             );
           })}
         </div>
-        <div className="mt-2 flex items-center justify-between text-[10px] text-[color:var(--aqt-fg-faint)]">
+        <div className="mt-2 flex items-center justify-between text-[11px] text-[color:var(--aqt-fg-faint)]">
           <span>{min ?? "-"}</span>
           <span>{max ?? "-"}</span>
         </div>

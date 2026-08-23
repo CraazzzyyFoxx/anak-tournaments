@@ -30,6 +30,13 @@ import {
 
 const TEAMS_PER_IMAGE = 10;
 const EXPORT_WIDTH = 1920;
+/**
+ * Canvas flood colour for the rasterised PNG. `html-to-image` hands this
+ * straight to the canvas, so it must be a literal colour — a `var()` reference
+ * has no element to resolve against there. Mirrors `--aqt-bg`; the captured DOM
+ * itself uses the token, which resolves because the clone inherits computed
+ * styles from the live document.
+ */
 const EXPORT_BACKGROUND = "#090a10";
 
 type BalanceImageExportDialogProps = {
@@ -342,7 +349,7 @@ function BalanceImageCaptureFrame({
   return (
     <div
       ref={refCallback}
-      className="mb-6 bg-[#090a10] p-4 text-[color:var(--aqt-fg)]"
+      className="mb-6 bg-[color:var(--aqt-bg)] p-4 text-[color:var(--aqt-fg)]"
       style={{ width: EXPORT_WIDTH }}
     >
       <div className="grid grid-cols-5 gap-3">
@@ -373,12 +380,12 @@ function BalanceExportTeamCard({
   const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[#101116] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
+    <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
       <div className="flex items-start justify-between gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <div
             className={cn(
-              "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+              "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
               teamAccent
             )}
           >
@@ -404,16 +411,16 @@ function BalanceExportTeamCard({
       <table className="w-full min-w-90 caption-bottom text-sm">
         <thead>
           <tr className="border-b border-[color:var(--aqt-border)]">
-            <th className="h-8 w-13 px-4 text-left align-middle text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 w-13 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Role
             </th>
-            <th className="h-8 min-w-45 px-0 text-left align-middle text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 min-w-45 px-0 text-left align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Player
             </th>
-            <th className="h-8 w-18 px-2 text-center align-middle text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 w-18 px-2 text-center align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Rank
             </th>
-            <th className="h-8 w-22 px-3 text-center align-middle text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
+            <th className="h-8 w-22 px-3 text-center align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-dim)]">
               Prefs
             </th>
           </tr>
@@ -438,7 +445,7 @@ function BalanceExportTeamCard({
                       </span>
                     </div>
                     {formatSubRoleLabel(player.sub_role) ? (
-                      <span className="truncate text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+                      <span className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
                         {formatSubRoleLabel(player.sub_role)}
                       </span>
                     ) : null}

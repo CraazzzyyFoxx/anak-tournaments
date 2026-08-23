@@ -66,7 +66,7 @@ export function PickBanCountdown({ deadline, totalSeconds }: Readonly<PickBanCou
         </span>
       </div>
       <div className="flex flex-col">
-        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]">
           {t("timer.label")}
         </span>
         {expired ? (

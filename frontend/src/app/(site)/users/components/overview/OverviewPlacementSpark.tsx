@@ -129,7 +129,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
               title={`#${p.placement} · ${p.name}`}
             >
               <div className="relative flex items-center justify-center">
-                <span className="aqt-mono absolute bottom-full left-1/2 mb-[3px] -translate-x-1/2 whitespace-nowrap text-[9.5px] text-[color:var(--aqt-fg-muted)]">
+                <span className="aqt-mono absolute bottom-full left-1/2 mb-[3px] -translate-x-1/2 whitespace-nowrap text-[11px] text-[color:var(--aqt-fg-muted)]">
                   #{p.placement}
                 </span>
                 {renderDot(p)}
@@ -142,7 +142,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
             p.label ? (
               <span
                 key={p.id}
-                className="aqt-mono absolute -translate-x-1/2 whitespace-nowrap text-[9px] text-[color:var(--aqt-fg-faint)]"
+                className="aqt-mono absolute -translate-x-1/2 whitespace-nowrap text-[11px] text-[color:var(--aqt-fg-faint)]"
                 style={{ left: `${(p.xFrac * 100).toFixed(2)}%` }}
                 title={p.name}
               >
@@ -153,7 +153,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 text-[10.5px] text-[color:var(--aqt-fg-muted)]">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 text-[11px] text-[color:var(--aqt-fg-muted)]">
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block rounded-full"

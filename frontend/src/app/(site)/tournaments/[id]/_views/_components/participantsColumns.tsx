@@ -144,7 +144,7 @@ function RolesCell({
               />
             </span>
             {subroleLabel ? (
-              <span className="text-center text-[8px] font-semibold leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)] uppercase">
+              <span className="text-center text-[11px] font-semibold leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)] uppercase">
                 {subroleLabel}
               </span>
             ) : null}
@@ -627,7 +627,7 @@ export function buildParticipantColumns(
             </span>
           ) : null}
           {reg.team.is_substitute ? (
-            <span className="shrink-0 rounded border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-1 py-px text-[10px] font-semibold leading-4 text-[color:var(--aqt-fg-dim)]">
+            <span className="shrink-0 rounded border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-1 py-px text-[11px] font-semibold leading-4 text-[color:var(--aqt-fg-dim)]">
               {teamSubstituteLabel}
             </span>
           ) : null}

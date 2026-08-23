@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useFormatter, type DateTimeFormatOptions } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import {
@@ -19,6 +20,16 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { CustomFieldDefinition, SubroleCatalog } from "@/types/registration.types";
 import { renderCustomFieldValue } from "@/components/registration/customFieldValue";
+
+/**
+ * The slice of next-intl's formatter the timestamp cells need. These helpers are
+ * plain functions, so they cannot call `useFormatter()` themselves — and an
+ * `en-GB` literal here printed English dates into the `ru` default UI. The cell
+ * components below supply the formatter instead.
+ */
+interface DateFormatter {
+  dateTime: (value: Date, options?: DateTimeFormatOptions) => string;
+}
 
 export interface BalancerRegistrationColumnDefinition {
   id: string;
@@ -41,13 +52,13 @@ function parseValidDate(dateString: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function formatTimestamp(dateString: string | null | undefined): string | null {
+function formatTimestamp(format: DateFormatter, dateString: string | null | undefined): string | null {
   const date = parseValidDate(dateString);
   if (!date) {
     return null;
   }
 
-  return date.toLocaleString("en-GB", {
+  return format.dateTime(date, {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -55,13 +66,13 @@ function formatTimestamp(dateString: string | null | undefined): string | null {
   });
 }
 
-function formatFullTimestamp(dateString: string | null | undefined): string | null {
+function formatFullTimestamp(format: DateFormatter, dateString: string | null | undefined): string | null {
   const date = parseValidDate(dateString);
   if (!date) {
     return null;
   }
 
-  return date.toLocaleString("en-GB", {
+  return format.dateTime(date, {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -153,7 +164,7 @@ function RolesCell({
             >
               <PlayerRoleIcon role={getRoleIconName(role.role)} size={20} />
             </span>
-            <span className="text-center text-[9px] font-semibold uppercase leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
+            <span className="text-center text-[11px] font-semibold uppercase leading-none tracking-[0.12em] text-[color:var(--aqt-fg-dim)]">
               {subroleLabel ?? role.rank_value ?? ""}
             </span>
           </div>
@@ -218,8 +229,9 @@ function TextBlockCell({ value }: Readonly<{ value: string | null | undefined }>
 
 
 function SubmittedCell({ submittedAt }: Readonly<{ submittedAt: string | null }>) {
-  const shortValue = formatTimestamp(submittedAt);
-  const fullValue = formatFullTimestamp(submittedAt);
+  const format = useFormatter();
+  const shortValue = formatTimestamp(format, submittedAt);
+  const fullValue = formatFullTimestamp(format, submittedAt);
 
   return (
     <span title={fullValue ?? undefined} className="whitespace-nowrap text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
@@ -229,7 +241,8 @@ function SubmittedCell({ submittedAt }: Readonly<{ submittedAt: string | null }>
 }
 
 function ReviewedCell({ registration }: Readonly<{ registration: AdminRegistration }>) {
-  const reviewedAt = formatTimestamp(registration.reviewed_at);
+  const format = useFormatter();
+  const reviewedAt = formatTimestamp(format, registration.reviewed_at);
   if (!reviewedAt && !registration.reviewed_by_username) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }

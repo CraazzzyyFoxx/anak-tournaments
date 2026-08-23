@@ -59,7 +59,7 @@ export function PickBanItemThumb({ kind, item, name, size = 28, muted }: Readonl
         <span
           aria-hidden
           className="absolute inset-0 grid place-items-center font-onest font-bold text-[color:var(--aqt-fg-faint)]"
-          style={{ fontSize: Math.max(9, Math.round(size * 0.4)) }}
+          style={{ fontSize: Math.max(11, Math.round(size * 0.4)) }}
         >
           {name.slice(0, 2).toUpperCase()}
         </span>

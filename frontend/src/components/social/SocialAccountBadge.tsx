@@ -2,7 +2,6 @@ import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { getSocialProviderConfig, socialProfileUrl } from "@/lib/social-providers";
-import { hexToRgba } from "@/lib/utils";
 import type { SocialAccount } from "@/types/user.types";
 
 import { SocialIcon } from "./SocialIcon";
@@ -19,11 +18,12 @@ export function SocialAccountBadge({ account, linkify = true }: Readonly<SocialA
   const config = getSocialProviderConfig(account.provider);
   const url = linkify ? socialProfileUrl(account) : null;
 
-  // The tints used to be built by hex-string concatenation (`${color}10`),
-  // which silently emits invalid CSS for any provider color that is not a
-  // 6-digit hex. `hexToRgba` returns null instead, and we fall back to no tint.
-  const surface = hexToRgba(config.color, 0.0625);
-  const border = hexToRgba(config.color, 0.25);
+  // Tints are built with `color-mix`, not a JS hex parse: `config.color` is an
+  // `--aqt-brand-*` token reference that only CSS can resolve. Mixing with
+  // `transparent` in srgb is exactly the old `rgba(r, g, b, a)`, so the badge
+  // keeps the tint it had when these were literal hex.
+  const surface = `color-mix(in srgb, ${config.color} 6.25%, transparent)`;
+  const border = `color-mix(in srgb, ${config.color} 25%, transparent)`;
   // Raw brand hues fail WCAG AA as 12.5px label text on our dark surfaces
   // (Discord #5865f2 → 4.04:1, Twitch #9146ff → 4.01:1). The mark keeps the
   // exact brand colour; the *label* is lifted toward white, which reads at
@@ -34,8 +34,8 @@ export function SocialAccountBadge({ account, linkify = true }: Readonly<SocialA
     <span
       className="inline-flex items-center gap-1.5 rounded-[7px] border px-2 py-1 text-[12.5px] font-medium"
       style={{
-        background: surface ?? undefined,
-        borderColor: border ?? "var(--aqt-border-2)",
+        background: surface,
+        borderColor: border,
         color: labelColor
       }}
       title={

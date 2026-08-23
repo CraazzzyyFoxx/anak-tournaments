@@ -260,12 +260,29 @@
   background: var(--c-surface);
 }
 
+/* A real <button>, not a div with role="button", so Enter/Space and the focus
+   ring come from the platform. These declarations are the button reset. */
 .teamRowMain {
   display: grid;
   grid-template-columns: 6px 78px minmax(145px, 0.85fr) minmax(420px, 2.75fr) 92px 116px 96px 78px 34px;
   min-height: 72px;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Inset ring: .teamRow clips overflow, so a positive offset would be cut off. */
+.teamRowMain:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
 }
 
 .groupBand {
@@ -415,7 +432,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 760;
   font-variant-numeric: tabular-nums;
 }
@@ -485,7 +502,7 @@
   border-radius: 999px;
   background: var(--c-surface-2);
   padding: 3px 7px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 760;
   text-transform: uppercase;
 }
@@ -963,7 +980,7 @@
 }
 .cMetaPillK {
   color: var(--c-faint);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1038,6 +1055,13 @@
   border-radius: var(--c-r-sm);
   background: var(--c-surface);
   padding: 13px 14px 14px;
+  /* Reset so `.cKpi` renders identically on a <div> and on the real <button>
+     used by filterable KPIs (a div with role="button" is not an option). */
+  width: 100%;
+  appearance: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 .cKpiClickable {
   cursor: pointer;
@@ -1061,7 +1085,7 @@
   align-items: center;
   gap: 5px;
   color: var(--c-faint);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1103,9 +1127,11 @@
   border: 1.4px solid var(--c-faint);
   border-radius: 50%;
   background: none;
+  appearance: none;
   padding: 0;
+  font-family: inherit;
   color: var(--c-faint);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
   vertical-align: middle;
@@ -1237,7 +1263,7 @@
 }
 .cMonteProbL {
   color: var(--c-faint);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1385,7 +1411,7 @@
   flex-shrink: 0;
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .cRowHz .cHorizonTrack {
@@ -1564,7 +1590,7 @@
 .cTeamEyebrow {
   color: var(--c-faint);
   font-family: var(--c-disp);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1666,7 +1692,7 @@
   background: var(--c-info-dim);
   padding: 2px 7px;
   color: var(--c-info);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1815,7 +1841,7 @@
   align-items: center;
   gap: 5px;
   color: var(--c-faint);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -1895,7 +1921,7 @@
   padding: 2px 0 8px;
   color: var(--c-faint);
   font-family: var(--c-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 .cHzScale {
   display: flex;

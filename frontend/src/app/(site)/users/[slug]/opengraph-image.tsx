@@ -41,6 +41,9 @@ export default async function Image({ params }: { params: Promise<{ slug: string
     console.error(`opengraph-image: failed to load player "${slug}":`, error);
   }
 
+  // Every colour below is a literal hex on purpose: Satori rasterizes this tree
+  // outside the browser and cannot resolve CSS custom properties, so `--aqt-*`
+  // tokens are unavailable here. Values mirror the dark theme by hand.
   return new ImageResponse(
     (
       <div

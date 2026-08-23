@@ -1,7 +1,22 @@
+import type { DateTimeFormatOptions } from "next-intl";
+
 /**
  * Shared date/duration formatting for every admin collector dashboard (rank,
  * subscriptions, streams) — each domain used to carry its own copy.
  */
+
+/**
+ * The slice of next-intl's formatter the admin date helpers need.
+ *
+ * Plain modules cannot call `useFormatter()`, and a module-level
+ * `Intl.DateTimeFormat` would have to pin a locale — which is how half the
+ * admin area came to print `en-US` dates inside the `ru` default UI. So the
+ * helpers take the formatter instead: client components pass `useFormatter()`,
+ * server components `await getFormatter()`. Both satisfy this shape.
+ */
+export interface AdminDateFormatter {
+  dateTime: (value: Date, options?: DateTimeFormatOptions) => string;
+}
 
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
