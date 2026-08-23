@@ -62,6 +62,8 @@ def _query(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _int_or_400(value: Any, field: str) -> int:
+    if isinstance(value, list):
+        value = value[0] if value else None
     if value is None:
         raise HTTPException(status_code=400, detail=f"missing {field}")
     try:
