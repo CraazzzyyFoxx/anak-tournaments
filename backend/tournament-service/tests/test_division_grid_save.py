@@ -25,6 +25,7 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 models = importlib.import_module("src.models")
 schemas = importlib.import_module("src.schemas")
 division_service = importlib.import_module("src.services.division_grid.service")
+grid_service = division_service.division_grid_service
 
 
 def _write_tier(
@@ -125,13 +126,13 @@ def test_save_cosmetic_updates_in_place_without_new_version() -> None:
             name="Ladder", tiers=[_write_tier(1, "bronze", 1000, 1099, name="Bronze!")]
         )
         with (
-            patch.object(division_service, "_resolve_workspace_grid", AsyncMock(return_value=grid)),
-            patch.object(division_service, "_apply_cosmetic", AsyncMock()) as apply_cosmetic,
-            patch.object(division_service, "create_version", AsyncMock()) as create_version,
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
-            patch.object(division_service, "get_activation_readiness", AsyncMock(return_value=_readiness(True))),
+            patch.object(grid_service, "_resolve_workspace_grid", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "_apply_cosmetic", AsyncMock()) as apply_cosmetic,
+            patch.object(grid_service, "create_version", AsyncMock()) as create_version,
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "get_activation_readiness", AsyncMock(return_value=_readiness(True))),
         ):
-            outcome = await division_service.save_workspace_grid(session, workspace=workspace, data=data)
+            outcome = await grid_service.save_workspace_grid(session, workspace=workspace, data=data)
         assert outcome.mode == "in_place"
         assert outcome.saved_version_id == 100
         apply_cosmetic.assert_awaited_once()
@@ -152,18 +153,18 @@ def test_save_structural_clean_creates_version_and_activates() -> None:
             tiers=[_write_tier(1, "bronze", 1000, 1099), _write_tier(None, "silver", 1100, 1199)]
         )
         with (
-            patch.object(division_service, "_resolve_workspace_grid", AsyncMock(return_value=grid)),
-            patch.object(division_service, "create_version", AsyncMock(return_value=new_version)),
-            patch.object(division_service, "publish_version", AsyncMock()),
+            patch.object(grid_service, "_resolve_workspace_grid", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "create_version", AsyncMock(return_value=new_version)),
+            patch.object(grid_service, "publish_version", AsyncMock()),
             patch.object(division_service, "get_workspace_source_version_ids", AsyncMock(return_value={100})),
-            patch.object(division_service, "get_version", AsyncMock(return_value=source_version)),
+            patch.object(grid_service, "get_version", AsyncMock(return_value=source_version)),
             patch.object(division_service.automap, "generate_mapping_rules", Mock(return_value=gen)),
-            patch.object(division_service, "_persist_mapping", AsyncMock()) as persist,
-            patch.object(division_service, "get_activation_readiness", AsyncMock(return_value=_readiness(True))),
-            patch.object(division_service, "activate_version", AsyncMock()) as activate,
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "_persist_mapping", AsyncMock()) as persist,
+            patch.object(grid_service, "get_activation_readiness", AsyncMock(return_value=_readiness(True))),
+            patch.object(grid_service, "activate_version", AsyncMock()) as activate,
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
         ):
-            outcome = await division_service.save_workspace_grid(session, workspace=workspace, data=data)
+            outcome = await grid_service.save_workspace_grid(session, workspace=workspace, data=data)
         assert outcome.mode == "new_version_activated"
         assert outcome.saved_version_id == 200
         activate.assert_awaited_once()
@@ -182,18 +183,18 @@ def test_save_structural_with_conflicts_stays_pending() -> None:
         gen = SimpleNamespace(rules=[], conflicts=[SimpleNamespace(source_tier_id=1)], is_complete=False)
         data = schemas.DivisionGridSaveRequest(tiers=[_write_tier(None, "silver", 5000, 5099)])
         with (
-            patch.object(division_service, "_resolve_workspace_grid", AsyncMock(return_value=grid)),
-            patch.object(division_service, "create_version", AsyncMock(return_value=new_version)),
-            patch.object(division_service, "publish_version", AsyncMock()),
+            patch.object(grid_service, "_resolve_workspace_grid", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "create_version", AsyncMock(return_value=new_version)),
+            patch.object(grid_service, "publish_version", AsyncMock()),
             patch.object(division_service, "get_workspace_source_version_ids", AsyncMock(return_value={100})),
-            patch.object(division_service, "get_version", AsyncMock(return_value=source_version)),
+            patch.object(grid_service, "get_version", AsyncMock(return_value=source_version)),
             patch.object(division_service.automap, "generate_mapping_rules", Mock(return_value=gen)),
-            patch.object(division_service, "_persist_mapping", AsyncMock()),
-            patch.object(division_service, "get_activation_readiness", AsyncMock(return_value=_readiness(False))),
-            patch.object(division_service, "activate_version", AsyncMock()) as activate,
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "_persist_mapping", AsyncMock()),
+            patch.object(grid_service, "get_activation_readiness", AsyncMock(return_value=_readiness(False))),
+            patch.object(grid_service, "activate_version", AsyncMock()) as activate,
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
         ):
-            outcome = await division_service.save_workspace_grid(session, workspace=workspace, data=data)
+            outcome = await grid_service.save_workspace_grid(session, workspace=workspace, data=data)
         assert outcome.mode == "new_version_pending"
         activate.assert_not_called()
 
@@ -214,13 +215,15 @@ def test_delete_grid_removes_unused_grid() -> None:
         session = SimpleNamespace(
             delete=AsyncMock(),
             flush=AsyncMock(),
-            scalar=AsyncMock(side_effect=[999, 0]),  # default version id (not in grid), tournament count
+            scalar=AsyncMock(side_effect=[999]),  # default version id (not in grid)
+            # TournamentRepository.count -> session.execute(...).scalar_one()
+            execute=AsyncMock(return_value=SimpleNamespace(scalar_one=Mock(return_value=0))),
         )
         with (
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
             patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
         ):
-            await division_service.delete_grid(session, 7)
+            await grid_service.delete_grid(session, 7)
         session.delete.assert_awaited_once_with(grid)
 
     asyncio.run(run())
@@ -235,11 +238,11 @@ def test_delete_grid_rejects_workspace_default() -> None:
             scalar=AsyncMock(side_effect=[100]),  # default points at a version in this grid
         )
         with (
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
             patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
             pytest.raises(Exception) as caught,
         ):
-            await division_service.delete_grid(session, 7)
+            await grid_service.delete_grid(session, 7)
         assert getattr(caught.value, "status_code", None) == 409
         session.delete.assert_not_called()
 
@@ -252,14 +255,16 @@ def test_delete_grid_rejects_when_used_by_tournaments() -> None:
         session = SimpleNamespace(
             delete=AsyncMock(),
             flush=AsyncMock(),
-            scalar=AsyncMock(side_effect=[None, 3]),  # no default, 3 tournaments use it
+            scalar=AsyncMock(side_effect=[None]),  # no default
+            # 3 tournaments use it, via TournamentRepository.count
+            execute=AsyncMock(return_value=SimpleNamespace(scalar_one=Mock(return_value=3))),
         )
         with (
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
             patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
             pytest.raises(Exception) as caught,
         ):
-            await division_service.delete_grid(session, 7)
+            await grid_service.delete_grid(session, 7)
         assert getattr(caught.value, "status_code", None) == 409
         session.delete.assert_not_called()
 
@@ -271,10 +276,10 @@ def test_delete_grid_rejects_system_grid() -> None:
         grid = _grid_for_delete(workspace_id=None)
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock(), scalar=AsyncMock())
         with (
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
             pytest.raises(Exception) as caught,
         ):
-            await division_service.delete_grid(session, 7)
+            await grid_service.delete_grid(session, 7)
         assert getattr(caught.value, "status_code", None) == 409
         session.delete.assert_not_called()
 
@@ -291,11 +296,11 @@ def test_delete_grid_force_bypasses_guards_and_clears_default() -> None:
             scalar=AsyncMock(),
         )
         with (
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
             patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
             patch.object(division_service.division_grid_cache, "invalidate_workspace", AsyncMock()),
         ):
-            await division_service.delete_grid(session, 7, force=True)
+            await grid_service.delete_grid(session, 7, force=True)
         session.delete.assert_awaited_once_with(grid)
         session.execute.assert_awaited()  # workspace default cleared
         session.scalar.assert_not_called()  # guards skipped
@@ -308,10 +313,10 @@ def test_delete_grid_force_still_rejects_system_grid() -> None:
         grid = _grid_for_delete(workspace_id=None)
         session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock(), execute=AsyncMock())
         with (
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
             pytest.raises(Exception) as caught,
         ):
-            await division_service.delete_grid(session, 7, force=True)
+            await grid_service.delete_grid(session, 7, force=True)
         assert getattr(caught.value, "status_code", None) == 409
         session.delete.assert_not_called()
 
@@ -334,12 +339,12 @@ def test_save_uses_explicit_grid_id_over_workspace_resolution() -> None:
             grid_id=7, name="Imported", tiers=[_write_tier(1, "bronze", 1000, 1099, name="B!")]
         )
         with (
-            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
-            patch.object(division_service, "_resolve_workspace_grid", AsyncMock()) as resolve,
-            patch.object(division_service, "_apply_cosmetic", AsyncMock()),
-            patch.object(division_service, "get_activation_readiness", AsyncMock(return_value=_readiness(True))),
+            patch.object(grid_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(grid_service, "_resolve_workspace_grid", AsyncMock()) as resolve,
+            patch.object(grid_service, "_apply_cosmetic", AsyncMock()),
+            patch.object(grid_service, "get_activation_readiness", AsyncMock(return_value=_readiness(True))),
         ):
-            outcome = await division_service.save_workspace_grid(session, workspace=workspace, data=data)
+            outcome = await grid_service.save_workspace_grid(session, workspace=workspace, data=data)
         resolve.assert_not_called()
         assert outcome.mode == "in_place"
         assert outcome.saved_version_id == 100

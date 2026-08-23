@@ -8,8 +8,17 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import (
+    DivisionGridRepository,
+    DivisionGridTierRepository,
+    DivisionGridVersionRepository,
+    WorkspaceRepository,
+)
 from src import models, schemas
-from src.services.division_grid import marketplace, service
+from src.services.division_grid.marketplace import MarketplaceService, marketplace_service
+from src.services.division_grid.service import DivisionGridService, division_grid_service
+
+__all__ = ("PortableService", "build_portable_document", "portable_service")
 
 
 def build_portable_document(
@@ -78,144 +87,177 @@ def build_portable_document(
     )
 
 
-async def export_portable_document(
-    session: AsyncSession,
-    *,
-    grid_id: int,
-) -> schemas.DivisionGridPortableDocument:
-    grid = await service.get_grid_by_id(session, grid_id)
-    version_ids = {version.id for version in grid.versions}
-    mappings = await marketplace.load_mappings_for_versions(session, version_ids)
-    return build_portable_document(grid, mappings)
-
-
 def _document_fingerprint(document: schemas.DivisionGridPortableDocument) -> str:
     canonical = document.model_dump_json(exclude_none=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-async def import_portable_document(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    request: schemas.DivisionGridPortableImportRequest,
-) -> models.DivisionGrid:
-    document = request.document
-    version_numbers = [version.version for version in document.versions]
-    if len(version_numbers) != len(set(version_numbers)):
-        raise HTTPException(status_code=400, detail="Portable grid contains duplicate version numbers")
+class PortableService:
+    """Import/export of a whole division grid as a self-describing document."""
 
-    fingerprint = _document_fingerprint(document)
-    source_key = f"portable:{document.slug}"
-    await session.scalar(sa.select(models.Workspace.id).where(models.Workspace.id == workspace_id).with_for_update())
-    provenance_filter = (
-        models.DivisionGrid.source_key == source_key
-        if request.mode == "sync"
-        else sa.and_(
-            models.DivisionGrid.source_workspace_id.is_(None),
-            models.DivisionGrid.source_grid_id.is_(None),
-        )
-    )
-    existing = await session.scalar(
-        sa.select(models.DivisionGrid)
-        .where(
-            models.DivisionGrid.workspace_id == workspace_id,
-            provenance_filter,
-            models.DivisionGrid.source_fingerprint == fingerprint,
-            models.DivisionGrid.archived_at.is_(None),
-        )
-        .order_by(models.DivisionGrid.id.desc())
-        .limit(1)
-    )
-    if request.mode != "copy" and existing is not None:
-        return await service.get_grid_by_id(session, existing.id)
+    def __init__(
+        self,
+        *,
+        grid_repo: DivisionGridRepository = DivisionGridRepository(),
+        version_repo: DivisionGridVersionRepository = DivisionGridVersionRepository(),
+        tier_repo: DivisionGridTierRepository = DivisionGridTierRepository(),
+        workspace_repo: WorkspaceRepository = WorkspaceRepository(),
+        grid_service: DivisionGridService = division_grid_service,
+        marketplace: MarketplaceService = marketplace_service,
+    ) -> None:
+        self.grid_repo = grid_repo
+        self.version_repo = version_repo
+        self.tier_repo = tier_repo
+        self.workspace_repo = workspace_repo
+        self.grid_service = grid_service
+        self.marketplace = marketplace
 
-    if request.mode == "sync":
-        current = await session.scalar(
-            sa.select(models.DivisionGrid)
+    async def export_portable_document(
+        self,
+        session: AsyncSession,
+        *,
+        grid_id: int,
+    ) -> schemas.DivisionGridPortableDocument:
+        grid = await self.grid_service.get_grid_by_id(session, grid_id)
+        version_ids = {version.id for version in grid.versions}
+        mappings = await self.marketplace.load_mappings_for_versions(session, version_ids)
+        return build_portable_document(grid, mappings)
+
+    async def import_portable_document(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        request: schemas.DivisionGridPortableImportRequest,
+    ) -> models.DivisionGrid:
+        document = request.document
+        version_numbers = [version.version for version in document.versions]
+        if len(version_numbers) != len(set(version_numbers)):
+            raise HTTPException(status_code=400, detail="Portable grid contains duplicate version numbers")
+
+        fingerprint = _document_fingerprint(document)
+        source_key = f"portable:{document.slug}"
+        # Serializes concurrent portable imports into the same workspace.
+        await self.workspace_repo.lock_by_id(session, workspace_id)
+        provenance_filter = (
+            models.DivisionGrid.source_key == source_key
+            if request.mode == "sync"
+            else sa.and_(
+                models.DivisionGrid.source_workspace_id.is_(None),
+                models.DivisionGrid.source_grid_id.is_(None),
+            )
+        )
+        existing = await session.scalar(
+            self.grid_repo.select()
             .where(
                 models.DivisionGrid.workspace_id == workspace_id,
-                models.DivisionGrid.source_key == source_key,
+                provenance_filter,
+                models.DivisionGrid.source_fingerprint == fingerprint,
                 models.DivisionGrid.archived_at.is_(None),
             )
             .order_by(models.DivisionGrid.id.desc())
             .limit(1)
         )
-        if current is not None:
-            current.archived_at = datetime.now(UTC)
+        if request.mode != "copy" and existing is not None:
+            return await self.grid_service.get_grid_by_id(session, existing.id)
 
-    target_slug = await marketplace.make_unique_grid_slug(session, workspace_id, document.slug)
-    grid = models.DivisionGrid(
-        workspace_id=workspace_id,
-        slug=target_slug,
-        name=document.name,
-        description=document.description,
-        source_key=source_key if request.mode == "sync" else None,
-        source_fingerprint=fingerprint,
-        imported_at=datetime.now(UTC),
-    )
-    session.add(grid)
-    await session.flush()
-
-    versions_by_number: dict[int, models.DivisionGridVersion] = {}
-    tiers_by_version_and_slug: dict[tuple[int, str], models.DivisionGridTier] = {}
-    for portable_version in sorted(document.versions, key=lambda item: item.version):
-        version = models.DivisionGridVersion(
-            grid_id=grid.id,
-            version=portable_version.version,
-            label=portable_version.label,
-            status=portable_version.status,
-            published_at=datetime.now(UTC) if portable_version.status == "published" else None,
-        )
-        session.add(version)
-        await session.flush()
-        versions_by_number[portable_version.version] = version
-        for portable_tier in sorted(portable_version.tiers, key=lambda item: item.sort_order):
-            tier = models.DivisionGridTier(
-                version_id=version.id,
-                slug=portable_tier.slug,
-                number=portable_tier.number,
-                name=portable_tier.name,
-                sort_order=portable_tier.sort_order,
-                rank_min=portable_tier.rank_min,
-                rank_max=portable_tier.rank_max,
-                icon_url=portable_tier.icon_url,
-                ow_rank_min=portable_tier.ow_rank_min,
-                ow_rank_max=portable_tier.ow_rank_max,
-            )
-            session.add(tier)
-            await session.flush()
-            tiers_by_version_and_slug[(portable_version.version, portable_tier.slug)] = tier
-
-    for portable_mapping in document.mappings:
-        source_version = versions_by_number.get(portable_mapping.source_version)
-        target_version = versions_by_number.get(portable_mapping.target_version)
-        if source_version is None or target_version is None:
-            raise HTTPException(status_code=400, detail="Portable mapping references an unknown version")
-
-        rules: list[schemas.DivisionGridMappingRuleWrite] = []
-        for portable_rule in portable_mapping.rules:
-            source_tier = tiers_by_version_and_slug.get(
-                (portable_mapping.source_version, portable_rule.source_tier_slug)
-            )
-            target_tier = tiers_by_version_and_slug.get(
-                (portable_mapping.target_version, portable_rule.target_tier_slug)
-            )
-            if source_tier is None or target_tier is None:
-                raise HTTPException(status_code=400, detail="Portable mapping references an unknown tier slug")
-            rules.append(
-                schemas.DivisionGridMappingRuleWrite(
-                    source_tier_id=source_tier.id,
-                    target_tier_id=target_tier.id,
-                    weight=portable_rule.weight,
-                    is_primary=portable_rule.is_primary,
+        if request.mode == "sync":
+            current = await session.scalar(
+                self.grid_repo.select()
+                .where(
+                    models.DivisionGrid.workspace_id == workspace_id,
+                    models.DivisionGrid.source_key == source_key,
+                    models.DivisionGrid.archived_at.is_(None),
                 )
+                .order_by(models.DivisionGrid.id.desc())
+                .limit(1)
             )
-        await service.upsert_mapping(
+            if current is not None:
+                current.archived_at = datetime.now(UTC)
+
+        target_slug = await self.marketplace.make_unique_grid_slug(session, workspace_id, document.slug)
+        grid = await self.grid_repo.create(
             session,
-            source_version_id=source_version.id,
-            target_version_id=target_version.id,
-            data=schemas.DivisionGridMappingWrite(name=portable_mapping.name, rules=rules),
+            models.DivisionGrid(
+                workspace_id=workspace_id,
+                slug=target_slug,
+                name=document.name,
+                description=document.description,
+                source_key=source_key if request.mode == "sync" else None,
+                source_fingerprint=fingerprint,
+                imported_at=datetime.now(UTC),
+            ),
         )
-    await session.flush()
-    return await service.get_grid_by_id(session, grid.id)
+
+        versions_by_number: dict[int, models.DivisionGridVersion] = {}
+        tiers_by_version_and_slug: dict[tuple[int, str], models.DivisionGridTier] = {}
+        for portable_version in sorted(document.versions, key=lambda item: item.version):
+            version = await self.version_repo.create(
+                session,
+                models.DivisionGridVersion(
+                    grid_id=grid.id,
+                    version=portable_version.version,
+                    label=portable_version.label,
+                    status=portable_version.status,
+                    published_at=datetime.now(UTC) if portable_version.status == "published" else None,
+                ),
+            )
+            versions_by_number[portable_version.version] = version
+            pending_tiers = [
+                (
+                    portable_tier.slug,
+                    models.DivisionGridTier(
+                        version_id=version.id,
+                        slug=portable_tier.slug,
+                        number=portable_tier.number,
+                        name=portable_tier.name,
+                        sort_order=portable_tier.sort_order,
+                        rank_min=portable_tier.rank_min,
+                        rank_max=portable_tier.rank_max,
+                        icon_url=portable_tier.icon_url,
+                        ow_rank_min=portable_tier.ow_rank_min,
+                        ow_rank_max=portable_tier.ow_rank_max,
+                    ),
+                )
+                for portable_tier in sorted(portable_version.tiers, key=lambda item: item.sort_order)
+            ]
+            # One INSERT batch per version instead of a flush per tier.
+            await self.tier_repo.create_many(session, [tier for _, tier in pending_tiers])
+            for slug, tier in pending_tiers:
+                tiers_by_version_and_slug[(portable_version.version, slug)] = tier
+
+        for portable_mapping in document.mappings:
+            source_version = versions_by_number.get(portable_mapping.source_version)
+            target_version = versions_by_number.get(portable_mapping.target_version)
+            if source_version is None or target_version is None:
+                raise HTTPException(status_code=400, detail="Portable mapping references an unknown version")
+
+            rules: list[schemas.DivisionGridMappingRuleWrite] = []
+            for portable_rule in portable_mapping.rules:
+                source_tier = tiers_by_version_and_slug.get(
+                    (portable_mapping.source_version, portable_rule.source_tier_slug)
+                )
+                target_tier = tiers_by_version_and_slug.get(
+                    (portable_mapping.target_version, portable_rule.target_tier_slug)
+                )
+                if source_tier is None or target_tier is None:
+                    raise HTTPException(status_code=400, detail="Portable mapping references an unknown tier slug")
+                rules.append(
+                    schemas.DivisionGridMappingRuleWrite(
+                        source_tier_id=source_tier.id,
+                        target_tier_id=target_tier.id,
+                        weight=portable_rule.weight,
+                        is_primary=portable_rule.is_primary,
+                    )
+                )
+            await self.grid_service.upsert_mapping(
+                session,
+                source_version_id=source_version.id,
+                target_version_id=target_version.id,
+                data=schemas.DivisionGridMappingWrite(name=portable_mapping.name, rules=rules),
+            )
+        await session.flush()
+        return await self.grid_service.get_grid_by_id(session, grid.id)
+
+
+portable_service = PortableService()

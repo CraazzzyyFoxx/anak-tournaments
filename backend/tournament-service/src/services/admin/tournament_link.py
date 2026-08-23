@@ -1,119 +1,118 @@
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import TournamentLinkRepository
 from src import models
 from src.schemas.admin import tournament_link as schemas
 
 _CONFLICT_DETAIL = "Tournament link with this kind and url already exists for this tournament."
 
 
-async def list_links(
-    session: AsyncSession,
-    tournament_id: int,
-    *,
-    active_only: bool = False,
-) -> list[models.TournamentLink]:
-    query = select(models.TournamentLink).where(models.TournamentLink.tournament_id == tournament_id)
-    if active_only:
-        query = query.where(models.TournamentLink.is_active.is_(True))
+class TournamentLinkService:
+    def __init__(
+        self,
+        *,
+        link_repo: TournamentLinkRepository = TournamentLinkRepository(),
+    ) -> None:
+        self.link_repo = link_repo
 
-    query = query.order_by(
-        models.TournamentLink.sort_order.asc(),
-        models.TournamentLink.id.asc(),
-    )
-    result = await session.execute(query)
-    return list(result.scalars().all())
-
-
-async def get_link(session: AsyncSession, link_id: int) -> models.TournamentLink:
-    result = await session.execute(select(models.TournamentLink).where(models.TournamentLink.id == link_id))
-    link = result.scalar_one_or_none()
-    if link is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tournament link not found.",
+    async def list_links(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        *,
+        active_only: bool = False,
+    ) -> list[models.TournamentLink]:
+        return list(
+            await self.link_repo.list_for_tournament(session, tournament_id, active_only=active_only)
         )
-    return link
 
+    async def get_link(self, session: AsyncSession, link_id: int) -> models.TournamentLink:
+        link = await self.link_repo.get(session, link_id)
+        if link is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament link not found.",
+            )
+        return link
 
-async def _assert_no_conflict(
-    session: AsyncSession,
-    *,
-    tournament_id: int,
-    kind: str,
-    url: str,
-    exclude_id: int | None = None,
-) -> None:
-    # The unique constraint is checked explicitly rather than by catching
-    # IntegrityError: a failed flush poisons the session for the rest of the
-    # request, and the 409 must carry a domain message, not a driver one.
-    query = select(models.TournamentLink).where(
-        models.TournamentLink.tournament_id == tournament_id,
-        models.TournamentLink.kind == kind,
-        models.TournamentLink.url == url,
-    )
-    if exclude_id is not None:
-        query = query.where(models.TournamentLink.id != exclude_id)
-    existing = await session.execute(query)
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_CONFLICT_DETAIL)
+    async def _assert_no_conflict(
+        self,
+        session: AsyncSession,
+        *,
+        tournament_id: int,
+        kind: str,
+        url: str,
+        exclude_id: int | None = None,
+    ) -> None:
+        # The unique constraint is checked explicitly rather than by catching
+        # IntegrityError: a failed flush poisons the session for the rest of the
+        # request, and the 409 must carry a domain message, not a driver one.
+        existing = await self.link_repo.find_conflict(
+            session, tournament_id=tournament_id, kind=kind, url=url, exclude_id=exclude_id
+        )
+        if existing is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_CONFLICT_DETAIL)
 
-
-async def create_link(
-    session: AsyncSession,
-    data: schemas.TournamentLinkCreate,
-) -> models.TournamentLink:
-    await _assert_no_conflict(
-        session,
-        tournament_id=data.tournament_id,
-        kind=data.kind,
-        url=data.url,
-    )
-
-    link = models.TournamentLink(
-        tournament_id=data.tournament_id,
-        kind=data.kind,
-        label=data.label,
-        url=data.url,
-        sort_order=data.sort_order,
-        is_active=data.is_active,
-    )
-    session.add(link)
-    await session.commit()
-    await session.refresh(link)
-    return link
-
-
-async def update_link(
-    session: AsyncSession,
-    link_id: int,
-    data: schemas.TournamentLinkUpdate,
-) -> models.TournamentLink:
-    link = await get_link(session, link_id)
-    update_data = data.model_dump(exclude_unset=True)
-
-    next_kind = update_data.get("kind", link.kind)
-    next_url = update_data.get("url", link.url)
-    if next_kind != link.kind or next_url != link.url:
-        await _assert_no_conflict(
+    async def create_link(
+        self,
+        session: AsyncSession,
+        data: schemas.TournamentLinkCreate,
+    ) -> models.TournamentLink:
+        await self._assert_no_conflict(
             session,
-            tournament_id=link.tournament_id,
-            kind=next_kind,
-            url=next_url,
-            exclude_id=link.id,
+            tournament_id=data.tournament_id,
+            kind=data.kind,
+            url=data.url,
         )
 
-    for field, value in update_data.items():
-        setattr(link, field, value)
+        link = await self.link_repo.create(
+            session,
+            models.TournamentLink(
+                tournament_id=data.tournament_id,
+                kind=data.kind,
+                label=data.label,
+                url=data.url,
+                sort_order=data.sort_order,
+                is_active=data.is_active,
+            ),
+        )
+        await session.commit()
+        await session.refresh(link)
+        return link
 
-    await session.commit()
-    await session.refresh(link)
-    return link
+    async def update_link(
+        self,
+        session: AsyncSession,
+        link_id: int,
+        data: schemas.TournamentLinkUpdate,
+    ) -> models.TournamentLink:
+        link = await self.get_link(session, link_id)
+        update_data = data.model_dump(exclude_unset=True)
+
+        next_kind = update_data.get("kind", link.kind)
+        next_url = update_data.get("url", link.url)
+        if next_kind != link.kind or next_url != link.url:
+            await self._assert_no_conflict(
+                session,
+                tournament_id=link.tournament_id,
+                kind=next_kind,
+                url=next_url,
+                exclude_id=link.id,
+            )
+
+        for field, value in update_data.items():
+            setattr(link, field, value)
+
+        await session.commit()
+        await session.refresh(link)
+        return link
+
+    async def deactivate_link(self, session: AsyncSession, link_id: int) -> None:
+        link = await self.get_link(session, link_id)
+        link.is_active = False
+        await session.commit()
 
 
-async def deactivate_link(session: AsyncSession, link_id: int) -> None:
-    link = await get_link(session, link_id)
-    link.is_active = False
-    await session.commit()
+tournament_link_service = TournamentLinkService()

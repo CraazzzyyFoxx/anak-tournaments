@@ -28,7 +28,7 @@ from shared.rpc.identity import ensure_workspace_permission
 from src.core import auth
 from src.rpc._helpers import _dump, _identity, _require_id, _run
 from src.rpc._s3 import get_s3
-from src.services.admin import team as team_service
+from src.services.admin.team import team_service
 from src.services.team import flows as team_flows
 
 #: Same entity set ``registry._ser_team`` hydrates, so the upload/delete replies
@@ -61,7 +61,7 @@ def register(broker: Any, logger: Any) -> None:
             if not result.success:
                 raise HTTPException(status_code=400, detail=result.error)
             team = await team_service.set_team_image(session, team_id, result.public_url)
-            return _dump(await team_flows.to_pydantic(session, team, _TEAM_ENTITIES))
+            return _dump(await team_flows.flows_service.to_pydantic(session, team, _TEAM_ENTITIES))
 
         return await _run(logger, op)
 
@@ -76,6 +76,6 @@ def register(broker: Any, logger: Any) -> None:
             s3 = await get_s3()
             await s3.delete_prefix(f"avatars/teams/{team_id}/")
             team = await team_service.set_team_image(session, team_id, None)
-            return _dump(await team_flows.to_pydantic(session, team, _TEAM_ENTITIES))
+            return _dump(await team_flows.flows_service.to_pydantic(session, team, _TEAM_ENTITIES))
 
         return await _run(logger, op)

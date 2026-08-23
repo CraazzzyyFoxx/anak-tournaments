@@ -276,7 +276,10 @@ class TeamRouteShapeTests(TestCase):
         )
         handler = source[source.index("_regteam_list_public") :]
         handler = handler[: handler.index("# ── public team registration")]
-        self.assertIn("include_invites=user is not None and await team_service.is_team_captain(", handler)
+        self.assertIn(
+            "include_invites=user is not None and await team_service.teams_service.is_team_captain(",
+            handler,
+        )
         self.assertNotIn("include_invites=True", handler)
 
     def test_the_invite_token_never_travels_in_a_url(self) -> None:

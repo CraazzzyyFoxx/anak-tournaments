@@ -2,7 +2,7 @@
 replaces parser-service's old ``tournament.create_with_groups`` bootstrap importer.
 Verifies the call sequence (fetch bracket for its name -> create -> link -> import)
 and argument passing; the four collaborators it calls are each already covered by
-their own tests (create_tournament/update_tournament, challonge_service, challonge_sync).
+their own tests (create_tournament/update_tournament, challonge_client, challonge sync).
 """
 
 from __future__ import annotations
@@ -42,16 +42,16 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                admin_tournament.challonge_service, "fetch_tournament", AsyncMock(return_value=challonge_tournament)
+                admin_tournament.challonge_client, "fetch_tournament", AsyncMock(return_value=challonge_tournament)
             ) as fetch_tournament,
-            patch.object(admin_tournament, "create_tournament", AsyncMock(return_value=created)) as create,
-            patch.object(admin_tournament, "_link_tournament_challonge_source", AsyncMock()) as link,
+            patch.object(admin_tournament.tournament_service, "create_tournament", AsyncMock(return_value=created)) as create,
+            patch.object(admin_tournament.tournament_service, "_link_tournament_challonge_source", AsyncMock()) as link,
             patch.object(
-                admin_tournament.challonge_sync, "import_tournament", AsyncMock(return_value={"created": 3})
+                admin_tournament.sync_service, "import_tournament", AsyncMock(return_value={"created": 3})
             ) as import_,
-            patch.object(admin_tournament, "get_tournament", AsyncMock(return_value=finalized)) as get,
+            patch.object(admin_tournament.tournament_service, "get_tournament", AsyncMock(return_value=finalized)) as get,
         ):
-            result = await admin_tournament.create_tournament_from_challonge(
+            result = await admin_tournament.tournament_service.create_tournament_from_challonge(
                 session,
                 workspace_id=9,
                 is_league=False,

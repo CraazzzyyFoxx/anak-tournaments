@@ -25,9 +25,10 @@ from shared.subscriptions import Outcome, SubscriptionRequirement, SubscriptionV
 
 __all__ = (
     "RegistrationSubscription",
+    "SubscriptionReadsService",
     "build_subscription_reads",
-    "load_auth_user_ids_by_registration",
     "serialize_verdicts",
+    "subscription_reads_service",
 )
 
 
@@ -68,34 +69,6 @@ def serialize_verdicts(
         }
         for provider, verdict in verdicts.items()
     }
-
-
-async def load_auth_user_ids_by_registration(
-    session: AsyncSession, registrations: Sequence[Any]
-) -> dict[int, int | None]:
-    """Map ``registration.id`` -> ``auth.user.id``.
-
-    Entitlements are keyed on the site account, but a registration only anchors to
-    a ``workspace_member`` -> ``players.user`` -> ``auth_user_id``. A registration
-    with no linked account yields ``None`` and is skipped rather than resolved.
-    """
-    reg_ids = [reg.id for reg in registrations]
-    if not reg_ids:
-        return {}
-    rows = await session.execute(
-        sa.select(models.BalancerRegistration.id, models.User.auth_user_id)
-        .select_from(models.BalancerRegistration)
-        .join(
-            models.WorkspaceMember,
-            models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
-        )
-        .join(models.User, models.WorkspaceMember.player_id == models.User.id)
-        .where(models.BalancerRegistration.id.in_(reg_ids))
-    )
-    # `.tuples()` is what makes this a real 2-tuple: without it a `Row` is not an
-    # `Iterable[tuple[...]]` and `dict()` does not type-check.
-    mapped = dict(rows.tuples().all())
-    return {reg_id: mapped.get(reg_id) for reg_id in reg_ids}
 
 
 async def build_subscription_reads(
@@ -146,3 +119,35 @@ async def build_subscription_reads(
         outcome, verdicts = resolved
         out[reg_id] = RegistrationSubscription(outcome=outcome, verdicts=dict(verdicts))
     return out
+
+
+class SubscriptionReadsService:
+    async def load_auth_user_ids_by_registration(
+        self, session: AsyncSession, registrations: Sequence[Any]
+    ) -> dict[int, int | None]:
+        """Map ``registration.id`` -> ``auth.user.id``.
+
+        Entitlements are keyed on the site account, but a registration only anchors to
+        a ``workspace_member`` -> ``players.user`` -> ``auth_user_id``. A registration
+        with no linked account yields ``None`` and is skipped rather than resolved.
+        """
+        reg_ids = [reg.id for reg in registrations]
+        if not reg_ids:
+            return {}
+        rows = await session.execute(
+            sa.select(models.BalancerRegistration.id, models.User.auth_user_id)
+            .select_from(models.BalancerRegistration)
+            .join(
+                models.WorkspaceMember,
+                models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
+            )
+            .join(models.User, models.WorkspaceMember.player_id == models.User.id)
+            .where(models.BalancerRegistration.id.in_(reg_ids))
+        )
+        # `.tuples()` is what makes this a real 2-tuple: without it a `Row` is not an
+        # `Iterable[tuple[...]]` and `dict()` does not type-check.
+        mapped = dict(rows.tuples().all())
+        return {reg_id: mapped.get(reg_id) for reg_id in reg_ids}
+
+
+subscription_reads_service = SubscriptionReadsService()

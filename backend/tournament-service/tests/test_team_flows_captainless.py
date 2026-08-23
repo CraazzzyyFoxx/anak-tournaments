@@ -1,4 +1,4 @@
-"""``team_flows.to_pydantic`` must survive a team with no captain.
+"""``team_flows.flows_service.to_pydantic`` must survive a team with no captain.
 
 ``Team.captain_id`` is nullable in two real ways: it is ``ON DELETE SET NULL``
 against the captain's player row, and a scrim room's away side is created with no
@@ -61,9 +61,9 @@ class ACaptainlessTeamSerializes(IsolatedAsyncioTestCase):
         # (``AttributeError: 'NoneType' object has no attribute 'id'``) instead of
         # a mock leaking into the schema. ``assert_not_awaited`` then proves the
         # call is skipped rather than merely tolerated.
-        spy = AsyncMock(side_effect=team_flows.user_flows.to_pydantic)
-        with patch.object(team_flows.user_flows, "to_pydantic", spy):
-            result = await team_flows.to_pydantic(session, _team(captain=None), ["captain"])
+        spy = AsyncMock(side_effect=team_flows.user_flows_service.to_pydantic)
+        with patch.object(team_flows.user_flows_service, "to_pydantic", spy):
+            result = await team_flows.flows_service.to_pydantic(session, _team(captain=None), ["captain"])
 
         self.assertIsNone(result.captain)
         self.assertIsNone(result.captain_id)
@@ -74,8 +74,8 @@ class ACaptainlessTeamSerializes(IsolatedAsyncioTestCase):
         session = SimpleNamespace()
         captain = SimpleNamespace(id=1100, name="Captain", social_accounts=[])
         fake_read = team_flows.schemas.UserRead(id=1100, name="Captain")
-        with patch.object(team_flows.user_flows, "to_pydantic", AsyncMock(return_value=fake_read)):
-            result = await team_flows.to_pydantic(session, _team(captain=captain), ["captain"])
+        with patch.object(team_flows.user_flows_service, "to_pydantic", AsyncMock(return_value=fake_read)):
+            result = await team_flows.flows_service.to_pydantic(session, _team(captain=captain), ["captain"])
 
         self.assertEqual(fake_read, result.captain)
         self.assertEqual(1100, result.captain_id)
@@ -84,8 +84,8 @@ class ACaptainlessTeamSerializes(IsolatedAsyncioTestCase):
         session = SimpleNamespace()
         captain = SimpleNamespace(id=1100, name="Captain", social_accounts=[])
         user_to_pydantic = AsyncMock()
-        with patch.object(team_flows.user_flows, "to_pydantic", user_to_pydantic):
-            result = await team_flows.to_pydantic(session, _team(captain=captain), [])
+        with patch.object(team_flows.user_flows_service, "to_pydantic", user_to_pydantic):
+            result = await team_flows.flows_service.to_pydantic(session, _team(captain=captain), [])
 
         self.assertIsNone(result.captain)
         # Still reported, because it is a plain column and costs no load.

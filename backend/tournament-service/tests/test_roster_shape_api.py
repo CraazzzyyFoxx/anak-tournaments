@@ -136,7 +136,7 @@ async def _read(
     get_tournament, get_workspace = _levels(tournament_slots, workspace_slots)
     first, second = _patched(get_tournament, get_workspace)
     with first, second:
-        read = await tournament_flows.to_pydantic(
+        read = await tournament_flows.flows_service.to_pydantic(
             cast(AsyncSession, session if session is not None else _LockProbeSession()),
             tournament,
             entities,
@@ -294,7 +294,7 @@ class RosterShapeWiringTests(IsolatedAsyncioTestCase):
                 calls.append(statement)
                 return next(scalars)
 
-        read = await tournament_flows.to_pydantic(
+        read = await tournament_flows.flows_service.to_pydantic(
             cast(AsyncSession, _FakeSession()),
             # Ids unused by any other test, so the session-scoped in-memory
             # cache from conftest cannot serve a stale entry.
@@ -347,7 +347,7 @@ class AdminTournamentSerializerTests(IsolatedAsyncioTestCase):
         tournament = _tournament(tournament_id=12, roster_slots_json={"tank": 2, "dps": 2, "support": 2})
 
         with first, second:
-            dumped = await registry._ser_tournament(
+            dumped = await registry.registry_service._ser_tournament(
                 cast(AsyncSession, _LockProbeSession(draft_status="picking")), tournament
             )
 

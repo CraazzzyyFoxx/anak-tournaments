@@ -77,7 +77,7 @@ class InvitePreviewRequestShapeTests(IsolatedAsyncioTestCase):
         with (
             patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()),
             patch.object(public_rpc, "_dump", lambda obj: obj),
-            patch.object(public_rpc.team_service, "preview_invite", preview),
+            patch.object(public_rpc.team_service.teams_service, "preview_invite", preview),
         ):
             await broker.handlers["rpc.tournament.regteam_invite_preview"](data, None)
         return preview

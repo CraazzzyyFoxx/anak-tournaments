@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.core import tournament_state
 from src import models
-from src.services.admin import tournament as admin_tournament_service
+from src.services.admin.tournament import tournament_service as admin_tournament_service
 
 __all__ = ("run_due_transitions",)
 

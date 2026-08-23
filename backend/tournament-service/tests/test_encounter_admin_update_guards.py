@@ -72,8 +72,10 @@ def _session(encounter: SimpleNamespace) -> SimpleNamespace:
     async def fake_execute(_query):
         result = Mock()
         result.scalar_one_or_none.return_value = encounter
+        result.unique.return_value = result
         scalars = Mock()
         scalars.all.return_value = []
+        scalars.first.return_value = encounter
         result.scalars.return_value = scalars
         result.all.return_value = []
         return result
@@ -92,7 +94,7 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
         encounter = _encounter()
         encounter.status = enums.EncounterStatus.OPEN
         with assert_http_status(self, 409):
-            await enc_service.update_encounter(
+            await enc_service.encounter_service.update_encounter(
                 _session(encounter),
                 10,
                 admin_schemas.EncounterUpdate(status="completed"),
@@ -102,7 +104,7 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
         """Creating with status=completed skipped finalize entirely, so the
         bracket never advanced behind it."""
         with assert_http_status(self, 409):
-            await enc_service.create_encounter(
+            await enc_service.encounter_service.create_encounter(
                 _session(_encounter()),
                 admin_schemas.EncounterCreate(
                     name="a vs b",
@@ -121,6 +123,8 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
         the completion event at all — completion has exactly one writer now."""
         self.assertFalse(hasattr(enc_service, "finalize_encounter_score"))
         self.assertFalse(hasattr(enc_service, "enqueue_encounter_completed"))
+        self.assertFalse(hasattr(enc_service.encounter_service, "finalize_encounter_score"))
+        self.assertFalse(hasattr(enc_service.encounter_service, "enqueue_encounter_completed"))
 
         encounter = _encounter()
         session = _session(encounter)
@@ -128,9 +132,11 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
         with (
             patch.object(enc_service, "enqueue_tournament_recalculation", AsyncMock()) as recalc,
             patch.object(enc_service, "_invalidate_encounter_reads", AsyncMock()),
-            patch.object(enc_service, "_resolve_stage_refs", AsyncMock(return_value=(5, 6, None))),
+            patch.object(enc_service.encounter_service, "_resolve_stage_refs", AsyncMock(return_value=(5, 6, None))),
         ):
-            await enc_service.update_encounter(session, 10, admin_schemas.EncounterUpdate(name="renamed"))
+            await enc_service.encounter_service.update_encounter(
+                session, 10, admin_schemas.EncounterUpdate(name="renamed")
+            )
 
         self.assertEqual("renamed", encounter.name)
         recalc.assert_awaited_once()

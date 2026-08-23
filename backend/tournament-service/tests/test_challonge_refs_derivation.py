@@ -145,7 +145,7 @@ class TournamentDerivationTests(IsolatedAsyncioTestCase):
         tournament = _tournament()
         make_transient_to_detached(tournament)
 
-        read = await tournament_flows.to_pydantic(
+        read = await tournament_flows.flows_service.to_pydantic(
             cast(AsyncSession, object()),
             tournament,
             [],
@@ -160,7 +160,7 @@ class TournamentDerivationTests(IsolatedAsyncioTestCase):
         make_transient_to_detached(tournament)
 
         # A fake (non-DB) session must be safe: no prefetch → None, no query.
-        read = await tournament_flows.to_pydantic(cast(AsyncSession, object()), tournament, [])
+        read = await tournament_flows.flows_service.to_pydantic(cast(AsyncSession, object()), tournament, [])
 
         self.assertIsNone(read.challonge_id)
         self.assertIsNone(read.challonge_slug)
@@ -182,7 +182,7 @@ class TournamentDerivationTests(IsolatedAsyncioTestCase):
         )
         make_transient_to_detached(group)
 
-        read = await tournament_flows.to_pydantic_group(cast(AsyncSession, object()), group, [])
+        read = await tournament_flows.flows_service.to_pydantic_group(cast(AsyncSession, object()), group, [])
 
         self.assertEqual(read.challonge_id, 777)
         self.assertEqual(read.challonge_slug, "group-slug")
@@ -194,7 +194,7 @@ class EncounterDerivationTests(IsolatedAsyncioTestCase):
         # column, which would lazy-load on a detached instance.
         encounter = _encounter()
 
-        read = await encounter_flows.to_pydantic(
+        read = await encounter_flows.flows_service.to_pydantic(
             cast(AsyncSession, object()),
             encounter,
             [],
@@ -206,7 +206,7 @@ class EncounterDerivationTests(IsolatedAsyncioTestCase):
     async def test_challonge_id_none_when_unmapped(self) -> None:
         encounter = _encounter()
 
-        read = await encounter_flows.to_pydantic(
+        read = await encounter_flows.flows_service.to_pydantic(
             cast(AsyncSession, object()),
             encounter,
             [],

@@ -213,8 +213,8 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
         with (
             patch.object(helpers.db, "async_session_maker", _FakeSessionMaker(session)),
             patch.object(registration_admin.auth, "get_registration_workspace_id", fake_ws_id),
-            patch.object(registration_admin.registration_service, "get_registration_by_id", fake_get),
-            patch.object(registration_admin.registration_service, service_attr, fake_service),
+            patch.object(registration_admin.lifecycle.lifecycle_service, "get_registration_by_id", fake_get),
+            patch.object(registration_admin.lifecycle.lifecycle_service, service_attr, fake_service),
             patch.object(registration_admin, "get_status_metas_map", fake_status_metas),
             patch.object(registration_admin, "emit_balancer_registrations_changed", fake_emit),
             patch.object(registration_admin, "serialize_registration", lambda *a, **k: {}),
@@ -357,7 +357,7 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
         with (
             patch.object(helpers.db, "async_session_maker", _FakeSessionMaker(session)),
             patch.object(registration_admin.auth, "get_tournament_workspace_id", fake_ws_id),
-            patch.object(registration_admin.registration_service, "bulk_approve_registrations", fake_bulk),
+            patch.object(registration_admin.lifecycle.lifecycle_service, "bulk_approve_registrations", fake_bulk),
             patch.object(registration_admin, "emit_balancer_registrations_changed", fake_emit),
         ):
             envelope = await broker.handlers["rpc.tournament.reg_bulk_approve"](

@@ -30,7 +30,8 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 
 catalog = importlib.import_module("src.services.registration.mapping_catalog")
 schemas = importlib.import_module("src.schemas.registration")
-admin = importlib.import_module("src.services.registration.admin")
+sheet_parsing = importlib.import_module("src.services.registration.sheet_parsing")
+sheet_sync = importlib.import_module("src.services.registration.sheet_sync")
 
 CustomFieldDefinition = schemas.CustomFieldDefinition
 FieldValidationConfig = schemas.FieldValidationConfig
@@ -81,7 +82,7 @@ def test_builtin_specs_match_legacy_target_set():
 def test_catalog_default_targets_alias_matches_admin():
     # The admin module should expose the same target set (post-refactor import).
     assert set(catalog.DEFAULT_MAPPING_TARGETS) == LEGACY_BUILTIN_TARGETS
-    assert set(admin.DEFAULT_MAPPING_TARGETS) == LEGACY_BUILTIN_TARGETS
+    assert set(catalog.DEFAULT_MAPPING_TARGETS) == LEGACY_BUILTIN_TARGETS
 
 
 def test_custom_field_specs_added_with_type_parsers():
@@ -105,7 +106,7 @@ def test_parser_catalog_covers_all_accepted_parsers():
 
 
 def test_mapping_catalog_includes_all_value_mapping_categories():
-    built = admin.build_mapping_catalog([])
+    built = sheet_sync.build_mapping_catalog([])
     assert {category["category"] for category in built["value_categories"]} == {
         "booleans",
         "roles",
@@ -116,7 +117,7 @@ def test_mapping_catalog_includes_all_value_mapping_categories():
 
 
 def test_mapping_catalog_merges_saved_value_maps():
-    built = admin.build_mapping_catalog([], value_mapping={"roles": {"healer": "support"}})
+    built = sheet_sync.build_mapping_catalog([], value_mapping={"roles": {"healer": "support"}})
     categories = {category["category"]: category["entries"] for category in built["value_categories"]}
     assert categories["roles"]["healer"] == "support"
     assert "tank" not in categories["roles"]
@@ -283,7 +284,7 @@ def test_suggest_mapping_matches_english_and_russian_headers():
     russian = ["Отметка времени", "Ваш Battle Tag", "Укажите вашу роль", "Смурф аккаунты"]
     english = ["Timestamp", "Your Battle Tag", "Your role", "Smurf accounts"]
     for headers in (russian, english):
-        mapping = admin.suggest_mapping_from_headers(headers)
+        mapping = sheet_parsing.suggest_mapping_from_headers(headers)
         targets = mapping["targets"]
         assert targets["battle_tag"]["mode"] == "columns"
         assert targets["submitted_at"]["mode"] == "columns"
@@ -292,14 +293,14 @@ def test_suggest_mapping_matches_english_and_russian_headers():
 
 
 def test_suggest_disabled_targets_present_as_hints():
-    mapping = admin.suggest_mapping_from_headers(["Random column"])
+    mapping = sheet_parsing.suggest_mapping_from_headers(["Random column"])
     # Unmatched targets remain present but disabled (hints, not mappings).
     assert mapping["targets"]["battle_tag"]["mode"] == "disabled"
 
 
 def test_suggest_mapping_matches_custom_field_label_case_insensitively():
     custom = [CustomFieldDefinition(key="favorite_map", label="Favorite Map", type="text")]
-    mapping = admin.suggest_mapping_from_headers(["FAVORITE MAP"], custom_fields=custom)
+    mapping = sheet_parsing.suggest_mapping_from_headers(["FAVORITE MAP"], custom_fields=custom)
     assert mapping["targets"]["custom_fields.favorite_map"]["mode"] == "columns"
 
 
@@ -314,7 +315,7 @@ def _grid():
 
 
 def test_division_value_mapping_returns_configured_rank():
-    rank = admin.parse_target_value(
+    rank = sheet_parsing.parse_target_value(
         parser="division_to_rank",
         values=["Gold 2"],
         value_mapping={"divisions": {"gold 2": 2450}},
@@ -338,7 +339,7 @@ def test_parse_sheet_row_writes_custom_fields():
         CustomFieldDefinition(key="age", label="Age", type="number"),
         CustomFieldDefinition(key="region", label="Region", type="select", options=["EU", "NA"]),
     ]
-    result = admin.parse_sheet_row_detailed(
+    result = sheet_parsing.parse_sheet_row_detailed(
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -360,7 +361,7 @@ def test_parse_sheet_row_omits_unmapped_custom_fields():
         }
     }
     custom = [CustomFieldDefinition(key="age", label="Age", type="number")]
-    result = admin.parse_sheet_row_detailed(
+    result = sheet_parsing.parse_sheet_row_detailed(
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -382,7 +383,7 @@ def test_parse_sheet_row_collects_custom_field_error():
         }
     }
     custom = [CustomFieldDefinition(key="age", label="Age", type="number")]
-    result = admin.parse_sheet_row_detailed(
+    result = sheet_parsing.parse_sheet_row_detailed(
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -398,7 +399,7 @@ def test_parse_sheet_row_skip_without_identity_returns_none_fields():
     headers = ["Name"]
     row = ["nobody"]
     mapping = {"targets": {"display_name": {"mode": "columns", "columns": ["Name"], "parser": "string"}}}
-    result = admin.parse_sheet_row_detailed(
+    result = sheet_parsing.parse_sheet_row_detailed(
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -415,7 +416,7 @@ def test_parse_sheet_row_skip_without_identity_returns_none_fields():
 
 
 def test_role_subrole_token_custom_hitscan():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Хитскан ДПС"],
         value_mapping={"role_subroles": {"хитскан дпс": {"role": "dps", "subrole": "hitscan"}}},
@@ -425,7 +426,7 @@ def test_role_subrole_token_custom_hitscan():
 
 
 def test_role_subrole_token_custom_flex():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Флекс"],
         value_mapping={"role_subroles": {"флекс": {"role": "flex", "subrole": None}}},
@@ -435,7 +436,7 @@ def test_role_subrole_token_custom_flex():
 
 
 def test_role_subrole_token_custom_map():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["heal"],
         value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "main_heal"}}},
@@ -445,7 +446,7 @@ def test_role_subrole_token_custom_map():
 
 
 def test_role_subrole_token_explicit_role_no_subrole():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["tank"],
         value_mapping={"role_subroles": {"tank": {"role": "tank", "subrole": None}}},
@@ -455,7 +456,7 @@ def test_role_subrole_token_explicit_role_no_subrole():
 
 
 def test_role_subrole_token_no_mapping_returns_none():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["tank"],
         value_mapping={},
@@ -465,7 +466,7 @@ def test_role_subrole_token_no_mapping_returns_none():
 
 
 def test_role_subrole_token_unknown_returns_none():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["unknown_value_xyz"],
         value_mapping={},
@@ -475,7 +476,7 @@ def test_role_subrole_token_unknown_returns_none():
 
 
 def test_sr_value_numeric_string():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="sr_value",
         values=["2500"],
         value_mapping={},
@@ -485,7 +486,7 @@ def test_sr_value_numeric_string():
 
 
 def test_sr_value_text_label_from_divisions_map():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="sr_value",
         values=["Gold 3"],
         value_mapping={"divisions": {"Gold 3": 2800}},
@@ -495,7 +496,7 @@ def test_sr_value_text_label_from_divisions_map():
 
 
 def test_sr_value_empty_returns_none():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="sr_value",
         values=[],
         value_mapping={},
@@ -526,7 +527,7 @@ def test_priority_follows_declaration_order():
             "support": {"rank_value": 2300, "subrole": None, "is_active": True, "priority": None},
         },
     )
-    payloads = admin.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed)
     by_role = {p["role"]: p for p in payloads}
     assert by_role["dps"]["priority"] == 0
     assert by_role["support"]["priority"] == 1
@@ -541,7 +542,7 @@ def test_flex_token_in_primary_sets_is_full_flex():
             "support": {"rank_value": 2100, "subrole": None, "is_active": True, "priority": None},
         },
     )
-    payloads = admin.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed)
     assert all(p["is_primary"] for p in payloads)
 
 
@@ -550,7 +551,7 @@ def test_subrole_from_token_propagates_to_payload():
         primary={"role": "dps", "subrole": "hitscan"},
         roles={"dps": {"rank_value": 2500, "subrole": None, "is_active": True, "priority": None}},
     )
-    payloads = admin.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed)
     dps_payload = next(p for p in payloads if p["role"] == "dps")
     assert dps_payload["subrole"] == "hitscan"
 
@@ -560,7 +561,7 @@ def test_explicit_subrole_wins_over_token_subrole():
         primary={"role": "dps", "subrole": "hitscan"},
         roles={"dps": {"rank_value": 2500, "subrole": "projectile", "is_active": True, "priority": None}},
     )
-    payloads = admin.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed)
     dps_payload = next(p for p in payloads if p["role"] == "dps")
     assert dps_payload["subrole"] == "projectile"
 
@@ -574,7 +575,7 @@ def test_subrole_from_additional_token_propagates_to_payload():
             "support": {"rank_value": 2300, "subrole": None, "is_active": True, "priority": None},
         },
     )
-    payloads = admin.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed)
     by_role = {p["role"]: p for p in payloads}
     assert by_role["dps"]["subrole"] == "hitscan"
     assert by_role["support"]["subrole"] == "main_heal"
@@ -603,7 +604,7 @@ _ROLE_MAP = {"roles": {"dps": "dps", "support": "support", "tank": "tank"}}
 
 
 def test_role_token_is_list_multiple_values():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_token",
         values=["dps", "support"],
         value_mapping=_ROLE_MAP,
@@ -614,7 +615,7 @@ def test_role_token_is_list_multiple_values():
 
 
 def test_role_token_is_list_splits_comma_separated():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_token",
         values=["tank,dps"],
         value_mapping=_ROLE_MAP,
@@ -625,7 +626,7 @@ def test_role_token_is_list_splits_comma_separated():
 
 
 def test_role_token_is_list_skips_empty_values():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_token",
         values=["", "support", ""],
         value_mapping=_ROLE_MAP,
@@ -652,7 +653,7 @@ _ROLE_SUBROLE_MAP = {
 
 
 def test_role_subrole_token_is_list_multiple_columns():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Хитскан ДПС", "Мейн хил"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -665,7 +666,7 @@ def test_role_subrole_token_is_list_multiple_columns():
 def test_role_subrole_token_verbose_google_forms_label():
     # Google Forms option label with hero list in parentheses — each cell is one
     # complete token matched exactly against the configured value_mapping.
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Проджектайл ДД (Генджи, Фара, Ханзо, Торбьерн, Джанкрет, Эхо, Мей, Рипер, Сомбра, Симметра, Трейсер)"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -676,7 +677,7 @@ def test_role_subrole_token_verbose_google_forms_label():
 
 
 def test_role_subrole_token_verbose_hitscan_label():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Хитскан ДД (Маккри, Вдова, Солдат76, Эш)"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -687,7 +688,7 @@ def test_role_subrole_token_verbose_hitscan_label():
 
 
 def test_role_subrole_token_verbose_light_heal_label():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Лайт хил (Мерси, Кирико)"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -700,7 +701,7 @@ def test_role_subrole_token_verbose_light_heal_label():
 def test_role_subrole_token_is_list_first_column_empty():
     # Simulates 3 mapped columns where column 1 is empty — get_selector_values already
     # filters empty cells, so parse_target_value receives only the non-empty values.
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["support"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -711,7 +712,7 @@ def test_role_subrole_token_is_list_first_column_empty():
 
 
 def test_role_subrole_token_is_list_deduplicates_by_role():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["dps", "dps"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -722,7 +723,7 @@ def test_role_subrole_token_is_list_deduplicates_by_role():
 
 
 def test_role_subrole_token_no_is_list_unchanged():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Хитскан ДПС"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -734,7 +735,7 @@ def test_role_subrole_token_no_is_list_unchanged():
 def test_role_subrole_token_multi_role_mapping_expands():
     # A single cell value that maps to a list — e.g. "Флекс, Танк или Сап"
     # expands into two role entries without splitting on commas.
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Флекс, Танк или Сап"],
         value_mapping={
@@ -753,7 +754,7 @@ def test_role_subrole_token_multi_role_mapping_expands():
 
 def test_role_subrole_token_multi_role_deduplicates_across_columns():
     # Multi-role from one cell + explicit tank from another column — tank deduped.
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_subrole_token",
         values=["Флекс, Танк или Сап", "Танк"],
         value_mapping={
@@ -777,7 +778,7 @@ def test_additional_roles_spec_has_default_is_list():
 
 
 def test_role_token_list_with_explicit_mapping():
-    result = admin.parse_target_value(
+    result = sheet_parsing.parse_target_value(
         parser="role_token_list",
         values=["dps", "support"],
         value_mapping=_ROLE_MAP,

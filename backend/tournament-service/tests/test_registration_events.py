@@ -50,7 +50,7 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                registration_service,
+                registration_service.lifecycle_service,
                 "get_registration_by_id",
                 AsyncMock(return_value=registration),
             ),
@@ -60,7 +60,7 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=fake_enqueue),
             ) as enqueue_approved,
         ):
-            result = await registration_service.approve_registration(session, 7, reviewed_by=99)
+            result = await registration_service.lifecycle_service.approve_registration(session, 7, reviewed_by=99)
 
         self.assertIs(result, registration)
         self.assertEqual("approved", registration.status)
@@ -87,7 +87,7 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                registration_service,
+                registration_service.lifecycle_service,
                 "get_registration_by_id",
                 AsyncMock(return_value=registration),
             ),
@@ -97,7 +97,7 @@ class RegistrationEventOutboxTests(IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=fake_enqueue),
             ) as enqueue_rejected,
         ):
-            result = await registration_service.reject_registration(session, 8, reviewed_by=99)
+            result = await registration_service.lifecycle_service.reject_registration(session, 8, reviewed_by=99)
 
         self.assertIs(result, registration)
         self.assertEqual("rejected", registration.status)

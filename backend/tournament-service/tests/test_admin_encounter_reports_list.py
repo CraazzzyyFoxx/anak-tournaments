@@ -233,7 +233,7 @@ class Pagination(IsolatedAsyncioTestCase):
                 )
                 return _Result()
 
-        await svc.list_encounter_reports(_Session(), workspace_id=1, params=params)
+        await svc.encounter_reports_service.list_encounter_reports(_Session(), workspace_id=1, params=params)
         return seen
 
     async def test_an_unbounded_page_is_capped_not_negative(self):

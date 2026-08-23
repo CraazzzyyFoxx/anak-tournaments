@@ -38,15 +38,24 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 # Patch targets must be the module that OWNS ``sync_google_sheet_feed`` (sheet_sync),
-# not the ``admin`` facade: the sync resolves its collaborators (fetch, parse,
-# ensure_player_identity, ...) from sheet_sync's module globals.
+# not the ``admin`` facade (which no longer exists). Since the service became a
+# class, its collaborators live in three different places: methods on the
+# ``sheet_sync_service`` singleton, the injected ``_common_service`` behind
+# ``sheet_sync_service.common``, and plain module globals of sheet_sync.
+# ``ensure_player_identity`` is a method on the ``registration_service``
+# singleton that sheet_sync imports.
 reg_admin = importlib.import_module("src.services.registration.sheet_sync")
 reg_service = importlib.import_module("src.services.registration.service")
 
 
 def _fake_sync_session() -> SimpleNamespace:
-    """A session whose queries return no existing binding / no reuse match."""
+    """A session whose queries return no existing binding / no reuse match.
+
+    The repositories read results as ``.unique().scalars().all()``, so
+    ``unique()`` has to hand the same result object back.
+    """
     result_mock = Mock()
+    result_mock.unique.return_value = result_mock
     result_mock.scalars.return_value.all.return_value = []
     result_mock.scalar_one_or_none.return_value = None
     added: list[object] = []
@@ -86,33 +95,47 @@ class SheetSyncIdentityWiringTests(IsolatedAsyncioTestCase):
         )
         session = _fake_sync_session()
 
-        with patch.multiple(
-            reg_admin,
-            require_google_sheet_feed=AsyncMock(return_value=feed),
-            get_tournament_grid=AsyncMock(return_value=Mock()),
-            ensure_tournament_exists=AsyncMock(return_value=tournament),
-            get_form_custom_field_defs=AsyncMock(return_value=[]),
-            fetch_google_sheet_rows=AsyncMock(return_value=rows),
-            parse_sheet_row_detailed=Mock(return_value=parsed),
-            build_registration_role_payloads=Mock(return_value=[]),
-            replace_registration_roles=Mock(),
-            serialize_parsed_fields=Mock(return_value={}),
-            register_tournament_realtime_update=Mock(),
-            ensure_player_identity=AsyncMock(),
-        ):
-            result = await reg_admin.sync_google_sheet_feed(session, tournament.id)
+        identity_mock = AsyncMock()
+        sheet_sync_service = reg_admin.sheet_sync_service
 
-            reg_admin.ensure_player_identity.assert_awaited_once()
-            call_session, call_registration = reg_admin.ensure_player_identity.await_args.args
+        with (
+            # Methods on the service itself.
+            patch.object(sheet_sync_service, "require_google_sheet_feed", AsyncMock(return_value=feed)),
+            # Injected ``_common_service`` collaborator.
+            patch.object(sheet_sync_service.common, "get_tournament_grid", AsyncMock(return_value=Mock())),
+            patch.object(sheet_sync_service.common, "ensure_tournament_exists", AsyncMock(return_value=tournament)),
+            patch.object(sheet_sync_service.common, "get_form_custom_field_defs", AsyncMock(return_value=[])),
+            patch.object(sheet_sync_service.common, "get_registration_form", AsyncMock(return_value=None)),
+            # Still plain module globals of sheet_sync.
+            patch.multiple(
+                reg_admin,
+                fetch_google_sheet_rows=AsyncMock(return_value=rows),
+                parse_sheet_row_detailed=Mock(return_value=parsed),
+                build_registration_role_payloads=Mock(return_value=[]),
+                replace_registration_roles=Mock(),
+                serialize_parsed_fields=Mock(return_value={}),
+                register_tournament_realtime_update=Mock(),
+            ),
+            # ``registration_service`` is the singleton sheet_sync imported, so
+            # patching the method here is what the sync actually calls.
+            patch.object(reg_service.registration_service, "ensure_player_identity", identity_mock),
+        ):
+            result = await sheet_sync_service.sync_google_sheet_feed(session, tournament.id)
+
+            identity_mock.assert_awaited_once()
+            call_session, call_registration = identity_mock.await_args.args
             self.assertIs(call_session, session)
             self.assertIsInstance(call_registration, reg_admin.models.BalancerRegistration)
             self.assertEqual(call_registration.battle_tag, "Existing#111")
             # The sync passes the tournament's workspace so the member anchor
             # is created in the right workspace without an extra query.
             self.assertEqual(
-                reg_admin.ensure_player_identity.await_args.kwargs.get("workspace_id"),
+                identity_mock.await_args.kwargs.get("workspace_id"),
                 tournament.workspace_id,
             )
+
+        self.assertEqual(feed.last_sync_status, "success")
+        session.commit.assert_awaited()
 
         self.assertEqual(result.created, 1)
 
@@ -142,9 +165,18 @@ def _identity_session(
     *,
     added: list[object] | None = None,
     get: AsyncMock | None = None,
+    collides: bool = False,
+    first: object | None = None,
 ) -> SimpleNamespace:
-    """Session stub for ensure_player_identity: ``scalar`` serves the
-    live-collision EXISTS guard in _anchor_registration_member (no collision)."""
+    """Session stub for ensure_player_identity.
+
+    ``execute`` now serves two repository reads that used to be session calls:
+    the live-collision EXISTS guard in _anchor_registration_member
+    (``registration_repo.exists`` -> ``scalar_one_or_none() is True``, so
+    ``collides`` drives it) and the already-linked player lookup
+    (``user_repo.get`` -> ``unique().scalars().first()``, driven by ``first``).
+    ``session.get`` is still used directly for the WorkspaceMember anchor.
+    """
     added_list = [] if added is None else added
 
     async def _flush() -> None:
@@ -152,11 +184,15 @@ def _identity_session(
             if isinstance(obj, reg_service.models.User) and getattr(obj, "id", None) is None:
                 obj.id = 999
 
+    result = Mock()
+    result.unique.return_value = result
+    result.scalars.return_value.first.return_value = first
+    result.scalar_one_or_none.return_value = True if collides else None
     return SimpleNamespace(
         get=get or AsyncMock(return_value=None),
         add=lambda obj: added_list.append(obj),
         flush=AsyncMock(side_effect=_flush),
-        scalar=AsyncMock(return_value=False),
+        execute=AsyncMock(return_value=result),
         _added=added_list,
     )
 
@@ -172,11 +208,11 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)),
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)),
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
 
         self.assertEqual(resolved, 7)
         # The registration is anchored on the player's member row for the
@@ -190,20 +226,21 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         registration = _reg_stub("Existing#111", workspace_member_id=10)
 
         async def _get(model, pk):
-            if model is reg_service.models.WorkspaceMember:
-                self.assertEqual(pk, 10)
-                return member
-            return linked_user
+            self.assertIs(model, reg_service.models.WorkspaceMember)
+            self.assertEqual(pk, 10)
+            return member
 
-        session = _identity_session(get=AsyncMock(side_effect=_get))
+        # The already-linked player is now read through ``user_repo.get``, i.e.
+        # ``session.execute(...).unique().scalars().first()``.
+        session = _identity_session(get=AsyncMock(side_effect=_get), first=linked_user)
         find_mock = AsyncMock()
 
         with (
-            patch.object(reg_service, "_find_user_by_battle_tag", find_mock),
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", find_mock),
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
 
         self.assertEqual(resolved, 5)
         self.assertEqual(registration.workspace_member_id, 10)
@@ -216,11 +253,11 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=None)),
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=None)),
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
 
         self.assertEqual(resolved, 999)
         member_mock.assert_awaited_once_with(session, workspace_id=_WORKSPACE_ID, player_id=999)
@@ -236,11 +273,11 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=None)),
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=None)),
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
-            resolved = await reg_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
 
         self.assertEqual(resolved, 999)
 
@@ -252,13 +289,13 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=owned_user)),
-            patch.object(reg_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=owned_user)),
+            patch.object(reg_service.registration_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.ensure_player_identity(
+            resolved = await reg_service.registration_service.ensure_player_identity(
                 session, registration, auth_user_id=42, workspace_id=_WORKSPACE_ID
             )
 
@@ -277,13 +314,13 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)),
-            patch.object(reg_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)),
+            patch.object(reg_service.registration_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.ensure_player_identity(
+            resolved = await reg_service.registration_service.ensure_player_identity(
                 session, registration, auth_user_id=42, workspace_id=_WORKSPACE_ID
             )
 
@@ -301,13 +338,13 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service, "_find_owned_user", AsyncMock(return_value=None)) as owned_mock,
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)),
-            patch.object(reg_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=None)) as owned_mock,
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=shadow_user)),
+            patch.object(reg_service.registration_service, "_move_battle_tag_identity", AsyncMock()) as move_mock,
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
-            resolved = await reg_service.ensure_player_identity(
+            resolved = await reg_service.registration_service.ensure_player_identity(
                 session, registration, auth_user_id=None, workspace_id=_WORKSPACE_ID
             )
 
@@ -324,12 +361,12 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service, "_find_owned_user", AsyncMock(return_value=None)),
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=None)),
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=None)),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=None)),
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
-            resolved = await reg_service.ensure_player_identity(
+            resolved = await reg_service.registration_service.ensure_player_identity(
                 session, registration, auth_user_id=99, workspace_id=_WORKSPACE_ID
             )
 
@@ -344,15 +381,14 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         left unanchored (with a warning) instead of raising IntegrityError."""
         registration = _reg_stub("SmurfRow#555")
         existing_user = SimpleNamespace(id=7)
-        session = _identity_session()
-        session.scalar = AsyncMock(return_value=True)  # EXISTS guard: collision
+        session = _identity_session(collides=True)  # EXISTS guard: collision
 
         with (
-            patch.object(reg_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)),
-            patch.object(reg_service, "_ensure_user_battle_tag", AsyncMock()),
+            patch.object(reg_service.registration_service, "_find_user_by_battle_tag", AsyncMock(return_value=existing_user)),
+            patch.object(reg_service.registration_service, "_ensure_user_battle_tag", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
-            resolved = await reg_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
+            resolved = await reg_service.registration_service.ensure_player_identity(session, registration, workspace_id=_WORKSPACE_ID)
 
         self.assertEqual(resolved, 7)
         self.assertIsNone(registration.workspace_member_id)

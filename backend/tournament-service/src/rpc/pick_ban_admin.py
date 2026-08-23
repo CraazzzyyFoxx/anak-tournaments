@@ -30,23 +30,22 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.tournament.pick_ban import (
     PickBanConfig,
-    PickBanConfigItem,
     PickBanConfigSlot,
-    PickBanConfigSlotItem,
 )
 from shared.rpc.identity import ensure_workspace_permission
 from src import models
 from src.core import auth
 from src.rpc._helpers import _identity, _payload, _require_id, _run
-from src.services.encounter import pick_ban_action as pick_ban_action_service
-from src.services.encounter import pick_ban_session as pick_ban_session_service
+from src.services.encounter import pick_ban_action as pick_ban_action
+from src.services.encounter import pick_ban_config
+from src.services.encounter import pick_ban_session as pick_ban_session
 from src.services.encounter.veto_session import BRACKET_PRESET, CUSTOM_PRESET
 
 _CONFIG_LOAD = (
     selectinload(PickBanConfig.items),
     selectinload(PickBanConfig.slots).selectinload(PickBanConfigSlot.items),
 )
-_serialize_config = pick_ban_session_service.serialize_pick_ban_config
+_serialize_config = pick_ban_session.serialize_pick_ban_config
 
 
 async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
@@ -128,18 +127,10 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _require_id(data)
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            result = await session.execute(
-                select(PickBanConfig)
-                .where(PickBanConfig.tournament_id == tournament_id)
-                .options(*_CONFIG_LOAD)
-                .order_by(
-                    PickBanConfig.kind.asc(),
-                    PickBanConfig.stage_id.asc().nulls_first(),
-                    PickBanConfig.round.asc().nulls_first(),
-                    PickBanConfig.id.asc(),
-                )
+            configs = await pick_ban_config.pick_ban_config_service.list_configs(
+                session, tournament_id=tournament_id
             )
-            return {"configs": [_serialize_config(config) for config in result.scalars().all()]}
+            return {"configs": [_serialize_config(config) for config in configs]}
 
         return await _run(logger, op)
 
@@ -168,91 +159,38 @@ def register(broker: Any, logger: Any) -> None:
                             f"so send preset: '{BRACKET_PRESET}' or null"
                         ),
                     )
-                pick_ban_session_service.validate_pick_ban_slot_config(
+                pick_ban_session.validate_pick_ban_slot_config(
                     [slot.candidates for slot in body.slots],
                     reserves=[slot.reserve_item_id for slot in body.slots],
                 )
             else:
                 _reject_other_modes_field(body.slots, "slots", mode=body.mode)
-                pick_ban_session_service.validate_pick_ban_config(body.sequence, body.item_ids, kind=body.kind)
+                pick_ban_session.validate_pick_ban_config(body.sequence, body.item_ids, kind=body.kind)
             if body.round is not None and body.stage_id is None:
                 raise HTTPException(status_code=422, detail="round requires stage_id")
-            if body.stage_id is not None:
-                stage_tournament_id = await session.scalar(
-                    select(models.Stage.tournament_id).where(models.Stage.id == body.stage_id)
-                )
-                if stage_tournament_id is None:
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
-                if stage_tournament_id != tournament_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Stage does not belong to this tournament",
+            config = await pick_ban_config.pick_ban_config_service.upsert_config(
+                session,
+                tournament_id=tournament_id,
+                kind=body.kind,
+                stage_id=body.stage_id,
+                round=body.round,
+                mode=body.mode,
+                first_pick_rule=body.first_pick_rule,
+                first_ban_rotation=body.first_ban_rotation,
+                preset=body.preset,
+                turn_timer_seconds=body.turn_timer_seconds,
+                no_repeat_scope=body.no_repeat_scope,
+                unique_attribute_per_side_per_round=body.unique_attribute_per_side_per_round,
+                allow_protect=body.allow_protect,
+                sequence=body.sequence,
+                item_ids=body.item_ids,
+                slots=[
+                    pick_ban_config.SlotSpec(
+                        candidates=list(slot.candidates), reserve_item_id=slot.reserve_item_id
                     )
-
-            # Upsert key = (tournament_id, kind, stage_id, round) — same cascade
-            # level as veto_admin, additionally partitioned by kind.
-            existing_query = (
-                select(PickBanConfig)
-                .where(PickBanConfig.tournament_id == tournament_id, PickBanConfig.kind == body.kind)
-                .options(*_CONFIG_LOAD)
+                    for slot in body.slots
+                ],
             )
-            existing_query = existing_query.where(
-                PickBanConfig.stage_id.is_(None) if body.stage_id is None else PickBanConfig.stage_id == body.stage_id
-            )
-            existing_query = existing_query.where(
-                PickBanConfig.round.is_(None) if body.round is None else PickBanConfig.round == body.round
-            )
-            config = await session.scalar(existing_query)
-
-            if config is None:
-                config = PickBanConfig(
-                    tournament_id=tournament_id,
-                    kind=body.kind,
-                    stage_id=body.stage_id,
-                    round=body.round,
-                    mode=body.mode,
-                    first_pick_rule=body.first_pick_rule,
-                    first_ban_rotation=body.first_ban_rotation,
-                    preset=body.preset,
-                    turn_timer_seconds=body.turn_timer_seconds,
-                    no_repeat_scope=body.no_repeat_scope,
-                    unique_attribute_per_side_per_round=body.unique_attribute_per_side_per_round,
-                    allow_protect=body.allow_protect,
-                    sequence_json=body.sequence,
-                )
-                session.add(config)
-            else:
-                config.mode = body.mode
-                config.first_pick_rule = body.first_pick_rule
-                config.first_ban_rotation = body.first_ban_rotation
-                config.preset = body.preset
-                config.turn_timer_seconds = body.turn_timer_seconds
-                config.no_repeat_scope = body.no_repeat_scope
-                config.unique_attribute_per_side_per_round = body.unique_attribute_per_side_per_round
-                config.allow_protect = body.allow_protect
-                config.sequence_json = body.sequence
-            # Wholesale replace, cleared+flushed first — same ordering rationale
-            # as veto_admin's upsert (SQLAlchemy would otherwise emit the new
-            # children's INSERTs before the old ones' DELETEs and trip the
-            # plain UNIQUE constraints on position/item_id).
-            config.items = []
-            config.slots = []
-            await session.flush()
-
-            config.items = [
-                PickBanConfigItem(item_id=item_id, sort_order=idx) for idx, item_id in enumerate(body.item_ids)
-            ]
-            config.slots = [
-                PickBanConfigSlot(
-                    position=index + 1,
-                    reserve_item_id=slot.reserve_item_id,
-                    items=[
-                        PickBanConfigSlotItem(item_id=item_id, sort_order=order)
-                        for order, item_id in enumerate(slot.candidates)
-                    ],
-                )
-                for index, slot in enumerate(body.slots)
-            ]
             await session.commit()
             await session.refresh(config, ["items"])
             return _serialize_config(config)
@@ -264,12 +202,10 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             config_id = _require_id(data)
-            config = await session.scalar(select(PickBanConfig).where(PickBanConfig.id == config_id))
-            if config is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pick-ban config not found")
+            config = await pick_ban_config.pick_ban_config_service.get_config(session, config_id)
             ws_id = await auth.get_tournament_workspace_id(session, config.tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            await session.delete(config)
+            await pick_ban_config.pick_ban_config_service.delete_config(session, config_id)
             await session.commit()
             return {"deleted": True}
 
@@ -293,8 +229,8 @@ def register(broker: Any, logger: Any) -> None:
             # reset_pick_ban_session commits internally; the response is the
             # same state shape the room polls (viewer_side stays null for
             # admins).
-            await pick_ban_session_service.reset_pick_ban_session(session, encounter, body.kind)
-            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
+            await pick_ban_session.pick_ban_session_service.reset_pick_ban_session(session, encounter, body.kind)
+            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
 
         return await _run(logger, op)
 
@@ -308,7 +244,7 @@ def register(broker: Any, logger: Any) -> None:
             body = PickBanAdminAct.model_validate(_payload(data))
             # Same engine as the captain act route, side supplied explicitly
             # (bypasses captain-side resolution); commits internally.
-            entry = await pick_ban_action_service.perform_pick_ban_action(
+            entry = await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
                 body.kind,
@@ -316,7 +252,7 @@ def register(broker: Any, logger: Any) -> None:
                 body.item_id,
                 body.action,
             )
-            return pick_ban_action_service.serialize_pick_ban_entry(entry)
+            return pick_ban_action.serialize_pick_ban_entry(entry)
 
         return await _run(logger, op)
 
@@ -328,16 +264,16 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanAdminElectOpener.model_validate(_payload(data))
-            pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, body.kind)
+            pick_ban = await pick_ban_session.pick_ban_session_service.get_pick_ban_session(session, encounter_id, body.kind)
             if pick_ban is None:
                 raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
             # `acting_side=None` IS the override: the losing captain's exclusive
             # right to choose does not apply to an organizer unsticking a room
             # they are not playing in. Commits inside `advance_to_next_round`;
             # the response is the state shape the room polls.
-            await pick_ban_session_service.elect_round_opener(
+            await pick_ban_session.pick_ban_session_service.elect_round_opener(
                 session, pick_ban, first_side=body.first_side, acting_side=None
             )
-            return await pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
+            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(session, encounter_id, body.kind, viewer_side=None)
 
         return await _run(logger, op)

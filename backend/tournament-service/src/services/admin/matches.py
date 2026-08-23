@@ -36,7 +36,7 @@ from src.schemas.admin.matches import (
     LogRecordRef,
 )
 
-__all__ = ("get_admin_match", "list_admin_matches")
+__all__ = ("matches_service",)
 
 #: One message for "no such match" and for "not in your workspace". Telling them
 #: apart would make this endpoint an id oracle for other tenants.
@@ -186,95 +186,110 @@ def _row(match: models.Match) -> AdminMatchRow:
     return AdminMatchRow(**_row_fields(match))
 
 
-async def list_admin_matches(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    params: AdminMatchesSearchParams,
-) -> pagination.Paginated[AdminMatchRow]:
-    builder = _Query(workspace_id, params)
-    where = builder.scope_predicates() + builder.provenance_predicates()
+class AdminMatchesService:
+    """Read-only admin views over parsed matches.
 
-    query = (
-        builder.join(sa.select(models.Match))
-        .where(*where)
-        .options(*_load_options())
-        # Newest first, always. ``params.sort`` is not consulted: the gateway
-        # rebuilds the query model whether or not the client sent the field, so an
-        # absent sort is indistinguishable from an explicit "id", and honouring it
-        # would silently make "id asc" the default the design asked not to have.
-        # ``id desc`` is the tiebreak — one parse writes every map of an encounter
-        # in the same transaction, so equal timestamps are the common case, and an
-        # order that then falls back to plan order repeats and skips rows between
-        # pages.
-        .order_by(models.Match.created_at.desc(), models.Match.id.desc())
-    )
-    # The shared helper, not a hand-rolled offset/limit: it is what honours
-    # ``per_page=-1`` (capped) and ``only_count``.
-    query = params.apply_pagination(query)
-
-    total_query = builder.join(sa.select(sa.func.count()).select_from(models.Match)).where(*where)
-
-    matches = (await session.execute(query)).unique().scalars().all()
-    total = (await session.execute(total_query)).scalar_one()
-
-    return pagination.Paginated(
-        page=params.page,
-        per_page=params.per_page,
-        total=total,
-        results=[_row(match) for match in matches],
-    )
-
-
-async def get_admin_match(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    match_id: int,
-) -> AdminMatchDetail:
-    """One match with its provenance and its stat volumes.
-
-    Scoped by the same ``Encounter -> Tournament`` join the list uses, so a match
-    in another workspace is indistinguishable from one that does not exist.
+    Both methods are analytical rather than CRUD — a three-table scope join with
+    pagination, and a detail read followed by three aggregate counts — so they stay
+    here as ``sa.select`` statements instead of hiding behind repository methods
+    (``backend/docs/repository-boundaries.md``). There is nothing to inject.
     """
-    query = (
-        sa.select(models.Match)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(
-            models.Match.id == match_id,
-            models.Tournament.workspace_id == workspace_id,
-            models.Match.source == enums.MatchSource.LOG_PARSER.value,
-        )
-        .options(*_load_options())
-    )
-    match = (await session.execute(query)).unique().scalar_one_or_none()
-    if match is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
 
-    # One scan per stat table, each on its indexed ``match_id``. ``rounds`` rides
-    # along with the statistics count instead of paying for a fourth scan of the
-    # largest of the three.
-    statistics = (
-        await session.execute(
-            sa.select(sa.func.count(), sa.func.max(models.MatchStatistics.round))
-            .select_from(models.MatchStatistics)
-            .where(models.MatchStatistics.match_id == match_id)
-        )
-    ).one()
-    kill_feed_count = await session.scalar(
-        sa.select(sa.func.count()).select_from(models.MatchKillFeed).where(models.MatchKillFeed.match_id == match_id)
-    )
-    event_count = await session.scalar(
-        sa.select(sa.func.count()).select_from(models.MatchEvent).where(models.MatchEvent.match_id == match_id)
-    )
+    async def list_admin_matches(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        params: AdminMatchesSearchParams,
+    ) -> pagination.Paginated[AdminMatchRow]:
+        builder = _Query(workspace_id, params)
+        where = builder.scope_predicates() + builder.provenance_predicates()
 
-    return AdminMatchDetail(
-        **_row_fields(match),
-        # MAX over an empty table is NULL; a match whose stats never landed has
-        # zero rounds, which is the finding, not an absence of information.
-        rounds=int(statistics[1] or 0),
-        statistics_count=int(statistics[0]),
-        kill_feed_count=int(kill_feed_count or 0),
-        event_count=int(event_count or 0),
-    )
+        query = (
+            builder.join(sa.select(models.Match))
+            .where(*where)
+            .options(*_load_options())
+            # Newest first, always. ``params.sort`` is not consulted: the gateway
+            # rebuilds the query model whether or not the client sent the field, so an
+            # absent sort is indistinguishable from an explicit "id", and honouring it
+            # would silently make "id asc" the default the design asked not to have.
+            # ``id desc`` is the tiebreak — one parse writes every map of an encounter
+            # in the same transaction, so equal timestamps are the common case, and an
+            # order that then falls back to plan order repeats and skips rows between
+            # pages.
+            .order_by(models.Match.created_at.desc(), models.Match.id.desc())
+        )
+        # The shared helper, not a hand-rolled offset/limit: it is what honours
+        # ``per_page=-1`` (capped) and ``only_count``.
+        query = params.apply_pagination(query)
+
+        total_query = builder.join(sa.select(sa.func.count()).select_from(models.Match)).where(*where)
+
+        matches = (await session.execute(query)).unique().scalars().all()
+        total = (await session.execute(total_query)).scalar_one()
+
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=total,
+            results=[_row(match) for match in matches],
+        )
+
+    async def get_admin_match(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        match_id: int,
+    ) -> AdminMatchDetail:
+        """One match with its provenance and its stat volumes.
+
+        Scoped by the same ``Encounter -> Tournament`` join the list uses, so a match
+        in another workspace is indistinguishable from one that does not exist.
+        """
+        query = (
+            sa.select(models.Match)
+            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(
+                models.Match.id == match_id,
+                models.Tournament.workspace_id == workspace_id,
+                models.Match.source == enums.MatchSource.LOG_PARSER.value,
+            )
+            .options(*_load_options())
+        )
+        match = (await session.execute(query)).unique().scalar_one_or_none()
+        if match is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+
+        # One scan per stat table, each on its indexed ``match_id``. ``rounds`` rides
+        # along with the statistics count instead of paying for a fourth scan of the
+        # largest of the three.
+        statistics = (
+            await session.execute(
+                sa.select(sa.func.count(), sa.func.max(models.MatchStatistics.round))
+                .select_from(models.MatchStatistics)
+                .where(models.MatchStatistics.match_id == match_id)
+            )
+        ).one()
+        kill_feed_count = await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.MatchKillFeed)
+            .where(models.MatchKillFeed.match_id == match_id)
+        )
+        event_count = await session.scalar(
+            sa.select(sa.func.count()).select_from(models.MatchEvent).where(models.MatchEvent.match_id == match_id)
+        )
+
+        return AdminMatchDetail(
+            **_row_fields(match),
+            # MAX over an empty table is NULL; a match whose stats never landed has
+            # zero rounds, which is the finding, not an absence of information.
+            rounds=int(statistics[1] or 0),
+            statistics_count=int(statistics[0]),
+            kill_feed_count=int(kill_feed_count or 0),
+            event_count=int(event_count or 0),
+        )
+
+
+matches_service = AdminMatchesService()

@@ -53,7 +53,7 @@ from src.schemas.registration_team import (  # noqa: E402
     RegistrationTeamInviteRead,
 )
 from src.services.registration import teams  # noqa: E402
-from src.services.registration.service import submit_public_registration  # noqa: E402
+from src.services.registration.service import registration_service  # noqa: E402
 
 FIVE_STACK = parse_roster_slots({"tank": 1, "dps": 2, "support": 2})
 
@@ -150,11 +150,31 @@ class GuardedUpdateTests(TestCase):
 
     def test_the_source_consumes_the_invite_with_a_guarded_update(self) -> None:
         """A read-then-write would let two redemptions of one link both succeed.
-        Asserted on the source because the race itself is not unit-testable."""
+        Asserted on the source because the race itself is not unit-testable.
 
-        source = _code_of(teams.accept_invite)
-        self.assertIn("sa.update(models.BalancerRegistrationTeamInvite)", source)
+        The statement now lives in ``BalancerRegistrationTeamInviteRepository
+        .consume_if_pending``, so the guard is asserted where it is written and
+        the delegation where it is used -- both halves, neither dropped.
+        """
+
+        source = _code_of(teams.teams_service.accept_invite)
+        self.assertIn("self.invite_repo.consume_if_pending(", source)
         self.assertIn("_diagnose_dead_invite", source)
+
+        consume = _code_of(teams.teams_service.invite_repo.consume_if_pending)
+        # Still ONE conditional statement: the state and expiry guards ride in the
+        # UPDATE's own WHERE, and the winner is decided by whether RETURNING
+        # produced a row -- never split into a read followed by a write.
+        self.assertIn("sa.update(invite)", consume)
+        self.assertIn("invite.state == pending_state", consume)
+        self.assertIn("self._live_clause()", consume)
+        self.assertIn(".returning(invite.id)", consume)
+        self.assertIn("consumed.first() is not None", consume)
+        # The expiry half of that guard, in the clause the UPDATE embeds.
+        self.assertIn(
+            "invite.expires_at > sa.func.now()",
+            _code_of(teams.teams_service.invite_repo._live_clause),
+        )
 
     def test_state_and_expiry_are_both_in_the_where_clause(self) -> None:
         sql = self._consume_sql()
@@ -275,7 +295,7 @@ class OrganizerRejectionTests(TestCase):
         "unwelcome"."""
         import inspect
 
-        signature = inspect.signature(teams.reject_team)
+        signature = inspect.signature(teams.teams_service.reject_team)
         self.assertIs(True, signature.parameters["withdraw_members"].default)
 
     def test_listing_hides_terminal_teams_by_default(self) -> None:
@@ -283,7 +303,7 @@ class OrganizerRejectionTests(TestCase):
         disbanded teams are noise until explicitly asked for."""
         import inspect
 
-        signature = inspect.signature(teams.list_teams)
+        signature = inspect.signature(teams.teams_service.list_teams)
         self.assertIs(False, signature.parameters["include_terminal"].default)
 
     def test_the_two_terminal_statuses_are_outside_the_mutable_set(self) -> None:
@@ -312,7 +332,7 @@ class CrossTournamentAuthorizationTests(IsolatedAsyncioTestCase):
         team = models.BalancerRegistrationTeam(tournament_id=2, status=teams.TEAM_FORMING)
         session = _SingleTeamSession(team)
         with self.assertRaises(ApiHTTPException) as caught:
-            await teams.reject_team(
+            await teams.teams_service.reject_team(
                 session,  # type: ignore[arg-type]
                 tournament_id=1,
                 team_id=99,
@@ -328,7 +348,7 @@ class CrossTournamentAuthorizationTests(IsolatedAsyncioTestCase):
         scope check by forgetting an argument."""
         import inspect
 
-        parameter = inspect.signature(teams.reject_team).parameters["tournament_id"]
+        parameter = inspect.signature(teams.teams_service.reject_team).parameters["tournament_id"]
         self.assertIs(inspect.Parameter.empty, parameter.default)
         self.assertIs(inspect.Parameter.KEYWORD_ONLY, parameter.kind)
 
@@ -341,7 +361,7 @@ class TeamNameConstraintTests(IsolatedAsyncioTestCase):
         `exported_team_id` backfill, keyed on the full name, would then find
         nothing. Rejecting at creation is the only place this is cheap."""
         with self.assertRaises(ApiHTTPException) as caught:
-            await teams.create_team(
+            await teams.teams_service.create_team(
                 None,  # type: ignore[arg-type]
                 tournament_id=1,
                 auth_user=models.AuthUser(id=1),
@@ -354,7 +374,7 @@ class TeamNameConstraintTests(IsolatedAsyncioTestCase):
 
     async def test_a_blank_name_is_rejected(self) -> None:
         with self.assertRaises(ApiHTTPException) as caught:
-            await teams.create_team(
+            await teams.teams_service.create_team(
                 None,  # type: ignore[arg-type]
                 tournament_id=1,
                 auth_user=models.AuthUser(id=1),
@@ -370,7 +390,7 @@ class TeamNameConstraintTests(IsolatedAsyncioTestCase):
         AttributeError instead of the expected code."""
         for name in ("Team #1", "  "):
             with self.subTest(name=name), self.assertRaises(ApiHTTPException):
-                await teams.create_team(
+                await teams.teams_service.create_team(
                     None,  # type: ignore[arg-type]
                     tournament_id=1,
                     auth_user=models.AuthUser(id=1),
@@ -392,7 +412,7 @@ class FreeAgentAttachTests(TestCase):
     def _source(self) -> str:
         import inspect
 
-        return inspect.getsource(teams.accept_invite)
+        return inspect.getsource(teams.teams_service.accept_invite)
 
     def test_an_existing_registration_is_attached_not_recreated(self) -> None:
         source = self._source()
@@ -403,7 +423,7 @@ class FreeAgentAttachTests(TestCase):
         # ...and the creating writer is reached only in the `else`. Matched on the
         # CALL, not the bare name: the docstring mentions it first.
         attach_index = source.index("existing.registration_team_id")
-        create_index = source.index("await submit_public_registration(")
+        create_index = source.index("await self.registrations.submit_public_registration(")
         self.assertLess(attach_index, create_index, "attach must precede the create branch")
 
     def test_the_submitted_body_is_ignored_on_the_attach_path(self) -> None:
@@ -469,7 +489,7 @@ class FreeAgentPredicateTests(TestCase):
         """Both must route through one clause. Two copies fail silently and
         specifically: an organizer reading "3 players without a team" above a picker
         offering two of them cannot tell which number is lying."""
-        for fn in (teams.count_unassigned_players, teams.list_free_agents):
+        for fn in (teams.teams_service.count_unassigned_players, teams.teams_service.list_free_agents):
             with self.subTest(fn=fn.__name__):
                 self.assertIn("_free_agent_clause", _code_of(fn))
 
@@ -540,7 +560,7 @@ class InvitePreviewTests(IsolatedAsyncioTestCase):
     """
 
     async def _preview(self, invite: Any) -> Any:
-        return await teams.preview_invite(_PreviewSession(invite), token="whatever")
+        return await teams.teams_service.preview_invite(_PreviewSession(invite), token="whatever")
 
     async def test_a_live_invite_is_redeemable(self) -> None:
         preview = await self._preview(_PreviewInvite())
@@ -599,7 +619,7 @@ class InvitePreviewTests(IsolatedAsyncioTestCase):
         raw = "PcWqruHUOoQe4AmdJagQPh_fpjqq2e9qJ61GJgRSIDI"
         session = _HashMatchingSession(_PreviewInvite(), expected_hash=hash_invite_token(raw))
 
-        preview = await teams.preview_invite(session, token=f"  {raw[:10]}\n{raw[10:]}\t")
+        preview = await teams.teams_service.preview_invite(session, token=f"  {raw[:10]}\n{raw[10:]}\t")
 
         self.assertTrue(preview.is_redeemable)
 
@@ -642,7 +662,7 @@ class TargetedInviteResolutionTests(IsolatedAsyncioTestCase):
     """
 
     async def _resolve(self, registration: Any, auth_user_id: int | None = 77) -> int:
-        return await teams._resolve_invite_target(
+        return await teams.teams_service._resolve_invite_target(
             _TargetSession(registration, auth_user_id), tournament_id=3, registration_id=900
         )
 
@@ -692,18 +712,18 @@ class TargetedInviteShapeTests(TestCase):
         """The point of the mode: nothing to paste, nothing to leak, nothing to
         forward to the wrong person. A token here would reintroduce every risk the
         link mode carries, for a recipient who never needed one."""
-        source = _code_of(teams.invite_member)
+        source = _code_of(teams.teams_service.invite_member)
         generate = source.index("generate_invite_token()")
         guard = source.index("if target_registration_id is None:")
 
         self.assertLess(guard, generate, "the token must be minted only in the link branch")
-        self.assertIn("target_auth_user_id = await _resolve_invite_target", source)
+        self.assertIn("target_auth_user_id = await self._resolve_invite_target", source)
 
     def test_the_resolution_happens_under_the_team_lock(self) -> None:
         """ "This slot is open" and "this player is unattached" must be decided under
         the same lock the insert commits under, or a concurrent acceptance can
         invalidate one of them between the check and the write."""
-        source = _code_of(teams.invite_member)
+        source = _code_of(teams.teams_service.invite_member)
 
         self.assertLess(source.index("_lock_team("), source.index("_resolve_invite_target"))
         self.assertLess(source.index("_check_slot("), source.index("_resolve_invite_target"))
@@ -727,7 +747,7 @@ class MyInvitesQueryTests(TestCase):
     """The only way a targeted invite's recipient can learn it exists."""
 
     def _source(self) -> str:
-        return inspect.getsource(teams.list_my_invites)
+        return inspect.getsource(teams.teams_service.list_my_invites)
 
     def test_it_is_scoped_to_the_caller_and_never_to_a_parameter(self) -> None:
         """ "Whose invites" is never the client's answer, so the filter reads the
@@ -776,7 +796,7 @@ class AcceptPayloadTests(TestCase):
         """The permissive default is only safe because the registration form's own
         validation runs downstream. If that ever stopped gating, a new invitee could
         accept into a row with no battle tag."""
-        source = _code_of(submit_public_registration)
+        source = _code_of(registration_service.submit_public_registration)
 
         self.assertIn("validate_registration_input(", source)
 
@@ -816,7 +836,7 @@ class InviteCapCounterTests(TestCase):
     def test_the_check_and_the_display_share_one_counter(self) -> None:
         """`invite_member` must not compute its own count. A second copy is how the
         refusal and the counter drift apart."""
-        source = _code_of(teams.invite_member)
+        source = _code_of(teams.teams_service.invite_member)
 
         self.assertIn("count_invites_against_cap(session, team)", source)
         self.assertNotIn("func.count", source)
@@ -824,7 +844,7 @@ class InviteCapCounterTests(TestCase):
     def test_every_invite_ever_created_counts(self) -> None:
         """A cumulative ceiling is the only thing an invite -> revoke -> invite loop
         cannot walk around: each cycle satisfies every slot rule."""
-        source = _code_of(teams.count_invites_against_cap)
+        source = _code_of(teams.teams_service.count_invites_against_cap)
 
         self.assertNotIn("INVITE_PENDING", source)
         self.assertNotIn("state ==", source)
@@ -839,7 +859,7 @@ class InviteCapCounterTests(TestCase):
         self.assertNotIn("invited_at >", self._sql(_CapTeam()))
 
     def test_the_reset_records_who_forgave_it(self) -> None:
-        source = _code_of(teams.reset_invite_cap)
+        source = _code_of(teams.teams_service.reset_invite_cap)
 
         self.assertIn("invite_cap_reset_by = auth_user.id", source)
         self.assertIn("invite_cap_reset_at", source)
@@ -852,7 +872,7 @@ class OrganizerRevokeTests(TestCase):
         """The single most important check here. An invite id is global while the
         organizer's permission is not, so without this an organizer of any
         tournament could pass any id and act on another event's roster."""
-        source = _code_of(teams.revoke_invite_as_organizer)
+        source = _code_of(teams.teams_service.revoke_invite_as_organizer)
 
         self.assertIn("team.tournament_id != tournament_id", source)
         # 404, not 403: confirming the invite exists elsewhere answers a question
@@ -866,7 +886,7 @@ class OrganizerRevokeTests(TestCase):
         """An organizer is by definition not the captain. Leaving `_assert_captain`
         in would make the whole power unreachable — and reachable only by the one
         person who never needs it."""
-        source = _code_of(teams.revoke_invite_as_organizer)
+        source = _code_of(teams.teams_service.revoke_invite_as_organizer)
 
         self.assertNotIn("_assert_captain", source)
         # It also must not require a mutable team: the reason to reach in is
@@ -876,8 +896,8 @@ class OrganizerRevokeTests(TestCase):
     def test_both_paths_share_one_transition_but_not_one_gate(self) -> None:
         """A single function with an `as_organizer` flag is how a privilege check
         gets skipped by a caller passing the wrong default."""
-        captain = _code_of(teams.revoke_invite)
-        organizer = _code_of(teams.revoke_invite_as_organizer)
+        captain = _code_of(teams.teams_service.revoke_invite)
+        organizer = _code_of(teams.teams_service.revoke_invite_as_organizer)
 
         self.assertIn("_assert_captain", captain)
         self.assertIn("_withdraw_invite(invite, by=auth_user, by_organizer=False)", captain)
@@ -896,26 +916,37 @@ class InviteHistoryTests(TestCase):
     """The read that makes the cap explicable."""
 
     def _source(self) -> str:
-        return _code_of(teams.list_invite_history)
+        return _code_of(teams.teams_service.list_invite_history)
 
     def test_it_is_separate_from_the_live_invite_list(self) -> None:
         """`describe_team` returns only pending invites because occupancy depends on
         them reserving slots. A terminal row in that list would hold a place open
         for someone who already declined."""
-        self.assertIn("state == INVITE_PENDING", _code_of(teams._pending_invites))
+        # The live list's state filter rides in the repository read the service
+        # delegates to, so both halves are asserted: the state that is passed down
+        # and the WHERE that applies it.
+        self.assertIn("pending_state=INVITE_PENDING", _code_of(teams.teams_service._pending_invites))
+        self.assertIn(
+            "invite.state == pending_state",
+            _code_of(teams.teams_service.invite_repo.list_pending),
+        )
         # The history filters on team only. `INVITE_PENDING` still appears in its
         # body -- in the expiry computation -- so the claim is about the WHERE, not
         # about the token being absent.
-        self.assertNotIn("INVITE_PENDING", _code_of(teams.list_invite_history).split("now =")[0])
+        self.assertNotIn("INVITE_PENDING", _code_of(teams.teams_service.list_invite_history).split("now =")[0])
 
     def test_it_returns_terminal_rows_too(self) -> None:
         """The gap it closes: a declined offer used to vanish, so the captain saw
         the slot reopen without knowing whether they were refused or the link
         merely lapsed. Different situations, different next moves."""
         source = self._source()
+        history_query = _code_of(teams.teams_service.invite_repo.list_for_team)
 
         self.assertNotIn(".where(models.BalancerRegistrationTeamInvite.state", source)
-        self.assertIn("invited_at.desc()", source)
+        # The read the service delegates to filters on team alone -- no state
+        # predicate at all, which is what lets a declined row still surface.
+        self.assertNotIn("invite.state", history_query)
+        self.assertIn("invited_at.desc()", history_query)
 
     def test_expiry_is_computed_because_it_is_not_a_stored_state(self) -> None:
         source = self._source()
@@ -941,14 +972,14 @@ class CaptainReadGateTests(TestCase):
         """A captain must be able to read the history of a team that was rejected or
         already exported — those are exactly the cases someone opens it to
         understand."""
-        read_gate = _code_of(teams.assert_captain_of_team)
+        read_gate = _code_of(teams.teams_service.assert_captain_of_team)
 
         self.assertIn("_assert_captain", read_gate)
         self.assertNotIn("_assert_mutable", read_gate)
 
     def test_the_edit_gate_still_requires_one(self) -> None:
         """The mutability rule did not disappear; it stayed where it belongs."""
-        edit_gate = _code_of(teams.assert_may_edit_team)
+        edit_gate = _code_of(teams.teams_service.assert_may_edit_team)
 
         self.assertIn("assert_captain_of_team", edit_gate)
         self.assertIn("_assert_mutable(team)", edit_gate)
@@ -974,16 +1005,16 @@ class IsTeamCaptainTests(IsolatedAsyncioTestCase):
     async def test_a_team_with_no_captain_is_never_captained(self) -> None:
         team = models.BalancerRegistrationTeam(captain_registration_id=None)
 
-        self.assertFalse(await teams.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
+        self.assertFalse(await teams.teams_service.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
 
     async def test_the_owning_account_is_the_captain(self) -> None:
         team = models.BalancerRegistrationTeam(captain_registration_id=42)
 
-        self.assertTrue(await teams.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
+        self.assertTrue(await teams.teams_service.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
 
     async def test_a_non_owning_account_is_not_the_captain(self) -> None:
         """The row exists (someone captains this team) but the query for THIS
         account's ownership came back empty — the case an ordinary teammate hits."""
         team = models.BalancerRegistrationTeam(captain_registration_id=42)
 
-        self.assertFalse(await teams.is_team_captain(_CaptaincyScalarSession(None), team, auth_user_id=1))
+        self.assertFalse(await teams.teams_service.is_team_captain(_CaptaincyScalarSession(None), team, auth_user_id=1))

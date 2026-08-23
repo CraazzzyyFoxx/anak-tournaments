@@ -50,14 +50,24 @@ def _source(source_id: int = 1, challonge_id: int = 900) -> object:
 
 
 class _FakeSession:
+    """``add_all``/``flush`` mirror what ``BaseRepository.create_many`` calls now
+    that ``apply_team_mapping`` persists through the repository instead of a bare
+    ``session.add``; ``added`` still counts exactly the rows written."""
+
     def __init__(self) -> None:
         self.added: list[object] = []
 
     async def commit(self) -> None:
         return None
 
+    async def flush(self) -> None:
+        return None
+
     def add(self, obj: object) -> None:
         self.added.append(obj)
+
+    def add_all(self, objs: object) -> None:
+        self.added.extend(objs)
 
 
 class PreviewTeamMappingTests(IsolatedAsyncioTestCase):
@@ -69,16 +79,20 @@ class PreviewTeamMappingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                challonge_sync,
+                challonge_sync.mapping_service,
                 "_fetch_team_sync_context",
                 AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(source, fetch)])),
             ),
-            patch.object(challonge_sync, "_build_team_name_index", AsyncMock(return_value={"alpha": 5})),
             patch.object(
-                challonge_sync, "_existing_participant_mappings", AsyncMock(return_value={(1, 11): existing})
+                challonge_sync.mapping_service, "_build_team_name_index", AsyncMock(return_value={"alpha": 5})
+            ),
+            patch.object(
+                challonge_sync.mapping_service,
+                "_existing_participant_mappings",
+                AsyncMock(return_value={(1, 11): existing}),
             ),
         ):
-            result = await challonge_sync.preview_team_mapping(_FakeSession(), 1)
+            result = await challonge_sync.sync_service.preview_team_mapping(_FakeSession(), 1)
 
         self.assertEqual([5], [t.id for t in result.teams])
         by_id = {p.participant_id: p for p in result.participants}
@@ -93,29 +107,31 @@ class PreviewTeamMappingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                challonge_sync,
+                challonge_sync.mapping_service,
                 "_fetch_team_sync_context",
                 AsyncMock(return_value=(tournament, [], [(_source(), fetch)])),
             ),
             patch.object(
-                challonge_sync,
+                challonge_sync.mapping_service,
                 "_build_team_name_index",
                 AsyncMock(return_value={"alpha": challonge_sync._AMBIGUOUS}),
             ),
-            patch.object(challonge_sync, "_existing_participant_mappings", AsyncMock(return_value={})),
+            patch.object(
+                challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})
+            ),
         ):
-            result = await challonge_sync.preview_team_mapping(_FakeSession(), 1)
+            result = await challonge_sync.sync_service.preview_team_mapping(_FakeSession(), 1)
 
         self.assertIsNone(result.participants[0].suggested_team_id)
 
     async def test_missing_tournament_raises_404(self) -> None:
         with patch.object(
-            challonge_sync,
+            challonge_sync.mapping_service,
             "_fetch_team_sync_context",
             AsyncMock(side_effect=challonge_sync.HTTPException(status_code=404, detail="Tournament not found")),
         ):
             with self.assertRaises(challonge_sync.HTTPException) as ctx:
-                await challonge_sync.preview_team_mapping(_FakeSession(), 999)
+                await challonge_sync.sync_service.preview_team_mapping(_FakeSession(), 999)
         self.assertEqual(404, ctx.exception.status_code)
 
 
@@ -127,13 +143,15 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                challonge_sync,
+                challonge_sync.mapping_service,
                 "_fetch_team_sync_context",
                 AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(_source(), fetch)])),
             ),
-            patch.object(challonge_sync, "_existing_participant_mappings", AsyncMock(return_value={})),
+            patch.object(
+                challonge_sync.mapping_service, "_existing_participant_mappings", AsyncMock(return_value={})
+            ),
         ):
-            result = await challonge_sync.apply_team_mapping(
+            result = await challonge_sync.sync_service.apply_team_mapping(
                 session, 1, [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]
             )
 
@@ -150,16 +168,20 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                challonge_sync,
+                challonge_sync.mapping_service,
                 "_fetch_team_sync_context",
                 AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(_source(), fetch)])),
             ),
             patch.object(
-                challonge_sync, "_existing_participant_mappings", AsyncMock(return_value={(1, 10): existing})
+                challonge_sync.mapping_service,
+                "_existing_participant_mappings",
+                AsyncMock(return_value={(1, 10): existing}),
             ),
         ):
-            result = await challonge_sync.apply_team_mapping(
-                _FakeSession(), 1, [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]
+            result = await challonge_sync.sync_service.apply_team_mapping(
+                _FakeSession(),
+                1,
+                [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)],
             )
 
         self.assertEqual(1, result.updated)
@@ -173,16 +195,20 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                challonge_sync,
+                challonge_sync.mapping_service,
                 "_fetch_team_sync_context",
                 AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(_source(), fetch)])),
             ),
             patch.object(
-                challonge_sync, "_existing_participant_mappings", AsyncMock(return_value={(1, 10): existing})
+                challonge_sync.mapping_service,
+                "_existing_participant_mappings",
+                AsyncMock(return_value={(1, 10): existing}),
             ),
         ):
-            result = await challonge_sync.apply_team_mapping(
-                _FakeSession(), 1, [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)]
+            result = await challonge_sync.sync_service.apply_team_mapping(
+                _FakeSession(),
+                1,
+                [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=5)],
             )
 
         self.assertEqual(0, result.updated)
@@ -192,12 +218,12 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
     async def test_unknown_participant_rejects_whole_request(self) -> None:
         tournament = SimpleNamespace(id=1)
         with patch.object(
-            challonge_sync,
+            challonge_sync.mapping_service,
             "_fetch_team_sync_context",
             AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [])),
         ):
             with self.assertRaises(challonge_sync.HTTPException) as ctx:
-                await challonge_sync.apply_team_mapping(
+                await challonge_sync.sync_service.apply_team_mapping(
                     _FakeSession(),
                     1,
                     [team_admin_schemas.ChallongeTeamMapping(participant_id=999, group_id=None, team_id=5)],
@@ -208,12 +234,12 @@ class ApplyTeamMappingTests(IsolatedAsyncioTestCase):
         tournament = SimpleNamespace(id=1)
         fetch = SimpleNamespace(matches=[], participants=[_participant(10, "Alpha")])
         with patch.object(
-            challonge_sync,
+            challonge_sync.mapping_service,
             "_fetch_team_sync_context",
             AsyncMock(return_value=(tournament, [_team(5, "Alpha")], [(_source(), fetch)])),
         ):
             with self.assertRaises(challonge_sync.HTTPException) as ctx:
-                await challonge_sync.apply_team_mapping(
+                await challonge_sync.sync_service.apply_team_mapping(
                     _FakeSession(),
                     1,
                     [team_admin_schemas.ChallongeTeamMapping(participant_id=10, group_id=None, team_id=999)],

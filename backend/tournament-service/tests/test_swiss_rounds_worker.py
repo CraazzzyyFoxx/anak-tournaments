@@ -43,6 +43,9 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
         generated = [SimpleNamespace(id=101)]
 
         class _EncounterResult:
+            def unique(self) -> _EncounterResult:
+                return self
+
             def scalars(self) -> SimpleNamespace:
                 return SimpleNamespace(all=lambda: encounters)
 
@@ -54,7 +57,7 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(swiss_rounds.stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(swiss_rounds.stage_service, "_collect_item_team_ids", Mock(return_value=[1, 2])),
+            patch.object(swiss_rounds, "_collect_item_team_ids", Mock(return_value=[1, 2])),
             patch.object(swiss_rounds.stage_service, "_generate_stage_skeleton", AsyncMock(return_value=skeleton)),
             patch.object(swiss_rounds.stage_service, "_load_team_names", AsyncMock(return_value={1: "A", 2: "B"})),
             patch.object(
@@ -63,7 +66,7 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=generated),
             ),
         ):
-            result = await swiss_rounds.generate_next_swiss_round(
+            result = await swiss_rounds.swiss_rounds_service.generate_next_swiss_round(
                 session,
                 tournament_id=999,
                 stage_id=77,
@@ -88,6 +91,9 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
         ]
 
         class _EncounterResult:
+            def unique(self) -> _EncounterResult:
+                return self
+
             def scalars(self) -> SimpleNamespace:
                 return SimpleNamespace(all=lambda: encounters)
 
@@ -95,10 +101,10 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(swiss_rounds.stage_service, "get_stage", AsyncMock(return_value=stage)),
-            patch.object(swiss_rounds.stage_service, "_collect_item_team_ids", Mock(return_value=[1, 2])),
+            patch.object(swiss_rounds, "_collect_item_team_ids", Mock(return_value=[1, 2])),
             patch.object(swiss_rounds.stage_service, "_generate_stage_skeleton", AsyncMock()) as generate,
         ):
-            result = await swiss_rounds.generate_next_swiss_round(
+            result = await swiss_rounds.swiss_rounds_service.generate_next_swiss_round(
                 session,
                 tournament_id=999,
                 stage_id=77,

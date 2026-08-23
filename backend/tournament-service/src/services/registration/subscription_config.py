@@ -29,11 +29,14 @@ from __future__ import annotations
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.social import SocialProvider
+from shared.repository import (
+    SubscriptionProviderConfigRepository,
+    WorkspaceSubscriptionRequirementRepository,
+)
 from shared.services.registration_window import registration_open_clause
 from shared.subscriptions import parse_verification_method
 from shared.subscriptions.challenge_code import hash_code
@@ -49,16 +52,15 @@ from src.schemas.registration import (
 
 __all__ = (
     "CONFIGURABLE_PROVIDERS",
+    "DEFAULT_REQUIREMENT_NAME",
+    "SubscriptionConfigService",
     "build_config_json",
-    "get_workspace_requirement",
-    "list_provider_configs",
-    "load_workspace_requirement_blob",
     "serialize_provider_config",
-    "upsert_provider_config",
-    "upsert_workspace_requirement",
+    "subscription_config_service",
 )
 
 CONFIGURABLE_PROVIDERS = (SocialProvider.BOOSTY, SocialProvider.TWITCH)
+DEFAULT_REQUIREMENT_NAME = "default"
 
 
 def build_config_json(body: SubscriptionProviderConfigUpsert, *, existing: dict[str, Any]) -> dict[str, Any]:
@@ -133,181 +135,157 @@ def serialize_provider_config(row: Any) -> SubscriptionProviderConfigRead:
     )
 
 
-async def list_provider_configs(session: AsyncSession, workspace_id: int) -> SubscriptionProviderConfigListResponse:
-    """Every configurable provider, present or not, plus the workspace's guild.
+class SubscriptionConfigService:
+    def __init__(
+        self,
+        *,
+        provider_repo: SubscriptionProviderConfigRepository = SubscriptionProviderConfigRepository(),
+        requirement_repo: WorkspaceSubscriptionRequirementRepository = WorkspaceSubscriptionRequirementRepository(),
+    ) -> None:
+        self.provider_repo = provider_repo
+        self.requirement_repo = requirement_repo
 
-    Providers with no row are returned disabled and empty, so the admin UI renders
-    one card per provider without inventing placeholder rows in the database.
+    async def list_provider_configs(
+        self,
+        session: AsyncSession,
+        workspace_id: int,
+    ) -> SubscriptionProviderConfigListResponse:
+        """Every configurable provider, present or not, plus the workspace's guild.
 
-    The guild is response-level rather than per-provider because it lives on the
-    workspace, not in any provider blob: the card renders it read-only and the
-    workspace settings form is the only place that writes it.
-    """
-    rows = (
-        (
-            await session.execute(
-                sa.select(models.SubscriptionProviderConfig).where(
-                    models.SubscriptionProviderConfig.workspace_id == workspace_id
+        Providers with no row are returned disabled and empty, so the admin UI renders
+        one card per provider without inventing placeholder rows in the database.
+
+        The guild is response-level rather than per-provider because it lives on the
+        workspace, not in any provider blob: the card renders it read-only and the
+        workspace settings form is the only place that writes it.
+        """
+        rows = await self.provider_repo.list_for_workspace(session, workspace_id)
+        by_provider = {row.provider: row for row in rows}
+        configs = [
+            serialize_provider_config(by_provider[provider])
+            if provider in by_provider
+            else SubscriptionProviderConfigRead(provider=provider, enabled=False)
+            for provider in CONFIGURABLE_PROVIDERS
+        ]
+        # A one-column projection, not a row read: `WorkspaceRepository.get` would
+        # load and identity-map the whole workspace to answer one nullable string.
+        discord_guild_id = await session.scalar(
+            sa.select(models.Workspace.discord_guild_id).where(models.Workspace.id == workspace_id)
+        )
+        return SubscriptionProviderConfigListResponse(configs=configs, discord_guild_id=discord_guild_id or None)
+
+    async def upsert_provider_config(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        body: SubscriptionProviderConfigUpsert,
+    ) -> SubscriptionProviderConfigRead:
+        """Create or update one provider's config. Commits internally."""
+        existing = await self.provider_repo.get_for_provider(
+            session,
+            workspace_id=workspace_id,
+            provider=body.provider,
+        )
+        config_json = build_config_json(body, existing=(existing.config_json or {}) if existing else {})
+
+        await self.provider_repo.upsert(
+            session,
+            workspace_id=workspace_id,
+            provider=body.provider,
+            enabled=body.enabled,
+            config_json=config_json,
+        )
+        await session.commit()
+
+        # `populate_existing` is load-bearing, not decoration: the INSERT ... ON
+        # CONFLICT above changes the row behind the ORM's back, so a plain SELECT would
+        # be served from the identity map and return the PRE-upsert `config_json`. That
+        # silently made an explicit `codes: []` look like it had not cleared anything.
+        row = await self.provider_repo.get_for_provider(
+            session,
+            workspace_id=workspace_id,
+            provider=body.provider,
+            populate_existing=True,
+        )
+        return serialize_provider_config(row)
+
+    async def load_workspace_requirement_blob(self, session: AsyncSession, workspace_id: int) -> dict[str, Any]:
+        """The workspace's default rule as a raw blob, or ``{}`` when it has none.
+
+        One scalar read, used both by the admin endpoint and by the registration-form read
+        projection -- which still carries the rule so the public check-in dialog does not
+        have to learn about a second table.
+        """
+        return await self.requirement_repo.get_default_blob(session, workspace_id)
+
+    async def count_enforcing_tournaments(self, session: AsyncSession, workspace_id: int) -> int:
+        """Live tournaments this workspace's rule would gate.
+
+        Applies the collector's TOURNAMENT-side predicate only
+        (``find_tournaments_requiring_subscriptions``): open, unfinished, toggle on. A
+        finished tournament still carrying the toggle is not "gated" in any sense the
+        organizer cares about, and counting it would overstate the blast radius the admin
+        screen is there to report honestly.
+
+        It deliberately omits the rest of what the collector sweeps on -- the inner join to
+        ``subscriptions.requirement ... is_default`` and the drop of targets whose blob
+        parses empty -- so this counts what a rule WOULD gate, not only what one currently
+        does. That is the question the admin card asks ("how many tournaments will the rule
+        you are about to save gate?"), and adding the join would read 0 in the one state
+        where the blast radius matters most: toggles on, no rule row yet, which is exactly
+        where an admin stands when they first open this card.
+        """
+        form = models.BalancerRegistrationForm
+        return (
+            await session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.Tournament)
+                .join(form, form.tournament_id == models.Tournament.id)
+                .where(
+                    models.Tournament.workspace_id == workspace_id,
+                    models.Tournament.is_finished.is_(False),
+                    form.require_subscription.is_(True),
+                    # Openness is the REGISTRATION schedule window now, not a form flag.
+                    registration_open_clause(),
                 )
             )
+        ) or 0
+
+    async def get_workspace_requirement(
+        self,
+        session: AsyncSession,
+        workspace_id: int,
+    ) -> WorkspaceSubscriptionRequirementRead:
+        return WorkspaceSubscriptionRequirementRead(
+            requirement=await self.load_workspace_requirement_blob(session, workspace_id),
+            enforcing_tournaments=await self.count_enforcing_tournaments(session, workspace_id),
         )
-        .scalars()
-        .all()
-    )
-    by_provider = {row.provider: row for row in rows}
-    configs = [
-        serialize_provider_config(by_provider[provider])
-        if provider in by_provider
-        else SubscriptionProviderConfigRead(provider=provider, enabled=False)
-        for provider in CONFIGURABLE_PROVIDERS
-    ]
-    discord_guild_id = await session.scalar(
-        sa.select(models.Workspace.discord_guild_id).where(models.Workspace.id == workspace_id)
-    )
-    return SubscriptionProviderConfigListResponse(configs=configs, discord_guild_id=discord_guild_id or None)
 
+    async def upsert_workspace_requirement(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        body: WorkspaceSubscriptionRequirementUpsert,
+    ) -> WorkspaceSubscriptionRequirementRead:
+        """Replace the workspace's default rule. Commits internally.
 
-async def upsert_provider_config(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    body: SubscriptionProviderConfigUpsert,
-) -> SubscriptionProviderConfigRead:
-    """Create or update one provider's config. Commits internally."""
-    existing = (
-        await session.execute(
-            sa.select(models.SubscriptionProviderConfig).where(
-                models.SubscriptionProviderConfig.workspace_id == workspace_id,
-                models.SubscriptionProviderConfig.provider == body.provider,
-            )
+        Conflicts on ``(workspace_id, name)`` rather than on the partial "one default per
+        workspace" index: the named constraint is the stable target, and ``name`` is
+        ``'default'`` until presets arrive (at which point this function gains the name and
+        nothing else about the shape changes).
+        """
+        await self.requirement_repo.upsert_default(
+            session,
+            workspace_id=workspace_id,
+            name=DEFAULT_REQUIREMENT_NAME,
+            requirement_json=body.requirement,
         )
-    ).scalar_one_or_none()
-
-    config_json = build_config_json(body, existing=(existing.config_json or {}) if existing else {})
-
-    stmt = pg_insert(models.SubscriptionProviderConfig).values(
-        workspace_id=workspace_id,
-        provider=body.provider,
-        enabled=body.enabled,
-        config_json=config_json,
-    )
-    await session.execute(
-        stmt.on_conflict_do_update(
-            constraint="uq_subscription_config_workspace_provider",
-            set_={
-                "enabled": stmt.excluded.enabled,
-                "config_json": stmt.excluded.config_json,
-                "updated_at": sa.func.now(),
-            },
-        )
-    )
-    await session.commit()
-
-    # `populate_existing` is load-bearing, not decoration: the INSERT ... ON
-    # CONFLICT above changes the row behind the ORM's back, so a plain SELECT would
-    # be served from the identity map and return the PRE-upsert `config_json`. That
-    # silently made an explicit `codes: []` look like it had not cleared anything.
-    row = (
-        await session.execute(
-            sa.select(models.SubscriptionProviderConfig)
-            .where(
-                models.SubscriptionProviderConfig.workspace_id == workspace_id,
-                models.SubscriptionProviderConfig.provider == body.provider,
-            )
-            .execution_options(populate_existing=True)
-        )
-    ).scalar_one()
-    return serialize_provider_config(row)
+        await session.commit()
+        # Read back rather than echoing the request: the INSERT ... ON CONFLICT wrote behind
+        # the ORM's back, and the caller should see what the gates will now read.
+        return await self.get_workspace_requirement(session, workspace_id)
 
 
-DEFAULT_REQUIREMENT_NAME = "default"
-
-
-async def load_workspace_requirement_blob(session: AsyncSession, workspace_id: int) -> dict[str, Any]:
-    """The workspace's default rule as a raw blob, or ``{}`` when it has none.
-
-    One scalar read, used both by the admin endpoint and by the registration-form read
-    projection -- which still carries the rule so the public check-in dialog does not
-    have to learn about a second table.
-    """
-    req = models.WorkspaceSubscriptionRequirement
-    blob = await session.scalar(
-        sa.select(req.requirement_json).where(req.workspace_id == workspace_id, req.is_default.is_(True))
-    )
-    return dict(blob) if blob else {}
-
-
-async def count_enforcing_tournaments(session: AsyncSession, workspace_id: int) -> int:
-    """Live tournaments this workspace's rule would gate.
-
-    Applies the collector's TOURNAMENT-side predicate only
-    (``find_tournaments_requiring_subscriptions``): open, unfinished, toggle on. A
-    finished tournament still carrying the toggle is not "gated" in any sense the
-    organizer cares about, and counting it would overstate the blast radius the admin
-    screen is there to report honestly.
-
-    It deliberately omits the rest of what the collector sweeps on -- the inner join to
-    ``subscriptions.requirement ... is_default`` and the drop of targets whose blob
-    parses empty -- so this counts what a rule WOULD gate, not only what one currently
-    does. That is the question the admin card asks ("how many tournaments will the rule
-    you are about to save gate?"), and adding the join would read 0 in the one state
-    where the blast radius matters most: toggles on, no rule row yet, which is exactly
-    where an admin stands when they first open this card.
-    """
-    form = models.BalancerRegistrationForm
-    return (
-        await session.scalar(
-            sa.select(sa.func.count())
-            .select_from(models.Tournament)
-            .join(form, form.tournament_id == models.Tournament.id)
-            .where(
-                models.Tournament.workspace_id == workspace_id,
-                models.Tournament.is_finished.is_(False),
-                form.require_subscription.is_(True),
-                # Openness is the REGISTRATION schedule window now, not a form flag.
-                registration_open_clause(),
-            )
-        )
-    ) or 0
-
-
-async def get_workspace_requirement(session: AsyncSession, workspace_id: int) -> WorkspaceSubscriptionRequirementRead:
-    return WorkspaceSubscriptionRequirementRead(
-        requirement=await load_workspace_requirement_blob(session, workspace_id),
-        enforcing_tournaments=await count_enforcing_tournaments(session, workspace_id),
-    )
-
-
-async def upsert_workspace_requirement(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    body: WorkspaceSubscriptionRequirementUpsert,
-) -> WorkspaceSubscriptionRequirementRead:
-    """Replace the workspace's default rule. Commits internally.
-
-    Conflicts on ``(workspace_id, name)`` rather than on the partial "one default per
-    workspace" index: the named constraint is the stable target, and ``name`` is
-    ``'default'`` until presets arrive (at which point this function gains the name and
-    nothing else about the shape changes).
-    """
-    stmt = pg_insert(models.WorkspaceSubscriptionRequirement).values(
-        workspace_id=workspace_id,
-        name=DEFAULT_REQUIREMENT_NAME,
-        requirement_json=body.requirement,
-        is_default=True,
-    )
-    await session.execute(
-        stmt.on_conflict_do_update(
-            constraint="uq_subscription_requirement_workspace_name",
-            set_={
-                "requirement_json": stmt.excluded.requirement_json,
-                "is_default": stmt.excluded.is_default,
-                "updated_at": sa.func.now(),
-            },
-        )
-    )
-    await session.commit()
-    # Read back rather than echoing the request: the INSERT ... ON CONFLICT wrote behind
-    # the ORM's back, and the caller should see what the gates will now read.
-    return await get_workspace_requirement(session, workspace_id)
+subscription_config_service = SubscriptionConfigService()

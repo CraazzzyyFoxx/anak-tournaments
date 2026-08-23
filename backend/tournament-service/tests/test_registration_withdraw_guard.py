@@ -2,7 +2,7 @@
 
 Check-in is what turns the registration list into an attendee list, and the
 balancer/draft are run against it. A participant dropping themselves after that
-silently invalidates a composed roster, so ``reg_service.withdraw_registration``
+silently invalidates a composed roster, so ``reg_service.registration_service.withdraw_registration``
 (the public ``DELETE /registration/me`` path) refuses with 409. The admin path
 (``lifecycle.withdraw_registration``) is deliberately NOT gated -- organizers
 own that call.
@@ -69,7 +69,7 @@ class TestPublicWithdrawGuard(IsolatedAsyncioTestCase):
         session = _RecordingSession()
 
         with self.assertRaises(HTTPException) as caught:
-            await reg_service.withdraw_registration(session, registration)
+            await reg_service.registration_service.withdraw_registration(session, registration)
 
         assert caught.exception.status_code == 409
         # The refusal must leave the row alone: a half-applied withdrawal would
@@ -81,7 +81,7 @@ class TestPublicWithdrawGuard(IsolatedAsyncioTestCase):
         registration = _registration(checked_in=False)
         session = _RecordingSession()
 
-        await reg_service.withdraw_registration(session, registration)
+        await reg_service.registration_service.withdraw_registration(session, registration)
 
         assert registration.status == "withdrawn"
         assert session.commits == 1

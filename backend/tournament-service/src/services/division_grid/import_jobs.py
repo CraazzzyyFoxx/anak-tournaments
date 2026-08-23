@@ -5,19 +5,28 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.clients.s3 import S3Client
 from shared.messaging.config import TOURNAMENT_COMPUTE_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.observability import observe_scheduled_job
+from shared.repository import DivisionGridImportJobRepository, WorkspaceRepository
 from src import models, schemas
 from src.core import config, db
-from src.services.division_grid import marketplace
+from src.services.division_grid.marketplace import MarketplaceService, marketplace_service
+
+__all__ = (
+    "ImportJobsService",
+    "import_jobs_service",
+    "process_import_job",
+    "recover_stale_import_jobs",
+    "to_read",
+)
 
 _ROUTING_KEY = "tournament.compute.division-grid-import"
 _STALE_RUNNING_AFTER = timedelta(hours=1)
+_ACTIVE_STATUSES = ("pending", "running")
 
 
 def _idempotency_key(
@@ -44,73 +53,6 @@ def _idempotency_key(
     return f"division-grid-import:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
 
 
-async def dispatch_import_job(session: AsyncSession, job: models.DivisionGridImportJob) -> None:
-    await enqueue_outbox_event(
-        session,
-        {"job_id": int(job.id)},
-        exchange=TOURNAMENT_COMPUTE_EXCHANGE,
-        routing_key=_ROUTING_KEY,
-        event_id=uuid4().hex,
-        event_type="division_grid_import_job",
-    )
-
-
-async def create_import_job(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    source_workspace_id: int,
-    requested_by_user_id: int | None,
-    source_grid_id: int,
-    source_version_id: int,
-    include_icons: bool,
-    include_ow_rank_mappings: bool,
-    source_fingerprint: str,
-) -> models.DivisionGridImportJob:
-    idempotency_key = _idempotency_key(
-        workspace_id=workspace_id,
-        source_workspace_id=source_workspace_id,
-        source_grid_id=source_grid_id,
-        source_version_id=source_version_id,
-        include_icons=include_icons,
-        include_ow_rank_mappings=include_ow_rank_mappings,
-        source_fingerprint=source_fingerprint,
-    )
-    existing = await session.scalar(
-        sa.select(models.DivisionGridImportJob).where(models.DivisionGridImportJob.idempotency_key == idempotency_key)
-    )
-    if existing is not None:
-        if getattr(existing, "status", None) == "failed":
-            existing.status = "pending"
-            existing.progress = 0
-            existing.result_json = None
-            existing.error = None
-            existing.started_at = None
-            existing.finished_at = None
-            await dispatch_import_job(session, existing)
-        return existing
-
-    job = models.DivisionGridImportJob(
-        workspace_id=workspace_id,
-        source_workspace_id=source_workspace_id,
-        requested_by_user_id=requested_by_user_id,
-        status="pending",
-        progress=0,
-        request_json={
-            "source_grid_id": source_grid_id,
-            "source_version_id": source_version_id,
-            "include_icons": include_icons,
-            "include_ow_rank_mappings": include_ow_rank_mappings,
-            "source_fingerprint": source_fingerprint,
-        },
-        idempotency_key=idempotency_key,
-    )
-    session.add(job)
-    await session.flush()
-    await dispatch_import_job(session, job)
-    return job
-
-
 def to_read(job: models.DivisionGridImportJob) -> schemas.DivisionGridImportJobRead:
     result = (
         schemas.DivisionGridMarketplaceImportResult.model_validate(job.result_json)
@@ -132,104 +74,176 @@ def to_read(job: models.DivisionGridImportJob) -> schemas.DivisionGridImportJobR
     )
 
 
-async def get_import_job(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    job_id: int,
-) -> models.DivisionGridImportJob | None:
-    return await session.scalar(
-        sa.select(models.DivisionGridImportJob).where(
-            models.DivisionGridImportJob.id == job_id,
-            models.DivisionGridImportJob.workspace_id == workspace_id,
-        )
-    )
-
-
-async def list_import_jobs(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    active_only: bool = False,
-    limit: int = 20,
-) -> list[models.DivisionGridImportJob]:
-    statement = sa.select(models.DivisionGridImportJob).where(models.DivisionGridImportJob.workspace_id == workspace_id)
-    if active_only:
-        statement = statement.where(models.DivisionGridImportJob.status.in_(("pending", "running")))
-    result = await session.scalars(
-        statement.order_by(models.DivisionGridImportJob.id.desc()).limit(max(1, min(limit, 100)))
-    )
-    return list(result.all())
-
-
 def _new_s3_client() -> S3Client:
     return S3Client.from_settings(config.settings)
 
 
-async def recover_stale_import_jobs() -> int:
-    """Requeue imports abandoned by a worker after its lease window."""
-    cutoff = datetime.now(UTC) - _STALE_RUNNING_AFTER
-    async with observe_scheduled_job("division_grid_import_recovery"), db.async_session_maker() as session:
-        jobs = await session.scalars(
-            sa.select(models.DivisionGridImportJob).where(
-                models.DivisionGridImportJob.status == "running",
-                models.DivisionGridImportJob.started_at < cutoff,
-            )
+class ImportJobsService:
+    """Queue, poll and execute marketplace division-grid import jobs."""
+
+    def __init__(
+        self,
+        *,
+        job_repo: DivisionGridImportJobRepository = DivisionGridImportJobRepository(),
+        workspace_repo: WorkspaceRepository = WorkspaceRepository(),
+        marketplace: MarketplaceService = marketplace_service,
+    ) -> None:
+        self.job_repo = job_repo
+        self.workspace_repo = workspace_repo
+        self.marketplace = marketplace
+
+    async def dispatch_import_job(self, session: AsyncSession, job: models.DivisionGridImportJob) -> None:
+        await enqueue_outbox_event(
+            session,
+            {"job_id": int(job.id)},
+            exchange=TOURNAMENT_COMPUTE_EXCHANGE,
+            routing_key=_ROUTING_KEY,
+            event_id=uuid4().hex,
+            event_type="division_grid_import_job",
         )
-        stale_jobs = list(jobs.all())
+
+    async def create_import_job(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        source_workspace_id: int,
+        requested_by_user_id: int | None,
+        source_grid_id: int,
+        source_version_id: int,
+        include_icons: bool,
+        include_ow_rank_mappings: bool,
+        source_fingerprint: str,
+    ) -> models.DivisionGridImportJob:
+        idempotency_key = _idempotency_key(
+            workspace_id=workspace_id,
+            source_workspace_id=source_workspace_id,
+            source_grid_id=source_grid_id,
+            source_version_id=source_version_id,
+            include_icons=include_icons,
+            include_ow_rank_mappings=include_ow_rank_mappings,
+            source_fingerprint=source_fingerprint,
+        )
+        existing = await self.job_repo.get_by_idempotency_key(session, idempotency_key)
+        if existing is not None:
+            if getattr(existing, "status", None) == "failed":
+                await self.job_repo.update_fields(
+                    session,
+                    existing,
+                    {
+                        "status": "pending",
+                        "progress": 0,
+                        "result_json": None,
+                        "error": None,
+                        "started_at": None,
+                        "finished_at": None,
+                    },
+                )
+                await self.dispatch_import_job(session, existing)
+            return existing
+
+        job = await self.job_repo.create(
+            session,
+            models.DivisionGridImportJob(
+                workspace_id=workspace_id,
+                source_workspace_id=source_workspace_id,
+                requested_by_user_id=requested_by_user_id,
+                status="pending",
+                progress=0,
+                request_json={
+                    "source_grid_id": source_grid_id,
+                    "source_version_id": source_version_id,
+                    "include_icons": include_icons,
+                    "include_ow_rank_mappings": include_ow_rank_mappings,
+                    "source_fingerprint": source_fingerprint,
+                },
+                idempotency_key=idempotency_key,
+            ),
+        )
+        await self.dispatch_import_job(session, job)
+        return job
+
+    async def get_import_job(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        job_id: int,
+    ) -> models.DivisionGridImportJob | None:
+        return await self.job_repo.get_for_workspace(session, job_id=job_id, workspace_id=workspace_id)
+
+    async def list_import_jobs(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        active_only: bool = False,
+        limit: int = 20,
+    ) -> list[models.DivisionGridImportJob]:
+        jobs = await self.job_repo.list_for_workspace(
+            session,
+            workspace_id,
+            statuses=_ACTIVE_STATUSES if active_only else None,
+            limit=max(1, min(limit, 100)),
+        )
+        return list(jobs)
+
+    async def recover_stale(self, session: AsyncSession, *, cutoff: datetime) -> int:
+        """Requeue every import abandoned by a worker before ``cutoff``."""
+        stale_jobs = list(await self.job_repo.list_stalled(session, cutoff=cutoff))
         for job in stale_jobs:
-            job.status = "pending"
-            job.progress = 0
-            job.started_at = None
-            job.finished_at = None
-            job.error = "Previous worker stopped before the import completed; retrying"
-            await dispatch_import_job(session, job)
+            await self.job_repo.update_fields(
+                session,
+                job,
+                {
+                    "status": "pending",
+                    "progress": 0,
+                    "started_at": None,
+                    "finished_at": None,
+                    "error": "Previous worker stopped before the import completed; retrying",
+                },
+            )
+            await self.dispatch_import_job(session, job)
         if stale_jobs:
             await session.commit()
         return len(stale_jobs)
 
-
-async def process_import_job(job_id: int) -> None:
-    async with db.async_session_maker() as session:
-        claimed_id = await session.scalar(
-            sa.update(models.DivisionGridImportJob)
-            .where(
-                models.DivisionGridImportJob.id == job_id,
-                models.DivisionGridImportJob.status == "pending",
-            )
-            .values(
-                status="running",
-                progress=10,
-                error=None,
-                started_at=datetime.now(UTC),
-                finished_at=None,
-            )
-            .returning(models.DivisionGridImportJob.id)
+    async def process(self, session: AsyncSession, job_id: int) -> None:
+        """Claim one queued job and run its import to completion or failure."""
+        # Conditional claim: only the poller whose UPDATE matched proceeds, and the
+        # per-attempt resets ride the same statement so a job never reads as
+        # claimed while still carrying the previous attempt's error.
+        claimed = await self.job_repo.claim_queued(
+            session,
+            job_id,
+            from_status="pending",
+            to_status="running",
+            started_at=datetime.now(UTC),
+            extra_values={"progress": 10, "error": None, "finished_at": None},
         )
-        if claimed_id is None:
+        if not claimed:
             return
         await session.commit()
 
-        job = await session.get(models.DivisionGridImportJob, job_id)
+        job = await self.job_repo.get(session, job_id)
         if job is None:
             return
         payload: dict[str, Any] = dict(job.request_json)
         s3 = _new_s3_client()
         try:
             await s3.start()
-            target_workspace = await session.get(models.Workspace, job.workspace_id)
-            source_workspace = await session.get(models.Workspace, job.source_workspace_id)
+            target_workspace = await self.workspace_repo.get(session, job.workspace_id)
+            source_workspace = await self.workspace_repo.get(session, job.source_workspace_id)
             if target_workspace is None or source_workspace is None:
                 raise RuntimeError("Source or target workspace no longer exists")
 
-            source_grids = await marketplace.get_marketplace_grids_by_ids(
+            source_grids = await self.marketplace.get_marketplace_grids_by_ids(
                 session,
                 source_workspace_id=source_workspace.id,
                 source_grid_ids=[payload["source_grid_id"]],
             )
-            job.progress = 35
-            await session.flush()
-            result = await marketplace.import_division_grids(
+            await self.job_repo.update_fields(session, job, {"progress": 35})
+            result = await self.marketplace.import_division_grids(
                 session,
                 s3,
                 target_workspace=target_workspace,
@@ -241,19 +255,48 @@ async def process_import_job(job_id: int) -> None:
                 include_icons=payload["include_icons"],
                 include_ow_rank_mappings=payload["include_ow_rank_mappings"],
             )
-            job.status = "completed"
-            job.progress = 100
-            job.result_json = result.model_dump(mode="json")
-            job.finished_at = datetime.now(UTC)
+            await self.job_repo.update_fields(
+                session,
+                job,
+                {
+                    "status": "completed",
+                    "progress": 100,
+                    "result_json": result.model_dump(mode="json"),
+                    "finished_at": datetime.now(UTC),
+                },
+            )
             await session.commit()
         except Exception as exc:
             await session.rollback()
-            failed_job = await session.get(models.DivisionGridImportJob, job_id)
+            failed_job = await self.job_repo.get(session, job_id)
             if failed_job is not None:
-                failed_job.status = "failed"
-                failed_job.error = str(exc)[:2000]
-                failed_job.finished_at = datetime.now(UTC)
+                await self.job_repo.update_fields(
+                    session,
+                    failed_job,
+                    {
+                        "status": "failed",
+                        "error": str(exc)[:2000],
+                        "finished_at": datetime.now(UTC),
+                    },
+                )
                 await session.commit()
             raise
         finally:
             await s3.close()
+
+
+import_jobs_service = ImportJobsService()
+
+
+# Worker/scheduler entrypoints. They take no `session` — they OWN one — so they
+# stay module-level (rule 12) and `serve.py` keeps importing them by name.
+async def recover_stale_import_jobs() -> int:
+    """Requeue imports abandoned by a worker after its lease window."""
+    cutoff = datetime.now(UTC) - _STALE_RUNNING_AFTER
+    async with observe_scheduled_job("division_grid_import_recovery"), db.async_session_maker() as session:
+        return await import_jobs_service.recover_stale(session, cutoff=cutoff)
+
+
+async def process_import_job(job_id: int) -> None:
+    async with db.async_session_maker() as session:
+        await import_jobs_service.process(session, job_id)

@@ -29,7 +29,7 @@ from shared.services.audit import record_audit
 from src import models
 from src.services.registration.utils import normalize_battle_tag
 
-__all__ = ("ENTITY", "label", "profile_changes", "role_snapshot", "stage")
+__all__ = ("ENTITY", "audit_service", "label", "profile_changes", "role_snapshot")
 
 ENTITY = "registration"
 
@@ -144,43 +144,50 @@ def profile_changes(
     return before, after
 
 
-async def stage(
-    session: AsyncSession,
-    *,
-    action: str,
-    actor: models.AuthUser,
-    workspace_id: int,
-    data: dict[str, Any],
-    entity_id: int | None,
-    entity_type: str = ENTITY,
-    entity_label: str | None = None,
-    before: dict[str, Any] | None = None,
-    after: dict[str, Any] | None = None,
-) -> None:
-    """Stage one audit row for a registration write.
+class RegistrationAuditService:
+    """The one session-taking staging call; every image builder above stays pure."""
 
-    ``workspace_id`` is the value ``ensure_workspace_permission`` was checked
-    against, passed down rather than resolved again, so the journal's scope is
-    the authorisation scope by construction.
+    async def stage(
+        self,
+        session: AsyncSession,
+        *,
+        action: str,
+        actor: models.AuthUser,
+        workspace_id: int,
+        data: dict[str, Any],
+        entity_id: int | None,
+        entity_type: str = ENTITY,
+        entity_label: str | None = None,
+        before: dict[str, Any] | None = None,
+        after: dict[str, Any] | None = None,
+    ) -> None:
+        """Stage one audit row for a registration write.
 
-    Bulk operations pass ``entity_type="tournament"`` with the tournament id:
-    they name one request over many rows, and fanning a row out per registration
-    would bury every single-row edit in the same feed.
-    """
-    await record_audit(
-        session,
-        action=action,
-        source="admin",
-        actor=actor,
-        # Snapshotted for the same reason as in the CRUD engine: nothing points
-        # at auth.user, so a reader's join resolves nothing once it is deleted.
-        actor_label=actor.username,
-        workspace_id=workspace_id,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        entity_label=entity_label,
-        before=before,
-        after=after,
-        ip_address=data.get("ip_address"),
-        user_agent=data.get("user_agent"),
-    )
+        ``workspace_id`` is the value ``ensure_workspace_permission`` was checked
+        against, passed down rather than resolved again, so the journal's scope is
+        the authorisation scope by construction.
+
+        Bulk operations pass ``entity_type="tournament"`` with the tournament id:
+        they name one request over many rows, and fanning a row out per registration
+        would bury every single-row edit in the same feed.
+        """
+        await record_audit(
+            session,
+            action=action,
+            source="admin",
+            actor=actor,
+            # Snapshotted for the same reason as in the CRUD engine: nothing points
+            # at auth.user, so a reader's join resolves nothing once it is deleted.
+            actor_label=actor.username,
+            workspace_id=workspace_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            entity_label=entity_label,
+            before=before,
+            after=after,
+            ip_address=data.get("ip_address"),
+            user_agent=data.get("user_agent"),
+        )
+
+
+audit_service = RegistrationAuditService()

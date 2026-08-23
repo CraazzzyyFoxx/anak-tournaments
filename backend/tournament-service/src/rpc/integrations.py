@@ -42,19 +42,20 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
 from src import models, schemas
+from src.clients.challonge import challonge_client
 from src.core import auth
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _require_q1, _run
 from src.rpc._s3 import get_s3
 from src.schemas.admin import balancer as admin_schemas
 from src.schemas.admin import team as team_admin_schemas
 from src.services.admin import tournament as tournament_admin_service
-from src.services.challonge import service as challonge_service
 from src.services.challonge import sync as challonge_sync
 from src.services.division_grid import import_jobs as division_grid_import_jobs
 from src.services.division_grid import marketplace as division_grid_marketplace
 from src.services.division_grid import portable as division_grid_portable
-from src.services.division_grid import service as division_grid_service
-from src.services.registration import admin as registration_service
+from src.services.division_grid.service import division_grid_service
+from src.services.registration import export as reg_export
+from src.services.registration import sheet_sync
 from src.services.registration.serializers import serialize_feed
 from src.services.tournament import flows as tournament_flows
 
@@ -128,7 +129,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_slug = _q1(data, "tournament_slug")
             if not tournament_slug:
                 raise HTTPException(status_code=422, detail="tournament_slug is required")
-            return _dump(await challonge_service.fetch_tournament(tournament_slug))
+            return _dump(await challonge_client.fetch_tournament(tournament_slug))
 
         return await _run(logger, op)
 
@@ -141,7 +142,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _q1(data, "tournament_id", int)
             if tournament_id is None:
                 raise HTTPException(status_code=422, detail="tournament_id is required")
-            return _dump(await challonge_service.fetch_participants(tournament_id))
+            return _dump(await challonge_client.fetch_participants(tournament_id))
 
         return await _run(logger, op)
 
@@ -154,7 +155,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _q1(data, "tournament_id", int)
             if tournament_id is None:
                 raise HTTPException(status_code=422, detail="tournament_id is required")
-            return _dump(await challonge_service.fetch_matches(tournament_id))
+            return _dump(await challonge_client.fetch_matches(tournament_id))
 
         return await _run(logger, op)
 
@@ -169,7 +170,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             dry_run = _q1(data, "dry_run", _bool, default=False)
             # import_tournament commits internally.
-            return await challonge_sync.import_tournament(session, tournament_id, dry_run=dry_run)
+            return await challonge_sync.sync_service.import_tournament(session, tournament_id, dry_run=dry_run)
 
         return await _run(logger, op)
 
@@ -182,7 +183,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
             # export_tournament commits internally.
-            return await challonge_sync.export_tournament(session, tournament_id)
+            return await challonge_sync.sync_service.export_tournament(session, tournament_id)
 
         return await _run(logger, op)
 
@@ -195,7 +196,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "challonge", "update")
             # auto_push_on_confirm commits internally.
-            await challonge_sync.auto_push_on_confirm(session, encounter_id)
+            await challonge_sync.sync_service.auto_push_on_confirm(session, encounter_id)
             return {"status": "ok"}
 
         return await _run(logger, op)
@@ -210,7 +211,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="challonge", action="read"
             )
             limit = _q1(data, "limit", int, default=50)
-            logs = await challonge_sync.get_sync_log(session, tournament_id, limit)
+            logs = await challonge_sync.sync_service.get_sync_log(session, tournament_id, limit)
             return [
                 {
                     "id": log.id,
@@ -240,7 +241,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             workspace_id = _require_q1(data, "workspace_id", int)
             ensure_workspace_permission(user, workspace_id, "tournament", "create")
-            tournament = await tournament_admin_service.create_tournament_from_challonge(
+            tournament = await tournament_admin_service.tournament_service.create_tournament_from_challonge(
                 session,
                 workspace_id=workspace_id,
                 is_league=_q1(data, "is_league", _bool, default=False),
@@ -249,7 +250,7 @@ def register(broker: Any, logger: Any) -> None:
                 challonge_slug=_require_q1(data, "challonge_slug"),
                 division_grid_version_id=_q1(data, "division_grid_version_id", int),
             )
-            return _dump(await tournament_flows.to_pydantic(session, tournament, ["stages"]))
+            return _dump(await tournament_flows.flows_service.to_pydantic(session, tournament, ["stages"]))
 
         return await _run(logger, op)
 
@@ -263,7 +264,7 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="challonge", action="read"
             )
-            return _dump(await challonge_sync.preview_team_mapping(session, tournament_id))
+            return _dump(await challonge_sync.sync_service.preview_team_mapping(session, tournament_id))
 
         return await _run(logger, op)
 
@@ -278,7 +279,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="challonge", action="update"
             )
             body = team_admin_schemas.ChallongeTeamSyncRequest.model_validate(_payload(data))
-            return _dump(await challonge_sync.apply_team_mapping(session, tournament_id, body.mappings))
+            return _dump(await challonge_sync.sync_service.apply_team_mapping(session, tournament_id, body.mappings))
 
         return await _run(logger, op)
 
@@ -294,7 +295,7 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
-            feed = await registration_service.get_google_sheet_feed(session, tournament_id)
+            feed = await sheet_sync.sheet_sync_service.get_google_sheet_feed(session, tournament_id)
             if feed is None:
                 return None
             return _dump(serialize_feed(feed))
@@ -312,7 +313,7 @@ def register(broker: Any, logger: Any) -> None:
             )
             body = admin_schemas.BalancerGoogleSheetFeedUpsert.model_validate(_payload(data))
             # upsert_google_sheet_feed commits internally.
-            feed = await registration_service.upsert_google_sheet_feed(
+            feed = await sheet_sync.sheet_sync_service.upsert_google_sheet_feed(
                 session,
                 tournament_id,
                 source_url=body.source_url,
@@ -336,7 +337,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="team", action="create"
             )
             # sync_google_sheet_feed commits internally.
-            result = await registration_service.sync_google_sheet_feed(session, tournament_id)
+            result = await sheet_sync.sheet_sync_service.sync_google_sheet_feed(session, tournament_id)
             return _dump(
                 admin_schemas.BalancerGoogleSheetFeedSyncResponse(
                     created=result.created,
@@ -361,7 +362,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
             include_headers = _q1(data, "include_headers", _bool, default=False)
-            catalog = await registration_service.get_mapping_catalog(
+            catalog = await sheet_sync.sheet_sync_service.get_mapping_catalog(
                 session, tournament_id, include_headers=include_headers
             )
             return _dump(admin_schemas.BalancerGoogleSheetMappingCatalogResponse(**catalog))
@@ -378,7 +379,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
             body = admin_schemas.BalancerGoogleSheetMappingSuggestRequest.model_validate(_payload(data))
-            _, headers, mapping = await registration_service.suggest_google_sheet_mapping(
+            _, headers, mapping = await sheet_sync.sheet_sync_service.suggest_google_sheet_mapping(
                 session, tournament_id, source_url=body.source_url
             )
             return _dump(
@@ -400,7 +401,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, user, tournament_id=tournament_id, resource="team", action="read"
             )
             body = admin_schemas.BalancerGoogleSheetMappingPreviewRequest.model_validate(_payload(data))
-            preview = await registration_service.preview_google_sheet_mapping(
+            preview = await sheet_sync.sheet_sync_service.preview_google_sheet_mapping(
                 session,
                 tournament_id,
                 source_url=body.source_url,
@@ -421,7 +422,7 @@ def register(broker: Any, logger: Any) -> None:
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="player", action="read"
             )
-            payload = await registration_service.export_active_registrations(session, tournament_id)
+            payload = await reg_export.export_service.export_active_registrations(session, tournament_id)
             return _dump(admin_schemas.BalancerPlayerExportResponse(**payload))
 
         return await _run(logger, op)
@@ -495,7 +496,7 @@ def register(broker: Any, logger: Any) -> None:
             grid_id = _require_id(data)
             grid = await division_grid_service.get_grid_by_id(session, grid_id)
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action="read")
-            return _dump(await division_grid_portable.export_portable_document(session, grid_id=grid_id))
+            return _dump(await division_grid_portable.portable_service.export_portable_document(session, grid_id=grid_id))
 
         return await _run(logger, op)
 
@@ -506,7 +507,7 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _path_int(data, "workspace_id")
             await require_workspace_permission(workspace_id, session=session, user=user, action="create")
             body = schemas.DivisionGridPortableImportRequest.model_validate(_payload(data))
-            grid = await division_grid_portable.import_portable_document(
+            grid = await division_grid_portable.portable_service.import_portable_document(
                 session,
                 workspace_id=workspace_id,
                 request=body,
@@ -523,7 +524,7 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _path_int(data, "workspace_id")
             await require_workspace_permission(workspace_id, session=session, user=user, action="read")
             return _dump(
-                await division_grid_marketplace.list_marketplace_workspaces(
+                await division_grid_marketplace.marketplace_service.list_marketplace_workspaces(
                     session, target_workspace_id=workspace_id, user=user
                 )
             )
@@ -546,7 +547,7 @@ def register(broker: Any, logger: Any) -> None:
                 user=user,
             )
             return _dump(
-                await division_grid_marketplace.list_marketplace_grids(session, source_workspace_id=source_workspace.id)
+                await division_grid_marketplace.marketplace_service.list_marketplace_grids(session, source_workspace_id=source_workspace.id)
             )
 
         return await _run(logger, op)
@@ -564,14 +565,14 @@ def register(broker: Any, logger: Any) -> None:
                 source_workspace_id=body.source_workspace_id,
                 user=user,
             )
-            source_grids = await division_grid_marketplace.get_marketplace_grids_by_ids(
+            source_grids = await division_grid_marketplace.marketplace_service.get_marketplace_grids_by_ids(
                 session,
                 source_workspace_id=source_workspace.id,
                 source_grid_ids=[body.source_grid_id],
             )
             s3 = await get_s3()
             return _dump(
-                await division_grid_marketplace.preflight_division_grid_import(
+                await division_grid_marketplace.marketplace_service.preflight_division_grid_import(
                     session,
                     public_url=getattr(s3, "_public_url", None),
                     target_workspace_id=workspace_id,
@@ -598,13 +599,13 @@ def register(broker: Any, logger: Any) -> None:
                 source_workspace_id=body.source_workspace_id,
                 user=user,
             )
-            source_grids = await division_grid_marketplace.get_marketplace_grids_by_ids(
+            source_grids = await division_grid_marketplace.marketplace_service.get_marketplace_grids_by_ids(
                 session,
                 source_workspace_id=source_workspace.id,
                 source_grid_ids=[body.source_grid_id],
             )
             s3 = await get_s3()
-            preflight = await division_grid_marketplace.preflight_division_grid_import(
+            preflight = await division_grid_marketplace.marketplace_service.preflight_division_grid_import(
                 session,
                 public_url=getattr(s3, "_public_url", None),
                 target_workspace_id=workspace_id,
@@ -614,7 +615,7 @@ def register(broker: Any, logger: Any) -> None:
                 include_icons=body.include_icons,
                 include_ow_rank_mappings=body.include_ow_rank_mappings,
             )
-            job = await division_grid_import_jobs.create_import_job(
+            job = await division_grid_import_jobs.import_jobs_service.create_import_job(
                 session,
                 workspace_id=workspace_id,
                 source_workspace_id=source_workspace.id,
@@ -636,7 +637,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             workspace_id = _path_int(data, "workspace_id")
             await require_workspace_permission(workspace_id, session=session, user=user, action="read")
-            jobs = await division_grid_import_jobs.list_import_jobs(
+            jobs = await division_grid_import_jobs.import_jobs_service.list_import_jobs(
                 session,
                 workspace_id=workspace_id,
                 active_only=_q1(data, "active_only", _bool, False),
@@ -652,7 +653,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             workspace_id = _path_int(data, "workspace_id")
             await require_workspace_permission(workspace_id, session=session, user=user, action="read")
-            job = await division_grid_import_jobs.get_import_job(
+            job = await division_grid_import_jobs.import_jobs_service.get_import_job(
                 session,
                 workspace_id=workspace_id,
                 job_id=_path_int(data, "job_id"),

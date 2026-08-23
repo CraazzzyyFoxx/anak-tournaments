@@ -100,10 +100,12 @@ class SyncActiveChallongeTournamentsTests(IsolatedAsyncioTestCase):
     async def test_no_op_when_disabled(self) -> None:
         with patch.object(challonge_sync.config, "settings", _settings(enabled=False)):
             with (
-                patch.object(challonge_sync, "list_active_challonge_tournament_ids", AsyncMock()) as selector,
-                patch.object(challonge_sync, "import_tournament", AsyncMock()) as importer,
+                patch.object(
+                    challonge_sync.sync_service, "list_active_challonge_tournament_ids", AsyncMock()
+                ) as selector,
+                patch.object(challonge_sync.sync_service, "import_tournament", AsyncMock()) as importer,
             ):
-                result = await challonge_sync.sync_active_challonge_tournaments(_session_factory)
+                result = await challonge_sync.sync_service.sync_active_challonge_tournaments(_session_factory)
 
         self.assertEqual(result, [])
         selector.assert_not_awaited()
@@ -112,11 +114,13 @@ class SyncActiveChallongeTournamentsTests(IsolatedAsyncioTestCase):
     async def test_no_op_when_credentials_missing(self) -> None:
         with patch.object(challonge_sync.config, "settings", _settings(api_key="")):
             with (
-                patch.object(challonge_sync, "list_active_challonge_tournament_ids", AsyncMock()) as selector,
-                patch.object(challonge_sync, "import_tournament", AsyncMock()) as importer,
+                patch.object(
+                    challonge_sync.sync_service, "list_active_challonge_tournament_ids", AsyncMock()
+                ) as selector,
+                patch.object(challonge_sync.sync_service, "import_tournament", AsyncMock()) as importer,
                 patch.object(challonge_sync.logger, "warning") as warn,
             ):
-                result = await challonge_sync.sync_active_challonge_tournaments(_session_factory)
+                result = await challonge_sync.sync_service.sync_active_challonge_tournaments(_session_factory)
 
         self.assertEqual(result, [])
         selector.assert_not_awaited()
@@ -128,13 +132,15 @@ class SyncActiveChallongeTournamentsTests(IsolatedAsyncioTestCase):
         with patch.object(challonge_sync.config, "settings", _settings()):
             with (
                 patch.object(
-                    challonge_sync,
+                    challonge_sync.sync_service,
                     "list_active_challonge_tournament_ids",
                     AsyncMock(return_value=[10, 20]),
                 ),
-                patch.object(challonge_sync, "import_tournament", AsyncMock(return_value=stats)) as importer,
+                patch.object(
+                    challonge_sync.sync_service, "import_tournament", AsyncMock(return_value=stats)
+                ) as importer,
             ):
-                result = await challonge_sync.sync_active_challonge_tournaments(_session_factory)
+                result = await challonge_sync.sync_service.sync_active_challonge_tournaments(_session_factory)
 
         self.assertEqual(importer.await_count, 2)
         self.assertEqual([r["tournament_id"] for r in result], [10, 20])
@@ -151,14 +157,14 @@ class SyncActiveChallongeTournamentsTests(IsolatedAsyncioTestCase):
         with patch.object(challonge_sync.config, "settings", _settings()):
             with (
                 patch.object(
-                    challonge_sync,
+                    challonge_sync.sync_service,
                     "list_active_challonge_tournament_ids",
                     AsyncMock(return_value=[10, 20, 30]),
                 ),
-                patch.object(challonge_sync, "import_tournament", AsyncMock(side_effect=_import)),
+                patch.object(challonge_sync.sync_service, "import_tournament", AsyncMock(side_effect=_import)),
                 patch.object(challonge_sync.logger, "exception"),
             ):
-                result = await challonge_sync.sync_active_challonge_tournaments(_session_factory)
+                result = await challonge_sync.sync_service.sync_active_challonge_tournaments(_session_factory)
 
         by_id = {r["tournament_id"]: r for r in result}
         self.assertEqual(by_id[10]["status"], "success")

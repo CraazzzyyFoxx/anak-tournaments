@@ -58,13 +58,19 @@ def _mk_session(stored=None):
     added: list[object] = []
 
     async def fake_execute(_query):
+        # ``EncounterReportFormRepository.get_by`` reads the row through
+        # ``result.unique().scalars().first()``, and ``Result.unique()`` returns
+        # the same result object -- so the fake mirrors that exact chain.
         result = Mock()
-        result.scalar_one_or_none.return_value = stored
+        result.unique.return_value = result
+        result.scalars.return_value.first.return_value = stored
         return result
 
     return SimpleNamespace(
         execute=AsyncMock(side_effect=fake_execute),
         commit=AsyncMock(),
+        # ``BaseRepository.create`` adds the instance, then flushes it.
+        flush=AsyncMock(),
         add=lambda obj: added.append(obj),
         _added=added,
     )
@@ -119,7 +125,7 @@ def _validate(form: schemas.MatchReportFormRead, **overrides):
 class ResolveReportForm(IsolatedAsyncioTestCase):
     async def test_no_row_reads_as_defaults_and_writes_nothing(self) -> None:
         session = _mk_session(stored=None)
-        form = await report_form.resolve_report_form(session, 1)
+        form = await report_form.report_form_service.resolve_report_form(session, 1)
 
         self.assertEqual(1, form.tournament_id)
         self.assertEqual({"closeness", "map_codes", "comment"}, set(form.built_in_fields))
@@ -138,7 +144,7 @@ class ResolveReportForm(IsolatedAsyncioTestCase):
                 custom=[{"key": "vod", "label": "VOD link", "type": "text", "required": True, "placeholder": None}],
             )
         )
-        form = await report_form.resolve_report_form(session, 1)
+        form = await report_form.report_form_service.resolve_report_form(session, 1)
 
         self.assertEqual((False, False), _pair(form, "closeness"))
         self.assertEqual((True, False), _pair(form, "map_codes"))  # untouched default
@@ -162,7 +168,7 @@ class UpsertReportForm(IsolatedAsyncioTestCase):
 
     async def test_inserts_when_absent_and_round_trips(self) -> None:
         session = _mk_session(stored=None)
-        out = await report_form.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
+        out = await report_form.report_form_service.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
 
         self.assertEqual(1, len(session._added))
         row = session._added[0]
@@ -181,7 +187,7 @@ class UpsertReportForm(IsolatedAsyncioTestCase):
     async def test_updates_the_existing_row_in_place(self) -> None:
         stored = _mk_stored(built_in={"comment": {"enabled": False, "required": False}}, custom=[])
         session = _mk_session(stored)
-        out = await report_form.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
+        out = await report_form.report_form_service.upsert_report_form(session, 7, schemas.MatchReportFormUpsert.model_validate(self.BODY))
 
         self.assertEqual([], session._added)
         self.assertNotIn("comment", stored.built_in_fields_json)

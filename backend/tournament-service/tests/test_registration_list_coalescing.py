@@ -66,7 +66,7 @@ class TestCoalescing(IsolatedAsyncioTestCase):
 
         with (
             patch.object(public_rpc.db, "async_session_maker", lambda: _FakeSessionCtx()),
-            patch.object(public_rpc.reg_service, "build_public_registration_list", fake_build),
+            patch.object(public_rpc.reg_service.registration_service, "build_public_registration_list", fake_build),
         ):
             results = await asyncio.gather(*[public_rpc._coalesced_registration_list(42) for _ in range(6)])
 
@@ -84,7 +84,7 @@ class TestCoalescing(IsolatedAsyncioTestCase):
 
         with (
             patch.object(public_rpc.db, "async_session_maker", lambda: _FakeSessionCtx()),
-            patch.object(public_rpc.reg_service, "build_public_registration_list", fake_build),
+            patch.object(public_rpc.reg_service.registration_service, "build_public_registration_list", fake_build),
         ):
             results = await asyncio.gather(
                 public_rpc._coalesced_registration_list(1),
@@ -104,7 +104,7 @@ class TestCoalescing(IsolatedAsyncioTestCase):
 
         with (
             patch.object(public_rpc.db, "async_session_maker", lambda: _FakeSessionCtx()),
-            patch.object(public_rpc.reg_service, "build_public_registration_list", fake_build),
+            patch.object(public_rpc.reg_service.registration_service, "build_public_registration_list", fake_build),
         ):
             first = await public_rpc._coalesced_registration_list(7)
             second = await public_rpc._coalesced_registration_list(7)
@@ -122,7 +122,7 @@ class TestCoalescing(IsolatedAsyncioTestCase):
 
         with (
             patch.object(public_rpc.db, "async_session_maker", lambda: _FakeSessionCtx()),
-            patch.object(public_rpc.reg_service, "build_public_registration_list", fake_build),
+            patch.object(public_rpc.reg_service.registration_service, "build_public_registration_list", fake_build),
         ):
             leader = asyncio.create_task(public_rpc._coalesced_registration_list(9))
             follower = asyncio.create_task(public_rpc._coalesced_registration_list(9))

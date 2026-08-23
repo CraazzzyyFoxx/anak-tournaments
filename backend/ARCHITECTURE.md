@@ -7,10 +7,13 @@ This one describes what happens **inside one service's `src/`** — the layers e
 which layer new code belongs in.
 
 It is not a proposal. It is a description of the pattern `identity-service` has followed
-since it was written, that `app-service` (2026-08-20) and `balancer-service` (2026-08-21)
-were converted to. Every new domain, in every service, follows it. Case studies with before/
-after numbers live in `docs/plans/2026-08-20-app-service-oop-repositories.md` and
-`docs/plans/2026-08-21-balancer-service-oop-repositories.md`.
+since it was written, that `app-service` (2026-08-20), `balancer-service` (2026-08-21),
+`parser-service` (2026-08-21) and `tournament-service` (2026-08-22) were converted to. Every
+new domain, in every service, follows it. Case studies with before/after numbers live in
+`docs/plans/2026-08-20-app-service-oop-repositories.md`,
+`docs/plans/2026-08-21-balancer-service-oop-repositories.md`,
+`docs/plans/2026-08-21-parser-service-oop-repositories.md` and
+`docs/plans/2026-08-22-tournament-service-oop-repositories.md`.
 
 ## The five layers
 
@@ -85,7 +88,10 @@ orchestration lives there) for the price of an `__all__` entry updated by hand e
 wrapped client grows a method. Nothing in this document flagged that shape as wrong at the
 time — it matched an identical pre-existing file in `tournament-service`, so it was carried
 forward as "established precedent" during the parser-service conversion instead of being
-questioned; this section exists so the next service conversion does not repeat it.
+questioned. That second copy is gone too: `tournament-service`'s
+`services/challonge/service.py` was deleted on 2026-08-22 in favour of
+`src/clients/challonge.py`, so no instance of the shape survives — which is the point of
+writing the rule down rather than letting the next reader infer it from whatever exists.
 
 Two placement traps this avoids:
 

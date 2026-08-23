@@ -21,42 +21,54 @@ from shared.services.encounter.finalize import (
     finalize_encounter_score as _finalize_encounter_score,
 )
 from src import models
-from src.services.encounter import pick_ban_session as pick_ban_session_service
+from src.services.encounter.pick_ban_session import pick_ban_session_service
 
 __all__ = (
     "FinalizeSource",
     "FinalizedEncounterScore",
-    "finalize_encounter_score",
+    "FinalizeService",
+    "finalize_service",
 )
 
 
-async def finalize_encounter_score(
-    session: AsyncSession,
-    encounter_id: int,
-    *,
-    home_score: int,
-    away_score: int,
-    source: FinalizeSource,
-    encounter: models.Encounter | None = None,
-    status: EncounterStatus = EncounterStatus.COMPLETED,
-    result_status: EncounterResultStatus | None = None,
-    confirmed_at: datetime | None = None,
-) -> FinalizedEncounterScore:
-    """Finalize an encounter score, keeping affected map/hero pick-ban
-    sessions in sync.
+class FinalizeService:
+    """tournament-service's binding of the shared finalization primitive.
 
-    See :func:`shared.services.encounter.finalize.finalize_encounter_score` for
-    the semantics; the caller still owns commit/publish.
+    The only local ingredient is ``post_advance``: veto-session upkeep, which
+    registers realtime updates through tournament-service-local plumbing.
     """
-    return await _finalize_encounter_score(
-        session,
-        encounter_id,
-        home_score=home_score,
-        away_score=away_score,
-        source=source,
-        encounter=encounter,
-        status=status,
-        result_status=result_status,
-        confirmed_at=confirmed_at,
-        post_advance=pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change,
-    )
+
+    async def finalize_encounter_score(
+        self,
+        session: AsyncSession,
+        encounter_id: int,
+        *,
+        home_score: int,
+        away_score: int,
+        source: FinalizeSource,
+        encounter: models.Encounter | None = None,
+        status: EncounterStatus = EncounterStatus.COMPLETED,
+        result_status: EncounterResultStatus | None = None,
+        confirmed_at: datetime | None = None,
+    ) -> FinalizedEncounterScore:
+        """Finalize an encounter score, keeping affected map/hero pick-ban
+        sessions in sync.
+
+        See :func:`shared.services.encounter.finalize.finalize_encounter_score` for
+        the semantics; the caller still owns commit/publish.
+        """
+        return await _finalize_encounter_score(
+            session,
+            encounter_id,
+            home_score=home_score,
+            away_score=away_score,
+            source=source,
+            encounter=encounter,
+            status=status,
+            result_status=result_status,
+            confirmed_at=confirmed_at,
+            post_advance=pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change,
+        )
+
+
+finalize_service = FinalizeService()

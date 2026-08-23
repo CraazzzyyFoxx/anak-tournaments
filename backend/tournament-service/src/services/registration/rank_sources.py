@@ -23,6 +23,11 @@ from shared.core import enums
 from shared.core.social import SocialProvider
 from shared.division_grid import DivisionGrid
 from shared.domain.player_sub_roles import REGISTRATION_TO_CANONICAL
+from shared.repository import (
+    BalancerRegistrationRepository,
+    SocialAccountRepository,
+    TournamentRepository,
+)
 from shared.services.division_grid_normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
@@ -92,18 +97,6 @@ HERO_CLASS_TO_REGISTRATION_ROLE = {
 OW_RANK_WEEK_WINDOW = timedelta(days=7)
 
 
-async def _load_tournament_for_autofill(
-    session: AsyncSession,
-    tournament_id: int,
-) -> models.Tournament | None:
-    result = await session.execute(
-        sa.select(models.Tournament)
-        .where(models.Tournament.id == tournament_id)
-        .options(selectinload(models.Tournament.division_grid_version).selectinload(models.DivisionGridVersion.tiers))
-    )
-    return result.scalar_one_or_none()
-
-
 def _normalize_history_rank(
     normalizer: DivisionGridNormalizer | None,
     source_version_id: int | None,
@@ -127,301 +120,6 @@ def _normalize_history_rank(
         number = source_grid.resolve_division_number(rank)
         mapped = target_grid.resolve_rank_from_division(number)
         return mapped if mapped is not None else rank
-
-
-async def _build_autofill_rank_normalizer(
-    session: AsyncSession,
-    tournament: models.Tournament | Any,
-) -> DivisionGridNormalizer | None:
-    """Build a normalizer targeting the tournament's grid version, or None if unavailable.
-
-    ``require_complete=False`` so a workspace with partially-mapped grids still builds; per-rank
-    misses are handled by ``_normalize_history_rank``'s division-number fallback.
-    """
-    target_version_id = getattr(tournament, "division_grid_version_id", None)
-    if target_version_id is None:
-        return None
-    try:
-        return await build_division_grid_normalizer(
-            session,
-            tournament.workspace_id,
-            target_version_id=target_version_id,
-            require_complete=False,
-        )
-    except DivisionGridNormalizationError:
-        return None
-
-
-async def _load_latest_ranks_from_balancer_history(
-    session: AsyncSession,
-    user_ids: list[int],
-    current_tournament_id: int,
-    workspace_id: int,
-    normalizer: DivisionGridNormalizer | None,
-    target_grid: DivisionGrid,
-    allowed_tournament_ids: set[int] | None = None,
-) -> dict[int, dict[str, int]]:
-    """Return dict[user_id][role_code] → rank_value from past registration records.
-
-    Searches the workspace's previous tournaments (excluding the current one), ordered
-    by tournament recency (start date, then id, descending) so the most recent entry wins.
-    Ranks are normalized from each source tournament's grid version into the target grid.
-    When ``allowed_tournament_ids`` is set, only registrations from those tournaments are
-    considered (recency window).
-    """
-    if not user_ids:
-        return {}
-
-    # Registrations are anchored on workspace_member; the domain player id is
-    # the member's player_id. Inner join: member-less registrations have no
-    # player identity and (as before, when user_id was NULL) never match.
-    stmt = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            models.BalancerRegistrationRole.role,
-            models.BalancerRegistrationRole.rank_value,
-            models.Tournament.division_grid_version_id,
-        )
-        .select_from(models.BalancerRegistration)
-        .join(
-            models.WorkspaceMember,
-            models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
-        )
-        .join(
-            models.BalancerRegistrationRole,
-            models.BalancerRegistrationRole.registration_id == models.BalancerRegistration.id,
-        )
-        .join(
-            models.Tournament,
-            models.Tournament.id == models.BalancerRegistration.tournament_id,
-        )
-        .where(
-            models.WorkspaceMember.player_id.in_(user_ids),
-            models.Tournament.workspace_id == workspace_id,
-            models.BalancerRegistration.tournament_id != current_tournament_id,
-            models.BalancerRegistration.deleted_at.is_(None),
-            models.BalancerRegistrationRole.is_active.is_(True),
-            models.BalancerRegistrationRole.rank_value.is_not(None),
-        )
-        .order_by(
-            models.WorkspaceMember.player_id,
-            models.BalancerRegistrationRole.role,
-            models.Tournament.start_date.desc().nulls_last(),
-            models.Tournament.id.desc(),
-        )
-    )
-    if allowed_tournament_ids is not None:
-        stmt = stmt.where(models.BalancerRegistration.tournament_id.in_(allowed_tournament_ids))
-
-    rows = (await session.execute(stmt)).all()
-
-    latest: dict[int, dict[str, int]] = {}
-    for row in rows:
-        user_map = latest.setdefault(row.user_id, {})
-        if row.role not in user_map:
-            normalized = _normalize_history_rank(normalizer, row.division_grid_version_id, row.rank_value, target_grid)
-            if normalized is not None:
-                user_map[row.role] = normalized
-    return latest
-
-
-async def _load_latest_ranks_from_tournament_history(
-    session: AsyncSession,
-    user_ids: list[int],
-    current_tournament_id: int,
-    workspace_id: int,
-    normalizer: DivisionGridNormalizer | None,
-    target_grid: DivisionGrid,
-    allowed_tournament_ids: set[int] | None = None,
-) -> dict[int, dict[str, int]]:
-    """Return dict[user_id][registration_role_code] → rank from past tournament participation.
-
-    This is the "analytics" source: actual ranks played in the workspace's previous tournaments
-    (``tournament.player``), distinct from the balancer-registration history. Excludes the current
-    tournament and substitution rows; the most recent tournament wins per role. ``Player.role`` is
-    a HeroClass and is bridged to the registration role code (Damage → dps) to match keying. Ranks
-    are normalized from each source tournament's grid version into the target grid. When
-    ``allowed_tournament_ids`` is set, only players from those tournaments are considered
-    (recency window).
-    """
-    if not user_ids:
-        return {}
-
-    stmt = (
-        sa.select(
-            models.WorkspaceMember.player_id.label("user_id"),
-            models.Player.role,
-            models.Player.rank,
-            models.Tournament.division_grid_version_id,
-        )
-        .join(
-            models.Tournament,
-            models.Tournament.id == models.Player.tournament_id,
-        )
-        .join(
-            models.WorkspaceMember,
-            models.WorkspaceMember.id == models.Player.workspace_member_id,
-        )
-        .where(
-            models.WorkspaceMember.player_id.in_(user_ids),
-            models.Tournament.workspace_id == workspace_id,
-            models.Player.tournament_id != current_tournament_id,
-            models.Player.role.is_not(None),
-            models.Player.is_substitution.is_(False),
-            models.Player.rank > 0,
-        )
-        .order_by(
-            models.WorkspaceMember.player_id,
-            models.Player.role,
-            models.Tournament.start_date.desc().nulls_last(),
-            models.Tournament.id.desc(),
-        )
-    )
-    if allowed_tournament_ids is not None:
-        stmt = stmt.where(models.Player.tournament_id.in_(allowed_tournament_ids))
-
-    rows = (await session.execute(stmt)).all()
-
-    latest: dict[int, dict[str, int]] = {}
-    for row in rows:
-        role_code = HERO_CLASS_TO_REGISTRATION_ROLE.get(row.role)
-        if role_code is None:
-            continue
-        user_map = latest.setdefault(row.user_id, {})
-        if role_code not in user_map:
-            normalized = _normalize_history_rank(normalizer, row.division_grid_version_id, row.rank, target_grid)
-            if normalized is not None:
-                user_map[role_code] = normalized
-    return latest
-
-
-async def load_user_balancer_rank_history(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    workspace_id: int,
-) -> list[dict[str, Any]]:
-    """Per (tournament, role) ranks from a user's past balancer registrations in a workspace.
-
-    Newest tournament first; only active, ranked roles. Powers the balancer step of the
-    PlayerEditSheet "Load from history" preview (source = "balancer").
-    """
-    rows = (
-        await session.execute(
-            sa.select(
-                models.Tournament.id.label("tournament_id"),
-                models.Tournament.name.label("tournament_name"),
-                models.BalancerRegistrationRole.role,
-                models.BalancerRegistrationRole.rank_value,
-            )
-            .join(
-                models.BalancerRegistration,
-                models.BalancerRegistration.id == models.BalancerRegistrationRole.registration_id,
-            )
-            .join(
-                models.Tournament,
-                models.Tournament.id == models.BalancerRegistration.tournament_id,
-            )
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
-            )
-            .where(
-                models.WorkspaceMember.player_id == user_id,
-                models.Tournament.workspace_id == workspace_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistrationRole.is_active.is_(True),
-                models.BalancerRegistrationRole.rank_value.is_not(None),
-            )
-            .order_by(
-                models.Tournament.start_date.desc().nulls_last(),
-                models.BalancerRegistration.tournament_id.desc(),
-            )
-        )
-    ).all()
-
-    return [
-        {
-            "tournament_id": row.tournament_id,
-            "tournament_name": row.tournament_name,
-            "role": row.role,
-            "rank_value": row.rank_value,
-        }
-        for row in rows
-    ]
-
-
-async def _load_rank_autofill_registrations(
-    session: AsyncSession,
-    tournament_id: int,
-    registration_ids: list[int] | None,
-) -> list[models.BalancerRegistration]:
-    query = (
-        sa.select(models.BalancerRegistration)
-        .where(
-            models.BalancerRegistration.tournament_id == tournament_id,
-            models.BalancerRegistration.deleted_at.is_(None),
-        )
-        .options(selectinload(models.BalancerRegistration.roles))
-        .order_by(
-            models.BalancerRegistration.battle_tag_normalized.asc().nullslast(), models.BalancerRegistration.id.asc()
-        )
-    )
-    if registration_ids is not None:
-        if not registration_ids:
-            return []
-        query = query.where(models.BalancerRegistration.id.in_(registration_ids))
-    result = await session.execute(query)
-    return list(result.scalars().all())
-
-
-async def _load_main_battle_tags_by_key(
-    session: AsyncSession,
-    registrations: list[models.BalancerRegistration],
-) -> dict[str, models.SocialAccount]:
-    """Map normalized battletag key → the battlenet ``social_account`` it belongs to.
-
-    ``social_account.username_normalized`` (battlenet) is exactly
-    ``normalize_battle_tag_key`` of the handle, so registration keys match directly.
-    """
-    tag_keys = {
-        key
-        for registration in registrations
-        if (key := (registration.battle_tag_normalized or normalize_battle_tag_key(registration.battle_tag)))
-    }
-    if not tag_keys:
-        return {}
-
-    acc = models.SocialAccount
-    result = await session.execute(
-        sa.select(acc).where(
-            acc.provider == SocialProvider.BATTLENET,
-            acc.username_normalized.in_(tag_keys),
-        )
-    )
-    return {account.username_normalized: account for account in result.scalars().all() if account.username_normalized}
-
-
-async def _load_ow_rank_signals_by_social_account_id(
-    session: AsyncSession,
-    social_account_ids: list[int],
-    now: datetime,
-    week_window: timedelta = OW_RANK_WEEK_WINDOW,
-) -> dict[int, dict[str, _OwRankSignals]]:
-    """Return per (social_account_id, rank_role) the weekly OW rank composite + latest snapshot."""
-    if not social_account_ids:
-        return {}
-    result = await session.execute(
-        sa.select(models.UserRankSnapshot)
-        .where(
-            models.UserRankSnapshot.social_account_id.in_(social_account_ids),
-            models.UserRankSnapshot.role.in_(set(RANK_ROLE_BY_REGISTRATION_ROLE.values())),
-            models.UserRankSnapshot.rank_value.is_not(None),
-            models.UserRankSnapshot.is_ranked.is_(True),
-        )
-        .order_by(models.UserRankSnapshot.captured_at.desc(), models.UserRankSnapshot.id.desc())
-    )
-    return _group_ow_rank_signals(result.scalars().all(), now, week_window)
 
 
 def _group_ow_rank_signals(
@@ -537,3 +235,337 @@ def _map_ow_snapshot_rank(snapshot: models.UserRankSnapshot | Any | None, grid: 
     if snapshot is None:
         return None
     return _map_ow_rank_value(getattr(snapshot, "rank_value", None), grid)
+
+
+class RankSourcesService:
+    def __init__(
+        self,
+        *,
+        tournament_repo: TournamentRepository = TournamentRepository(),
+        registration_repo: BalancerRegistrationRepository = BalancerRegistrationRepository(),
+        social_repo: SocialAccountRepository = SocialAccountRepository(),
+    ) -> None:
+        self.tournament_repo = tournament_repo
+        self.registration_repo = registration_repo
+        self.social_repo = social_repo
+
+    async def _load_tournament_for_autofill(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+    ) -> models.Tournament | None:
+        return await self.tournament_repo.get(
+            session,
+            tournament_id,
+            options=[
+                selectinload(models.Tournament.division_grid_version).selectinload(models.DivisionGridVersion.tiers)
+            ],
+        )
+
+    async def _build_autofill_rank_normalizer(
+        self,
+        session: AsyncSession,
+        tournament: models.Tournament | Any,
+    ) -> DivisionGridNormalizer | None:
+        """Build a normalizer targeting the tournament's grid version, or None if unavailable.
+
+        ``require_complete=False`` so a workspace with partially-mapped grids still builds; per-rank
+        misses are handled by ``_normalize_history_rank``'s division-number fallback.
+        """
+        target_version_id = getattr(tournament, "division_grid_version_id", None)
+        if target_version_id is None:
+            return None
+        try:
+            return await build_division_grid_normalizer(
+                session,
+                tournament.workspace_id,
+                target_version_id=target_version_id,
+                require_complete=False,
+            )
+        except DivisionGridNormalizationError:
+            return None
+
+    async def _load_latest_ranks_from_balancer_history(
+        self,
+        session: AsyncSession,
+        user_ids: list[int],
+        current_tournament_id: int,
+        workspace_id: int,
+        normalizer: DivisionGridNormalizer | None,
+        target_grid: DivisionGrid,
+        allowed_tournament_ids: set[int] | None = None,
+    ) -> dict[int, dict[str, int]]:
+        """Return dict[user_id][role_code] → rank_value from past registration records.
+
+        Searches the workspace's previous tournaments (excluding the current one), ordered
+        by tournament recency (start date, then id, descending) so the most recent entry wins.
+        Ranks are normalized from each source tournament's grid version into the target grid.
+        When ``allowed_tournament_ids`` is set, only registrations from those tournaments are
+        considered (recency window).
+        """
+        if not user_ids:
+            return {}
+
+        # Registrations are anchored on workspace_member; the domain player id is
+        # the member's player_id. Inner join: member-less registrations have no
+        # player identity and (as before, when user_id was NULL) never match.
+        stmt = (
+            sa.select(
+                models.WorkspaceMember.player_id.label("user_id"),
+                models.BalancerRegistrationRole.role,
+                models.BalancerRegistrationRole.rank_value,
+                models.Tournament.division_grid_version_id,
+            )
+            .select_from(models.BalancerRegistration)
+            .join(
+                models.WorkspaceMember,
+                models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+            )
+            .join(
+                models.BalancerRegistrationRole,
+                models.BalancerRegistrationRole.registration_id == models.BalancerRegistration.id,
+            )
+            .join(
+                models.Tournament,
+                models.Tournament.id == models.BalancerRegistration.tournament_id,
+            )
+            .where(
+                models.WorkspaceMember.player_id.in_(user_ids),
+                models.Tournament.workspace_id == workspace_id,
+                models.BalancerRegistration.tournament_id != current_tournament_id,
+                models.BalancerRegistration.deleted_at.is_(None),
+                models.BalancerRegistrationRole.is_active.is_(True),
+                models.BalancerRegistrationRole.rank_value.is_not(None),
+            )
+            .order_by(
+                models.WorkspaceMember.player_id,
+                models.BalancerRegistrationRole.role,
+                models.Tournament.start_date.desc().nulls_last(),
+                models.Tournament.id.desc(),
+            )
+        )
+        if allowed_tournament_ids is not None:
+            stmt = stmt.where(models.BalancerRegistration.tournament_id.in_(allowed_tournament_ids))
+
+        rows = (await session.execute(stmt)).all()
+
+        latest: dict[int, dict[str, int]] = {}
+        for row in rows:
+            user_map = latest.setdefault(row.user_id, {})
+            if row.role not in user_map:
+                normalized = _normalize_history_rank(
+                    normalizer, row.division_grid_version_id, row.rank_value, target_grid
+                )
+                if normalized is not None:
+                    user_map[row.role] = normalized
+        return latest
+
+    async def _load_latest_ranks_from_tournament_history(
+        self,
+        session: AsyncSession,
+        user_ids: list[int],
+        current_tournament_id: int,
+        workspace_id: int,
+        normalizer: DivisionGridNormalizer | None,
+        target_grid: DivisionGrid,
+        allowed_tournament_ids: set[int] | None = None,
+    ) -> dict[int, dict[str, int]]:
+        """Return dict[user_id][registration_role_code] → rank from past tournament participation.
+
+        This is the "analytics" source: actual ranks played in the workspace's previous tournaments
+        (``tournament.player``), distinct from the balancer-registration history. Excludes the current
+        tournament and substitution rows; the most recent tournament wins per role. ``Player.role`` is
+        a HeroClass and is bridged to the registration role code (Damage → dps) to match keying. Ranks
+        are normalized from each source tournament's grid version into the target grid. When
+        ``allowed_tournament_ids`` is set, only players from those tournaments are considered
+        (recency window).
+        """
+        if not user_ids:
+            return {}
+
+        stmt = (
+            sa.select(
+                models.WorkspaceMember.player_id.label("user_id"),
+                models.Player.role,
+                models.Player.rank,
+                models.Tournament.division_grid_version_id,
+            )
+            .join(
+                models.Tournament,
+                models.Tournament.id == models.Player.tournament_id,
+            )
+            .join(
+                models.WorkspaceMember,
+                models.WorkspaceMember.id == models.Player.workspace_member_id,
+            )
+            .where(
+                models.WorkspaceMember.player_id.in_(user_ids),
+                models.Tournament.workspace_id == workspace_id,
+                models.Player.tournament_id != current_tournament_id,
+                models.Player.role.is_not(None),
+                models.Player.is_substitution.is_(False),
+                models.Player.rank > 0,
+            )
+            .order_by(
+                models.WorkspaceMember.player_id,
+                models.Player.role,
+                models.Tournament.start_date.desc().nulls_last(),
+                models.Tournament.id.desc(),
+            )
+        )
+        if allowed_tournament_ids is not None:
+            stmt = stmt.where(models.Player.tournament_id.in_(allowed_tournament_ids))
+
+        rows = (await session.execute(stmt)).all()
+
+        latest: dict[int, dict[str, int]] = {}
+        for row in rows:
+            role_code = HERO_CLASS_TO_REGISTRATION_ROLE.get(row.role)
+            if role_code is None:
+                continue
+            user_map = latest.setdefault(row.user_id, {})
+            if role_code not in user_map:
+                normalized = _normalize_history_rank(normalizer, row.division_grid_version_id, row.rank, target_grid)
+                if normalized is not None:
+                    user_map[role_code] = normalized
+        return latest
+
+    async def load_user_balancer_rank_history(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        workspace_id: int,
+    ) -> list[dict[str, Any]]:
+        """Per (tournament, role) ranks from a user's past balancer registrations in a workspace.
+
+        Newest tournament first; only active, ranked roles. Powers the balancer step of the
+        PlayerEditSheet "Load from history" preview (source = "balancer").
+        """
+        rows = (
+            await session.execute(
+                sa.select(
+                    models.Tournament.id.label("tournament_id"),
+                    models.Tournament.name.label("tournament_name"),
+                    models.BalancerRegistrationRole.role,
+                    models.BalancerRegistrationRole.rank_value,
+                )
+                .join(
+                    models.BalancerRegistration,
+                    models.BalancerRegistration.id == models.BalancerRegistrationRole.registration_id,
+                )
+                .join(
+                    models.Tournament,
+                    models.Tournament.id == models.BalancerRegistration.tournament_id,
+                )
+                .join(
+                    models.WorkspaceMember,
+                    models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+                )
+                .where(
+                    models.WorkspaceMember.player_id == user_id,
+                    models.Tournament.workspace_id == workspace_id,
+                    models.BalancerRegistration.deleted_at.is_(None),
+                    models.BalancerRegistrationRole.is_active.is_(True),
+                    models.BalancerRegistrationRole.rank_value.is_not(None),
+                )
+                .order_by(
+                    models.Tournament.start_date.desc().nulls_last(),
+                    models.BalancerRegistration.tournament_id.desc(),
+                )
+            )
+        ).all()
+
+        return [
+            {
+                "tournament_id": row.tournament_id,
+                "tournament_name": row.tournament_name,
+                "role": row.role,
+                "rank_value": row.rank_value,
+            }
+            for row in rows
+        ]
+
+    async def _load_rank_autofill_registrations(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        registration_ids: list[int] | None,
+    ) -> list[models.BalancerRegistration]:
+        query = (
+            self.registration_repo.select()
+            .where(
+                models.BalancerRegistration.tournament_id == tournament_id,
+                models.BalancerRegistration.deleted_at.is_(None),
+            )
+            .options(selectinload(models.BalancerRegistration.roles))
+            .order_by(
+                models.BalancerRegistration.battle_tag_normalized.asc().nullslast(),
+                models.BalancerRegistration.id.asc(),
+            )
+        )
+        if registration_ids is not None:
+            if not registration_ids:
+                return []
+            query = query.where(models.BalancerRegistration.id.in_(registration_ids))
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
+    async def _load_main_battle_tags_by_key(
+        self,
+        session: AsyncSession,
+        registrations: list[models.BalancerRegistration],
+    ) -> dict[str, models.SocialAccount]:
+        """Map normalized battletag key → the battlenet ``social_account`` it belongs to.
+
+        ``social_account.username_normalized`` (battlenet) is exactly
+        ``normalize_battle_tag_key`` of the handle, so registration keys match directly.
+        """
+        tag_keys = {
+            key
+            for registration in registrations
+            if (key := (registration.battle_tag_normalized or normalize_battle_tag_key(registration.battle_tag)))
+        }
+        if not tag_keys:
+            return {}
+
+        acc = models.SocialAccount
+        result = await session.execute(
+            self.social_repo.select().where(
+                acc.provider == SocialProvider.BATTLENET,
+                acc.username_normalized.in_(tag_keys),
+            )
+        )
+        return {
+            account.username_normalized: account
+            for account in result.scalars().all()
+            if account.username_normalized
+        }
+
+    async def _load_ow_rank_signals_by_social_account_id(
+        self,
+        session: AsyncSession,
+        social_account_ids: list[int],
+        now: datetime,
+        week_window: timedelta = OW_RANK_WEEK_WINDOW,
+    ) -> dict[int, dict[str, _OwRankSignals]]:
+        """Return per (social_account_id, rank_role) the weekly OW rank composite + latest snapshot."""
+        if not social_account_ids:
+            return {}
+        # Plain ``sa.select``: ``RankSnapshotRepository`` is not exported from
+        # ``shared.repository`` (its ``ranks`` module is missing from the package
+        # __init__), and this multi-predicate ordered fetch is a service-level query
+        # rather than CRUD anyway (rule 7).
+        result = await session.execute(
+            sa.select(models.UserRankSnapshot).where(
+                models.UserRankSnapshot.social_account_id.in_(social_account_ids),
+                models.UserRankSnapshot.role.in_(set(RANK_ROLE_BY_REGISTRATION_ROLE.values())),
+                models.UserRankSnapshot.rank_value.is_not(None),
+                models.UserRankSnapshot.is_ranked.is_(True),
+            )
+            .order_by(models.UserRankSnapshot.captured_at.desc(), models.UserRankSnapshot.id.desc())
+        )
+        return _group_ow_rank_signals(result.scalars().all(), now, week_window)
+
+
+rank_sources_service = RankSourcesService()

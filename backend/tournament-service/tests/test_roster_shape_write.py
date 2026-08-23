@@ -123,11 +123,27 @@ def test_explicit_none_clears_the_override_and_is_distinct_from_omission() -> No
 
 
 class _FakeResult:
+    """Mirrors the two shapes the code under test reads a result through:
+    the guard's ``scalar_one_or_none`` and the repository's
+    ``.unique().scalars().first()``."""
+
     def __init__(self, value):
         self._value = value
 
     def scalar_one_or_none(self):
         return self._value
+
+    def unique(self):
+        return self
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return self._value
+
+    def all(self):
+        return [] if self._value is None else [self._value]
 
 
 class _FakeSession:
@@ -217,12 +233,12 @@ def _run_update(
         return tournament
 
     monkeypatch.setattr(admin_tournament, "enqueue_tournament_changed", _noop)
-    monkeypatch.setattr(admin_tournament, "get_tournament", _noop)
+    monkeypatch.setattr(admin_tournament.tournament_service, "get_tournament", _noop)
     monkeypatch.setattr(admin_tournament, "invalidate_roster_shape_cache", spy)
 
     error: BaseAPIException | None = None
     try:
-        asyncio.run(admin_tournament.update_tournament(session, tournament.id, update))
+        asyncio.run(admin_tournament.tournament_service.update_tournament(session, tournament.id, update))
     except BaseAPIException as exc:
         error = exc
     return error, session, tournament, spy

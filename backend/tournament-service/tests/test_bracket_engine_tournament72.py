@@ -615,20 +615,25 @@ class _EditorSession(SimpleNamespace):
             nonlocal execute_count
             execute_count += 1
             result_mock = Mock()
-            # Every result also answers .all()/.scalars() so any query shape
-            # (encounter load, player lookup, picked-pool select, challonge probe,
-            # delete) is safe regardless of call order.
+            # Every result also answers .unique()/.all()/.scalars() so any query
+            # shape (encounter load, player lookup, picked-pool select, challonge
+            # probe, delete) is safe regardless of call order. Repositories read
+            # rows off `.unique().scalars().first()/.all()`; the older service
+            # code used `.scalar_one_or_none()` — both are answered.
+            result_mock.unique.return_value = result_mock
             result_mock.all.return_value = []
             scalars_mock = Mock()
             scalars_mock.all.return_value = []
             result_mock.scalars.return_value = scalars_mock
             if execute_count == 1:  # _load_encounter
                 captured.append(query)
-                result_mock.scalar_one_or_none.return_value = encounter
+                row = encounter
             elif execute_count == 2:  # linked-player lookup (submit flow)
-                result_mock.scalar_one_or_none.return_value = SimpleNamespace(id=linked_player_id)
+                row = SimpleNamespace(id=linked_player_id)
             else:  # challonge-link resolution etc. — "not linked"
-                result_mock.scalar_one_or_none.return_value = None
+                row = None
+            result_mock.scalar_one_or_none.return_value = row
+            scalars_mock.first.return_value = row
             return result_mock
 
         super().__init__(
@@ -672,9 +677,13 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
             return SimpleNamespace(encounter=self.encounter, advanced_encounters=[])
 
         patchers = [
-            patch.object(captain_service, "finalize_encounter_score", AsyncMock(side_effect=fake_finalize)),
-            patch.object(captain_service, "_enqueue_tournament_recalculation", self.recalc),
-            patch.object(captain_service, "_enqueue_encounter_completed", self.completed),
+            patch.object(
+                captain_service.captain_service.finalize,
+                "finalize_encounter_score",
+                AsyncMock(side_effect=fake_finalize),
+            ),
+            patch.object(captain_service.captain_service, "_enqueue_tournament_recalculation", self.recalc),
+            patch.object(captain_service.captain_service, "_enqueue_encounter_completed", self.completed),
         ]
         for patcher in patchers:
             patcher.start()
@@ -684,7 +693,7 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
         return _EditorSession(self.encounter, player_id, added=self.added)
 
     async def _report(self, player_id: int, home_score: int, away_score: int, closeness: int = 5) -> None:
-        await captain_service.submit_captain_report(
+        await captain_service.captain_service.submit_captain_report(
             self._session(player_id),
             SimpleNamespace(id=player_id),
             encounter_id=GF_ENCOUNTER_ID,
@@ -697,7 +706,7 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
         """The load query must request a row lock — this serialises truly
         simultaneous reporters into a deterministic order."""
         session = self._session(LITNIK_CAPTAIN)
-        await captain_service.submit_captain_report(
+        await captain_service.captain_service.submit_captain_report(
             session,
             SimpleNamespace(id=LITNIK_CAPTAIN),
             encounter_id=GF_ENCOUNTER_ID,
@@ -753,7 +762,7 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
         await self._report(AVERET_CAPTAIN, 0, 3)
         self.assertEqual(enums.EncounterResultStatus.DISPUTED, self.encounter.result_status)
 
-        await captain_service.set_encounter_result(
+        await captain_service.captain_service.set_encounter_result(
             self._session(LITNIK_CAPTAIN),
             GF_ENCOUNTER_ID,
             actor_user_id=ADMIN_USER_ID,
@@ -787,6 +796,9 @@ class _Rows:
         self._rows = rows or []
         self._scalar = scalar
 
+    def unique(self):
+        return self
+
     def scalar_one_or_none(self):
         return self._scalar
 
@@ -794,7 +806,11 @@ class _Rows:
         return self._scalar
 
     def scalars(self):
-        return SimpleNamespace(all=lambda: list(self._rows))
+        rows = list(self._rows)
+        return SimpleNamespace(
+            all=lambda: list(rows),
+            first=lambda: rows[0] if rows else self._scalar,
+        )
 
     def all(self):
         return list(self._rows)
@@ -998,7 +1014,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
         # The captain flow's outbox/event writers need a real DB — stub them;
         # finalize/advance run for real.
         for target in ("_enqueue_tournament_recalculation", "_enqueue_encounter_completed"):
-            patcher = patch.object(captain_service, target, AsyncMock())
+            patcher = patch.object(captain_service.captain_service, target, AsyncMock())
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -1020,7 +1036,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
     async def _play_ub_final(self, home_score: int, away_score: int) -> None:
         # Both captains file matching reports -> the second one auto-confirms.
         for auth in (AVERET_CAPTAIN, LITNIK_CAPTAIN):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 self._session(),
                 SimpleNamespace(id=auth),
                 encounter_id=self.UB_FINAL,
@@ -1032,7 +1048,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
     async def test_captain_reports_complete_match_and_advance_bracket(self) -> None:
         # Averet's captain reports litnik's 0:2 win — one report alone must
         # NOT complete the match nor move the bracket.
-        await captain_service.submit_captain_report(
+        await captain_service.captain_service.submit_captain_report(
             self._session(),
             SimpleNamespace(id=AVERET_CAPTAIN),
             encounter_id=self.UB_FINAL,
@@ -1046,7 +1062,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
 
         # litnik's captain files a matching report → scores agree, the match
         # auto-confirms and completes…
-        await captain_service.submit_captain_report(
+        await captain_service.captain_service.submit_captain_report(
             self._session(),
             SimpleNamespace(id=LITNIK_CAPTAIN),
             encounter_id=self.UB_FINAL,
@@ -1070,17 +1086,17 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
         changes must reset every stale downstream result, recursively."""
         await self._play_ub_final(0, 2)  # litnik advances to GF
         # LB Final and Grand Final get played on top of that outcome.
-        await finalize_module.finalize_encounter_score(
+        await finalize_module.finalize_service.finalize_encounter_score(
             self._session(), self.LB_FINAL, home_score=1, away_score=2, source="admin"
         )
-        await finalize_module.finalize_encounter_score(
+        await finalize_module.finalize_service.finalize_encounter_score(
             self._session(), self.GRAND_FINAL, home_score=0, away_score=3, source="admin"
         )
         self.assertEqual(2069, self.grand_final.away_team_id)
         self.assertEqual(enums.EncounterStatus.COMPLETED, self.grand_final.status)
 
         # Admin corrects the UB Final: Averet actually won 2:0.
-        await finalize_module.finalize_encounter_score(
+        await finalize_module.finalize_service.finalize_encounter_score(
             self._session(), self.UB_FINAL, home_score=2, away_score=0, source="admin"
         )
 
@@ -1102,14 +1118,14 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
         """Score-only correction (winner unchanged) must be a no-op for the
         rest of the bracket — played downstream matches stay played."""
         await self._play_ub_final(0, 2)
-        await finalize_module.finalize_encounter_score(
+        await finalize_module.finalize_service.finalize_encounter_score(
             self._session(), self.LB_FINAL, home_score=1, away_score=2, source="admin"
         )
-        await finalize_module.finalize_encounter_score(
+        await finalize_module.finalize_service.finalize_encounter_score(
             self._session(), self.GRAND_FINAL, home_score=0, away_score=3, source="admin"
         )
 
-        await finalize_module.finalize_encounter_score(
+        await finalize_module.finalize_service.finalize_encounter_score(
             self._session(), self.UB_FINAL, home_score=1, away_score=2, source="admin"
         )
 
@@ -1123,7 +1139,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
         """The remark fix: a drawn score can no longer complete an
         elimination-bracket match (it would silently strand the bracket)."""
         with _assert_http_status(self, 400):
-            await finalize_module.finalize_encounter_score(
+            await finalize_module.finalize_service.finalize_encounter_score(
                 self._session(), self.UB_FINAL, home_score=1, away_score=1, source="admin"
             )
         self.assertEqual(enums.EncounterStatus.OPEN, self.ub_final.status)
@@ -1132,7 +1148,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
 
         # The captain path hits the same guard when a second matching report
         # would auto-confirm a drawn elimination match.
-        await captain_service.submit_captain_report(
+        await captain_service.captain_service.submit_captain_report(
             self._session(),
             SimpleNamespace(id=AVERET_CAPTAIN),
             encounter_id=self.UB_FINAL,
@@ -1141,7 +1157,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
             closeness=5,
         )
         with _assert_http_status(self, 400):
-            await captain_service.submit_captain_report(
+            await captain_service.captain_service.submit_captain_report(
                 self._session(),
                 SimpleNamespace(id=LITNIK_CAPTAIN),
                 encounter_id=self.UB_FINAL,
@@ -1164,7 +1180,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
         )
         self.store.encounters[swiss_encounter.id] = swiss_encounter
 
-        result = await finalize_module.finalize_encounter_score(
+        result = await finalize_module.finalize_service.finalize_encounter_score(
             self._session(), swiss_encounter.id, home_score=1, away_score=1, source="admin"
         )
 

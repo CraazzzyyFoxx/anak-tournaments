@@ -1,5 +1,5 @@
 """Regression: the admin-CRUD serializer ``_ser_player`` must supply the
-``grid`` keyword-only argument that ``team_flows.to_pydantic_player`` requires.
+``grid`` keyword-only argument that ``team_flows.flows_service.to_pydantic_player`` requires.
 
 A required-kwarg was added to ``to_pydantic_player`` (it resolves
 ``PlayerRead.division`` against the tournament's effective division grid), but
@@ -76,10 +76,10 @@ class SerPlayerGridTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(registry, "get_division_grid", get_grid),
-            patch.object(team_flows.user_flows, "to_pydantic", AsyncMock(return_value=fake_user)),
-            patch.object(team_flows.tournament_flows, "to_pydantic", AsyncMock(return_value=None)),
+            patch.object(team_flows.user_flows_service, "to_pydantic", AsyncMock(return_value=fake_user)),
+            patch.object(team_flows.tournament_flows_service, "to_pydantic", AsyncMock(return_value=None)),
         ):
-            result = await registry._ser_player(session, player)
+            result = await registry.registry_service._ser_player(session, player)
 
         # Grid resolved from the player's own tournament (not global / DEFAULT-by-omission).
         get_grid.assert_awaited_once_with(session, None, tournament_id=78)

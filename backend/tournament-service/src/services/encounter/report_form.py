@@ -10,11 +10,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import EncounterReportFormRepository
 from src import models
 from src.schemas.encounter_report_form import (
     COMMENT_MAX_LENGTH,
@@ -67,57 +67,6 @@ def series_map_indices(settled_indices: Iterable[int], best_of: int | None) -> l
         return settled
     count = best_of if best_of and best_of > 0 else DEFAULT_BEST_OF
     return list(range(1, count + 1))
-
-
-async def get_report_form(
-    session: AsyncSession,
-    tournament_id: int,
-) -> models.EncounterReportForm | None:
-    result = await session.execute(
-        select(models.EncounterReportForm).where(models.EncounterReportForm.tournament_id == tournament_id)
-    )
-    return result.scalar_one_or_none()
-
-
-async def resolve_report_form(session: AsyncSession, tournament_id: int) -> MatchReportFormRead:
-    """The tournament's effective config, with defaults filling every gap.
-
-    Read-only: an absent row means "all defaults" and is NOT materialized here,
-    so opening a report dialog never writes.
-    """
-    form = await get_report_form(session, tournament_id)
-    return _merge_defaults(
-        tournament_id,
-        getattr(form, "built_in_fields_json", None) or {},
-        getattr(form, "custom_fields_json", None) or [],
-    )
-
-
-async def upsert_report_form(
-    session: AsyncSession,
-    tournament_id: int,
-    body: MatchReportFormUpsert,
-) -> MatchReportFormRead:
-    """Create-or-update the tournament's report form config. Commits internally."""
-    form = await get_report_form(session, tournament_id)
-    built_in_fields_json = {key: value.model_dump() for key, value in body.built_in_fields.items()}
-    custom_fields_json = [definition.model_dump() for definition in body.custom_fields]
-
-    if form is None:
-        form = models.EncounterReportForm(
-            tournament_id=tournament_id,
-            built_in_fields_json=built_in_fields_json,
-            custom_fields_json=custom_fields_json,
-        )
-        session.add(form)
-    else:
-        form.built_in_fields_json = built_in_fields_json
-        form.custom_fields_json = custom_fields_json
-
-    await session.commit()
-    # Built from the validated body, not from ``form``: reading an attribute off
-    # the just-committed instance would emit implicit IO (MissingGreenlet).
-    return _merge_defaults(tournament_id, built_in_fields_json, custom_fields_json)
 
 
 def _merge_defaults(
@@ -214,3 +163,68 @@ def validate_submission(
         sanitized.custom_fields[definition.key] = value
 
     return sanitized
+
+
+class ReportFormService:
+    """The tournament's captain match-report form: read, resolve, upsert.
+
+    Pure validation (``validate_submission``, ``series_map_indices``) stays
+    module-level — it takes already-loaded values and never touches a session.
+    """
+
+    def __init__(
+        self,
+        *,
+        repo: EncounterReportFormRepository = EncounterReportFormRepository(),
+    ) -> None:
+        self.repo = repo
+
+    async def get_report_form(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+    ) -> models.EncounterReportForm | None:
+        return await self.repo.get_by_tournament(session, tournament_id)
+
+    async def resolve_report_form(self, session: AsyncSession, tournament_id: int) -> MatchReportFormRead:
+        """The tournament's effective config, with defaults filling every gap.
+
+        Read-only: an absent row means "all defaults" and is NOT materialized here,
+        so opening a report dialog never writes.
+        """
+        form = await self.get_report_form(session, tournament_id)
+        return _merge_defaults(
+            tournament_id,
+            getattr(form, "built_in_fields_json", None) or {},
+            getattr(form, "custom_fields_json", None) or [],
+        )
+
+    async def upsert_report_form(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        body: MatchReportFormUpsert,
+    ) -> MatchReportFormRead:
+        """Create-or-update the tournament's report form config. Commits internally."""
+        form = await self.get_report_form(session, tournament_id)
+        built_in_fields_json = {key: value.model_dump() for key, value in body.built_in_fields.items()}
+        custom_fields_json = [definition.model_dump() for definition in body.custom_fields]
+
+        if form is None:
+            form = models.EncounterReportForm(
+                tournament_id=tournament_id,
+                built_in_fields_json=built_in_fields_json,
+                custom_fields_json=custom_fields_json,
+            )
+            await self.repo.create(session, form)
+        else:
+            form.built_in_fields_json = built_in_fields_json
+            form.custom_fields_json = custom_fields_json
+
+        await session.commit()
+        # Built from the validated body, not from ``form``: reading an attribute off
+        # the just-committed instance would emit implicit IO (MissingGreenlet).
+        return _merge_defaults(tournament_id, built_in_fields_json, custom_fields_json)
+
+
+report_form_service = ReportFormService()

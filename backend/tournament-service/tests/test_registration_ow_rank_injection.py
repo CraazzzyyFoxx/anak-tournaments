@@ -21,7 +21,7 @@ os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
-reg_admin = importlib.import_module("src.services.registration.admin")
+models = importlib.import_module("src.models")
 serializers = importlib.import_module("src.services.registration.serializers")
 player_sub_roles = importlib.import_module("shared.domain.player_sub_roles")
 
@@ -36,7 +36,7 @@ def test_snapshot_role_translates_damage_to_dps() -> None:
 
 def _role_model(role: str, rank_value: int | None):
     # Transient ORM instance: unloaded `hero_entries` -> _role_top_heroes returns [].
-    return reg_admin.models.BalancerRegistrationRole(
+    return models.BalancerRegistrationRole(
         role=role, subrole=None, priority=1, is_primary=True, rank_value=rank_value, is_active=True
     )
 

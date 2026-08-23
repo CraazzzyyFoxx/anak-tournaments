@@ -1,4 +1,4 @@
-"""``team_flows.to_pydantic`` must carry every column ``TeamRead`` declares.
+"""``team_flows.flows_service.to_pydantic`` must carry every column ``TeamRead`` declares.
 
 The team read model is built by hand, keyword by keyword, rather than by
 ``model_validate(from_attributes=True)``. That is deliberate — nested entities
@@ -80,7 +80,7 @@ def _model_backed_fields() -> set[str]:
 class TestTeamReadColumnParity(IsolatedAsyncioTestCase):
     async def test_every_declared_column_survives_serialization(self):
         # ``entities=[]`` asks for no nested read, so the session is never touched.
-        read = await team_flows.to_pydantic(None, _TEAM, [])
+        read = await team_flows.flows_service.to_pydantic(None, _TEAM, [])
 
         for field in sorted(_model_backed_fields()):
             with self.subTest(field=field):

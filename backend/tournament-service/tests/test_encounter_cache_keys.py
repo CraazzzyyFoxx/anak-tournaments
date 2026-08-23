@@ -40,8 +40,8 @@ class EncounterCacheKeyTests(IsolatedAsyncioTestCase):
         )
         load_encounters = AsyncMock(return_value=([], 0))
 
-        with patch.object(encounter_flows.service, "get_all_encounters", load_encounters):
-            await encounter_flows.get_all_encounters(SimpleNamespace(), first)
-            await encounter_flows.get_all_encounters(SimpleNamespace(), second)
+        with patch.object(encounter_flows.flows_service.encounters, "get_all_encounters", load_encounters):
+            await encounter_flows.flows_service.get_all_encounters(SimpleNamespace(), first)
+            await encounter_flows.flows_service.get_all_encounters(SimpleNamespace(), second)
 
         self.assertEqual(load_encounters.await_count, 2)

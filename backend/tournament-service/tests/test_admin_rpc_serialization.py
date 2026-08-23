@@ -161,12 +161,17 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
 
         patches = [patch.object(helpers.db, "async_session_maker", _FakeSessionMaker())]
         for target, result in service_stubs.items():
-            module, name = target.rsplit(".", 1)
+            path, name = target.rsplit(".", 1)
 
             async def stub(*args, _result=result, **kwargs):
                 return _result
 
-            patches.append(patch.object(getattr(admin_misc, module), name, stub))
+            # ``path`` may walk through a module alias into its singleton,
+            # e.g. "reports_service.encounter_reports_service".
+            owner = admin_misc
+            for step in path.split("."):
+                owner = getattr(owner, step)
+            patches.append(patch.object(owner, name, stub))
 
         for p in patches:
             self.enterContext(p)
@@ -209,7 +214,9 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
             "rpc.tournament.admin_encounter_reports_list",
             {"identity": IDENTITY, "query": {"workspace_id": ["1"]}},
             **{
-                "reports_service.list_encounter_reports": pagination.Paginated[reports_schemas.EncounterReportsRow](
+                "reports_service.encounter_reports_service.list_encounter_reports": pagination.Paginated[
+                    reports_schemas.EncounterReportsRow
+                ](
                     page=1, per_page=10, total=0, results=[]
                 )
             },
@@ -222,7 +229,7 @@ class AdminRpcEnvelopesAreJson(IsolatedAsyncioTestCase):
             "rpc.tournament.admin_encounter_reports_stats",
             {"identity": IDENTITY, "query": {"workspace_id": ["1"]}},
             **{
-                "reports_service.get_reports_stats": reports_schemas.EncounterReportsStats(
+                "reports_service.encounter_reports_service.get_reports_stats": reports_schemas.EncounterReportsStats(
                     by_result_status={"disputed": 2}, mismatch_count=2, awaiting_second_count=1
                 )
             },

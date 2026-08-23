@@ -246,7 +246,7 @@ class _ListCase(IsolatedAsyncioTestCase):
 
     async def rooms_for(self, user: Any) -> list[dict]:
         self.db.session.commit()
-        return await scrim.list_rooms_for_viewer(self.db.shim, user, WORKSPACE_ID)
+        return await scrim.scrim_service.list_rooms_for_viewer(self.db.shim, user, WORKSPACE_ID)
 
 
 class TheListRuns(_ListCase):

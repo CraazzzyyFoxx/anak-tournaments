@@ -105,7 +105,7 @@ class StandingSerializationTests(IsolatedAsyncioTestCase):
         standing = _standing()
         make_transient_to_detached(standing)
 
-        read = await flows.to_pydantic(cast(AsyncSession, object()), standing, [])
+        read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), standing, [])
 
         self.assertIsNone(read.team)
         self.assertIsNone(read.stage)
@@ -143,7 +143,7 @@ class StandingSerializationTests(IsolatedAsyncioTestCase):
             ]
         }
 
-        read = await flows.to_pydantic(
+        read = await flows.flows_service.to_pydantic(
             cast(AsyncSession, object()),
             standing,
             ["matches_history"],
@@ -158,7 +158,7 @@ class StandingSerializationTests(IsolatedAsyncioTestCase):
         standing.score_differential = 7
         make_transient_to_detached(standing)
 
-        read = await flows.to_pydantic(cast(AsyncSession, object()), standing, [])
+        read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), standing, [])
 
         # The persisted differential is surfaced verbatim — not the old
         # ``win*2 - lose`` approximation (which would be 0 here).
@@ -170,7 +170,7 @@ class StandingSerializationTests(IsolatedAsyncioTestCase):
         standing = _standing()
         standing.stage = _round_robin_stage()
 
-        read = await flows.to_pydantic(cast(AsyncSession, object()), standing, [])
+        read = await flows.flows_service.to_pydantic(cast(AsyncSession, object()), standing, [])
 
         self.assertEqual("challonge_round_robin", read.source_rule_profile)
         self.assertEqual(

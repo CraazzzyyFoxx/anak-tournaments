@@ -118,7 +118,7 @@ class RegstatusHandlersForwardExclusionFlags(IsolatedAsyncioTestCase):
 
         with (
             patch.object(helpers.db, "async_session_maker", _FakeSessionMaker()),
-            patch.object(registration_admin.status_catalog, service_fn, stub),
+            patch.object(registration_admin.status_catalog.status_catalog_service, service_fn, stub),
         ):
             envelope = await broker.handlers[subject](data, None)
         return envelope, calls

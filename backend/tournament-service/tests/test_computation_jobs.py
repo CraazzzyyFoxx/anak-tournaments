@@ -79,8 +79,8 @@ class ComputationJobTests(IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(commit=AsyncMock())
 
-        with patch.object(jobs, "get_job", AsyncMock(return_value=job)):
-            claimed = await jobs.claim_job(session, 7, kind="standings")
+        with patch.object(jobs.jobs_service, "get_job", AsyncMock(return_value=job)):
+            claimed = await jobs.jobs_service.claim_job(session, 7, kind="standings")
 
         self.assertIs(job, claimed)
         self.assertEqual("running", job.status)
@@ -113,10 +113,10 @@ class ComputationJobTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(commit=AsyncMock())
 
         with (
-            patch.object(jobs, "get_job", AsyncMock(return_value=job)),
+            patch.object(jobs.jobs_service, "get_job", AsyncMock(return_value=job)),
             patch.object(jobs, "dispatch_job", AsyncMock()) as dispatch,
         ):
-            disposition = await jobs.mark_job_failed(session, 7, "late failure")
+            disposition = await jobs.jobs_service.mark_job_failed(session, 7, "late failure")
 
         self.assertEqual("ignored", disposition)
         self.assertEqual("succeeded", job.status)
@@ -128,10 +128,10 @@ class ComputationJobTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(commit=AsyncMock())
 
         with (
-            patch.object(jobs, "get_job", AsyncMock(return_value=job)),
+            patch.object(jobs.jobs_service, "get_job", AsyncMock(return_value=job)),
             patch.object(jobs, "dispatch_job", AsyncMock()) as dispatch,
         ):
-            disposition = await jobs.mark_job_failed(session, 7, "temporary")
+            disposition = await jobs.jobs_service.mark_job_failed(session, 7, "temporary")
 
         self.assertEqual("retry", disposition)
         self.assertEqual("pending", job.status)
@@ -144,10 +144,10 @@ class ComputationJobTests(IsolatedAsyncioTestCase):
         session = SimpleNamespace(commit=AsyncMock())
 
         with (
-            patch.object(jobs, "get_job", AsyncMock(return_value=job)),
+            patch.object(jobs.jobs_service, "get_job", AsyncMock(return_value=job)),
             patch.object(jobs, "dispatch_job", AsyncMock()) as dispatch,
         ):
-            disposition = await jobs.mark_job_failed(session, 7, "permanent")
+            disposition = await jobs.jobs_service.mark_job_failed(session, 7, "permanent")
 
         self.assertEqual("failed", disposition)
         self.assertEqual("failed", job.status)
@@ -194,7 +194,9 @@ class ComputationJobTests(IsolatedAsyncioTestCase):
                     "activate_and_generate",
                     AsyncMock(return_value=(SimpleNamespace(), [])),
                 ) as activate,
-                patch.object(bracket_worker, "generate_next_swiss_round", AsyncMock(return_value=[])) as swiss,
+                patch.object(
+                    bracket_worker.swiss_rounds_service, "generate_next_swiss_round", AsyncMock(return_value=[])
+                ) as swiss,
             ):
                 await bracket_worker._execute_bracket_operation(session, job)
 
