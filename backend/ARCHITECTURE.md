@@ -362,6 +362,60 @@ identity-local in `src/rpc/_common.py` rather than moving to `shared.rpc.common`
 takes a flat `data` dict and resolves the caller from a bearer `data["access_token"]` itself,
 so the shared `{payload, query, identity}` decoders do not apply.
 
+## Two credentials, one branch
+
+`Authorization: Bearer` carries either a **session JWT** or a **workspace-scoped API key**
+(`aqt_sk_<public_id>_<secret>`). Exactly one place in the backend knows the difference:
+`rpc.identity.validate_token` → `services/token_validation.py::TokenValidationService.validate`,
+which asks `ApiKeyService.is_api_key` and forks. Both branches return the same
+`schemas.TokenPayload`, the gateway injects it into every RPC as `data["identity"]`, and
+`shared.rpc.identity.rehydrate_user` rebuilds an `AuthUser` from it. Everything downstream —
+every gate in every service — sees one shape and must keep it that way: a handler that inspects
+`credential_type` to decide authorization has re-implemented the fork in the wrong layer.
+
+An API key's payload is its **owner's RBAC, narrowed**
+(`services/api_keys.py::ApiKeyService.validate`):
+
+- `is_superuser=False`, `roles=[]`, `permissions=[]`. The emptiness is deliberate, not an
+  omission. Global permissions would ignore the key's workspace, and role *names* are worse:
+  `AuthUser._has_admin_equivalent_role` and `is_workspace_admin` short-circuit
+  `has_workspace_permission` (`shared/models/identity/auth_user.py:167-207`) on a name like
+  `owner`/`admin` before any permission is examined, so a key carrying one would inherit its
+  owner's whole workspace instead of its scopes.
+- `denies` is the owner's deny overlay, **verbatim**. It is the one thing that must not be
+  narrowed: `has_workspace_permission` checks `is_denied` first, so dropping it makes negative
+  RBAC fail open for keys.
+- `workspaces` has exactly one entry — the key's workspace — with `rbac_roles=[]` and
+  `rbac_permissions` set to the key's scopes **intersected** with what the owner effectively
+  holds there. The intersection is the whole security model: a key cannot outrank its owner, and
+  revoking the owner's grant revokes the key's.
+- `credential_type="api_key"` plus an `api_key` block (`id`, `public_id`, `workspace_id`,
+  `scopes`, `limits`, `config_policy`) for the consumers that legitimately need the credential
+  itself — per-key usage limits and config policy in `balancer-service`
+  (`core/security/api_key_limiter.py`, `core/security/api_key_policy.py`).
+
+Because the intersection is already written into `rbac_permissions`, an API key is authorized by
+the ordinary path: `AuthUser.has_workspace_permission`, the single source of truth for
+precedence. Do not add scope checks alongside it.
+
+A scope **is** a permission name from `PERMISSION_CATALOG` (`shared/rbac/catalog.py`) —
+`team.create`, `registration.approve`, the `admin.*` wildcard — not a parallel taxonomy.
+`shared/rbac/scopes.py` owns that vocabulary: `normalize_scopes` (expands legacy aliases, drops
+names retired from the catalog), `unknown_scopes` (creation-time validation), `scope_pairs`, and
+`scope_grants` for the rare gate that must test scopes directly. Keys minted before scopes were
+real carry `balancer.jobs`; `LEGACY_SCOPE_ALIASES` maps it to `team.create`, the permission the
+balancer job paths already checked, so no data migration is needed. An empty scope list means
+zero permissions — there is no implicit default.
+
+Key and session management stay JWT-only, and structurally so rather than by an explicit check:
+those handlers resolve the caller through `src/rpc/_common.py::with_active_user` →
+`TokenValidationService.resolve_active_user` → `_resolve_bearer`, which JWT-decodes the bearer
+(`services/token_validation.py:99-102`). An `aqt_sk_` string is not a JWT, so it 401s. That
+covers creating/updating/revoking keys, logout and logout-all, session list and revoke, and the
+`/api/auth/me` family (profile read/update, delete, password change) — a key can neither mint
+another key nor extend a session. Login and refresh never see a bearer at all: they take
+credentials or a refresh token from the request body.
+
 ## Gateway contract
 
 The Go gateway is the only HTTP surface; it publishes to `rpc.<service>.<domain>.<method>` and

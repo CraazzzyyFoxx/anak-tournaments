@@ -12,6 +12,8 @@ from typing import Any
 from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core import http_status as status
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.services.api_keys import api_keys
@@ -82,3 +84,22 @@ def register(broker: Any, logger: Any) -> None:
             )
 
         return await c.with_active_user(logger, data.get("access_token"), op)
+
+    @broker.subscriber("rpc.identity.api_key.self")
+    async def _api_key_self(data: dict, msg: RabbitMessage) -> dict:
+        data = data or {}
+
+        # The one key method reachable *with* a key, and read-only: it answers
+        # "which key am I, and what may I do" from the credential already
+        # validated on the way in. The four CRUD handlers above stay JWT-only, so
+        # a key can neither mint a sibling nor extend its own life.
+        async def op(session: AsyncSession, _user: Any, api_key: Any) -> dict:
+            if api_key is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="API key credential required",
+                )
+            result = await api_keys.describe_self(session, api_key_id=api_key.id)
+            return result.model_dump(mode="json")
+
+        return await c.with_active_principal(logger, data.get("access_token"), op)

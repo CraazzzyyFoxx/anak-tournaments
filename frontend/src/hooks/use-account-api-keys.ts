@@ -2,7 +2,11 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import type { AccountApiKey, AccountApiKeyCreateResponse } from "@/types/auth.types";
+import type {
+  AccountApiKey,
+  AccountApiKeyCreateInput,
+  AccountApiKeyCreateResponse
+} from "@/types/auth.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 
 const ACCOUNT_API_KEYS_QUERY_KEY = ["account", "api-keys"] as const;
@@ -16,6 +20,12 @@ export interface AccountApiKeyStatusCounts {
 
 export type AccountApiKeyListResult = PaginatedResponse<AccountApiKey> & {
   counts: AccountApiKeyStatusCounts;
+  /**
+   * Scope names the *caller* may grant, computed server-side from their own RBAC
+   * in the queried workspace. A key can never exceed its owner's rights, so this
+   * is the only legitimate source for the create dialog's checkbox list.
+   */
+  available_scopes: string[];
 };
 
 export interface FetchAccountApiKeysArgs {
@@ -64,11 +74,7 @@ export async function fetchAccountApiKeys(
   return response.json();
 }
 
-async function createApiKey(input: {
-  expires_at?: string | null;
-  name: string;
-  workspace_id: number;
-}): Promise<AccountApiKeyCreateResponse> {
+async function createApiKey(input: AccountApiKeyCreateInput): Promise<AccountApiKeyCreateResponse> {
   const response = await fetch("/api/account/api-keys", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

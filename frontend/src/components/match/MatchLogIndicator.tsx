@@ -5,6 +5,7 @@ import { ScrollText, FileDown, FileX } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAuthProfile } from "@/hooks/useAuthProfile";
 
 interface MatchLogRef {
   matchId: number;
@@ -39,14 +40,23 @@ const stop = (e: React.MouseEvent) => e.stopPropagation();
  * (uses shared tokens, no page-scoped vars) so it renders correctly anywhere
  * encounters are shown.
  * - no logs → dimmed, non-interactive;
- * - logs without per-match refs → emerald icon, "Logs available";
+ * - logs without per-match refs, or a viewer who is not signed in → emerald
+ *   icon, "Logs available";
  * - one downloadable log → direct download link;
  * - several → click opens a popover listing each map's log.
+ *
+ * The download is a browser-navigated `<a download>` against an authenticated
+ * endpoint, so an anonymous visitor would get a 401 file instead of a log. The
+ * availability signal stays — only the link is withheld.
  */
 const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndicatorProps) => {
   const t = useTranslations();
+  const { status } = useAuthProfile();
   const [open, setOpen] = useState(false);
-  const downloadable = logs ?? [];
+  // Only a confirmed session gets links: "idle"/"loading"/"error" mean the
+  // viewer is not known yet, and offering a link that 401s is worse than
+  // offering none — the store flips to "authenticated" and the link appears.
+  const downloadable = status === "authenticated" ? (logs ?? []) : [];
 
   if (!hasLogs) {
     const label = t("common.matchLogs.noneAvailable");

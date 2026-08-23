@@ -117,11 +117,14 @@ def register(broker: Any, logger: Any) -> None:
     async def _get_me(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        # The only method in this module an API key may call: "who am I" reads the
+        # owner's profile and changes nothing. Every other handler here touches a
+        # session, a credential or the account itself and stays JWT-only.
+        async def op(session: AsyncSession, user: Any, _api_key: Any) -> dict:
             result = await auth.get_me(session, user.id)
             return result.model_dump(mode="json")
 
-        return await c.with_active_user(logger, data.get("access_token"), op)
+        return await c.with_active_principal(logger, data.get("access_token"), op)
 
     @broker.subscriber("rpc.identity.update_me")
     async def _update_me(data: dict, msg: RabbitMessage) -> dict:

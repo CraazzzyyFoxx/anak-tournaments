@@ -1,4 +1,10 @@
-"""Workspace-scoped API keys: issue, list, rename, revoke, validate."""
+"""Workspace-scoped API keys: issue, list, rename, revoke, validate.
+
+A key is a delegated credential, not an identity of its own: its authority is
+the owner's RBAC narrowed to the scopes it was granted (see ``validate``). Every
+authorization question about a key is therefore answered by the same predicate
+that answers it for a session, and no service needs api-key-specific code.
+"""
 
 from __future__ import annotations
 
@@ -12,11 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
+from shared.rbac import SCOPE_PAIRS, normalize_scopes, scope_pairs, unknown_scopes
 from shared.repository import ApiKeyRepository, RoleRepository, WorkspaceMemberRepository, WorkspaceRepository
+from shared.rpc.identity import rehydrate_user
 from shared.services.audit import record_audit
 from src import models, schemas
 from src.core import key_derivation
 from src.core.config import settings
+from src.services.token_payload import TokenPayloadBuilder, token_payloads
 
 __all__ = ("ApiKeyService", "api_keys")
 
@@ -32,7 +41,6 @@ def _isoformat(value: datetime | None) -> str | None:
 
 class ApiKeyService:
     PREFIX = "aqt_sk"
-    DEFAULT_SCOPES = ["balancer.jobs"]
     DEFAULT_LIMITS: dict[str, int] = {
         "requests_per_minute": 60,
         "jobs_per_day": 100,
@@ -64,12 +72,14 @@ class ApiKeyService:
         workspaces: WorkspaceRepository = WorkspaceRepository(),
         members: WorkspaceMemberRepository = WorkspaceMemberRepository(),
         roles: RoleRepository = RoleRepository(),
+        payloads: TokenPayloadBuilder = token_payloads,
         config: Any = settings,
     ) -> None:
         self.keys = keys
         self.workspaces = workspaces
         self.members = members
         self.roles = roles
+        self.payloads = payloads
         self.config = config
         # Domain-separated subkey for hashing API-key secrets (never the raw JWT secret).
         self._secret_key = key_derivation.api_key_secret_key(config.JWT_SECRET_KEY)
@@ -106,7 +116,7 @@ class ApiKeyService:
     # -- serialization -----------------------------------------------------
 
     @staticmethod
-    def _serialize(row: models.ApiKey) -> schemas.ApiKeyRead:
+    def describe(row: models.ApiKey) -> schemas.ApiKeyRead:
         return schemas.ApiKeyRead(
             id=row.id,
             name=row.name,
@@ -183,6 +193,48 @@ class ApiKeyService:
                 detail=f"Permission denied for workspace {workspace_id}: team.create required",
             )
 
+    async def _owner_authority(
+        self,
+        session: AsyncSession,
+        user: models.AuthUser,
+    ) -> tuple[schemas.TokenPayload, models.AuthUser]:
+        """The owner's full RBAC, as both the payload and a queryable AuthUser.
+
+        ``rehydrate_user`` is the very function every worker applies to the
+        gateway-injected identity, so a permission question answered here gets
+        the identical answer it would get downstream. Built from the payload
+        rather than from ``user``'s ORM relationships on purpose: on a warm RBAC
+        cache the row is loaded without its role collections, and touching
+        ``AuthUser.roles`` then would lazy-load outside the async greenlet.
+        """
+        payload = await self.payloads.build(session, user)
+        return payload, rehydrate_user(payload.model_dump(mode="json"))
+
+    async def grantable_scopes(
+        self,
+        session: AsyncSession,
+        *,
+        user: models.AuthUser,
+        workspace_id: int,
+    ) -> frozenset[str]:
+        """Catalog scopes ``user`` may delegate to a key in this workspace.
+
+        Delegation only ever narrows: nobody can mint a key that does what they
+        cannot do themselves. Decided with the same predicate ``validate`` uses,
+        so the create form and the token path can never disagree about a scope.
+
+        Note the self-service capabilities (``account.*``,
+        ``registration.self_register``) fall out of this set by construction:
+        they are allow-by-default and deny-only, never workspace grants, so no
+        member "holds" them in the RBAC sense and no key can carry them.
+        """
+        _, owner = await self._owner_authority(session, user)
+        return frozenset(
+            name
+            for name, (resource, action) in SCOPE_PAIRS.items()
+            if owner.has_workspace_permission(workspace_id, resource, action)
+        )
+
     # -- read --------------------------------------------------------------
 
     async def _status_counts(
@@ -229,7 +281,23 @@ class ApiKeyService:
             search=params.search,
         )
         counts = await self._status_counts(session, auth_user_id=user.id, workspace_id=params.workspace_id)
-        return {**paginated_dict([self._serialize(row) for row in rows], total, params), "counts": counts}
+        available = await self.grantable_scopes(session, user=user, workspace_id=params.workspace_id)
+        return {
+            **paginated_dict([self.describe(row) for row in rows], total, params),
+            "counts": counts,
+            "available_scopes": sorted(available),
+        }
+
+    async def describe_self(self, session: AsyncSession, *, api_key_id: int) -> schemas.ApiKeyRead:
+        """The calling key's own descriptor.
+
+        No ownership check: the id arrives from a credential this service has
+        already verified, so the caller is the key by definition.
+        """
+        row = await self.keys.get(session, api_key_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
+        return self.describe(row)
 
     # -- write -------------------------------------------------------------
 
@@ -244,6 +312,25 @@ class ApiKeyService:
     ) -> schemas.ApiKeyCreateResponse:
         await self.ensure_can_manage(session, user=user, workspace_id=payload.workspace_id)
 
+        unknown = unknown_scopes(payload.scopes)
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown scopes: {', '.join(sorted(unknown))}",
+            )
+        scopes = normalize_scopes(payload.scopes)
+        if scopes:
+            grantable = await self.grantable_scopes(session, user=user, workspace_id=payload.workspace_id)
+            ungrantable = sorted(scope for scope in scopes if scope not in grantable)
+            if ungrantable:
+                # Refused here rather than silently dropped: a key that quietly
+                # does less than it was asked to fails in production, not at
+                # issue time.
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cannot grant scopes you do not hold: {', '.join(ungrantable)}",
+                )
+
         public_id = secrets.token_hex(8)
         secret = secrets.token_hex(32)
         full_key = f"{self.PREFIX}_{public_id}_{secret}"
@@ -253,7 +340,7 @@ class ApiKeyService:
             public_id=public_id,
             secret_hash=self._hash_secret(secret),
             name=self._clean_name(payload.name),
-            scopes_json=list(self.DEFAULT_SCOPES),
+            scopes_json=list(scopes),
             limits_json=dict(self.DEFAULT_LIMITS),
             config_policy_json=dict(self.DEFAULT_CONFIG_POLICY),
             expires_at=payload.expires_at,
@@ -281,7 +368,7 @@ class ApiKeyService:
         )
         await session.commit()
         await session.refresh(row)
-        return schemas.ApiKeyCreateResponse(api_key=self._serialize(row), key=full_key)
+        return schemas.ApiKeyCreateResponse(api_key=self.describe(row), key=full_key)
 
     async def update(
         self,
@@ -316,7 +403,7 @@ class ApiKeyService:
         )
         await session.commit()
         await session.refresh(row)
-        return self._serialize(row)
+        return self.describe(row)
 
     async def revoke(
         self,
@@ -355,6 +442,19 @@ class ApiKeyService:
     # -- validation --------------------------------------------------------
 
     async def validate(self, session: AsyncSession, raw_key: str) -> schemas.TokenPayload | None:
+        """Resolve a raw key to RBAC: the owner's authority, narrowed to its scopes.
+
+        The narrowing is a filter over the owner's own payload, never a
+        hand-assembled grant list: each candidate scope is put to
+        ``AuthUser.has_workspace_permission``, the same predicate every service
+        gate uses. That is what makes it structurally impossible for a key to
+        outrank its owner, and it keeps this function free of RBAC precedence
+        rules (deny overlay, superuser, workspace-admin carve-outs) that would
+        rot out of sync with the model the moment either side changed.
+
+        ``None`` for every unusable credential: the caller turns that into a 401
+        without disclosing which check failed.
+        """
         parsed = self._split_key(raw_key)
         if parsed is None:
             return None
@@ -373,33 +473,46 @@ class ApiKeyService:
             return None
         if api_key.workspace is None or not api_key.workspace.is_active:
             return None
-        if not await self._has_workspace_import_access(session, user=api_key.user, workspace_id=api_key.workspace_id):
+
+        owner_payload, owner = await self._owner_authority(session, api_key.user)
+        # A key must not outlive its owner's membership: losing the workspace
+        # kills every key scoped to it without waiting for anyone to revoke.
+        if not owner.is_workspace_member(api_key.workspace_id):
             return None
+
+        scopes = normalize_scopes(api_key.scopes_json or [])
+        granted = [
+            {"resource": resource, "action": action}
+            for resource, action in scope_pairs(scopes)
+            if owner.has_workspace_permission(api_key.workspace_id, resource, action)
+        ]
 
         api_key.last_used_at = _now()
         await session.commit()
 
-        scopes = list(api_key.scopes_json or [])
-        limits = dict(api_key.limits_json or {})
-        config_policy = dict(api_key.config_policy_json or {})
         return schemas.TokenPayload(
             sub=api_key.user.id,
             email=api_key.user.email,
             username=api_key.user.username,
+            # Never a superuser and never carrying role NAMES: both are blanket
+            # bypasses in AuthUser (is_superuser, _has_admin_equivalent_role,
+            # _has_admin_panel_role), and a delegated credential must be fully
+            # described by the permission list below.
             is_superuser=False,
             roles=[],
+            # Global permissions stay empty by construction: the key is scoped to
+            # one workspace, and a global grant would reach every other one.
             permissions=[],
+            # The deny overlay rides along. A deny outranks every allow, so
+            # omitting it -- as this used to -- let a key do precisely what its
+            # owner had been explicitly forbidden.
+            denies=owner_payload.denies,
             workspaces=[
                 schemas.WorkspaceMembership(
                     workspace_id=api_key.workspace_id,
                     slug=api_key.workspace.slug,
                     rbac_roles=[],
-                    # ``team.create`` is what every balancer job path actually
-                    # checks (rpc/admin.py, rpc/binary.py, rpc/draft.py, and
-                    # WorkspaceAccessPolicy's default). The grant must stay in
-                    # lockstep with those checks: any mismatch 403s every keyed
-                    # balancer request.
-                    rbac_permissions=[{"resource": "team", "action": "create"}],
+                    rbac_permissions=granted,
                 )
             ],
             credential_type="api_key",
@@ -407,9 +520,9 @@ class ApiKeyService:
                 id=api_key.id,
                 public_id=api_key.public_id,
                 workspace_id=api_key.workspace_id,
-                scopes=scopes,
-                limits=limits,
-                config_policy=config_policy,
+                scopes=list(scopes),
+                limits=dict(api_key.limits_json or {}),
+                config_policy=dict(api_key.config_policy_json or {}),
             ),
         )
 

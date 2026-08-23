@@ -25,6 +25,7 @@ __all__ = (
     "envelope",
     "envelope_session",
     "with_active_user",
+    "with_active_principal",
     "opt_int",
     "require_int",
     "paginated_dump",
@@ -100,6 +101,34 @@ async def with_active_user(
     async def run(session: AsyncSession) -> Any:
         user = await token_validation.resolve_active_user(session, access_token)
         return await op(session, user)
+
+    return await envelope_session(logger, label, run)
+
+
+async def with_active_principal(
+    logger: Any,
+    access_token: Any,
+    op: Callable[[AsyncSession, Any, Any], Awaitable[Any]],
+    *,
+    label: str = "authenticated",
+) -> dict:
+    """``with_active_user`` for the few reads an API key may also perform.
+
+    ``op`` additionally receives the API-key descriptor the caller presented, or
+    ``None`` for a session credential — a handler that only makes sense for one
+    of the two decides that itself, since "no current key" is a 403 here and a
+    non-answer everywhere else.
+
+    A distinct helper rather than a keyword on ``with_active_user``: the JWT-only
+    default is the boundary keeping keys away from session, credential and RBAC
+    mutations, so every widening of it is one grep away.
+    """
+    if not access_token or not isinstance(access_token, str):
+        return rpc_error("forbidden", "Not authenticated")
+
+    async def run(session: AsyncSession) -> Any:
+        user, api_key = await token_validation.resolve_active_principal(session, access_token)
+        return await op(session, user, api_key)
 
     return await envelope_session(logger, label, run)
 

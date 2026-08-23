@@ -132,6 +132,12 @@ func run() error {
 	tournamentEdge := edge.New(rpcClient, logger, resolver.Resolve)
 
 	authn := auth.New(cfg.JWTSecret)
+	// WebSocket authenticator: the same local JWT fast path, PLUS opaque
+	// aqt_sk_ API keys resolved through identity-svc (ws.APIKeyAuth). Kept as a
+	// separate value from authn because httplog and metrics call
+	// UserFromRequest after the response is already written — resolving a key
+	// there would put the identity backend on the access-log path.
+	wsAuthn := authn.WithAPIKeys(ws.APIKeyAuth(resolver.PrincipalToken))
 	// Anti-brute-force throttle for the auth endpoints (per client IP + path).
 	// Disabled (pass-through) when GATEWAY_AUTH_RATE_LIMIT <= 0.
 	authLimiter := ratelimit.New(cfg.AuthRateLimit, cfg.AuthRateWindow)
@@ -151,7 +157,7 @@ func run() error {
 	authz := acl.New(wsStore, wsStore, wsStore)
 	wsHandler := ws.NewHandler(
 		hub,
-		authn,
+		wsAuthn,
 		authz,
 		replay.New(pool, cfg.WSReplayLimit),
 		cfg.WSIdleTimeout,
@@ -217,6 +223,10 @@ func run() error {
 	// Unlike sso/exchange above, this route IS authenticated.
 	mux.HandleFunc("POST /api/auth/link/complete", identityHandler.LinkComplete)
 	mux.HandleFunc("GET /api/auth/api-keys", identityHandler.ListApiKeys)
+	// Key self-introspection: the calling key's own scopes/limits/expiry. The
+	// literal "self" beats the /{id} patterns below by ServeMux specificity, and
+	// none of those is a GET, so there is no ambiguity to resolve.
+	mux.HandleFunc("GET /api/auth/api-keys/self", identityHandler.SelfApiKey)
 	mux.HandleFunc("POST /api/auth/api-keys", identityHandler.CreateApiKey)
 	mux.HandleFunc("PATCH /api/auth/api-keys/{id}", identityHandler.UpdateApiKey)
 	mux.HandleFunc("DELETE /api/auth/api-keys/{id}", identityHandler.RevokeApiKey)
@@ -331,7 +341,9 @@ func run() error {
 	mux.Handle("/api/v1/achievements/", appEdge.Subtree(app.AchievementsSubtreeRoutes))
 	// Binary/multipart endpoints the JSON dispatcher can't handle: icon + asset
 	// uploads (multipart -> base64 RPC) and the match-log download (base64 -> bytes).
-	appBinary := app.NewBinary(rpcClient, resolver.Resolve, logger)
+	// The match-log link is browser-navigated, so its credential may arrive in the
+	// session cookie instead of a header — hence the second resolver.
+	appBinary := app.NewBinary(rpcClient, resolver.Resolve, resolver.ResolveWithSessionCookie, logger)
 	mux.HandleFunc("POST /api/v1/workspaces/{id}/icon", appBinary.IconUpload)
 	mux.HandleFunc("DELETE /api/v1/workspaces/{id}/icon", appBinary.IconDelete)
 	mux.HandleFunc("POST /api/v1/assets/{asset_type}/{slug}", appBinary.AssetUpload)
@@ -475,7 +487,16 @@ func run() error {
 	// when no upstream set one (an absent header invites heuristic caching of
 	// viewer-dependent payloads by intermediaries).
 	anonLimiter := ratelimit.New(cfg.AnonRateLimit, cfg.AnonRateWindow)
-	apiSurface := cachecontrol.Middleware(anonLimiter.WrapAnon(mux))
+	// Per-key throttle for workspace-scoped API keys, wrapping the same mux one
+	// layer further in. It sits INSIDE WrapAnon because the two are mutually
+	// exclusive (anonymous means no bearer at all) and both 429s must still be
+	// metered, access-logged and given a Cache-Control. The window is fixed at a
+	// minute: the budget it spends is the key's own requests_per_minute, and only
+	// cfg.APIKeyRateLimit's default applies to a key that carries none.
+	// resolver.APIKeyQuota short-circuits on the aqt_sk_ prefix, so session and
+	// anonymous traffic reach the mux without any added identity lookup.
+	apiKeyLimiter := ratelimit.New(cfg.APIKeyRateLimit, time.Minute)
+	apiSurface := cachecontrol.Middleware(anonLimiter.WrapAnon(apiKeyLimiter.WrapAPIKey(mux, resolver.APIKeyQuota)))
 	instrumented := httplog.Middleware(mtr.Middleware(apiSurface, authn, activeUsers), logger, authn)
 	traced := tracing.Middleware(instrumented)
 	tracedMux := sentryhttp.New(sentryhttp.Options{Repanic: true}).Handle(traced)

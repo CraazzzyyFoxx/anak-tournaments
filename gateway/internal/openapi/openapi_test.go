@@ -51,11 +51,20 @@ func TestBuild_TopLevel(t *testing.T) {
 	if info["title"] != "Test API" || info["version"] != "1.2.3" {
 		t.Errorf("info = %v", info)
 	}
+	// The caller's description is kept and the credential note appended: the note
+	// is the document's only explanation of the two bearer credentials.
+	desc, _ := info["description"].(string)
+	if !strings.HasPrefix(desc, "desc") || !strings.Contains(desc, "aqt_sk_") {
+		t.Errorf("info.description = %q, want caller text + API-key credential note", desc)
+	}
 	comps := asMap(t, doc["components"], "components")
 	schemes := asMap(t, comps["securitySchemes"], "securitySchemes")
-	bearer := asMap(t, schemes["bearerAuth"], "bearerAuth")
-	if bearer["scheme"] != "bearer" {
-		t.Errorf("bearerAuth.scheme = %v", bearer["scheme"])
+	// Both credentials ride Authorization: Bearer, so both schemes are http/bearer.
+	for _, name := range []string{"bearerAuth", "apiKeyAuth"} {
+		s := asMap(t, schemes[name], name)
+		if s["type"] != "http" || s["scheme"] != "bearer" {
+			t.Errorf("%s = %v, want http/bearer", name, s)
+		}
 	}
 
 	tags, ok := doc["tags"].([]any)
@@ -105,14 +114,17 @@ func TestBuild_Operations(t *testing.T) {
 		t.Errorf("AuthNone route security = %v, want explicit empty list", listGet["security"])
 	}
 
-	// AuthRequired POST with body → requestBody, bearer security, 201 + 401.
+	// AuthRequired POST with body → requestBody, both schemes, 201 + 401.
 	post := asMap(t, asMap(t, paths["/api/v1/things"], "things")["post"], "things.post")
 	if _, ok := post["requestBody"]; !ok {
 		t.Error("Body route missing requestBody")
 	}
 	sec, ok := post["security"].([]any)
-	if !ok || len(sec) != 1 || asMap(t, sec[0], "sec")["bearerAuth"] == nil {
-		t.Errorf("AuthRequired security = %v, want [{bearerAuth}]", post["security"])
+	if !ok || len(sec) != 2 {
+		t.Fatalf("AuthRequired security = %v, want [{bearerAuth},{apiKeyAuth}]", post["security"])
+	}
+	if asMap(t, sec[0], "sec[0]")["bearerAuth"] == nil || asMap(t, sec[1], "sec[1]")["apiKeyAuth"] == nil {
+		t.Errorf("AuthRequired security = %v, want session JWT and API key as alternatives", post["security"])
 	}
 	resp := asMap(t, post["responses"], "post.responses")
 	if _, ok := resp["201"]; !ok {
@@ -129,10 +141,48 @@ func TestBuild_Operations(t *testing.T) {
 		t.Error("204 response should have no content")
 	}
 
-	// AuthOptional → anonymous + bearer.
+	// AuthOptional → anonymous + both credentials.
 	optGet := asMap(t, asMap(t, paths["/api/v1/things/{id}"], "things/id")["get"], "get")
-	if sec, _ := optGet["security"].([]any); len(sec) != 2 {
-		t.Errorf("AuthOptional security = %v, want 2 entries", optGet["security"])
+	if sec, _ := optGet["security"].([]any); len(sec) != 3 {
+		t.Errorf("AuthOptional security = %v, want 3 entries (anonymous, JWT, API key)", optGet["security"])
+	}
+}
+
+// TestBuild_EveryAuthedOperationAcceptsBothCredentials walks the whole document
+// instead of sampling one operation: the invariant clients depend on is that no
+// authenticated operation ever offers the session JWT alone, since the same
+// header also carries a workspace-scoped API key.
+func TestBuild_EveryAuthedOperationAcceptsBothCredentials(t *testing.T) {
+	doc := buildDoc(t, sampleGroups())
+	paths := asMap(t, doc["paths"], "paths")
+
+	authed := 0
+	for path, item := range paths {
+		for method, op := range asMap(t, item, path) {
+			sec, ok := asMap(t, op, path+" "+method)["security"].([]any)
+			if !ok {
+				t.Errorf("%s %s: no security key", method, path)
+				continue
+			}
+			if len(sec) == 0 {
+				continue // AuthNone
+			}
+			authed++
+			var jwt, key bool
+			for _, req := range sec {
+				r := asMap(t, req, "security entry")
+				_, hasJWT := r["bearerAuth"]
+				_, hasKey := r["apiKeyAuth"]
+				jwt = jwt || hasJWT
+				key = key || hasKey
+			}
+			if !jwt || !key {
+				t.Errorf("%s %s security = %v, want both bearerAuth and apiKeyAuth", method, path, sec)
+			}
+		}
+	}
+	if authed != 4 {
+		t.Errorf("checked %d authenticated operations, want 4 (1 optional + 3 required)", authed)
 	}
 }
 

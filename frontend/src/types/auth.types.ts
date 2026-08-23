@@ -48,6 +48,21 @@ export interface AccountApiKey {
   updated_at?: string | null;
 }
 
+/**
+ * Create payload for a workspace-scoped API key.
+ *
+ * `scopes` are RBAC permission names (`"team.create"`, `"admin.*"`) — the same
+ * vocabulary the backend catalog uses, intersected server-side with what the
+ * caller actually holds. An empty list is accepted and produces a key that
+ * authenticates but passes no permission check.
+ */
+export interface AccountApiKeyCreateInput {
+  name: string;
+  workspace_id: number;
+  scopes: string[];
+  expires_at?: string | null;
+}
+
 export interface AccountApiKeyCreateResponse {
   api_key: AccountApiKey;
   key: string;

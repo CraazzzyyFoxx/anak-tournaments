@@ -45,6 +45,10 @@ var PublicDocRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/auth/link/complete", Queue: "rpc.identity.link_complete", Body: true, Auth: edge.AuthRequired},
 	// API keys
 	{Method: "GET", Pattern: "/api/auth/api-keys", Queue: "rpc.identity.list_api_keys", Auth: edge.AuthRequired},
+	// Self-introspection: returns the descriptor of the key the CALLER presents,
+	// so it is the one api-key route a keyed client can use. identity-svc 403s a
+	// session bearer here ("API key credential required").
+	{Method: "GET", Pattern: "/api/auth/api-keys/self", Queue: "rpc.identity.api_key.self", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/auth/api-keys", Queue: "rpc.identity.create_api_key", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/auth/api-keys/{id}", Queue: "rpc.identity.update_api_key", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/auth/api-keys/{id}", Queue: "rpc.identity.revoke_api_key", Auth: edge.AuthRequired, Success: 204},

@@ -3,6 +3,8 @@ package ratelimit
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -263,6 +265,168 @@ func TestLimiter_WrapFailures_DisabledPassThrough(t *testing.T) {
 		h(rec, wrapFailuresReq("1.1.1.1"))
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("disabled limiter should pass attempt %d through, got %d", i, rec.Code)
+		}
+	}
+}
+
+// staticQuota is a KeyQuota that reads the bucket key and budget straight off
+// the request's Authorization header value ("<key>:<perMinute>"), standing in
+// for principal.Resolver.APIKeyQuota without an RPC stub. An empty header means
+// "not API-key traffic".
+func staticQuota(r *http.Request) (string, int, bool) {
+	raw := r.Header.Get("Authorization")
+	if raw == "" {
+		return "", 0, false
+	}
+	key, rpm, _ := strings.Cut(raw, ":")
+	n, _ := strconv.Atoi(rpm)
+	return key, n, true
+}
+
+func keyReq(auth string) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/tournaments", nil)
+	if auth != "" {
+		r.Header.Set("Authorization", auth)
+	}
+	return r
+}
+
+// TestLimiter_WrapAPIKey_MetersEachKeyOnItsOwnBudget is the core contract: a key
+// is throttled against the requests_per_minute IT was issued (not one flat
+// process-wide number), and each key gets its own bucket.
+func TestLimiter_WrapAPIKey_MetersEachKeyOnItsOwnBudget(t *testing.T) {
+	l := New(1000, time.Minute) // generous default: the per-key budgets must bind, not this.
+	h := l.WrapAPIKey(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), staticQuota)
+
+	// Key "a" is issued 2/min: two pass, the third is refused.
+	for i := 1; i <= 2; i++ {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, keyReq("a:2"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d within key a's budget: want 200, got %d", i, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, keyReq("a:2"))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("3rd request over key a's 2/min: want 429, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "60" {
+		t.Errorf("Retry-After: want 60 (the minute window), got %q", got)
+	}
+	if body := rec.Body.String(); body != `{"detail":"Too many requests"}` {
+		t.Errorf("429 body must match the shared shape, got %s", body)
+	}
+
+	// Key "b" is unaffected by key a's exhaustion, and spends its own budget.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, keyReq("b:1"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a fresh key must have its own bucket, got %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, keyReq("b:1"))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("2nd request over key b's 1/min: want 429, got %d", rec.Code)
+	}
+}
+
+// TestLimiter_WrapAPIKey_FallsBackToConfiguredLimit covers a key issued without
+// an explicit requests_per_minute: it is metered on the platform default the
+// limiter was built with, not left unbounded.
+func TestLimiter_WrapAPIKey_FallsBackToConfiguredLimit(t *testing.T) {
+	l := New(1, time.Minute)
+	h := l.WrapAPIKey(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), staticQuota)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, keyReq("nolimit:0"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("1st request: want 200, got %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, keyReq("nolimit:0"))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("a key with no own quota must fall back to the configured 1/min, got %d", rec.Code)
+	}
+}
+
+// TestLimiter_WrapAPIKey_NonKeyTrafficUntouched proves session and anonymous
+// requests keep their exact previous behaviour: quota reports ok=false for them,
+// and nothing is metered no matter how many arrive.
+func TestLimiter_WrapAPIKey_NonKeyTrafficUntouched(t *testing.T) {
+	l := New(1, time.Minute)
+	calls := 0
+	h := l.WrapAPIKey(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}), staticQuota)
+
+	for i := range 5 {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, keyReq(""))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("non-key request %d must pass through, got %d", i, rec.Code)
+		}
+	}
+	if calls != 5 {
+		t.Fatalf("all 5 non-key requests must reach the handler, got %d", calls)
+	}
+}
+
+// TestLimiter_WrapAPIKey_DisabledPassThrough mirrors the other wrappers: a
+// non-positive limit (GATEWAY_API_KEY_RATE_LIMIT <= 0) is the kill switch and
+// returns the handler unchanged, without ever consulting the quota.
+func TestLimiter_WrapAPIKey_DisabledPassThrough(t *testing.T) {
+	quotaCalls := 0
+	counting := func(r *http.Request) (string, int, bool) {
+		quotaCalls++
+		return staticQuota(r)
+	}
+	h := New(0, time.Minute).WrapAPIKey(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), counting)
+
+	for i := range 5 {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, keyReq("a:1"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("disabled limiter must pass request %d through, got %d", i, rec.Code)
+		}
+	}
+	if quotaCalls != 0 {
+		t.Fatalf("a disabled limiter must not resolve identities at all, got %d quota calls", quotaCalls)
+	}
+}
+
+// TestLimiter_WrapAPIKey_NilQuotaPassThrough guards the wiring: without a quota
+// resolver there is nothing to meter, so the surface must be served, not broken.
+func TestLimiter_WrapAPIKey_NilQuotaPassThrough(t *testing.T) {
+	h := New(1, time.Minute).WrapAPIKey(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), nil)
+	for i := range 3 {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, keyReq("a:1"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("nil quota must pass request %d through, got %d", i, rec.Code)
+		}
+	}
+}
+
+// TestLimiter_AllowQuotaMatchesConfiguredAllow pins the refactor: allow is now
+// allowQuota with the limiter's own budget, so passing that budget explicitly
+// must behave identically — the session/anon wrappers rely on it.
+func TestLimiter_AllowQuotaMatchesConfiguredAllow(t *testing.T) {
+	const limit = 3
+	configured, explicit := New(limit, 1000*time.Second), New(limit, 1000*time.Second)
+	for i := range limit + 1 {
+		want := configured.allow("k")
+		if got := explicit.allowQuota("k", limit); got != want {
+			t.Fatalf("call %d: allowQuota=%v, allow=%v", i, got, want)
 		}
 	}
 }

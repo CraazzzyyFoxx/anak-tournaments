@@ -1,10 +1,18 @@
 """Credential validation: the gateway's per-request entry point.
 
-Two callers, two failure contracts, and the difference is load-bearing:
-``validate`` answers the gateway's token-introspection call and collapses every
-"not authenticated" outcome — including an inactive account — into 401;
-``resolve_active_user`` backs the authenticated RPC operations and reports an
-inactive account as 403, because there the credential itself was valid.
+Three resolvers, and the differences between them are load-bearing:
+
+* ``validate`` answers the gateway's token-introspection call and collapses every
+  "not authenticated" outcome — including an inactive account — into 401.
+* ``resolve_active_user`` backs the authenticated RPC operations and reports an
+  inactive account as 403, because there the credential itself was valid. It
+  accepts a JWT access token and nothing else, and that is a security boundary:
+  everything it guards mutates a session, a credential or RBAC, so an API key
+  must never reach it — a key that could mint keys or extend its own life would
+  not be workspace-scoped in any meaningful sense.
+* ``resolve_active_principal`` accepts either credential, for the read-only
+  introspection an API key is legitimately allowed to perform ("who am I",
+  "which key am I"). Opt in per subscriber, never by default.
 """
 
 from __future__ import annotations
@@ -80,6 +88,41 @@ class TokenValidationService:
         if not user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
         return user
+
+    async def resolve_active_principal(
+        self,
+        session: AsyncSession,
+        raw_token: str,
+    ) -> tuple[models.AuthUser, schemas.TokenApiKeyInfo | None]:
+        """Resolve the active principal behind a JWT access token *or* an API key.
+
+        The second element identifies the key the caller presented (``None`` for a
+        session), so a handler can answer questions about the credential itself
+        without re-parsing or re-verifying it.
+
+        A separate method rather than a flag on ``resolve_active_user``: the
+        JWT-only default is what keeps API keys out of every session-, credential-
+        and RBAC-mutating operation, so widening it has to be a visible choice at
+        the call site.
+        """
+        if not self.keys.is_api_key(raw_token):
+            return await self.resolve_active_user(session, raw_token), None
+
+        # One ``None`` for a bad secret, a revoked or expired key, a deactivated
+        # owner, or an owner who lost workspace access — deliberately
+        # indistinguishable, and reused rather than re-derived so this door can
+        # never drift open wider than the gateway's own.
+        payload = await self.keys.validate(session, raw_token)
+        if payload is None:
+            raise _credentials_error()
+
+        # ``validate`` already rejected an inactive owner, so no second liveness
+        # check here. Identity-only load: an API key's RBAC comes from the payload
+        # above, never from the owner's ORM relationships.
+        user = await self.users.get_identity(session, payload.sub)
+        if user is None:
+            raise _credentials_error()
+        return user, payload.api_key
 
     async def _resolve_bearer(
         self,

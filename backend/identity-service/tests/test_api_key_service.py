@@ -35,6 +35,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest  # noqa: E402
 
+from shared.rbac import ALL_SCOPE_NAMES  # noqa: E402
+from shared.rpc.identity import credential_type, rehydrate_user  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.core import key_derivation  # noqa: E402
 from src.core.config import settings  # noqa: E402
@@ -104,6 +106,7 @@ def _api_key_row(
     secret_hash: str | None = None,
     revoked_at=None,
     expires_at=None,
+    scopes: list[str] | None = None,
     user: models.AuthUser | None = None,
     workspace: models.Workspace | None = None,
 ) -> models.ApiKey:
@@ -114,7 +117,7 @@ def _api_key_row(
         public_id="publicid",
         secret_hash=secret_hash if secret_hash is not None else api_keys._hash_secret(secret),
         name="Balancer API",
-        scopes_json=list(api_keys.DEFAULT_SCOPES),
+        scopes_json=["team.create"] if scopes is None else list(scopes),
         limits_json=dict(api_keys.DEFAULT_LIMITS),
         config_policy_json=dict(api_keys.DEFAULT_CONFIG_POLICY),
         expires_at=expires_at,
@@ -125,6 +128,53 @@ def _api_key_row(
         user=user if user is not None else _user(),
         workspace=workspace if workspace is not None else _workspace(),
     )
+
+
+_TEAM_CREATE = [{"resource": "team", "action": "create"}]
+_WILDCARD = [{"resource": "*", "action": "*"}]
+
+
+def _owner_payload(
+    *,
+    workspace_permissions: list[dict[str, str]] | None = None,
+    workspaces: tuple[int, ...] = (11,),
+    denies: list[dict[str, object]] | None = None,
+    is_superuser: bool = False,
+) -> schemas.TokenPayload:
+    """The owner's RBAC exactly as ``TokenPayloadBuilder`` would hand it over."""
+    return schemas.TokenPayload(
+        sub=7,
+        email="ada@example.com",
+        username="ada",
+        is_superuser=is_superuser,
+        roles=[],
+        permissions=[],
+        denies=list(denies or []),
+        workspaces=[
+            schemas.WorkspaceMembership(
+                workspace_id=workspace_id,
+                slug="main",
+                rbac_roles=[],
+                rbac_permissions=list(workspace_permissions or []),
+            )
+            for workspace_id in workspaces
+        ],
+    )
+
+
+def _patch_owner(monkeypatch: pytest.MonkeyPatch, payload: schemas.TokenPayload) -> None:
+    """Stub the RBAC *builder* only.
+
+    The rehydration and ``has_workspace_permission`` calls that decide what the
+    key may do stay real -- stubbing those would leave the narrowing untested,
+    which is the one thing here that can escalate privilege.
+    """
+
+    class _Builder:
+        async def build(self, _session, _user, *, cached=None) -> schemas.TokenPayload:
+            return payload
+
+    monkeypatch.setattr(api_keys, "payloads", _Builder())
 
 
 def test_create_api_key_returns_secret_once_and_stores_only_hash(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,9 +201,75 @@ def test_create_api_key_returns_secret_once_and_stores_only_hash(monkeypatch: py
     assert stored.secret_hash != "secret-token"
     assert stored.name == "Balancer API"
     assert "secret" not in response.api_key.model_dump()
+    # No implicit grant: a key nobody scoped authenticates and authorizes nothing.
+    assert stored.scopes_json == []
     assert session.flush_calls == 1
     assert session.commit_calls == 1
     assert session.refresh_calls == 1
+
+
+def test_create_api_key_rejects_scopes_outside_the_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def allow_manage(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(api_keys, "ensure_can_manage", allow_manage)
+
+    with pytest.raises(api_keys_module.HTTPException) as exc_info:
+        asyncio.run(
+            api_keys.create(
+                _FakeSession(),
+                user=_user(),
+                payload=schemas.ApiKeyCreate(name="CI", workspace_id=11, scopes=["team.create", "not.a.scope"]),
+            )
+        )
+
+    assert exc_info.value.status_code == 422
+    assert "not.a.scope" in exc_info.value.detail
+
+
+def test_create_api_key_refuses_a_scope_the_caller_does_not_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Delegation only narrows: nobody mints a key stronger than themselves."""
+
+    async def allow_manage(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(api_keys, "ensure_can_manage", allow_manage)
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
+
+    with pytest.raises(api_keys_module.HTTPException) as exc_info:
+        asyncio.run(
+            api_keys.create(
+                _FakeSession(),
+                user=_user(),
+                payload=schemas.ApiKeyCreate(name="CI", workspace_id=11, scopes=["match.update"]),
+            )
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "match.update" in exc_info.value.detail
+
+
+def test_create_api_key_stores_normalized_scopes(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _FakeSession()
+    tokens = iter(["publicid", "secret-token"])
+
+    async def allow_manage(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(api_keys, "ensure_can_manage", allow_manage)
+    monkeypatch.setattr(api_keys_module.secrets, "token_hex", lambda _bytes: next(tokens))
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
+
+    asyncio.run(
+        api_keys.create(
+            session,
+            user=_user(),
+            payload=schemas.ApiKeyCreate(name="CI", workspace_id=11, scopes=["balancer.jobs", "team.create"]),
+        )
+    )
+
+    # The legacy alias collapses onto the permission it always meant, deduped.
+    assert session.added[0].scopes_json == ["team.create"]
 
 
 def test_is_api_key_recognizes_only_the_prefixed_form() -> None:
@@ -185,11 +301,7 @@ def test_verify_secret_accepts_the_legacy_raw_secret_hash() -> None:
 def test_validate_api_key_accepts_a_legacy_hashed_key(monkeypatch: pytest.MonkeyPatch) -> None:
     row = _api_key_row(secret_hash=key_derivation.legacy_hmac_sha256_hex(settings.JWT_SECRET_KEY, "secret-token"))
     session = _FakeSession([{"scalar": row}])
-
-    async def allow_access(*args, **kwargs) -> bool:
-        return True
-
-    monkeypatch.setattr(api_keys, "_has_workspace_import_access", allow_access)
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
 
     payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
 
@@ -198,14 +310,11 @@ def test_validate_api_key_accepts_a_legacy_hashed_key(monkeypatch: pytest.Monkey
     assert payload.api_key.id == 123
 
 
-def test_validate_api_key_returns_api_key_payload_and_updates_last_used(monkeypatch: pytest.MonkeyPatch) -> None:
-    row = _api_key_row()
+def test_validate_api_key_narrows_owner_rbac_to_the_key_scopes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The scope list is what was asked for; the permission list is what was granted."""
+    row = _api_key_row(scopes=["team.create", "match.update"])
     session = _FakeSession([{"scalar": row}])
-
-    async def allow_access(*args, **kwargs) -> bool:
-        return True
-
-    monkeypatch.setattr(api_keys, "_has_workspace_import_access", allow_access)
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
 
     payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
 
@@ -214,11 +323,79 @@ def test_validate_api_key_returns_api_key_payload_and_updates_last_used(monkeypa
     assert payload.api_key is not None
     assert payload.api_key.id == 123
     assert payload.api_key.workspace_id == 11
-    assert payload.api_key.scopes == ["balancer.jobs"]
+    assert payload.api_key.scopes == ["team.create", "match.update"]
     assert payload.workspaces[0].workspace_id == 11
-    assert payload.workspaces[0].rbac_permissions == [{"resource": "team", "action": "create"}]
+    # ``match.update`` was requested but the owner does not hold it: a key can
+    # never be granted authority its owner lacks.
+    assert payload.workspaces[0].rbac_permissions == _TEAM_CREATE
     assert row.last_used_at is not None
     assert session.commit_calls == 1
+
+
+def test_validate_api_key_normalizes_the_legacy_balancer_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keys issued before scopes were real must keep their exact authority."""
+    row = _api_key_row(scopes=["balancer.jobs"])
+    session = _FakeSession([{"scalar": row}])
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
+
+    payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
+
+    assert payload is not None
+    assert payload.api_key is not None
+    assert payload.api_key.scopes == ["team.create"]
+    assert payload.workspaces[0].rbac_permissions == _TEAM_CREATE
+
+
+def test_validate_api_key_never_inherits_superuser_or_role_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _api_key_row(scopes=["team.create"])
+    session = _FakeSession([{"scalar": row}])
+    _patch_owner(monkeypatch, _owner_payload(is_superuser=True))
+
+    payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
+
+    assert payload is not None
+    assert payload.is_superuser is False
+    assert payload.roles == []
+    assert payload.permissions == []
+    assert payload.workspaces[0].rbac_roles == []
+    # A superuser holds every permission, so the scope is granted -- but only
+    # the scope, and only in the key's own workspace.
+    assert payload.workspaces[0].rbac_permissions == _TEAM_CREATE
+
+
+@pytest.mark.parametrize(
+    ("owner_permissions", "expected"),
+    [(_WILDCARD, _WILDCARD), (_TEAM_CREATE, [])],
+)
+def test_validate_api_key_grants_the_wildcard_scope_only_to_a_wildcard_owner(
+    monkeypatch: pytest.MonkeyPatch,
+    owner_permissions: list[dict[str, str]],
+    expected: list[dict[str, str]],
+) -> None:
+    row = _api_key_row(scopes=["admin.*"])
+    session = _FakeSession([{"scalar": row}])
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=owner_permissions))
+
+    payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
+
+    assert payload is not None
+    assert payload.workspaces[0].rbac_permissions == expected
+
+
+def test_validate_api_key_applies_and_forwards_the_deny_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Negative RBAC used to fail open through a key: ``denies`` was never set."""
+    row = _api_key_row(scopes=["team.create"])
+    session = _FakeSession([{"scalar": row}])
+    denies: list[dict[str, object]] = [{"resource": "team", "action": "create", "workspace_id": 11}]
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE, denies=denies))
+
+    payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
+
+    assert payload is not None
+    # The deny outranks the grant, so the scope yields nothing...
+    assert payload.workspaces[0].rbac_permissions == []
+    # ...and it rides along, so every downstream deny check sees it too.
+    assert payload.denies == denies
 
 
 @pytest.mark.parametrize(
@@ -238,11 +415,7 @@ def test_validate_api_key_rejects_invalid_revoked_expired_or_inactive(
     raw_key: str,
 ) -> None:
     session = _FakeSession([{"scalar": row}])
-
-    async def allow_access(*args, **kwargs) -> bool:
-        return True
-
-    monkeypatch.setattr(api_keys, "_has_workspace_import_access", allow_access)
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
 
     payload = asyncio.run(api_keys.validate(session, raw_key))
 
@@ -250,19 +423,32 @@ def test_validate_api_key_rejects_invalid_revoked_expired_or_inactive(
     assert session.commit_calls == 0
 
 
-def test_validate_api_key_rejects_when_owner_loses_workspace_access(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_api_key_rejects_when_the_owner_leaves_the_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A key must not outlive the membership it was scoped to."""
     row = _api_key_row()
     session = _FakeSession([{"scalar": row}])
-
-    async def deny_access(*args, **kwargs) -> bool:
-        return False
-
-    monkeypatch.setattr(api_keys, "_has_workspace_import_access", deny_access)
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE, workspaces=(12,)))
 
     payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
 
     assert payload is None
     assert session.commit_calls == 0
+
+
+def test_grantable_scopes_are_bounded_by_the_callers_own_authority(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
+
+    grantable = asyncio.run(api_keys.grantable_scopes(_FakeSession(), user=_user(), workspace_id=11))
+
+    assert grantable == frozenset({"team.create"})
+
+
+def test_grantable_scopes_for_a_wildcard_owner_cover_the_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_WILDCARD))
+
+    grantable = asyncio.run(api_keys.grantable_scopes(_FakeSession(), user=_user(), workspace_id=11))
+
+    assert grantable == ALL_SCOPE_NAMES
 
 
 @pytest.mark.parametrize(
@@ -348,9 +534,7 @@ def test_ensure_can_manage_rejects_missing_or_inactive_workspace(
 
 def test_list_api_keys_requires_a_workspace() -> None:
     with pytest.raises(api_keys_module.HTTPException) as exc_info:
-        asyncio.run(
-            api_keys.list(_FakeSession(), user=_user(), params=schemas.ApiKeyListParams(workspace_id=None))
-        )
+        asyncio.run(api_keys.list(_FakeSession(), user=_user(), params=schemas.ApiKeyListParams(workspace_id=None)))
 
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail == "workspace_id is required"
@@ -372,7 +556,12 @@ def test_list_api_keys_returns_page_and_workspace_wide_status_counts(monkeypatch
         # ``expired`` deliberately absent: the tally query omits empty buckets.
         return {"active": 3, "revoked": 1}
 
+    async def grantable(_session, *, user, workspace_id: int) -> frozenset[str]:
+        assert (user.id, workspace_id) == (7, 11)
+        return frozenset({"team.read", "team.create"})
+
     monkeypatch.setattr(api_keys, "ensure_can_manage", allow_manage)
+    monkeypatch.setattr(api_keys, "grantable_scopes", grantable)
     monkeypatch.setattr(api_keys.keys, "list_page", list_page)
     monkeypatch.setattr(api_keys.keys, "status_counts", status_counts)
 
@@ -382,3 +571,43 @@ def test_list_api_keys_returns_page_and_workspace_wide_status_counts(monkeypatch
     assert [row.id for row in result["results"]] == [123]
     counts = result["counts"]
     assert (counts.total, counts.active, counts.expired, counts.revoked) == (4, 3, 0, 1)
+    # Sorted so the create form renders deterministically.
+    assert result["available_scopes"] == ["team.create", "team.read"]
+
+
+def test_validated_key_payload_authorizes_exactly_its_scopes_downstream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The seam this whole design rests on.
+
+    ``validate`` builds the payload the gateway injects; ``rehydrate_user`` is
+    what every worker turns it back into. Both sides are covered on their own,
+    but only end to end does a shape mismatch between them show up -- and the
+    failure mode is silent over-permission, not an error.
+    """
+    row = _api_key_row(scopes=["team.create", "match.update"])
+    session = _FakeSession([{"scalar": row}])
+    _patch_owner(
+        monkeypatch,
+        _owner_payload(workspace_permissions=[*_TEAM_CREATE, {"resource": "team", "action": "read"}]),
+    )
+
+    payload = asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token"))
+    assert payload is not None
+
+    user = rehydrate_user(payload.model_dump(mode="json"))
+
+    assert credential_type(user) == "api_key"
+    assert user.id == 7
+    # Granted: requested AND held by the owner.
+    assert user.has_workspace_permission(11, "team", "create") is True
+    # Held by the owner but never requested -- delegation is opt-in.
+    assert user.has_workspace_permission(11, "team", "read") is False
+    # Requested but not held by the owner.
+    assert user.has_workspace_permission(11, "match", "update") is False
+    # Another workspace is out of reach whatever the scope says.
+    assert user.has_workspace_permission(12, "team", "create") is False
+    assert user.is_workspace_member(12) is False
+    # No blanket bypass survived the narrowing.
+    assert user.is_superuser is False
+    assert user.is_workspace_admin(11) is False

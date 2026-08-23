@@ -71,8 +71,8 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	mux.Handle("/api/v1/admin/ws/", d.Subtree(parser.AchievementAdminRoutes))
 	// Binary/multipart handlers (registering them must not conflict with the
 	// workspace member routes or the get-by-id routes).
-	bin := app.NewBinary(errCaller{}, func(*http.Request) (map[string]any, bool, error) { return nil, false, nil },
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	anonymous := func(*http.Request) (map[string]any, bool, error) { return nil, false, nil }
+	bin := app.NewBinary(errCaller{}, anonymous, anonymous, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	mux.HandleFunc("POST /api/v1/workspaces/{id}/icon", bin.IconUpload)
 	mux.HandleFunc("DELETE /api/v1/workspaces/{id}/icon", bin.IconDelete)
 	mux.HandleFunc("POST /api/v1/assets/{asset_type}/{slug}", bin.AssetUpload)
